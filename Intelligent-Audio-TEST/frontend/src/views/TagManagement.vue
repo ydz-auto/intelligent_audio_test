@@ -42,7 +42,11 @@
               />
             </div>
           </div>
-          <div class="card-body">
+          <div 
+            class="card-body category-scroll-container" 
+            ref="categoryScrollContainer"
+            @scroll="handleCategoryScroll"
+          >
             <div class="category-list">
               <div 
                 v-for="cat in categories" 
@@ -75,18 +79,16 @@
                   <span class="tag-count-badge">{{ uncategorizedCount }}</span>
                 </div>
               </div>
+              
+              <div v-if="categoryLoading" class="loading-more-categories">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span>加载中...</span>
+              </div>
+              
+              <div v-if="!categoryHasMore && categories.length > 0 && !categoryLoading" class="no-more-categories">
+                <span>已加载全部</span>
+              </div>
             </div>
-          </div>
-          <div class="card-footer" v-if="categoryTotalPages > 1">
-            <PaginationComponent
-              :current-page="categoryPage"
-              :page-size="categoryPageSize"
-              :total-items="categoryTotal"
-              @prev-page="handleCategoryPrevPage"
-              @next-page="handleCategoryNextPage"
-              @go-to-page="handleCategoryGoToPage"
-              @page-size-change="handleCategoryPageSizeChange"
-            />
           </div>
         </div>
       </div>
@@ -168,147 +170,19 @@
       </div>
     </div>
 
-    <div v-if="showCategoryModal" class="modal-overlay" @click.self="closeCategoryModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>
-            <i class="fas fa-folder"></i>
-            {{ editingCategory ? '编辑分类' : '新建分类' }}
-          </h3>
-          <button class="btn-close" @click="closeCategoryModal">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>分类名称 <span class="required">*</span></label>
-            <input 
-              type="text" 
-              v-model="categoryForm.name" 
-              placeholder="如：人数、场景、语种"
-              :maxlength="50"
-              class="form-input"
-            />
-            <span class="char-count">{{ categoryForm.name.length }}/50</span>
-          </div>
-          <div class="form-group">
-            <label>描述</label>
-            <textarea 
-              v-model="categoryForm.description" 
-              placeholder="分类描述"
-              :maxlength="500"
-              class="form-input"
-            ></textarea>
-            <span class="char-count">{{ categoryForm.description.length }}/500</span>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>颜色</label>
-              <div class="color-picker">
-                <input type="color" v-model="categoryForm.color" />
-                <span class="color-value">{{ categoryForm.color }}</span>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>排序</label>
-              <input type="number" v-model="categoryForm.sortOrder" min="0" class="form-input" />
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="closeCategoryModal">取消</button>
-          <button class="btn btn-primary" @click="saveCategory" :disabled="!isCategoryFormValid || saving">
-            {{ saving ? '保存中...' : (editingCategory ? '保存' : '创建') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showTagModal" class="modal-overlay" @click.self="closeTagModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>
-            <i class="fas fa-tag"></i>
-            {{ editingTag ? '编辑标签' : '新建标签' }}
-          </h3>
-          <button class="btn-close" @click="closeTagModal">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>标签名称 <span class="required">*</span></label>
-            <input 
-              type="text" 
-              v-model="tagForm.name" 
-              placeholder="如：1人、2人、会议室"
-              :maxlength="50"
-              class="form-input"
-            />
-            <span class="char-count">{{ tagForm.name.length }}/50</span>
-          </div>
-          <div class="form-group">
-            <label>所属分类</label>
-            <select v-model="tagForm.categoryId" class="form-input">
-              <option :value="null">未分类</option>
-              <option v-for="cat in allCategories" :key="cat.id" :value="cat.id">
-                {{ cat.name }}
-              </option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>描述</label>
-            <textarea 
-              v-model="tagForm.description" 
-              placeholder="标签描述"
-              :maxlength="500"
-              class="form-input"
-            ></textarea>
-            <span class="char-count">{{ tagForm.description.length }}/500</span>
-          </div>
-          <div class="form-group">
-            <label>颜色</label>
-            <div class="color-picker">
-              <input type="color" v-model="tagForm.color" />
-              <span class="color-value">{{ tagForm.color }}</span>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="closeTagModal">取消</button>
-          <button class="btn btn-primary" @click="saveTag" :disabled="!isTagFormValid || saving">
-            {{ saving ? '保存中...' : (editingTag ? '保存' : '创建') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="showConfirmDialog" class="modal-overlay">
-      <div class="confirm-dialog">
-        <div class="confirm-icon">
-          <i :class="confirmType === 'delete' ? 'fas fa-exclamation-triangle' : 'fas fa-question-circle'"></i>
-        </div>
-        <h3>{{ confirmTitle }}</h3>
-        <p>{{ confirmMessage }}</p>
-        <div class="confirm-actions">
-          <button class="btn btn-secondary" @click="cancelConfirm">取消</button>
-          <button class="btn" :class="confirmType === 'delete' ? 'btn-danger' : 'btn-primary'" @click="executeConfirm">
-            确认
-          </button>
-        </div>
-      </div>
-    </div>
-
     <Notification ref="notificationRef" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import api from '@/utils/api';
 import type { TagCategory, TagItem } from '@/utils/api';
 import Notification from '@/components/common/modal/Notification.vue';
-import PaginationComponent from '@/components/common/PaginationComponent.vue';
+import { useModalControl } from '@/composables/useModal';
+import { MODAL_TYPES } from '@/shared/types';
+
+const { open, close } = useModalControl();
 
 const notificationRef = ref<InstanceType<typeof Notification> | null>(null);
 
@@ -322,11 +196,13 @@ const tags = ref<TagItem[]>([]);
 const selectedCategoryId = ref<number | null>(null);
 const searchKeyword = ref('');
 const categorySearchKeyword = ref('');
-const saving = ref(false);
 
 const categoryPage = ref(1);
-const categoryPageSize = ref(10);
+const categoryPageSize = ref(20);
 const categoryTotal = ref(0);
+const categoryLoading = ref(false);
+const categoryHasMore = ref(true);
+const categoryScrollContainer = ref<HTMLElement | null>(null);
 
 const tagPage = ref(1);
 const tagPageSize = ref(20);
@@ -334,42 +210,6 @@ const tagTotal = ref(0);
 const tagLoading = ref(false);
 const tagHasMore = ref(true);
 const tagScrollContainer = ref<HTMLElement | null>(null);
-
-const categoryTotalPages = computed(() => Math.ceil(categoryTotal.value / categoryPageSize.value) || 1);
-
-const showCategoryModal = ref(false);
-const editingCategory = ref<TagCategory | null>(null);
-const categoryForm = ref({
-  name: '',
-  description: '',
-  color: '#6366f1',
-  sortOrder: 0
-});
-
-const showTagModal = ref(false);
-const editingTag = ref<TagItem | null>(null);
-const tagForm = ref({
-  name: '',
-  description: '',
-  color: '#10b981',
-  categoryId: null as number | null
-});
-
-const showConfirmDialog = ref(false);
-const confirmTitle = ref('');
-const confirmMessage = ref('');
-const confirmCallback = ref<(() => void) | null>(null);
-const confirmType = ref<'delete' | 'confirm'>('confirm');
-
-const isCategoryFormValid = computed(() => {
-  const name = categoryForm.value.name.trim();
-  return name.length > 0 && name.length <= 50;
-});
-
-const isTagFormValid = computed(() => {
-  const name = tagForm.value.name.trim();
-  return name.length > 0 && name.length <= 50;
-});
 
 const currentCategoryName = computed(() => {
   if (selectedCategoryId.value === null) return '未分类';
@@ -389,7 +229,7 @@ function handleCategorySearchInput() {
     clearTimeout(categorySearchDebounceTimer);
   }
   categorySearchDebounceTimer = setTimeout(() => {
-    categoryPage.value = 1;
+    resetCategoryList();
     loadCategories();
   }, 300);
 }
@@ -402,6 +242,12 @@ function handleSearchInput() {
     resetTagList();
     loadTags();
   }, 300);
+}
+
+function resetCategoryList() {
+  categories.value = [];
+  categoryPage.value = 1;
+  categoryHasMore.value = true;
 }
 
 function resetTagList() {
@@ -419,7 +265,10 @@ async function loadAllCategories() {
   }
 }
 
-async function loadCategories() {
+async function loadCategories(append: boolean = false) {
+  if (categoryLoading.value) return;
+  
+  categoryLoading.value = true;
   try {
     const params: any = {
       page: categoryPage.value,
@@ -431,10 +280,32 @@ async function loadCategories() {
     }
     
     const res = await api.tags.getCategories(params);
-    categories.value = res.items || [];
+    const newCategories = res.items || [];
+    
+    if (append) {
+      categories.value = [...categories.value, ...newCategories];
+    } else {
+      categories.value = newCategories;
+    }
+    
     categoryTotal.value = res.total || 0;
+    categoryHasMore.value = categories.value.length < categoryTotal.value;
   } catch (e: any) {
     showNotification(e.message || '加载分类失败', 'error');
+  } finally {
+    categoryLoading.value = false;
+  }
+}
+
+function handleCategoryScroll(event: Event) {
+  const container = event.target as HTMLElement;
+  const scrollTop = container.scrollTop;
+  const scrollHeight = container.scrollHeight;
+  const clientHeight = container.clientHeight;
+  
+  if (scrollHeight - scrollTop - clientHeight < 50 && categoryHasMore.value && !categoryLoading.value) {
+    categoryPage.value++;
+    loadCategories(true);
   }
 }
 
@@ -492,99 +363,34 @@ function selectCategory(id: number | null) {
   loadTags();
 }
 
-function handleCategoryPrevPage() {
-  if (categoryPage.value > 1) {
-    categoryPage.value--;
-    loadCategories();
-  }
-}
-
-function handleCategoryNextPage() {
-  if (categoryPage.value < categoryTotalPages.value) {
-    categoryPage.value++;
-    loadCategories();
-  }
-}
-
-function handleCategoryGoToPage(page: number) {
-  categoryPage.value = page;
-  loadCategories();
-}
-
-function handleCategoryPageSizeChange(size: number) {
-  categoryPageSize.value = size;
-  categoryPage.value = 1;
-  loadCategories();
-}
-
 function openCategoryModal(cat?: TagCategory) {
-  editingCategory.value = cat || null;
-  if (cat) {
-    categoryForm.value = {
-      name: cat.name,
-      description: cat.description || '',
-      color: cat.color || '#6366f1',
-      sortOrder: cat.sortOrder || 0
-    };
-  } else {
-    categoryForm.value = {
-      name: '',
-      description: '',
-      color: '#6366f1',
-      sortOrder: allCategories.value.length + 1
-    };
-  }
-  showCategoryModal.value = true;
+  open(MODAL_TYPES.TAG_CATEGORY, {
+    category: cat || null,
+    sortOrder: allCategories.value.length + 1
+  }).then((result: TagCategory) => {
+    showNotification(cat ? '分类更新成功' : '分类创建成功', 'success');
+    resetCategoryList();
+    loadCategories();
+    loadAllCategories();
+  }).catch(() => {
+    // 用户取消
+  });
 }
 
-function closeCategoryModal() {
-  showCategoryModal.value = false;
-  editingCategory.value = null;
-}
-
-async function saveCategory() {
-  if (!isCategoryFormValid.value || saving.value) return;
-  
-  saving.value = true;
-  try {
-    const data = {
-      name: categoryForm.value.name.trim(),
-      description: categoryForm.value.description.trim(),
-      color: categoryForm.value.color,
-      sortOrder: categoryForm.value.sortOrder
-    };
-    
-    if (editingCategory.value) {
-      await api.tags.updateCategory(editingCategory.value.id, data);
-      showNotification('分类更新成功', 'success');
-    } else {
-      await api.tags.createCategory(data);
-      showNotification('分类创建成功', 'success');
-    }
-    
-    await loadCategories();
-    await loadAllCategories();
-    closeCategoryModal();
-  } catch (e: any) {
-    showNotification(e.message || '保存失败', 'error');
-  } finally {
-    saving.value = false;
-  }
-}
-
-function confirmDeleteCategory(cat: TagCategory) {
+async function confirmDeleteCategory(cat: TagCategory) {
   if (cat.tagCount > 0) {
     showNotification(`该分类下还有 ${cat.tagCount} 个标签，请先移除或迁移标签`, 'warning');
     return;
   }
   
-  confirmTitle.value = '删除分类';
-  confirmMessage.value = `确定删除分类「${cat.name}」吗？此操作不可恢复。`;
-  confirmType.value = 'delete';
-  confirmCallback.value = async () => {
+  open(MODAL_TYPES.DELETE_CONFIRM, {
+    title: '删除分类',
+    message: `确定删除分类「${cat.name}」吗？此操作不可恢复。`
+  }).then(async () => {
     try {
       await api.tags.deleteCategory(cat.id);
       showNotification('分类删除成功', 'success');
+      resetCategoryList();
       await loadCategories();
       await loadAllCategories();
       if (selectedCategoryId.value === cat.id) {
@@ -595,96 +401,47 @@ function confirmDeleteCategory(cat: TagCategory) {
     } catch (e: any) {
       showNotification(e.message || '删除失败', 'error');
     }
-  };
-  showConfirmDialog.value = true;
+  }).catch(() => {
+    // 用户取消
+  });
 }
 
 function openTagModal(tag?: TagItem) {
-  editingTag.value = tag || null;
-  if (tag) {
-    tagForm.value = {
-      name: tag.name,
-      description: tag.description || '',
-      color: tag.color || '#10b981',
-      categoryId: tag.categoryId || null
-    };
-  } else {
-    tagForm.value = {
-      name: '',
-      description: '',
-      color: '#10b981',
-      categoryId: selectedCategoryId.value
-    };
-  }
-  showTagModal.value = true;
-}
-
-function closeTagModal() {
-  showTagModal.value = false;
-  editingTag.value = null;
-}
-
-async function saveTag() {
-  if (!isTagFormValid.value || saving.value) return;
-  
-  saving.value = true;
-  try {
-    const data = {
-      name: tagForm.value.name.trim(),
-      description: tagForm.value.description.trim(),
-      color: tagForm.value.color,
-      categoryId: tagForm.value.categoryId
-    };
-    
-    if (editingTag.value) {
-      await api.tags.updateTag(editingTag.value.id, data);
-      showNotification('标签更新成功', 'success');
-    } else {
-      await api.tags.createTag(data);
-      showNotification('标签创建成功', 'success');
-    }
-    
+  open(MODAL_TYPES.TAG_EDIT, {
+    tag: tag || null,
+    categoryId: selectedCategoryId.value,
+    categories: allCategories.value
+  }).then((result: TagItem) => {
+    showNotification(tag ? '标签更新成功' : '标签创建成功', 'success');
     resetTagList();
-    await loadTags();
-    await loadCategories();
-    await loadAllCategories();
-    closeTagModal();
-  } catch (e: any) {
-    showNotification(e.message || '保存失败', 'error');
-  } finally {
-    saving.value = false;
-  }
+    loadTags();
+    resetCategoryList();
+    loadCategories();
+    loadAllCategories();
+  }).catch(() => {
+    // 用户取消
+  });
 }
 
-function confirmDeleteTag(tag: TagItem) {
-  confirmTitle.value = '删除标签';
-  confirmMessage.value = `确定删除标签「${tag.name}」吗？`;
-  confirmType.value = 'delete';
-  confirmCallback.value = async () => {
+async function confirmDeleteTag(tag: TagItem) {
+  open(MODAL_TYPES.DELETE_CONFIRM, {
+    title: '删除标签',
+    message: `确定删除标签「${tag.name}」吗？`
+  }).then(async () => {
     try {
       await api.tags.deleteTag(tag.id);
       showNotification('标签删除成功', 'success');
       resetTagList();
       await loadTags();
+      resetCategoryList();
       await loadCategories();
       await loadAllCategories();
     } catch (e: any) {
       showNotification(e.message || '删除失败', 'error');
     }
-  };
-  showConfirmDialog.value = true;
-}
-
-function cancelConfirm() {
-  showConfirmDialog.value = false;
-  confirmCallback.value = null;
-}
-
-async function executeConfirm() {
-  if (confirmCallback.value) {
-    await confirmCallback.value();
-  }
-  cancelConfirm();
+  }).catch(() => {
+    // 用户取消
+  });
 }
 
 onMounted(() => {
@@ -814,14 +571,12 @@ onMounted(() => {
   padding: 16px;
 }
 
-.tag-scroll-container {
+.category-scroll-container {
   max-height: calc(100vh - 280px);
 }
 
-.card-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border-color, #e2e8f0);
-  background: var(--card-footer-bg, #f8fafc);
+.tag-scroll-container {
+  max-height: calc(100vh - 280px);
 }
 
 .category-list {
@@ -881,6 +636,27 @@ onMounted(() => {
 .category-actions {
   display: flex;
   gap: 4px;
+}
+
+.loading-more-categories {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 13px;
+}
+
+.loading-more-categories i {
+  font-size: 14px;
+}
+
+.no-more-categories {
+  text-align: center;
+  padding: 12px;
+  color: var(--text-muted, #94a3b8);
+  font-size: 12px;
 }
 
 .search-box {
@@ -1098,196 +874,5 @@ onMounted(() => {
 
 .btn-text.btn-danger:hover {
   background: var(--danger-light, rgba(239, 68, 68, 0.1));
-}
-
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(15, 23, 42, 0.5);
-  backdrop-filter: blur(4px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: var(--card-bg, #fff);
-  border-radius: 12px;
-  width: 500px;
-  max-width: 90%;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-}
-
-.modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color, #e2e8f0);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 16px;
-  color: var(--text-primary, #1e293b);
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.modal-header h3 i {
-  color: var(--primary-color, #6366f1);
-}
-
-.btn-close {
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted, #94a3b8);
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-}
-
-.btn-close:hover {
-  color: var(--text-secondary, #475569);
-  background: var(--hover-bg, #f1f5f9);
-}
-
-.modal-body {
-  padding: 20px;
-}
-
-.modal-footer {
-  padding: 16px 20px;
-  border-top: 1px solid var(--border-color, #e2e8f0);
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  background: var(--modal-footer-bg, #f8fafc);
-}
-
-.form-group {
-  margin-bottom: 16px;
-  position: relative;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 500;
-  color: var(--text-primary, #334155);
-  font-size: 14px;
-}
-
-.required {
-  color: var(--danger-color, #ef4444);
-}
-
-.form-input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 6px;
-  font-size: 14px;
-  box-sizing: border-box;
-  transition: all 0.2s;
-  background: var(--input-bg, #fff);
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: var(--primary-color, #6366f1);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-textarea.form-input {
-  min-height: 80px;
-  resize: vertical;
-}
-
-.char-count {
-  position: absolute;
-  right: 0;
-  bottom: -16px;
-  font-size: 11px;
-  color: var(--text-muted, #94a3b8);
-}
-
-.form-row {
-  display: flex;
-  gap: 16px;
-}
-
-.form-row .form-group {
-  flex: 1;
-}
-
-.color-picker {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-input[type="color"] {
-  height: 36px;
-  padding: 2px;
-  width: 50px;
-  cursor: pointer;
-  border: 1px solid var(--border-color, #e2e8f0);
-  border-radius: 6px;
-}
-
-.color-value {
-  font-size: 13px;
-  color: var(--text-secondary, #64748b);
-  font-family: monospace;
-}
-
-.confirm-dialog {
-  background: var(--card-bg, #fff);
-  border-radius: 12px;
-  width: 400px;
-  max-width: 90%;
-  padding: 24px;
-  text-align: center;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-}
-
-.confirm-icon {
-  margin-bottom: 16px;
-}
-
-.confirm-icon i {
-  font-size: 48px;
-  color: var(--warning-color, #f59e0b);
-}
-
-.confirm-dialog h3 {
-  margin: 0 0 12px;
-  font-size: 16px;
-  color: var(--text-primary, #1e293b);
-}
-
-.confirm-dialog p {
-  margin: 0 0 20px;
-  color: var(--text-secondary, #64748b);
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-.confirm-actions {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
 }
 </style>

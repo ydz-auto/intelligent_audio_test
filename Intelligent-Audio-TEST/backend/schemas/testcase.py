@@ -227,6 +227,8 @@ class ReportAudioItem(APIModel):
     playback_device_id: Optional[int] = Field(None, alias='playbackDeviceId', validation_alias='playbackDeviceId')
     playback_device_name: Optional[str] = Field(None, alias='playbackDeviceName', validation_alias='playbackDeviceName')
     label: Optional[str] = Field(None, alias='label', validation_alias='label')
+    timeline_start: Optional[float] = Field(None, alias='timelineStart', validation_alias=AliasChoices('timeline_start', 'timelineStart'))
+    timeline_end: Optional[float] = Field(None, alias='timelineEnd', validation_alias=AliasChoices('timeline_end', 'timelineEnd'))
 
 
 class ReportTestCaseItem(APIModel):

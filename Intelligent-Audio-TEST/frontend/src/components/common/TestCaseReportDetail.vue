@@ -58,58 +58,9 @@
 
     </div>
       <div v-if="hasAudio" class="audio-results-container">
-        <div v-if="paginatedAudioList.length > 0" class="audio-list-wrapper">
-          <div v-for="(audio, idx) in paginatedAudioList" :key="audio.id || `audio-${idx}`" class="audio-result-item">
-            <div class="audio-item-header">
-              <div class="result-label">{{ audio.label || '结果音频' }}</div>
-              <div class="audio-meta-row" v-if="audio.spl || audio.playOrder || audio.deviceName || audio.noiseSpl">
-                <span v-if="audio.spl" class="audio-meta-item spl">
-                  <i class="fas fa-volume-up"></i> {{ audio.spl }}dB
-                </span>
-                <span v-if="audio.playOrder" class="audio-meta-item order">
-                  <i class="fas fa-list-ol"></i> 第{{ audio.playOrder }}个
-                </span>
-                <span v-if="audio.deviceName" class="audio-meta-item device">
-                  <i class="fas fa-mobile-alt"></i> {{ audio.deviceName }}
-                </span>
-                <span v-if="audio.noiseSpl" class="audio-meta-item noise-spl">
-                  <i class="fas fa-volume-mute"></i> 噪声: {{ audio.noiseSpl }}dB
-                </span>
-              </div>
-            </div>
-            <div class="audio-player-placeholder" @click="openAudioPlayer(audio, getGlobalAudioIndex(idx))">
-              <div class="placeholder-content">
-                <i class="fas fa-play-circle placeholder-icon"></i>
-                <span class="placeholder-text">点击播放</span>
-                <span v-if="audio.duration" class="placeholder-duration">{{ formatDuration(audio.duration) }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div v-else class="no-audio-message">
-          <i class="fas fa-music"></i>
-          <span>暂无音频数据</span>
-        </div>
-        
-        <div v-if="audioList.length > audioPageSize" class="audio-pagination">
-          <button 
-            class="pagination-btn" 
-            @click="audioCurrentPage--" 
-            :disabled="audioCurrentPage <= 1"
-          >
-            <i class="fas fa-chevron-left"></i> 上一页
-          </button>
-          <span class="pagination-info">
-            {{ audioCurrentPage }} / {{ totalAudioPages }}
-          </span>
-          <button 
-            class="pagination-btn" 
-            @click="audioCurrentPage++" 
-            :disabled="audioCurrentPage >= totalAudioPages"
-          >
-            下一页 <i class="fas fa-chevron-right"></i>
-          </button>
-        </div>
+        <AudioTimelineVisualization
+          :audioList="audioListWithTimeline"
+        />
       </div>
 
       <AudioPlayerModal
@@ -218,6 +169,7 @@ import { ref, computed } from 'vue';
 import { API_CONFIG } from '../../utils/config';
 import TimelineComparison from '../report/TimelineComparison.vue';
 import AudioPlayerModal from './AudioPlayerModal.vue';
+import AudioTimelineVisualization from './AudioTimelineVisualization.vue';
 
 const apiBaseUrl = API_CONFIG.baseUrl;
 
@@ -318,6 +270,52 @@ const getAudioUrl = (audio) => {
 };
 
 const hasAudio = computed(() => props.audioPath || props.audioList.length > 0);
+
+const audioListWithTimeline = computed(() => {
+  const list = props.audioList || [];
+  if (list.length === 0) return [];
+  
+  const hasTimelineInfo = list.some(a => 
+    a.timelineStart !== undefined || 
+    a.timelineEnd !== undefined ||
+    a.timeline_start !== undefined ||
+    a.timeline_end !== undefined
+  );
+  
+  if (hasTimelineInfo) {
+    return list.map(a => ({
+      ...a,
+      timelineStart: a.timelineStart ?? a.timeline_start ?? 0,
+      timelineEnd: a.timelineEnd ?? a.timeline_end ?? (a.duration || 0),
+      testType: a.testType ?? a.test_type ?? a.audio_type ?? 'api',
+      playOrder: a.playOrder ?? a.play_order,
+      playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
+    }));
+  }
+  
+  const sortedList = [...list].sort((a, b) => {
+    const orderA = a.playOrder ?? a.play_order ?? 999;
+    const orderB = b.playOrder ?? b.play_order ?? 999;
+    return orderA - orderB;
+  });
+  
+  let cumulativeTime = 0;
+  return sortedList.map((a, idx) => {
+    const duration = a.duration || 0;
+    const start = idx === 0 ? 0 : cumulativeTime;
+    const end = start + duration;
+    cumulativeTime = end;
+    
+    return {
+      ...a,
+      timelineStart: start,
+      timelineEnd: end,
+      testType: a.testType ?? a.test_type ?? a.audio_type ?? 'api',
+      playOrder: a.playOrder ?? a.play_order,
+      playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
+    };
+  });
+});
 
 const hasTimelineData = computed(() => {
   const algoResults = props.algorithmResults;

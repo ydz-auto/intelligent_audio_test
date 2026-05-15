@@ -67,7 +67,9 @@ export const MODAL_TYPES = {
     BATCH_ADJUST_GROUP: 'batchAdjustGroup',
     BATCH_DIMENSION: 'batchDimension',
     BATCH_NOISE: 'batchNoise',
-    BATCH_TAGS: 'batchTags'
+    BATCH_TAGS: 'batchTags',
+    TAG_CATEGORY: 'tagCategory',
+    TAG_EDIT: 'tagEdit'
 } as const;
 
 export type ModalType = typeof MODAL_TYPES[keyof typeof MODAL_TYPES];

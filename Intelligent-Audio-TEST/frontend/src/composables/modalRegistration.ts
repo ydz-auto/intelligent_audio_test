@@ -20,6 +20,8 @@ import BatchAdjustGroupModal from '../components/common/modal/BatchAdjustGroupMo
 import BatchDimensionModal from '../components/common/modal/BatchDimensionModal.vue';
 import BatchNoiseModal from '../components/common/modal/BatchNoiseModal.vue';
 import BatchTagsModal from '../components/common/modal/BatchTagsModal.vue';
+import TagCategoryModal from '../components/common/modal/TagCategoryModal.vue';
+import TagEditModal from '../components/common/modal/TagEditModal.vue';
 import TestCaseDetailModal from '../components/common/modal/TestCaseDetailModal.vue';
 import AudioPlayerModal from '../components/common/AudioPlayerModal.vue';
 import AudioSelectModal from '../components/common/AudioSelectModal.vue';
@@ -252,6 +254,20 @@ export function registerGlobalModals() {
     defaultConfig: {
       title: '批量管理标签',
       caseCount: 0
+    }
+  });
+
+  manager.registerModal(MODAL_TYPES.TAG_CATEGORY, {
+    component: TagCategoryModal,
+    defaultConfig: {
+      title: '标签分类'
+    }
+  });
+
+  manager.registerModal(MODAL_TYPES.TAG_EDIT, {
+    component: TagEditModal,
+    defaultConfig: {
+      title: '标签'
     }
   });
 }

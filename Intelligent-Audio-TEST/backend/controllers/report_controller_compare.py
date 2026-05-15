@@ -334,6 +334,40 @@ class ReportControllerCompare(ReportControllerBase):
                 })
 
         audios_list.sort(key=lambda x: (x.get('play_order') is None, x.get('play_order') or 999))
+        
+        dry_audios = [a for a in audios_list if a.get('audio_type') != 'noise']
+        noise_audios = [a for a in audios_list if a.get('audio_type') == 'noise']
+        
+        from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
+        overlap_time = CaseParameterExtractor.get_overlap_time(config) if config else 0
+        overlap_rate = CaseParameterExtractor.get_overlap_rate(config) if config else 0
+        
+        timeline_start = 0
+        prev_end_time = 0
+        
+        for audio_item in dry_audios:
+            duration = audio_item.get('duration') or 0
+            
+            if audio_item == dry_audios[0]:
+                timeline_start = 0
+            else:
+                if overlap_time and overlap_time > 0:
+                    timeline_start = prev_end_time - overlap_time
+                    if timeline_start < 0:
+                        timeline_start = 0
+                elif overlap_rate is not None and overlap_rate > 0:
+                    timeline_start = prev_end_time * (1 - overlap_rate)
+                else:
+                    timeline_start = prev_end_time
+            
+            audio_item['timelineStart'] = round(timeline_start, 3)
+            audio_item['timelineEnd'] = round(timeline_start + duration, 3)
+            prev_end_time = timeline_start + duration
+        
+        for noise_item in noise_audios:
+            noise_item['timelineStart'] = 0
+            noise_item['timelineEnd'] = round(noise_item.get('duration') or 0, 3)
+        
         return audios_list
 
     @staticmethod

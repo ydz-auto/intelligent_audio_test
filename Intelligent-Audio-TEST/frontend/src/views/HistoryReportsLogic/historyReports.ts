@@ -1,4 +1,5 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { useRouter } from 'vue-router';
 import { reportsApi } from '../../utils/api';
 import { useAlgorithmLabels } from '../../composables/useAlgorithmLabels';
 import reportService from '../../services/reportService';
@@ -46,6 +47,7 @@ function showToast(type: ToastMessage['type'], message: string): void {
 }
 
 export function useHistoryReports() {
+  const router = useRouter();
   const allReports = ref<Report[]>([]);
   const totalItems = ref(0);
   const currentPage = ref(1);
@@ -305,23 +307,7 @@ export function useHistoryReports() {
   };
 
   const viewReport = async (reportId: string | number) => {
-    try {
-      const report = await reportsApi.getOne(reportId);
-      reportService.comparisonReport.value = {
-        ...report, 
-        name: report.name, 
-        description: report.description || '', 
-        conclusion: (report.analysis || report.conclusion) || '',
-        tags: report.tags || [], 
-        summary: report.summary || { totalCases: 0, completedCases: 0, failedCases: 0, allMetrics: [], detailedResults: []}
-      };
-      reportService.extractDevicesFromTasks([], report);
-      isEditingReport.value = false;
-      isEditingConclusion.value = false;
-      showComparisonReport.value = true;
-    } catch (error: any) {
-      showToast('error', '查看报告失败: ' + (error.message || '未知错误'));
-    }
+    router.push(`/report/${reportId}`);
   };
 
   const editReport = async (reportId: string | number) => {

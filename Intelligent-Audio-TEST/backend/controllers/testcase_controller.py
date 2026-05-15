@@ -80,6 +80,25 @@ class TestCaseController:
         except Exception:
             return None
 
+    @staticmethod
+    def _has_overlap_param_changed(old_params: list, new_params: list) -> bool:
+        overlap_fields = {'overlap_rate', 'overlap_time', 'overlapRate', 'overlapTime'}
+        
+        def get_overlap_values(params: list) -> dict:
+            result = {}
+            for p in params:
+                if not isinstance(p, dict):
+                    continue
+                field_code = p.get('field_code') or p.get('fieldCode')
+                if field_code in overlap_fields:
+                    result[field_code] = p.get('field_value', p.get('fieldValue'))
+            return result
+        
+        old_overlap = get_overlap_values(old_params)
+        new_overlap = get_overlap_values(new_params)
+        
+        return old_overlap != new_overlap
+
     # 公共方法：刷新测试用例的ASR和翻译参考文本
     @staticmethod
     def refresh_reference_texts(test_case):
@@ -569,17 +588,28 @@ class TestCaseController:
             algorithm_type = data.algorithm_type
             algorithm_params = data.get_algorithm_params_dict()
             reference_params = data.get_reference_params_dict()
-            if algorithm_type is not None:
+            
+            need_refresh_reference = False
+            
+            if audios_data is not None:
+                need_refresh_reference = True
+            
+            if algorithm_type is not None and algorithm_type != tc.algorithm_type:
+                need_refresh_reference = True
                 tc.algorithm_type = algorithm_type
+            
             if algorithm_params is not None:
+                if TestCaseController._has_overlap_param_changed(tc.algorithm_params or [], algorithm_params):
+                    need_refresh_reference = True
                 tc.algorithm_params = algorithm_params
+            
             if reference_params is not None:
                 tc.reference_params = reference_params
             
             tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
             
-            # 刷新ASR和翻译参考文本
-            TestCaseController.refresh_reference_texts(tc)
+            if need_refresh_reference:
+                TestCaseController.refresh_reference_texts(tc)
             
             db.session.commit()
 

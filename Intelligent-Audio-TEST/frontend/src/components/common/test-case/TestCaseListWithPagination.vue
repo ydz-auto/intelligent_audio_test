@@ -1,6 +1,6 @@
 <template>
   <div>
-    <div class="test-case-list-with-pagination" ref="listContainerRef">
+    <div class="test-case-list-with-pagination" ref="listContainerRef" @scroll="handleScroll">
       <TestCaseCard 
         v-for="testCase in paginatedTestCases" 
         :key="testCase?.id"
@@ -13,7 +13,7 @@
         @action="handleAction"
       ></TestCaseCard>
       
-      <div class="empty-state" v-if="paginatedTestCases.filter(Boolean).length === 0">
+      <div class="empty-state" v-if="paginatedTestCases.filter(Boolean).length === 0 && !isLoading">
         <i class="fas fa-inbox"></i>
         <p>没有找到测试用例</p>
         <p class="empty-state-hint">请尝试调整筛选条件或添加新的测试用例</p>
@@ -23,24 +23,39 @@
         <div class="spinner"></div>
         <p>加载中...</p>
       </div>
+      
+      <div v-if="isLoadingMore" class="loading-more">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>加载更多用例...</span>
+      </div>
+      
+      <div v-if="hasMore && !isLoadingMore && paginatedTestCases.length > 0" class="load-more-trigger">
+        <span class="load-more-hint">已显示 {{ paginatedTestCases.length }} / {{ filteredTestCases.length }} 条用例</span>
+        <button class="btn btn-secondary btn-sm" @click="loadMore">
+          <i class="fas fa-chevron-down"></i> 加载更多
+        </button>
+      </div>
+      
+      <div v-if="!hasMore && paginatedTestCases.length > 0 && filteredTestCases.length > pageSize" class="all-loaded">
+        <span>已加载全部 {{ filteredTestCases.length }} 条用例</span>
+      </div>
     </div>
-    
-    <PaginationComponent 
-      :current-page="currentPage"
-      :page-size="pageSize"
-      :total-items="filteredTestCases.length"
-      @prev-page="handlePageChange(currentPage - 1)"
-      @next-page="handlePageChange(currentPage + 1)"
-      @go-to-page="handlePageChange"
-      @page-size-change="handlePageSizeChange"
-    />
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import TestCaseCard from './TestCaseCard.vue';
-import PaginationComponent from '../PaginationComponent.vue';
+
+interface TestCaseItem {
+  id?: string | number;
+  name?: string;
+  description?: string;
+  tags?: string[];
+  status?: string;
+  selected?: boolean;
+  [key: string]: any;
+}
 
 const props = defineProps({
   testCases: { type: Array, default: () => [] },
@@ -56,7 +71,9 @@ const emit = defineEmits(['toggle-selection', 'action', 'page-change', 'page-siz
 
 const currentPage = ref(1);
 const pageSize = ref(10);
-const listContainerRef = ref(null);
+const listContainerRef = ref<HTMLElement | null>(null);
+const isLoadingMore = ref(false);
+const hasMore = ref(true);
 
 watch(() => props.testCases, () => {
   currentPage.value = 1;
@@ -67,29 +84,28 @@ watch(() => props.searchQuery, () => {
 });
 
 const filteredTestCases = computed(() => {
-  let cases = [...props.testCases];
+  let cases = [...props.testCases] as TestCaseItem[];
   
-  // 先过滤掉 null/undefined 值
   cases = cases.filter(Boolean);
   
   if (props.searchQuery) {
     const query = props.searchQuery.toLowerCase();
-    cases = cases.filter(testCase => {
+    cases = cases.filter((testCase: TestCaseItem) => {
       const idStr = String(testCase.id || '').toLowerCase();
       return idStr.includes(query) ||
              (testCase.name || '').toLowerCase().includes(query) ||
              (testCase.description || '').toLowerCase().includes(query) ||
-             (testCase.tags && testCase.tags.some(tag => String(tag).toLowerCase().includes(query)));
+             (testCase.tags && testCase.tags.some((tag: string) => String(tag).toLowerCase().includes(query)));
     });
   }
   
   if (props.filter) {
     if (props.filter.tag && props.filter.tag !== 'all') {
-      cases = cases.filter(testCase => testCase.tags && testCase.tags.includes(props.filter.tag));
+      cases = cases.filter((testCase: TestCaseItem) => testCase.tags && testCase.tags.includes(props.filter.tag));
     }
     
     if (props.filter.status) {
-      cases = cases.filter(testCase => testCase.status === props.filter.status);
+      cases = cases.filter((testCase: TestCaseItem) => testCase.status === props.filter.status);
     }
     
     if (props.filter.customFilter && typeof props.filter.customFilter === 'function') {
@@ -101,36 +117,36 @@ const filteredTestCases = computed(() => {
 });
 
 const paginatedTestCases = computed(() => {
-  const startIndex = (currentPage.value - 1) * pageSize.value;
-  const endIndex = startIndex + pageSize.value;
-  // 确保 filteredTestCases.value 是数组
+  const endIndex = currentPage.value * pageSize.value;
   const cases = Array.isArray(filteredTestCases.value) ? filteredTestCases.value : [];
-  return cases.slice(startIndex, endIndex);
+  hasMore.value = endIndex < cases.length;
+  return cases.slice(0, endIndex);
 });
 
-const handleToggleSelection = (caseId) => {
+const handleToggleSelection = (caseId: string | number) => {
   emit('toggle-selection', caseId);
 };
 
-const handleAction = (event) => {
+const handleAction = (event: any) => {
   emit('action', event);
 };
 
-const handlePageChange = (newPage) => {
-  currentPage.value = newPage;
-  if (listContainerRef.value) {
-    listContainerRef.value.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-  emit('page-change', newPage);
+const loadMore = () => {
+  if (isLoadingMore.value || !hasMore.value) return;
+  isLoadingMore.value = true;
+  setTimeout(() => {
+    currentPage.value++;
+    isLoadingMore.value = false;
+    emit('page-change', currentPage.value);
+  }, 200);
 };
 
-const handlePageSizeChange = (newPageSize) => {
-  pageSize.value = newPageSize;
-  currentPage.value = 1;
-  if (listContainerRef.value) {
-    listContainerRef.value.scrollTo({ top: 0, behavior: 'smooth' });
+const handleScroll = (event: Event) => {
+  const target = event.target as HTMLElement;
+  const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+  if (scrollBottom < 80 && hasMore.value && !isLoadingMore.value) {
+    loadMore();
   }
-  emit('page-size-change', newPageSize);
 };
 
 defineExpose({
@@ -153,7 +169,6 @@ defineExpose({
   scroll-behavior: smooth;
 }
 
-/* 自定义滚动条样式 */
 .test-case-list-with-pagination::-webkit-scrollbar {
   width: 6px;
 }
@@ -239,8 +254,45 @@ defineExpose({
   font-size: 16px;
 }
 
-/* 分页组件间距 */
-.pagination-container {
-  margin-top: 16px;
+/* 加载更多提示 */
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.load-more-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px;
+  border-top: 1px dashed var(--border-color);
+  margin-top: 8px;
+}
+
+.load-more-hint {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.all-loaded {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  border-top: 1px dashed var(--border-color);
+  margin-top: 8px;
+}
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
 }
 </style>

@@ -332,196 +332,30 @@
     
     <!-- 历史报告对比报告区域 -->
     <section class="comparison-report-container" v-if="showComparisonReport">
-      <div class="comparison-header" style="display: flex; flex-direction: column; gap: 8px; padding: 20px; background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%); border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); align-items: center; text-align: center;">
-        <h3 style="margin: 0; font-size: 28px; font-weight: 700; color: #2c3e50; background: linear-gradient(135deg, #FF6A00 0%, #FF8C40 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">报告对比详情</h3>
-        <p style="margin: 0; font-size: 15px; color: #7f8c8d; line-height: 1.5; max-width: 600px;">查看和分析所选报告的详细执行情况和对比结果。</p>
+      <TaskReportPanel 
+        :report="reportService.comparisonReport.value"
+        :is-editing-report="isEditingReport"
+        :is-editing-conclusion="isEditingConclusion"
+        :analysis-content="reportService.comparisonReport.value?.conclusion || ''"
+        :tables="[]"
+        @toggle-edit="toggleEditReport"
+        @save-report="saveComparisonReport"
+        @cancel-edit="cancelEditReport"
+        @toggle-conclusion-edit="toggleEditConclusion"
+        @save-conclusion="saveConclusion"
+        @cancel-conclusion="cancelEditConclusion"
+      />
+      <div class="floating-actions-bar">
+        <button class="btn btn-primary" @click="saveComparisonReport">
+          <i class="fas fa-save"></i> 保存
+        </button>
+        <button class="btn btn-success" @click="publishComparisonReport">
+          <i class="fas fa-paper-plane"></i> 发布
+        </button>
+        <button class="btn btn-secondary" @click="closeComparisonReport">
+          <i class="fas fa-times"></i> 关闭
+        </button>
       </div>
-      
-      <!-- 报告保存区域 -->
-      <div class="report-save-section analysis-conclusion-card" style="background: linear-gradient(to right, #e6f7ff, #ffffff); border: 1px solid #91d5ff; border-radius: 12px; padding: 20px; margin-bottom: 24px; display: flex; gap: 16px; align-items: flex-start; box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);">
-        <!-- 图标区域 -->
-        <div class="analysis-icon" style="flex-shrink: 0; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); background: white;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" stroke="#1890ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" stroke="#1890ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M10 2v20" stroke="#1890ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M14 2v20" stroke="#1890ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        
-        <!-- 内容区域 -->
-        <div class="analysis-content" style="flex: 1;">
-          <div class="analysis-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <h4 class="analysis-title" style="margin: 0; color: #0050b3; font-size: 1.1rem; font-weight: 600;">{{ reportService.comparisonReport.value.name || '报告详情' }}</h4>
-              <span v-if="reportService.comparisonReport.value.algorithmType" class="report-detail-algorithm-type">
-                {{ getAlgorithmTypeLabel(reportService.comparisonReport.value.algorithmType) }}
-              </span>
-            </div>
-            <div class="analysis-status" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 12px; font-size: 0.8rem; font-weight: 500; background-color: #f0f9ff; color: #0ea5e9;">
-              <span style="content: ''; width: 6px; height: 6px; border-radius: 50%; background-color: #0ea5e9; animation: pulse 2s infinite;"></span>
-              {{ reportService.comparisonReport.value.status === 'draft' ? ' 草稿' : '已发布' }}
-            </div>
-          </div>
-          
-          <div v-if="!isEditingReport" class="analysis-text" style="color: #333; line-height: 1.6; font-size: 0.95rem; padding: 0; border-radius: 0; transition: all 0.3s ease; background: transparent; border: none;">
-            <div>
-              {{ reportService.comparisonReport.value.description || '暂无描 述' }}
-            </div>
-          </div>
-          
-          <div v-else class="analysis-edit" style="display: flex; flex-direction: column; gap: 16px;">
-            <div>
-              <label for="report-name" style="display: block; margin-bottom: 8px; font-weight: 500; color: #475569;">报告名称</label>
-              <input type="text" id="report-name" placeholder="请输入报告名称" v-model="reportService.comparisonReport.value.name"
-                     style="width: 100%; padding: 10px 12px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 0.95rem; line-height: 1.6; transition: all 0.3s ease;">
-            </div>
-            <div>
-              <label for="report-description" style="display: block; margin-bottom: 8px; font-weight: 500; color: #475569;">报告描述</label>
-              <textarea id="report-description" placeholder="请输入报告描述" rows="3" v-model="reportService.comparisonReport.value.description"
-                        style="width: 100%; padding: 10px 12px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 0.95rem; line-height: 1.6; resize: vertical; transition: all 0.3s ease;">
-              </textarea>
-            </div>
-          </div>
-          
-          <div class="analysis-actions" style="margin-top: 12px; display: flex; gap: 12px; justify-content: flex-start; align-items: center;">
-            <button v-if="!isEditingReport" class="btn btn-primary" @click="toggleEditReport" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.3s ease; border: none; outline: none; background-color: #1890ff; color: white;">
-              <i class="fas fa-edit"></i> 编辑
-            </button>
-            <template v-else>
-              <button class="btn btn-primary" @click="saveComparisonReport" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.3s ease; border: none; outline: none; background-color: #1890ff; color: white;">
-                <i class="fas fa-save"></i> 保存
-              </button>
-              <button class="btn btn-secondary" @click="cancelEditReport" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.3s ease; border: 1px solid #d9d9d9; outline: none; background-color: #f0f0f0; color: #595959;">
-                <i class="fas fa-times"></i> 取消
-              </button>
-            </template>
-          </div>
-        </div>
-      </div>
-
-      <!-- 统一的设备和API选择器 -->
-      <div class="comparison-selectors">
-        <h4 class="selector-title">
-          <i class="fas fa-list"></i> 选择要对比的设备和API
-        </h4>
-        <div class="selector-content">
-          <div id="unified-selector">
-            <div
-              v-for="device in reportService.devices.value"
-              :key="device.id"
-              class="device-select-item"
-              :class="{ selected: device.selected, 'api-item': device.type === 'API' }"
-              @click="reportService.toggleDeviceSelection(device.id)"
-              role="button"
-              tabindex="0"
-              @keydown.enter.prevent="reportService.toggleDeviceSelection(device.id)"
-              @keydown.space.prevent="reportService.toggleDeviceSelection(device.id)"
-            >
-              <div class="device-icon-wrapper">
-                <i :class="device.type === '设备' ? 'fas fa-headphones' : 'fas fa-exchange-alt'"></i>
-              </div>
-              <div class="device-info">
-                <span class="device-name">{{ device.name }}</span>
-                <span class="device-type-tag">{{ device.type }}</span>
-              </div>
-              <div class="selection-indicator">
-                <i class="fas fa-check-circle"></i>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 分析结论 -->
-      <div class="analysis-conclusion-card" style="background: linear-gradient(to right, #e6f7ff, #ffffff); border: 1px solid #91d5ff; border-radius: 12px; padding: 20px; margin-bottom: 32px; display: flex; gap: 16px; align-items: flex-start; box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);">
-        <div class="analysis-icon" style="flex-shrink: 0; font-size: 24px; color: #1890ff; background: #fff; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-          <i class="fas fa-chart-line"></i>
-        </div>
-        <div class="analysis-content" style="flex: 1;">
-          <div class="analysis-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <h4 class="analysis-title" style="margin: 0; color: #0050b3; font-size: 1.1rem; font-weight: 600;">分析结论</h4>
-          </div>
-          <div v-if="!isEditingConclusion" class="analysis-text" v-html="sanitizedConclusion" style="color: #333; line-height: 1.6; font-size: 0.95rem; min-height: 100px; padding: 12px; border-radius: 6px; transition: all 0.3s ease;"></div>
-          <div v-else class="analysis-edit">
-            <textarea 
-              class="analysis-textarea" 
-              v-model="reportConclusion" 
-              placeholder="请输入分析结论..."
-              style="width: 100%; padding: 12px; border: 1px solid #d9d9d9; border-radius: 8px; font-size: 0.95rem; line-height: 1.6; resize: vertical; min-height: 150px; transition: all 0.3s ease;">
-            </textarea>
-          </div>
-          <div class="analysis-actions" style="margin-top: 12px; display: flex; gap: 12px; justify-content: flex-start; align-items: center;">
-            <button v-if="!isEditingConclusion" class="btn btn-primary" @click="toggleEditConclusion" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.3s ease; border: none; outline: none; background-color: #1890ff; color: white;">
-              <i class="fas fa-edit"></i> 编辑
-            </button>
-            <template v-else>
-              <button class="btn btn-primary" @click="saveConclusion" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.3s ease; border: none; outline: none; background-color: #1890ff; color: white;">
-                <i class="fas fa-save"></i> 保存
-              </button>
-              <button class="btn btn-secondary" @click="cancelEditConclusion" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.3s ease; border: 1px solid #d9d9d9; outline: none; background-color: #f0f0f0; color: #595959;">
-                <i class="fas fa-times"></i> 取消
-              </button>
-            </template>
-          </div>
-        </div>
-      </div>
-      
-      <!-- 设备/API信息对比 -->
-      <div class="comparison-section" style="margin-bottom: 32px;">
-        <ComparisonTableComponent 
-          title="设备/API信息对比"
-          :columns="reportService.deviceApiColumns"
-          :data="reportService.deviceApiComparisonData.value"
-          :default-collapsed="true"
-          :show-search="false"
-        />
-      </div>
-      
-      <!-- 用例执行数量对比 -->
-      <div class="comparison-section" style="margin-bottom: 32px;">
-        <ComparisonTableComponent 
-          title="用例执行数量对比"
-          :columns="reportService.caseExecutionColumns"
-          :data="reportService.caseExecutionData.value"
-          :default-collapsed="true"
-          :show-search="false"
-        />
-      </div>
-      
-      <!-- 按用例分组对比 -->
-      <div class="comparison-section" style="margin-bottom: 32px;">
-        <overviewCardComponent :reportData="reportService.comparisonReport.value" />
-      </div>
-
-      <div class="comparison-section" style="margin-bottom: 32px;">
-        <caseCategoryComparisonComponent :report-data="reportService.comparisonReport.value" />
-      </div>
-      
-      <!-- 按用例标签对比 -->
-      <div class="comparison-section" style="margin-bottom: 32px;">
-        <caseTagComparisonComponent :report-data="reportService.comparisonReport.value" />
-      </div>
-      
-      <!-- 具体用例对比 -->
-      <div class="comparison-section" style="margin-bottom: 32px;">
-        <specificCaseComparisonComponent :report-data="reportService.comparisonReport.value" />
-      </div>
-
-      <!-- 操作按钮区域 -->
-      <teleport to="#global-fixed-elements">
-        <div id="floating-report-actions" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; gap: 16px; z-index: 9999; padding: 16px 24px; background: rgba(255, 255, 255, 0.95); border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8);">
-          <button class="btn btn-primary" @click="saveComparisonReport">
-            <i class="fas fa-save"></i> 保存
-          </button>
-          <button class="btn btn-success" @click="publishComparisonReport">
-            <i class="fas fa-paper-plane"></i> 发布
-          </button>
-          <button class="btn btn-secondary" @click="closeComparisonReport">
-            <i class="fas fa-times"></i> 关闭详情
-          </button>
-        </div>
-      </teleport>
     </section>
   </div>
 </template>
@@ -531,6 +365,7 @@ import { computed } from 'vue';
 import { useHistoryReports } from './HistoryReportsLogic/historyReports';
 import { sanitizeConclusion } from '../utils/sanitize';
 
+import TaskReportPanel from '../components/report/TaskReportPanel.vue'
 import ComparisonTableComponent from '../components/report/ComparisonTableComponent.vue'
 import ChartComponent from '../components/report/ChartComponent.vue'
 import CaseCategoryComparisonComponent from '../components/report/CaseCategoryComparisonComponent.vue'
@@ -921,5 +756,59 @@ const sanitizedConclusion = computed(() => {
     transform: translateX(0);
     opacity: 1;
   }
+}
+
+.floating-actions-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 1000;
+  padding: 12px 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.floating-actions-bar .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.floating-actions-bar .btn-primary {
+  background: #1677FF;
+  color: white;
+}
+
+.floating-actions-bar .btn-primary:hover {
+  background: #0958D9;
+}
+
+.floating-actions-bar .btn-success {
+  background: #52C41A;
+  color: white;
+}
+
+.floating-actions-bar .btn-success:hover {
+  background: #389E0D;
+}
+
+.floating-actions-bar .btn-secondary {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.floating-actions-bar .btn-secondary:hover {
+  background: #e2e8f0;
 }
 </style>

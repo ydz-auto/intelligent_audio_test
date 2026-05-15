@@ -39,9 +39,10 @@ class ReferenceParamsGenerator:
         根据测试用例的算法类型和配置，自动生成参考参数列表
         
         工作流程:
-        1. 从数据库获取该算法类型对应的所有参考参数配置 (AlgorithmReferenceParam)
-        2. 对每个配置调用 _generate_single_param 生成实际参数值
-        3. 过滤掉没有有效值的参数
+        1. 批量预加载所有音频的标注和元数据（性能优化关键）
+        2. 从数据库获取该算法类型对应的所有参考参数配置 (AlgorithmReferenceParam)
+        3. 对每个配置调用 _generate_single_param 生成实际参数值
+        4. 过滤掉没有有效值的参数
         
         Args:
             test_case: TestCase 模型对象，包含 algorithm_type 和 config
@@ -60,6 +61,12 @@ class ReferenceParamsGenerator:
             config['algorithm_params'] = test_case.algorithm_params
         
         log_not_emit('DEBUG', 'reference_params_generator', f'Generating reference params for algorithm_type: {algorithm_type}', category='algorithm')
+        
+        audios_config = config.get('audios', [])
+        audio_ids = [item.get('audio_id') for item in audios_config if item.get('audio_id')]
+        
+        preload_context = cls._preload_audio_data(audio_ids)
+        config['_preload_context'] = preload_context
         
         from backend.models.algorithm_models import AlgorithmReferenceParam
         
@@ -84,6 +91,52 @@ class ReferenceParamsGenerator:
         
         log_not_emit('DEBUG', 'reference_params_generator', f'Generated {len(result)} reference params for {algorithm_type}: {result}', category='algorithm')
         return result
+    
+    @classmethod
+    def _preload_audio_data(cls, audio_ids: List[int]) -> Dict[str, Any]:
+        """
+        批量预加载音频数据（性能优化核心方法）
+        
+        一次性查询所有音频的元数据和标注，避免 N+1 查询问题
+        
+        Args:
+            audio_ids: 音频ID列表
+            
+        Returns:
+            {
+                'audio_map': {audio_id: Audio对象},
+                'annotation_map': {audio_id: [AudioAnnotation对象列表]},
+                'duration_map': {audio_id: 时长}
+            }
+        """
+        if not audio_ids:
+            return {'audio_map': {}, 'annotation_map': {}, 'duration_map': {}}
+        
+        audio_map = {}
+        annotation_map = {}
+        duration_map = {}
+        
+        audios = Audio.query.filter(Audio.id.in_(audio_ids)).all()
+        audio_map = {a.id: a for a in audios}
+        duration_map = {a.id: a.duration or 0.0 for a in audios}
+        
+        annotations = AudioAnnotation.query.filter(
+            AudioAnnotation.audio_id.in_(audio_ids),
+            AudioAnnotation.deleted == False
+        ).all()
+        
+        for ann in annotations:
+            annotation_map.setdefault(ann.audio_id, []).append(ann)
+        
+        log_not_emit('DEBUG', 'reference_params_generator', 
+            f'Preloaded {len(audio_map)} audios, {len(annotations)} annotations for {len(audio_ids)} audio_ids', 
+            category='algorithm')
+        
+        return {
+            'audio_map': audio_map,
+            'annotation_map': annotation_map,
+            'duration_map': duration_map
+        }
     
     @classmethod
     def _generate_single_param(cls, config: Dict, ref_param) -> Dict:
@@ -319,12 +372,13 @@ def _get_overlap_time(config: Dict) -> float:
     return max(0.0, float(overlap_time))
 
 
-def _extract_speakers_from_audio(audio_id: int) -> set:
+def _extract_speakers_from_audio(audio_id: int, annotation_map: Dict = None) -> set:
     """
     从音频的diarization标注中提取所有speaker集合
     
     Args:
         audio_id: 音频ID
+        annotation_map: 预加载的标注映射 {audio_id: [annotations]}，用于性能优化
         
     Returns:
         set: speaker标签集合，如 {'spk9', 'spk8'}
@@ -334,10 +388,13 @@ def _extract_speakers_from_audio(audio_id: int) -> set:
     
     speakers = set()
     
-    annotations = AudioAnnotation.query.filter_by(
-        audio_id=audio_id,
-        deleted=False
-    ).all()
+    if annotation_map and audio_id in annotation_map:
+        annotations = annotation_map[audio_id]
+    else:
+        annotations = AudioAnnotation.query.filter_by(
+            audio_id=audio_id,
+            deleted=False
+        ).all()
     
     for ann in annotations:
         if not ann.data:
@@ -360,7 +417,7 @@ def _extract_speakers_from_audio(audio_id: int) -> set:
     return speakers
 
 
-def _calculate_speaker_aware_offsets(audios_config: List[Dict], overlap_rate: float, overlap_time: float = 0) -> Dict[int, float]:
+def _calculate_speaker_aware_offsets(audios_config: List[Dict], overlap_rate: float, overlap_time: float = 0, preload_context: Dict = None) -> Dict[int, float]:
     """
     计算每个音频播放项的开始时间偏移（speaker感知版本）
 
@@ -372,6 +429,7 @@ def _calculate_speaker_aware_offsets(audios_config: List[Dict], overlap_rate: fl
         audios_config: 音频配置列表
         overlap_rate: 重叠率 (0.0-1.0)
         overlap_time: 重叠时间（秒），优先级高于 overlap_rate
+        preload_context: 预加载数据上下文，用于性能优化
 
     Returns:
         {play_order: offset_seconds}
@@ -383,11 +441,14 @@ def _calculate_speaker_aware_offsets(audios_config: List[Dict], overlap_rate: fl
         f'[_calculate_speaker_aware_offsets] START: overlap_rate={overlap_rate}, overlap_time={overlap_time}, audio_count={len(sorted_audios)}', 
         category='algorithm')
     
+    annotation_map = preload_context.get('annotation_map', {}) if preload_context else {}
+    duration_map = preload_context.get('duration_map', {}) if preload_context else {}
+    
     audio_speakers = {}
     for audio_item in sorted_audios:
         audio_id = audio_item.get('audio_id')
         if audio_id:
-            audio_speakers[audio_id] = _extract_speakers_from_audio(audio_id)
+            audio_speakers[audio_id] = _extract_speakers_from_audio(audio_id, annotation_map)
     
     log_not_emit('DEBUG', 'reference_params_generator', 
         f'[_calculate_speaker_aware_offsets] audio_speakers={audio_speakers}', 
@@ -402,9 +463,12 @@ def _calculate_speaker_aware_offsets(audios_config: List[Dict], overlap_rate: fl
         
         audio_duration = 1.0
         if audio_id:
-            audio = db.session.get(Audio, audio_id)
-            if audio and audio.duration:
-                audio_duration = audio.duration
+            if duration_map and audio_id in duration_map:
+                audio_duration = duration_map[audio_id] or 1.0
+            else:
+                audio = db.session.get(Audio, audio_id)
+                if audio and audio.duration:
+                    audio_duration = audio.duration
         
         log_not_emit('DEBUG', 'reference_params_generator', 
             f'[_calculate_speaker_aware_offsets] i={i}, play_order={play_order}, audio_id={audio_id}, audio_duration={audio_duration}, cumulative_duration={cumulative_duration}, prev_end_time={prev_end_time}', 
@@ -570,6 +634,10 @@ def _extract_text_from_audios(config: Dict, text_field: str = None, annotation_c
     
     sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
     
+    preload_context = config.get('_preload_context', {})
+    annotation_map = preload_context.get('annotation_map', {})
+    audio_map = preload_context.get('audio_map', {})
+    
     def _extract_text_from_annotation(ann: AudioAnnotation, target_test_type: str) -> str:
         """从单个标注中提取文本，支持多种格式"""
         if not ann.data:
@@ -591,6 +659,22 @@ def _extract_text_from_audios(config: Dict, text_field: str = None, annotation_c
                 text_parts.append(text)
         return ' '.join(text_parts)
     
+    def _get_annotations_for_audio_text(audio_id: int, code: str = None, fmt: str = None) -> List:
+        if annotation_map and audio_id in annotation_map:
+            all_anns = annotation_map[audio_id]
+            if code and fmt:
+                filtered = [a for a in all_anns if a.code == code and a.format == fmt]
+                if filtered:
+                    return filtered
+            return all_anns
+        else:
+            query = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False)
+            if code:
+                query = query.filter_by(code=code)
+            if fmt:
+                query = query.filter_by(format=fmt)
+            return query.all()
+    
     for audio_item in sorted_audios:
         audio_id = audio_item.get('audio_id')
         test_type = audio_item.get('test_type', 'api')
@@ -604,12 +688,7 @@ def _extract_text_from_audios(config: Dict, text_field: str = None, annotation_c
                 f'_extract_text_from_audios: trying exact match code={annotation_code}, format={annotation_format}', 
                 category='algorithm')
             
-            annotations = AudioAnnotation.query.filter_by(
-                audio_id=audio_id,
-                code=annotation_code,
-                format=annotation_format,
-                deleted=False
-            ).all()
+            annotations = _get_annotations_for_audio_text(audio_id, annotation_code, annotation_format)
             
             log_not_emit('DEBUG', 'reference_params_generator', 
                 f'_extract_text_from_audios: exact match found {len(annotations)} annotations', 
@@ -625,10 +704,7 @@ def _extract_text_from_audios(config: Dict, text_field: str = None, annotation_c
                     f'_extract_text_from_audios: fallback - querying all annotations for audio_id={audio_id}', 
                     category='algorithm')
                 
-                annotations = AudioAnnotation.query.filter_by(
-                    audio_id=audio_id,
-                    deleted=False
-                ).all()
+                annotations = _get_annotations_for_audio_text(audio_id)
                 
                 log_not_emit('DEBUG', 'reference_params_generator', 
                     f'_extract_text_from_audios: fallback found {len(annotations)} annotations', 
@@ -642,7 +718,10 @@ def _extract_text_from_audios(config: Dict, text_field: str = None, annotation_c
                             category='algorithm')
                         break
         elif text_field:
-            audio = db.session.get(Audio, audio_id)
+            if audio_map and audio_id in audio_map:
+                audio = audio_map[audio_id]
+            else:
+                audio = db.session.get(Audio, audio_id)
             if audio:
                 extracted_text = getattr(audio, text_field, None) or ""
         
@@ -722,17 +801,44 @@ def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotat
     
     case_id = config.get('case_id', 'test_case')
     
+    preload_context = config.get('_preload_context', {})
+    annotation_map = preload_context.get('annotation_map', {})
+    
     overlap_rate = _get_overlap_rate(config)
     overlap_time = _get_overlap_time(config)
     log_not_emit('DEBUG', 'reference_params_generator', f'Extracting annotation with overlap_rate={overlap_rate}, overlap_time={overlap_time}, format={format}', category='algorithm')
     
-    audio_offsets = _calculate_speaker_aware_offsets(audios_config, overlap_rate, overlap_time)
+    audio_offsets = _calculate_speaker_aware_offsets(audios_config, overlap_rate, overlap_time, preload_context)
     log_not_emit('DEBUG', 'reference_params_generator', f'audio_offsets={audio_offsets}, audios_config={audios_config}', category='algorithm')
     
     grouped_audios = {'api': [], 'e2e': []}
     for audio_item in audios_config:
         test_type = audio_item.get('test_type', 'api')
         grouped_audios[test_type].append(audio_item)
+    
+    def _get_annotations_for_audio(audio_id: int, code: str = None, fmt: str = None) -> List:
+        if annotation_map and audio_id in annotation_map:
+            all_anns = annotation_map[audio_id]
+            if code and fmt:
+                filtered = [a for a in all_anns if a.code == code and a.format == fmt]
+                if filtered:
+                    return filtered
+            if fmt:
+                filtered = [a for a in all_anns if a.format == fmt]
+                if filtered:
+                    return filtered
+            if code:
+                filtered = [a for a in all_anns if a.code == code]
+                if filtered:
+                    return filtered
+            return all_anns
+        else:
+            query = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False)
+            if code:
+                query = query.filter_by(code=code)
+            if fmt:
+                query = query.filter_by(format=fmt)
+            return query.all()
     
     for test_type in ['api', 'e2e']:
         segments_list = []
@@ -747,33 +853,16 @@ def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotat
             offset = audio_offsets.get(play_order, 0)
             
             if annotation_code and annotation_format:
-                annotations = AudioAnnotation.query.filter_by(
-                    audio_id=audio_id,
-                    code=annotation_code,
-                    format=annotation_format,
-                    deleted=False
-                ).all()
+                annotations = _get_annotations_for_audio(audio_id, annotation_code, annotation_format)
                 
                 if not annotations:
-                    annotations = AudioAnnotation.query.filter_by(
-                        audio_id=audio_id,
-                        format='json',
-                        deleted=False
-                    ).all()
+                    annotations = _get_annotations_for_audio(audio_id, fmt='json')
                 
                 if not annotations and annotation_format != 'rttm':
-                    annotations = AudioAnnotation.query.filter_by(
-                        audio_id=audio_id,
-                        format='rttm',
-                        deleted=False
-                    ).all()
+                    annotations = _get_annotations_for_audio(audio_id, fmt='rttm')
                 
                 if not annotations and annotation_format != 'stm':
-                    annotations = AudioAnnotation.query.filter_by(
-                        audio_id=audio_id,
-                        format='stm',
-                        deleted=False
-                    ).all()
+                    annotations = _get_annotations_for_audio(audio_id, fmt='stm')
                 
                 for ann in annotations:
                     if ann.data:
@@ -781,18 +870,10 @@ def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotat
                         adjusted_segments = _adjust_segment_timestamps(segments, offset, play_order)
                         segments_list.append(adjusted_segments)
             else:
-                annotations = AudioAnnotation.query.filter_by(
-                    audio_id=audio_id,
-                    format=format,
-                    deleted=False
-                ).all()
+                annotations = _get_annotations_for_audio(audio_id, fmt=format)
                 
                 if not annotations:
-                    json_annotations = AudioAnnotation.query.filter_by(
-                        audio_id=audio_id,
-                        format='json',
-                        deleted=False
-                    ).all()
+                    json_annotations = _get_annotations_for_audio(audio_id, fmt='json')
                     for ann in json_annotations:
                         if ann.data:
                             segments = ann.data.get('segments', [])
@@ -806,11 +887,7 @@ def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotat
                             segments_list.append(adjusted_segments)
                 
                 if not segments_list and format != 'rttm':
-                    rttm_annotations = AudioAnnotation.query.filter_by(
-                        audio_id=audio_id,
-                        format='rttm',
-                        deleted=False
-                    ).all()
+                    rttm_annotations = _get_annotations_for_audio(audio_id, fmt='rttm')
                     for ann in rttm_annotations:
                         if ann.data:
                             segments = ann.data.get('segments', [])
@@ -818,11 +895,7 @@ def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotat
                             segments_list.append(adjusted_segments)
                 
                 if not segments_list and format != 'stm':
-                    stm_annotations = AudioAnnotation.query.filter_by(
-                        audio_id=audio_id,
-                        format='stm',
-                        deleted=False
-                    ).all()
+                    stm_annotations = _get_annotations_for_audio(audio_id, fmt='stm')
                     for ann in stm_annotations:
                         if ann.data:
                             segments = ann.data.get('segments', [])
@@ -878,6 +951,26 @@ def _extract_translation_from_audios(config: Dict) -> Dict[str, Any]:
 
     sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
 
+    preload_context = config.get('_preload_context', {})
+    annotation_map = preload_context.get('annotation_map', {})
+    
+    def _get_annotations_for_translation(audio_id: int, source_lang: str = None, target_lang: str = None) -> List:
+        if annotation_map and audio_id in annotation_map:
+            all_anns = annotation_map[audio_id]
+            if source_lang and target_lang:
+                filtered = [a for a in all_anns 
+                           if a.source_language == source_lang and a.target_language == target_lang]
+                if filtered:
+                    return filtered
+            return all_anns
+        else:
+            query = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False)
+            if source_lang:
+                query = query.filter_by(source_language=source_lang)
+            if target_lang:
+                query = query.filter_by(target_language=target_lang)
+            return query.all()
+
     audio_directions = {}
     audio_count = 0
     
@@ -888,10 +981,7 @@ def _extract_translation_from_audios(config: Dict) -> Dict[str, Any]:
             continue
         
         audio_count += 1
-        annotations = AudioAnnotation.query.filter_by(
-            audio_id=audio_id,
-            deleted=False
-        ).all()
+        annotations = _get_annotations_for_translation(audio_id)
         
         directions = set()
         for ann in annotations:
@@ -920,12 +1010,7 @@ def _extract_translation_from_audios(config: Dict) -> Dict[str, Any]:
                 if not audio_id or audio_test_type != test_type:
                     continue
                 
-                annotations = AudioAnnotation.query.filter_by(
-                    audio_id=audio_id,
-                    source_language=source_lang,
-                    target_language=target_lang,
-                    deleted=False
-                ).all()
+                annotations = _get_annotations_for_translation(audio_id, source_lang, target_lang)
                 
                 for ann in annotations:
                     if ann.data:

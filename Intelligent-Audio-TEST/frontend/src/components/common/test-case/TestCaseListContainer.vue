@@ -94,7 +94,7 @@
       </div>
     </div>
     
-    <div class="single-column-layout">
+    <div class="single-column-layout" ref="listContainerRef" @scroll="handleScroll">
       <div 
         v-for="group in paginatedGroups" 
         :key="group" 
@@ -166,17 +166,21 @@
         <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
       </div>
       
-      <!-- Pagination Controls -->
-      <PaginationComponent
-        v-if="paginationInfo.totalItems > paginationInfo.itemsPerPage"
-        :current-page="currentPage"
-        :page-size="itemsPerPage"
-        :total-items="paginationInfo.totalItems"
-        @prev-page="goToPrevPage"
-        @next-page="goToNextPage"
-        @go-to-page="goToPage"
-        @page-size-change="handlePageSizeChange"
-      />
+      <div v-if="isLoadingMore" class="loading-more">
+        <i class="fas fa-spinner fa-spin"></i>
+        <span>加载更多分组...</span>
+      </div>
+      
+      <div v-if="hasMoreGroups && !isLoadingMore && paginatedGroups.length > 0" class="load-more-trigger">
+        <span class="load-more-hint">已显示 {{ paginatedGroups.length }} / {{ paginationInfo.totalItems }} 个分组</span>
+        <button class="btn btn-secondary btn-sm" @click="loadMoreGroups">
+          <i class="fas fa-chevron-down"></i> 加载更多
+        </button>
+      </div>
+      
+      <div v-if="!hasMoreGroups && paginatedGroups.length > 0" class="all-loaded">
+        <span>已加载全部 {{ paginationInfo.totalItems }} 个分组</span>
+      </div>
     </div>
     
   </div>
@@ -268,7 +272,6 @@ import { useTestCaseStore } from '../../../store/testCaseStore';
 import { normalizeTestCaseConfig } from '../../../utils/utils';
 import { useModalControl, MODAL_TYPES } from '../../../composables/useModal';
 import type { TestCase, ModalSaveData, PaginationInfo, PlaybackDevice } from '../../../shared/types';
-import PaginationComponent from '../PaginationComponent.vue';
 
 function useDebounce<T>(value: Ref<T>, delay: number = 300): Ref<T> {
   const debouncedValue = ref(value.value) as Ref<T>;
@@ -337,7 +340,10 @@ const sortOrder = ref('desc');
 
 // Pagination state
 const currentPage = ref(1);
-const itemsPerPage = ref(5); // Number of groups per page
+const itemsPerPage = ref(5);
+const isLoadingMore = ref(false);
+const hasMoreGroups = ref(true);
+const listContainerRef = ref<HTMLElement | null>(null);
 
 const showAudioPlayer = ref(false);
 const currentTestCaseId = ref<string | number | null>(null);
@@ -382,6 +388,10 @@ watch(() => props.algorithmTypeFilter, (newValue, oldValue) => {
     algorithmTypeFilter.value = newValue;
   }
 }, { immediate: true });
+
+watch([searchQuery, testTypeFilter, algorithmTypeFilter, groupFilter, tagFilter, sortBy, sortOrder], () => {
+  currentPage.value = 1;
+});
 
 const loadPlaybackDevices = async () => {
   try {
@@ -660,15 +670,15 @@ const sortedGroups = computed(() => {
 // Paginated groups computed property
 const paginatedGroups = computed(() => {
   const allGroups = sortedGroups.value;
-  const startIndex = (currentPage.value - 1) * itemsPerPage.value;
-  const endIndex = startIndex + itemsPerPage.value;
-  return allGroups.slice(startIndex, endIndex);
+  const endIndex = currentPage.value * itemsPerPage.value;
+  return allGroups.slice(0, endIndex);
 });
 
 // Pagination info computed property
 const paginationInfo = computed(() => {
   const totalItems = sortedGroups.value.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage.value);
+  hasMoreGroups.value = paginatedGroups.value.length < totalItems;
   
   return {
     totalItems,
@@ -798,28 +808,21 @@ const resetFilters = () => {
   currentPage.value = 1; // Reset to first page
 };
 
-// Pagination methods
-const goToPrevPage = () => {
-  if (currentPage.value > 1) {
-    currentPage.value--;
-  }
-};
-
-const goToNextPage = () => {
-  if (currentPage.value < paginationInfo.value.totalPages) {
+const loadMoreGroups = () => {
+  if (isLoadingMore.value || !hasMoreGroups.value) return;
+  isLoadingMore.value = true;
+  setTimeout(() => {
     currentPage.value++;
-  }
+    isLoadingMore.value = false;
+  }, 300);
 };
 
-const goToPage = (page: number) => {
-  if (page >= 1 && page <= paginationInfo.value.totalPages) {
-    currentPage.value = page;
+const handleScroll = (event: Event) => {
+  const target = event.target as HTMLElement;
+  const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
+  if (scrollBottom < 100 && hasMoreGroups.value && !isLoadingMore.value) {
+    loadMoreGroups();
   }
-};
-
-const handlePageSizeChange = (newSize: number) => {
-  itemsPerPage.value = newSize;
-  currentPage.value = 1;
 };
 
 const deleteGroup = (groupName: string) => {
@@ -1714,6 +1717,65 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   flex-direction: column;
   gap: 20px;
   width: 100%;
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  padding-right: 8px;
+  scroll-behavior: smooth;
+}
+
+.single-column-layout::-webkit-scrollbar {
+  width: 6px;
+}
+
+.single-column-layout::-webkit-scrollbar-track {
+  background: var(--background-tertiary);
+  border-radius: 3px;
+}
+
+.single-column-layout::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.single-column-layout::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* 加载更多提示 */
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.load-more-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 16px;
+  border-top: 1px dashed var(--border-color);
+  margin-top: 8px;
+}
+
+.load-more-hint {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.all-loaded {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  border-top: 1px dashed var(--border-color);
+  margin-top: 8px;
 }
 
 /* 类别卡片样式 */

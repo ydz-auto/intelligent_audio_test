@@ -115,6 +115,8 @@ import BatchAdjustGroupModal from './BatchAdjustGroupModal.vue'
 import BatchDimensionModal from './BatchDimensionModal.vue'
 import BatchNoiseModal from './BatchNoiseModal.vue'
 import BatchTagsModal from './BatchTagsModal.vue'
+import TagCategoryModal from './TagCategoryModal.vue'
+import TagEditModal from './TagEditModal.vue'
 import TaskTypeModal from '../../../views/TasksLogic/TaskTypeModal.vue'
 import TaskDetailModal from '../../../views/TasksLogic/TaskDetailModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
@@ -259,7 +261,9 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.BATCH_ADJUST_GROUP]: BatchAdjustGroupModal,
     [MODAL_TYPES.BATCH_DIMENSION]: BatchDimensionModal,
     [MODAL_TYPES.BATCH_NOISE]: BatchNoiseModal,
-    [MODAL_TYPES.BATCH_TAGS]: BatchTagsModal
+    [MODAL_TYPES.BATCH_TAGS]: BatchTagsModal,
+    [MODAL_TYPES.TAG_CATEGORY]: TagCategoryModal,
+    [MODAL_TYPES.TAG_EDIT]: TagEditModal
   }
   return componentMap[type] || null
 }
