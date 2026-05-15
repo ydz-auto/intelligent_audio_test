@@ -1,0 +1,3409 @@
+// Purpose: Controller for the Audio Import View, handling audio fetching, upload, and batch folder import.
+// MVC Role: Front-end Controller
+
+import { ref, computed, watch, onMounted } from 'vue';
+import { audiosApi } from '../../utils/api';
+import { STATIC_CONFIG } from '../../utils/config';
+import { MODAL_TYPES, getModalManager } from '../../composables/useModal';
+import { useModalStore } from '../../stores/modalStore';
+// 只导入主样式文件，所有组件样式已包含在main.css中
+import '../../assets/styles/main.css';
+
+// modalStore将在initModalWatchers函数中初始化
+
+// 删除结果模态框相关状态和方法
+const showDeleteResultModal = ref(false);
+const deleteResult = ref({
+  success: false,
+  message: '',
+  count: 0
+});
+const closeDeleteResultModal = () => {
+  showDeleteResultModal.value = false;
+};
+
+// 生成唯一UUID作为任务ID
+function generateTaskId() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+// 获取本地存储中的任务
+function getLocalTasks() {
+  try {
+    const tasks = localStorage.getItem('audioUploadTasks');
+    return tasks ? JSON.parse(tasks) : [];
+  } catch (error) {
+    console.error('获取本地任务失败:', error);
+    return [];
+  }
+}
+
+// 保存任务到本地存储
+function saveLocalTask(task) {
+  try {
+    const tasks = getLocalTasks();
+    const index = tasks.findIndex(t => t.taskId === task.taskId);
+    if (index !== -1) {
+      tasks[index] = task;
+    } else {
+      tasks.push(task);
+    }
+    localStorage.setItem('audioUploadTasks', JSON.stringify(tasks));
+  } catch (error) {
+    console.error('保存任务到本地失败:', error);
+  }
+}
+
+
+
+// 计算文件MD5值
+async function calculateFileMD5(file, progressCallback) {
+  // 使用SparkMD5计算文件MD5
+  const sparkMD5Module = await import('spark-md5');
+  const sparkMD5 = sparkMD5Module.default || sparkMD5Module;
+  
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const hash = new sparkMD5.ArrayBuffer();
+    const chunkSize = 1024 * 1024; // 1MB per chunk
+    let position = 0;
+    
+    function processChunk() {
+      const chunk = file.slice(position, position + chunkSize);
+      reader.readAsArrayBuffer(chunk);
+    }
+    
+    reader.onload = function(e) {
+      hash.append(e.target.result);
+      position += chunkSize;
+      
+      // 计算并报告进度
+      if (progressCallback) {
+        const progress = Math.min(1, position / file.size);
+        progressCallback(progress);
+      }
+      
+      if (position < file.size) {
+        processChunk();
+      } else {
+        resolve(hash.end());
+      }
+    };
+    
+    reader.onerror = reject;
+    processChunk();
+  });
+}
+
+
+
+// 分片上传实现
+async function startChunkUpload(onProgressUpdate, onUploadComplete, onUploadError, onCancelUpload) {
+  if (selectedFilesForUpload.value.length === 0) {
+    alert('请先选择文件');
+    return;
+  }
+
+  // 1. 立即更新进度为1%，这是MD5计算前的最早时间点，确保进度条显示
+  uploadProgress.value = 1;
+  if (onProgressUpdate) {
+    onProgressUpdate(1);
+  }
+  
+  // 2. 立即显示全局进度条
+  if (showUploadModal.value) {
+    // 通知模态框更新进度
+    const manager = getModalManager();
+    const uploadModal = manager.activeModals[MODAL_TYPES.UPLOAD_FILE];
+    if (uploadModal && uploadModal.props.onProgressUpdate) {
+      uploadModal.props.onProgressUpdate(1);
+    }
+  }
+  
+  // 3. 确保UI更新，使用requestAnimationFrame确保浏览器渲染进度条
+  if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+  
+  // 4. 开始处理其他准备工作
+  loading.value = true;
+  uploadStatus.value = 'preparing';
+  
+  // 创建abortController用于取消请求
+  abortController = new AbortController();
+  
+  try {
+    console.log('开始分块上传流程');
+    
+    // 更新进度，表示正在准备上传
+    uploadProgress.value = 2;
+    if (onProgressUpdate) {
+      onProgressUpdate(2);
+    }
+    
+    // 生成文件清单
+    console.log('步骤1: 生成文件清单');
+    // 更新进度，表示正在生成文件清单
+    uploadProgress.value = 5;
+    if (onProgressUpdate) {
+      onProgressUpdate(5);
+    }
+    
+    // 确保UI更新
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    
+    // 开始MD5计算和文件清单生成
+    fileList.value = await generateFileList(selectedFilesForUpload.value, (progress) => {
+      // MD5计算进度，范围5-30%
+      const md5Progress = 5 + Math.floor(progress * 25);
+      uploadProgress.value = md5Progress;
+      if (onProgressUpdate) {
+        onProgressUpdate(md5Progress);
+      }
+    });
+    console.log('文件清单生成完成:', fileList.value);
+    
+    // 步骤2: 检查是否存在未完成的上传任务，自动检测并恢复
+    console.log('步骤2: 检查是否存在未完成的上传任务');
+    // 更新进度，表示正在检查任务
+    uploadProgress.value = 30;
+    if (onProgressUpdate) {
+      onProgressUpdate(30);
+    }
+    let taskId = null;
+    let existingTask = null;
+    
+    // 获取所有本地未完成任务
+    const localTasks = getLocalTasks();
+    const pendingTasks = localTasks.filter(task => 
+      task.status !== 'completed' && task.status !== 'failed'
+    );
+    
+    // 检查是否有匹配的未完成任务
+    if (pendingTasks.length > 0) {
+      for (const task of pendingTasks) {
+        // 比较任务中的文件与当前选择的文件是否匹配
+        const hasMatchingFiles = task.files.some(taskFile => 
+          fileList.value.some(selectedFile => selectedFile.name === taskFile.name)
+        );
+        
+        if (hasMatchingFiles) {
+          // 检查后端任务是否存在
+          try {
+            const progressResult = await audiosApi.getUploadProgress(task.taskId, { signal: abortController.signal });
+            if (progressResult && progressResult.task) {
+              // 后端任务存在，提示用户是否恢复
+              const shouldResume = confirm(
+                `检测到未完成的上传任务（任务ID: ${task.taskId}），包含与当前选择文件匹配的项，是否继续上传？`
+              );
+              
+              if (shouldResume) {
+                taskId = task.taskId;
+                existingTask = task;
+                console.log('恢复现有任务:', taskId);
+                break;
+              }
+            }
+          } catch (err) {
+            console.error('检查任务进度失败:', err);
+            // 任务不存在，跳过
+            continue;
+          }
+        }
+      }
+    }
+    
+    // 如果没有找到匹配的任务，初始化新任务
+    if (!taskId) {
+      console.log('步骤3: 初始化新上传任务');
+      // 更新进度，表示正在初始化任务
+      uploadProgress.value = 40;
+      if (onProgressUpdate) {
+        onProgressUpdate(40);
+      }
+      const taskInitResult = await audiosApi.initUpload(undefined, { signal: abortController.signal });
+      console.log('初始化上传任务结果:', taskInitResult);
+      taskId = taskInitResult.taskId;
+      console.log('创建新任务:', taskId);
+    }
+    
+    // 检查文件清单是否为空
+    if (fileList.value.length === 0) {
+      throw new Error('没有找到支持的音频文件，请检查文件格式是否正确');
+    }
+    
+    // 注册文件
+    console.log('步骤3: 注册文件');
+    // 更新进度，表示正在注册文件
+    uploadProgress.value = 50;
+    if (onProgressUpdate) {
+      onProgressUpdate(50);
+    }
+    const registerResult = await audiosApi.registerUploadFiles(taskId, fileList.value, { signal: abortController.signal });
+    console.log('文件注册结果:', registerResult);
+    
+    // 检查文件注册情况，处理重复文件
+    if (registerResult.files.length === 0 && fileList.value.length > 0) {
+      // 所有文件都未注册成功，可能是重复文件
+      let errorMessage = registerResult.message || '文件注册失败';
+      if (errorMessage.includes('成功注册 0 个文件')) {
+        errorMessage = '所选文件已全部存在，请勿重复上传';
+      }
+      throw new Error(errorMessage);
+    }
+    
+    if (registerResult.files.length < fileList.value.length) {
+      // 部分文件未注册成功，可能是重复文件
+      console.warn('部分文件注册失败或重复:', registerResult);
+    }
+    
+    // 更新本地任务
+    console.log('步骤4: 更新本地任务');
+    let task;
+    if (existingTask) {
+      // 更新现有任务
+      task = existingTask;
+      task.status = 'uploading';
+      task.files = fileList.value;
+      task.totalFiles = fileList.value.length;
+      task.totalSize = fileList.value.reduce((sum, file) => sum + file.size, 0);
+      task.options = { ...uploadOptions.value };
+      saveLocalTask(task);
+    } else {
+      // 创建新任务，直接使用对象字面量创建，避免调用initUploadTask
+      task = {
+        taskId,
+        createdAt: new Date().toISOString(),
+        status: 'uploading',
+        totalFiles: fileList.value.length,
+        completedFiles: 0,
+        failedFiles: 0,
+        totalSize: fileList.value.reduce((sum, file) => sum + file.size, 0),
+        uploadedSize: 0,
+        files: fileList.value,
+        options: { ...uploadOptions.value }
+      };
+      // 只有当上传失败时才需要保存任务到本地，所以这里先不保存
+      currentTask.value = task;
+    }
+    uploadTasks.value = getLocalTasks();
+    console.log('本地任务更新完成:', task);
+    
+    // 开始上传
+    console.log('步骤5: 开始上传');
+    uploadStatus.value = 'uploading';
+    
+    // 上传所有文件
+    console.log('步骤6: 上传所有文件');
+    for (let i = 0; i < selectedFilesForUpload.value.length; i++) {
+      console.log(`上传文件 ${i+1}/${selectedFilesForUpload.value.length}`);
+      const file = selectedFilesForUpload.value[i];
+      const fileInfo = fileList.value[i];
+      const registeredFile = registerResult.files.find(f => f.filename === fileInfo.name);
+      
+      if (registeredFile) {
+        console.log(`开始上传文件: ${fileInfo.name}，文件ID: ${registeredFile.fileId}`);
+        await uploadFileInChunks(file, registeredFile, task, onProgressUpdate, abortController);
+      }
+    }
+    
+    // 上传完成后更新状态
+    console.log('步骤7: 上传完成');
+    uploadStatus.value = 'completed';
+    // 更新任务状态为已完成
+    task.status = 'completed';
+    saveLocalTask(task);
+    // 清理无效任务
+    cleanInvalidTasks();
+    uploadTasks.value = getLocalTasks();
+    
+    // 准备刷新列表
+    uploadProgress.value = 90;
+    if (onProgressUpdate) {
+      onProgressUpdate(90);
+    }
+    // 刷新音频列表
+    console.log('步骤8: 刷新音频列表');
+    await fetchAudios();
+    // 上传完成
+    uploadProgress.value = 100;
+    if (onProgressUpdate) {
+      onProgressUpdate(100);
+    }
+    
+    // 显示上传完成消息
+    let message = `成功上传 ${task.completedFiles} 个音频文件`;
+    if (task.failedFiles > 0) {
+      message += `，失败 ${task.failedFiles} 个文件`;
+    }
+    alert(message);
+    
+    // 重置上传选项
+    uploadOptions.value = {
+      createTestCase: false,
+      testType: 'api',
+      playbackDeviceId: null,
+      spl: 65.0,
+      groupNameType: 'root',
+      customGroupName: ''
+    };
+    
+    setTimeout(() => {
+      closeModal('uploadModal');
+      uploadProgress.value = 0;
+      selectedFilesForUpload.value = [];
+      fileList.value = [];
+      currentTask.value = null;
+      uploadStatus.value = 'idle';
+      currentUploadingFile.value = null;
+      // 通知上传完成
+      if (onUploadComplete) {
+        onUploadComplete();
+      }
+    }, 1000);
+  } catch (err) {
+    console.error('上传失败:', err);
+    if (err.name === 'AbortError') {
+      console.log('上传任务已暂停');
+      uploadStatus.value = 'paused';
+      // 保留当前进度，不重置
+      if (onUploadError) {
+        onUploadError(err);
+      }
+    } else {
+      console.error('错误堆栈:', err.stack);
+      console.error('错误详细信息:', {
+        code: err.code,
+        detail: err.detail,
+        errors: err.errors,
+        message: err.message
+      });
+      alert('上传失败: ' + (err.message || '未知错误'));
+      uploadStatus.value = 'failed';
+      // 重置进度
+      uploadProgress.value = 0;
+      // 通知上传错误
+      if (onUploadError) {
+        onUploadError(err);
+      }
+    }
+  } finally {
+    loading.value = false;
+    // 清理abortController
+    if (abortController && uploadStatus.value !== 'paused') {
+      abortController = null;
+    }
+  }
+}
+
+// 分片上传单个文件
+async function uploadFileInChunks(file, registeredFile, task, onProgressUpdate, abortController) {
+  const { fileId, filename } = registeredFile;
+  // 确保有totalChunks和chunkSize，处理恢复上传的情况
+  const totalChunks = registeredFile.totalChunks || registeredFile.total_chunks;
+  // 默认chunkSize为10MB
+  const chunkSize = registeredFile.chunkSize || 10 * 1024 * 1024;
+  const fileName = typeof file === 'string' ? pathBasename(file) : file.name;
+  
+  currentUploadingFile.value = fileName;
+  
+  // 更新文件状态
+  const fileItem = task.files.find(f => f.name === fileName);
+  if (fileItem) {
+    fileItem.status = 'uploading';
+    // 立即保存任务状态，确保UI更新
+    saveLocalTask(task);
+    uploadTasks.value = [...uploadTasks.value]; // 触发响应式更新
+  }
+  
+  try {
+    // 分片上传
+    for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+      // 计算分片范围
+      const start = chunkIndex * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+      
+      // 获取分片数据
+      let chunkData;
+      if (typeof file === 'string') {
+        // Electron环境：文件路径，这里简化处理，实际应该读取文件分片
+        throw new Error('Electron环境的分片上传尚未实现');
+      } else {
+        // 浏览器环境：File对象
+        chunkData = file.slice(start, end);
+      }
+      
+      // 创建FormData
+      const formData = new FormData();
+      formData.append('fileId', fileId);
+      formData.append('chunkIndex', chunkIndex);
+      formData.append('totalChunks', totalChunks);
+      formData.append('taskId', task.taskId);
+      formData.append('chunk', chunkData);
+      
+      // 上传分片，传入signal支持取消
+      const uploadResult = await audiosApi.uploadChunk(formData, { signal: abortController?.signal });
+      
+      // 更新进度
+      if (fileItem) {
+        fileItem.uploadedSize = uploadResult.uploadedSize;
+        fileItem.completedChunks = uploadResult.completedChunks;
+        fileItem.status = 'uploading';
+      }
+      
+      // 更新任务进度
+      task.uploadedSize = uploadResult.taskProgress.uploadedSize;
+      task.completedFiles = uploadResult.taskProgress.completedFiles;
+      task.status = uploadResult.taskProgress.status;
+      
+      // 更新全局进度
+      const progress = Math.floor((task.uploadedSize / task.totalSize) * 100);
+      uploadProgress.value = progress;
+      if (onProgressUpdate) {
+        onProgressUpdate(progress);
+      }
+      
+      // 立即保存任务状态，确保UI实时更新
+      saveLocalTask(task);
+      uploadTasks.value = [...uploadTasks.value]; // 触发响应式更新
+      
+      // 实时更新统计信息，确保状态卡片及时刷新
+      updateStats();
+    }
+    
+    // 合并分片，传入signal支持取消
+    const mergeData = {
+      createTestCase: uploadOptions.value.createTestCase,
+      testType: uploadOptions.value.testType,
+      defaultPlaybackDeviceId: uploadOptions.value.playbackDeviceId,
+      testCaseGroupName: getEffectiveGroupName(),
+      audioType: uploadOptions.value.audioType || 'dry',
+      translationDirectionId: uploadOptions.value.translationDirectionId || '',
+      // 确保生成的用例直接继承音频标签
+      inheritTags: true
+    };
+    
+    // API测试不需要配置声压级，只有E2E测试需要
+    if (uploadOptions.value.testType === 'e2e') {
+      mergeData.defaultSpl = uploadOptions.value.spl;
+    }
+    
+    const mergeResult = await audiosApi.mergeChunks(fileId, task.taskId, mergeData, { signal: abortController?.signal });
+    
+    // 更新文件状态
+    if (fileItem) {
+      fileItem.status = 'completed';
+    }
+    
+    // 使用服务器返回的最新completedFiles值，避免重复计数
+    if (mergeResult && mergeResult.taskProgress) {
+      task.completedFiles = mergeResult.taskProgress.completedFiles;
+    } else {
+      // 如果服务器没有返回taskProgress，则确保completedFiles不会超过totalFiles
+      task.completedFiles = Math.min(task.completedFiles + 1, task.totalFiles);
+    }
+    
+    // 立即保存任务状态，确保UI实时更新
+    saveLocalTask(task);
+    uploadTasks.value = [...uploadTasks.value]; // 触发响应式更新
+    
+    // 更新统计信息，确保状态卡片实时显示最新数据
+    updateStats();
+  } catch (err) {
+    console.error(`文件 ${fileName} 上传失败:`, err);
+    if (err.name === 'AbortError') {
+      // 请求被取消，更新文件和任务状态为暂停
+      if (fileItem) {
+        fileItem.status = 'paused';
+      }
+      task.status = 'paused';
+      saveLocalTask(task);
+      uploadTasks.value = [...uploadTasks.value]; // 触发响应式更新
+      throw err; // 向上抛出取消错误
+    } else {
+      // 其他错误，更新文件和任务状态为失败
+      if (fileItem) {
+        fileItem.status = 'failed';
+        fileItem.errorMessage = err.message || '未知错误';
+        fileItem.errorCode = err.code || 500;
+      }
+      task.status = 'failed';
+      task.failedFiles++;
+      saveLocalTask(task);
+      uploadTasks.value = [...uploadTasks.value]; // 触发响应式更新
+    }
+  }
+}
+
+// 恢复上传任务
+async function resumeUploadTask(taskId) {
+  console.log(`AudioImport: 恢复上传任务 - 任务ID ${taskId}`);
+  const task = uploadTasks.value.find(t => t.taskId === taskId);
+  if (!task) {
+    console.error('未找到任务:', taskId);
+    alert('恢复上传任务失败: 任务不存在');
+    return;
+  }
+  
+  currentTask.value = task;
+  uploadStatus.value = 'uploading';
+  
+  try {
+    // 获取任务进度
+    let progressResult;
+    try {
+      progressResult = await audiosApi.getUploadProgress(taskId, { signal: abortController.signal });
+    } catch (err) {
+      // 任务不存在，可能是传统上传模式的任务（只存在于本地存储）
+      console.error('获取上传进度失败:', err);
+      
+      // 检查是否为传统上传任务（没有调用后端initUpload）
+      if (err.message === '任务不存在') {
+        // 提示用户重新上传，因为传统上传任务无法恢复
+        const shouldReupload = confirm(
+          `该上传任务无法恢复（任务ID: ${taskId}），是否重新上传？`
+        );
+        
+        if (shouldReupload) {
+          // 删除旧任务
+          removeLocalTask(taskId);
+          uploadTasks.value = getLocalTasks();
+          // 打开上传模态框
+          showUploadModal.value = true;
+        }
+        uploadStatus.value = 'idle';
+        currentTask.value = null;
+        return;
+      }
+      
+      // 其他错误继续抛出
+      throw err;
+    }
+    
+    // 更新本地任务状态
+    task.status = progressResult.task.status;
+    task.uploadedSize = progressResult.task.uploadedSize;
+    task.completedFiles = progressResult.task.completedFiles;
+    task.failedFiles = progressResult.task.failedFiles;
+    
+    // 更新文件状态
+    for (const fileProgress of progressResult.files) {
+      const localFile = task.files.find(f => f.name === fileProgress.filename);
+      if (localFile) {
+        localFile.status = fileProgress.status;
+        localFile.uploadedSize = fileProgress.uploadedSize;
+        localFile.completedChunks = fileProgress.completedChunks;
+      }
+    }
+    
+    saveLocalTask(task);
+    
+    // 检查是否有未完成的文件
+    const incompleteFiles = progressResult.files.filter(f => f.status !== 'completed');
+    if (incompleteFiles.length === 0) {
+      // 所有文件都已完成，直接结束
+      uploadStatus.value = 'completed';
+      await fetchAudios();
+      
+      setTimeout(() => {
+        uploadProgress.value = 0;
+        currentTask.value = null;
+        uploadStatus.value = 'idle';
+        currentUploadingFile.value = null;
+      }, 1000);
+      return;
+    }
+    
+    // 提示用户需要重新选择文件以继续上传
+    const shouldSelectFiles = confirm(
+      `需要重新选择文件以继续上传（${incompleteFiles.length} 个文件未完成），是否选择文件？`
+    );
+    
+    if (!shouldSelectFiles) {
+      // 用户取消，重置状态
+      uploadStatus.value = 'idle';
+      currentTask.value = null;
+      return;
+    }
+    
+    // 打开上传模态框，让用户重新选择文件
+    showUploadModal.value = true;
+    
+    // 重置状态
+    uploadStatus.value = 'idle';
+    currentTask.value = null;
+    
+    // 提示用户选择相同的文件以继续上传
+    alert('请选择与之前相同的文件以继续上传。系统将自动检测并恢复未完成的上传任务。');
+    
+  } catch (err) {
+    console.error('恢复上传任务失败:', err);
+    alert('恢复上传任务失败: ' + err.message);
+    uploadStatus.value = 'failed';
+  }
+}
+
+// 重试上传失败的文件
+async function retryFailedFiles(taskId) {
+  console.log(`AudioImport: 重试上传失败的文件 - 任务ID ${taskId}`);
+  const task = uploadTasks.value.find(t => t.taskId === taskId);
+  if (!task) {
+    console.error('未找到任务:', taskId);
+    alert('重试上传失败: 任务不存在');
+    return;
+  }
+  
+  currentTask.value = task;
+  uploadStatus.value = 'uploading';
+  
+  try {
+    // 获取失败的文件
+    const failedFiles = task.files.filter(f => f.status === 'failed');
+    if (failedFiles.length === 0) {
+      alert('没有失败的文件需要重试');
+      uploadStatus.value = 'idle';
+      currentTask.value = null;
+      return;
+    }
+    
+    // 更新任务状态
+    task.status = 'uploading';
+    saveLocalTask(task);
+    
+    // 重试上传失败的文件
+    for (const failedFile of failedFiles) {
+      try {
+        // 查找对应的原始文件对象
+        const originalFile = selectedFilesForUpload.value.find(f => f.name === failedFile.name);
+        if (!originalFile) {
+          console.error('找不到原始文件:', failedFile.name);
+          continue;
+        }
+        
+        // 重置文件状态
+        failedFile.status = 'uploading';
+        delete failedFile.errorMessage;
+        delete failedFile.errorCode;
+        saveLocalTask(task);
+        
+        // 重新上传文件
+        const formData = new FormData();
+        formData.append('file', originalFile);
+        formData.append('relativePath', failedFile.relativePath || failedFile.name);
+        formData.append('taskId', taskId);
+        
+        // 添加测试用例生成选项
+        if (folderImportOptions.value.createTestCase) {
+          formData.append('createTestCase', 'true');
+          formData.append('testType', folderImportOptions.value.testType);
+          if (folderImportOptions.value.playbackDeviceId) {
+            formData.append('defaultPlaybackDeviceId', folderImportOptions.value.playbackDeviceId.toString());
+          }
+          // API测试不需要配置声压级，只有E2E测试需要
+          if (folderImportOptions.value.testType === 'e2e') {
+            formData.append('defaultSpl', folderImportOptions.value.spl.toString());
+          }
+          const groupName = getFolderImportGroupName(task.groupName || '');
+          if (groupName) {
+            formData.append('testCaseGroupName', groupName);
+          }
+          // 确保生成的用例直接继承音频标签
+          formData.append('inheritTags', 'true');
+        }
+        
+        const response = await audiosApi.upload(formData);
+        
+        // 更新文件状态
+        failedFile.status = 'completed';
+        failedFile.uploadedSize = failedFile.size;
+        task.completedFiles++;
+        task.failedFiles--;
+        task.uploadedSize += failedFile.size;
+        
+        saveLocalTask(task);
+        
+        // 更新进度
+        uploadProgress.value = Math.floor((task.uploadedSize / task.totalSize) * 90);
+      } catch (err) {
+        console.error('重试上传文件失败:', failedFile.name, err);
+        failedFile.status = 'failed';
+        failedFile.errorMessage = err.message || '未知错误';
+        failedFile.errorCode = err.code || 500;
+        saveLocalTask(task);
+      }
+    }
+    
+    // 更新任务状态
+    if (task.failedFiles === 0) {
+      task.status = 'completed';
+    } else {
+      task.status = 'partial_completed';
+    }
+    
+    saveLocalTask(task);
+    uploadTasks.value = getLocalTasks();
+    
+    // 刷新音频列表
+    await fetchAudios();
+    
+    // 显示结果
+    alert(`重试完成：成功上传 ${failedFiles.length - task.failedFiles} 个文件，失败 ${task.failedFiles} 个文件`);
+    
+    uploadStatus.value = 'idle';
+    currentTask.value = null;
+  } catch (err) {
+    console.error('重试上传失败:', err);
+    alert('重试上传失败: ' + err.message);
+    uploadStatus.value = 'failed';
+    currentTask.value = null;
+  }
+}
+
+// 开始上传
+async function startUpload(onProgressUpdate, onUploadComplete, onUploadError, onCancelUpload) {
+  // 检查是否支持分片上传
+  try {
+    // 尝试初始化任务，检查后端是否支持分片上传
+    await startChunkUpload(onProgressUpdate, onUploadComplete, onUploadError, onCancelUpload);
+  } catch (err) {
+    console.error('分片上传失败，回退到传统上传:', err);
+    // 回退到传统上传
+    await startTraditionalUpload(onProgressUpdate, onUploadComplete, onUploadError, onCancelUpload);
+  }
+}
+
+// 传统上传实现（兼容旧版）
+async function startTraditionalUpload(onProgressUpdate, onUploadComplete, onUploadError, onCancelUpload) {
+  if (selectedFilesForUpload.value.length === 0) {
+    alert('请先选择文件');
+    return;
+  }
+
+  // 1. 立即更新进度为1%，这是MD5计算前的最早时间点，确保进度条显示
+  uploadProgress.value = 1;
+  if (onProgressUpdate) {
+    onProgressUpdate(1);
+  }
+  
+  // 2. 立即显示全局进度条
+  if (showUploadModal.value) {
+    // 通知模态框更新进度
+    const manager = getModalManager();
+    const uploadModal = manager.activeModals[MODAL_TYPES.UPLOAD_FILE];
+    if (uploadModal && uploadModal.props.onProgressUpdate) {
+      uploadModal.props.onProgressUpdate(1);
+    }
+  }
+  
+  // 3. 确保UI更新，使用requestAnimationFrame确保浏览器渲染进度条
+  if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+  
+  // 4. 开始处理其他准备工作
+  loading.value = true;
+  uploadStatus.value = 'preparing';
+  
+  // 创建abortController用于取消请求
+  abortController = new AbortController();
+  
+  try {
+    // 更新进度，表示正在准备上传
+    uploadProgress.value = 2;
+    if (onProgressUpdate) {
+      onProgressUpdate(2);
+    }
+    
+    // 生成文件清单
+    console.log('生成传统上传文件清单');
+    // 更新进度，表示正在生成文件清单
+    uploadProgress.value = 5;
+    if (onProgressUpdate) {
+      onProgressUpdate(5);
+    }
+    
+    // 确保UI更新
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    
+    // 开始MD5计算和文件清单生成
+    fileList.value = await generateFileList(selectedFilesForUpload.value, (progress) => {
+      // MD5计算进度，范围5-30%
+      const md5Progress = 5 + Math.floor(progress * 25);
+      uploadProgress.value = md5Progress;
+      if (onProgressUpdate) {
+        onProgressUpdate(md5Progress);
+      }
+    });
+    
+    // 初始化上传任务，直接创建而不保存到本地
+    const task = {
+      taskId: generateTaskId(),
+      createdAt: new Date().toISOString(),
+      status: 'uploading',
+      totalFiles: fileList.value.length,
+      completedFiles: 0,
+      failedFiles: 0,
+      totalSize: fileList.value.reduce((sum, file) => sum + file.size, 0),
+      uploadedSize: 0,
+      files: fileList.value,
+      options: { ...uploadOptions.value }
+    };
+    currentTask.value = task;
+    
+    const totalFiles = selectedFilesForUpload.value.length;
+    let createdTestCases = [];
+    
+    // 更新上传状态
+    uploadStatus.value = 'uploading';
+    // 更新进度，表示开始上传
+    uploadProgress.value = 30;
+    if (onProgressUpdate) {
+      onProgressUpdate(30);
+    }
+    
+    // 遍历上传所有文件
+    for (let i = 0; i < totalFiles; i++) {
+      const fileItem = selectedFilesForUpload.value[i];
+      await uploadSingleFile(fileItem, task, i, onProgressUpdate);
+      // 只有当上传失败时才保存任务到本地
+      if (task.status === 'failed') {
+        saveLocalTask(task);
+        uploadTasks.value = getLocalTasks();
+      }
+    }
+    
+    // 上传完成后更新状态
+    uploadStatus.value = 'completed';
+    // 更新任务状态为已完成
+    task.status = 'completed';
+    saveLocalTask(task);
+    // 清理无效任务
+    cleanInvalidTasks();
+    uploadTasks.value = getLocalTasks();
+    
+    // 准备刷新列表
+    uploadProgress.value = 90;
+    if (onProgressUpdate) {
+      onProgressUpdate(90);
+    }
+    // 刷新音频列表
+    await fetchAudios();
+    // 上传完成
+    uploadProgress.value = 100;
+    if (onProgressUpdate) {
+      onProgressUpdate(100);
+    }
+    
+    // 显示上传完成消息
+    let message = `成功上传 ${task.completedFiles} 个音频文件`;
+    if (task.failedFiles > 0) {
+      message += `，失败 ${task.failedFiles} 个文件`;
+    }
+    if (createdTestCases.length > 0) {
+      message += `，并创建了 ${createdTestCases.length} 个测试用例`;
+    }
+    alert(message);
+    
+    // 重置上传选项
+    uploadOptions.value = {
+      createTestCase: false,
+      testType: 'api',
+      playbackDeviceId: null,
+      spl: 65.0,
+      groupNameType: 'root',
+      customGroupName: ''
+    };
+    
+    setTimeout(() => {
+      closeModal('uploadModal');
+      uploadProgress.value = 0;
+      selectedFilesForUpload.value = [];
+      fileList.value = [];
+      currentTask.value = null;
+      uploadStatus.value = 'idle';
+      currentUploadingFile.value = null;
+      // 通知上传完成
+      if (onUploadComplete) {
+        onUploadComplete();
+      }
+    }, 1000);
+  } catch (err) {
+    console.error('上传失败:', err);
+    alert('上传失败: ' + err.message);
+    uploadStatus.value = 'failed';
+    // 重置进度
+    uploadProgress.value = 0;
+    // 通知上传错误
+    if (onUploadError) {
+      onUploadError(err);
+    }
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 视图模式
+const view_mode = ref('list');
+// 加载状态
+const loading = ref(false);
+const error = ref(null);
+// 当前页码
+const currentPage = ref(1);
+// 每页显示数量
+const pageSize = ref(10);
+// 搜索查询
+const searchQuery = ref('');
+// 存储展开的文件夹路径
+const expandedFolders = ref([]);
+
+// 上传进度
+const uploadProgress = ref(0);
+
+// 模态框状态 - 使用 ref + watch 方式确保响应式
+const showUploadModal = ref(false);
+const showUrlImportModal = ref(false);
+const showConvertModal = ref(false);
+const showMetadataModal = ref(false);
+const showFolderImportModal = ref(false);
+
+function initModalWatchers() {
+  const store = useModalStore();
+  watch(() => store.showUploadModal, (val) => { showUploadModal.value = val; }, { immediate: true });
+  watch(() => store.showUrlImportModal, (val) => { showUrlImportModal.value = val; }, { immediate: true });
+  watch(() => store.showConvertModal, (val) => { showConvertModal.value = val; }, { immediate: true });
+  watch(() => store.showMetadataModal, (val) => { showMetadataModal.value = val; }, { immediate: true });
+  
+  // 监听全局上传模态框的配置变化
+  const manager = getModalManager();
+  watch(() => manager.activeModals[MODAL_TYPES.UPLOAD_FILE]?.props?.uploadConfig, (config) => {
+    if (config) {
+      uploadOptions.value.createTestCase = config.createTestCase || false;
+      uploadOptions.value.testType = config.testType || 'api';
+      uploadOptions.value.playbackDeviceId = config.playbackDeviceId || null;
+      uploadOptions.value.defaultSpl = config.defaultSpl || 65.0;
+    }
+  }, { deep: true });
+}
+
+// 选中的音频
+const selectedAudios = ref([]);
+// 是否显示全选选项菜单
+const showSelectAllOptions = ref(false);
+
+// 筛选条件
+const filters = ref({
+  format: 'all',
+  sampleRate: 'all',
+  duration: 'all',
+  audioType: 'all'
+});
+
+// 标签云相关
+const selectedTags = ref([]);
+const allTags = ref([]);
+
+// 计算所有可用标签
+function updateAllTags() {
+  const tagsSet = new Set();
+  audios.value.forEach(audio => {
+    // 处理不同格式的标签数据
+    let audioTags = [];
+    if (Array.isArray(audio.tags)) {
+      audioTags = audio.tags;
+    } else if (Array.isArray(audio.tag)) {
+      audioTags = audio.tag;
+    } else if (typeof audio.tags === 'string' && audio.tags) {
+      audioTags = audio.tags.split(',').map(tag => tag.trim());
+    } else if (typeof audio.tag === 'string' && audio.tag) {
+      audioTags = audio.tag.split(',').map(tag => tag.trim());
+    }
+    
+    audioTags.forEach(tag => {
+      if (tag) tagsSet.add(tag);
+    });
+  });
+  allTags.value = Array.from(tagsSet);
+}
+
+// URL导入数据
+const urlImportData = ref({
+  url: '',
+  tags: ''
+});
+
+// 转换音频信息
+const convertAudioInfo = ref({
+  originalFileName: 'audio_file.mp3',
+  originalFormat: 'MP3',
+  originalSampleRate: '44100',
+  originalChannels: '2',
+  originalBitDepth: '16',
+  targetFormat: 'mp3',
+  targetSampleRate: '44100',
+  targetChannels: '2',
+  targetBitDepth: '16'
+});
+
+// 元数据信息
+const metadataInfo = ref({
+  fileName: '',
+  category: '/audios/wake_word/',
+  audioType: 'dry',
+  asrText: '',
+  translations: [
+    {
+      direction: 'zh-en',
+      text: ''
+    }
+  ],
+  tags: ''
+});
+
+// 音频数据
+const audios = ref([]);
+
+// 统计数据
+const stats = ref({
+  totalFiles: 0,
+  totalSize: '0 MB',
+  totalDuration: '0:00',
+  todayUploads: 0
+});
+
+// 上传选项 - 测试用例生成
+const uploadOptions = ref({
+  createTestCase: false,
+  testType: 'api',
+  playbackDeviceId: null,
+  spl: 65.0,
+  groupNameType: 'root',
+  customGroupName: '',
+  translationDirectionId: '',
+  sourceLanguage: ''
+});
+
+// 批量导入选项 - 测试用例生成
+const folderImportOptions = ref({
+  createTestCase: false,
+  testType: 'api',
+  playbackDeviceId: null,
+  spl: 65.0,
+  groupNameType: 'root',
+  customGroupName: '',
+  translationDirectionId: '',
+  sourceLanguage: ''
+});
+
+// 播放设备列表
+const playbackDevices = ref([]);
+
+// 翻译方向列表
+const translationDirections = ref([]);
+
+// 获取翻译方向列表
+async function fetchTranslationDirections() {
+  try {
+    const { audiosApi } = await import('../../utils/api');
+    const response = await audiosApi.getDirections();
+    // 后端返回格式为 { items: [], total: 0 }
+    // 转换字段名：驼峰命名 -> 下划线命名
+    const directions = response.items || [];
+    translationDirections.value = directions.map(dir => ({
+      id: dir.id,
+      source_language: dir.sourceLanguage || dir.source_language,
+      target_language: dir.targetLanguage || dir.target_language,
+      description: dir.description
+    }));
+  } catch (err) {
+    console.error('获取翻译方向列表失败:', err);
+    translationDirections.value = [];
+  }
+}
+
+// 获取根文件夹名称
+function getRootFolderName() {
+  if (selectedFilesForUpload.value.length === 0) {
+    return '';
+  }
+  
+  const fileItem = selectedFilesForUpload.value[0];
+  
+  if (typeof fileItem === 'string') {
+    // Electron环境：文件路径
+    const pathParts = fileItem.split(/[\\/]/);
+    if (pathParts.length > 0) {
+      return pathParts[0] || '';
+    }
+  } else if (fileItem.webkitRelativePath) {
+    // 浏览器环境：webkitRelativePath
+    const pathParts = fileItem.webkitRelativePath.split('/');
+    if (pathParts.length > 0) {
+      return pathParts[0];
+    }
+  }
+  
+  return '';
+}
+
+// 获取有效的分组名称
+function getEffectiveGroupName() {
+  if (!uploadOptions.value.createTestCase) {
+    return null;
+  }
+  
+  if (uploadOptions.value.groupNameType === 'custom' && uploadOptions.value.customGroupName.trim()) {
+    return uploadOptions.value.customGroupName.trim();
+  }
+  
+  return getRootFolderName() || '音频上传生成';
+}
+
+// 获取批量导入的有效分组名称
+function getFolderImportGroupName(rootFolderName) {
+  if (!folderImportOptions.value.createTestCase) {
+    return null;
+  }
+  
+  if (folderImportOptions.value.groupNameType === 'custom' && folderImportOptions.value.customGroupName.trim()) {
+    return folderImportOptions.value.customGroupName.trim();
+  }
+  
+  return rootFolderName || '音频上传生成';
+}
+
+// 纯 JavaScript 实现的 path.basename
+function pathBasename(filePath) {
+  if (!filePath) return '';
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const parts = normalizedPath.split('/');
+  return parts[parts.length - 1] || '';
+}
+
+// 获取播放设备列表
+async function fetchPlaybackDevices() {
+  try {
+    const { playbackApi } = await import('../../utils/api');
+    const data = await playbackApi.getAll();
+    playbackDevices.value = data.items || [];
+  } catch (err) {
+    console.error('获取播放设备列表失败:', err);
+    playbackDevices.value = [];
+  }
+}
+
+
+
+// 更新统计信息
+function updateStats() {
+  // 基于当前上传的任务，预估并更新统计信息
+  // 注意：这是基于前端数据的实时更新，上传完成后仍会从服务器获取准确数据
+  
+  if (currentTask.value) {
+    // 获取当前任务的完成文件数
+    const completedFiles = currentTask.value.completedFiles || 0;
+    const failedFiles = currentTask.value.failedFiles || 0;
+    
+    // 计算当前任务已完成的文件大小
+    const completedSize = currentTask.value.files?.filter(f => f.status === 'completed').reduce((sum, file) => sum + file.size, 0) || 0;
+    
+    // 计算当前任务的总文件大小
+    const taskTotalSize = currentTask.value.totalSize || 0;
+    
+    // 解析当前统计中的总大小，移除单位并转换为字节
+    let currentTotalSizeBytes = 0;
+    if (stats.value.totalSize) {
+      const sizeMatch = stats.value.totalSize.match(/([\d.]+)\s*(\w+)/);
+      if (sizeMatch) {
+        const size = parseFloat(sizeMatch[1]);
+        const unit = sizeMatch[2].toLowerCase();
+        const unitMultipliers = {
+          'b': 1,
+          'kb': 1024,
+          'mb': 1024 * 1024,
+          'gb': 1024 * 1024 * 1024,
+          'tb': 1024 * 1024 * 1024 * 1024
+        };
+        currentTotalSizeBytes = size * (unitMultipliers[unit] || 1);
+      }
+    }
+    
+    // 保存原始任务的初始统计值，用于计算增量
+    if (!currentTask.value.initialStats) {
+      currentTask.value.initialStats = {
+        totalFiles: stats.value.totalFiles || 0,
+        todayUploads: stats.value.todayUploads || 0,
+        totalSizeBytes: currentTotalSizeBytes
+      };
+    }
+    
+    // 计算增量
+    const initialStats = currentTask.value.initialStats;
+    const filesIncrement = completedFiles;
+    const sizeIncrement = completedSize;
+    
+    // 计算新的总大小（字节）
+    const newTotalSizeBytes = initialStats.totalSizeBytes + sizeIncrement;
+    
+    // 更新统计信息
+    stats.value = {
+      ...stats.value,
+      // 实时更新总文件数和今日上传数
+      totalFiles: initialStats.totalFiles + filesIncrement,
+      todayUploads: initialStats.todayUploads + filesIncrement,
+      // 实时更新总文件大小，使用formatFileSize函数确保格式正确
+      totalSize: formatFileSize(newTotalSizeBytes)
+    };
+  }
+}
+
+// 获取音频数据
+async function fetchAudios(options = {}) {
+  loading.value = true;
+  error.value = null;
+  try {
+    const params = {
+      page: currentPage.value,
+      perPage: pageSize.value,
+      keyword: searchQuery.value,
+      format: filters.value.format !== 'all' ? filters.value.format : '',
+      sampleRate: filters.value.sampleRate !== 'all' ? filters.value.sampleRate : '',
+      duration: filters.value.duration !== 'all' ? filters.value.duration : '',
+      audioType: filters.value.audioType !== 'all' ? filters.value.audioType : ''
+    };
+    
+    const data = await audiosApi.getAll(params, options);
+    
+    audios.value = data.items || [];
+    stats.value = data.stats || {
+      totalFiles: data.total || 0,
+      totalSize: '0 MB',
+      totalDuration: '0:00',
+      todayUploads: 0
+    };
+    
+    // 更新标签云
+    updateAllTags();
+  } catch (err) {
+    console.error('Failed to fetch audios:', err);
+    if (err.name !== 'AbortError') {
+      error.value = '获取音频列表失败';
+    }
+  } finally {
+    loading.value = false;
+  }
+}
+
+// 格式化文件大小，实现自适应显示
+function formatFileSize(size) {
+  if (typeof size === 'string') {
+    // 如果已经是格式化后的字符串，直接返回
+    return size;
+  }
+  
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let currentSize = parseInt(size) || 0;
+  let unitIndex = 0;
+  
+  while (currentSize >= 1024 && unitIndex < units.length - 1) {
+    currentSize /= 1024;
+    unitIndex++;
+  }
+  
+  return `${currentSize.toFixed(2)} ${units[unitIndex]}`;
+}
+
+// 删除本地任务（供模板使用）
+function removeLocalTask(taskId) {
+  try {
+    const tasks = getLocalTasks();
+    const filteredTasks = tasks.filter(t => t.taskId !== taskId);
+    localStorage.setItem('audioUploadTasks', JSON.stringify(filteredTasks));
+    uploadTasks.value = filteredTasks;
+  } catch (error) {
+    console.error('删除本地任务失败:', error);
+  }
+}
+
+// 格式化音频时长，实现自适应显示
+function formatDuration(duration) {
+  if (typeof duration === 'string') {
+    // 如果已经是格式化后的字符串，直接返回
+    return duration;
+  }
+  
+  const seconds = parseFloat(duration) || 0;
+  
+  if (seconds < 60) {
+    // 小于1分钟，显示秒
+    return `${seconds.toFixed(1)}s`;
+  } else if (seconds < 3600) {
+    // 小于1小时，显示分:秒
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  } else {
+    // 大于等于1小时，显示时:分:秒
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+  }
+}
+
+// 处理文件路径，只显示静态资源路径之后的部分
+function formatFilePath(path) {
+  if (!path) return '';
+  
+  // 处理Windows风格路径，转换为统一的斜杠格式
+  const normalizedPath = path.replace(/\\/g, '/');
+  
+  // 匹配后端静态资源目录后的部分，包括/audios/...
+  const audioPathPattern = /\/static\/audios\/(.*)/i;
+  const match = normalizedPath.match(audioPathPattern);
+  if (match && match[1]) {
+    // 如果匹配到，只返回/audios/后面的部分
+    return `/audios/${match[1]}`;
+  }
+  
+  // 尝试匹配不带/static前缀的audios目录
+  const altAudioPathPattern = /\/audios\/(.*)/i;
+  const altMatch = normalizedPath.match(altAudioPathPattern);
+  if (altMatch && altMatch[1]) {
+    // 如果匹配到，返回完整的/audios/...路径
+    return `/audios/${altMatch[1]}`;
+  }
+  
+  // 如果没有匹配到，返回原路径的后半部分（文件名或相对路径）
+  const pathParts = normalizedPath.split('/');
+  const fileNameIndex = pathParts.lastIndexOf('audios');
+  if (fileNameIndex !== -1 && fileNameIndex < pathParts.length - 1) {
+    // 返回从audios开始的路径
+    return pathParts.slice(fileNameIndex).join('/');
+  }
+  
+  // 最后的备用方案，返回文件名
+  return pathParts[pathParts.length - 1];
+}
+
+// 计算过滤后的音频列表
+const filteredAudios = computed(() => {
+  let result = audios.value.map(audio => {
+    // 处理不同格式的标签数据
+    let audioTags = [];
+    // 确保audio和audio.tags存在
+    if (audio) {
+      if (Array.isArray(audio.tags)) {
+        audioTags = audio.tags;
+      } else if (Array.isArray(audio.tag)) {
+        audioTags = audio.tag;
+      } else if (typeof audio.tags === 'string' && audio.tags) {
+        audioTags = audio.tags.split(',').map(tag => tag.trim());
+      } else if (typeof audio.tag === 'string' && audio.tag) {
+        audioTags = audio.tag.split(',').map(tag => tag.trim());
+      }
+      // 确保audioTags是数组
+      if (!Array.isArray(audioTags)) {
+        audioTags = [];
+      }
+    }
+    
+    return {
+      ...audio,
+      // 适配前端模板使用的属性名
+      filename: audio?.name || audio?.filename || '', // 模板使用 filename，后端返回 name 或 filename
+      path: formatFilePath(audio?.filePath || audio?.path), // 模板使用 path，后端返回 filePath 或 path
+      size: formatFileSize(audio?.size), // 格式化文件大小，实现自适应显示
+      duration: formatDuration(audio?.duration), // 格式化音频时长，实现自适应显示
+      type: audio?.audioType || audio?.type || 'dry', // 模板使用 type，后端返回 audioType 或 type
+      sourceLanguage: audio?.sourceLanguage || audio?.source_language || '', // 模板使用 sourceLanguage，后端返回 sourceLanguage 或 source_language
+      status: audio?.status || 'active', // 模板使用 status，后端可能没有返回
+      // 统一标签格式为数组
+      tags: audioTags || []
+    }; 
+  }); 
+  
+  // 标签云过滤
+  if (selectedTags.value.length > 0) {
+    result = result.filter(audio => {
+      // 确保audio.tags是数组
+      const tags = Array.isArray(audio.tags) ? audio.tags : [];
+      return selectedTags.value.every(tag => tags.includes(tag));
+    });
+  }
+  
+  // 本地搜索过滤，实现实时搜索效果
+  if (searchQuery.value.trim()) {
+    const keyword = searchQuery.value.toLowerCase().trim();
+    result = result.filter(audio => {
+      // 检查文件名、标签、ASR文本
+      const filenameMatch = (audio?.filename || '').toLowerCase().includes(keyword);
+      // 确保audio.tags是数组
+      const tags = Array.isArray(audio.tags) ? audio.tags : [];
+      const tagsMatch = tags.some(tag => tag.toLowerCase().includes(keyword));
+      const asrTextMatch = (audio?.asrText || audio?.asr_text || '').toLowerCase().includes(keyword);
+      
+      return filenameMatch || tagsMatch || asrTextMatch;
+    });
+  }
+  
+  return result;
+});
+
+// 将路径转换为文件夹树结构
+const folderTree = computed(() => {
+  const root = { name: '根目录', path: '/', folders: {}, files: [] };
+  
+  filteredAudios.value.forEach(audio => {
+    // 解析音频路径，构建文件夹树
+    const pathParts = audio.path.split('/').filter(part => part);
+    let current = root;
+    
+    // 构建文件夹路径
+    pathParts.slice(0, -1).forEach(part => {
+      if (!current.folders[part]) {
+        current.folders[part] = {
+          name: part,
+          path: `${current.path}${part}/`,
+          folders: {},
+          files: []
+        };
+      }
+      current = current.folders[part];
+    });
+    
+    // 添加文件到当前文件夹
+    current.files.push(audio);
+  });
+  
+  return root;
+});
+
+// 辅助函数：将文件夹对象转换为数组格式
+function flattenFolders(folder) {
+  return {
+    ...folder,
+    folders: Object.values(folder.folders).map(flattenFolders)
+  };
+}
+
+// 扁平化的文件夹树结构，便于模板使用
+const flattenedFolderTree = computed(() => {
+  return flattenFolders(folderTree.value);
+});
+
+// 切换标签选择
+function toggleTag(tag) {
+  console.log(`AudioImport: 切换标签选择 - ${tag}`);
+  const index = selectedTags.value.indexOf(tag);
+  if (index === -1) {
+    selectedTags.value.push(tag);
+  } else {
+    selectedTags.value.splice(index, 1);
+  }
+  filterAudios();
+}
+
+// 计算总页数
+const totalPages = computed(() => {
+  // 当有搜索关键词时，基于本地过滤结果计算总页数
+  // 否则基于后端返回的总文件数计算
+  if (searchQuery.value.trim()) {
+    return Math.ceil(filteredAudios.value.length / pageSize.value) || 1;
+  }
+  return Math.ceil((stats.value.totalFiles || 0) / pageSize.value) || 1;
+});
+
+// 切换视图模式
+function switchView(mode) {
+  console.log(`AudioImport: 切换视图模式 - ${mode}`);
+  view_mode.value = mode;
+}
+
+// 检查文件夹是否展开
+function isFolderOpen(folder) {
+  return expandedFolders.value.includes(folder.path);
+}
+
+// 切换文件夹展开/折叠状态
+function toggleFolder(folder) {
+  const index = expandedFolders.value.indexOf(folder.path);
+  if (index === -1) {
+    expandedFolders.value.push(folder.path);
+  } else {
+    expandedFolders.value.splice(index, 1);
+  }
+}
+
+// 防抖函数
+function debounce(func, delay) {
+  let timer;
+  return function() {
+    const context = this;
+    const args = arguments;
+    clearTimeout(timer);
+    timer = setTimeout(() => func.apply(context, args), delay);
+  };
+}
+
+// 搜索音频
+const searchAudios = debounce(() => {
+  currentPage.value = 1;
+  fetchAudios();
+}, 300);
+
+// 过滤音频
+function filterAudios() {
+  currentPage.value = 1;
+  fetchAudios();
+}
+
+// 应用筛选
+function applyFilters() {
+  console.log('AudioImport: 应用筛选');
+  filterAudios();
+}
+
+// 重置筛选
+function resetFilters() {
+  console.log('AudioImport: 重置筛选');
+  filters.value = {
+    format: 'all',
+    sampleRate: 'all',
+    duration: 'all',
+    audioType: 'all'
+  };
+  // 重置标签选择
+  selectedTags.value = [];
+  filterAudios();
+}
+
+// 全选/取消全选
+function toggleSelectAll(event) {
+  console.log(`AudioImport: 全选/取消全选 - ${event.target.checked ? '全选' : '取消全选'}`);
+  if (event.target.checked) {
+    // 显示全选选项菜单
+    showSelectAllOptions.value = true;
+  } else {
+    selectedAudios.value = [];
+    showSelectAllOptions.value = false;
+  }
+}
+
+// 仅勾选当前页
+function selectCurrentPage() {
+  console.log('AudioImport: 仅勾选当前页');
+  selectedAudios.value = filteredAudios.value.map(audio => audio.id);
+  showSelectAllOptions.value = false;
+  // 确保全选复选框状态正确
+  const selectAllCheckbox = document.getElementById('selectAll');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked = filteredAudios.value.length > 0 && selectedAudios.value.length === filteredAudios.value.length;
+  }
+}
+
+// 勾选所有页
+async function selectAllPages() {
+  console.log('AudioImport: 勾选所有页');
+  // 关闭选项菜单
+  showSelectAllOptions.value = false;
+  
+  // 立即更新全选复选框状态，提高用户体验
+  const selectAllCheckbox = document.getElementById('selectAll');
+  if (selectAllCheckbox) {
+    selectAllCheckbox.checked = true;
+  }
+  
+  // 1. 立即更新当前页的选中状态，让用户先看到当前页的复选框联动
+  const currentPageIds = filteredAudios.value.map(audio => audio.id);
+  selectedAudios.value = [...currentPageIds];
+  
+  // 2. 异步获取所有页的数据，不阻塞UI
+  const fetchAllPages = async () => {
+    // 显示加载提示
+    const originalLoading = loading.value;
+    loading.value = true;
+    
+    try {
+      // 使用更高效的方式获取所有音频ID，而不是获取完整音频数据
+      // 构建请求参数，保持当前筛选条件
+      const fetchParams = {
+        perPage: 1000, // 每次请求1000条，减少请求次数
+        keyword: searchQuery.value,
+        format: filters.value.format !== 'all' ? filters.value.format : '',
+        sampleRate: filters.value.sampleRate !== 'all' ? filters.value.sampleRate : '',
+        duration: filters.value.duration !== 'all' ? filters.value.duration : '',
+        audioType: filters.value.audioType !== 'all' ? filters.value.audioType : ''
+      };
+      
+      // 首先获取总条数和第一页数据
+      const firstPageData = await audiosApi.getAll(fetchParams);
+      const totalCount = firstPageData.total || 0;
+      
+      if (totalCount === 0) {
+        selectedAudios.value = [];
+        loading.value = originalLoading;
+        return;
+      }
+      
+      // 直接从后端获取所有ID，避免获取完整音频数据
+      // 如果后端不支持批量获取ID，则使用当前页的ID类型来处理
+      const idType = firstPageData.items.length > 0 ? typeof firstPageData.items[0].id : 'number';
+      
+      // 优化：如果数据量较小，直接获取所有数据
+      if (totalCount <= 1000) {
+        fetchParams.perPage = totalCount;
+        const allData = await audiosApi.getAll(fetchParams);
+        const allIds = allData.items.map(audio => {
+          if (idType === 'number') {
+            return Number(audio.id);
+          }
+          return audio.id;
+        });
+        // 异步更新所有ID，确保UI响应
+        selectedAudios.value = allIds;
+      } else {
+        // 数据量大时，分批获取ID，每批1000条
+        const allIds = [];
+        let currentFetchPage = 1;
+        let remainingCount = totalCount;
+        
+        while (remainingCount > 0) {
+          fetchParams.page = currentFetchPage;
+          const pageData = await audiosApi.getAll(fetchParams);
+          
+          if (pageData.items && pageData.items.length > 0) {
+            // 只提取ID，不处理其他数据
+            const pageIds = pageData.items.map(audio => {
+              if (idType === 'number') {
+                return Number(audio.id);
+              }
+              return audio.id;
+            });
+            allIds.push(...pageIds);
+            remainingCount -= pageData.items.length;
+            currentFetchPage++;
+            
+            // 每获取1000条就更新一次UI，让用户看到进度
+            if (allIds.length % 1000 === 0) {
+              selectedAudios.value = [...allIds];
+            }
+          } else {
+            remainingCount = 0;
+          }
+        }
+        
+        // 最后更新完整的ID列表
+        selectedAudios.value = allIds;
+      }
+      
+    } catch (err) {
+      console.error('获取所有音频失败:', err);
+      alert('获取所有音频失败，请重试');
+      // 出错时重置全选状态
+      if (selectAllCheckbox) {
+        selectAllCheckbox.checked = false;
+      }
+      selectedAudios.value = [];
+    } finally {
+      loading.value = originalLoading;
+    }
+  };
+  
+  // 启动异步获取
+  fetchAllPages();
+}
+
+// 切换单个音频选择状态
+function toggleAudioSelection(audioId) {
+  const index = selectedAudios.value.indexOf(audioId);
+  if (index === -1) {
+    selectedAudios.value.push(audioId);
+  } else {
+    selectedAudios.value.splice(index, 1);
+    // 如果取消选择了某个音频，全选复选框应该变为未勾选状态
+    const selectAllCheckbox = document.getElementById('selectAll');
+    if (selectAllCheckbox) {
+      selectAllCheckbox.checked = false;
+    }
+  }
+}
+
+// 打开上传模态框
+async function openUploadModal() {
+  console.log('[GlobalModal] AudioImport: 打开上传音频文件模态框');
+  
+  // 确保翻译方向数据已加载
+  await fetchTranslationDirections();
+  
+  const manager = getModalManager();
+  
+  // 构造测试用例生成选项
+  const testCaseOptions = [];
+  
+  // 音频类型选项
+  testCaseOptions.push({
+    key: 'audioType',
+    type: 'select',
+    label: '音频类型',
+    options: [
+      { value: 'dry', label: '干声 (信号音频)' },
+      { value: 'noise', label: '噪声' },
+      { value: 'prompt', label: '提示词音频' }
+    ],
+    defaultValue: 'dry'
+  });
+  
+  // 提取唯一的源语言列表（过滤掉undefined值）
+  const uniqueSourceLanguages = [...new Set(translationDirections.value.map(dir => dir.source_language).filter(lang => lang !== undefined))];
+  
+  // 源语言选项
+  testCaseOptions.push({
+    key: 'sourceLanguage',
+    type: 'select',
+    label: '音频源语言',
+    options: [
+      { value: '', label: '请选择源语言' },
+      ...uniqueSourceLanguages.map(lang => ({ 
+        value: lang, 
+        label: lang.toUpperCase() 
+      }))
+    ],
+    defaultValue: ''
+  });
+  
+  // 翻译方向选项（当生成测试用例时显示，过滤掉无效的翻译方向）
+  testCaseOptions.push({
+    key: 'translationDirectionId',
+    type: 'select',
+    label: '翻译方向',
+    options: [
+      { value: '', label: '请选择翻译方向' },
+      ...translationDirections.value.filter(dir => 
+        dir.id && dir.source_language && dir.target_language
+      ).map(dir => ({
+        value: dir.id,
+        label: `${dir.source_language} → ${dir.target_language}${dir.description ? ` (${dir.description})` : ''}`
+      }))
+    ],
+    defaultValue: ''
+  });
+  
+  // 生成测试用例选项 - 始终传递所有选项，由UploadFileModal根据状态决定显示
+  testCaseOptions.push({
+    key: 'createTestCase',
+    type: 'boolean',
+    label: '为每个音频生成对应的测试用例',
+    defaultValue: uploadOptions.value.createTestCase
+  });
+  
+  // 测试类型选项
+  testCaseOptions.push({
+    key: 'testType',
+    type: 'radio',
+    label: '测试类型',
+    options: [
+      { value: 'api', label: 'API 测试' },
+      { value: 'e2e', label: '端到端测试 (E2E)' }
+    ],
+    defaultValue: uploadOptions.value.testType || 'api'
+  });
+  
+  // 播放设备选项（仅E2E）
+  if (playbackDevices.value.length > 0) {
+    testCaseOptions.push({
+      key: 'playbackDeviceId',
+      type: 'select',
+      label: '播放设备',
+      options: [
+        { value: '', label: '请选择播放设备' },
+        ...playbackDevices.value.map(d => ({ value: d.id, label: d.name }))
+      ],
+      defaultValue: uploadOptions.value.playbackDeviceId || ''
+    });
+  }
+  
+  // SPL选项
+  testCaseOptions.push({
+    key: 'defaultSpl',
+    type: 'number',
+    label: '声压级 (SPL)',
+    defaultValue: uploadOptions.value.spl || 65,
+    min: 0,
+    max: 140,
+    hint: '单位: dB SPL，默认值 65'
+  });
+  
+  // 用例分组
+  testCaseOptions.push({
+    key: 'groupNameType',
+    type: 'radio',
+    label: '用例分组',
+    options: [
+      { value: 'root', label: '根目录名' },
+      { value: 'custom', label: '自定义' }
+    ],
+    defaultValue: uploadOptions.value.groupNameType || 'root'
+  });
+  
+  // 自定义分组名称
+  testCaseOptions.push({
+    key: 'customGroupName',
+    type: 'text',
+    label: '自定义分组名称',
+    defaultValue: uploadOptions.value.customGroupName || '',
+    placeholder: '请输入分组名称',
+    hint: '当选择"自定义"时使用'
+  });
+  
+  manager.openModal(MODAL_TYPES.UPLOAD_FILE, {
+    title: '上传音频文件',
+    supportedFormats: ['mp3', 'wav', 'flac', 'aac', 'm4a'],
+    acceptedFileTypes: '.mp3,.wav,.flac,.aac,.m4a',
+    maxFileSize: 100 * 1024 * 1024, // 100MB
+    multiple: false,
+    uploadOptions: testCaseOptions,
+    onSubmit: async (data) => {
+      console.log('[GlobalModal] AudioImport: 处理上传模态框确认事件', data);
+      
+      // 更新上传选项
+      uploadOptions.value.createTestCase = data.createTestCase || false;
+      uploadOptions.value.testType = data.testType || 'api';
+      uploadOptions.value.playbackDeviceId = data.playbackDeviceId || null;
+      uploadOptions.value.spl = data.defaultSpl || 65.0;
+      uploadOptions.value.groupNameType = data.groupNameType || 'root';
+      uploadOptions.value.customGroupName = data.customGroupName || '';
+      uploadOptions.value.audioType = data.audioType || 'dry';
+      uploadOptions.value.sourceLanguage = data.sourceLanguage || '';
+      
+      // 设置选中的文件
+      selectedFilesForUpload.value = data.files || [];
+      
+      // 保存进度更新回调
+      const onProgressUpdate = data.onProgressUpdate;
+      const onUploadComplete = data.onUploadComplete;
+      const onUploadError = data.onUploadError;
+      const onCancelUpload = data.onCancelUpload;
+      
+      try {
+        // 开始分块上传
+        await startUpload(onProgressUpdate, onUploadComplete, onUploadError, onCancelUpload);
+      } catch (err) {
+        console.error('上传失败:', err);
+        if (onUploadError) {
+          onUploadError(err);
+        }
+      }
+    },
+    onCancel: () => {
+      console.log('[GlobalModal] AudioImport: 处理上传模态框取消事件');
+      // 取消正在进行的上传任务
+      pauseUploadTask();
+    },
+    // 处理翻译方向变化事件，自动设置源语言
+    onTranslationDirectionChanged: (directionId) => {
+      console.log('[GlobalModal] AudioImport: 翻译方向变化', directionId);
+      // 查找对应的翻译方向
+      const direction = translationDirections.value.find(dir => dir.id === directionId);
+      if (direction && direction.source_language) {
+        // 更新上传选项中的源语言
+        uploadOptions.value.sourceLanguage = direction.source_language;
+      }
+    }
+  });
+}
+
+
+
+
+
+// 打开批量文件夹导入模态框
+async function openFolderImportModal() {
+  console.log('[GlobalModal] AudioImport: 打开批量从文件夹导入模态框');
+  
+  // 确保翻译方向数据已加载
+  await fetchTranslationDirections();
+  
+  const manager = getModalManager();
+  
+  // 构造测试用例生成选项
+  const testCaseOptions = [];
+  
+  // 音频类型选项 - 批量导入不允许选择提示词音频类型
+  testCaseOptions.push({
+    key: 'audioType',
+    type: 'select',
+    label: '音频类型',
+    options: [
+      { value: 'dry', label: '干声 (信号音频)' },
+      { value: 'noise', label: '噪声' }
+    ],
+    defaultValue: 'dry'
+  });
+  
+  // 提取唯一的源语言列表（过滤掉undefined值）
+  const uniqueSourceLanguages = [...new Set(translationDirections.value.map(dir => dir.source_language).filter(lang => lang !== undefined))];
+  
+  // 源语言选项
+  testCaseOptions.push({
+    key: 'sourceLanguage',
+    type: 'select',
+    label: '音频源语言',
+    options: [
+      { value: '', label: '请选择源语言' },
+      ...uniqueSourceLanguages.map(lang => ({ 
+        value: lang, 
+        label: lang.toUpperCase() 
+      }))
+    ],
+    defaultValue: ''
+  });
+  
+  // 翻译方向选项（当生成测试用例时显示，过滤掉无效的翻译方向）
+  testCaseOptions.push({
+    key: 'translationDirectionId',
+    type: 'select',
+    label: '翻译方向',
+    options: [
+      { value: '', label: '请选择翻译方向' },
+      ...translationDirections.value.filter(dir => 
+        dir.id && dir.source_language && dir.target_language
+      ).map(dir => ({
+        value: dir.id,
+        label: `${dir.source_language} → ${dir.target_language}${dir.description ? ` (${dir.description})` : ''}`
+      }))
+    ],
+    defaultValue: ''
+  });
+  
+  // 生成测试用例选项
+  testCaseOptions.push({
+    key: 'createTestCase',
+    type: 'boolean',
+    label: '为每个音频生成对应的测试用例',
+    defaultValue: folderImportOptions.value.createTestCase
+  });
+  
+  // 测试类型选项
+  testCaseOptions.push({
+    key: 'testType',
+    type: 'radio',
+    label: '测试类型',
+    options: [
+      { value: 'api', label: 'API 测试' },
+      { value: 'e2e', label: '端到端测试 (E2E)' }
+    ],
+    defaultValue: folderImportOptions.value.testType || 'api'
+  });
+  
+  // 播放设备选项（仅E2E）
+  if (playbackDevices.value.length > 0) {
+    testCaseOptions.push({
+      key: 'playbackDeviceId',
+      type: 'select',
+      label: '播放设备',
+      options: [
+        { value: '', label: '请选择播放设备' },
+        ...playbackDevices.value.map(d => ({ value: d.id, label: d.name }))
+      ],
+      defaultValue: folderImportOptions.value.playbackDeviceId || ''
+    });
+  }
+  
+  // SPL选项
+  testCaseOptions.push({
+    key: 'defaultSpl',
+    type: 'number',
+    label: '声压级 (SPL)',
+    defaultValue: folderImportOptions.value.spl || 65,
+    min: 0,
+    max: 140,
+    hint: '单位: dB SPL，默认值 65'
+  });
+  
+  // 用例分组
+  testCaseOptions.push({
+    key: 'groupNameType',
+    type: 'radio',
+    label: '用例分组',
+    options: [
+      { value: 'root', label: '根目录名' },
+      { value: 'custom', label: '自定义' }
+    ],
+    defaultValue: folderImportOptions.value.groupNameType || 'root'
+  });
+  
+  // 自定义分组名称
+  testCaseOptions.push({
+    key: 'customGroupName',
+    type: 'text',
+    label: '自定义分组名称',
+    defaultValue: folderImportOptions.value.customGroupName || '',
+    placeholder: '请输入分组名称',
+    hint: '当选择"自定义"时使用'
+  });
+  
+  manager.openModal(MODAL_TYPES.FOLDER_IMPORT, {
+    title: '批量从文件夹导入',
+    uploadOptions: testCaseOptions,
+    onSubmit: handleFolderImport,
+    onCancel: () => {
+      console.log('[GlobalModal] AudioImport: 处理文件夹导入模态框取消事件');
+      // 取消正在进行的上传任务
+      pauseUploadTask();
+    }
+  });
+}
+
+// 处理批量文件夹导入确认
+async function handleFolderImport(event) {
+  console.log('AudioImport: 处理批量文件夹导入', event);
+  const { config, files } = event;
+  
+  if (!files || files.length === 0) {
+    alert('请先选择文件夹');
+    return;
+  }
+  
+  // 更新folderImportOptions
+  folderImportOptions.value = {
+    createTestCase: config.createTestCase || false,
+    testType: config.testType || 'api',
+    audioType: config.audioType || 'dry',
+    playbackDeviceId: config.playbackDeviceId || null,
+    spl: config.defaultSpl || 65.0,
+    groupNameType: config.groupNameType || 'root',
+    customGroupName: config.customGroupName || '',
+    sourceLanguage: config.sourceLanguage || '',
+    translationDirectionId: config.translationDirectionId || ''
+  };
+  
+  // 更新uploadOptions，以便在startUpload中使用
+  uploadOptions.value = {
+    createTestCase: config.createTestCase || false,
+    testType: config.testType || 'api',
+    audioType: config.audioType || 'dry',
+    playbackDeviceId: config.playbackDeviceId || null,
+    spl: config.defaultSpl || 65.0,
+    groupNameType: config.groupNameType || 'root',
+    customGroupName: config.customGroupName || '',
+    sourceLanguage: config.sourceLanguage || '',
+    translationDirectionId: config.translationDirectionId || ''
+  };
+  
+  // 关闭模态框
+  const manager = getModalManager();
+  manager.closeModal(MODAL_TYPES.FOLDER_IMPORT);
+  
+  // 1. 立即更新进度为1%，确保进度条显示
+  uploadProgress.value = 1;
+  
+  // 2. 确保UI更新
+  if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+  
+  // 使用模态框返回的文件进行上传
+  loading.value = true;
+  
+  try {
+    // 设置选中的文件
+    selectedFilesForUpload.value = files;
+    
+    // 生成文件清单
+    fileList.value = await generateFileList(files, (progress) => {
+      // 实时更新MD5计算进度
+      const md5Progress = 1 + Math.floor(progress * 29); // 1% + 29% = 30%
+      uploadProgress.value = md5Progress;
+    });
+    
+    if (fileList.value.length === 0) {
+      throw new Error('没有找到支持的音频文件，请检查文件格式是否正确');
+    }
+    
+    // 开始上传
+    await startUpload();
+  } catch (err) {
+    console.error('文件夹导入失败:', err);
+    if (err.name === 'AbortError') {
+      console.log('文件夹导入任务已暂停');
+      uploadStatus.value = 'paused';
+      // 保留当前进度，不重置
+    } else {
+      alert('导入失败: ' + err.message);
+      uploadProgress.value = 0;
+    }
+  } finally {
+    if (uploadStatus.value !== 'paused') {
+      loading.value = false;
+    }
+  }
+}
+
+// 执行批量文件夹导入（使用配置）
+async function performFolderImportWithConfig() {
+  console.log('AudioImport: 执行批量文件夹导入');
+  
+  try {
+    if (window.electronAPI && window.electronAPI.invoke) {
+      // Electron环境：使用IPC调用选择文件夹
+      const folderPath = await window.electronAPI.invoke('select-folder');
+      if (!folderPath) return;
+
+      loading.value = true;
+      
+      // 获取文件夹中的所有音频文件
+      const groupName = getFolderImportGroupName(pathBasename(folderPath));
+      const response = await performFolderImport(folderPath, true, groupName);
+      alert(response.message || `成功导入 ${response.importedCount} 个音频文件${response.testCaseCount > 0 ? `，并创建了 ${response.testCaseCount} 个测试用例` : ''}`);
+      fetchAudios();
+    } else {
+      // 浏览器环境：使用HTML5的文件夹选择API
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.webkitdirectory = true;
+        input.multiple = true;
+        input.accept = '.mp3,.wav,.flac,.aac,.m4a';
+        
+        input.onchange = async (e) => {
+          const files = Array.from(e.target.files);
+          if (files.length === 0) {
+            resolve();
+            return;
+          }
+          
+          loading.value = true;
+          // 设置进度为1%，在计算MD5前显示进度条
+          uploadProgress.value = 1;
+          
+          try {
+            const result = await performFolderImport(files, false);
+            
+            uploadProgress.value = 90;
+            await fetchAudios();
+            uploadProgress.value = 100;
+            
+            setTimeout(() => {
+              uploadProgress.value = 0;
+            }, 500);
+            
+            alert(`成功导入 ${result.importedCount} 个音频文件${result.testCaseCount > 0 ? `，并创建了 ${result.testCaseCount} 个测试用例` : ''}`);
+          } catch (err) {
+            console.error('文件夹导入失败:', err);
+            alert('文件夹导入失败: ' + err.message);
+            uploadProgress.value = 0;
+          } finally {
+            loading.value = false;
+            resolve();
+          }
+        };
+        
+        input.click();
+      });
+    }
+  } catch (err) {
+    console.error('文件夹导入失败:', err);
+    alert('文件夹导入失败: ' + err.message);
+    loading.value = false;
+  }
+}
+
+// 关闭模态框
+function closeModal(modalName) {
+  switch(modalName) {
+    case 'uploadModal':
+      useModalStore().closeUploadModal();
+      break;
+    case 'urlImportModal':
+      useModalStore().closeUrlImportModal();
+      break;
+    case 'convertAudioModal':
+      useModalStore().closeConvertModal();
+      break;
+    case 'metadataModal':
+       useModalStore().closeMetadataModal();
+       break;
+    case 'folderImportModal':
+      const manager = getModalManager();
+      manager.closeModal(MODAL_TYPES.FOLDER_IMPORT);
+      break;
+  }
+}
+
+// 上传任务管理
+const uploadTasks = ref(getLocalTasks());
+const currentTask = ref(null);
+const selectedFilesForUpload = ref([]);
+const fileList = ref([]); // 文件清单
+const currentUploadingFile = ref(null);
+const uploadStatus = ref('idle'); // idle, preparing, uploading, paused, completed, failed
+
+// 取消正在进行的上传任务的信号
+let abortController = null;
+
+// 暂停上传任务
+function pauseUploadTask() {
+  try {
+    if (uploadStatus?.value === 'uploading' || uploadStatus?.value === 'preparing') {
+      uploadStatus.value = 'paused';
+      // 保存任务状态
+      if (currentTask?.value) {
+        currentTask.value.status = 'paused';
+        saveLocalTask(currentTask.value);
+        uploadTasks.value = getLocalTasks();
+      }
+      // 取消当前请求
+      if (abortController) {
+        abortController.abort();
+        abortController = null;
+      }
+      console.log('上传任务已暂停');
+    }
+  } catch (error) {
+    console.error('暂停上传任务失败:', error);
+    // 如果ref变量未定义，忽略错误
+  }
+}
+
+// 检查文件是否支持
+function isFileSupported(fileName) {
+  const supportedExts = ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma', 'alac', 'opus'];
+  const ext = fileName.toLowerCase().split('.').pop();
+  return supportedExts.includes(ext);
+}
+
+// 文件上传前验证
+function validateFile(file) {
+  const errors = [];
+  
+  // 检查文件格式
+  if (!isFileSupported(file.name)) {
+    errors.push(`文件格式不支持: ${file.name}`);
+  }
+  
+  // 检查文件大小（最大100MB）
+  const maxSize = 100 * 1024 * 1024; // 100MB
+  if (file.size > maxSize) {
+    errors.push(`文件过大: ${file.name} (最大支持100MB)`);
+  }
+  
+  return errors;
+}
+
+// 批量验证文件
+function validateFiles(files) {
+  const allErrors = [];
+  const validFiles = [];
+  
+  for (const file of files) {
+    const errors = validateFile(file);
+    if (errors.length === 0) {
+      validFiles.push(file);
+    } else {
+      allErrors.push(...errors);
+    }
+  }
+  
+  return {
+    validFiles,
+    errors: allErrors
+  };
+}
+
+// 生成文件清单
+async function generateFileList(files, onProgressUpdate = null) {
+  const list = [];
+  const totalFiles = files.length;
+  let processedFiles = 0;
+  
+  // 立即更新进度，表示开始处理
+  if (onProgressUpdate) {
+    onProgressUpdate(0.01);
+    // 使用requestAnimationFrame确保UI更新
+    if (typeof window !== 'undefined' && window.requestAnimationFrame) {
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+  }
+  
+  // 使用Promise.allSettled并发处理文件，提高性能
+  const processingPromises = files.map(async (file, index) => {
+    const fileName = typeof file === 'string' ? pathBasename(file) : file.name;
+    
+    // 跳过不支持的文件格式
+    if (!isFileSupported(fileName)) {
+      processedFiles++;
+      if (onProgressUpdate) {
+        const progress = Math.min(1, processedFiles / totalFiles);
+        onProgressUpdate(progress);
+      }
+      return null;
+    }
+    
+    // 获取相对路径，包含原文件结构
+    const relativePath = typeof file === 'string' ? file : file.webkitRelativePath || fileName;
+    const fileSize = typeof file === 'string' ? 0 : file.size;
+    
+    // 创建fileItem对象
+    const fileItem = {
+      name: fileName,
+      path: relativePath,
+      relativePath: relativePath, // 新增relativePath字段，用于保持原文件结构
+      size: fileSize,
+      md5: '',
+      status: 'pending',
+      uploadedSize: 0,
+      totalSize: fileSize
+    };
+    
+    // 如果是浏览器环境下的File对象，计算MD5
+    if (typeof file !== 'string') {
+      // 传递进度回调，实时更新MD5计算进度
+      const md5ProgressCallback = (md5Progress) => {
+        if (onProgressUpdate) {
+          // 计算当前文件的处理进度（包含MD5计算）
+          const currentFileProgress = (index + md5Progress) / totalFiles;
+          onProgressUpdate(currentFileProgress);
+        }
+      };
+      
+      // 计算MD5
+      try {
+        fileItem.md5 = await calculateFileMD5(file, md5ProgressCallback);
+      } catch (error) {
+        console.error(`计算文件 ${fileName} 的MD5失败:`, error);
+        fileItem.md5 = '';
+      }
+    } else {
+      fileItem.md5 = '';
+    }
+    
+    processedFiles++;
+    // 计算当前总进度并调用回调
+    if (onProgressUpdate) {
+      const progress = Math.min(1, processedFiles / totalFiles);
+      onProgressUpdate(progress);
+    }
+    
+    return fileItem;
+  });
+  
+  // 等待所有文件处理完成
+  const results = await Promise.allSettled(processingPromises);
+  
+  // 收集成功处理的文件
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value) {
+      list.push(result.value);
+    }
+  }
+  
+  // 最终更新进度为100%
+  if (onProgressUpdate) {
+    onProgressUpdate(1);
+  }
+  
+  return list;
+}
+
+// 初始化任务
+function initUploadTask() {
+  // 检查是否已经有相同文件列表的待上传任务
+  const existingTask = uploadTasks.value.find(task => {
+    if (task.status !== 'preparing' && task.status !== 'pending') {
+      return false;
+    }
+    
+    // 比较文件数量
+    if (task.totalFiles !== fileList.value.length) {
+      return false;
+    }
+    
+    // 比较文件名和大小
+    const taskFileNames = task.files.map(f => `${f.name}_${f.size}`).sort();
+    const currentFileNames = fileList.value.map(f => `${f.name}_${f.size}`).sort();
+    
+    return taskFileNames.join(',') === currentFileNames.join(',');
+  });
+  
+  if (existingTask) {
+    console.log('使用现有待上传任务:', existingTask.taskId);
+    currentTask.value = existingTask;
+    return existingTask;
+  }
+  
+  const taskId = generateTaskId();
+  const task = {
+    taskId,
+    createdAt: new Date().toISOString(),
+    status: 'preparing',
+    totalFiles: fileList.value.length,
+    completedFiles: 0,
+    failedFiles: 0,
+    totalSize: fileList.value.reduce((sum, file) => sum + file.size, 0),
+    uploadedSize: 0,
+    files: fileList.value,
+    options: { ...uploadOptions.value }
+  };
+  
+  currentTask.value = task;
+  return task;
+}
+
+// 上传单个文件
+async function uploadSingleFile(file, task, fileIndex, onProgressUpdate) {
+  if (typeof file === 'string') {
+    // Electron环境下处理文件路径
+    return await uploadElectronFile(file, task, fileIndex, onProgressUpdate);
+  }
+  
+  // 浏览器环境下处理File对象
+  const fileItem = task.files[fileIndex];
+  fileItem.status = 'uploading';
+  currentUploadingFile.value = fileItem.name;
+  
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('taskId', task.taskId);
+  
+  // 添加音频类型
+  formData.append('audioType', uploadOptions.value.audioType || 'dry');
+  formData.append('sourceLanguage', uploadOptions.value.sourceLanguage || '');
+  
+  // 添加翻译方向ID
+  // 情况1：提示词音频
+  // 情况2：非提示词音频但勾选了生成测试用例
+  if ((uploadOptions.value.audioType === 'prompt' || uploadOptions.value.createTestCase) && uploadOptions.value.translationDirectionId) {
+    formData.append('translationDirectionId', uploadOptions.value.translationDirectionId);
+  }
+  
+  // 添加测试用例生成选项
+      if (uploadOptions.value.createTestCase) {
+        formData.append('createTestCase', 'true');
+        formData.append('testType', uploadOptions.value.testType);
+        if (uploadOptions.value.playbackDeviceId) {
+          formData.append('defaultPlaybackDeviceId', uploadOptions.value.playbackDeviceId.toString());
+        }
+        // API测试不需要配置声压级，只有E2E测试需要
+        if (uploadOptions.value.testType === 'e2e') {
+          formData.append('defaultSpl', uploadOptions.value.spl.toString());
+        }
+        const groupName = getEffectiveGroupName();
+        if (groupName) {
+          formData.append('testCaseGroupName', groupName);
+        }
+        // 确保生成的用例直接继承音频标签
+        formData.append('inheritTags', 'true');
+      }
+  
+  try {
+    // 模拟进度更新（传统上传无法获取实时进度，使用模拟进度）
+    let progress = Math.floor((task.completedFiles / task.totalFiles) * 100);
+    uploadProgress.value = progress;
+    if (onProgressUpdate) {
+      onProgressUpdate(progress);
+    }
+    
+    const response = await audiosApi.upload(formData);
+    fileItem.status = 'completed';
+    fileItem.uploadedSize = fileItem.size;
+    // 确保completedFiles不会超过totalFiles
+    task.completedFiles = Math.min(task.completedFiles + 1, task.totalFiles);
+    updateUploadProgress(task);
+    
+    // 更新进度
+    progress = Math.floor((task.completedFiles / task.totalFiles) * 100);
+    uploadProgress.value = progress;
+    if (onProgressUpdate) {
+      onProgressUpdate(progress);
+    }
+    
+    // 上传成功不需要保存到本地
+    return true;
+  } catch (error) {
+    console.error('上传失败:', error);
+    fileItem.status = 'failed';
+    task.status = 'failed';
+    task.failedFiles++;
+    updateUploadProgress(task);
+    saveLocalTask(task);
+    uploadTasks.value = getLocalTasks();
+    return false;
+  }
+}
+
+// 更新上传进度
+function updateUploadProgress(task) {
+  const uploadedSize = task.files.reduce((sum, file) => sum + file.uploadedSize, 0);
+  task.uploadedSize = uploadedSize;
+  uploadProgress.value = Math.floor((uploadedSize / task.totalSize) * 100);
+  // 实时更新统计信息，确保状态卡片及时刷新
+  updateStats();
+}
+
+// 处理Electron环境下的文件上传
+async function uploadElectronFile(filePath, task, fileIndex, onProgressUpdate) {
+  const fileItem = task.files[fileIndex];
+  fileItem.status = 'uploading';
+  currentUploadingFile.value = fileItem.name;
+  
+  try {
+    // 模拟进度更新
+    let progress = Math.floor((task.completedFiles / task.totalFiles) * 100);
+    uploadProgress.value = progress;
+    if (onProgressUpdate) {
+      onProgressUpdate(progress);
+    }
+    
+    const response = await audiosApi.upload({
+      file: filePath,
+      audioType: task.options.audioType || 'dry',
+      createTestCase: task.options.createTestCase,
+      testType: task.options.testType,
+      defaultPlaybackDeviceId: task.options.playbackDeviceId,
+      defaultSpl: task.options.spl,
+      testCaseGroupName: getEffectiveGroupName(),
+      taskId: task.taskId
+    });
+    
+    fileItem.status = 'completed';
+    fileItem.uploadedSize = fileItem.size;
+    // 确保completedFiles不会超过totalFiles
+    task.completedFiles = Math.min(task.completedFiles + 1, task.totalFiles);
+    updateUploadProgress(task);
+    
+    // 更新进度
+    progress = Math.floor((task.completedFiles / task.totalFiles) * 100);
+    uploadProgress.value = progress;
+    if (onProgressUpdate) {
+      onProgressUpdate(progress);
+    }
+    
+    if (task.status !== 'failed') {
+      // 只有恢复的任务才需要保存到本地
+      if (existingTask) {
+        saveLocalTask(task);
+      }
+    }
+    return true;
+  } catch (error) {
+    console.error('Electron文件上传失败:', error);
+    fileItem.status = 'failed';
+    task.status = 'failed';
+    task.failedFiles++;
+    updateUploadProgress(task);
+    saveLocalTask(task);
+    uploadTasks.value = getLocalTasks();
+    return false;
+  }
+}
+
+async function pickFiles() {
+  try {
+    if (window.electronAPI && window.electronAPI.invoke) {
+      // Electron环境下使用IPC调用
+      const files = await window.electronAPI.invoke('select-file', {
+        filters: [{ name: 'Audio Files', extensions: ['mp3', 'wav', 'flac', 'aac'] }]
+      });
+      if (files && files.length > 0) {
+        selectedFilesForUpload.value = files;
+        // 生成文件清单
+        fileList.value = await generateFileList(files);
+      }
+    } else {
+      // 浏览器环境下使用HTML5文件选择器
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.mp3,.wav,.flac,.aac';
+      input.multiple = true;
+      
+      return new Promise((resolve) => {
+        input.onchange = async (e) => {
+          const files = Array.from(e.target.files);
+          if (files.length > 0) {
+            selectedFilesForUpload.value = files;
+            // 生成文件清单
+            fileList.value = await generateFileList(files);
+          }
+          resolve();
+        };
+        input.click();
+      });
+    }
+  } catch (err) {
+    console.error('选择文件失败:', err);
+  }
+}
+
+// 处理拖拽上传
+function handleDrop(event) {
+  const files = event.dataTransfer.files;
+  if (window.electronAPI && window.electronAPI.invoke) {
+    // Electron环境下使用文件路径
+    selectedFilesForUpload.value = Array.from(files).map(f => f.path);
+  } else {
+    // 浏览器环境下使用文件对象
+    selectedFilesForUpload.value = Array.from(files);
+  }
+  console.log('拖拽上传文件:', selectedFilesForUpload.value);
+}
+
+
+
+
+
+
+
+// 清理无效任务
+function cleanInvalidTasks() {
+  const now = new Date().getTime();
+  const dayMs = 24 * 60 * 60 * 1000; // 24小时
+  const hourMs = 60 * 60 * 1000; // 1小时
+  
+  const tasks = getLocalTasks();
+  const validTasks = tasks.filter(task => {
+    const taskTime = new Date(task.createdAt).getTime();
+    const taskAge = now - taskTime;
+    
+    // 已经完成或失败的任务，超过24小时则清理
+    if (['completed', 'failed'].includes(task.status)) {
+      return taskAge < dayMs;
+    }
+    
+    // 状态为待上传或准备中，但创建时间超过1小时则清理
+    if (['pending', 'preparing'].includes(task.status)) {
+      return taskAge < hourMs;
+    }
+    
+    // 其他状态的任务保留
+    return true;
+  });
+  
+  if (validTasks.length !== tasks.length) {
+    localStorage.setItem('audioUploadTasks', JSON.stringify(validTasks));
+    uploadTasks.value = validTasks;
+    console.log(`清理了 ${tasks.length - validTasks.length} 个无效任务`);
+  }
+}
+
+// 检查并恢复未完成的上传任务（供组件调用）
+async function checkAndResumeTasks() {
+  // 先清理无效任务
+  cleanInvalidTasks();
+  
+  const tasks = getLocalTasks();
+  if (tasks.length === 0) {
+    return;
+  }
+  
+  // 过滤出未完成的任务
+  const pendingTasks = tasks.filter(task => 
+    task.status !== 'completed' && task.status !== 'failed'
+  );
+  
+  if (pendingTasks.length === 0) {
+    return;
+  }
+  
+  // 询问用户是否恢复上传
+  const task = pendingTasks[0]; // 只恢复最新的一个任务
+  const shouldResume = confirm(
+    `检测到未完成的上传任务（${task.completedFiles}/${task.totalFiles} 个文件，已上传 ${formatFileSize(task.uploadedSize)}/${formatFileSize(task.totalSize)}），是否继续上传？`
+  );
+  
+  if (shouldResume) {
+    // 恢复任务
+    await resumeUploadTask(task.taskId);
+  } else {
+    // 删除任务
+    removeLocalTask(task.taskId);
+    uploadTasks.value = getLocalTasks();
+  }
+}
+
+// 批量从文件夹导入 - 打开全局模态框
+function batchImportFromFolder() {
+  console.log('[GlobalModal] AudioImport: 通过批量导入按钮打开批量从文件夹导入模态框');
+  openFolderImportModal();
+}
+
+// 确认并执行批量文件夹导入
+async function confirmFolderImport() {
+  console.log('[GlobalModal] AudioImport: 确认批量文件夹导入');
+  const manager = getModalManager();
+  manager.closeModal(MODAL_TYPES.FOLDER_IMPORT);
+  
+  try {
+    if (window.electronAPI && window.electronAPI.invoke) {
+      // Electron环境：使用IPC调用选择文件夹
+      const folderPath = await window.electronAPI.invoke('select-folder');
+      if (!folderPath) return;
+
+      loading.value = true;
+      
+      // 获取文件夹中的所有音频文件
+      const groupName = getFolderImportGroupName(pathBasename(folderPath));
+      const response = await performFolderImport(folderPath, true, groupName);
+      alert(response.message || `成功导入 ${response.importedCount} 个音频文件${response.testCaseCount > 0 ? `，并创建了 ${response.testCaseCount} 个测试用例` : ''}`);
+      fetchAudios();
+    } else {
+      // 浏览器环境：使用HTML5的文件夹选择API
+      return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.webkitdirectory = true;
+        input.multiple = true;
+        input.accept = '.mp3,.wav,.flac,.aac';
+        
+        input.onchange = async (e) => {
+          const files = Array.from(e.target.files);
+          if (files.length === 0) {
+            resolve();
+            return;
+          }
+          
+          loading.value = true;
+          uploadProgress.value = 0;
+          
+          try {
+            const result = await performFolderImport(files, false);
+            
+            uploadProgress.value = 90;
+            await fetchAudios();
+            uploadProgress.value = 100;
+            
+            setTimeout(() => {
+              uploadProgress.value = 0;
+            }, 500);
+            
+            alert(`成功导入 ${result.importedCount} 个音频文件${result.testCaseCount > 0 ? `，并创建了 ${result.testCaseCount} 个测试用例` : ''}`);
+          } catch (err) {
+            console.error('文件夹导入失败:', err);
+            alert('文件夹导入失败: ' + err.message);
+            uploadProgress.value = 0;
+          } finally {
+            loading.value = false;
+            resolve();
+          }
+        };
+        
+        input.click();
+      });
+    }
+  } catch (err) {
+    console.error('文件夹导入失败:', err);
+    alert('文件夹导入失败: ' + err.message);
+    loading.value = false;
+  }
+}
+
+// 执行批量文件夹导入的实际逻辑
+async function performFolderImport(source, isElectron, groupName = null) {
+  let importedCount = 0;
+  let testCaseCount = 0;
+  
+  if (isElectron) {
+    // Electron 环境
+    const folderImportParams = {
+      folder_path: source,
+      audioType: folderImportOptions.value.audioType || 'dry',
+      createTestCase: folderImportOptions.value.createTestCase,
+      testType: folderImportOptions.value.testType,
+      defaultPlaybackDeviceId: folderImportOptions.value.playbackDeviceId,
+      testCaseGroupName: groupName,
+      // 确保生成的用例直接继承音频标签
+      inheritTags: true
+    };
+    
+    // API测试不需要配置声压级，只有E2E测试需要
+    if (folderImportOptions.value.testType === 'e2e') {
+      folderImportParams.defaultSpl = folderImportOptions.value.spl;
+    }
+    
+    const response = await audiosApi.folderImport(folderImportParams, { signal: abortController?.signal });
+    return {
+      importedCount: response.data?.count || 0,
+      testCaseCount: response.data?.testCaseCount || 0,
+      message: response.message
+    };
+  } else {
+    // 浏览器环境
+    const files = source;
+    const totalFiles = files.length;
+    
+    // 获取选中的文件夹名
+    let rootFolderName = '';
+    if (files[0] && files[0].webkitRelativePath) {
+      const pathParts = files[0].webkitRelativePath.split('/');
+      if (pathParts.length > 0) {
+        rootFolderName = pathParts[0];
+      }
+    }
+    
+    const supportedAudioExts = ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma', 'alac', 'opus'];
+    
+    // 文件验证
+    const validationResult = validateFiles(files);
+    if (validationResult.errors.length > 0) {
+      // 显示验证错误
+      alert(`文件验证失败：\n${validationResult.errors.join('\n')}`);
+      return { importedCount: 0, testCaseCount: 0 };
+    }
+    
+    // 只处理支持的音频文件
+    const audioFiles = validationResult.validFiles;
+    
+    if (audioFiles.length === 0) {
+      alert('没有符合条件的音频文件');
+      return { importedCount: 0, testCaseCount: 0 };
+    }
+    
+    // 创建上传任务
+    const taskId = generateTaskId();
+    const task = {
+      taskId,
+      createdAt: new Date().toISOString(),
+      status: 'uploading',
+      totalFiles: audioFiles.length,
+      completedFiles: 0,
+      failedFiles: 0,
+      totalSize: audioFiles.reduce((sum, file) => sum + file.size, 0),
+      uploadedSize: 0,
+      files: audioFiles.map(file => ({
+        name: file.name,
+        path: file.webkitRelativePath || file.name,
+        size: file.size,
+        status: 'pending',
+        uploadedSize: 0,
+        totalSize: file.size
+      })),
+      options: { ...folderImportOptions.value }
+    };
+    
+    // 保存任务
+    saveLocalTask(task);
+    uploadTasks.value = getLocalTasks();
+    
+    // 逐个上传文件
+            for (let i = 0; i < audioFiles.length; i++) {
+              const file = audioFiles[i];
+              const fileItem = task.files[i];
+              
+              console.log('Processing audio file:', file.name);
+              const formData = new FormData();
+              formData.append('file', file);
+              
+              let relativePath = file.webkitRelativePath || file.name;
+              if (rootFolderName && !relativePath.startsWith(rootFolderName)) {
+                relativePath = `${rootFolderName}/${relativePath}`;
+              }
+              
+              formData.append('relativePath', relativePath);
+              formData.append('taskId', taskId);
+              formData.append('audioType', folderImportOptions.value.audioType || 'dry');
+              formData.append('sourceLanguage', folderImportOptions.value.sourceLanguage || '');
+              
+              // 添加翻译方向ID（如果是提示词音频且有选择）
+              if (folderImportOptions.value.audioType === 'prompt' && folderImportOptions.value.translationDirectionId) {
+                formData.append('translationDirectionId', folderImportOptions.value.translationDirectionId);
+              }
+              
+              // 添加测试用例生成选项
+              if (folderImportOptions.value.createTestCase) {
+                formData.append('createTestCase', 'true');
+                formData.append('testType', folderImportOptions.value.testType);
+                if (folderImportOptions.value.playbackDeviceId) {
+                  formData.append('defaultPlaybackDeviceId', folderImportOptions.value.playbackDeviceId.toString());
+                }
+                // API测试不需要配置声压级，只有E2E测试需要
+                if (folderImportOptions.value.testType === 'e2e') {
+                  formData.append('defaultSpl', folderImportOptions.value.spl.toString());
+                }
+                const groupName = getFolderImportGroupName(rootFolderName);
+                if (groupName) {
+                  formData.append('testCaseGroupName', groupName);
+                }
+                // 确保生成的用例直接继承音频标签
+                formData.append('inheritTags', 'true');
+              }
+              
+              try {
+                fileItem.status = 'uploading';
+                saveLocalTask(task);
+                
+                const response = await audiosApi.upload(formData, { signal: abortController?.signal });
+                fileItem.status = 'completed';
+                fileItem.uploadedSize = fileItem.size;
+                task.completedFiles++;
+                task.uploadedSize += fileItem.size;
+                importedCount++;
+                
+                if (response.testCaseId) {
+                  testCaseCount++;
+                }
+              } catch (err) {
+                console.error('Failed to upload', file.name, err);
+                fileItem.status = 'failed';
+                fileItem.errorMessage = err.message || '未知错误';
+                fileItem.errorCode = err.code || 500;
+                task.failedFiles++;
+              }
+              
+              // 更新进度
+              uploadProgress.value = Math.floor((task.uploadedSize / task.totalSize) * 90);
+              saveLocalTask(task);
+            }
+    
+    // 上传完成，更新任务状态
+    task.status = 'completed';
+    saveLocalTask(task);
+    uploadTasks.value = getLocalTasks();
+    
+    return { importedCount, testCaseCount };
+  }
+}
+
+// 批量删除
+async function batchDelete() {
+  console.log(`AudioImport: 批量删除 - 选中 ${selectedAudios.value.length} 个音频文件`);
+  if (selectedAudios.value.length === 0) return;
+  if (confirm(`确定要删除选中的 ${selectedAudios.value.length} 个音频文件吗？`)) {
+    try {
+      await audiosApi.batchAction('delete', selectedAudios.value);
+      const deletedCount = selectedAudios.value.length;
+      selectedAudios.value = [];
+      fetchAudios();
+      // 显示删除结果模态框
+  showDeleteResultModal.value = true;
+  deleteResult.value = {
+    success: true,
+    message: '批量删除成功',
+    count: deletedCount
+  };
+    } catch (err) {
+      // 显示删除结果模态框
+  showDeleteResultModal.value = true;
+  deleteResult.value = {
+    success: false,
+    message: '批量删除失败: ' + err.message,
+    count: 0
+  };
+    }
+  }
+}
+
+// 批量导出
+async function batchExport() {
+  console.log(`AudioImport: 批量导出 - 选中 ${selectedAudios.value.length} 个音频文件`);
+  if (selectedAudios.value.length === 0) return;
+  try {
+    alert('正在准备导出选中的音频...');
+    // Implement actual export logic if backend supports it
+    console.log('批量导出音频:', selectedAudios.value);
+  } catch (err) {
+    alert('导出失败: ' + err.message);
+  }
+}
+
+// 预览音频
+async function previewAudio(audioId, device = null) {
+  console.log(`AudioImport: 预览音频 - ID: ${audioId}`);
+  
+  // 如果提供了设备参数，直接使用该设备播放音频
+  if (device) {
+    await playAudioWithDevice(audioId, device);
+    return;
+  }
+  
+  // 获取当前音频信息
+  const audio = audios.value.find(a => a.id === audioId);
+  if (!audio) {
+    console.error(`AudioImport: 未找到ID为 ${audioId} 的音频`);
+    return;
+  }
+  
+  // 设置预览音频相关变量
+  currentPreviewAudioId = audioId;
+  currentPreviewAudioType = audio?.audioType || audio?.type || 'dry';
+  audioTitle.value = audio.filename || audio.name || '未知音频';
+  
+  // 直接打开音频播放器模态窗，不需要选择设备
+  showAudioPlayerModal.value = true;
+}
+
+// 使用指定设备播放音频的函数
+async function playAudioWithDevice(audioId, device) {
+  // 创建Audio对象用于播放音频
+  const audio = new Audio();
+  
+  // 标记是否已经显示过错误弹窗，防止重复显示
+  let errorShown = false;
+  
+  // 添加错误事件监听器，处理音频文件不存在等情况
+  audio.addEventListener('error', (event) => {
+    if (errorShown) return;
+    
+    let errorMessage = '音频播放失败';
+    switch (audio.error.code) {
+      case MediaError.MEDIA_ERR_ABORTED:
+        errorMessage = '音频播放被中止';
+        break;
+      case MediaError.MEDIA_ERR_NETWORK:
+        errorMessage = '网络错误导致音频无法加载';
+        break;
+      case MediaError.MEDIA_ERR_DECODE:
+        errorMessage = '音频解码失败';
+        break;
+      case MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED:
+        errorMessage = '音频源不支持或不存在';
+        break;
+      default:
+        errorMessage = '音频播放失败，未知错误';
+    }
+    console.error('音频播放错误:', event, audio.error);
+    alert(errorMessage);
+    errorShown = true;
+  });
+  
+  // 如果选择的是外部设备，调用后端API播放
+  if (device.id.startsWith('external_')) {
+    const externalDeviceId = device.id.replace('external_', '');
+    try {
+      // 调用后端API播放音频到外部设备
+      const { audiosApi } = await import('../../utils/api');
+      await audiosApi.preview(audioId, { playback_device_ids: [externalDeviceId] });
+      console.log(`开始从外部设备 ${externalDeviceId} 播放音频 ${audioId}`);
+      // 使用console.log代替alert，避免阻塞后续设备的播放
+      console.log(`已开始从外部设备 ${playbackDevices.value.find(d => d.id === externalDeviceId)?.name} 播放音频`);
+    } catch (err) {
+      console.error('外部设备播放失败:', err);
+      // 使用console.error代替alert，避免阻塞后续设备的播放
+      console.error('外部设备播放失败: ' + err.message);
+    }
+    return;
+  }
+  
+  // 设置音频源为后端提供的预览URL
+  audio.src = `/api/v1/audios/${audioId}/stream`;
+  
+  // 设置音频输出设备
+  if (audio.setSinkId) {
+    // 只有当device.id不是外部设备且不是'default'时，才尝试设置sinkId
+    // 外部设备和default设备不需要调用setSinkId
+    if (!device.id.startsWith('external_') && device.id !== 'default') {
+      try {
+        await audio.setSinkId(device.id);
+      } catch (err) {
+        console.error('设置音频输出设备失败:', err);
+        // 只在控制台输出错误，不显示alert，避免影响用户体验
+        // 使用console.warn而不是console.error，因为这不是严重错误
+        console.warn('音频将使用默认设备播放');
+      }
+    }
+  }
+  
+  // 播放音频
+  audio.play().catch(error => {
+    if (errorShown) return;
+  
+    console.error('音频播放失败:', error);
+    // 根据不同的错误类型显示更友好的提示
+    let errorMessage = '音频播放失败';
+    if (error.name === 'NotAllowedError') {
+      errorMessage = '播放音频被浏览器阻止，请检查浏览器音频设置';
+    } else if (error.name === 'NotSupportedError') {
+      errorMessage = '浏览器不支持该音频格式';
+    } else if (error.name === 'AbortError') {
+      errorMessage = '音频播放被中止';
+    } else if (error.name === 'NotFoundError') {
+      errorMessage = '音频文件不存在';
+    }
+    alert(errorMessage);
+    errorShown = true;
+  });
+  
+}
+
+// 编辑元数据
+function editMetadata(audioId) {
+  console.log(`AudioImport: 编辑元数据 - ID: ${audioId}`);
+  const audio = audios.value.find(a => a.id === audioId);
+  if (audio) {
+    // 处理不同格式的标签数据
+    let tagsArray = [];
+    if (Array.isArray(audio.tags)) {
+      tagsArray = audio.tags;
+    } else if (Array.isArray(audio.tag)) {
+      tagsArray = audio.tag;
+    } else if (typeof audio.tags === 'string' && audio.tags) {
+      tagsArray = audio.tags.split(',').map(tag => tag.trim());
+    } else if (typeof audio.tag === 'string' && audio.tag) {
+      tagsArray = audio.tag.split(',').map(tag => tag.trim());
+    }
+    
+    // 构建元数据信息
+    const metadata = {
+      id: audio.id,
+      fileName: audio.name || audio.filename || '',
+      category: audio.path || '',
+      audioType: audio.audio_type || audio.type || 'dry',
+      asrText: audio.asr_text || audio.asrText || '',
+      translations: audio.translations || [{ direction: 'zh-en', text: '' }],
+      tags: tagsArray.join(',')
+    };
+    
+    // 使用全局模态窗显示音频详情
+    const manager = getModalManager();
+    manager.openModal(MODAL_TYPES.DETAIL_VIEW, {
+      title: '音频详情',
+      data: metadata,
+      fields: [
+        { key: 'fileName', label: '文件名', className: '' },
+        { key: 'category', label: '分类', className: '' },
+        { key: 'audioType', label: '音频类型', className: '' },
+        { key: 'asrText', label: 'ASR文本', className: '' },
+        { key: 'tags', label: '标签', className: '' },
+        { key: 'translations', label: '翻译语向', className: '' }
+      ],
+      onSave: async (editedData) => {
+        console.log('AudioImport: 保存编辑的元数据', editedData);
+        try {
+          await audiosApi.updateMetadata(editedData.id, editedData);
+          alert('元数据保存成功');
+          fetchAudios();
+        } catch (err) {
+          alert('保存失败: ' + err.message);
+        }
+      }
+    });
+  }
+}
+
+// 添加翻译语向
+function addTranslationItem() {
+  console.log('AudioImport: 添加翻译语向');
+  metadataInfo.value.translations.push({
+    direction: 'zh-en',
+    text: ''
+  });
+}
+
+// 删除翻译语向
+function removeTranslationItem(index) {
+  console.log(`AudioImport: 删除翻译语向 - 索引 ${index}`);
+  if (metadataInfo.value.translations.length > 1) {
+    metadataInfo.value.translations.splice(index, 1);
+  }
+}
+
+// 保存元数据
+async function saveMetadata() {
+  console.log('AudioImport: 保存元数据');
+  try {
+    const id = metadataInfo.value.id;
+    if (id) {
+      await audiosApi.updateMetadata(id, metadataInfo.value);
+      alert('元数据保存成功');
+      fetchAudios();
+    }
+    closeModal('metadataModal');
+  } catch (err) {
+    alert('保存失败: ' + err.message);
+  }
+}
+
+// 下载音频
+function downloadAudio(audioId) {
+  console.log(`AudioImport: 下载音频 - ID: ${audioId}`);
+  const downloadUrl = `/api/v1/audios/${audioId}/stream`;
+  window.open(downloadUrl, '_blank');
+}
+
+// 删除音频
+async function deleteAudio(audioId) {
+  console.log(`AudioImport: 删除音频 - ID: ${audioId}`);
+  if (confirm('确定要删除该音频文件吗？')) {
+    try {
+      await audiosApi.delete(audioId);
+      fetchAudios();
+      // 显示删除结果模态框
+  showDeleteResultModal.value = true;
+  deleteResult.value = {
+    success: true,
+    message: '音频文件删除成功',
+    count: 1
+  };
+    } catch (err) {
+      // 显示删除结果模态框
+  showDeleteResultModal.value = true;
+  deleteResult.value = {
+    success: false,
+    message: '删除失败: ' + err.message,
+    count: 0
+  };
+    }
+  }
+}
+
+// 分享音频
+function shareAudio(audioId) {
+  console.log(`AudioImport: 分享音频 - ID: ${audioId}`);
+  alert(`正在生成音频分享链接 ID: ${audioId}`);
+}
+
+// 分页导航
+function prevPage() {
+  console.log('AudioImport: 分页 - 上一页');
+  if (currentPage.value > 1) {
+    currentPage.value--;
+    fetchAudios();
+  }
+}
+
+function nextPage() {
+  console.log('AudioImport: 分页 - 下一页');
+  if (currentPage.value < totalPages.value) {
+    currentPage.value++;
+    fetchAudios();
+  }
+}
+
+function handleGoToPage(page) {
+  console.log(`AudioImport: 分页 - 跳转到第 ${page} 页`);
+  currentPage.value = page;
+  fetchAudios();
+}
+
+function handlePageSizeChange(size) {
+  console.log(`AudioImport: 分页 - 每页显示 ${size} 条`);
+  pageSize.value = size;
+  currentPage.value = 1;
+  fetchAudios();
+}
+
+
+
+// 音频转换
+async function convertAudio() {
+  console.log('AudioImport: 音频转换');
+  try {
+    const id = convertAudioInfo.value.id;
+    await audiosApi.convert(id, { format: convertAudioInfo.value.targetFormat });
+    alert('转换任务已开始');
+    fetchAudios();
+    closeModal('convertAudioModal');
+  } catch (err) {
+    alert('转换失败: ' + err.message);
+  }
+}
+
+// 重置所有状态
+const resetAllStates = () => {
+  // 暂停上传任务
+  pauseUploadTask();
+  
+  view_mode.value = 'list';
+  currentPage.value = 1;
+  pageSize.value = 10;
+  searchQuery.value = '';
+  resetFilters();
+  uploadProgress.value = 0;
+  showUploadModal.value = false;
+  showUrlImportModal.value = false;
+  showConvertModal.value = false;
+  showMetadataModal.value = false;
+  selectedAudios.value = [];
+  urlImportData.value = {
+    url: '',
+    category: '/audios/wake_word/',
+    tags: ''
+  };
+};
+
+export {
+  view_mode,
+  loading,
+  error,
+  currentPage,
+  pageSize,
+  searchQuery,
+  uploadProgress,
+  showUploadModal,
+  showUrlImportModal,
+  showConvertModal,
+  showMetadataModal,
+  selectedAudios,
+  filters,
+  selectedTags,
+  allTags,
+  urlImportData,
+  convertAudioInfo,
+  audios,
+  stats,
+  filteredAudios,
+  totalPages,
+  flattenedFolderTree,
+  expandedFolders,
+  switchView,
+  searchAudios,
+  filterAudios,
+  applyFilters,
+  resetFilters,
+  toggleTag,
+  toggleSelectAll,
+  toggleAudioSelection,
+  showSelectAllOptions,
+  selectCurrentPage,
+  selectAllPages,
+  openUploadModal,
+  closeModal,
+  pickFiles,
+  handleDrop,
+  selectedFilesForUpload,
+  startUpload,
+  batchImportFromFolder,
+  handleFolderImport,
+  batchDelete,
+  batchExport,
+  previewAudio,
+  editMetadata,
+  downloadAudio,
+  deleteAudio,
+  shareAudio,
+  prevPage,
+  nextPage,
+  handleGoToPage,
+  handlePageSizeChange,
+  convertAudio,
+  resetAllStates,
+  fetchAudios,
+  uploadOptions,
+  playbackDevices,
+  fetchPlaybackDevices,
+  folderImportOptions,
+  initModalWatchers,
+  getRootFolderName,
+  removeLocalTask,
+  uploadTasks,
+  currentTask,
+  fileList,
+  uploadStatus,
+  currentUploadingFile,
+  resumeUploadTask,
+  pauseUploadTask,
+  retryFailedFiles,
+  checkAndResumeTasks,
+  isFolderOpen,
+  toggleFolder,
+  showDeleteResultModal,
+  deleteResult,
+  closeDeleteResultModal
+};
+

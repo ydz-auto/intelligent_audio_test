@@ -1,0 +1,1083 @@
+# -*- coding: utf-8 -*-
+"""
+参考参数生成器
+
+职责：
+- 根据算法类型和用例配置，从数据库读取参考参数配置
+- 自动生成对应测试用例的参考参数（ASR文本、翻译文本、RTTM/STM标注等）
+- 支持重叠播放场景的时间戳调整
+- 提供参考参数值的获取接口
+"""
+
+import json
+from typing import Dict, List, Any
+from backend.models.database import db
+from backend.models.models import Audio, AudioAnnotation
+from backend.utils.log_handler import log_not_emit
+
+
+class ReferenceParamsGenerator:
+    """
+    参考参数生成器
+    
+    根据算法类型和用例配置，自动生成参考参数
+    按测试类型(api/e2e)分别生成，存储为列表结构
+    
+    采用子类策略模式，每个算法类型对应一个或多个生成器子类
+    
+    结构:
+    [
+        { "code": "asr_reference_text", "type": "text", "api": "...", "e2e": "..." },
+        { "code": "translation_reference_text", "type": "text", "api": [...], "e2e": [...] },
+        { "code": "asr_reference_rttm", "type": "rttm", "api": {...}, "e2e": {...} }
+    ]
+    """
+
+    @classmethod
+    def generate(cls, test_case) -> list:
+        """
+        根据测试用例的算法类型和配置，自动生成参考参数列表
+        
+        工作流程:
+        1. 从数据库获取该算法类型对应的所有参考参数配置 (AlgorithmReferenceParam)
+        2. 对每个配置调用 _generate_single_param 生成实际参数值
+        3. 过滤掉没有有效值的参数
+        
+        Args:
+            test_case: TestCase 模型对象，包含 algorithm_type 和 config
+            
+        Returns:
+            参考参数列表，每个元素包含 code, type, api, e2e 等字段
+        """
+        if not test_case:
+            log_not_emit('WARNING', 'reference_params_generator', 'generate called with None test_case', category='algorithm')
+            return []
+        
+        algorithm_type = test_case.algorithm_type
+        config = test_case.config or {}
+        
+        if hasattr(test_case, 'algorithm_params') and test_case.algorithm_params:
+            config['algorithm_params'] = test_case.algorithm_params
+        
+        log_not_emit('DEBUG', 'reference_params_generator', f'Generating reference params for algorithm_type: {algorithm_type}', category='algorithm')
+        
+        from backend.models.algorithm_models import AlgorithmReferenceParam
+        
+        ref_params = AlgorithmReferenceParam.query.filter_by(
+            algorithm_type=algorithm_type,
+            deleted=False
+        ).all()
+        
+        if not ref_params:
+            log_not_emit('WARNING', 'reference_params_generator', f'No reference params found for algorithm: {algorithm_type}', category='algorithm')
+            return []
+        
+        result = []
+        for ref_param in ref_params:
+            try:
+                param = cls._generate_single_param(config, ref_param)
+                if param:
+                    result.append(param)
+            except Exception as e:
+                log_not_emit('ERROR', 'reference_params_generator', f'Error generating param {ref_param.code}: {e}', category='algorithm')
+                continue
+        
+        log_not_emit('DEBUG', 'reference_params_generator', f'Generated {len(result)} reference params for {algorithm_type}: {result}', category='algorithm')
+        return result
+    
+    @classmethod
+    def _generate_single_param(cls, config: Dict, ref_param) -> Dict:
+        """
+        根据参考参数配置生成单个参数
+        
+        处理逻辑:
+        1. 根据 param_type 判断是结构化数据(json/rttm/stm)还是文本
+        2. 调用不同的提取函数获取 api/e2e 值
+        3. 组装完整的参数字典
+        
+        Args:
+            config: 用例配置，包含 audios 等信息
+            ref_param: AlgorithmReferenceParam 数据库模型对象
+            
+        Returns:
+            参数字典，包含 code, type, api, e2e, annotation_code, annotation_format
+        """
+        code = ref_param.code
+        param_type = ref_param.param_type
+        annotation_code = ref_param.annotation_code
+        annotation_format = ref_param.annotation_format
+        
+        log_not_emit('DEBUG', 'reference_params_generator', 
+            f'_generate_single_param: code={code}, param_type={param_type}, annotation_code={annotation_code}, annotation_format={annotation_format}', 
+            category='algorithm')
+        
+        values = {}
+        
+        if annotation_code == 'translation':
+            values = _extract_translation_from_audios(config)
+        elif param_type in ['json', 'rttm', 'stm']:
+            structured_values = _extract_annotation_with_overlap(
+                config, 
+                param_type,
+                annotation_code=annotation_code,
+                annotation_format=annotation_format
+            )
+            values = structured_values
+        else:
+            text_values = _extract_text_from_audios(
+                config, 
+                annotation_code=annotation_code, 
+                annotation_format=annotation_format
+            )
+            values = text_values
+        
+        log_not_emit('DEBUG', 'reference_params_generator', 
+            f'_generate_single_param: code={code}, extracted values={values}', 
+            category='algorithm')
+        
+        if not values.get('api') and not values.get('e2e'):
+            log_not_emit('DEBUG', 'reference_params_generator', 
+                f'_generate_single_param: code={code} filtered out - both api and e2e are empty', 
+                category='algorithm')
+            return None
+        
+        param = {
+            'code': code,
+            'type': param_type,
+            'api': values.get('api'),
+            'e2e': values.get('e2e')
+        }
+        
+        if annotation_code:
+            param['annotation_code'] = annotation_code
+        if annotation_format:
+            param['annotation_format'] = annotation_format
+        
+        return param
+
+    @classmethod
+    def apply_to_config(cls, test_case) -> None:
+        """
+        将生成的参考参数应用到用例配置中
+        
+        Args:
+            test_case: TestCase 模型对象
+            
+        注意: 此方法会直接修改 test_case.config 和 test_case.reference_params
+        """
+        if not test_case:
+            log_not_emit('WARNING', 'reference_params_generator', 'apply_to_config called with None test_case', category='algorithm')
+            return
+        
+        log_not_emit('DEBUG', 'reference_params_generator', f'Applying reference params for test_case: {test_case.algorithm_type}', category='algorithm')
+        
+        generated_params = cls.generate(test_case)
+        
+        if not generated_params:
+            log_not_emit('WARNING', 'reference_params_generator', f'reference_params generate failed for test_case: algorithm_type={test_case.algorithm_type}, config={test_case.config}', category='algorithm')
+            return
+        
+        config = test_case.config or {}
+        
+        test_case.config = config
+        test_case.reference_params = generated_params
+        
+        log_not_emit('INFO', 'reference_params_generator', f'apply_to_config: reference_params set to {len(generated_params)} params: {generated_params}', category='algorithm')
+
+    @classmethod
+    def get_reference_text(cls, config: Dict, code: str, test_type: str = 'api') -> str:
+        """
+        从配置中获取参考文本
+
+        Args:
+            config: 用例配置字典
+            code: 参考参数代码 (如 'asr_reference_text')
+            test_type: 测试类型 ('api' 或 'e2e')
+
+        Returns:
+            参考文本值
+        """
+        reference_params = config.get('reference_params', [])
+        if not reference_params:
+            return ''
+
+        if isinstance(reference_params, dict):
+            reference_params = reference_params.get('params', [])
+
+        if not reference_params:
+            return ''
+
+        if code:
+            for param in reference_params:
+                if param.get('code') == code:
+                    return param.get(test_type, '') or ''
+
+        return ''
+
+    @classmethod
+    def get_all_reference_params(cls, config: Dict) -> list:
+        """
+        获取所有参考参数
+
+        Args:
+            config: 用例配置字典
+
+        Returns:
+            参考参数列表
+        """
+        reference_params = config.get('reference_params', [])
+        if isinstance(reference_params, dict):
+            return reference_params.get('params', [])
+        return reference_params
+
+    @classmethod
+    def get_reference_params_for_report(cls, config: Dict, test_type: str = 'api') -> Dict[str, Any]:
+        """
+        获取用于报告展示的参考参数字典
+
+        返回格式:
+        {
+            "asr_reference_text": {"code": "asr_reference_text", "type": "text", "value": "...", "api": "...", "e2e": "..."},
+            "translation_reference_text": {"code": "translation_reference_text", "type": "text", "value": "...", "api": [...], "e2e": [...]},
+            "rttm_ref": {"code": "rttm_ref", "type": "rttm", "value": {...}, "segments": [...], "text": "..."},
+            "stm_ref": {"code": "stm_ref", "type": "stm", "value": {...}, "segments": [...], "text": "..."},
+            ...
+        }
+
+        Args:
+            config: 用例配置字典
+            test_type: 测试类型 ('api' 或 'e2e')
+
+        Returns:
+            按 code 分组的参考参数字典
+        """
+        result = {}
+        reference_params = cls.get_all_reference_params(config)
+        
+        if not reference_params:
+            return result
+        
+        for param in reference_params:
+            if not isinstance(param, dict):
+                continue
+            
+            code = param.get('code')
+            if not code:
+                continue
+            
+            param_type = param.get('type', 'text')
+            value = param.get(test_type) or param.get('api') or param.get('e2e')
+            
+            param_info = {
+                "code": code,
+                "type": param_type,
+                "api": param.get('api'),
+                "e2e": param.get('e2e'),
+                "value": value,
+            }
+            
+            if param_type in ['rttm', 'stm'] and isinstance(value, dict):
+                param_info["segments"] = value.get('segments', [])
+                param_info["text"] = value.get('text', '')
+                param_info["json"] = value.get('json', '')
+            
+            if param.get('annotation_code'):
+                param_info["annotation_code"] = param.get('annotation_code')
+            if param.get('annotation_format'):
+                param_info["annotation_format"] = param.get('annotation_format')
+            
+            result[code] = param_info
+        
+        return result
+
+
+def _get_overlap_rate(config: Dict) -> float:
+    """从用例配置获取重叠率"""
+    algorithm_params = config.get('algorithm_params', {})
+    if isinstance(algorithm_params, list):
+        for p in algorithm_params:
+            if p.get('field_code') == 'overlap_rate' or p.get('fieldCode') == 'overlap_rate':
+                return max(0.0, min(1.0, float(p.get('field_value', p.get('fieldValue', 0)) or 0)))
+        return 0
+    overlap_rate = algorithm_params.get('overlap_rate', 0)
+    if not isinstance(overlap_rate, (int, float)):
+        return 0
+    return max(0.0, min(1.0, float(overlap_rate)))
+
+
+def _get_overlap_time(config: Dict) -> float:
+    """从用例配置获取重叠时间（秒）"""
+    algorithm_params = config.get('algorithm_params', {})
+    if isinstance(algorithm_params, list):
+        for p in algorithm_params:
+            if p.get('field_code') == 'overlap_time' or p.get('fieldCode') == 'overlap_time':
+                return float(p.get('field_value', p.get('fieldValue', 0)) or 0)
+        return 0
+    overlap_time = algorithm_params.get('overlap_time', 0)
+    if not isinstance(overlap_time, (int, float)):
+        return 0
+    return max(0.0, float(overlap_time))
+
+
+def _extract_speakers_from_audio(audio_id: int) -> set:
+    """
+    从音频的diarization标注中提取所有speaker集合
+    
+    Args:
+        audio_id: 音频ID
+        
+    Returns:
+        set: speaker标签集合，如 {'spk9', 'spk8'}
+    """
+    if not audio_id:
+        return set()
+    
+    speakers = set()
+    
+    annotations = AudioAnnotation.query.filter_by(
+        audio_id=audio_id,
+        deleted=False
+    ).all()
+    
+    for ann in annotations:
+        if not ann.data:
+            continue
+        
+        if isinstance(ann.data, dict):
+            segments = ann.data.get('segments', [])
+            for seg in segments:
+                if 'speaker' in seg:
+                    speakers.add(seg['speaker'])
+        elif isinstance(ann.data, list):
+            for seg in ann.data:
+                if isinstance(seg, dict) and 'speaker' in seg:
+                    speakers.add(seg['speaker'])
+    
+    log_not_emit('DEBUG', 'reference_params_generator', 
+        f'[_extract_speakers_from_audio] audio_id={audio_id}, speakers={speakers}', 
+        category='algorithm')
+    
+    return speakers
+
+
+def _calculate_speaker_aware_offsets(audios_config: List[Dict], overlap_rate: float, overlap_time: float = 0) -> Dict[int, float]:
+    """
+    计算每个音频播放项的开始时间偏移（speaker感知版本）
+
+    规则：
+    - 相邻音频有共同speaker → 顺序播放（offset = prev_end_time）
+    - 相邻音频无共同speaker → 按overlap_time或overlap_rate交叠
+
+    Args:
+        audios_config: 音频配置列表
+        overlap_rate: 重叠率 (0.0-1.0)
+        overlap_time: 重叠时间（秒），优先级高于 overlap_rate
+
+    Returns:
+        {play_order: offset_seconds}
+    """
+    offsets = {}
+    sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
+    
+    log_not_emit('DEBUG', 'reference_params_generator', 
+        f'[_calculate_speaker_aware_offsets] START: overlap_rate={overlap_rate}, overlap_time={overlap_time}, audio_count={len(sorted_audios)}', 
+        category='algorithm')
+    
+    audio_speakers = {}
+    for audio_item in sorted_audios:
+        audio_id = audio_item.get('audio_id')
+        if audio_id:
+            audio_speakers[audio_id] = _extract_speakers_from_audio(audio_id)
+    
+    log_not_emit('DEBUG', 'reference_params_generator', 
+        f'[_calculate_speaker_aware_offsets] audio_speakers={audio_speakers}', 
+        category='algorithm')
+    
+    cumulative_duration = 0.0
+    prev_end_time = 0.0
+    
+    for i, audio_item in enumerate(sorted_audios):
+        play_order = audio_item.get('play_order', 0)
+        audio_id = audio_item.get('audio_id')
+        
+        audio_duration = 1.0
+        if audio_id:
+            audio = db.session.get(Audio, audio_id)
+            if audio and audio.duration:
+                audio_duration = audio.duration
+        
+        log_not_emit('DEBUG', 'reference_params_generator', 
+            f'[_calculate_speaker_aware_offsets] i={i}, play_order={play_order}, audio_id={audio_id}, audio_duration={audio_duration}, cumulative_duration={cumulative_duration}, prev_end_time={prev_end_time}', 
+            category='algorithm')
+        
+        if i == 0:
+            offsets[play_order] = 0
+            log_not_emit('DEBUG', 'reference_params_generator', 
+                f'[_calculate_speaker_aware_offsets] i=0, first audio, offset=0', 
+                category='algorithm')
+        else:
+            prev_audio_id = sorted_audios[i-1].get('audio_id')
+            curr_speakers = audio_speakers.get(audio_id, set())
+            prev_speakers = audio_speakers.get(prev_audio_id, set())
+            
+            has_common_speaker = len(curr_speakers & prev_speakers) > 0
+            
+            log_not_emit('DEBUG', 'reference_params_generator', 
+                f'[_calculate_speaker_aware_offsets] i={i}, prev_audio_id={prev_audio_id}, prev_speakers={prev_speakers}, curr_speakers={curr_speakers}, has_common_speaker={has_common_speaker}', 
+                category='algorithm')
+            
+            if has_common_speaker:
+                offsets[play_order] = prev_end_time
+                log_not_emit('DEBUG', 'reference_params_generator', 
+                    f'[_calculate_speaker_aware_offsets] Has common speaker, sequential playback: offset=prev_end_time={prev_end_time}', 
+                    category='algorithm')
+            else:
+                if overlap_time and overlap_time > 0:
+                    offset_val = prev_end_time - overlap_time
+                    if offset_val < 0:
+                        log_not_emit('WARNING', 'reference_params_generator', 
+                            f'[_calculate_speaker_aware_offsets] overlap_time={overlap_time} > prev_end_time={prev_end_time}, clamping offset to 0', 
+                            category='algorithm')
+                        offset_val = 0
+                    offsets[play_order] = offset_val
+                    log_not_emit('DEBUG', 'reference_params_generator', 
+                        f'[_calculate_speaker_aware_offsets] Using overlap_time: offset=prev_end_time({prev_end_time}) - {overlap_time} = {offset_val}', 
+                        category='algorithm')
+                elif overlap_rate is not None and overlap_rate > 0:
+                    offsets[play_order] = prev_end_time * (1 - overlap_rate)
+                    log_not_emit('DEBUG', 'reference_params_generator', 
+                        f'[_calculate_speaker_aware_offsets] Using overlap_rate: offset=prev_end_time({prev_end_time}) * {1 - overlap_rate} = {prev_end_time * (1 - overlap_rate)}', 
+                        category='algorithm')
+                else:
+                    offsets[play_order] = prev_end_time
+                    log_not_emit('DEBUG', 'reference_params_generator', 
+                        f'[_calculate_speaker_aware_offsets] No overlap, offset=prev_end_time={prev_end_time}', 
+                        category='algorithm')
+        
+        prev_end_time = offsets[play_order] + audio_duration
+        cumulative_duration += audio_duration
+        
+        log_not_emit('DEBUG', 'reference_params_generator', 
+            f'[_calculate_speaker_aware_offsets] After i={i}: prev_end_time={prev_end_time}, cumulative_duration={cumulative_duration}, offsets={offsets}', 
+            category='algorithm')
+    
+    log_not_emit('DEBUG', 'reference_params_generator', 
+        f'[_calculate_speaker_aware_offsets] FINAL: offsets={offsets}', 
+        category='algorithm')
+    
+    return offsets
+
+
+def _calculate_audio_offsets(audios_config: List[Dict], overlap_rate: float, overlap_time: float = 0) -> Dict[int, float]:
+    """
+    计算每个音频播放项的开始时间偏移
+
+    链式交叠公式：
+    - overlap_time > 0: offset = cumulative_offset - overlap_time
+    - overlap_rate > 0: offset = cumulative_offset * (1 - overlap_rate)
+    - 否则: offset = cumulative_offset（顺序播放）
+
+    Args:
+        audios_config: 音频配置列表
+        overlap_rate: 重叠率 (0.0-1.0)
+        overlap_time: 重叠时间（秒），优先级高于 overlap_rate
+
+    Returns:
+        {play_order: offset_seconds}
+    """
+    offsets = {}
+    sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
+
+    log_not_emit('DEBUG', 'reference_params_generator', f'[_calculate_audio_offsets] START: overlap_rate={overlap_rate}, overlap_time={overlap_time}, audio_count={len(sorted_audios)}', category='algorithm')
+
+    cumulative_offset = 0.0
+
+    for i, audio_item in enumerate(sorted_audios):
+        play_order = audio_item.get('play_order', 0)
+        audio_id = audio_item.get('audio_id')
+
+        audio_duration = 1.0
+        if audio_id:
+            audio = db.session.get(Audio, audio_id)
+            if audio and audio.duration:
+                audio_duration = audio.duration
+
+        log_not_emit('DEBUG', 'reference_params_generator', f'[_calculate_audio_offsets] i={i}, play_order={play_order}, audio_id={audio_id}, audio_duration={audio_duration}, cumulative_offset={cumulative_offset}', category='algorithm')
+
+        if i == 0:
+            offsets[play_order] = 0
+            log_not_emit('DEBUG', 'reference_params_generator', f'[_calculate_audio_offsets] i=0, set offset=0', category='algorithm')
+        else:
+            if overlap_time and overlap_time > 0:
+                offset_val = cumulative_offset - overlap_time
+                if offset_val < 0:
+                    log_not_emit('WARNING', 'reference_params_generator', f'[_calculate_audio_offsets] overlap_time={overlap_time} > cumulative_offset={cumulative_offset}, clamping offset to 0', category='algorithm')
+                    offset_val = 0
+                offsets[play_order] = offset_val
+                log_not_emit('DEBUG', 'reference_params_generator', f'[_calculate_audio_offsets] Using overlap_time: offset={cumulative_offset} - {overlap_time} = {offset_val}', category='algorithm')
+            elif overlap_rate is not None and overlap_rate > 0:
+                offsets[play_order] = cumulative_offset * (1 - overlap_rate)
+                log_not_emit('DEBUG', 'reference_params_generator', f'[_calculate_audio_offsets] Using overlap_rate: offset={cumulative_offset} * {1 - overlap_rate} = {cumulative_offset * (1 - overlap_rate)}', category='algorithm')
+            else:
+                offsets[play_order] = cumulative_offset
+                log_not_emit('DEBUG', 'reference_params_generator', f'[_calculate_audio_offsets] No overlap, offset=cumulative_offset={cumulative_offset}', category='algorithm')
+        
+        if overlap_time and overlap_time > 0:
+            cumulative_offset = cumulative_offset - overlap_time + audio_duration
+        elif overlap_rate is not None and overlap_rate > 0:
+            cumulative_offset += audio_duration * (1 - overlap_rate)
+        else:
+            cumulative_offset += audio_duration
+        
+        log_not_emit('DEBUG', 'reference_params_generator', f'[_calculate_audio_offsets] After i={i}: cumulative_offset={cumulative_offset}, offsets={offsets}', category='algorithm')
+    
+    log_not_emit('DEBUG', 'reference_params_generator', f'[_calculate_audio_offsets] FINAL: offsets={offsets}', category='algorithm')
+    return offsets
+
+
+def _adjust_segment_timestamps(segments: List[Dict], offset: float, play_order: int = None) -> List[Dict]:
+    """调整片段的时间戳"""
+    adjusted = []
+    for seg in segments:
+        new_seg = seg.copy()
+        if 'start' in new_seg:
+            new_seg['start'] = new_seg['start'] + offset
+        if 'end' in new_seg:
+            new_seg['end'] = new_seg['end'] + offset
+        if play_order is not None:
+            new_seg['play_order'] = play_order
+        adjusted.append(new_seg)
+    return adjusted
+
+
+def _merge_annotation_segments(segments_list: List[List[Dict]]) -> List[Dict]:
+    """合并多个标注片段列表，并按时间排序"""
+    all_segments = []
+    for segments in segments_list:
+        all_segments.extend(segments)
+    
+    all_segments.sort(key=lambda x: (x.get('start', 0), x.get('play_order', 0)))
+    return all_segments
+
+
+def _extract_text_from_audios(config: Dict, text_field: str = None, annotation_code: str = None, annotation_format: str = None) -> Dict[str, str]:
+    """从音频配置中提取文本"""
+    reference_texts = {'api': '', 'e2e': ''}
+    
+    audios_config = config.get('audios', [])
+    if not audios_config:
+        return reference_texts
+    
+    sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
+    
+    def _extract_text_from_annotation(ann: AudioAnnotation, target_test_type: str) -> str:
+        """从单个标注中提取文本，支持多种格式"""
+        if not ann.data:
+            return ''
+        
+        if isinstance(ann.data, str):
+            return ann.data
+        
+        actual_format = ann.format
+        
+        if actual_format == 'text':
+            return ann.data.get('text', '')
+        
+        segments = ann.data.get('segments', [])
+        text_parts = []
+        for seg in segments:
+            text = seg.get('text', '')
+            if text:
+                text_parts.append(text)
+        return ' '.join(text_parts)
+    
+    for audio_item in sorted_audios:
+        audio_id = audio_item.get('audio_id')
+        test_type = audio_item.get('test_type', 'api')
+        if not audio_id:
+            continue
+        
+        extracted_text = ''
+        
+        if annotation_code and annotation_format:
+            log_not_emit('DEBUG', 'reference_params_generator', 
+                f'_extract_text_from_audios: trying exact match code={annotation_code}, format={annotation_format}', 
+                category='algorithm')
+            
+            annotations = AudioAnnotation.query.filter_by(
+                audio_id=audio_id,
+                code=annotation_code,
+                format=annotation_format,
+                deleted=False
+            ).all()
+            
+            log_not_emit('DEBUG', 'reference_params_generator', 
+                f'_extract_text_from_audios: exact match found {len(annotations)} annotations', 
+                category='algorithm')
+            
+            for ann in annotations:
+                extracted_text = _extract_text_from_annotation(ann, test_type)
+                if extracted_text:
+                    break
+            
+            if not extracted_text:
+                log_not_emit('DEBUG', 'reference_params_generator', 
+                    f'_extract_text_from_audios: fallback - querying all annotations for audio_id={audio_id}', 
+                    category='algorithm')
+                
+                annotations = AudioAnnotation.query.filter_by(
+                    audio_id=audio_id,
+                    deleted=False
+                ).all()
+                
+                log_not_emit('DEBUG', 'reference_params_generator', 
+                    f'_extract_text_from_audios: fallback found {len(annotations)} annotations', 
+                    category='algorithm')
+                
+                for ann in annotations:
+                    extracted_text = _extract_text_from_annotation(ann, test_type)
+                    if extracted_text:
+                        log_not_emit('DEBUG', 'reference_params_generator', 
+                            f'_extract_text_from_audios: extracted from code={ann.code}, format={ann.format}', 
+                            category='algorithm')
+                        break
+        elif text_field:
+            audio = db.session.get(Audio, audio_id)
+            if audio:
+                extracted_text = getattr(audio, text_field, None) or ""
+        
+        if extracted_text:
+            reference_texts[test_type] += extracted_text + " "
+    
+    for test_type in ['api', 'e2e']:
+        reference_texts[test_type] = reference_texts[test_type].strip()
+    
+    return reference_texts
+
+
+def _segments_to_rttm(segments: List[Dict], file_id: str = "test") -> str:
+    """将 segments 转换为标准 RTTM 文本格式"""
+    lines = []
+    for seg in segments:
+        speaker = seg.get('speaker', 'spk0')
+        start = seg.get('start', 0)
+        end = seg.get('end', 0)
+        duration = end - start
+        lines.append(f"SPEAKER {file_id} 1 {start:.3f} {duration:.3f} <NA> <NA> {speaker} <NA> <NA>")
+    return '\n'.join(lines)
+
+
+def _segments_to_stm(segments: List[Dict], file_id: str = "test", channel: int = 1) -> str:
+    """将 segments 转换为标准 STM 文本格式"""
+    lines = []
+    for seg in segments:
+        speaker = seg.get('speaker', 'spk0')
+        start = seg.get('start', 0)
+        end = seg.get('end', 0)
+        text = seg.get('text', '')
+        lines.append(f"{file_id} {channel} {speaker} {start:.3f} {end:.3f} {text}")
+    return '\n'.join(lines)
+
+
+def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotation_code: str = None, annotation_format: str = None) -> Dict[str, Any]:
+    """
+    从音频提取标注数据，支持重叠播放时间戳调整
+    
+    核心功能:
+    - 根据 format 参数提取 RTTM/STM 格式的标注数据
+    - 支持重叠播放场景，自动调整每个音频的时间戳偏移
+    - 分别返回 api 和 e2e 两类测试的参考数据
+    
+    处理流程:
+    1. 从 config.audios 获取音频配置列表
+    2. 根据重叠率 (overlap_rate) 计算每个音频的开始时间偏移
+    3. 按 test_type (api/e2e) 分组处理
+    4. 对每个音频查询对应标注，调整时间戳后合并
+    5. 将 segments 转换为标准 RTTM/STM 文本格式
+    
+    Args:
+        config: 用例配置，包含 audios, algorithm_params, case_id 等
+        format: 标注格式 ('rttm' 或 'stm')
+        annotation_code: 标注代码（可选，用于精确匹配，如 'asr', 'translation'）
+        annotation_format: 标注格式（可选，用于精确匹配，如 'json', 'rttm'）
+    
+    Returns:
+        {
+            'api': {'segments': [...], 'format': 'rttm', 'text': '...', 'json': '...'},
+            'e2e': {'segments': [...], 'format': 'rttm', 'text': '...', 'json': '...'}
+        }
+        - segments: 时间戳调整后的 JSON 结构化数据列表
+        - text: 标准 RTTM/STM 文本格式字符串
+        - json: segments 的 JSON 字符串形式
+    """
+    result = {
+        'api': {'segments': [], 'format': format, 'text': '', 'json': ''},
+        'e2e': {'segments': [], 'format': format, 'text': '', 'json': ''}
+    }
+    
+    audios_config = config.get('audios', [])
+    if not audios_config:
+        log_not_emit('DEBUG', 'reference_params_generator', 'No audios config found, returning empty result', category='algorithm')
+        return result
+    
+    case_id = config.get('case_id', 'test_case')
+    
+    overlap_rate = _get_overlap_rate(config)
+    overlap_time = _get_overlap_time(config)
+    log_not_emit('DEBUG', 'reference_params_generator', f'Extracting annotation with overlap_rate={overlap_rate}, overlap_time={overlap_time}, format={format}', category='algorithm')
+    
+    audio_offsets = _calculate_speaker_aware_offsets(audios_config, overlap_rate, overlap_time)
+    log_not_emit('DEBUG', 'reference_params_generator', f'audio_offsets={audio_offsets}, audios_config={audios_config}', category='algorithm')
+    
+    grouped_audios = {'api': [], 'e2e': []}
+    for audio_item in audios_config:
+        test_type = audio_item.get('test_type', 'api')
+        grouped_audios[test_type].append(audio_item)
+    
+    for test_type in ['api', 'e2e']:
+        segments_list = []
+        sorted_test_audios = sorted(grouped_audios[test_type], key=lambda x: x.get('play_order', 0))
+        
+        for audio_item in sorted_test_audios:
+            audio_id = audio_item.get('audio_id')
+            play_order = audio_item.get('play_order', 0)
+            if not audio_id:
+                continue
+            
+            offset = audio_offsets.get(play_order, 0)
+            
+            if annotation_code and annotation_format:
+                annotations = AudioAnnotation.query.filter_by(
+                    audio_id=audio_id,
+                    code=annotation_code,
+                    format=annotation_format,
+                    deleted=False
+                ).all()
+                
+                if not annotations:
+                    annotations = AudioAnnotation.query.filter_by(
+                        audio_id=audio_id,
+                        format='json',
+                        deleted=False
+                    ).all()
+                
+                if not annotations and annotation_format != 'rttm':
+                    annotations = AudioAnnotation.query.filter_by(
+                        audio_id=audio_id,
+                        format='rttm',
+                        deleted=False
+                    ).all()
+                
+                if not annotations and annotation_format != 'stm':
+                    annotations = AudioAnnotation.query.filter_by(
+                        audio_id=audio_id,
+                        format='stm',
+                        deleted=False
+                    ).all()
+                
+                for ann in annotations:
+                    if ann.data:
+                        segments = ann.data.get('segments', [])
+                        adjusted_segments = _adjust_segment_timestamps(segments, offset, play_order)
+                        segments_list.append(adjusted_segments)
+            else:
+                annotations = AudioAnnotation.query.filter_by(
+                    audio_id=audio_id,
+                    format=format,
+                    deleted=False
+                ).all()
+                
+                if not annotations:
+                    json_annotations = AudioAnnotation.query.filter_by(
+                        audio_id=audio_id,
+                        format='json',
+                        deleted=False
+                    ).all()
+                    for ann in json_annotations:
+                        if ann.data:
+                            segments = ann.data.get('segments', [])
+                            adjusted_segments = _adjust_segment_timestamps(segments, offset, play_order)
+                            segments_list.append(adjusted_segments)
+                else:
+                    for ann in annotations:
+                        if ann.data:
+                            segments = ann.data.get('segments', [])
+                            adjusted_segments = _adjust_segment_timestamps(segments, offset, play_order)
+                            segments_list.append(adjusted_segments)
+                
+                if not segments_list and format != 'rttm':
+                    rttm_annotations = AudioAnnotation.query.filter_by(
+                        audio_id=audio_id,
+                        format='rttm',
+                        deleted=False
+                    ).all()
+                    for ann in rttm_annotations:
+                        if ann.data:
+                            segments = ann.data.get('segments', [])
+                            adjusted_segments = _adjust_segment_timestamps(segments, offset, play_order)
+                            segments_list.append(adjusted_segments)
+                
+                if not segments_list and format != 'stm':
+                    stm_annotations = AudioAnnotation.query.filter_by(
+                        audio_id=audio_id,
+                        format='stm',
+                        deleted=False
+                    ).all()
+                    for ann in stm_annotations:
+                        if ann.data:
+                            segments = ann.data.get('segments', [])
+                            adjusted_segments = _adjust_segment_timestamps(segments, offset, play_order)
+                            segments_list.append(adjusted_segments)
+        
+        merged_segments = _merge_annotation_segments(segments_list)
+        
+        if format == 'rttm':
+            text_content = _segments_to_rttm(merged_segments, case_id)
+        else:
+            text_content = _segments_to_stm(merged_segments, case_id)
+        
+        result[test_type]['segments'] = merged_segments
+        result[test_type]['text'] = text_content
+        result[test_type]['json'] = json.dumps(merged_segments, ensure_ascii=False)
+    
+    return result
+
+
+def _extract_translation_from_audios(config: Dict) -> Dict[str, Any]:
+    """
+    从音频的标注数据生成翻译参考文本
+    
+    用途:
+    - 用于翻译算法，提取所有音频的标注文本作为参考翻译
+    
+    处理逻辑:
+    1. 收集所有音频具备的翻译方向（source_language + target_language 组合）
+    2. 找出所有音频**共同具备**的翻译方向（交集）
+    3. 只为共同翻译方向生成标注
+    
+    返回格式:
+    {
+        'api': [
+            {'translation_direction': 'zh2en', 'source_language': 'zh', 'target_language': 'en', 'text': '...'},
+            {'translation_direction': 'en2zh', 'source_language': 'en', 'target_language': 'zh', 'text': '...'}
+        ],
+        'e2e': [...]
+    }
+    
+    Args:
+        config: 用例配置，包含 audios, translation_direction_id, source_language, target_language
+        
+    Returns:
+        {'api': [...], 'e2e': [...]} 每个翻译方向一个对象
+    """
+    result = {'api': [], 'e2e': []}
+
+    audios_config = config.get('audios', [])
+    if not audios_config:
+        return result
+
+    sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
+
+    audio_directions = {}
+    audio_count = 0
+    
+    for audio_item in sorted_audios:
+        audio_id = audio_item.get('audio_id')
+        test_type = audio_item.get('test_type', 'api')
+        if not audio_id:
+            continue
+        
+        audio_count += 1
+        annotations = AudioAnnotation.query.filter_by(
+            audio_id=audio_id,
+            deleted=False
+        ).all()
+        
+        directions = set()
+        for ann in annotations:
+            if ann.source_language and ann.target_language:
+                direction = f"{ann.source_language}2{ann.target_language}"
+                directions.add((ann.source_language, ann.target_language, direction))
+        
+        if test_type not in audio_directions:
+            audio_directions[test_type] = directions
+        else:
+            if audio_count == 1:
+                audio_directions[test_type] = directions
+            else:
+                audio_directions[test_type] = audio_directions[test_type] & directions
+
+    for test_type in ['api', 'e2e']:
+        if test_type not in audio_directions or not audio_directions[test_type]:
+            continue
+        
+        for source_lang, target_lang, direction in audio_directions[test_type]:
+            text_parts = {'api': '', 'e2e': ''}
+            
+            for audio_item in sorted_audios:
+                audio_id = audio_item.get('audio_id')
+                audio_test_type = audio_item.get('test_type', 'api')
+                if not audio_id or audio_test_type != test_type:
+                    continue
+                
+                annotations = AudioAnnotation.query.filter_by(
+                    audio_id=audio_id,
+                    source_language=source_lang,
+                    target_language=target_lang,
+                    deleted=False
+                ).all()
+                
+                for ann in annotations:
+                    if ann.data:
+                        segments = ann.data.get('segments', [])
+                        for seg in segments:
+                            text = seg.get('text', '')
+                            if text:
+                                text_parts[test_type] += text + " "
+            
+            text_content = text_parts[test_type].strip()
+            if text_content:
+                result[test_type].append({
+                    'translation_direction': direction,
+                    'source_language': source_lang,
+                    'target_language': target_lang,
+                    'text': text_content
+                })
+
+    return result
+
+
+def _extract_annotation_from_audios(config: Dict, format: str = None) -> Dict[str, str]:
+    """从音频的标注数据提取文本（按格式过滤）"""
+    reference_texts = {'api': '', 'e2e': ''}
+
+    audios_config = config.get('audios', [])
+    if not audios_config:
+        return reference_texts
+
+    sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
+
+    for audio_item in sorted_audios:
+        audio_id = audio_item.get('audio_id')
+        test_type = audio_item.get('test_type', 'api')
+        if not audio_id:
+            continue
+
+        query = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False)
+        if format:
+            query = query.filter_by(format=format)
+
+        annotations = query.all()
+
+        for ann in annotations:
+            if ann.data:
+                segments = ann.data.get('segments', [])
+                for seg in segments:
+                    text = seg.get('text', '')
+                    if text:
+                        reference_texts[test_type] += text + " "
+
+    for test_type in ['api', 'e2e']:
+        reference_texts[test_type] = reference_texts[test_type].strip()
+
+    return reference_texts
+
+
+def get_reference_params_generator() -> type:
+    """获取参考参数生成器类"""
+    return ReferenceParamsGenerator
+
+
+def get_reference_value(
+    param: Dict[str, Any],
+    test_type: str,
+    ref_type: str = None,
+    algorithm_type: str = None,
+    case_config: Dict[str, Any] = None
+) -> Any:
+    """根据用例配置获取参考参数的值
+    
+    支持:
+    - 翻译参数: 根据 translation_direction 过滤
+    - ASR/RTTM/STM 参数: 根据 source_language 过滤
+    
+    Args:
+        param: 参考参数字典 {code, type, api: {}, e2e: {}}
+               翻译参数 api/e2e 是列表: [{translation_direction, source_language, target_language, text}, ...]
+        test_type: 测试类型 ('api' 或 'e2e')
+        ref_type: 参考参数类型 (text, rttm_text, rttm_json, stm_text, stm_json)
+        algorithm_type: 算法类型 (translation/asr/tts/speaker_recognition)
+        case_config: 用例配置，包含 translation_direction, source_language 等
+    
+    Returns:
+        对应格式的值
+    """
+    log_not_emit('DEBUG', 'reference_params_generator', f'get_reference_value: test_type={test_type}, ref_type={ref_type}, algorithm_type={algorithm_type}', category='algorithm')
+    
+    value = param.get(test_type) or param.get('api')
+    
+    if value is None:
+        log_not_emit('DEBUG', 'reference_params_generator', 'No value found for param, returning empty string', category='algorithm')
+        return ''
+    
+    if isinstance(value, list):
+        if not value:
+            return ''
+        
+        target_direction = None
+        target_source_lang = None
+        
+        if case_config and algorithm_type:
+            if algorithm_type == 'translation':
+                td = case_config.get('translation_direction') or case_config.get('translation_direction_id')
+                if td:
+                    target_direction = str(td)
+            else:
+                target_source_lang = case_config.get('source_language')
+        
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            
+            if target_direction:
+                item_direction = item.get('translation_direction', '')
+                if item_direction == target_direction:
+                    return item.get('text', '')
+            
+            if target_source_lang:
+                item_source = item.get('source_language', '')
+                if item_source == target_source_lang:
+                    return item.get('text', '')
+        
+        first_item = value[0]
+        if isinstance(first_item, dict):
+            return first_item.get('text', '')
+        return str(first_item)
+    
+    if not ref_type or ref_type == 'text' or ref_type == 'audio':
+        if isinstance(value, dict):
+            return {
+                'text': value.get('text', ''),
+                'json': value.get('json', value.get('segments', []))
+            }
+        return {'text': str(value) if value else '', 'json': []}
+    
+    if ref_type in ['rttm_text', 'stm_text']:
+        if isinstance(value, dict):
+            return {
+                'text': value.get('text', ''),
+                'json': value.get('json', value.get('segments', []))
+            }
+        return {'text': str(value) if value else '', 'json': []}
+    
+    if ref_type in ['rttm_json', 'stm_json', 'rttm', 'stm']:
+        if isinstance(value, dict):
+            return {
+                'text': value.get('text', ''),
+                'segments': value.get('segments', [])
+            }
+        return {'text': '', 'segments': []}
+    
+    if isinstance(value, dict):
+        return value.get('text', '')
+    return value

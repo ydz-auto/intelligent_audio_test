@@ -1,0 +1,281 @@
+/* 历史报告页面样式 */
+
+/* 历史报告视图 */
+.history-reports-view {
+    padding: var(--spacing-lg);
+}
+
+/* 报告列表容器 */
+.reports-container {
+    background: var(--background-primary);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    margin-top: var(--spacing-lg);
+}
+
+/* 报告列表 */
+#reports-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-lg);
+}
+
+/* 批量操作栏 */
+.batch-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    background: var(--background-secondary);
+    border-radius: var(--border-radius-lg);
+    align-items: center;
+    justify-content: flex-start;
+    margin-bottom: var(--spacing-lg);
+    border: 1px solid var(--border-color);
+}
+
+/* 报告卡片 */
+.card {
+    background: white;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-color);
+    transition: all var(--transition-normal);
+    overflow: hidden;
+}
+
+.card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.card-selected {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.1);
+}
+
+/* 确保卡片选中状态下头部也应用高亮 */
+.card.card-selected .card-header {
+    background-color: rgba(255, 106, 0, 0.05) !important;
+}
+
+/* 报告卡片头部 */
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-lg);
+    border-bottom: 1px solid var(--border-color);
+    background: white;
+}
+
+/* 报告卡片标题包装器 */
+.report-card-title-wrapper {
+    flex: 1;
+    margin: 0 var(--spacing-lg);
+}
+
+/* 报告卡片标题 */
+.report-card-title {
+    margin: 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-xs);
+}
+
+/* 报告卡片元标签 */
+.report-card-meta-tags {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+}
+
+/* 报告卡片类型标签 */
+.report-card-type {
+    background: var(--secondary-light);
+    color: var(--secondary-color);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+/* 报告卡片状态标签 */
+.report-card-status {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+.report-card-status.draft {
+    background: var(--warning-light);
+    color: var(--warning-color);
+}
+
+.report-card-status.published {
+    background: var(--success-light);
+    color: var(--success-color);
+}
+
+/* 报告卡片测试类型标签 */
+.report-card-test-type {
+    background: var(--primary-light);
+    color: var(--primary-color);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+}
+
+/* 报告卡片复选框包装器 */
+.report-checkbox-wrapper {
+    display: flex !important;
+    align-items: center !important;
+    margin-right: var(--spacing-md);
+}
+
+/* 报告卡片操作按钮 */
+.card-actions {
+    display: flex;
+    gap: var(--spacing-xs);
+    align-items: center;
+}
+
+/* 报告卡片正文 */
+.card-body {
+    padding: var(--spacing-lg);
+}
+
+/* 报告卡片描述 */
+.report-card-description {
+    margin: 0 0 var(--spacing-lg) 0;
+    color: var(--text-secondary);
+    font-size: var(--font-size-md);
+    line-height: 1.5;
+}
+
+/* 报告卡片元数据 */
+.report-card-meta {
+    display: flex;
+    gap: var(--spacing-lg);
+    flex-wrap: wrap;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+/* 报告卡片元数据项 */
+.report-card-meta-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.report-card-meta-item i {
+    color: var(--primary-color);
+    font-size: var(--font-size-md);
+}
+
+/* 无数据状态 */
+.no-data {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-xxl);
+    text-align: center;
+    color: var(--text-light);
+}
+
+.no-data i {
+    font-size: var(--font-size-xxxl);
+    margin-bottom: var(--spacing-lg);
+    color: var(--primary-light);
+}
+
+.no-data p {
+    margin: 0;
+    font-size: var(--font-size-md);
+}
+
+/* 分页样式 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-lg);
+    margin-top: var(--spacing-xxl);
+    padding: var(--spacing-lg);
+    background: var(--background-secondary);
+    border-radius: var(--border-radius-lg);
+}
+
+.pagination button {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border: 1px solid var(--border-color);
+    background: white;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+}
+
+.pagination button:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+#page-info {
+    color: var(--text-secondary);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+}
+
+/* 报告卡片复选框 */
+.task-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+}
+
+/* 报告卡片操作按钮 */
+.btn-sm {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-sm);
+    border-radius: var(--border-radius-md);
+    font-weight: var(--font-weight-medium);
+    transition: all var(--transition-normal);
+}
+
+.btn-primary {
+    background: var(--primary-gradient);
+    color: white;
+    border: none;
+}
+
+.btn-secondary {
+    background: white;
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-success {
+    background: var(--success-gradient);
+    color: white;
+    border: none;
+}
+
+.btn-danger {
+    background: var(--danger-gradient);
+    color: white;
+    border: none;
+}

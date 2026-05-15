@@ -1,0 +1,59 @@
+/* 标签统计卡片样式 */
+/* 可视化和统计容器样式 */
+.visualization-stats-container {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+/* 数据可视化区域样式 */
+.data-visualization {
+    background-color: #fff;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 20px;
+    border: 1px solid var(--border-color);
+}
+
+/* 图表行布局 */
+.chart-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+/* 图表容器样式 */
+.chart-container {
+    background-color: #fafafa;
+    border-radius: var(--border-radius-md);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    height: 400px;
+    min-height: 350px;
+}
+
+.chart-container.full-width {
+    grid-column: 1 / -1;
+}
+
+/* 分布统计样式 */
+.distribution-stats {
+    display: flex;
+    gap: 16px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.distribution-stats .stat-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background-color: #fff;
+    padding: 12px 20px;
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-sm);
+    flex: 1;
+    min-width: 200px;
+}

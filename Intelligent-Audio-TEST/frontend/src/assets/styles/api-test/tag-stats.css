@@ -1,0 +1,137 @@
+/* 标签统计区域样式 */
+.tag-stats-section {
+    background-color: #fff;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 28px;
+    border: 1px solid var(--border-color);
+}
+
+.tag-stats-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 24px;
+    margin-top: 24px;
+}
+
+/* 标签统计卡片样式 */
+.tag-stat-card {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 28px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    border: 1px solid var(--border-color);
+    min-height: 280px;
+}
+
+.tag-stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* 卡片头部样式 */
+.tag-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tag-info {
+    flex: 1;
+}
+
+.tag-name {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.tag-case-count {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    display: block;
+}
+
+.tag-icon {
+    background-color: var(--primary-color);
+    color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+
+/* 统计详情样式 */
+.tag-stat-details {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 统计指标样式 */
+.stat-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* 指标头部 */
+.metric-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.metric-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.metric-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+/* 指标进度条容器 */
+.metric-bar-container {
+    width: 100%;
+    height: 8px;
+    background-color: rgba(255, 255, 255, 0.6);
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    background-color: var(--background-secondary);
+}
+
+.metric-bar-container.secondary {
+    background-color: rgba(22, 119, 255, 0.1);
+}
+
+/* 指标进度条 */
+.metric-bar {
+    height: 100%;
+    border-radius: 12px;
+    transition: width 0.3s ease;
+}
+
+/* 进度条动画效果 */
+@keyframes barAnimation {
+    from {
+        width: 0%;
+    }
+}
+
+.metric-bar {
+    animation: barAnimation 1s ease-out forwards;
+}

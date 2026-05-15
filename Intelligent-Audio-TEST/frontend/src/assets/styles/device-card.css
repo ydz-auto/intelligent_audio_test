@@ -1,0 +1,215 @@
+/* 设备卡片基础样式 */
+.device-card {
+    background: white;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+/* 设备卡片选中状态 */
+.device-card:has(.device-checkbox:checked),
+.device-card.selected,
+.device-card.highlighted {
+    background-color: rgba(255, 106, 0, 0.15);
+    border: 2px solid var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.2), 0 4px 16px rgba(255, 106, 0, 0.1);
+    transition: all var(--transition-normal);
+}
+
+.device-card:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+    border-color: var(--primary-color);
+}
+
+/* 设备头部样式 */
+.device-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.device-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.device-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.device-status {
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.device-status.status-online {
+    color: var(--success-color);
+}
+
+.device-status.status-offline {
+    color: var(--text-secondary);
+}
+
+.online-indicator {
+    color: var(--success-color);
+    font-size: 12px;
+}
+
+.offline-indicator {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+/* 设备操作按钮样式 */
+.device-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 设备规格信息样式 */
+.device-specs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+    padding: 16px 0;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.spec-item {
+    display: flex;
+    gap: 8px;
+}
+
+.spec-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    min-width: 80px;
+}
+
+.spec-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* 设备选择区域样式 */
+.device-action {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 12px;
+}
+
+.device-checkbox {
+    margin-right: 8px !important;
+    width: 24px !important;
+    height: 24px !important;
+    cursor: pointer !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: #fff !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    position: relative !important;
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    vertical-align: middle !important;
+    z-index: 10 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.device-checkbox:checked {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2) !important;
+}
+
+.device-checkbox:checked::after {
+    content: '✓' !important;
+    color: white !important;
+    font-size: 16px !important;
+    font-weight: bold !important;
+    position: absolute !important;
+}
+
+.device-checkbox:disabled {
+    opacity: 0.5 !important;
+    cursor: not-allowed !important;
+}
+
+.device-select-btn {
+    padding: 8px 24px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.device-select-btn:hover:not(.disabled) {
+    background-color: var(--primary-dark);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.device-select-btn.disabled {
+    background-color: var(--text-disabled);
+    cursor: not-allowed;
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
+}
+
+/* 设备管理头部样式 */
+.device-management-header {
+    margin-bottom: 24px;
+}
+
+.device-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+    padding: 16px;
+    background: linear-gradient(135deg, #FFFFFF 0%, #F8F9FA 100%);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-light-color);
+}
+
+/* 设备容器样式 */
+.devices-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+    gap: 24px;
+    margin-bottom: 24px;
+}

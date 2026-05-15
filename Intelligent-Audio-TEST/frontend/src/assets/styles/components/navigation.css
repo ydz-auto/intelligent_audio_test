@@ -1,0 +1,581 @@
+/* 导航组件样式 - 符合UI设计规范 */
+
+/* 侧边栏样式 */
+.sidebar {
+    width: var(--sidebar-width);
+    background: linear-gradient(180deg, #FFFFFF 0%, #F8F9FA 100%);
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.08);
+    border-right: 1px solid var(--gray-light-color);
+    padding: var(--spacing-lg);
+    display: flex;
+    flex-direction: column;
+    transition: all var(--transition-normal);
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 100;
+    overflow-y: auto;
+}
+
+/* 侧边栏滚动条样式 */
+.sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-track {
+    background: var(--background-secondary);
+    border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: var(--gray-color);
+    border-radius: 3px;
+}
+
+.sidebar::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* 侧边栏头部 */
+.sidebar .header {
+    margin-bottom: var(--spacing-xl);
+    padding-bottom: var(--spacing-lg);
+    border-bottom: 1px solid var(--gray-light-color);
+}
+
+/* 侧边栏logo */
+.sidebar .logo {
+    font-size: var(--font-size-xxl);
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* 导航菜单 */
+nav {
+    background: transparent;
+    padding: 0;
+    margin-bottom: var(--spacing-xl);
+    border: none;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/* 导航列表 */
+nav ul {
+    display: flex;
+    flex-direction: column;
+    list-style: none;
+    gap: var(--spacing-sm);
+}
+
+/* 导航列表项 */
+nav li {
+    margin-right: 0;
+}
+
+/* 导航链接 */
+nav a {
+    display: flex;
+    align-items: center;
+    padding: var(--spacing-md) var(--spacing-lg);
+    text-decoration: none;
+    color: var(--text-secondary);
+    border-radius: var(--border-radius-md);
+    transition: all var(--transition-normal);
+    font-weight: var(--font-weight-medium);
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+    font-size: var(--font-size-lg);
+}
+
+/* 导航链接图标 */
+nav a .nav-icon {
+    margin-right: var(--spacing-md);
+    font-size: var(--font-size-lg);
+    transition: all var(--transition-normal);
+}
+
+/* 导航链接装饰 */
+nav a::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 4px;
+    background-color: var(--primary-color);
+    transform: scaleY(0);
+    transition: transform var(--transition-normal);
+}
+
+nav a::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transform: translateX(-100%);
+    transition: transform var(--transition-fast);
+}
+
+/* 导航链接悬停效果 */
+nav a:hover::before {
+    transform: scaleY(1);
+}
+
+nav a:hover::after {
+    transform: translateX(100%);
+}
+
+/* 导航链接激活状态 */
+nav a:hover, nav a.active, nav .router-link-active {
+    background: linear-gradient(135deg, var(--primary-light) 0%, rgba(255, 106, 0, 0.15) 100%);
+    color: var(--primary-color);
+    box-shadow: 0 8px 24px rgba(255, 106, 0, 0.2);
+    transform: translateX(8px);
+}
+
+/* 导航链接激活状态图标 */
+nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon {
+    color: var(--primary-color);
+    transform: scale(1.1);
+}
+
+/* 步骤导航样式 */
+.progress-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-xxl);
+    padding: var(--spacing-lg);
+    background-color: #FFFFFF;
+    border-radius: 16px;
+    box-shadow: var(--card-shadow);
+    overflow-x: visible;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+/* 步骤项 */
+.progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-xs);
+    z-index: 1;
+    cursor: pointer;
+    min-width: auto;
+    flex-shrink: 0;
+    transition: all var(--transition-normal);
+    position: relative;
+}
+
+/* 步骤数字 - 与原HTML设计保持一致 */
+.progress-step-number {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+    background-color: var(--gray-light-color);
+    color: var(--gray-color);
+    transition: all var(--transition-normal);
+    border: 3px solid transparent;
+    z-index: 2;
+    margin-bottom: 0;
+    box-shadow: none;
+}
+
+/* 步骤标签 - 与原HTML设计保持一致 */
+.progress-step-label {
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    color: var(--gray-color);
+    white-space: nowrap;
+    transition: all var(--transition-normal);
+    z-index: 2;
+    padding: 0;
+    line-height: 1.3;
+}
+
+/* 步骤线条 */
+.progress-line {
+    flex: 1;
+    height: 2px;
+    background-color: var(--gray-light-color);
+    transition: var(--transition-normal);
+    min-width: 80px;
+    position: relative;
+    z-index: 1;
+    margin: 0;
+}
+
+/* 步骤线条激活状态 - 与原HTML设计保持一致 */
+.progress-line.active {
+    background-color: var(--primary-color);
+    box-shadow: none;
+}
+
+/* 步骤激活状态 - 与原HTML设计保持一致 */
+.progress-step.active .progress-step-number {
+    background-color: var(--primary-color);
+    color: var(--white-color);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 80px rgba(255, 106, 0, 0.15);
+    /*transform: none;*/
+}
+
+.progress-step.active .progress-step-label {
+    color: var(--text-primary);
+    font-weight: var(--font-weight-medium);
+}
+
+/* 步骤完成状态 - 与原HTML设计保持一致 */
+.progress-step.completed .progress-step-number {
+    background-color: var(--success-color);
+    color: var(--white-color);
+    border-color: var(--success-color);
+    box-shadow: none;
+}
+
+.progress-step.completed .progress-step-number::after {
+    content: '✓';
+    font-size: var(--font-size-xl);
+}
+
+/* 步骤悬停效果 - 与原HTML设计保持一致 */
+.progress-step:hover {
+    transform: none;
+}
+
+.progress-step:hover .progress-step-number {
+    transform: none;
+    box-shadow: 0 0 5px rgba(255, 106, 0, 0.3);
+}
+
+.progress-step:hover .progress-step-label {
+    color: var(--primary-color);
+    transform: none;
+}
+
+/* 面包屑导航 */
+.breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.breadcrumb-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.breadcrumb-item:not(:last-child)::after {
+    content: '>';
+    color: var(--text-light);
+}
+
+.breadcrumb-item a {
+    color: var(--secondary-color);
+    text-decoration: none;
+    transition: all var(--transition-normal);
+}
+
+.breadcrumb-item a:hover {
+    color: var(--primary-color);
+    text-decoration: underline;
+}
+
+/* 标签页导航 */
+.tab-nav {
+    display: flex;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-lg);
+    background-color: var(--background-secondary);
+    padding: var(--spacing-xs);
+    border-radius: var(--border-radius-md);
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.tab-nav::-webkit-scrollbar {
+    height: 4px;
+}
+
+.tab-nav::-webkit-scrollbar-track {
+    background: var(--background-tertiary);
+    border-radius: 2px;
+}
+
+.tab-nav::-webkit-scrollbar-thumb {
+    background: var(--gray-color);
+    border-radius: 2px;
+}
+
+/* 标签页 */
+.tab-item {
+    flex-shrink: 0;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: none;
+    background: transparent;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-secondary);
+    transition: all var(--transition-normal);
+    white-space: nowrap;
+}
+
+.tab-item:hover {
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+}
+
+.tab-item.active {
+    background-color: var(--background-primary);
+    color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+
+    /* 移动端标签页 */
+    .tab-nav {
+        gap: 0;
+        padding: 0;
+    }
+
+    .tab-item {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: 13px;
+    }
+
+/* 进度导航样式 */
+.progress-nav {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--spacing-lg);
+    margin: var(--spacing-lg) 0;
+    padding: var(--spacing-md);
+    background: #fff;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-color);
+}
+
+.progress-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--spacing-sm);
+    position: relative;
+    min-width: 120px;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.progress-step-number {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background-color: var(--background-tertiary);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    border: 3px solid var(--border-color);
+    transition: all var(--transition-normal);
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    z-index: 2;
+}
+
+.progress-step-label {
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-secondary);
+    text-align: center;
+    transition: all var(--transition-normal);
+    white-space: nowrap;
+}
+
+.progress-line {
+    flex: 1;
+    height: 4px;
+    background-color: var(--background-tertiary);
+    border-radius: 2px;
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-line::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--primary-color));
+    border-radius: 2px;
+    transition: width var(--transition-normal);
+}
+
+.progress-line.active::after {
+    width: 100%;
+}
+
+/* 活动状态 */
+
+.progress-step.active .progress-step-number {
+    background-color: var(--primary-color);
+    color: #FFFFFF;
+    box-shadow: 0 0 0 8px rgba(255, 106, 0, 0.15);
+    border-color: #FFFFFF;
+}
+
+.progress-step.active .progress-step-label {
+    color: var(--primary-color);
+    font-weight: var(--font-weight-semibold);
+    transform: translateY(-2px);
+}
+
+/* 完成状态 */
+.progress-step.completed .progress-step-number {
+    background: var(--success-color);
+    color: var(--white-color);
+    border-color: var(--success-color);
+    box-shadow: 0 0 15px rgba(82, 196, 26, 0.4);
+}
+
+.progress-step.completed .progress-step-number::after {
+    content: '✓';
+    font-size: var(--font-size-xl);
+}
+
+.progress-step.completed .progress-step-label {
+    color: var(--success-color);
+    font-weight: var(--font-weight-semibold);
+}
+
+/* 悬停效果 */
+.progress-step:hover .progress-step-number {
+    transform: scale(1.1);
+    box-shadow: 0 0 15px rgba(255, 106, 0, 0.3);
+}
+
+.progress-step:hover .progress-step-label {
+    color: var(--primary-color);
+}
+
+/* 进度导航提示样式 */
+.progress-tooltip {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--text-primary);
+    color: white;
+    padding: 8px 12px;
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-sm);
+    white-space: nowrap;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    pointer-events: none;
+    margin-bottom: 8px;
+    box-shadow: var(--shadow-lg);
+}
+
+.progress-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-width: 6px;
+    border-style: solid;
+    border-color: var(--text-primary) transparent transparent transparent;
+}
+
+.progress-step:hover .progress-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(-4px);
+}
+
+/* 进度步骤点击样式 */
+.progress-step {
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.progress-step:hover {
+    transform: translateY(-2px);
+}
+
+/* 响应式设计 */
+@media (max-width: 1024px) {
+    .progress-nav {
+        flex-wrap: wrap;
+        gap: var(--spacing-md);
+        padding: var(--spacing-md);
+    }
+
+    .progress-step {
+        min-width: 100px;
+    }
+
+    .progress-step-number {
+        width: 40px;
+        height: 40px;
+        font-size: var(--font-size-md);
+    }
+
+    .progress-step-label {
+        font-size: var(--font-size-sm);
+    }
+}
+
+@media (max-width: 768px) {
+    .progress-nav {
+        gap: var(--spacing-sm);
+    }
+
+    .progress-step {
+        min-width: 80px;
+    }
+
+    .progress-step-number {
+        width: 36px;
+        height: 36px;
+        font-size: var(--font-size-sm);
+    }
+
+    .progress-line {
+        flex: none;
+        width: 30px;
+    }
+}

@@ -1,0 +1,345 @@
+/* 标签组件样式 - 符合UI设计规范 */
+
+/* 基础标签样式 */
+.tag {
+    display: inline-block;
+    padding: 4px 12px;
+    margin-right: var(--spacing-xs);
+    margin-bottom: var(--spacing-xs);
+    background-color: var(--secondary-light);
+    color: var(--secondary-color);
+    border-radius: var(--border-radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+}
+
+/* 标签悬停效果 */
+.tag:hover {
+    background-color: var(--secondary-color);
+    color: var(--white-color);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+    border-color: var(--secondary-color);
+}
+
+/* 任务标签 */
+.tag-task {
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+    border-color: var(--primary-light);
+}
+
+.tag-task:hover {
+    background-color: var(--primary-color);
+    color: var(--white-color);
+    border-color: var(--primary-color);
+}
+
+/* 音频标签 */
+.tag-audio {
+    background-color: var(--info-light);
+    color: var(--info-color);
+    border-color: var(--info-light);
+}
+
+.tag-audio:hover {
+    background-color: var(--info-color);
+    color: var(--white-color);
+    border-color: var(--info-color);
+}
+
+/* 用例标签 */
+.tag-case {
+    background-color: var(--success-light);
+    color: var(--success-color);
+    border-color: var(--success-light);
+}
+
+.tag-case:hover {
+    background-color: var(--success-color);
+    color: var(--white-color);
+    border-color: var(--success-color);
+}
+
+/* 禁用标签 */
+.tag.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.tag.disabled:hover {
+    background-color: var(--secondary-light);
+    color: var(--secondary-color);
+    transform: none;
+    box-shadow: none;
+}
+
+/* 标签组 */
+.tags-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+}
+
+/* 标签云 */
+.tags-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+    min-height: 40px;
+}
+
+/* 标签项 */
+.tag-item {
+    background: rgba(255, 106, 0, 0.1);
+    color: rgba(255, 106, 0, 0.2);
+    padding: 6px 12px;
+    border-radius: var(--border-radius-full);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+}
+
+.tag-item:hover {
+    background: rgba(255, 106, 0, 0.2);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.tag-item.active {
+    background: #FF6A00;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+/* 任务类型标签 */
+.task-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    transition: all var(--transition-normal);
+}
+
+.task-type-badge.api {
+    background: #dbeafe;
+    color: #1d4ed8;
+}
+
+.task-type-badge.e2e {
+    background: #d1fae5;
+    color: #059669;
+}
+
+/* 状态标签 */
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: all var(--transition-normal);
+}
+
+.status-badge.success {
+    background-color: #e6f7ed;
+    color: #38a169;
+    border: 1px solid #c6f6d5;
+}
+
+.status-badge.warning {
+    background-color: #fffaf0;
+    color: #d69e2e;
+    border: 1px solid #feebc8;
+}
+
+.status-badge.error {
+    background-color: #fff5f5;
+    color: #e53e3e;
+    border: 1px solid #fed7d7;
+}
+
+.status-badge.info {
+    background-color: #ebf8ff;
+    color: #3182ce;
+    border: 1px solid #bee3f8;
+}
+
+/* 标签筛选组件 */
+.tag-filter {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xs);
+    margin-bottom: var(--spacing-md);
+    padding: var(--spacing-sm);
+    background-color: var(--background-secondary);
+    border-radius: var(--border-radius-md);
+}
+
+.tag-filter-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    background-color: var(--background-primary);
+    border: 1px solid var(--gray-light-color);
+    border-radius: var(--border-radius-full);
+    font-size: var(--font-size-sm);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.tag-filter-item:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.tag-filter-item.active {
+    background-color: var(--primary-light);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+/* 标签省略号样式 */
+.tag-more {
+    background-color: var(--secondary-light) !important;
+    color: var(--secondary-color) !important;
+    padding: 4px 12px !important;
+    border-radius: var(--border-radius-full) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+    height: auto !important;
+    line-height: 1.5 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    box-sizing: border-box !important;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+}
+
+.tag-more:hover {
+    background-color: var(--primary-light) !important;
+    color: var(--primary-color) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* 用例标签容器 */
+.case-tags-container {
+    margin-bottom: 4px;
+    position: relative;
+    width: 100% !important;
+    display: block;
+    box-sizing: border-box !important;
+}
+
+/* 用例标签 */
+.case-tags {
+    display: flex;
+    flex-wrap: wrap !important;
+    gap: 8px;
+    padding: 4px 0;
+    width: 100% !important;
+    height: auto;
+    min-height: 32px;
+    align-items: center;
+    box-sizing: border-box !important;
+    overflow: hidden;
+}
+
+/* 确保标签在所有状态下都能正确换行 */
+.case-tags.collapsed-tags,
+.case-tags.expanded-tags {
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 展开后的标签样式 */
+.case-tags.expanded-tags {
+    flex-wrap: wrap;
+    overflow: visible;
+    max-height: none;
+    width: 100%;
+    display: flex;
+}
+
+/* 标签页样式 */
+.tag-pagination {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    justify-content: flex-start;
+}
+
+/* 标签页按钮 */
+.tag-page-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.tag-page-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.tag-page-btn.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.tag-page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 标签页信息 */
+.tag-page-info {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-right: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .tag {
+        font-size: 11px;
+        padding: 3px 10px;
+    }
+    
+    .tag-filter {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .tag-filter-item {
+        justify-content: center;
+    }
+}

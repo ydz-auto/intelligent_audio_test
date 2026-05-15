@@ -1,0 +1,257 @@
+/* 卡片组件样式 - 符合UI设计规范 */
+
+/* 基础卡片样式 */
+.card {
+    position: relative;
+    background-color: var(--background-primary);
+    border: var(--card-border);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    overflow: visible;
+    transition: all var(--transition-normal);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 卡片悬停效果 */
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--card-shadow-hover);
+}
+
+/* 卡片头部 */
+.card-header,
+.card__head {
+    padding: var(--spacing-md);
+    border-bottom: var(--card-border);
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* 卡片标题 */
+.card-title,
+.card__title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* 卡片内容 */
+.card-body,
+.card__body {
+    padding: var(--spacing-md);
+    color: var(--text-primary);
+    line-height: 1.6;
+    background-color: var(--background-primary);
+}
+
+/* 卡片底部 */
+.card-footer,
+.card__foot {
+    padding: var(--spacing-md);
+    border-top: var(--card-border);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--background-primary);
+}
+
+/* 卡片底部带两侧内容的样式 */
+.card-footer.space-between {
+    justify-content: space-between;
+}
+
+/* 卡片操作按钮组 */
+.card-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+/* 卡片选中状态 - 增强高亮效果 */
+.card.card-selected,
+.task-card:has(input[type="checkbox"].test-task-checkbox:checked),
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) {
+    background-color: rgba(255, 106, 0, 0.1) !important;
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2) !important;
+    transition: all var(--transition-normal);
+}
+
+/* 确保卡片所有区域都应用选中背景色 */
+.card.card-selected .card-header,
+.card.card-selected .card__head,
+.card.card-selected .card-body,
+.card.card-selected .card__body,
+.card.card-selected .card-footer,
+.card.card-selected .card__foot,
+.task-card.card-selected .card-header,
+.task-card.card-selected .card__head,
+.task-card.card-selected .card-body,
+.task-card.card-selected .card__body,
+.task-card.card-selected .card-footer,
+.task-card.card-selected .card__foot,
+.task-card:has(input[type="checkbox"].test-task-checkbox:checked) .card-header,
+.task-card:has(input[type="checkbox"].test-task-checkbox:checked) .card__head,
+.task-card:has(input[type="checkbox"].test-task-checkbox:checked) .card-body,
+.task-card:has(input[type="checkbox"].test-task-checkbox:checked) .card__body,
+.task-card:has(input[type="checkbox"].test-task-checkbox:checked) .card-footer,
+.task-card:has(input[type="checkbox"].test-task-checkbox:checked) .card__foot,
+.case-card.card-selected .card-header,
+.case-card.card-selected .card__head,
+.case-card.card-selected .card-body,
+.case-card.card-selected .card__body,
+.case-card.card-selected .card-footer,
+.case-card.card-selected .card__foot,
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) .card-header,
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) .card__head,
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) .card-body,
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) .card__body,
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) .card-footer,
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) .card__foot,
+/* 卡片内部元素高亮 */
+.card.card-selected .task-description,
+.card.card-selected .case-description,
+.card.card-selected .case-config,
+.card.card-selected .config-details,
+.card.card-selected .case-info,
+.card.card-selected .task-info,
+.task-card.card-selected .task-description,
+.task-card.card-selected .case-description,
+.task-card.card-selected .case-config,
+.task-card.card-selected .config-details,
+.task-card.card-selected .case-info,
+.task-card.card-selected .task-info,
+.case-card.card-selected .task-description,
+.case-card.card-selected .case-description,
+.case-card.card-selected .case-config,
+.case-card.card-selected .config-details,
+.case-card.card-selected .case-info,
+.case-card.card-selected .task-info {
+    background-color: rgba(255, 106, 0, 0.1) !important;
+    border-color: var(--primary-color) !important;
+}
+
+/* 卡片头部操作区 */
+.card__action {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+/* 卡片标题样式 */
+.card-header h3,
+.card__head h3 {
+    margin: 0;
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
+/* 统计卡片样式 */
+.stat-card {
+    background-color: var(--background-primary);
+    border: var(--card-border);
+    border-radius: var(--card-radius);
+    box-shadow: var(--card-shadow);
+    padding: var(--spacing-lg);
+    transition: all var(--transition-normal);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    align-items: center;
+    text-align: center;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--card-shadow-hover);
+}
+
+/* 统计卡片头部 */
+.stat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--border-radius-lg);
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: var(--font-size-xl);
+}
+
+.stat-label {
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+    font-weight: var(--font-weight-medium);
+}
+
+/* 统计卡片数值 */
+.stat-value {
+    font-size: var(--font-size-xxxl);
+    font-weight: var(--font-weight-bold);
+    color: var(--primary-color);
+}
+
+/* 统计卡片底部 */
+.stat-footer {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+}
+
+.stat-change {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.stat-change.positive {
+    color: var(--success-color);
+}
+
+.stat-change.negative {
+    color: var(--danger-color);
+}
+
+.stat-change.neutral {
+    color: var(--text-secondary);
+}
+
+/* 卡片网格布局 */
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: var(--spacing-lg);
+}
+
+/* 卡片列表布局 */
+.card-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+/* 响应式卡片布局 */
+@media (max-width: 768px) {
+    .card-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .stat-card {
+        padding: var(--spacing-md);
+    }
+    
+    .stat-value {
+        font-size: var(--font-size-xxl);
+    }
+}

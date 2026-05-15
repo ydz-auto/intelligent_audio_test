@@ -1,0 +1,526 @@
+/* 表单组件样式 - 符合UI设计规范 */
+
+/* 表单容器 */
+.form-container {
+    background-color: var(--background-primary);
+    padding: var(--spacing-lg);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+/* 表单行布局 */
+.form-row {
+    display: flex;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+/* 表单组 */
+.form-group {
+    flex: 1;
+    min-width: 250px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+/* 全宽表单组 */
+.form-group.full-width {
+    flex-basis: 100%;
+    min-width: 100%;
+}
+
+/* 表单标签 */
+.form-group label {
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-xs);
+}
+
+/* 表单输入框和选择器 */
+.form-input,
+.form-field,
+select.form-input,
+select.form-field {
+    width: 100%;
+    height: 40px;
+    padding: 0 var(--spacing-md);
+    border: 1px solid var(--gray-light-color);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-md);
+    color: var(--text-primary);
+    background-color: var(--background-primary);
+    transition: all var(--transition-normal);
+    box-sizing: border-box;
+    outline: none;
+}
+
+/* datetime-local 输入框特殊处理 */
+input[type="datetime-local"].form-input,
+input[type="datetime-local"].form-field {
+    /* 增加右侧内边距，确保日历图标完整显示 */
+    padding-right: 3rem;
+    /* 确保整个输入框可点击 */
+    cursor: pointer;
+}
+
+/* datetime-local 清除按钮样式 */
+input[type="datetime-local"].form-input::-webkit-clear-button,
+input[type="datetime-local"].form-field::-webkit-clear-button {
+    display: none;
+}
+
+/* datetime-local 日历图标样式 */
+input[type="datetime-local"].form-input::-webkit-calendar-picker-indicator,
+input[type="datetime-local"].form-field::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    margin-right: 8px;
+}
+
+/* 确保datetime-local输入框容器可点击 */
+.filter-select:has(input[type="datetime-local"].form-input) {
+    /* 确保容器可点击 */
+    cursor: pointer !important;
+    /* 确保容器不会阻止点击事件 */
+    pointer-events: auto !important;
+}
+
+/* 针对各种容器中的datetime-local输入框的特殊样式（覆盖!important规则） */
+.filter-bar input[type="datetime-local"].form-input,
+.toolbar-filters input[type="datetime-local"].form-input,
+.device-toolbar input[type="datetime-local"].form-input,
+.filter-select input[type="datetime-local"].form-input {
+    /* 增加右侧内边距，确保日历图标完整显示 */
+    padding-right: 3rem !important;
+    /* 确保日历图标显示 */
+    appearance: auto !important;
+    /* 确保整个输入框可点击 */
+    cursor: pointer !important;
+    /* 确保输入框占满整个容器空间 */
+    position: relative !important;
+    z-index: 1 !important;
+    /* 确保输入框能够接收所有点击事件 */
+    pointer-events: auto !important;
+}
+
+/* 确保各种容器中的datetime-local日历图标可点击 */
+.filter-bar input[type="datetime-local"].form-input::-webkit-calendar-picker-indicator,
+.toolbar-filters input[type="datetime-local"].form-input::-webkit-calendar-picker-indicator,
+.device-toolbar input[type="datetime-local"].form-input::-webkit-calendar-picker-indicator,
+.filter-select input[type="datetime-local"].form-input::-webkit-calendar-picker-indicator {
+    cursor: pointer !important;
+    margin-right: 8px !important;
+    z-index: 10 !important;
+    /* 增大点击区域 */
+    padding: 10px !important;
+    margin: -10px !important;
+    position: relative !important;
+}
+
+/* 修复：filter-select作为容器时不应用输入框样式 */
+.filter-select {
+    /* 如果filter-select是容器，不添加边框 */
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* filter-select 容器内的 form-input 去掉边框并占满宽度 */
+.filter-select .form-input {
+    border: none !important;
+    width: 100% !important;
+}
+
+/* 只对select元素应用选择器样式 */
+select.filter-select {
+    width: 100%;
+    height: 40px;
+    padding: 0 var(--spacing-md);
+    border: 1px solid var(--gray-light-color);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-md);
+    color: var(--text-primary);
+    background-color: var(--background-primary);
+    transition: all var(--transition-normal);
+    box-sizing: border-box;
+    outline: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='%236B7280'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right var(--spacing-md) center;
+    background-size: 16px 16px;
+    padding-right: 2.5rem;
+    cursor: pointer;
+}
+
+/* 选择器特有样式 */
+select.form-input,
+select.form-field {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='%236B7280'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right var(--spacing-md) center !important;
+    background-size: 16px 16px !important;
+    padding-right: 2.5rem !important;
+    cursor: pointer;
+}
+
+/* 悬停状态 */
+.form-input:hover,
+.form-field:hover,
+select.form-input:hover,
+select.form-field:hover,
+select.filter-select:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* 聚焦状态 */
+.form-input:focus,
+.form-field:focus,
+select.form-input:focus,
+select.form-field:focus,
+select.filter-select:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
+    background-color: var(--background-primary);
+    color: var(--text-primary);
+}
+
+/* 输入框错误状态 */
+.form-input.error,
+.form-field.error,
+select.form-input.error,
+select.form-field.error,
+select.filter-select.error {
+    border-color: var(--danger-color);
+    box-shadow: 0 0 0 3px var(--danger-light);
+}
+
+/* 输入框禁用状态 */
+.form-input:disabled,
+.form-field:disabled,
+select.form-input:disabled,
+select.form-field:disabled,
+select.filter-select:disabled {
+    background-color: var(--background-secondary);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+}
+
+/* 文本域 */
+textarea.form-input,
+textarea.form-field {
+    height: auto;
+    min-height: 80px;
+    padding: var(--spacing-sm) var(--spacing-md);
+    resize: vertical;
+}
+
+/* 单选框容器 */
+.radio-group {
+    display: flex;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.radio-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    cursor: pointer;
+}
+
+/* 自定义单选按钮样式 */
+.custom-radio-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    padding: 6px 12px;
+    border-radius: var(--border-radius-md);
+}
+
+.custom-radio-container:hover:not(:has(.custom-radio:disabled)) {
+    background-color: rgba(255, 106, 0, 0.05);
+}
+
+.custom-radio {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.custom-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    transition: color var(--transition-normal);
+    user-select: none;
+    position: relative;
+}
+
+.custom-radio-label::before {
+    content: '';
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--gray-light-color);
+    border-radius: var(--border-radius-full);
+    background-color: white;
+    transition: all var(--transition-normal);
+    position: relative;
+    box-sizing: border-box;
+}
+
+.custom-radio-label:hover::before {
+    border-color: var(--primary-color);
+}
+
+.custom-radio:checked + .custom-radio-label::before {
+    border-color: var(--primary-color);
+    background-color: var(--primary-color);
+}
+
+.custom-radio:checked + .custom-radio-label::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    animation: checkboxCheck var(--transition-normal);
+}
+
+.custom-radio:checked + .custom-radio-label {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.custom-radio:disabled + .custom-radio-label {
+    opacity: 0.5;
+    cursor: not-allowed;
+    color: var(--text-secondary);
+}
+
+.custom-radio:disabled + .custom-radio-label::before {
+    background-color: var(--background-secondary);
+    border-color: var(--gray-light-color);
+}
+
+/* 复选框容器 */
+.checkbox-group {
+    display: flex;
+    gap: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    cursor: pointer;
+}
+
+/* 自定义复选框样式 */
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    padding: 6px 12px;
+    border-radius: var(--border-radius-md);
+}
+
+.checkbox-container:hover:not(:has(input:disabled)) {
+    background-color: rgba(255, 106, 0, 0.05);
+}
+
+/* 复选框输入 */
+input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: var(--background-primary);
+    border: 2px solid var(--gray-light-color);
+    border-radius: var(--border-radius-sm);
+    position: relative;
+    transition: all var(--transition-normal);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* 复选框选中状态 */
+input[type="checkbox"]:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2);
+}
+
+/* 复选框选中标记 */
+input[type="checkbox"]:checked::after {
+    content: '✓';
+    color: var(--white-color);
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* 复选框禁用状态 */
+input[type="checkbox"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: var(--background-secondary);
+}
+
+/* 复选框标签 */
+.checkbox-container label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: color var(--transition-normal);
+    user-select: none;
+}
+
+.checkbox-container:hover label:not(:has(input:disabled)) {
+    color: var(--primary-color);
+}
+
+/* 表单提交按钮容器 */
+.form-actions {
+    display: flex;
+    gap: var(--spacing-md);
+    justify-content: flex-end;
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-lg);
+    border-top: var(--card-border);
+}
+
+/* 错误提示文本 */
+.error-message {
+    font-size: var(--font-size-sm);
+    color: var(--danger-color);
+    margin-top: var(--spacing-xs);
+}
+
+/* 成功提示文本 */
+.success-message {
+    font-size: var(--font-size-sm);
+    color: var(--success-color);
+    margin-top: var(--spacing-xs);
+}
+
+/* 表单帮助文本 */
+.help-text {
+    font-size: var(--font-size-sm);
+    color: var(--text-light);
+    margin-top: var(--spacing-xs);
+}
+
+/* 表单分组标题 */
+.form-section-title {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-xs);
+    border-bottom: var(--card-border);
+}
+
+/* 动画效果 */
+@keyframes checkboxCheck {
+    0% {
+        transform: rotate(45deg) scale(0);
+        opacity: 0;
+    }
+    70% {
+        transform: rotate(45deg) scale(1.2);
+    }
+    100% {
+        transform: rotate(45deg) scale(1);
+        opacity: 1;
+    }
+}
+
+/* 小型表单输入框 */
+.form-input-sm {
+    width: auto;
+    height: 36px;
+    padding: 0 var(--spacing-sm);
+    border: 1px solid var(--gray-light-color);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    background-color: var(--background-primary);
+    transition: all var(--transition-normal);
+    box-sizing: border-box;
+    outline: none;
+    cursor: pointer;
+    font-weight: 500;
+    min-width: 100px;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* 小型选择器样式 */
+select.form-input.form-input-sm {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='%236B7280'/%3E%3C/svg%3E") !important;
+    background-repeat: no-repeat !important;
+    background-position: right var(--spacing-xs) center !important;
+    background-size: 16px 16px !important;
+    padding-right: 2rem !important;
+}
+
+/* 强制覆盖所有选择器样式 */
+select.form-input.form-input-sm {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+}
+
+/* 小型表单输入框悬停状态 */
+.form-input-sm:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+}
+
+/* 小型表单输入框聚焦状态 */
+.form-input-sm:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
+    background-color: var(--background-primary);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+/* 小型表单输入框禁用状态 */
+.form-input-sm:disabled {
+    background-color: var(--background-secondary);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+    border-color: var(--gray-light-color);
+}

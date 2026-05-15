@@ -1,0 +1,81 @@
+/* 错误预警面板样式 */
+.error-alert-panel {
+    background-color: #fff3f0;
+    border: 1px solid #ffccc7;
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.error-alert-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.error-icon {
+    color: #ff4d4f;
+    margin-right: 8px;
+    font-size: 18px;
+}
+
+.error-alert-header h4 {
+    margin: 0;
+    color: #ff4d4f;
+    flex: 1;
+}
+
+.error-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+/* 设备连接测试结果样式 */
+.connection-test-result {
+    margin-top: 10px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.connection-test-result.testing {
+    background-color: #e6f7ff;
+    color: #1890ff;
+}
+
+.connection-test-result.success {
+    background-color: #f6ffed;
+    color: #52c41a;
+}
+
+.connection-test-result.error {
+    background-color: #fff2f0;
+    color: #ff4d4f;
+}
+
+/* 信噪比显示样式 */
+.snr-info {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 8px;
+    font-size: 14px;
+    color: #666;
+}
+
+.snr-label {
+    font-weight: 500;
+}
+
+.snr-value {
+    color: #1890ff;
+    font-weight: 600;
+}

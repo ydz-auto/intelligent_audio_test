@@ -1,0 +1,51 @@
+/* 自定义勾选框样式 */
+input[type="checkbox"].group-checkbox, input[type="checkbox"].test-case-checkbox {
+    margin-right: 8px !important;
+    width: 24px !important;
+    height: 24px !important;
+    cursor: pointer !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: #fff !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    position: relative !important;
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    vertical-align: middle !important;
+    z-index: 10 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+input[type="checkbox"].group-checkbox:checked, input[type="checkbox"].test-case-checkbox:checked {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2) !important;
+}
+
+input[type="checkbox"].group-checkbox:checked::after, input[type="checkbox"].test-case-checkbox:checked::after {
+    content: '✓' !important;
+    color: white !important;
+    font-size: 16px !important;
+    font-weight: bold !important;
+    position: absolute !important;
+}
+
+input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-checkbox:hover {
+    border-color: var(--primary-color) !important;
+}
+
+/* 勾选后高亮分组头部 */
+input[type="checkbox"].group-checkbox:checked ~ .category-title {
+    color: var(--primary-color) !important;
+    font-weight: 700 !important;
+}
+
+/* 勾选后高亮整个分组头部 */
+.category-card:has(input[type="checkbox"].group-checkbox:checked) .category-header {
+    background: linear-gradient(135deg, rgba(255, 106, 0, 0.1) 0%, rgba(255, 106, 0, 0.05) 100%) !important;
+}

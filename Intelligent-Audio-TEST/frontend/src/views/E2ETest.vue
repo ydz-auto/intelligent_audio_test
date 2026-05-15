@@ -1,0 +1,788 @@
+<template>
+  <div class="e2e-test-view">
+    <!-- 页面标题 -->
+    <div class="page-header">
+      <div class="header-left">
+        <h2 class="page-title" style="color: var(--primary-color);">
+          <i class="fas fa-project-diagram"></i>
+          端到端测试
+        </h2>
+        <p class="page-description">通过完整的测试流程验证语音产品的功能和性能</p>
+      </div>
+    </div>
+
+    <!-- 进度导航 - 使用公共组件 -->
+    <ProgressNav 
+      :current-step="currentStep" 
+      :step-labels="['选择算法', '选择测试用例', '选择测试设备', '执行测试', '查看结果']" 
+      :step2-tooltip="'选择要使用的测试设备'"
+      @go-to-step="goToStep"
+    />
+
+    <!-- 步骤内容区域 -->
+    <div class="step-content">
+      <!-- 步骤0：选择算法 -->
+      <TestStepContainer
+        :is-active="currentStep === 0"
+        panel-id="e2e-step0"
+        title="选择算法"
+        next-label="下一步"
+        :show-prev="false"
+        @next="nextStep"
+      >
+        <template #header-extra>
+          <div class="algorithm-toolbar">
+            <button class="btn btn-primary" @click="openCreateAlgorithmModal">
+              <i class="fas fa-plus"></i> 新增算法
+            </button>
+            <div class="search-box">
+              <i class="fas fa-search search-icon"></i>
+              <input type="text" class="search-input" placeholder="搜索算法名称..." v-model="algorithmSearchQuery" @input="searchAlgorithms">
+            </div>
+          </div>
+        </template>
+
+        <div class="algorithm-selection">
+          <div v-if="filteredAlgorithmList.length === 0" class="empty-state">
+            <i class="fas fa-inbox empty-icon"></i>
+            <p>暂无可用算法，请先配置算法</p>
+          </div>
+
+          <div v-else class="algorithm-grid">
+            <div
+              v-for="algo in filteredAlgorithmList"
+              :key="algo.value"
+              class="algorithm-card"
+              :class="{ selected: selectedAlgorithmType === algo.value }"
+              @click="selectAlgorithm(algo.value)"
+            >
+              <div class="algorithm-card-header">
+                <div class="card-info">
+                  <span class="algorithm-icon"><i :class="['fas', getAlgorithmIcon(algo.group_name)]"></i></span>
+                  <div class="algorithm-name">{{ algo.name }}</div>
+                </div>
+                <div class="card-actions">
+                  <button class="btn-icon-only" title="算法配置" @click.stop="openAlgorithmConfigModal(algo)">
+                    <i class="fas fa-cog"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="card-content">
+                <div class="algorithm-meta">
+                  <div class="algorithm-meta-item">
+                    <span class="algorithm-meta-label">分组:</span>
+                    <span class="algorithm-meta-value">{{ algo.group_name || '未分组' }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="algorithm-card-footer">
+                <input
+                  type="checkbox"
+                  :id="`algo-${algo.value}`"
+                  class="algorithm-checkbox"
+                  :checked="selectedAlgorithmType === algo.value"
+                  @click.stop
+                  @change="selectAlgorithm(algo.value)"
+                >
+                <label
+                  :for="`algo-${algo.value}`"
+                  class="algorithm-select-btn"
+                >
+                  {{ selectedAlgorithmType === algo.value ? '已选择' : '选择' }}
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div v-if="selectedAlgorithmType" class="selected-info">
+            <span class="selected-label">当前选择：{{ getAlgorithmName(selectedAlgorithmType) }}</span>
+          </div>
+        </div>
+      </TestStepContainer>
+
+      <!-- 步骤1：选择测试用例 -->
+      <TestStepContainer
+        :is-active="currentStep === 1"
+        panel-id="e2e-step1"
+        :show-prev="false"
+        @next="nextStep"
+      >
+        <TestCaseListContainer 
+          :test-case-groups="testCaseGroups"
+          :tags="tags"
+          :algorithm-type-filter="selectedAlgorithmType || 'all'"
+          :show-test-case-modal="showTestCaseModal || false"
+          :show-group-modal="showGroupModal || false"
+          :show-import-modal="showImportModal || false"
+          :show-export-modal="showExportModal || false"
+          :form-data="formData || {}"
+          :group-form-data="groupFormData || {}"
+          :editing-test-case="editingTestCase || null"
+          :editing-group="editingGroup || null"
+          :is-loading="isLoading || false"
+          @delete-group="handleDeleteGroup"
+          @delete-test-case="handleDeleteTestCase"
+          @open-add-modal="openAddTestCaseModal"
+          @open-edit-modal="handleOpenEditModal"
+          @open-create-group-modal="openCreateGroupModal"
+          @open-edit-group-modal="openEditGroupModal"
+          @open-import-modal="openImportTestCaseModal"
+          @open-export-modal="openExportTestCaseModal"
+          @close-modal="handleModalClose"
+          @save-modal="handleSaveModal"
+          @updateSelectedCases="updateSelectedCases"
+        />
+      </TestStepContainer>
+
+      <!-- 步骤2：选择测试设备 -->
+      <TestStepContainer
+        :is-active="currentStep === 2"
+        panel-id="e2e-step2"
+        title="选择测试设备"
+        next-label="开始任务"
+        @prev="prevStep"
+        @next="handleStartTask"
+      >
+        <template #header-extra>
+          <div class="device-toolbar">
+            <button class="btn btn-primary" @click="handleAddDevice">
+              <i class="fas fa-plus"></i> 新增设备
+            </button>
+            <button class="btn btn-secondary" @click.stop="scanDevices('test')">
+              <i class="fas fa-search"></i> 扫描设备
+            </button>
+            <div class="search-box">
+              <i class="fas fa-search search-icon"></i>
+              <input type="text" class="search-input" placeholder="搜索设备名称或型号..." v-model="deviceSearchQuery" @input="searchDevices">
+            </div>
+            <div class="filter-select">
+              <select class="form-input" v-model="selectedDeviceStatus" @change="filterDevices">
+                <option value="all">所有状态</option>
+                <option value="online">在线</option>
+                <option value="offline">离线</option>
+              </select>
+            </div>
+          </div>
+        </template>
+
+        <ResourceSelectionGrid
+          :items="algorithmFilteredDevices"
+          :selected-ids="selectedDeviceIdsList"
+          :display-fields="deviceDisplayFields"
+          empty-text="未找到相关设备"
+          @toggle-selection="handleToggleDeviceSelection"
+          @action-click="handleResourceAction"
+        />
+        
+        <!-- 分页控件 -->
+        <div class="pagination-container" v-if="totalItems > pageSize">
+          <PaginationComponent
+            :current-page="currentPage"
+            :page-size="pageSize"
+            :total-items="totalItems"
+            :total-pages="totalPages"
+            @prev-page="handlePrevPage"
+            @next-page="handleNextPage"
+            @go-to-page="handlePageChange"
+            @page-size-change="handlePageSizeChange"
+          />
+        </div>
+      </TestStepContainer>
+
+      <!-- 步骤3：执行测试 -->
+      <TestStepContainer
+        :is-active="currentStep === 3"
+        panel-id="e2e-step3"
+        :show-actions="false"
+      >
+        <TestExecutionComponent
+          test-type="E2E"
+          :task-info="{
+            taskName: 'E2E测试任务',
+            expectedTotalTime: estimatedTime,
+            usedTime: elapsedTime,
+            expectedCompleteTime: expectedCompleteTime,
+            deviceCount: associatedDevices.length,
+            totalTestCases: totalTestCases || 0,
+            concurrentTasks: concurrentTasks,
+            testDate: new Date().toLocaleDateString(),
+            creator: '系统管理员'
+          }"
+          :progress-info="{
+            totalProgress: progressPercentage || 0,
+            completed: completedTests || 0,
+            inProgress: inProgressTests || 0,
+            pending: pendingTests || 0,
+            executionFailed: executionFailedTests || 0,
+            evaluationFailed: evaluationFailedTests || 0
+          }"
+          :associated-cases="associatedCases"
+          :associated-devices="associatedDevices"
+          :test-progress="testProgress"
+          :logs="logs"
+          :show-logs="true"
+          :active-tab="activeTab"
+          @update:active-tab="newTab => activeTab = newTab"
+          :is-paused="isPaused"
+          :is-controlling="isControlling"
+          :is-executing="isExecuting"
+          @prev-step="prevStep"
+          @pause-test="pauseTest"
+          @resume-test="resumeTest"
+          @stop-test="stopTest"
+          @test-case-click="showTestCaseDetails"
+        />
+      </TestStepContainer>
+
+      <!-- 步骤4：查看结果 -->
+      <TestStepContainer
+        :is-active="currentStep === 4"
+        panel-id="e2e-step4"
+        title="测试结果"
+        :show-actions="false"
+      >
+        <!-- 任务报告区域 -->
+        <section class="comparison-report-container" id="e2e-comparison-report-container" style="display: block;">
+          <div class="comparison-header" style="display: flex; flex-direction: column; gap: 8px; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); align-items: center; text-align: center;">
+            <h3 style="margin: 0; font-size: 28px; font-weight: 700; color: #2c3e50; background: linear-gradient(135deg, #FF6A00 0%, #FF8C40 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">{{ report.title || '任务报告' }}</h3>
+            <p style="margin: 0; font-size: 15px; color: #7f8c8d; line-height: 1.5; max-width: 600px;">详细分析测试任务的执行情况和结果，帮助您识别系统性能瓶颈和质量问题，为后续优化提供依据。</p>
+          </div>
+          
+          <TaskReportPanel 
+            :report="report"
+            :is-editing-report="isEditingReport"
+            :is-editing-conclusion="isEditingConclusion"
+            :analysis-content="analysisContent"
+            :tables="reportTables"
+            @toggle-edit="toggleEditReport"
+            @save-report="saveReport"
+            @cancel-edit="cancelEditReport"
+            @toggle-conclusion-edit="toggleEditConclusion"
+            @save-conclusion="saveConclusion"
+            @cancel-conclusion="cancelEditConclusion"
+          />
+        </section>
+
+        <!-- 操作按钮区域 -->
+        <div class="step-actions">
+          <button class="btn btn-secondary" @click="prevStep">
+            <i class="fas fa-arrow-left"></i> 上一步
+          </button>
+          <button class="btn btn-primary" @click="exportResults('pdf')">
+            <i class="fas fa-download"></i> 导出报告
+          </button>
+          <button class="btn btn-success" @click="publishReport">
+            <i class="fas fa-paper-plane"></i> 发布
+          </button>
+          <button class="btn btn-secondary" @click="startNewTest">开始新测试</button>
+        </div>
+
+        <!-- 浮动操作按钮区域 -->
+        <div id="e2e-floating-report-actions">
+          <button class="btn btn-primary" @click="saveReport">
+            <i class="fas fa-save"></i> 保存
+          </button>
+          <button class="btn btn-success" @click="publishReport">
+            <i class="fas fa-paper-plane"></i> 发布
+          </button>
+        </div>
+      </TestStepContainer>
+    </div>
+  </div>
+
+  <!-- 编辑任务名称模态窗 -->
+  <BasicModal
+    :visible="showTaskNameModal"
+    title="编辑任务名称"
+    width="400px"
+    @close="showTaskNameModal = false"
+    @cancel="showTaskNameModal = false"
+    @confirm="confirmTaskName"
+  >
+    <div class="task-name-modal">
+      <div class="form-group">
+        <label for="task-name-input">任务名称</label>
+        <input
+          type="text"
+          id="task-name-input"
+          class="form-input"
+          v-model="taskName"
+          placeholder="请输入任务名称"
+          maxlength="50"
+          autofocus
+        />
+      </div>
+      <div class="form-hint">
+        <small>请输入一个描述性的任务名称，便于后续查看测试结果</small>
+      </div>
+    </div>
+  </BasicModal>
+
+  <!-- 移除直接添加的TestCaseModal，改用TestCaseListContainer内部的模态框 -->
+
+  <!-- 算法配置模态窗 -->
+  <AlgorithmConfigModal
+    v-model:visible="algorithmModalVisible"
+    :mode="algorithmModalMode"
+    :edit-data="algorithmEditData"
+  />
+</template>
+
+<script setup lang="ts">
+// 导入Vue组合式API
+import { onMounted, onUnmounted, ref } from 'vue'
+
+// 导入E2E测试逻辑组合式函数
+import { useE2eView } from '../composables/useE2eView'
+import { getAlgorithmIcon } from '../composables/useAlgorithmConfig'
+import AlgorithmConfigModal from '../components/algorithm/AlgorithmConfigModal.vue'
+
+// 导入公共组件
+import ProgressNav from '../components/ProgressNav.vue'
+import TestCaseListContainer from '../components/common/test-case/TestCaseListContainer.vue'
+import TestExecutionComponent from '../components/TestExecutionComponent.vue'
+import TestStepContainer from '../components/common/TestStepContainer.vue'
+import ResourceSelectionGrid from '../components/common/ResourceSelectionGrid.vue'
+import BasicModal from '../components/common/modal/BasicModal.vue'
+import PaginationComponent from '../components/common/PaginationComponent.vue'
+
+// 导入报告相关组件
+import TaskReportPanel from '../components/report/TaskReportPanel.vue'
+
+// 模态窗相关状态
+const showTaskNameModal = ref(false)
+
+// 使用 E2E 视图逻辑
+const {
+  // 基础状态
+  currentStep,
+  selectedTestCaseIds,
+  taskName,
+  activeTab,
+  associatedDevices,
+  currentTaskId,
+  isExecuting,
+  isPaused,
+  isControlling,
+  concurrentTasks,
+  isEditingReport,
+  report,
+  testCaseGroups,
+  tags,
+  isLoading,
+  
+  // 进度状态
+  progressPercentage,
+  completedTests,
+  inProgressTests,
+  pendingTests,
+  executionFailedTests,
+  evaluationFailedTests,
+  totalTestCases,
+  elapsedTime,
+  estimatedTime,
+  expectedCompleteTime,
+  logs,
+  associatedCases,
+  testProgress,
+
+  // 模态框状态
+  showTestCaseModal,
+  showGroupModal,
+  showImportModal,
+  showExportModal,
+  formData,
+  groupFormData,
+  editingTestCase,
+  editingGroup,
+  
+  // 计算属性
+  filteredDevices,
+  algorithmFilteredDevices,
+  selectedDeviceIdsList,
+  deviceDisplayFields,
+  analysisContent,
+  reportTables,
+  deviceSearchQuery,
+  selectedDeviceStatus,
+  
+  // 分页相关
+  currentPage,
+  pageSize,
+  totalItems,
+  totalPages,
+  handlePageChange,
+  handlePageSizeChange,
+  handlePrevPage,
+  handleNextPage,
+  
+  // 方法
+  goToStep,
+  nextStep,
+  prevStep,
+  handleDeleteGroup,
+  handleDeleteTestCase,
+  openAddTestCaseModal,
+  handleOpenEditModal,
+  openCreateGroupModal,
+  openEditGroupModal,
+  openImportTestCaseModal,
+  openExportTestCaseModal,
+  handleModalClose,
+  handleSaveModal,
+  updateSelectedCases,
+  addDevice,
+  scanDevices,
+  searchDevices,
+  filterDevices,
+  handleToggleDeviceSelection,
+  handleResourceAction,
+  pauseTest,
+  resumeTest,
+  stopTest,
+  showTestCaseDetails,
+  skipTestCase,
+  showAddTestCaseModalHandler,
+  removeTestCase,
+  toggleEditReport,
+  saveReport,
+  cancelEditReport,
+  isEditingConclusion,
+  toggleEditConclusion,
+  saveConclusion,
+  cancelEditConclusion,
+  exportResults,
+  publishReport,
+  startNewTest,
+  
+  // 算法相关
+  algorithmList,
+  filteredAlgorithmList,
+  selectedAlgorithmType,
+  loadAlgorithms,
+  selectAlgorithm,
+  getAlgorithmName,
+  openAlgorithmModal,
+  openCreateAlgorithmModal,
+  openEditAlgorithmModal,
+  openAlgorithmConfigModal,
+  algorithmModalVisible,
+  algorithmModalMode,
+  algorithmEditData,
+  algorithmSearchQuery,
+  searchAlgorithms
+} = useE2eView()
+
+// 处理开始任务按钮点击
+const handleStartTask = () => {
+  console.log('[E2ETest] handleStartTask called')
+  // 重置任务名称
+  taskName.value = `E2E测试任务_${new Date().toLocaleString()}`
+  // 显示编辑任务名称模态窗
+  showTaskNameModal.value = true
+}
+
+// 确认任务名称并开始测试
+const confirmTaskName = () => {
+  console.log('[E2ETest] confirmTaskName called')
+  // 隐藏模态窗
+  showTaskNameModal.value = false
+  // 跳转到下一步（执行测试）
+  nextStep()
+  console.log('[E2ETest] confirmTaskName after nextStep')
+}
+</script>
+
+<style>
+@import '../assets/styles/main.css';
+@import '../assets/styles/test-common.css';
+@import '../assets/styles/e2eTest.css';
+@import '../assets/styles/testCaseManager.css';
+@import '../assets/styles/reportS.css';
+
+.e2e-test-view {
+  padding: 20px;
+  min-height: 100vh;
+}
+
+/* 步骤面板 */
+.e2e-test-view .step-panel {
+  display: none;
+}
+
+/* 设备管理头部 */
+.device-management-header {
+  margin-bottom: 24px;
+}
+
+/* 搜索框样式 */
+.search-box {
+  position: relative;
+  flex: 1;
+  max-width: 300px;
+}
+
+/* 步骤操作按钮 */
+.e2e-test-view .step-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e8e8e8;
+  position: static;
+  bottom: auto;
+  z-index: auto;
+}
+
+/* 按钮样式 - 扩展 */
+.btn-text {
+  background: none;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+}
+
+.btn-text:hover {
+  background-color: rgba(22, 119, 255, 0.1);
+}
+
+/* 报告相关样式 */
+.comparison-report-container {
+  background: white;
+  padding: 24px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.comparison-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 20px;
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  align-items: center;
+  text-align: center;
+}
+
+.comparison-header h3 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: #2c3e50;
+  background: linear-gradient(135deg, #FF6A00 0%, #FF8C40 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.comparison-header p {
+  margin: 0;
+  font-size: 15px;
+  color: #7f8c8d;
+  line-height: 1.5;
+  max-width: 600px;
+}
+
+/* 报告保存区域 */
+.report-save-section {
+  background: linear-gradient(to right, #e6f7ff, #ffffff);
+  border: 1px solid #91d5ff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+}
+
+/* 分析结论卡片 */
+.analysis-conclusion-card {
+  background: linear-gradient(to right, #e6f7ff, #ffffff);
+  border: 1px solid #91d5ff;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 32px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+}
+
+/* 分析图标 */
+.analysis-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  background: white;
+  font-size: 24px;
+  color: #1890ff;
+}
+
+/* 分析内容 */
+.analysis-content {
+  flex: 1;
+}
+
+/* 分析头部 */
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.analysis-title {
+  margin: 0;
+  color: #0050b3;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+/* 分析状态 */
+.analysis-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  background-color: #f0f9ff;
+  color: #0ea5e9;
+}
+
+.status-indicator {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #0ea5e9;
+  animation: pulse 2s infinite;
+}
+
+/* 分析文本 */
+.analysis-text {
+  color: #333;
+  line-height: 1.6;
+  font-size: 0.95rem;
+  padding: 0;
+  border-radius: 0;
+  transition: all 0.3s ease;
+  background: transparent;
+  border: none;
+}
+
+/* 分析编辑区域 */
+.analysis-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.analysis-edit label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.analysis-edit input,
+.analysis-edit textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  transition: all 0.3s ease;
+}
+
+.analysis-edit textarea {
+  resize: vertical;
+}
+
+/* 分析操作按钮 */
+.analysis-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+/* 比较选择器 */
+.comparison-selectors {
+  margin-bottom: 24px;
+}
+
+.comparison-selectors h4 {
+  margin-bottom: 16px;
+  color: #333;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 选择器内容 */
+.selector-content {
+  background: #ffffff;
+  padding: 24px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* 统一选择器 */
+#unified-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* 比较部分 */
+.comparison-section {
+  margin-bottom: 24px;
+}
+
+/* 动画效果 */
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+/* 信息提示样式 */
+.info-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--primary-light);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--border-radius-md);
+  color: var(--primary-color);
+  font-size: var(--font-size-sm);
+}
+
+.info-alert i {
+  font-size: 16px;
+}
+</style>

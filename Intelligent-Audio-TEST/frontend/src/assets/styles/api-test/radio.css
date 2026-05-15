@@ -1,0 +1,102 @@
+/* 自定义单选按钮样式 */
+.custom-radio-container {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    padding: 6px 12px;
+    border-radius: var(--border-radius-md);
+}
+
+.custom-radio-container:hover:not(:has(.custom-radio:disabled)) {
+    background-color: rgba(255, 106, 0, 0.05);
+}
+
+.custom-radio {
+    position: absolute;
+    opacity: 0;
+    cursor: pointer;
+    height: 0;
+    width: 0;
+}
+
+.custom-radio-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    transition: color 0.3s ease;
+    user-select: none;
+    position: relative;
+}
+
+.custom-radio-label::before {
+    content: '';
+    display: inline-block;
+    width: 18px !important;
+    height: 18px !important;
+    border: 2px solid #ccc;
+    border-radius: 4px !important;
+    background-color: white;
+    transition: all 0.3s ease;
+    position: relative;
+    box-sizing: border-box !important;
+}
+
+.custom-radio-label:hover::before {
+    border-color: #FF6A00;
+}
+
+.custom-radio:checked + .custom-radio-label::before {
+    border-color: #FF6A00;
+    background-color: #FF6A00;
+    width: 18px !important;
+    height: 18px !important;
+}
+
+.custom-radio:checked + .custom-radio-label::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 5px;
+    height: 10px;
+    border: solid white;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+    animation: checkboxCheck 0.3s ease;
+}
+
+.custom-radio:checked + .custom-radio-label {
+    color: #FF6A00;
+    font-weight: 600;
+}
+
+.custom-radio:disabled + .custom-radio-label {
+    opacity: 0.5;
+    cursor: not-allowed;
+    color: var(--text-secondary);
+}
+
+.custom-radio:disabled + .custom-radio-label::before {
+    background-color: var(--background-secondary);
+    border-color: #ccc;
+}
+
+@keyframes checkboxCheck {
+    0% {
+        transform: rotate(45deg) scale(0);
+        opacity: 0;
+    }
+    70% {
+        transform: rotate(45deg) scale(1.2);
+    }
+    100% {
+        transform: rotate(45deg) scale(1);
+        opacity: 1;
+    }
+}

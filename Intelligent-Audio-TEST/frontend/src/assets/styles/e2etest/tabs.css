@@ -1,0 +1,66 @@
+/* Association Tabs Styles */
+.association-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.association-tabs .tab-btn {
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: var(--font-weight-medium);
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.association-tabs .tab-btn.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+.association-content {
+    display: flex;
+    flex-direction: column;
+}
+
+/* 分析选项卡样式 */
+.analysis-tabs {
+    display: flex;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.analysis-tabs .tab-btn {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    transition: all 0.3s;
+}
+
+.analysis-tabs .tab-btn.active {
+    color: #ff6a00;
+    border-bottom-color: #ff6a00;
+}
+
+.analysis-view {
+    display: none;
+}
+
+.analysis-view.active {
+    display: block;
+}
+
+.comparison-options, .trend-options {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 20px;
+}

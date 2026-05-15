@@ -1,0 +1,54 @@
+/* 用例管理页面样式 */
+.test-case-manager {
+    padding: 24px;
+}
+
+/* 步骤内容区域 */
+.step-content {
+    background-color: #fff;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+    margin-top: 24px;
+}
+
+/* 步骤面板 */
+.step-panel {
+    display: none;
+}
+
+.step-panel.active {
+    display: block;
+}
+
+/* 虚拟滚动样式 - 修复内容被挡住的问题 */
+.virtual-list-container {
+    position: relative;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+.virtual-list-content {
+    position: relative;
+    width: 100%;
+}
+
+.virtual-list-item {
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 测试用例列表容器 */
+.test-case-list {
+    position: relative;
+    overflow: visible;
+    height: auto;
+    max-height: none;
+}
+
+/* 确保用例列表和分页控件的间距 */
+.test-case-list {
+    margin-bottom: 0;
+}
