@@ -1,0 +1,238 @@
+/* 进度相关样式 - 符合UI设计规范 */
+
+/* 进度条容器 */
+.progress-container,
+.progress-bar-container {
+    width: 100%;
+    height: 8px;
+    background-color: var(--secondary-color);
+    border-radius: var(--border-radius-full);
+    overflow: hidden;
+    position: relative;
+    margin: var(--spacing-sm) 0;
+}
+
+/* 进度条填充 */
+.progress-bar,
+.progress-fill {
+    height: 100%;
+    background: var(--primary-gradient);
+    border-radius: var(--border-radius-full);
+    transition: width var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+}
+
+/* 进度条动画效果 - 光晕 */
+.progress-bar::after,
+.progress-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 2), transparent);
+    animation: progress-animation 2s infinite;
+}
+
+/* 进度文本 */
+.progress-text {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    margin-top: var(--spacing-xs);
+}
+
+/* 进度动画 */
+@keyframes progress-animation {
+    0% {
+        left: -100%;
+    }
+    100% {
+        left: 100%;
+    }
+}
+
+/* 圆形进度条 */
+.circle-progress {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: conic-gradient(var(--primary-color) 0deg, var(--gray-light-color) 0deg);
+}
+
+.circle-progress::before {
+    content: '';
+    position: absolute;
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background-color: var(--background-primary);
+}
+
+.circle-progress .progress-value {
+    position: relative;
+    font-size: var(--font-size-xxl);
+    font-weight: var(--font-weight-bold);
+    color: var(--primary-color);
+}
+
+.circle-progress .progress-label {
+    position: absolute;
+    bottom: 20px;
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+/* 加载指示器 */
+.loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--gray-light-color);
+    border-top: 2px solid var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 加载状态 */
+.loading {
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+.loading-state {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+    color: var(--text-light);
+    flex-direction: column;
+    gap: var(--spacing-md);
+}
+
+/* 加载文本 */
+.loading-text {
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+    margin-left: var(--spacing-sm);
+}
+
+/* 骨架屏 */
+.skeleton {
+    background: linear-gradient(90deg, var(--gray-light-color) 25%, var(--background-tertiary) 50%, var(--gray-light-color) 75%);
+    background-size: 200% 100%;
+    animation: skeleton-loading 1.5s infinite;
+    border-radius: var(--border-radius-sm);
+}
+
+@keyframes skeleton-loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* 骨架屏卡片 */
+.skeleton-card {
+    background-color: var(--background-primary);
+    border-radius: var(--border-radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--spacing-md);
+}
+
+.skeleton-title {
+    width: 60%;
+    height: 24px;
+    margin-bottom: var(--spacing-md);
+}
+
+.skeleton-content {
+    width: 100%;
+    height: 16px;
+    margin-bottom: var(--spacing-sm);
+}
+
+.skeleton-content:last-child {
+    width: 80%;
+    margin-bottom: 0;
+}
+
+/* 骨架屏表格 */
+.skeleton-table-row {
+    display: flex;
+    gap: var(--spacing-md);
+    padding: var(--spacing-sm) 0;
+    border-bottom: var(--card-border);
+}
+
+.skeleton-table-cell {
+    height: 16px;
+    border-radius: var(--border-radius-sm);
+}
+
+.skeleton-table-cell:first-child {
+    width: 10%;
+}
+
+.skeleton-table-cell:nth-child(2) {
+    width: 30%;
+}
+
+.skeleton-table-cell:nth-child(3) {
+    width: 20%;
+}
+
+.skeleton-table-cell:nth-child(4) {
+    width: 20%;
+}
+
+.skeleton-table-cell:last-child {
+    width: 20%;
+}
+
+/* 状态脉冲动画 */
+.status-pulse {
+    animation: statusPulse 2s infinite;
+}
+
+@keyframes statusPulse {
+    0%, 100% {
+        box-shadow: 0 2px 8px rgba(250, 140, 22, 0.2);
+    }
+    50% {
+        box-shadow: 0 4px 16px rgba(250, 140, 22, 0.4);
+    }
+}
+
+/* 成功状态 */
+.status-success {
+    color: var(--success-color);
+}
+
+/* 警告状态 */
+.status-warning {
+    color: var(--warning-color);
+}
+
+/* 错误状态 */
+.status-error {
+    color: var(--danger-color);
+}
+
+/* 信息状态 */
+.status-info {
+    color: var(--info-color);
+}

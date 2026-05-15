@@ -1,0 +1,548 @@
+/* 表格组件样式 - 符合UI设计规范 */
+
+/* 表格容器 */
+.table-container {
+    position: relative;
+    overflow-x: auto;
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--spacing-lg);
+    width: 100%;
+    box-sizing: border-box;
+    min-width: 0;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    background-color: var(--background-primary);
+}
+
+/* 数据表格 */
+.data-table {
+    width: 100%;
+    min-width: 900px;
+    border-collapse: collapse;
+    table-layout: fixed;
+    border-spacing: 0;
+    transition: all var(--transition-normal);
+}
+
+/* 表格列宽优化 - 参数代码和参数名称列 */
+.data-table th:first-child,
+.data-table td:first-child {
+    min-width: 180px;
+    width: 180px;
+}
+
+.data-table th:nth-child(2),
+.data-table td:nth-child(2) {
+    min-width: 160px;
+    width: 160px;
+}
+
+/* 类型、组件、分组列也需要足够宽度显示下拉框箭头 */
+.data-table th:nth-child(3),
+.data-table td:nth-child(3),
+.data-table th:nth-child(4),
+.data-table td:nth-child(4),
+.data-table th:nth-child(5),
+.data-table td:nth-child(5),
+.data-table th:nth-child(6),
+.data-table td:nth-child(6) {
+    min-width: 100px;
+    width: 100px;
+}
+
+/* 表格单元格内的文本输入框样式 - 确保填满单元格 */
+.data-table td input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    background: transparent;
+}
+
+/* 表格单元格内的下拉框样式 - 确保填满单元格且显示完整箭头 */
+.data-table td select {
+    width: 100%;
+    box-sizing: border-box;
+    background: transparent;
+    padding-right: 25px !important;
+    appearance: auto !important;
+    -webkit-appearance: auto !important;
+    -moz-appearance: auto !important;
+}
+
+/* 表头样式 */
+.data-table th {
+    background-color: var(--background-secondary);
+    font-weight: var(--font-weight-semibold);
+    text-align: left;
+    padding: var(--spacing-sm) var(--spacing-md);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow: visible;
+    text-overflow: clip;
+    vertical-align: middle;
+    min-width: 60px; /* 保证至少显示5个字符 */
+    cursor: col-resize;
+    user-select: none;
+    border-bottom: var(--card-border);
+    color: var(--text-primary);
+    font-size: var(--font-size-md);
+    position: relative;
+}
+
+/* 列宽调整手柄 */
+.data-table th::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    background-color: transparent;
+    transition: background-color var(--transition-normal);
+}
+
+.data-table th:hover::after {
+    background-color: var(--primary-color);
+}
+
+/* 正在调整列宽时的样式 */
+.data-table th.resizing {
+    user-select: none;
+}
+
+.data-table th.resizing::after {
+    background-color: var(--primary-hover);
+    z-index: 20;
+}
+
+/* 表头排序样式 */
+.sortable {
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.sortable:hover {
+    background-color: var(--primary-light);
+}
+
+.sort-icon {
+    margin-left: var(--spacing-xs);
+    font-size: var(--font-size-sm);
+    color: var(--text-light);
+    transition: all var(--transition-normal);
+}
+
+.sortable:hover .sort-icon {
+    color: var(--primary-color);
+}
+
+/* 表格单元格 */
+.data-table td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    padding: var(--spacing-sm) var(--spacing-md);
+    min-height: 24px;
+    border-bottom: var(--card-border);
+    color: var(--text-primary);
+    font-size: var(--font-size-md);
+    cursor: pointer;
+}
+
+/* 允许换行的单元格 */
+.data-table td.wrap-text,
+.data-table td.dimension-status-col {
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+/* 允许换行的单元格 */
+.data-table td.wrap-text,
+.data-table td.dimension-status-col {
+    white-space: normal;
+    word-break: break-word;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+/* 操作列样式 */
+.data-table td:last-child {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    min-width: 150px;
+    display: flex;
+    gap: var(--spacing-xs);
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    cursor: default;
+}
+
+/* 表格行样式 */
+.data-table tbody tr {
+    transition: all var(--transition-fast);
+    background-color: var(--background-primary);
+}
+
+.data-table tbody tr:hover {
+    transform: translateX(2px);
+    background-color: rgba(255, 106, 0, 0.05);
+}
+
+/* 表格行选中状态 */
+.data-table tbody tr.selected {
+    background-color: rgba(255, 106, 0, 0.1);
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2);
+}
+
+/* 表格底部边框 */
+.data-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+/* 表格空状态 */
+.data-table tbody tr.empty-row {
+    text-align: center;
+    background-color: var(--background-secondary);
+    font-style: italic;
+    color: var(--text-light);
+}
+
+/* 表格加载状态 */
+.data-table.loading tbody tr {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* 表格统计行 */
+.data-table tfoot tr {
+    background-color: var(--background-secondary);
+    font-weight: var(--font-weight-semibold);
+}
+
+.data-table tfoot td {
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-top: var(--card-border);
+}
+
+/* 表格操作按钮组 */
+.table-actions {
+    display: flex;
+    gap: var(--spacing-xs);
+}
+
+/* 表格操作按钮 */
+.table-actions .btn {
+    min-width: auto;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    font-size: var(--font-size-sm);
+}
+
+/* 表格筛选行 */
+.data-table .filter-row {
+    background-color: var(--background-secondary);
+}
+
+.data-table .filter-row td {
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-bottom: var(--card-border);
+}
+
+/* 表格筛选输入框 */
+.data-table .filter-input {
+    width: 100%;
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border: 1px solid var(--gray-light-color);
+    border-radius: var(--border-radius-sm);
+    font-size: var(--font-size-sm);
+    background-color: var(--background-primary);
+}
+
+/* 表格筛选输入框聚焦状态 */
+.data-table .filter-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+/* 状态标签样式 */
+.status-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-tag.pending {
+    background-color: #e6f7ff;
+    color: #1677ff;
+}
+
+.status-tag.in-progress {
+    background-color: #fff7e6;
+    color: #ff6a00;
+}
+
+.status-tag.completed {
+    background-color: #f6ffed;
+    color: #52c41a;
+}
+
+.status-tag.failed {
+    background-color: #fff1f0;
+    color: #ff4d4f;
+}
+
+.status-tag.deleted {
+    background-color: #f5f5f5;
+    color: #999;
+}
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    /* 在中等屏幕上隐藏次要列 */
+    .data-table th.secondary-col,
+    .data-table td.secondary-col {
+        display: none;
+    }
+}
+
+@media (max-width: 992px) {
+    /* 在小屏幕上隐藏三级列 */
+    .data-table th.tertiary-col,
+    .data-table td.tertiary-col {
+        display: none;
+    }
+    
+    .data-table {
+        min-width: 700px;
+    }
+}
+
+@media (max-width: 768px) {
+    .table-container {
+        overflow-x: auto;
+        margin: 0 -var(--spacing-md);
+        padding: 0 var(--spacing-md);
+    }
+    
+    .data-table {
+        min-width: 600px;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: var(--spacing-xs) var(--spacing-sm);
+        font-size: var(--font-size-sm);
+    }
+    
+    /* 在小屏幕上只显示核心列 */
+    .data-table th:not(.core-col):not(.checkbox-col):not(.expand-header):not(.action-col),
+    .data-table td:not(.core-col):not(.checkbox-col):not(.expand-col):not(.action-col) {
+        display: none;
+    }
+    
+    .table-actions {
+        flex-direction: column;
+        align-items: flex-end;
+    }
+    
+    .table-actions .btn {
+        width: 100%;
+        margin-bottom: var(--spacing-xs);
+    }
+}
+
+@media (max-width: 600px) {
+    /* 在超小屏幕上进一步优化 */
+    .data-table {
+        min-width: 480px;
+    }
+    
+    .data-table th,
+    .data-table td {
+        padding: var(--spacing-xs);
+        font-size: var(--font-size-xs);
+    }
+    
+    .file-name-col {
+        max-width: 120px;
+    }
+    
+    .action-col {
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 480px) {
+    /* 在1/2 1k屏幕上的适配 */
+    .data-table {
+        min-width: 380px;
+    }
+    
+    .table-container {
+        margin: 0 -var(--spacing-sm);
+        padding: 0 var(--spacing-sm);
+    }
+    
+    .data-table th.core-col,
+    .data-table td.core-col {
+        padding: var(--spacing-xs) var(--spacing-sm);
+    }
+    
+    .file-name-col {
+        max-width: 100px;
+    }
+    
+    .action-col {
+        min-width: 100px;
+    }
+    
+    .action-buttons {
+        gap: 4px;
+    }
+    
+    .action-buttons .btn {
+        padding: 2px 6px;
+        font-size: 10px;
+        min-width: 40px;
+    }
+    
+    .action-buttons .btn-icon {
+        margin-right: 2px;
+        font-size: 10px;
+    }
+}
+
+/* 对比表格样式 */
+.comparison-table-wrapper .data-table {
+    table-layout: fixed;
+}
+
+.comparison-table-wrapper .data-table th {
+    position: relative;
+}
+
+.comparison-table-wrapper .data-table th::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 5px;
+    height: 100%;
+    cursor: col-resize;
+    background-color: transparent;
+    transition: background-color var(--transition-normal);
+}
+
+.comparison-table-wrapper .data-table th:hover::after {
+    background-color: var(--primary-color);
+}
+
+/* 指标高亮样式 */
+.metric-best {
+    color: var(--success-color);
+    font-weight: bold;
+    background-color: rgba(16, 185, 129, 0.1);
+    border-radius: 4px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.metric-worst {
+    color: var(--danger-color);
+    font-weight: bold;
+    background-color: rgba(239, 68, 68, 0.1);
+    border-radius: 4px;
+    padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+/* 差值样式 */
+.diff-score-high {
+    color: var(--success-color);
+    font-weight: bold;
+}
+
+.diff-score-low {
+    color: var(--danger-color);
+    font-weight: bold;
+}
+
+.diff-value {
+    color: var(--warning-color);
+    font-weight: bold;
+}
+
+/* 权重控制样式 */
+.weight-control {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.weight-slider {
+    flex: 1;
+    min-width: 80px;
+    margin: 0;
+}
+
+.weight-value {
+    font-weight: var(--font-weight-medium);
+    min-width: 20px;
+    text-align: center;
+}
+
+/* API状态样式 */
+.api-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+}
+
+.online-indicator {
+    color: var(--success-color);
+}
+
+.offline-indicator {
+    color: var(--error-color);
+}
+
+/* 状态标签样式 */
+.status-badge {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 10px;
+    border-radius: var(--border-radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: var(--font-weight-medium);
+    text-transform: uppercase;
+    line-height: 1.2;
+    white-space: nowrap !important;
+    min-width: auto !important;
+    width: auto !important;
+}
+
+.status-badge.active {
+    background-color: var(--success-light);
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+}
+
+.status-badge.inactive {
+    background-color: var(--background-secondary);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}

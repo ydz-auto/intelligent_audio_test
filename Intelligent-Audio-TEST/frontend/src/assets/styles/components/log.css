@@ -1,0 +1,820 @@
+/* 日志查看页面专用样式 */
+
+/* 日志行样式 */
+.log-row {
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.log-row:hover {
+    transform: translateX(2px);
+    background-color: rgba(255, 106, 0, 0.05);
+}
+
+/* 日志行选中状态 */
+.log-row:has(.log-checkbox:checked) {
+    background-color: rgba(255, 106, 0, 0.05);
+    border-left: 4px solid var(--primary-color);
+}
+
+/* 日志复选框样式 */
+.log-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+/* 日志详情行样式 */
+.log-details {
+    background-color: var(--background-secondary);
+    transition: all var(--transition-normal);
+    width: 100% !important;
+    table-layout: auto !important;
+}
+
+.log-details td {
+    padding: 0 !important;
+    border-bottom: none !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    cursor: default !important;
+    width: 100% !important;
+    display: table-cell !important;
+    position: static !important;
+    left: 0 !important;
+    right: 0 !important;
+    margin: 0 !important;
+}
+
+.log-details-content {
+    padding: var(--spacing-md);
+    background-color: var(--background-primary);
+    border-radius: var(--border-radius-md);
+    box-shadow: var(--shadow-sm);
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    position: static !important;
+    margin: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+}
+
+/* 修复固定表格布局下的详情行宽度问题 */
+.data-table {
+    overflow-x: visible !important;
+}
+
+.data-table tbody {
+    overflow-x: visible !important;
+}
+
+/* 确保详情行在固定表格布局中正确显示 */
+.data-table .log-details {
+    overflow-x: visible !important;
+    table-layout: auto !important;
+    width: 100% !important;
+    /* 移除 display: table-row !important; 以允许内联样式控制显示/隐藏 */
+}
+
+/* 确保合并单元格正确占满宽度 */
+.data-table .log-details td[colspan="8"] {
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: visible !important;
+    display: table-cell !important;
+    position: static !important;
+}
+
+.log-details-content h4 {
+    margin: 0 0 var(--spacing-md) 0;
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+}
+
+.log-details-content h5 {
+    margin: var(--spacing-md) 0 var(--spacing-sm) 0;
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+}
+
+.log-details-content p {
+    margin: var(--spacing-sm) 0;
+    line-height: 1.6;
+}
+
+.log-details-content pre {
+    background-color: var(--background-tertiary);
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius-md);
+    overflow-x: auto;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: var(--font-size-sm);
+    line-height: 1.5;
+    color: var(--text-primary);
+}
+
+/* 日志级别标签样式 */
+.log-level {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--border-radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.log-level.debug {
+    background-color: #e6f7ff;
+    color: #1890ff;
+}
+
+.log-level.info {
+    background-color: #f6ffed;
+    color: #52c41a;
+}
+
+.log-level.warning {
+    background-color: #fff7e6;
+    color: #fa8c16;
+}
+
+.log-level.error {
+    background-color: #fff2f0;
+    color: #f5222d;
+}
+
+.log-level.critical {
+    background-color: #fff1f0;
+    color: #f5222d;
+    font-weight: bold;
+}
+
+/* 日志模块和来源样式 */
+.log-module {
+    font-weight: var(--font-weight-medium);
+    color: var(--text-primary);
+}
+
+.log-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: var(--border-radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.log-source.system {
+    background-color: var(--secondary-light);
+    color: var(--secondary-color);
+}
+
+.log-source.device {
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+}
+
+.log-source.test {
+    background-color: var(--success-light);
+    color: var(--success-color);
+}
+
+/* 筛选部分样式 */
+.filter-section {
+    margin-bottom: var(--spacing-xl);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.log-view {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    display: block;
+    margin: 0 auto;
+    overflow-x: hidden;
+}
+
+.log-view .filter-section,
+.log-view .advanced-filter-panel,
+.log-view .monitor-indicator,
+.log-view .stats-grid {
+    margin-bottom: var(--spacing-xl);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow-x: hidden;
+}
+
+.log-view > .filter-section > .filter-bar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: var(--spacing-sm) !important;
+    padding: var(--spacing-md) var(--spacing-md) !important;
+    background-color: var(--background-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-lg) !important;
+    box-shadow: var(--shadow-sm) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    position: relative !important;
+    z-index: 1 !important;
+    min-height: 120px !important;
+    height: auto !important;
+    flex-grow: 1 !important;
+    flex-wrap: wrap !important;
+    /* 防止路由切换时的高度塌陷 */
+    transition: height 0.1s ease-in-out !important;
+    will-change: height !important;
+    contain: layout style !important;
+}
+
+/* 添加强制重绘的规则 */
+.log-view > .filter-section > .filter-bar::after {
+    content: '';
+    display: table !important;
+    clear: both !important;
+    height: 0 !important;
+    visibility: hidden !important;
+}
+
+/* 确保筛选卡片在任何状态下都能正确渲染 */
+.log-view > .filter-section {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 150px !important;
+    overflow: visible !important;
+    box-sizing: border-box !important;
+}
+
+/* 覆盖main.css中的全局样式，确保筛选卡片能正确换行 */
+.log-view .filter-bar,
+.log-view .filter-bar * {
+    flex-wrap: wrap !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    height: auto !important;
+}
+
+.log-view .filter-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: var(--spacing-md) !important;
+    min-height: 40px !important;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    white-space: normal !important;
+    flex-shrink: 0 !important;
+    overflow: visible !important;
+    flex-basis: auto !important;
+    flex-grow: 0 !important;
+}
+
+/* 确保所有筛选相关元素都能正确换行 */
+.log-view .filter-bar * {
+    white-space: normal !important;
+    flex-shrink: 0 !important;
+    min-width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+}
+
+/* 确保筛选组和搜索框在任何情况下都能正确布局 */
+.log-view .filter-bar .filter-group,
+.log-view .filter-bar .search-box {
+    white-space: normal !important;
+    flex-shrink: 0 !important;
+    flex-wrap: wrap !important;
+    overflow: visible !important;
+    min-width: fit-content !important;
+    max-width: calc(100% - 16px) !important;
+    height: auto !important;
+    align-self: flex-start !important;
+}
+
+.log-view .filter-row.main-row {
+    justify-content: flex-start !important;
+    padding-bottom: var(--spacing-sm) !important;
+    border-bottom: 1px solid var(--border-color-light) !important;
+}
+
+.log-view .filter-row.secondary-row {
+    padding-top: var(--spacing-xs) !important;
+    justify-content: flex-start !important;
+}
+
+.log-view .filter-row.level-row {
+    width: 100% !important;
+    margin-top: var(--spacing-sm) !important;
+    justify-content: flex-start !important;
+}
+
+.log-view .filter-row.button-row {
+    width: 100% !important;
+    gap: var(--spacing-md) !important;
+    margin-top: var(--spacing-sm) !important;
+    padding-top: var(--spacing-md) !important;
+    border-top: 1px solid var(--border-color) !important;
+    justify-content: flex-start !important;
+}
+
+.log-view .advanced-filter-panel {
+    margin-top: var(--spacing-md) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+    position: relative !important;
+    z-index: 2 !important;
+}
+
+.log-view .advanced-filter-panel .filter-bar {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: var(--spacing-sm) !important;
+    padding: var(--spacing-md) !important;
+    background-color: var(--background-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-lg) !important;
+    box-shadow: var(--shadow-sm) !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    flex-wrap: wrap !important;
+    white-space: normal !important;
+    overflow-x: hidden !important;
+}
+
+.log-view .advanced-filter-panel .filter-row.filter-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: var(--spacing-md) !important;
+    width: 100% !important;
+    margin-bottom: var(--spacing-xs) !important;
+}
+
+.log-view .advanced-filter-panel .filter-bar .filter-group {
+    flex: 1 !important;
+    min-width: 0 !important;
+    white-space: normal !important;
+}
+
+.log-view .advanced-filter-panel .filter-bar .filter-select {
+    width: 100% !important;
+    flex: 1 !important;
+    height: auto !important;
+}
+
+.log-view .advanced-filter-panel .filter-bar .form-input {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    height: auto !important;
+}
+
+/* 修复日志页面所有筛选相关的选择器和输入框高度 */
+.log-view .filter-bar .filter-select,
+.log-view .filter-bar .form-input {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: wrap !important;
+}
+
+/* 确保时间范围选择器也能正确适应 */
+.log-view .filter-bar .date-time-inputs {
+    flex-wrap: wrap !important;
+    height: auto !important;
+    overflow: visible !important;
+}
+
+.log-view .filter-group {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    white-space: normal;
+    flex-shrink: 1;
+    min-width: fit-content;
+    box-sizing: border-box;
+}
+
+.log-view .search-box {
+    position: relative;
+    flex: 1 !important;
+    min-width: 200px !important;
+    max-width: 300px !important;
+    white-space: normal !important;
+    flex-shrink: 1 !important;
+    box-sizing: border-box !important;
+}
+
+.search-input {
+    width: 100%;
+    padding: 8px 32px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-fast);
+}
+
+.search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-tertiary);
+}
+
+.search-clear {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    padding: 0;
+}
+
+.action-buttons-compact {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+    align-items: center;
+    padding-left: var(--spacing-md);
+}
+
+.btn-icon-only {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: #fdfdfd;
+    color: #606266;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.btn-icon-only i {
+    color: #909399;
+}
+
+.btn-icon-only:hover {
+    background: #f0f7ff;
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-icon-only:hover i {
+    color: var(--primary-color);
+}
+
+.btn-icon-only.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+.btn-icon-only.active i {
+    color: white;
+}
+
+.btn-icon-only.delete:hover {
+    background: #fef0f0;
+    color: #f56c6c;
+    border-color: #f56c6c;
+}
+
+.btn-icon-only.delete:hover i {
+    color: #f56c6c;
+}
+
+.btn-text.btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #606266;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-text.btn-sm:hover {
+    color: var(--primary-color);
+    background: var(--primary-light);
+}
+
+.btn-text.btn-sm i {
+    font-size: 14px;
+}
+
+.level-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    align-items: center;
+    height: auto !important;
+    overflow: visible !important;
+    flex-shrink: 0 !important;
+    white-space: normal !important;
+}
+
+.level-tag {
+    cursor: pointer;
+    padding: 4px 12px;
+    border-radius: var(--border-radius-full);
+    font-size: var(--font-size-xs);
+    font-weight: 500;
+    border: 1px solid transparent;
+    transition: all var(--transition-fast);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0.6;
+}
+
+.level-tag:hover {
+    opacity: 0.8;
+}
+
+.level-tag.active {
+    opacity: 1;
+    border-color: currentColor;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.level-tag .close-icon {
+    font-size: 10px;
+}
+
+.spacer {
+    flex: 1;
+}
+
+/* 筛选标签样式 */
+.filter-label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+/* 搜索框 */
+.log-view .filter-row.search-row {
+    width: 100% !important;
+    justify-content: flex-start !important;
+}
+
+.filter-group.time-range-group {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 280px;
+    flex-shrink: 1;
+}
+
+.date-time-inputs {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.date-separator {
+    color: var(--text-tertiary);
+    font-size: var(--font-size-sm);
+    margin: 0 var(--spacing-xs);
+}
+
+.filter-group.full-width {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+/* 筛选标签样式 */
+.filter-label {
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    transition: color var(--transition-normal);
+}
+
+/* 级别筛选器样式 */
+.level-filters {
+    display: flex;
+    gap: var(--spacing-xs);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* 复选框样式 */
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--border-radius-md);
+}
+
+.checkbox-label:hover {
+    background-color: var(--background-primary);
+    box-shadow: var(--shadow-sm);
+}
+
+/* 高级筛选面板 */
+.advanced-filter-panel {
+    margin-bottom: var(--spacing-xl);
+    transition: all var(--transition-normal);
+}
+
+/* 实时监控指示器 */
+.monitor-indicator {
+    margin-bottom: var(--spacing-xl);
+    padding: var(--spacing-md);
+    background-color: var(--background-secondary);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all var(--transition-normal);
+}
+
+.monitor-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.monitor-icon {
+    font-size: var(--font-size-xs);
+    color: var(--success-color);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        opacity: 1;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.5;
+        transform: scale(1.2);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* 分页插件样式 */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-lg);
+    background: var(--background-secondary);
+    border-radius: var(--border-radius-lg);
+}
+
+.pagination button {
+    padding: var(--spacing-sm) var(--spacing-lg);
+    border: 1px solid var(--border-color);
+    background: white;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    min-width: 40px;
+    height: 40px;
+}
+
+.pagination button:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination button.active {
+    background: var(--primary-color);
+    color: white;
+    border-color: var(--primary-color);
+}
+
+/* 日志详情弹窗样式 */
+.log-detail-modal {
+    width: 90%;
+    max-width: 900px;
+}
+
+/* 日志标记样式 */
+.log-row.marked {
+    border-left: 4px solid;
+    transition: all var(--transition-fast);
+}
+
+.log-row.marked-yellow {
+    border-left-color: #ffd60a;
+    background-color: rgba(255, 214, 10, 0.05);
+}
+
+.log-row.marked-red {
+    border-left-color: #ff4d4f;
+    background-color: rgba(255, 77, 79, 0.05);
+}
+
+.log-row.marked-green {
+    border-left-color: #52c41a;
+    background-color: rgba(82, 196, 26, 0.05);
+}
+
+.log-row.marked-blue {
+    border-left-color: #1890ff;
+    background-color: rgba(24, 144, 255, 0.05);
+}
+
+/* 日志表格操作列样式 */
+.data-table td:last-child {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: nowrap;
+}
+
+.data-table td .btn {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 日志标记点样式 */
+.log-mark {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+.log-mark.yellow {
+    background-color: #ffd60a;
+    box-shadow: 0 0 0 2px rgba(255, 214, 10, 0.3);
+}
+
+.log-mark.red {
+    background-color: #ff4d4f;
+    box-shadow: 0 0 0 2px rgba(255, 77, 79, 0.3);
+}
+
+.log-mark.green {
+    background-color: #52c41a;
+    box-shadow: 0 0 0 2px rgba(82, 196, 26, 0.3);
+}
+
+.log-mark.blue {
+    background-color: #1890ff;
+    box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.3);
+}

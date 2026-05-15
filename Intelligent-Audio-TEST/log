@@ -1,0 +1,145 @@
+C:\Users\ljh\AppData\Local\Microsoft\WindowsApps\python3.12.exe C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\run.py 
+[2026-04-24 16:59:17,744] INFO in app: Task Manager 后端服务启动中... (Level: DEBUG)
+[2026-04-24 16:59:17,744] INFO in app: JSON_AS_ASCII configuration: False
+[2026-04-24 16:59:17] - log_worker - INFO - Worker thread started.
+[2026-04-24 16:59:17] - get_db_handler - INFO - DatabaseLogHandler singleton created.
+[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: Task Manager 后端服务启动中... (Level: DEBUG)
+[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: JSON_AS_ASCII configuration: False
+[2026-04-24 16:59:17] - DatabaseLogHandler - DEBUG - Database init deferred: The current Flask app is not registered with this 'SQLAlchemy' instance. Did you forget to call 'init_app', or did you create multiple 'SQLAlchemy' instances?
+[2026-04-24 16:59:17] - DatabaseLogHandler - DEBUG - Database init deferred: The current Flask app is not registered with this 'SQLAlchemy' instance. Did you forget to call 'init_app', or did you create multiple 'SQLAlchemy' instances?
+[2026-04-24 16:59:17,993] INFO in app: 服务重启后任务状态更新：
+[2026-04-24 16:59:17,993] INFO in app: - 更新任务状态数: 1 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:17,993] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:17,993] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:17,993] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:18,003] INFO in app: 任务调度器初始化完成
+[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: 服务重启后任务状态更新：
+[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务状态数: 1 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:17] - log_worker - INFO - Database components initialized successfully.
+[2026-04-24 16:59:18] - log_and_emit - INFO - [Engine] 任务调度器已启动
+[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [app] INFO in app: 任务调度器初始化完成
+[2026-04-24 16:59:18,297] DEBUG in app: Registering blueprints...
+[2026-04-24 16:59:18] - DatabaseLogHandler - DEBUG - [app] DEBUG in app: Registering blueprints...
+[2026-04-24 16:59:18] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal: Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+ * Serving Flask app 'backend.app'
+ * Debug mode: on
+[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://100.70.28.65:5000
+[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: Press CTRL+C to quit
+[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal:  * Restarting with stat
+[2026-04-24 16:59:20] - log_worker - INFO - Worker thread started.
+[2026-04-24 16:59:20] - get_db_handler - INFO - DatabaseLogHandler singleton created.
+[2026-04-24 16:59:20,973] INFO in app: 服务重启后任务状态更新：
+[2026-04-24 16:59:20,974] INFO in app: - 更新任务状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:20,974] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:20,975] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:20,977] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: 服务重启后任务状态更新：
+[2026-04-24 16:59:20] - log_worker - INFO - Database components initialized successfully.
+[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
+[2026-04-24 16:59:21,029] INFO in app: 任务调度器初始化完成
+[2026-04-24 16:59:21] - log_and_emit - INFO - [Engine] 任务调度器已启动
+[2026-04-24 16:59:21] - DatabaseLogHandler - INFO - [app] INFO in app: 任务调度器初始化完成
+[2026-04-24 16:59:21] - DatabaseLogHandler - DEBUG - [app] DEBUG in app: Registering blueprints...
+[2026-04-24 16:59:21,305] DEBUG in app: Registering blueprints...
+[2026-04-24 16:59:21] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal: Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
+[2026-04-24 16:59:21] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal:  * Debugger is active!
+[2026-04-24 16:59:21] - DatabaseLogHandler - INFO - [_internal] INFO in _internal:  * Debugger PIN: 514-547-148
+[2026-04-24 16:59:30] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/tasks | Method: OPTIONS | Args: {"page": "1", "per_page": "100", "perPage": "100"}
+[2026-04-24 16:59:30] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:30] "OPTIONS /api/v1/tasks?page=1&per_page=100 HTTP/1.1" 200 -
+[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/tasks | Method: GET | Args: {"page": "1", "per_page": "100", "perPage": "100"}
+[2026-04-24 16:59:31] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/tasks | Method: GET | Status: 200 | Response: {"code": 0, "data": {"items": [{"apis": [], "caseCount": 1, "completedAt": "2026-04-17T10:14:59.369075", "completedCases": 0, "config": {"concurrentTasks": 4, "parallel": true}, "createdAt": "2026-04-17T10:13:57.262993", "deviceCount": 1, "devices": [{"id": 16, "model": "BKQ_AN10", "name": "Plaud", "status": "online"}], "failedCases": 1, "id": 285, "name": "E2E测试任务_2026/4/17 10:13:50", "reports": {"count": 1, "reports": [{"createdAt": "2026-04-17T10:14:59.989150", "id": 11, "name": "任务报告_E2E测试任务
+[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "GET /api/v1/tasks?page=1&per_page=100 HTTP/1.1" 200 -
+[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/algorithm/options | Method: OPTIONS
+[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "OPTIONS /api/v1/algorithm/options HTTP/1.1" 200 -
+[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/algorithm/options | Method: GET
+[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/logs | Method: OPTIONS | Args: {"module": "task"}
+[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "OPTIONS /api/v1/logs?module=task HTTP/1.1" 200 -
+[2026-04-24 16:59:31] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/algorithm/options | Method: GET | Status: 200 | Response: {"code": 0, "data": {"algorithms": [{"groupId": 1, "groupName": "翻译", "icon": "", "name": "机器翻译", "value": "translation"}, {"groupId": 2, "groupName": "语音识别", "icon": "", "name": "语音识别(ASR)", "value": "asr"}, {"groupId": 3, "groupName": "声纹识别", "icon": "", "name": "说话人识别", "value": "speaker_recognition"}, {"groupId": 4, "groupName": "语音合成", "icon": null, "name": "语音合成(TTS)", "value": "tts"}, {"groupId": null, "groupName": null, "icon": null, "name": "ASR评估", "value": "asr_eval"}]}, "message": "S
+[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "GET /api/v1/algorithm/options HTTP/1.1" 200 -
+[2026-04-24 16:59:32] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/logs | Method: GET | Args: {"module": "task"}
+[2026-04-24 16:59:32] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/logs | Method: GET | Status: 200 | Response: {"code": 0, "data": {"items": [], "page": 1, "pages": 0, "perPage": 50, "total": 0}, "message": "Success", "success": true}
+[2026-04-24 16:59:32] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:32] "GET /api/v1/logs?module=task HTTP/1.1" 200 -
+[2026-04-24 16:59:37] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/evaluation/task/reevaluate | Method: OPTIONS
+[2026-04-24 16:59:37] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:37] "OPTIONS /api/v1/evaluation/task/reevaluate HTTP/1.1" 200 -
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/evaluation/task/reevaluate | Method: POST | Body: {"task_id": 243, "reevaluate_type": "all", "reextract_device_output": true}
+[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 重新评估任务 243: 找到 2 条测试结果, reextract_device_output=True
+[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
+[2026-04-24 16:59:38] - log_worker - INFO - Worker thread started.
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
+[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
+[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
+  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
+    result = driver.extract_results_from_archive(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
+    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'float' and 'NoneType'
+
+[2026-04-24 16:59:38] - DatabaseLogHandler - WARNING - [device_result_reextractor] WARNING in device_result_reextractor: 跳过 test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a: 提取结果格式异常
+[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 重新提取设备输出完成: 成功重新提取 0 个用例
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 检查结果 317: execution_status=completed, has_algorithm_result=True
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 结果 317: test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a, reference_params_count=3
+[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
+[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
+[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
+  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
+    result = driver.extract_results_from_archive(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
+    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'float' and 'NoneType'
+
+[2026-04-24 16:59:38] - log_and_emit - WARNING - [evaluation] 从存档提取设备输出返回格式异常: <class 'dict'>
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 检查结果 316: execution_status=completed, has_algorithm_result=True
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 结果 316: test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a, reference_params_count=3
+[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
+[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
+[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
+[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
+  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
+    result = driver.extract_results_from_archive(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
+    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '<' not supported between instances of 'float' and 'NoneType'
+
+[2026-04-24 16:59:38] - log_and_emit - WARNING - [evaluation] 从存档提取设备输出返回格式异常: <class 'dict'>
+[2026-04-24 16:59:38] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/evaluation/task/reevaluate | Method: POST | Status: 400 | Response: {"code": 203, "message": "没有需要重新评估的用例", "success": false}
+[2026-04-24 16:59:38] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:38] "POST /api/v1/evaluation/task/reevaluate HTTP/1.1" 400 -

@@ -1,0 +1,235 @@
+/* 弹窗组件样式 - 符合UI设计规范 */
+
+/* 模态框遮罩层 - 基础样式 */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: var(--z-index-modal);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition: all var(--transition-normal);
+}
+
+/* 模态框内容 */
+.modal {
+    background-color: var(--background-primary);
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    transform: scale(1);
+    transition: all var(--transition-normal);
+    position: relative;
+    z-index: var(--z-index-modal);
+}
+
+/* 编辑窗 */
+.edit-window {
+    background-color: var(--background-primary);
+    border-radius: var(--border-radius-xl);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 1000px;
+    max-height: 90vh;
+    overflow-y: auto;
+    transform: scale(0.95);
+    transition: all var(--transition-normal);
+    position: relative;
+    z-index: var(--z-index-modal);
+}
+
+/* 编辑窗显示动画 */
+.modal-overlay.active .edit-window {
+    transform: scale(1);
+}
+
+/* 模态框头部 */
+.modal-header,
+.edit-window-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-lg);
+    border-bottom: var(--card-border);
+    background-color: var(--background-primary);
+}
+
+/* 模态框标题 */
+.modal-title,
+.edit-window-title {
+    font-size: var(--font-size-xl);
+    font-weight: var(--font-weight-semibold);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* 模态框关闭按钮 */
+.modal-close,
+.edit-window-close {
+    background: none;
+    border: none;
+    font-size: var(--font-size-xl);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: var(--border-radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-normal);
+}
+
+.modal-close:hover,
+.edit-window-close:hover {
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+    transform: rotate(90deg);
+}
+
+/* 模态框主体 */
+.modal-body,
+.edit-window-content {
+    padding: var(--spacing-lg);
+    background-color: var(--background-primary);
+}
+
+/* 模态框底部 */
+.modal-footer,
+.edit-window-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-md);
+    padding: var(--spacing-lg);
+    border-top: var(--card-border);
+    background-color: var(--background-primary);
+    /* 确保底部固定在模态窗底部且在内容之上 */
+    position: sticky;
+    bottom: 0;
+    z-index: var(--z-index-modal-top);
+}
+
+/* 模态框按钮 */
+.modal-footer button,
+.edit-window-footer button {
+    min-width: 80px;
+}
+
+/* 模态框按钮样式 */
+.modal-footer .btn-primary,
+.edit-window-footer .btn-primary {
+    background: var(--btn-primary-bg);
+    color: var(--white-color);
+}
+
+.modal-footer .btn-secondary,
+.edit-window-footer .btn-secondary {
+    background: var(--btn-secondary-bg);
+    color: var(--text-primary);
+}
+
+/* 确认对话框 */
+.confirm-modal .modal-body {
+    text-align: center;
+}
+
+.confirm-modal .modal-body p {
+    margin-bottom: var(--spacing-lg);
+    font-size: var(--font-size-md);
+    color: var(--text-secondary);
+}
+
+/* 成功对话框 */
+.success-modal .modal-body {
+    text-align: center;
+}
+
+.success-icon {
+    font-size: 48px;
+    color: var(--success-color);
+    margin-bottom: var(--spacing-md);
+}
+
+/* 错误对话框 */
+.error-modal .modal-body {
+    text-align: center;
+}
+
+.error-icon {
+    font-size: 48px;
+    color: var(--danger-color);
+    margin-bottom: var(--spacing-md);
+}
+
+/* 警告对话框 */
+.warning-modal .modal-body {
+    text-align: center;
+}
+
+.warning-icon {
+    font-size: 48px;
+    color: var(--warning-color);
+    margin-bottom: var(--spacing-md);
+}
+
+/* 模态框内容滚动条样式 */
+.modal::-webkit-scrollbar,
+.edit-window::-webkit-scrollbar {
+    width: 8px;
+}
+
+.modal::-webkit-scrollbar-track,
+.edit-window::-webkit-scrollbar-track {
+    background: var(--background-secondary);
+    border-radius: 4px;
+}
+
+.modal::-webkit-scrollbar-thumb,
+.edit-window::-webkit-scrollbar-thumb {
+    background: var(--gray-color);
+    border-radius: 4px;
+}
+
+.modal::-webkit-scrollbar-thumb:hover,
+.edit-window::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+    .modal,
+    .edit-window {
+        width: 95%;
+        margin: var(--spacing-md);
+    }
+    
+    .modal-header,
+    .edit-window-header,
+    .modal-body,
+    .edit-window-content,
+    .modal-footer,
+    .edit-window-footer {
+        padding: var(--spacing-md);
+    }
+    
+    .modal-footer,
+    .edit-window-footer {
+        flex-direction: column;
+    }
+    
+    .modal-footer button,
+    .edit-window-footer button {
+        width: 100%;
+    }
+}

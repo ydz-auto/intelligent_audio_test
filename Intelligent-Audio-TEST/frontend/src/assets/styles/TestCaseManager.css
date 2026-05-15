@@ -1,0 +1,1144 @@
+/* 用例管理页面样式 */
+.test-case-manager {
+    padding: 24px;
+}
+
+/* 步骤内容区域 */
+.step-content {
+    background-color: #fff;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    padding: 24px;
+    margin-top: 24px;
+}
+
+/* 步骤面板 */
+.step-panel {
+    display: none;
+}
+
+.step-panel.active {
+    display: block;
+}
+
+/* 测试用例工具栏样式 */
+.test-case-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-lg);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-lg);
+    background: linear-gradient(135deg, #FFFFFF 0%, #F8F9FA 100%);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--gray-light-color);
+    overflow: hidden;
+}
+
+.toolbar-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.batch-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-left: auto;
+}
+
+.batch-actions .btn {
+    margin-right: var(--spacing-xs);
+}
+
+.toolbar-filters {
+    display: flex;
+    gap: var(--spacing-lg);
+    align-items: center;
+    flex-wrap: wrap;
+    background-color: white;
+    padding: var(--spacing-md);
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.filter-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 40px;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+.filter-section label {
+    margin: 0;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.filter-select {
+    display: flex;
+    align-items: center;
+}
+
+.filter-select .form-input {
+    height: 40px;
+    box-sizing: border-box;
+}
+
+.filter-section .form-input {
+    width: 180px;
+}
+
+/* 确保重置筛选按钮高度与其他元素一致 */
+.filter-section .btn-secondary {
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-md);
+    height: 40px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 搜索框样式 */
+.search-box {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 40px;
+    margin: 0;
+    padding: 0;
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    color: var(--text-tertiary);
+    font-size: 14px;
+}
+
+.search-input {
+    padding-left: 36px;
+    width: 450px;
+    height: 40px;
+    box-sizing: border-box;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    background-color: var(--background-primary);
+    font-size: var(--font-size-md);
+    margin: 0;
+}
+
+/* 测试用例容器 */
+.test-cases-container {
+    background-color: #fff;
+    border-radius: var(--border-radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-color);
+}
+
+/* 测试用例分组 */
+.test-case-group {
+    margin-bottom: 24px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    overflow: visible;
+}
+
+/* 分组头部 */
+.group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    background-color: var(--background-secondary);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.group-title-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.group-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.group-count {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+/* 分组操作按钮 */
+.group-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 单栏布局样式 */
+.single-column-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+}
+
+/* 类别卡片样式 */
+.category-card {
+    background-color: #fff;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: visible;
+    border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+}
+
+.category-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* 类别卡片头部 */
+.category-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.category-header > button {
+    margin-left: auto;
+}
+
+.category-header:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+}
+
+.category-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+/* 自定义勾选框样式 */
+input[type="checkbox"].group-checkbox, input[type="checkbox"].test-case-checkbox {
+    margin-right: 8px !important;
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    min-height: 24px !important;
+    max-width: 24px !important;
+    max-height: 24px !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background-color: #fff !important;
+    border: 2px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    position: relative !important;
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    vertical-align: middle !important;
+    z-index: 1000 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    box-sizing: border-box !important;
+}
+
+input[type="checkbox"].group-checkbox:checked, input[type="checkbox"].test-case-checkbox:checked {
+    background-color: var(--primary-color) !important;
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2) !important;
+}
+
+input[type="checkbox"].group-checkbox:checked::after, input[type="checkbox"].test-case-checkbox:checked::after {
+    content: '✓' !important;
+    color: white !important;
+    font-size: 16px !important;
+    font-weight: bold !important;
+    position: absolute !important;
+    top: 50% !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+}
+
+input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-checkbox:hover {
+    border-color: var(--primary-color) !important;
+}
+
+/* 确保用例卡片内的勾选框可见 */
+.case-card .test-case-checkbox {
+    position: relative;
+    top: 2px;
+}
+
+/* 勾选后高亮分组头部 */
+.group-checkbox:checked ~ .category-title {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+/* 勾选后高亮整个分组头部 */
+.category-card:has(.group-checkbox:checked) .category-header {
+    background: linear-gradient(135deg, rgba(255, 106, 0, 0.1) 0%, rgba(255, 106, 0, 0.05) 100%);
+    border-bottom: 1px solid rgba(255, 106, 0, 0.2);
+}
+
+.category-toggle {
+    font-size: 18px;
+    color: var(--text-secondary);
+    transition: transform 0.3s ease;
+}
+
+.category-toggle.expanded {
+    transform: rotate(180deg);
+}
+
+.category-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.category-count {
+    background-color: var(--primary-color);
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: 12px;
+    min-width: 20px;
+    text-align: center;
+}
+
+.category-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 类别卡片内容 - 默认收起 */
+.category-content {
+    display: none;
+    padding: 0;
+    overflow: visible;
+    transition: all 0.3s ease;
+}
+
+.category-content.expanded {
+    display: block;
+}
+
+/* 用例列表 */
+.cases-list {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 用例卡片样式 */
+.case-card {
+    background-color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding: 20px;
+    box-shadow: var(--shadow-sm);
+    transition: all 0.3s ease;
+    margin-bottom: 12px;
+}
+
+.case-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+/* 用例卡片头部 */
+.case-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 4px; /* 减少底部边距，减少留白 */
+    gap: 12px;
+}
+
+/* 调整用例信息和操作按钮的布局 */
+.case-checkbox-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex: 1;
+}
+
+.case-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.case-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 8px 0;
+}
+
+.case-description {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin: 0 0 12px 0;
+    line-height: 1.6;
+}
+
+.case-meta {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.meta-item {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.meta-label {
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+/* 确保用例卡片内的所有内容都能完整显示 */
+.case-card {
+    overflow: visible !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 用例勾选后高亮样式 */
+.case-card:has(.test-case-checkbox:checked) {
+    background-color: rgba(255, 106, 0, 0.05);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.1);
+}
+
+/* 用例标签容器 - 支持省略号和展开功能 */
+.case-tags-container {
+    margin-bottom: 4px; /* 减少底部边距，减少留白 */
+    position: relative;
+    width: 100% !important;
+    display: block;
+    box-sizing: border-box !important;
+}
+
+/* 用例标签 - 支持省略号显示 */
+.case-tags {
+    display: flex;
+    flex-wrap: wrap !important;
+    gap: 8px;
+    padding: 4px 0;
+    width: 100% !important;
+    height: auto;
+    min-height: 32px;
+    align-items: center;
+    box-sizing: border-box !important;
+    overflow: visible;
+}
+
+/* 确保标签在所有状态下都能正确换行 */
+.case-tags.collapsed-tags,
+.case-tags.expanded-tags {
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* 测试用例标签样式 - 仅适用于测试用例的标签 */
+.case-tags .tag {
+    padding: 4px 12px;
+    border-radius: var(--border-radius-full);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    display: inline-block;
+    height: auto;
+    line-height: 1.5;
+    opacity: 1;
+    visibility: visible;
+    box-sizing: border-box;
+    background-color: var(--secondary-light);
+    color: var(--secondary-color);
+}
+
+/* 确保任务类型标签样式不受影响 */
+.task-type-badge.api {
+    background: #dbeafe !important;
+    color: #1d4ed8 !important;
+}
+
+.task-type-badge.e2e {
+    background: #d1fae5 !important;
+    color: #059669 !important;
+}
+
+/* 省略号按钮样式 */
+.tag-more {
+    background-color: var(--secondary-light) !important;
+    color: var(--secondary-color) !important;
+    padding: 4px 12px !important;
+    border-radius: var(--border-radius-full) !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    white-space: nowrap !important;
+    display: inline-block !important;
+    height: auto !important;
+    line-height: 1.5 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    box-sizing: border-box !important;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s ease;
+}
+
+.tag-more:hover {
+    background-color: var(--primary-light) !important;
+    color: var(--primary-color) !important;
+}
+
+/* 展开后的标签样式 - 支持换行和分页 */
+.case-tags.expanded-tags {
+    flex-wrap: wrap;
+    overflow: visible;
+    max-height: none;
+    width: 100%;
+    display: flex;
+}
+
+/* 所有标签容器都使用flex-wrap: wrap，确保标签自动换行 */
+.case-tags {
+    flex-wrap: wrap !important;
+}
+
+/* 标签分页容器 */
+.tag-pagination {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+    justify-content: flex-start;
+}
+
+/* 标签页按钮样式 */
+.tag-page-btn {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.tag-page-btn:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.tag-page-btn.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.tag-page-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 标签页信息 */
+.tag-page-info {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-right: 8px;
+}
+
+/* 确保case-info容器能正确显示标签 */
+.case-info {
+    width: 100%;
+    overflow: visible;
+}
+
+/* 确保case-checkbox-info容器能正确显示内容 */
+.case-checkbox-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex: 1;
+    overflow: visible;
+}
+
+/* 用例信息包装器样式 */
+.case-info-wrapper {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex: 1;
+    overflow: visible;
+    min-height: auto;
+}
+
+/* 确保 case-info-wrapper 内的内容能完整显示 */
+.case-info-wrapper .case-info {
+    flex: 1;
+    overflow: visible;
+}
+
+/* 用例配置详情 */
+.case-config {
+    background-color: var(--background-secondary);
+    border-radius: var(--border-radius-sm);
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.config-section {
+    margin-bottom: 10px;
+}
+
+.config-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+
+.config-details {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.config-row {
+    margin-bottom: 4px;
+    display: flex;
+    gap: 8px;
+}
+
+.config-label {
+    font-weight: 500;
+    min-width: 60px;
+}
+
+/* 用例操作按钮 */
+.case-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+/* 纯图标按钮公共样式 - 与main.css保持一致 */
+.btn-icon-only {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    padding: 2px;
+    min-width: auto;
+    line-height: 1;
+    border: none;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: transparent;
+    color: var(--primary-color);
+    width: 28px;
+    height: 28px;
+}
+
+/* 图标居中样式 */
+.btn-icon-only i, .btn-icon-only svg {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: auto;
+    flex-shrink: 0;
+}
+
+/* 图标尺寸 */
+.btn-icon-only i {
+    font-size: 28px;
+}
+
+.btn-icon-only svg {
+    width: 24px;
+    height: 24px;
+}
+
+/* 禁用状态 */
+.btn-icon-only:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* 禁用状态下的图标颜色 */
+.btn-icon-only:disabled i, .btn-icon-only:disabled svg {
+    color: var(--gray-color);
+}
+
+/* 正常状态下的图标颜色 */
+.btn-icon-only:not(:disabled) i, .btn-icon-only:not(:disabled) svg {
+    color: var(--primary-color);
+}
+
+/* 悬停效果 */
+.btn-icon-only:hover:not(:disabled) {
+    transform: translateY(-2px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background: var(--primary-light);
+}
+
+/* 悬停状态下的图标颜色 */
+.btn-icon-only:hover:not(:disabled) i, .btn-icon-only:hover:not(:disabled) svg {
+    color: var(--primary-dark);
+}
+
+/* 虚拟滚动样式 - 修复内容被挡住的问题 */
+.virtual-list-container {
+    position: relative;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+}
+
+.virtual-list-content {
+    position: relative;
+    width: 100%;
+}
+
+.virtual-list-item {
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+/* 测试用例列表容器 */
+.test-case-list {
+    position: relative;
+    overflow: visible;
+    height: auto;
+    max-height: none;
+}
+
+/* 加载状态指示器样式 */
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.loading-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-left-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-text {
+    margin-left: 12px;
+    font-size: 16px;
+    color: var(--text-primary);
+}
+
+/* 步骤标题 */
+.step-title {
+    margin-top: 0;
+    margin-bottom: 24px;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* 步骤操作按钮 */
+.step-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* 表单样式 */
+.form-section {
+    margin-bottom: 24px;
+    padding: 24px;
+    background-color: var(--background-secondary);
+    border-radius: var(--border-radius-lg);
+}
+
+.form-section-title {
+    margin-top: 0;
+    margin-bottom: 24px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.form-row {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.form-group {
+    flex: 1;
+    min-width: 300px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.form-input, .form-textarea, .form-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    font-size: 14px;
+    transition: all var(--transition-normal);
+}
+
+.form-input:focus, .form-textarea:focus, .form-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.form-textarea {
+    resize: vertical;
+    min-height: 100px;
+}
+
+/* 音频配置区域 */
+.audio-configs {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.audio-config-section {
+    flex: 1;
+    min-width: 300px;
+    padding: 20px;
+    background-color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+}
+
+.config-section-title {
+    margin-top: 0;
+    margin-bottom: 16px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* 设备选择区域 */
+.device-selection {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.device-select-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+/* 分组内分页控件 - 保持特定样式 */
+.group-pagination-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 16px 24px;
+    background-color: var(--background-secondary);
+    border-top: 1px solid var(--border-color);
+    flex-wrap: wrap;
+}
+
+/* 确保按钮样式与main.css保持一致 */
+.btn {
+    /* 使用main.css中定义的基础按钮样式 */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-md);
+    font-weight: var(--font-weight-medium);
+    border: none;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    background-color: transparent;
+    color: var(--text-primary);
+}
+
+
+/* 分页按钮样式修复 */
+.pagination-controls .btn {
+    min-width: auto;
+    white-space: nowrap;
+}
+
+/* 确保下拉框正确显示 */
+.page-size-select select {
+    min-width: 80px;
+    padding: 4px 8px;
+}
+
+/* 修复用例列表和分页控件的间距 */
+.test-case-list {
+    margin-bottom: 0;
+}
+
+/* 模态框样式 */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+}
+
+.modal {
+    background-color: #fff;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    overflow-y: auto;
+    transform: translateY(-20px);
+    transition: all 0.3s ease;
+}
+
+.modal-overlay.active .modal {
+    transform: translateY(0);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.modal-close {
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--border-radius-md);
+    transition: all var(--transition-normal);
+}
+
+.modal-close:hover {
+    background-color: var(--background-secondary);
+    color: var(--text-primary);
+}
+
+.modal-content {
+    padding: 24px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 20px 24px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* 步骤操作按钮 */
+.step-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* 测试类型切换标签 */
+.test-type-tabs {
+    display: flex;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tab-btn {
+    padding: 12px 24px;
+    font-size: 14px;
+    font-weight: var(--font-weight-medium);
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+}
+
+.tab-btn.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+}
+
+/* 配置选项卡内容 */
+.config-tab-content {
+    display: none;
+}
+
+.config-tab-content.active {
+    display: block;
+}
+
+/* 干声配置列表样式 */
+.section-header-with-action {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.btn-sm {
+    padding: 6px 12px !important;
+    font-size: 12px !important;
+    min-width: auto !important;
+}
+
+.dry-audio-item {
+    background-color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding: 16px;
+    margin-bottom: 16px;
+    transition: all 0.3s ease;
+}
+
+.dry-audio-item:hover {
+    box-shadow: var(--shadow-sm);
+}
+
+.dry-audio-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.dry-audio-index {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.no-dry-audios {
+    background-color: #fff;
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius-md);
+    padding: 32px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+/* 确保干声配置列表中的设备选择区域正确显示 */
+.dry-audio-item .device-selection {
+    margin-top: 12px;
+    margin-bottom: 0;
+}

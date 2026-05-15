@@ -1,0 +1,124 @@
+/* 任务状态标签 - 现代化设计 */
+.task-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: none;
+    transition: all 0.3s ease;
+    background: transparent;
+    border: 1px solid currentColor;
+}
+
+.task-status:hover {
+    transform: translateY(-1px);
+    box-shadow: none;
+}
+
+.task-status.pending, .task-status-pending {
+    color: #1677ff;
+    border-color: #1677ff;
+}
+
+.task-status.in-progress, .task-status-in-progress {
+    color: #fa8c16;
+    border-color: #fa8c16;
+    animation: statusPulse 2s infinite;
+}
+
+@keyframes statusPulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.task-status.completed, .task-status-completed {
+    color: #52c41a;
+    border-color: #52c41a;
+}
+
+.task-status.failed, .task-status-failed {
+    color: #ff4d4f;
+    border-color: #ff4d4f;
+}
+
+.task-status.deleted, .task-status-deleted {
+    color: #8c8c8c;
+    border-color: #8c8c8c;
+}
+
+.task-indicator {
+    font-size: 12px;
+    animation: pulse 2s infinite;
+    display: inline-block;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.task-indicator.pending {
+    color: #1677FF;
+}
+
+.task-indicator.in-progress {
+    color: #FF6A00;
+}
+
+.task-indicator.completed {
+    color: #52C41A;
+}
+
+.task-indicator.failed {
+    color: #FF4D4F;
+}
+
+/* 状态标签样式 */
+.status-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: transparent;
+    border: 1px solid currentColor;
+}
+
+.status-tag.pending {
+    color: #1677ff;
+    border-color: #1677ff;
+}
+
+.status-tag.in-progress {
+    color: #ff6a00;
+    border-color: #ff6a00;
+}
+
+.status-tag.completed {
+    color: #52c41a;
+    border-color: #52c41a;
+}
+
+.status-tag.failed {
+    color: #ff4d4f;
+    border-color: #ff4d4f;
+}
+
+.status-tag.deleted {
+    color: #999;
+    border-color: #999;
+}

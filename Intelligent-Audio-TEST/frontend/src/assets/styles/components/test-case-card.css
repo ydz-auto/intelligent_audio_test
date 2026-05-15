@@ -1,0 +1,640 @@
+/* TestCaseCard组件的CSS样式 - 统一用于API测试、端到端测试和用例管理 */
+
+/* 用例卡片样式 - 与TestCaseManager.css保持一致 */
+.case-card {
+  background-color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+  margin-bottom: 12px;
+  display: block !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: visible !important;
+}
+
+/* 1/2 1k屏幕（1024px）适配 */
+@media (max-width: 1024px) {
+  .case-card {
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  
+  .case-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .case-info-wrapper {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .case-actions {
+    align-self: flex-end;
+  }
+  
+  .case-name {
+    font-size: 16px;
+  }
+}
+
+/* 1/2 1k屏幕（512px）适配 */
+@media (max-width: 512px) {
+  .case-card {
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+  
+  .case-name {
+    font-size: 14px;
+  }
+  
+  .case-description {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  
+  .case-meta {
+    gap: 12px;
+  }
+  
+  .meta-item {
+    font-size: 11px;
+  }
+  
+  .case-tags {
+    gap: 4px;
+  }
+  
+  .case-tags .tag {
+    font-size: 10px;
+    padding: 2px 8px;
+  }
+}
+
+/* 测试类型标签样式 */
+.test-type-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: var(--border-radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
+/* API测试类型标签 */
+.test-type-api {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+/* E2E测试类型标签 */
+.test-type-e2e {
+  background-color: var(--secondary-color);
+  color: white;
+}
+
+/* 优化case-name-status的布局 */
+.case-name-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.case-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* 用例勾选后高亮样式 */
+.case-card:has(.test-case-checkbox:checked),
+.case-card.card-selected {
+  background-color: rgba(255, 106, 0, 0.05);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.1);
+}
+
+/* 用例卡片头部 */
+.case-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 4px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* 用例信息和操作按钮的布局 */
+.case-info-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  overflow: visible;
+  background-color: transparent !important;
+}
+
+/* 确保选中状态下所有内部元素都继承高亮背景 */
+.case-card:has(.test-case-checkbox:checked) .case-info-wrapper,
+.case-card.card-selected .case-info-wrapper,
+.case-card:has(.test-case-checkbox:checked) .case-info,
+.case-card.card-selected .case-info {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
+/* 确保所有卡片内部容器都继承高亮背景 */
+.case-card:has(.test-case-checkbox:checked) > *,
+.case-card.card-selected > * {
+  background-color: transparent !important;
+  border-color: transparent !important;
+}
+
+/* 用例信息容器 */
+.case-info {
+  width: 100%;
+  overflow: visible;
+  flex: 1;
+  background-color: transparent !important;
+}
+
+/* 用例名称和状态 */
+.case-name-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+  flex-wrap: wrap;
+  position: relative;
+  z-index: 100;
+}
+
+.case-name {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.case-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+  margin-bottom: 8px;
+}
+
+/* Status colors */
+.status-pending {
+  background-color: #f0f0f0;
+  color: #666;
+}
+
+.status-in-progress {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.status-completed {
+  background-color: #e8f5e8;
+  color: #388e3c;
+}
+
+.status-failed {
+  background-color: #ffebee;
+  color: #d32f2f;
+}
+
+.status-deleted {
+  background-color: #f5f5f5;
+  color: #9e9e9e;
+  text-decoration: line-through;
+}
+
+.case-description {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 12px 0;
+  line-height: 1.6;
+  background-color: transparent !important;
+}
+
+/* 用例元信息 */
+.case-meta {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.meta-item {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.meta-label {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* 用例标签容器 - 支持省略号和展开功能 */
+.case-tags-container {
+  margin-bottom: 4px;
+  position: relative;
+  width: 100% !important;
+  display: block;
+  box-sizing: border-box !important;
+}
+
+/* 用例标签 - 支持省略号显示 */
+.case-tags {
+  display: flex;
+  flex-wrap: wrap !important;
+  gap: 8px;
+  padding: 4px 0;
+  width: 100% !important;
+  height: auto;
+  min-height: 32px;
+  align-items: center;
+  box-sizing: border-box !important;
+  overflow: hidden;
+}
+
+/* 确保标签在所有状态下都能正确换行 */
+.case-tags.collapsed-tags,
+.case-tags.expanded-tags {
+  flex-wrap: wrap !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* 测试用例标签样式 - 统一风格 */
+.case-tags .tag {
+  padding: 4px 12px;
+  border-radius: var(--border-radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  display: inline-block;
+  height: auto;
+  line-height: 1.5;
+  opacity: 1;
+  visibility: visible;
+  box-sizing: border-box;
+  background-color: var(--secondary-light);
+  color: var(--secondary-color);
+}
+
+/* 省略号按钮样式 */
+.tag-more {
+  background-color: var(--secondary-light) !important;
+  color: var(--secondary-color) !important;
+  padding: 4px 12px !important;
+  border-radius: var(--border-radius-full) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  display: inline-block !important;
+  height: auto !important;
+  line-height: 1.5 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  box-sizing: border-box !important;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  width: auto !important;
+  justify-content: center !important;
+}
+
+.tag-more:hover {
+  background-color: var(--primary-light) !important;
+  color: var(--primary-color) !important;
+}
+
+/* 收起按钮样式 */
+.tag-collapse {
+  background-color: var(--secondary-light) !important;
+  color: var(--secondary-color) !important;
+  padding: 4px 12px !important;
+  border-radius: var(--border-radius-full) !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  display: inline-block !important;
+  height: auto !important;
+  line-height: 1.5 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  box-sizing: border-box !important;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.2s ease;
+  width: auto !important;
+  justify-content: center !important;
+}
+
+.tag-collapse:hover {
+  background-color: var(--warning-light) !important;
+  color: var(--warning-color) !important;
+}
+
+/* 展开后的标签样式 - 支持换行 */
+.case-tags.expanded-tags {
+  flex-wrap: wrap;
+  overflow: visible;
+  max-height: none;
+  width: 100%;
+  display: flex;
+}
+
+/* 用例操作按钮 */
+.case-actions {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+/* 纯图标按钮公共样式 */
+.btn-icon-only {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 2px;
+  min-width: auto;
+  line-height: 1;
+  border: none;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: transparent;
+  color: var(--primary-color);
+  width: 28px;
+  height: 28px;
+}
+
+/* 图标居中样式 */
+.btn-icon-only i, .btn-icon-only svg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: auto;
+  flex-shrink: 0;
+}
+
+/* 图标尺寸 */
+.btn-icon-only i {
+  font-size: 28px;
+}
+
+.btn-icon-only svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* 禁用状态 */
+.btn-icon-only:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 禁用状态下的图标颜色 */
+.btn-icon-only:disabled i, .btn-icon-only:disabled svg {
+  color: var(--gray-color);
+}
+
+/* 正常状态下的图标颜色 */
+.btn-icon-only:not(:disabled) i, .btn-icon-only:not(:disabled) svg {
+  color: var(--primary-color);
+}
+
+/* 悬停效果 */
+.btn-icon-only:hover:not(:disabled) {
+  transform: translateY(-2px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: var(--primary-light);
+}
+
+/* 悬停状态下的图标颜色 */
+.btn-icon-only:hover:not(:disabled) i, .btn-icon-only:hover:not(:disabled) svg {
+  color: var(--primary-dark);
+}
+
+/* 自定义勾选框样式 */
+input[type="checkbox"].group-checkbox, input[type="checkbox"].test-case-checkbox {
+  margin-right: 8px !important;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  max-width: 24px !important;
+  max-height: 24px !important;
+  padding: 0 !important;
+  cursor: pointer !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background-color: #fff !important;
+  border: 2px solid var(--border-color) !important;
+  border-radius: 4px !important;
+  position: relative !important;
+  transition: all 0.2s ease !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  vertical-align: middle !important;
+  z-index: 1000 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  box-sizing: border-box !important;
+}
+
+input[type="checkbox"].group-checkbox:checked, input[type="checkbox"].test-case-checkbox:checked {
+  background-color: var(--primary-color) !important;
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2) !important;
+}
+
+input[type="checkbox"].group-checkbox:checked::after, input[type="checkbox"].test-case-checkbox:checked::after {
+  content: '✓' !important;
+  color: white !important;
+  font-size: 16px !important;
+  font-weight: bold !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+}
+
+input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-checkbox:hover {
+  border-color: var(--primary-color) !important;
+}
+
+/* 确保用例卡片内的勾选框可见 */
+.case-card .test-case-checkbox {
+  position: relative;
+  top: 2px;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+/* 配置部分样式 */
+.case-config-container {
+  margin-top: 16px;
+}
+
+.config-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-color);
+  transition: background-color 0.2s ease;
+}
+
+.config-header:hover {
+  background-color: var(--background-secondary);
+}
+
+.config-toggle-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.config-arrow {
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.case-config {
+  padding: 16px 0;
+  background-color: var(--background-secondary);
+  border-radius: var(--border-radius-sm);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+/* 选中状态下的配置区域背景 - 保持透明，继承父元素背景 */
+.case-card.card-selected .case-config,
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) .case-config {
+  background-color: transparent !important;
+}
+
+.config-section {
+  margin-bottom: 16px;
+  margin-bottom: 10px;
+}
+
+.config-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+.config-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+}
+
+.config-details {
+  background-color: var(--background-secondary);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* 选中状态下的配置详情背景 - 保持透明，继承父元素背景 */
+.case-card.card-selected .config-details,
+.case-card:has(input[type="checkbox"].test-case-checkbox:checked) .config-details {
+  background-color: transparent !important;
+}
+
+.config-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+  margin-bottom: 4px;
+  display: flex;
+  gap: 8px;
+}
+
+.config-row:last-child {
+  margin-bottom: 0;
+}
+
+.config-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+  min-width: 60px;
+}
+
+.config-row span:last-child {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+/* Virtual list item styles */
+.virtual-list-item {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Test case list styles */
+.test-case-item {
+  margin-bottom: 8px;
+}
+
+/* 确保case-info容器能正确显示标签 */
+.case-info {
+  width: 100%;
+  overflow: visible;
+}
+
+/* 确保case-checkbox-info容器能正确显示内容 */
+.case-checkbox-info {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+  overflow: visible;
+}
+
+/* 多个干声配置项样式 */
+.multi-dry-audio-item {
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: var(--background-secondary);
+  border-radius: var(--border-radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.multi-dry-audio-item:last-child {
+  margin-bottom: 0;
+}

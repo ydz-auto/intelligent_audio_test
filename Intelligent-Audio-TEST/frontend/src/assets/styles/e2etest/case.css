@@ -1,0 +1,9 @@
+/* 用例列表 */
+.cases-list {
+    padding: 16px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 16px !important;
+}
+
+/* 剩余样式已移至 test-case-manager/case.css */

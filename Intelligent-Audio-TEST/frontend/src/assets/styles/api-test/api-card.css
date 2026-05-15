@@ -1,0 +1,180 @@
+/* API卡片样式增强 */
+.apis-grid {
+    grid-template-columns: repeat(auto-fill, minmax(450px, 1fr));
+    gap: 24px;
+    display: grid;
+}
+
+.api-card {
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    padding: 24px;
+    min-height: 200px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.api-card:hover {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.api-card.selected {
+    border-color: #FF6A00;
+    background-color: rgba(255, 106, 0, 0.03);
+    box-shadow: 0 8px 24px rgba(255, 106, 0, 0.15);
+    transform: translateY(-4px);
+}
+
+.api-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.api-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.api-name {
+    font-size: var(--font-size-lg);
+    font-weight: var(--font-weight-bold);
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.api-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: var(--spacing-xs) var(--spacing-md);
+    border-radius: var(--border-radius-full);
+    font-size: var(--font-size-sm);
+    font-weight: var(--font-weight-medium);
+}
+
+.api-status.status-online {
+    background-color: var(--success-light);
+    color: var(--success-color);
+}
+
+.api-status.status-offline {
+    background-color: var(--error-light);
+    color: var(--error-color);
+}
+
+.online-indicator {
+    color: var(--success-color);
+    animation: pulse 2s infinite;
+}
+
+.offline-indicator {
+    color: var(--error-color);
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.api-endpoint {
+    font-size: var(--font-size-md);
+    color: var(--secondary-color);
+    font-weight: var(--font-weight-medium);
+    word-break: break-all;
+}
+
+.api-meta {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: var(--spacing-sm);
+    margin: var(--spacing-sm) 0;
+}
+
+.meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.meta-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-light);
+    font-weight: var(--font-weight-medium);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.meta-value {
+    font-size: var(--font-size-sm);
+    color: var(--text-primary);
+    font-weight: var(--font-weight-medium);
+}
+
+.api-description {
+    font-size: var(--font-size-sm);
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin: var(--spacing-sm) 0;
+    flex: 1;
+}
+
+.api-actions {
+    display: flex;
+    gap: var(--spacing-sm);
+    flex-wrap: wrap;
+    margin-top: var(--spacing-md);
+    justify-content: flex-start;
+}
+
+.api-actions .btn {
+    border-radius: var(--border-radius-md);
+    font-weight: var(--font-weight-medium);
+    padding: var(--spacing-sm) var(--spacing-md);
+    font-size: var(--font-size-sm);
+    transition: all var(--transition-normal);
+    border: none;
+    min-width: 80px;
+}
+
+.api-actions .btn-primary {
+    background: var(--primary-gradient);
+    color: var(--white-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.api-actions .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.api-actions .btn-secondary {
+    background: linear-gradient(135deg, var(--background-tertiary) 0%, var(--background-secondary) 100%);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.api-actions .btn-secondary:hover {
+    background: linear-gradient(135deg, var(--background-secondary) 0%, var(--background-tertiary) 100%);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+    border-color: var(--primary-color);
+}
+
+.api-actions .btn-danger {
+    background: var(--danger-gradient, linear-gradient(135deg, var(--danger-color) 0%, var(--error-color) 100%));
+    color: var(--white-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.api-actions .btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}

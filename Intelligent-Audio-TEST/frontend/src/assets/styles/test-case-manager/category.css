@@ -1,0 +1,103 @@
+/* 类别卡片样式 */
+.category-card {
+    background-color: #fff;
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-sm);
+    overflow: visible;
+    border: 1px solid var(--border-color);
+    transition: all 0.3s ease;
+}
+
+.category-card:hover {
+    box-shadow: var(--shadow-md);
+}
+
+/* 勾选后分类高亮 */
+.category-card:has(.group-checkbox:checked) {
+    background-color: rgba(255, 106, 0, 0.05);
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2);
+}
+
+/* 勾选后分类头部高亮 */
+.category-card:has(.group-checkbox:checked) .category-header {
+    background: linear-gradient(135deg, rgba(255, 106, 0, 0.1) 0%, rgba(255, 106, 0, 0.05) 100%);
+    border-bottom: 1px solid var(--primary-color);
+}
+
+/* 防止点击复选框时触发卡片展开 */
+.group-checkbox {
+    pointer-events: auto !important;
+    cursor: pointer !important;
+}
+
+/* 类别卡片头部 */
+.category-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.category-header > button {
+    margin-left: 16px;
+}
+
+.category-header:hover {
+    background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+}
+
+.category-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.category-toggle {
+    font-size: 18px !important;
+    color: var(--text-secondary) !important;
+    transition: transform 0.3s ease !important;
+}
+
+.category-toggle.expanded {
+    transform: rotate(180deg) !important;
+}
+
+.category-title {
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    color: var(--text-primary) !important;
+    margin: 0 !important;
+}
+
+.category-count {
+    background-color: var(--primary-color) !important;
+    color: white !important;
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    padding: 4px 8px !important;
+    border-radius: 12px !important;
+    min-width: 20px !important;
+    text-align: center !important;
+}
+
+.category-actions {
+    display: flex !important;
+    gap: 8px !important;
+}
+
+/* 类别卡片内容 - 默认收起 */
+.category-content {
+    display: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    transition: all 0.3s ease !important;
+}
+
+.category-content.expanded {
+    display: block !important;
+}

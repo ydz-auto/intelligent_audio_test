@@ -1,0 +1,255 @@
+/* 主样式文件 - 智能语音测试系统 */
+/* 遵循UI设计规范，采用模块化CSS架构 */
+
+/* 1. 重置样式 - 去除浏览器和框架默认样式影响 */
+@import './reset.css';
+
+/* Font Awesome 本地引入 */
+@import '@fortawesome/fontawesome-free/css/all.min.css';
+
+/* 2. CSS变量定义 - 统一主题和样式参数 */
+@import './variables.css';
+
+/* 3. 基础组件样式 - 按照UI设计规范实现 */
+@import './components/common.css';
+@import './components/button.css';
+@import './components/card.css';
+@import './components/form.css';
+@import './components/modal.css';
+@import './components/table.css';
+@import './components/navigation.css';
+@import './components/progress.css';
+@import './components/tag.css';
+@import './components/log.css';
+@import './components/dropdown-multi-select.css';
+@import './components/test-case-card.css';
+@import './device-card.css';
+@import './e2etest/dropdown.css';
+
+/* 4. 页面布局样式 - 响应式设计实现 */
+@import './layouts/main.css';
+
+/* 5. 任务页面样式 */
+@import './tasks/charts.css';
+@import './tasks/task-card.css';
+@import './tasks/task-status.css';
+@import './tasks/filter-sort.css';
+@import './tasks/stats.css';
+
+/* 5. 报告相关样式 */
+@import './reports/base.css';
+
+/* 5. 页面特定样式 - 各页面专用样式 */
+@import './device.css';
+@import './test-case-manager/base.css';
+@import './test-case-manager/toolbar.css';
+@import './test-case-manager/category.css';
+@import './SPLMapping.css';
+@import './api-test/toolbar.css';
+@import './api-test/visualization.css';
+@import './api-test/step-panel.css';
+@import './api-test/tag-stats.css';
+@import './api-test/radio.css';
+@import './api-test/api-card.css';
+
+/* 设备卡片选中状态的全局样式 - 确保所有设备列表都有明显的选中效果 */
+.device-card.highlighted,
+.device-card.selected,
+.device-card:has(.device-checkbox:checked),
+.resource-card.selected {
+    background-color: rgba(255, 106, 0, 0.25) !important;
+    border: 3px solid var(--primary-color) !important;
+    box-shadow: 0 0 0 4px rgba(255, 106, 0, 0.4), 0 8px 24px rgba(255, 106, 0, 0.25) !important;
+    transition: all var(--transition-normal) !important;
+    transform: translateY(-3px) !important;
+    z-index: 100 !important;
+}
+
+/* 通用搜索框和筛选框布局规则 */
+.filter-bar,
+.toolbar-filters,
+.device-toolbar {
+    display: flex !important;
+    gap: 12px !important;
+    align-items: center !important;
+    transition: all var(--transition-normal) !important;
+    flex-wrap: nowrap !important;
+    white-space: nowrap !important;
+}
+
+/* 确保输入框没有箭头 */
+.form-input,
+input.form-input {
+    background: transparent !important;
+    background-image: none !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+}
+
+/* 确保文本输入框没有箭头 */
+input[type="text"].form-input {
+    background: transparent !important;
+    background-image: none !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    -moz-appearance: none !important;
+}
+
+/* 选择器样式由 form.css 统一管理 */
+
+/* 下拉菜单链接样式 */
+.dropdown-menu a {
+    display: block;
+    padding: 10px 15px;
+    cursor: pointer;
+    color: var(--text-primary);
+    text-decoration: none;
+    transition: background-color var(--transition-normal);
+}
+
+.dropdown-menu a:hover {
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+}
+
+.filter-bar .search-box,
+.toolbar-filters .search-box,
+.device-toolbar .search-box,
+.filter-bar .filter-select,
+.toolbar-filters .filter-select,
+.device-toolbar .filter-select {
+    display: flex !important;
+    align-items: center !important;
+    background: var(--background-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: var(--border-radius-md) !important;
+    padding: 0 !important;
+    transition: all var(--transition-normal) !important;
+    box-shadow: var(--shadow-sm) !important;
+    overflow: hidden !important;
+    height: 40px !important;
+    box-sizing: border-box !important;
+    margin: 0 !important;
+    vertical-align: bottom !important;
+}
+
+.filter-bar .search-box,
+.toolbar-filters .search-box,
+.device-toolbar .search-box {
+    width: 280px !important;
+}
+
+.filter-bar .filter-select,
+.toolbar-filters .filter-select,
+.device-toolbar .filter-select {
+    width: 180px !important;
+}
+
+.filter-bar .search-input,
+.toolbar-filters .search-input,
+.device-toolbar .search-input,
+.filter-bar input.form-input,
+.toolbar-filters input.form-input,
+.device-toolbar input.form-input {
+    width: 100% !important;
+    height: 40px !important;
+    border: none !important;
+    border-radius: var(--border-radius-md) !important;
+    font-size: var(--font-size-md) !important;
+    color: var(--text-primary) !important;
+    background-color: transparent !important;
+    transition: all var(--transition-normal) !important;
+    outline: none !important;
+    box-sizing: border-box !important;
+    cursor: pointer !important;
+    appearance: none !important;
+    background-repeat: no-repeat !important;
+    background-position: right 0.5rem center !important;
+    background-size: 1.5em 1.5em !important;
+    padding-right: 2.5rem !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+}
+
+/* datetime-local 输入框特殊规则 - 完全恢复原生行为 */
+.filter-bar input[type="datetime-local"].form-input,
+.toolbar-filters input[type="datetime-local"].form-input,
+.device-toolbar input[type="datetime-local"].form-input,
+.filter-select input[type="datetime-local"].form-input {
+    /* 恢复默认外观，显示日历图标 */
+    appearance: auto !important;
+    /* 移除自定义背景图片，避免覆盖日历图标 */
+    background-image: none !important;
+    /* 移除所有可能影响点击的样式 */
+    position: static !important;
+    z-index: auto !important;
+    /* 增加右侧内边距，确保日历图标完整显示 */
+    padding-right: 3.5rem !important;
+    /* 确保整个输入框可点击 */
+    cursor: pointer !important;
+    /* 确保输入框能够接收所有点击事件 */
+    pointer-events: auto !important;
+    /* 确保输入框填充整个容器 */
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* 确保datetime-local输入框的容器足够宽且可点击 */
+.filter-bar .filter-select:has(input[type="datetime-local"].form-input),
+.toolbar-filters .filter-select:has(input[type="datetime-local"].form-input),
+.device-toolbar .filter-select:has(input[type="datetime-local"].form-input),
+.filter-select:has(input[type="datetime-local"].form-input) {
+    /* 增加宽度，确保日历图标不被截断 */
+    width: 220px !important;
+    /* 确保内容不被截断 */
+    overflow: visible !important;
+    /* 确保容器可点击 */
+    cursor: pointer !important;
+    /* 确保容器不会阻止点击事件 */
+    pointer-events: auto !important;
+    /* 确保容器不会覆盖输入框 */
+    z-index: 0 !important;
+}
+
+/* 确保datetime-local输入框的父容器不会阻止点击 */
+.date-time-inputs {
+    /* 确保不会阻止点击事件 */
+    pointer-events: auto !important;
+}
+
+.filter-bar .search-input,
+.toolbar-filters .search-input,
+.device-toolbar .search-input {
+    padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) 40px !important;
+}
+
+.filter-bar .form-input,
+.toolbar-filters .form-input,
+.device-toolbar .form-input {
+    padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) var(--spacing-md) !important;
+}
+
+.filter-bar:focus-within,
+.toolbar-filters:focus-within,
+.device-toolbar:focus-within,
+.filter-bar .search-box:focus-within,
+.toolbar-filters .search-box:focus-within,
+.device-toolbar .search-box:focus-within,
+.filter-bar .filter-select:focus-within,
+.toolbar-filters .filter-select:focus-within,
+.device-toolbar .filter-select:focus-within {
+    border-color: var(--primary-color) !important;
+    box-shadow: 0 0 0 3px var(--primary-light) !important;
+}
+
+.filter-bar .search-input:focus,
+.toolbar-filters .search-input:focus,
+.device-toolbar .search-input:focus,
+.filter-bar .form-input:focus,
+.toolbar-filters .form-input:focus,
+.device-toolbar .form-input:focus {
+    box-shadow: none !important;
+}
+/* 6. 测试用例分组样式 */
