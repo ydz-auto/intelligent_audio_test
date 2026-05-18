@@ -27,10 +27,13 @@
                 visible: true,
                 modalId: modalId
               }"
-              @close="handleClose(modalId)"
+              @close="(data: any) => {
+                if (data instanceof Event) return;
+                handleClose(modalId);
+              }"
               @confirm="(data: any) => {
+                if (data instanceof Event) return;
                 console.log('[GlobalModalContainer] confirm事件触发, data:', data);
-                // 调用onSave回调（如果存在）
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
                   console.log('[GlobalModalContainer] 调用onSave回调');
                   try {
@@ -45,13 +48,14 @@
                 handleClose(modalId);
               }"
               @cancel="(data: any) => {
+                if (data instanceof Event) return;
                 console.log('[GlobalModalContainer] cancel事件触发, data:', data);
                 modalItem.resolve(false);
                 handleClose(modalId);
               }"
               @save="(data: any) => {
+                if (data instanceof Event) return;
                 console.log('[GlobalModalContainer] save事件触发, data:', data);
-                // 调用onSave回调（如果存在）
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
                   console.log('[GlobalModalContainer] 调用onSave回调');
                   try {
@@ -66,11 +70,13 @@
                 handleClose(modalId);
               }"
               @select="(data: any) => {
+                if (data instanceof Event) return;
                 console.log('[GlobalModalContainer] select事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
               }"
               @selectMultiple="(data: any) => {
+                if (data instanceof Event) return;
                 console.log('[GlobalModalContainer] selectMultiple事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
