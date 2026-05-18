@@ -1,18 +1,27 @@
 <template>
   <div class="task-report-panel">
+    <div class="report-hero">
+      <div class="hero-content">
+        <div class="hero-icon">
+          <i class="fas fa-chart-bar"></i>
+        </div>
+        <h1 class="hero-title">{{ report.title || report.name || '任务报告' }}</h1>
+        <p class="hero-subtitle" v-if="report.description">{{ report.description }}</p>
+        <div class="hero-meta">
+          <span class="meta-item">
+            <i class="fas fa-calendar-alt"></i>
+            {{ formatDate(report.createdAt || report.created_at) }}
+          </span>
+          <span class="meta-item status" :class="report.status">
+            <i class="fas fa-circle"></i>
+            {{ report.status === 'draft' ? '草稿' : '已发布' }}
+          </span>
+        </div>
+      </div>
+    </div>
+    
     <div class="report-layout">
       <div class="report-main">
-        <div class="report-header">
-          <h1 class="report-title">{{ report.title || report.name || '任务报告' }}</h1>
-          <div class="report-meta">
-            <span class="report-date">{{ formatDate(report.createdAt || report.created_at) }}</span>
-            <span class="report-status" :class="report.status">
-              {{ report.status === 'draft' ? '草稿' : '已发布' }}
-            </span>
-          </div>
-          <p class="report-description" v-if="report.description">{{ report.description }}</p>
-        </div>
-
         <div class="report-section" id="section-overview">
           <OverviewCardComponent :reportData="report" />
         </div>
@@ -146,12 +155,13 @@ const cancelLocalConclusion = () => {
 }
 
 const scrollToSection = (sectionId) => {
+  activeSection.value = sectionId
   const element = document.getElementById(sectionId)
   if (element) {
-    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    setTimeout(() => {
-      window.scrollBy({ top: -80, behavior: 'smooth' })
-    }, 100)
+    const headerOffset = 100
+    const elementPosition = element.getBoundingClientRect().top
+    const offsetPosition = elementPosition + window.pageYOffset - headerOffset
+    window.scrollTo({ top: offsetPosition, behavior: 'smooth' })
   }
 }
 
@@ -162,17 +172,18 @@ const handleScroll = () => {
   }))
   
   let currentSection = 'section-overview'
-  const scrollPosition = window.scrollY + 120
+  const scrollPosition = window.scrollY + 150
   
-  sections.forEach(section => {
+  for (let i = sections.length - 1; i >= 0; i--) {
+    const section = sections[i]
     if (section.element) {
       const sectionTop = section.element.offsetTop
-      const sectionHeight = section.element.offsetHeight
-      if (scrollPosition >= sectionTop && scrollPosition < sectionTop + sectionHeight) {
+      if (scrollPosition >= sectionTop) {
         currentSection = section.id
+        break
       }
     }
-  })
+  }
   
   activeSection.value = currentSection
   
@@ -195,7 +206,83 @@ onUnmounted(() => {
 .task-report-panel {
   width: 100%;
   min-height: 100vh;
-  background: #fafafa;
+  background: white;
+}
+
+.report-hero {
+  position: relative;
+  background: linear-gradient(180deg, #FFF8F0 0%, #FFFFFF 100%);
+  padding: 100px 24px 80px;
+  text-align: center;
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.hero-icon {
+  width: 90px;
+  height: 90px;
+  margin: 0 auto 28px;
+  background: rgba(22, 119, 255, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  color: #1677FF;
+}
+
+.hero-title {
+  font-size: 42px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 16px 0;
+}
+
+.hero-subtitle {
+  font-size: 16px;
+  color: #64748b;
+  line-height: 1.8;
+  margin: 0 0 24px 0;
+}
+
+.hero-meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.meta-item i {
+  font-size: 12px;
+}
+
+.meta-item.status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  background: rgba(82, 196, 26, 0.1);
+  color: #52C41A;
+}
+
+.meta-item.status.draft {
+  background: rgba(250, 173, 20, 0.1);
+  color: #FAAD14;
+}
+
+.meta-item.status i {
+  font-size: 6px;
 }
 
 .report-layout {
@@ -284,49 +371,6 @@ onUnmounted(() => {
   transition: height 0.1s ease;
 }
 
-.report-header {
-  margin-bottom: 32px;
-}
-
-.report-title {
-  font-size: 28px;
-  font-weight: 600;
-  color: #1e293b;
-  margin: 0 0 8px 0;
-}
-
-.report-meta {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-
-.report-date {
-  font-size: 14px;
-  color: #64748b;
-}
-
-.report-status {
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 12px;
-  background: rgba(82, 196, 26, 0.1);
-  color: #52C41A;
-}
-
-.report-status.draft {
-  background: rgba(250, 173, 20, 0.1);
-  color: #FAAD14;
-}
-
-.report-description {
-  font-size: 15px;
-  color: #64748b;
-  line-height: 1.6;
-  margin: 0;
-}
-
 .report-section {
   margin-bottom: 32px;
 }
@@ -339,9 +383,7 @@ onUnmounted(() => {
 }
 
 .analysis-content {
-  background: white;
-  border-radius: 12px;
-  padding: 24px;
+  padding: 0;
 }
 
 .analysis-text {

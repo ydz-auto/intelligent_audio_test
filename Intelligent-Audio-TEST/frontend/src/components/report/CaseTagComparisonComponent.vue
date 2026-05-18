@@ -153,40 +153,41 @@
         :data-chart-id="`chart-${index}`"
       >
         <!-- 维度标题 -->
-        <div class="metric-table-title" @click="toggleMetricCollapse(metric.name)">
-          <div class="title-content">
+        <div class="metric-table-title">
+          <div class="title-content" @click="toggleMetricCollapse(metric.name)">
             <i class="fas fa-chart-bar"></i>
             <span>{{ metric.name }} 对比（单位：{{ metric.unit }}）</span>
           </div>
-          <button class="metric-collapse-btn" :class="{ collapsed: collapsedMetrics[metric.name] }" title="折叠/展开">
-            <i class="fas fa-chevron-up" v-if="collapsedMetrics[metric.name]"></i>
-            <i class="fas fa-chevron-down" v-else></i>
-          </button>
+          <div class="title-actions">
+            <div class="display-type-selector" v-if="!collapsedMetrics[metric.name]">
+              <button 
+                v-for="displayType in displayTypes" 
+                :key="displayType.type"
+                :class="['display-type-btn', { active: activeDisplayType === displayType.type }]"
+                @click.stop="activeDisplayType = displayType.type"
+              >
+                <i :class="displayType.icon"></i>
+              </button>
+            </div>
+            <button class="metric-collapse-btn" :class="{ collapsed: collapsedMetrics[metric.name] }" title="折叠/展开" @click.stop="toggleMetricCollapse(metric.name)">
+              <i class="fas fa-chevron-up" v-if="collapsedMetrics[metric.name]"></i>
+              <i class="fas fa-chevron-down" v-else></i>
+            </button>
+          </div>
         </div>
 
         <!-- 图和表切换容器 -->
         <div class="metric-container-content" v-if="!collapsedMetrics[metric.name]">
-          <!-- 显示类型切换 -->
-          <div class="display-type-selector">
-            <span class="display-type-title">显示类型:</span>
-            <button 
-              v-for="displayType in displayTypes" 
-              :key="displayType.type"
-              :class="['display-type-btn', { active: activeDisplayType === displayType.type }]"
-              @click="activeDisplayType = displayType.type"
-            >
-              <i :class="displayType.icon"></i>
-              {{ displayType.label }}
-            </button>
-          </div>
-
           <!-- 表格容器 -->
           <div v-if="activeDisplayType === 'table'" class="table-container">
-            <table class="data-table">
+            <table class="data-table" ref="dataTableRef">
               <thead>
                 <tr>
-                  <th>用例标签</th>
-                  <th v-for="(device, index) in devices" :key="index">
+                  <th class="resizable-th" @mousedown="startResize($event, 0)">
+                    用例标签
+                    <span class="resize-handle"></span>
+                  </th>
+                  <th v-for="(device, index) in devices" :key="index" class="resizable-th" @mousedown="startResize($event, index + 1)">
                     <span
                       v-if="editingResourceKey !== device"
                       style="cursor: pointer;"
@@ -200,6 +201,7 @@
                       @keyup.enter="commitEditResource(device)"
                       @blur="commitEditResource(device)"
                     />
+                    <span class="resize-handle"></span>
                   </th>
                 </tr>
               </thead>
@@ -244,7 +246,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import ChartComponent from './ChartComponent.vue'
 import { reportsApi } from '../../utils/api'
 
@@ -263,6 +265,50 @@ const collapsedMetrics = ref({})
 const toggleMetricCollapse = (metricName) => {
   collapsedMetrics.value[metricName] = !collapsedMetrics.value[metricName]
 }
+
+// Table resize functionality
+const dataTableRef = ref(null)
+const resizing = ref({ active: false, columnIndex: -1, startX: 0, startWidth: 0 })
+
+const startResize = (event, columnIndex) => {
+  const target = event.target.closest('th')
+  if (!target) return
+  
+  resizing.value = {
+    active: true,
+    columnIndex,
+    startX: event.pageX,
+    startWidth: target.offsetWidth
+  }
+  
+  event.preventDefault()
+  
+  const handleMouseMove = (e) => {
+    if (!resizing.value.active) return
+    const diff = e.pageX - resizing.value.startX
+    const newWidth = Math.max(60, resizing.value.startWidth + diff)
+    if (dataTableRef.value) {
+      const ths = dataTableRef.value.querySelectorAll('th')
+      if (ths[columnIndex]) {
+        ths[columnIndex].style.width = newWidth + 'px'
+      }
+    }
+  }
+  
+  const handleMouseUp = () => {
+    resizing.value.active = false
+    document.removeEventListener('mousemove', handleMouseMove)
+    document.removeEventListener('mouseup', handleMouseUp)
+  }
+  
+  document.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('mouseup', handleMouseUp)
+}
+
+onUnmounted(() => {
+  document.removeEventListener('mousemove', () => {})
+  document.removeEventListener('mouseup', () => {})
+})
 
 // Props
 const props = defineProps({
@@ -1302,11 +1348,10 @@ const getChartData = (metricName) => {
 
 <style scoped>
 .case-tag-comparison {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 24px;
+  width: 100%;
 }
 
 .section-header {
@@ -1315,16 +1360,9 @@ const getChartData = (metricName) => {
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  transition: all 0.3s ease;
-}
-
-.section-header:hover {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 12px 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .section-title {
@@ -1376,15 +1414,11 @@ const getChartData = (metricName) => {
 
 /* Filter Card Styles */
 .filter-card {
-  background: white;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  padding: 20px 24px;
+  padding: 0;
   margin-bottom: 24px;
-  opacity: 1;
-  transform: translateY(0);
-  transition: all 0.5s ease;
+  background: transparent;
+  width: 100%;
+  border-radius: 12px;
 }
 
 .filter-title {
@@ -1399,6 +1433,7 @@ const getChartData = (metricName) => {
 
 .filter-content {
   margin-bottom: 20px;
+  width: 100%;
 }
 
 .filter-row {
@@ -1406,11 +1441,13 @@ const getChartData = (metricName) => {
   flex-wrap: wrap;
   gap: 20px;
   margin-bottom: 20px;
+  width: 100%;
 }
 
 .filter-item {
   flex: 1;
   min-width: 200px;
+  width: 100%;
 }
 
 .filter-label {
@@ -1428,11 +1465,8 @@ const getChartData = (metricName) => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px;
-  min-height: 80px;
+  padding: 8px 0;
+  min-height: 60px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -1578,11 +1612,8 @@ const getChartData = (metricName) => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px;
-  min-height: 80px;
+  padding: 8px 0;
+  min-height: 60px;
   width: 100%;
   box-sizing: border-box;
 }
@@ -1631,11 +1662,7 @@ const getChartData = (metricName) => {
 
 /* Metric Selection Styles */
 .metric-selection {
-  background: white;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  padding: 20px 24px;
+  padding: 0;
   margin-bottom: 24px;
 }
 
@@ -1786,38 +1813,48 @@ const getChartData = (metricName) => {
 
 /* Metric Container Styles */
 .metric-container {
-  background: white;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   overflow: hidden;
   margin-bottom: 24px;
+  border-radius: 12px;
+  width: 100%;
 }
 
 .metric-table-title {
   color: #334155;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   margin: 0;
-  padding: 16px 24px;
-  border-bottom: 2px solid #f1f5f9;
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f5f9;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  cursor: pointer;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  transition: all 0.3s ease;
-}
-
-.metric-table-title:hover {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+  gap: 16px;
+  background: #f8fafc;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .title-content {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  cursor: pointer;
+  flex: 1;
+  min-width: 0;
+}
+
+.title-content span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .metric-collapse-btn {
@@ -1826,13 +1863,12 @@ const getChartData = (metricName) => {
   font-size: 14px;
   color: #64748b;
   cursor: pointer;
-  padding: 8px;
+  padding: 6px;
   border-radius: 6px;
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-left: auto;
 }
 
 .metric-collapse-btn:hover {
@@ -1845,47 +1881,37 @@ const getChartData = (metricName) => {
 }
 
 .metric-container-content {
-  padding: 0 24px 24px;
+  padding: 0;
   transition: all 0.3s ease;
   animation: slideDown 0.3s ease-out;
 }
 
 /* Display Type Selector */
 .display-type-selector {
-  background: white;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 16px 0;
   display: flex;
-  gap: 12px;
+  gap: 2px;
   align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.display-type-title {
-  font-weight: 600;
-  color: #334155;
-  font-size: 14px;
-  margin-right: 12px;
 }
 
 .display-type-btn {
-  padding: 8px 16px;
+  width: 28px;
+  height: 28px;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 6px;
   background: white;
-  color: #475569;
-  font-weight: 500;
+  color: #64748b;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  font-size: 13px;
 }
 
 .display-type-btn:hover {
   border-color: #1677ff;
   color: #1677ff;
+  background: rgba(22, 119, 255, 0.05);
 }
 
 .display-type-btn.active {
@@ -1898,35 +1924,67 @@ const getChartData = (metricName) => {
 .table-container {
   padding: 0;
   overflow-x: auto;
+  border-radius: 8px;
 }
 
 .data-table {
   width: 100%;
   border-collapse: collapse;
   background: white;
-}
-
-.data-table th {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  font-weight: 600;
-  padding: 16px 20px;
-  text-align: left;
-  border-bottom: 2px solid #e2e8f0;
-  color: #1e293b;
   font-size: 14px;
 }
 
+.data-table th {
+  background: #f8fafc;
+  font-weight: 600;
+  padding: 14px 16px;
+  text-align: left;
+  border-bottom: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 13px;
+  white-space: normal;
+  word-break: break-word;
+  line-height: 1.4;
+  position: relative;
+}
+
+.data-table th:first-child {
+  min-width: 140px;
+  color: #1e293b;
+}
+
 .data-table th:not(:first-child) {
-  background: linear-gradient(135deg, rgba(255, 106, 0, 0.1) 0%, rgba(255, 106, 0, 0.05) 100%);
   text-align: center;
+  min-width: 100px;
+  color: #1e293b;
+}
+
+.data-table th .resize-handle {
+  position: absolute;
+  right: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.2s;
+  z-index: 10;
+}
+
+.data-table th .resize-handle:hover {
+  background: rgba(22, 119, 255, 0.5);
 }
 
 .data-table td {
-  padding: 16px 20px;
+  padding: 12px 16px;
   text-align: left;
   border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+}
+
+.data-table td:first-child {
   font-weight: 500;
-  font-size: 15px;
+  color: #334155;
 }
 
 .data-table td:not(:first-child) {
@@ -1934,14 +1992,8 @@ const getChartData = (metricName) => {
   color: #1677ff;
 }
 
-.data-table tr {
-  transition: all 0.3s ease;
-  border-bottom: 1px solid #f1f5f9;
-}
-
 .data-table tr:hover {
   background-color: #f8fafc;
-  transform: translateX(4px);
 }
 
 /* Chart Container */

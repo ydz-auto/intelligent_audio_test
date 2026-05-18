@@ -1608,10 +1608,9 @@ const applyFilters = () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: #f8f9fa;
+  background: transparent;
   padding: 16px;
   border-radius: 8px;
-  border: 1px solid #e9ecef;
 }
 
 .audio-play-item {
@@ -1688,11 +1687,10 @@ const applyFilters = () => {
 
 /* Existing styles below */
 .specific-case-comparison {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  margin-bottom: 20px;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 24px;
+  width: 100%;
 }
 
 .section-header {
@@ -1701,16 +1699,9 @@ const applyFilters = () => {
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  transition: all 0.3s ease;
-}
-
-.section-header:hover {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 12px 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .section-title {
@@ -1762,15 +1753,11 @@ const applyFilters = () => {
 
 /* Filter Card Styles */
 .filter-card {
-  background: var(--background-primary);
-  border-radius: var(--border-radius-lg);
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-md);
-  padding: var(--spacing-lg) 24px;
+  padding: 0;
   margin-bottom: var(--spacing-xl);
-  opacity: 1;
-  transform: translateY(0);
-  transition: all 0.5s ease;
+  background: transparent;
+  width: 100%;
+  border-radius: 12px;
 }
 
 .filter-title {
@@ -1785,6 +1772,7 @@ const applyFilters = () => {
 
 .filter-content {
   margin-bottom: 20px;
+  width: 100%;
 }
 
 .filter-row {
@@ -1792,11 +1780,13 @@ const applyFilters = () => {
   flex-wrap: wrap;
   gap: 20px;
   margin-bottom: 20px;
+  width: 100%;
 }
 
 .filter-item {
   flex: 1;
   min-width: 200px;
+  width: 100%;
 }
 
 .filter-label {
@@ -2062,13 +2052,11 @@ const applyFilters = () => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px;
+  padding: 12px 0;
   min-height: 80px;
   width: 100%;
   box-sizing: border-box;
+  border-radius: 8px;
 }
 
 .metric-filter-item {
@@ -2266,16 +2254,22 @@ const applyFilters = () => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  width: 100%;
 }
 
 /* Override global case-card to remove padding for report view header */
 .case-list .case-card {
   padding: 0;
   overflow: hidden;
+  background: white;
+  border-radius: 8px;
+  width: 100%;
 }
 
 .case-header {
   padding: 16px 20px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .case-info-wrapper {

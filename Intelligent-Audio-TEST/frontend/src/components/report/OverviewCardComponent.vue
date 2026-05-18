@@ -313,11 +313,10 @@ const getAverageValue = (metricName, device) => {
 
 <style scoped>
 .overview-card {
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  padding: 16px;
+  background: transparent;
+  padding: 0;
   margin-bottom: 24px;
+  width: 100%;
 }
 
 .section-header {
@@ -326,16 +325,9 @@ const getAverageValue = (metricName, device) => {
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  transition: all 0.3s ease;
-}
-
-.section-header:hover {
-  background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 12px 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .section-title {
@@ -389,10 +381,8 @@ const getAverageValue = (metricName, device) => {
   display: flex;
   gap: 24px;
   margin-bottom: 20px;
-  padding: 16px;
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  padding: 16px 0;
+  width: 100%;
 }
 
 .stat-item {
@@ -416,7 +406,7 @@ const getAverageValue = (metricName, device) => {
 .overview-table-container {
   overflow-x: auto;
   border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  width: 100%;
 }
 
 .data-table {
@@ -427,26 +417,30 @@ const getAverageValue = (metricName, device) => {
 }
 
 .data-table th {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  background: #f8fafc;
   font-weight: 600;
-  padding: 16px 20px;
+  padding: 14px 16px;
   text-align: left;
-  border-bottom: 2px solid #e2e8f0;
-  color: #1e293b;
-  font-size: 14px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #475569;
+  font-size: 13px;
 }
 
 .data-table th:not(:first-child) {
-  background: linear-gradient(135deg, rgba(255, 106, 0, 0.1) 0%, rgba(255, 106, 0, 0.05) 100%);
   text-align: center;
+  color: #1e293b;
 }
 
 .data-table td {
-  padding: 16px 20px;
+  padding: 12px 16px;
   text-align: left;
   border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+}
+
+.data-table td:first-child {
   font-weight: 500;
-  font-size: 15px;
+  color: #334155;
 }
 
 .data-table td:not(:first-child) {
@@ -454,21 +448,14 @@ const getAverageValue = (metricName, device) => {
   color: #1677ff;
 }
 
-.data-table tr {
-  transition: all 0.3s ease;
-  border-bottom: 1px solid #f1f5f9;
-}
-
 .data-table tr:hover {
   background-color: #f8fafc;
-  transform: translateX(4px);
 }
 
 .data-table td.dimension-cell {
   text-align: left;
-  font-weight: 600;
-  color: #333;
-  background: #fafafa;
+  font-weight: 500;
+  color: #334155;
 }
 
 .empty-row {

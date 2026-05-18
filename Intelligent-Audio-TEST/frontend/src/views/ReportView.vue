@@ -235,33 +235,37 @@ onMounted(() => {
 
 .floating-actions {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
+  right: 32px;
+  bottom: 32px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  z-index: 100;
+  gap: 12px;
+  z-index: 1000;
 }
 
 .action-btn {
-  width: 44px;
-  height: 44px;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: white;
+  background: linear-gradient(135deg, #1677FF 0%, #0958D9 100%);
   border: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 16px rgba(22, 119, 255, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  color: #64748b;
+  font-size: 18px;
+  color: white;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 
 .action-btn:hover {
-  background: #1677FF;
-  color: white;
+  transform: scale(1.1);
+  box-shadow: 0 6px 24px rgba(22, 119, 255, 0.5);
+}
+
+.action-btn:active {
+  transform: scale(0.95);
 }
 
 .copy-toast {

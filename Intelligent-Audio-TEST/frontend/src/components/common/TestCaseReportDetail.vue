@@ -500,7 +500,7 @@ const closeAudioModal = () => {
 }
 
 .metrics-table-wrapper {
-  overflow-x: auto;
+  overflow-x: visible;
 }
 
 .modern-metrics-table {
@@ -510,6 +510,7 @@ const closeAudioModal = () => {
   border: 1px solid var(--border-color);
   border-radius: 4px;
   overflow: hidden;
+  table-layout: auto;
 }
 
 .modern-metrics-table th {
@@ -519,11 +520,30 @@ const closeAudioModal = () => {
   color: var(--text-secondary);
   font-weight: 500;
   border-bottom: 1px solid var(--border-color);
+  white-space: normal;
+  word-break: break-word;
+  max-width: 120px;
+  line-height: 1.3;
+}
+
+.modern-metrics-table th:first-child {
+  max-width: 150px;
 }
 
 .modern-metrics-table td {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.modern-metrics-table td:first-child {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modern-metrics-table td:not(:first-child) {
+  white-space: nowrap;
 }
 
 .dim-name {
