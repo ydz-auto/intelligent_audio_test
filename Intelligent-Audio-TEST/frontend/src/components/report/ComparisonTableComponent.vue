@@ -344,33 +344,6 @@ export default {
   flex-wrap: wrap;
 }
 
-.search-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-  background: #f5f5f5;
-  border-radius: 8px;
-  padding: 0 12px;
-  height: 36px;
-}
-
-.search-box input {
-  border: none;
-  background: transparent;
-  outline: none;
-  font-size: 14px;
-  padding: 0 8px 0 24px;
-  height: 100%;
-  width: 200px;
-}
-
-.search-box i {
-  position: absolute;
-  left: 12px;
-  color: #999;
-  font-size: 14px;
-}
-
 .table-wrapper {
   overflow-x: auto;
   border-radius: 8px;
@@ -426,14 +399,6 @@ export default {
 
 .table-row-highlight {
   background: #e6f7ff;
-}
-
-.status-badge {
-  padding: 4px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-  display: inline-block;
 }
 
 .status-pending {
@@ -499,60 +464,10 @@ export default {
   color: #333;
 }
 
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 20px;
-  padding: 16px 0 0 0;
-  border-top: 1px solid #e2e8f0;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.pagination-info {
-  font-size: 14px;
-  color: #666;
-}
-
 .pagination-controls {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.pagination-page {
-  padding: 6px 12px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.3s ease;
-  border: 1px solid transparent;
-}
-
-.pagination-page:hover {
-  background: #f0f5ff;
-  border-color: #1677FF;
-}
-
-.pagination-page.active {
-  background: #1677FF;
-  color: white;
-  border-color: #1677FF;
-}
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-family: inherit;
 }
 
 .btn-primary {

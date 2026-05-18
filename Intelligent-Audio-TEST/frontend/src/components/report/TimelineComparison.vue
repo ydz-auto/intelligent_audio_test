@@ -110,7 +110,7 @@
             <span class="tick-label">{{ tick.label }}</span>
           </div>
         </div>
-        <span class="scale-end">{{ getFormatEffectiveDuration() }}s</span>
+        <span class="scale-end">{{ maxDuration.toFixed(1) }}s</span>
       </div>
     </div>
 
@@ -168,6 +168,36 @@ export default {
     };
   },
   computed: {
+    maxDuration() {
+      const refData = this.getTimelineData('reference');
+      const resData = this.getTimelineData('result');
+      const allData = [...refData, ...resData];
+      if (allData.length === 0) return 10;
+      const max = Math.max(...allData.map(s => s.end || 0));
+      return Math.ceil(max / 5) * 5 || 10;
+    },
+
+    effectiveDuration() {
+      return this.maxDuration / this.scale;
+    },
+
+    timeTicks() {
+      const totalDur = this.maxDuration;
+      const effectiveDur = this.effectiveDuration;
+      const ticks = [];
+      // 根据缩放后的显示范围确定间隔，确保刻度合理分布
+      const interval = effectiveDur <= 10 ? 2 : (effectiveDur <= 30 ? 5 : 10);
+      // 计算实际时间的间隔
+      const actualInterval = interval * this.scale;
+      for (let i = 0; i <= totalDur; i += actualInterval) {
+        ticks.push({
+          label: `${i}s`,
+          percent: (i / effectiveDur) * 100
+        });
+      }
+      return ticks;
+    },
+
     resources() {
       const results = this.results || [];
       
@@ -284,6 +314,13 @@ export default {
     }
   },
   methods: {
+    getFilteredSpeakerList() {
+      if (!this.selectedSpeakers || this.selectedSpeakers.length === 0 || this.selectedSpeakers.includes('all')) {
+        return this.speakerList;
+      }
+      return this.speakerList.filter(s => this.selectedSpeakers.includes(s));
+    },
+
     computeOptimalSpeakerMapping(referenceSegments, resultSegments) {
       const refSpeakers = [...new Set(referenceSegments.map(s => s.speaker || 'spk0'))];
       const resSpeakers = [...new Set(resultSegments.map(s => s.speaker || 'spk0'))];
@@ -674,48 +711,11 @@ export default {
       return [...new Set(data.map(s => s.speaker || 'spk0'))].sort();
     },
 
-    maxDuration() {
-      const refData = this.getTimelineData('reference');
-      const resData = this.getTimelineData('result');
-      const allData = [...refData, ...resData];
-      if (allData.length === 0) return 10;
-      const max = Math.max(...allData.map(s => s.end || 0));
-      return Math.ceil(max / 5) * 5 || 10;
-    },
-
-    effectiveDuration() {
-      return this.maxDuration() / this.scale;
-    },
-
-    getFormatEffectiveDuration() {
-      return (this.maxDuration() / this.scale).toFixed(1);
-    },
-
-    getFilteredSpeakerList() {
-      if (!this.selectedSpeakers || this.selectedSpeakers.length === 0 || this.selectedSpeakers.includes('all')) {
-        return this.speakerList;
-      }
-      return this.speakerList.filter(s => this.selectedSpeakers.includes(s));
-    },
-
-    timeTicks() {
-      const duration = this.effectiveDuration();
-      const ticks = [];
-      const interval = duration <= 10 ? 2 : (duration <= 30 ? 5 : 10);
-      for (let i = 0; i <= duration; i += interval) {
-        ticks.push({
-          label: `${i}s`,
-          percent: (i / duration) * 100
-        });
-      }
-      return ticks;
-    },
-
     getSegmentStyle(seg) {
       const start = seg.start || 0;
       const end = seg.end || start + 1;
       const duration = end - start;
-      const maxDur = this.maxDuration() / this.scale;
+      const maxDur = this.maxDuration / this.scale;
 
       return {
         left: `${(start / maxDur) * 100}%`,
@@ -756,11 +756,6 @@ export default {
     },
 
     handleWheelZoom(event) {
-      if (this._wheelTimeout) return;
-      this._wheelTimeout = setTimeout(() => {
-        this._wheelTimeout = null;
-      }, 50);
-      
       const delta = event.deltaY > 0 ? -0.2 : 0.2;
       this.scale = Math.max(0.5, Math.min(5, this.scale + delta));
     },
@@ -976,7 +971,7 @@ export default {
   padding: 0 6px;
   overflow: hidden;
   cursor: pointer;
-  transition: transform 0.2s;
+  transition: left 0.15s, width 0.15s, transform 0.2s;
 }
 
 .segment:hover {

@@ -292,8 +292,9 @@
   opacity: 1;
   visibility: visible;
   box-sizing: border-box;
-  background-color: var(--secondary-light);
+  background-color: white;
   color: var(--secondary-color);
+  border: 1px solid var(--gray-light-color);
 }
 
 /* 省略号按钮样式 */

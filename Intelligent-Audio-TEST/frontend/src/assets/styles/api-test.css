@@ -1618,10 +1618,11 @@ input[type="checkbox"].test-case-checkbox:hover {
 
 /* 标签样式优化 */
 .tag {
-    background-color: #e9ecef;
+    background-color: white;
     color: #495057;
     padding: 4px 10px;
     border-radius: 16px;
+    border: 1px solid #e9ecef;
     font-size: 12px;
     margin-right: 6px;
     margin-bottom: 4px;
@@ -1630,8 +1631,7 @@ input[type="checkbox"].test-case-checkbox:hover {
 }
 
 .tag:hover {
-    background-color: #dee2e6;
-    transform: translateY(-1px);
+    background-color: #f8f9fa;
 }
 
 /* 响应式设计 */

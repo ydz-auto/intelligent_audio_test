@@ -25,34 +25,28 @@
       </div>
 
       <div class="overview-table-container">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th class="dimension-header">维度 / 资源</th>
-              <th v-for="device in processedDevices" :key="device" class="resource-header">
-                {{ device }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="metric in actualAllMetrics" :key="metric.name">
-              <td class="dimension-cell">
-                {{ metric.name }}
-              </td>
-              <td v-for="device in devices" :key="device" class="value-cell">
-                {{ formatMetricValue(metric.name, getAverageValue(metric.name, device)) }}{{ metric.unit }}
-              </td>
-            </tr>
-            <tr v-if="actualAllMetrics.length === 0" class="empty-row">
-              <td :colspan="devices.length + 1" class="empty-cell">
-                <div class="empty-state">
-                  <i class="fas fa-inbox"></i>
-                  <p>暂无维度数据</p>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+        <DataTable
+          :columns="tableColumns"
+          :data="tableData"
+          :resizable="true"
+          :min-column-width="60"
+          :default-column-width="{ first: 200, others: 150 }"
+          table-class="report-data-table"
+          row-key="dimension"
+        >
+          <!-- 自定义第一列（维度名称） -->
+          <template #cell-dimension="{ row, value }">
+            <span>{{ row.dimension }}</span>
+          </template>
+
+          <!-- 空状态 -->
+          <template #empty>
+            <div class="empty-state">
+              <i class="fas fa-inbox"></i>
+              <p>暂无维度数据</p>
+            </div>
+          </template>
+        </DataTable>
       </div>
     </div>
   </div>
@@ -60,6 +54,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import DataTable from '../common/DataTable.vue'
 import { reportsApi } from '../../utils/api'
 
 const props = defineProps({
@@ -235,6 +230,45 @@ const totalCases = computed(() => cases.value.length)
 const metricsCount = computed(() => actualAllMetrics.value.length)
 const devicesCount = computed(() => devices.value.length)
 
+const tableColumns = computed(() => {
+  const columns = [
+    {
+      key: 'dimension',
+      label: '维度 / 资源',
+      resize: true,
+      class: 'dimension-column'
+    }
+  ]
+
+  processedDevices.value.forEach((device, index) => {
+    columns.push({
+      key: `device-${index}`,
+      label: device,
+      resize: true,
+      class: 'device-column',
+      color: '#1677ff'
+    })
+  })
+
+  return columns
+})
+
+const tableData = computed(() => {
+  return actualAllMetrics.value.map(metric => {
+    const row = {
+      dimension: metric.name
+    }
+
+    devices.value.forEach((device, index) => {
+      const metricObj = actualAllMetrics.value.find(m => m.name === metric.name)
+      const unit = metricObj?.unit || ''
+      row[`device-${index}`] = formatMetricValue(metric.name, getAverageValue(metric.name, device)) + unit
+    })
+
+    return row
+  })
+})
+
 const metricDecimalPlacesMap = computed(() => {
   const map = {}
   const list = Array.isArray(actualAllMetrics.value) ? actualAllMetrics.value : []
@@ -319,49 +353,6 @@ const getAverageValue = (metricName, device) => {
   width: 100%;
 }
 
-.section-header {
-  margin-bottom: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  padding: 12px 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-  margin: 0;
-  flex: 1;
-}
-
-.collapse-btn {
-  background: none;
-  border: none;
-  font-size: 16px;
-  color: #64748b;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 6px;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 16px;
-}
-
-.collapse-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #1677ff;
-}
-
-.collapse-btn.collapsed {
-  transform: rotate(180deg);
-}
-
 .section-content {
   animation: slideDown 0.3s ease-out;
 }
@@ -405,57 +396,7 @@ const getAverageValue = (metricName, device) => {
 
 .overview-table-container {
   overflow-x: auto;
-  border-radius: 8px;
   width: 100%;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: white;
-  font-size: 14px;
-}
-
-.data-table th {
-  background: #f8fafc;
-  font-weight: 600;
-  padding: 14px 16px;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-  color: #475569;
-  font-size: 13px;
-}
-
-.data-table th:not(:first-child) {
-  text-align: center;
-  color: #1e293b;
-}
-
-.data-table td {
-  padding: 12px 16px;
-  text-align: left;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 14px;
-}
-
-.data-table td:first-child {
-  font-weight: 500;
-  color: #334155;
-}
-
-.data-table td:not(:first-child) {
-  text-align: center;
-  color: #1677ff;
-}
-
-.data-table tr:hover {
-  background-color: #f8fafc;
-}
-
-.data-table td.dimension-cell {
-  text-align: left;
-  font-weight: 500;
-  color: #334155;
 }
 
 .empty-row {

@@ -17,7 +17,7 @@
         {{ casesLoadError }}
       </div>
       <!-- Filter Section -->
-      <div class="filter-card">
+      <div class="report-filter-card filter-card">
         <div class="filter-title">
           <i class="fas fa-filter" style="color: #ff6a00; font-size: 18px;"></i>
           筛选条件
@@ -36,14 +36,46 @@
                 v-model="searchKeyword"
               />
             </div>
-            <div class="filter-item" style="flex: 1;">
+            <div class="filter-item category-filter-section" style="flex: 1;">
               <label class="filter-label">
-                <i class="fas fa-list"></i> 用例分组
+                <i class="fas fa-list-check"></i> 用例分组
+                <span class="filter-hint" v-if="selectedCategories.length === 0">(显示全部)</span>
+                <span class="filter-count" v-else>已选 {{ selectedCategories.length }} 个</span>
               </label>
-              <select class="filter-select" v-model="selectedCategory">
-              <option value="">全部</option>
-              <option v-for="cat in categories" :key="cat" :value="cat">{{ cat }}</option>
-            </select>
+              <div class="category-search-box search-box-flex" style="display: flex; align-items: center;">
+                <i class="fas fa-search search-icon"></i>
+                <input 
+                  type="text" 
+                  v-model="categorySearchQuery" 
+                  placeholder="搜索分组..." 
+                  class="search-input"
+                />
+                <button class="search-clear" :class="{ visible: categorySearchQuery }" @click="categorySearchQuery = ''" style="margin-left: auto;">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="tag-filter" :class="{ 'has-pagination': paginatedCategories.length > 0 }">
+                <div 
+                  v-for="category in paginatedCategories" 
+                  :key="category"
+                  :class="['tag-filter-item', { active: selectedCategories.includes(category) }]"
+                  @click="toggleCategoryFilter(category)"
+                >
+                  {{ category }}
+                </div>
+                <div v-if="filteredCategoriesForSelection.length === 0" class="no-data-tip">
+                  暂无可用的用例分组
+                </div>
+              </div>
+              <div class="category-pagination" v-if="filteredCategoriesForSelection.length > categoryPageSize">
+                <button class="pagination-btn" @click="categoryPage--" :disabled="categoryPage <= 1">
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <span class="pagination-info">{{ categoryPage }} / {{ totalCategoryPages }}</span>
+                <button class="pagination-btn" @click="categoryPage++" :disabled="categoryPage >= totalCategoryPages">
+                  <i class="fas fa-chevron-right"></i>
+                </button>
+              </div>
             </div>
           </div>
           
@@ -137,20 +169,27 @@
                 <i class="fas fa-sort"></i> 排序方式
               </label>
               <div class="sort-filter">
-                <select class="filter-select" v-model="sortDimension" style="margin-bottom: 8px; width: 100%;">
-                  <option value="name">按名称</option>
-                  <option value="category">按分组</option>
-                  <option value="tags">按用例标签</option>
-                  <option value="createdAt">按创建时间</option>
-                  <option value="评估维度">按评估维度</option>
-                </select>
-                <select class="filter-select" v-model="selectedSortMetric" v-if="sortDimension === '评估维度'" style="margin-bottom: 8px; width: 100%;">
-                  <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
-                </select>
-                <select class="filter-select" v-model="sortOrder" style="width: 100%;">
-                  <option value="asc">升序</option>
-                  <option value="desc">降序</option>
-                </select>
+                <div class="sort-filter-row">
+                  <select class="filter-select" v-model="sortDimension">
+                    <option value="name">按名称</option>
+                    <option value="category">按分组</option>
+                    <option value="tags">按用例标签</option>
+                    <option value="createdAt">按创建时间</option>
+                    <option value="评估维度">按评估维度</option>
+                    <option value="多维度值">按多维度值</option>
+                  </select>
+                  <select class="filter-select" v-model="selectedSortMetric" v-if="sortDimension === '评估维度' || sortDimension === '多维度值'">
+                    <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
+                  </select>
+                  <select class="filter-select" v-model="secondSortMetric" v-if="sortDimension === '多维度值'">
+                    <option value="">无</option>
+                    <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
+                  </select>
+                  <select class="filter-select" v-model="sortOrder">
+                    <option value="asc">升序</option>
+                    <option value="desc">降序</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -345,6 +384,7 @@ import PaginationComponent from '../common/PaginationComponent.vue'
 import { reportsApi } from '../../utils/api'
 import { API_CONFIG } from '../../utils/config'
 import { useNotification } from '../../composables/useNotification'
+import '../../assets/styles/components/report-filter-card.css'
 
 // Audio player state
 const showAudioModal = ref(false)
@@ -426,7 +466,27 @@ const getResourceLabel = (resourceKey) => {
 
 // Data
 const searchKeyword = ref('')
-const selectedCategory = ref('')
+const selectedCategories = ref([])
+const categorySearchQuery = ref('')
+const categoryPage = ref(1)
+const categoryPageSize = ref(50)
+
+const filteredCategoriesForSelection = computed(() => {
+  if (!categorySearchQuery.value.trim()) {
+    return categories.value
+  }
+  const query = categorySearchQuery.value.toLowerCase()
+  return categories.value.filter(cat => cat.toLowerCase().includes(query))
+})
+
+const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
+
+const paginatedCategories = computed(() => {
+  const start = (categoryPage.value - 1) * categoryPageSize.value
+  const end = start + categoryPageSize.value
+  return filteredCategoriesForSelection.value.slice(start, end)
+})
+
 // 处理标签：如果是对象数组，提取name属性
 const processTags = (tags) => {
   if (!tags) return []
@@ -445,6 +505,7 @@ const selectedTags = ref([])
 const selectedMetrics = ref([])
 const sortDimension = ref('name')
 const selectedSortMetric = ref('')
+const secondSortMetric = ref('')  // 第二个排序维度（用于多维度排序）
 const sortOrder = ref('asc')
 const expandedCases = ref([])
 const pinnedCases = ref([])
@@ -1032,7 +1093,9 @@ watch([
   // 重置选中状态：默认不选中任何标签/维度（显示全部）
   selectedTags.value = []
   selectedMetrics.value = []
-  selectedCategory.value = ''
+  selectedCategories.value = []
+  categorySearchQuery.value = ''
+  categoryPage.value = 1
   tagSearchQuery.value = ''
   tagPage.value = 1
   metricSearchQuery.value = ''
@@ -1153,7 +1216,8 @@ const filteredCases = computed(() => {
       (caseItem.description && caseItem.description.toLowerCase().includes(searchKeyword.value.toLowerCase()))
     
     // Category filter
-    const categoryMatch = !selectedCategory.value || (caseItem.category && caseItem.category === selectedCategory.value)
+    const categoryMatch = selectedCategories.value.length === 0 || 
+      selectedCategories.value.includes(caseItem.category)
     
     // Tag filter - if all tags are selected, match all cases
     const allTagsSelected = selectedTags.value.length === allTags.value.length
@@ -1291,6 +1355,15 @@ const toggleTag = (tag) => {
     selectedTags.value.splice(index, 1)
   } else {
     selectedTags.value.push(tag)
+  }
+}
+
+const toggleCategoryFilter = (category) => {
+  const index = selectedCategories.value.indexOf(category)
+  if (index > -1) {
+    selectedCategories.value.splice(index, 1)
+  } else {
+    selectedCategories.value.push(category)
   }
 }
 
@@ -1559,7 +1632,9 @@ const toggleMetric = (metricName) => {
 
 const resetFilters = () => {
   searchKeyword.value = ''
-  selectedCategory.value = ''
+  selectedCategories.value = []
+  categorySearchQuery.value = ''
+  categoryPage.value = 1
   selectedTags.value = []
   selectedMetrics.value = []
   sortDimension.value = 'name'
@@ -1575,7 +1650,7 @@ const applyFilters = () => {
   // 这里可以添加筛选逻辑
   console.log('应用筛选:', {
     searchKeyword: searchKeyword.value,
-    selectedCategory: selectedCategory.value,
+    selectedCategories: selectedCategories.value,
     selectedTags: selectedTags.value,
     selectedMetrics: selectedMetrics.value,
     sortDimension: sortDimension.value,
@@ -1586,11 +1661,6 @@ const applyFilters = () => {
 </script>
 
 <style scoped>
-/* Audio specific styles */
-.specific-case-pagination :deep(.page-size-select) {
-  display: none;
-}
-
 .audio-quick-btn.api-audio {
   color: #1976d2;
 }
@@ -1685,55 +1755,11 @@ const applyFilters = () => {
   margin-top: 8px;
 }
 
-/* Existing styles below */
 .specific-case-comparison {
   background: transparent;
   padding: 0;
   margin-bottom: 24px;
   width: 100%;
-}
-
-.section-header {
-  margin-bottom: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  padding: 12px 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-  margin: 0;
-  flex: 1;
-}
-
-.collapse-btn {
-  background: none;
-  border: none;
-  font-size: 16px;
-  color: #64748b;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 6px;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 16px;
-}
-
-.collapse-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #1677ff;
-}
-
-.collapse-btn.collapsed {
-  transform: rotate(180deg);
 }
 
 .section-content {
@@ -1751,410 +1777,6 @@ const applyFilters = () => {
   }
 }
 
-/* Filter Card Styles */
-.filter-card {
-  padding: 0;
-  margin-bottom: var(--spacing-xl);
-  background: transparent;
-  width: 100%;
-  border-radius: 12px;
-}
-
-.filter-title {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 16px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.filter-content {
-  margin-bottom: 20px;
-  width: 100%;
-}
-
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  margin-bottom: 20px;
-  width: 100%;
-}
-
-.filter-item {
-  flex: 1;
-  min-width: 200px;
-  width: 100%;
-}
-
-.filter-label {
-  display: block;
-  font-weight: 600;
-  color: #64748b;
-  font-size: 14px;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.filter-input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 14px;
-  transition: all 0.3s ease;
-}
-
-.filter-input:focus {
-  outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
-}
-
-.filter-select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 14px;
-  background: white;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.filter-select:focus {
-  outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
-}
-
-.tag-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  background: white;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 12px;
-  min-height: 80px;
-}
-
-.tag-filter-item {
-  padding: 6px 12px;
-  background: #f1f5f9;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.tag-filter-item:hover {
-  background: #e2e8f0;
-  color: #334155;
-}
-
-.tag-filter-item.active {
-  background: #1677ff;
-  color: white;
-  border-color: #1677ff;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
-}
-
-/* Orange Tag Filter Styles */
-.tag-filter-orange {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  background: white;
-  border: 1px solid #ffe58f;
-  border-radius: 8px;
-  padding: 12px;
-  min-height: 80px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.tag-filter-item-orange {
-  padding: 6px 12px;
-  background: #fff7e6;
-  color: #fa8c16;
-  border: 1px solid #ffe58f;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.tag-filter-item-orange:hover {
-  background: #ffe58f;
-  color: #fa541c;
-  border-color: #ffa940;
-}
-
-.tag-filter-item-orange.active {
-  background: #ff6a00;
-  color: white;
-  border-color: #ff6a00;
-  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.3);
-}
-
-.tag-filter-orange.has-pagination {
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-/* Search and Pagination Styles */
-.tag-search-box,
-.metric-search-box {
-  position: relative !important;
-  margin-bottom: 12px;
-  display: inline-block !important;
-  width: 100% !important;
-  min-height: 36px;
-  box-sizing: border-box;
-}
-
-.tag-search-icon,
-.metric-search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #94a3b8;
-  font-size: 14px;
-}
-
-.tag-search-input,
-.metric-search-input {
-  width: 100%;
-  padding: 8px 32px 8px 36px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
-}
-
-.tag-search-input:focus,
-.metric-search-input:focus {
-  outline: none;
-  border-color: #ff6a00;
-  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.1);
-}
-
-.tag-search-clear,
-.metric-search-clear {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px;
-  font-size: 12px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.tag-search-clear.visible,
-.metric-search-clear.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.tag-search-clear:hover,
-.metric-search-clear:hover {
-  color: #64748b;
-}
-
-.tag-pagination,
-.metric-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.pagination-btn {
-  padding: 6px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  background: white;
-  color: #64748b;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s ease;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  border-color: #ff6a00;
-  color: #ff6a00;
-}
-
-.pagination-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.pagination-info {
-  font-size: 13px;
-  color: #64748b;
-}
-
-.filter-hint {
-  font-weight: normal;
-  color: #10b981;
-  font-size: 12px;
-  margin-left: 8px;
-}
-
-.filter-count {
-  font-weight: normal;
-  color: #ff6a00;
-  font-size: 12px;
-  margin-left: 8px;
-}
-
-/* No Data Tip */
-.no-data-tip {
-  color: #94a3b8;
-  font-size: 13px;
-  font-style: italic;
-  padding: 12px;
-  text-align: center;
-  width: 100%;
-}
-
-.filter-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-}
-
-/* Metric Filter Styles */
-.metric-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 12px 0;
-  min-height: 80px;
-  width: 100%;
-  box-sizing: border-box;
-  border-radius: 8px;
-}
-
-.metric-filter-item {
-  padding: 6px 12px;
-  background: #f1f5f9;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.metric-filter-item i {
-  font-size: 10px;
-  opacity: 0.5;
-  transition: all 0.3s ease;
-}
-
-.metric-filter-item:hover {
-  background: #e2e8f0;
-  color: #334155;
-  border-color: #cbd5e1;
-}
-
-.metric-filter-item.active {
-  background: #1677ff;
-  color: white;
-  border-color: #1677ff;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
-}
-
-.metric-filter-item.active i {
-  opacity: 1;
-  color: white;
-}
-
-/* Sort Filter Styles */
-.sort-filter {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.sort-filter .filter-select {
-  min-width: 150px;
-}
-
-.filter-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-}
-
-/* Button styles */
-.btn {
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid transparent;
-}
-
-.btn-primary {
-  background: #1677ff;
-  color: white;
-  border-color: #1677ff;
-}
-
-.btn-primary:hover {
-  background: #4096ff;
-  border-color: #4096ff;
-}
-
-.btn-secondary {
-  background: white;
-  color: #64748b;
-  border-color: #e2e8f0;
-}
-
-.btn-secondary:hover {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-}
-
-/* Pinned Cases Section */
 .pinned-section {
   background: var(--warning-light);
   border: 1px dashed var(--warning-color);
@@ -2224,32 +1846,6 @@ const applyFilters = () => {
   flex-wrap: wrap;
 }
 
-.status-badge {
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-}
-
-.status-badge.success {
-  background: #f6ffed;
-  color: #52c41a;
-  border: 1px solid #b7eb8f;
-}
-
-.status-badge.failed {
-  background: #fff2f0;
-  color: #ff4d4f;
-  border: 1px solid #ffccc7;
-}
-
-.status-badge.warning {
-  background: #fffbe6;
-  color: #fa8c16;
-  border: 1px solid #ffe58f;
-}
-
-/* Case List */
 .case-list {
   display: flex;
   flex-direction: column;
@@ -2257,7 +1853,6 @@ const applyFilters = () => {
   width: 100%;
 }
 
-/* Override global case-card to remove padding for report view header */
 .case-list .case-card {
   padding: 0;
   overflow: hidden;
@@ -2297,7 +1892,7 @@ const applyFilters = () => {
 
 .case-category {
   padding: 2px 10px;
-  background: var(--background-secondary);
+  background: white;
   color: var(--text-secondary);
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
@@ -2306,7 +1901,7 @@ const applyFilters = () => {
 
 .case-id-badge {
   padding: 2px 10px;
-  background: #e6f4ff;
+  background: white;
   color: #1677ff;
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
@@ -2319,8 +1914,8 @@ const applyFilters = () => {
 }
 
 .case-id-badge:hover {
-  background: #1677ff;
-  color: white;
+  background: #f8fafc;
+  color: #1677ff;
 }
 
 .case-id-badge .fa-copy {
@@ -2374,72 +1969,6 @@ const applyFilters = () => {
   border-bottom: 1px solid #f0f0f0;
 }
 
-/* Modal */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  padding: 20px;
-}
-
-.modal-content {
-  background: #fff;
-  border-radius: 8px;
-  width: 100%;
-  max-width: 800px;
-  max-height: 90vh;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  display: flex;
-  flex-direction: column;
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e8e8e8;
-  background: #fafafa;
-}
-
-.modal-title {
-  font-size: 16px;
-  font-weight: 500;
-  color: #333;
-  margin: 0;
-}
-
-.modal-close-btn {
-  background: none;
-  border: none;
-  font-size: 18px;
-  color: #999;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: all 0.2s;
-}
-
-.modal-close-btn:hover {
-  color: #666;
-  background: #f0f0f0;
-}
-
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-  flex: 1;
-}
-
-/* Logs Section */
 .logs-section {
   margin-top: 20px;
 }
@@ -2483,66 +2012,6 @@ const applyFilters = () => {
     width: 100%;
     justify-content: space-between;
   }
-}
-
-/* Flex Search Box */
-.search-box-flex {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 0 12px;
-  background-color: white;
-  transition: all 0.2s ease;
-  height: 36px;
-}
-
-.search-box-flex:focus-within {
-  outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
-}
-
-.search-box-flex .search-icon {
-  color: #94a3b8;
-  font-size: 14px;
-  flex-shrink: 0;
-  margin-right: 8px;
-}
-
-.search-box-flex .search-input {
-  flex-grow: 1;
-  flex-shrink: 1;
-  border: none;
-  padding: 0 8px;
-  font-size: 13px;
-  outline: none;
-  background: transparent;
-  height: 100%;
-}
-
-.search-box-flex .search-clear {
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px;
-  font-size: 12px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.search-box-flex .search-clear.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.search-box-flex .search-clear:hover {
-  color: #64748b;
 }
 
 .download-loading-overlay {

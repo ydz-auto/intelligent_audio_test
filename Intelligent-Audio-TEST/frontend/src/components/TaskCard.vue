@@ -440,7 +440,8 @@ const calculateCompletionRate = (task) => {
 .tag {
   display: inline-block;
   padding: 4px 12px;
-  background-color: var(--background-secondary);
+  background-color: white;
+  border: 1px solid var(--gray-light-color);
   border-radius: 12px;
   font-size: 12px;
   color: var(--text-secondary);

@@ -11,7 +11,7 @@
     <!-- Collapsible Content -->
     <div class="section-content" v-if="!isCollapsed">
       <!-- Filter Card -->
-      <div class="filter-card">
+      <div class="report-filter-card filter-card">
         <div class="filter-title">
           <i class="fas fa-filter" style="color: #ff6a00; font-size: 18px;"></i>
           筛选条件
@@ -62,22 +62,45 @@
             </div>
 
             <!-- 用例分组筛选器 -->
-            <div class="filter-item">
+            <div class="filter-item category-filter-section">
               <label class="filter-label">
                 <i class="fas fa-list-check"></i> 用例分组
+                <span class="filter-hint" v-if="selectedCategories.length === 0">(显示全部)</span>
+                <span class="filter-count" v-else>已选 {{ selectedCategories.length }} 个</span>
               </label>
-              <div class="case-type-filter">
+              <div class="category-search-box search-box-flex" style="display: flex; align-items: center;">
+                <i class="fas fa-search search-icon"></i>
+                <input 
+                  type="text" 
+                  v-model="categorySearchQuery" 
+                  placeholder="搜索分组..." 
+                  class="search-input"
+                />
+                <button class="search-clear" :class="{ visible: categorySearchQuery }" @click="categorySearchQuery = ''" style="margin-left: auto;">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <div class="case-type-filter" :class="{ 'has-pagination': paginatedCategories.length > 0 }">
                 <div 
-                  v-for="category in caseCategories" 
+                  v-for="category in paginatedCategories" 
                   :key="category"
                   :class="['case-type-item', { active: selectedCategories.includes(category) }]"
                   @click="toggleCategory(category)"
                 >
                   {{ category }}
                 </div>
-                <div v-if="caseCategories.length === 0" class="no-data-tip">
+                <div v-if="filteredCategoriesForSelection.length === 0" class="no-data-tip">
                   暂无可用的用例分组
                 </div>
+              </div>
+              <div class="category-pagination" v-if="filteredCategoriesForSelection.length > categoryPageSize">
+                <button class="pagination-btn" @click="categoryPage--" :disabled="categoryPage <= 1">
+                  <i class="fas fa-chevron-left"></i>
+                </button>
+                <span class="pagination-info">{{ categoryPage }} / {{ totalCategoryPages }}</span>
+                <button class="pagination-btn" @click="categoryPage++" :disabled="categoryPage >= totalCategoryPages">
+                  <i class="fas fa-chevron-right"></i>
+                </button>
               </div>
             </div>
 
@@ -180,54 +203,34 @@
         <div class="metric-container-content" v-if="!collapsedMetrics[metric.name]">
           <!-- 表格容器 -->
           <div v-if="activeDisplayType === 'table'" class="table-container">
-            <table class="data-table" ref="dataTableRef">
-              <thead>
-                <tr>
-                  <th class="resizable-th" @mousedown="startResize($event, 0)">
-                    用例标签
-                    <span class="resize-handle"></span>
-                  </th>
-                  <th v-for="(device, index) in devices" :key="index" class="resizable-th" @mousedown="startResize($event, index + 1)">
-                    <span
-                      v-if="editingResourceKey !== device"
-                      style="cursor: pointer;"
-                      @click="startEditResource(device)"
-                    >{{ processedDevices[index] }}</span>
-                    <input
-                      v-else
-                      v-model="editingResourceValue"
-                      class="filter-input"
-                      style="width: 100%;"
-                      @keyup.enter="commitEditResource(device)"
-                      @blur="commitEditResource(device)"
-                    />
-                    <span class="resize-handle"></span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="tag in filteredTags" :key="tag">
-                  <td>
-                    <span
-                      v-if="editingTagKey !== tag"
-                      style="cursor: pointer;"
-                      @click="startEditTag(tag)"
-                    >{{ tag }}</span>
-                    <input
-                      v-else
-                      v-model="editingTagValue"
-                      class="filter-input"
-                      style="width: 100%;"
-                      @keyup.enter="commitEditTag(tag)"
-                      @blur="commitEditTag(tag)"
-                    />
-                  </td>
-                  <td v-for="device in devices" :key="device">
-                    {{ getMetricDisplayValue(tag, device, metric.name) }}{{ metric.unit }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <DataTable
+              :columns="getTableColumns(metric.name)"
+              :data="getTableData(metric.name)"
+              :resizable="true"
+              :min-column-width="60"
+              :default-column-width="{ first: 200, others: 150 }"
+              table-class="report-data-table"
+              row-key="tag"
+              @header-save="handleHeaderSave"
+              @cell-save="handleCellSave"
+            >
+              <!-- 自定义第一列（用例标签） -->
+              <template #cell-tag="{ row, value }">
+                <span class="editable-cell">{{ row.tag }}</span>
+              </template>
+
+              <!-- 自定义数据列 -->
+              <template #cell-value="{ row, value, column }">
+                {{ value }}{{ metric.unit }}
+              </template>
+
+              <!-- 空状态 -->
+              <template #empty>
+                <div style="padding: 40px; text-align: center; color: #94a3b8;">
+                  暂无数据
+                </div>
+              </template>
+            </DataTable>
           </div>
 
           <!-- 图表容器 -->
@@ -248,7 +251,9 @@
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue'
 import ChartComponent from './ChartComponent.vue'
+import DataTable from '../common/DataTable.vue'
 import { reportsApi } from '../../utils/api'
+import '../../assets/styles/components/report-filter-card.css'
 
 // Collapse state
 const isCollapsed = ref(false)
@@ -265,50 +270,6 @@ const collapsedMetrics = ref({})
 const toggleMetricCollapse = (metricName) => {
   collapsedMetrics.value[metricName] = !collapsedMetrics.value[metricName]
 }
-
-// Table resize functionality
-const dataTableRef = ref(null)
-const resizing = ref({ active: false, columnIndex: -1, startX: 0, startWidth: 0 })
-
-const startResize = (event, columnIndex) => {
-  const target = event.target.closest('th')
-  if (!target) return
-  
-  resizing.value = {
-    active: true,
-    columnIndex,
-    startX: event.pageX,
-    startWidth: target.offsetWidth
-  }
-  
-  event.preventDefault()
-  
-  const handleMouseMove = (e) => {
-    if (!resizing.value.active) return
-    const diff = e.pageX - resizing.value.startX
-    const newWidth = Math.max(60, resizing.value.startWidth + diff)
-    if (dataTableRef.value) {
-      const ths = dataTableRef.value.querySelectorAll('th')
-      if (ths[columnIndex]) {
-        ths[columnIndex].style.width = newWidth + 'px'
-      }
-    }
-  }
-  
-  const handleMouseUp = () => {
-    resizing.value.active = false
-    document.removeEventListener('mousemove', handleMouseMove)
-    document.removeEventListener('mouseup', handleMouseUp)
-  }
-  
-  document.addEventListener('mousemove', handleMouseMove)
-  document.addEventListener('mouseup', handleMouseUp)
-}
-
-onUnmounted(() => {
-  document.removeEventListener('mousemove', () => {})
-  document.removeEventListener('mouseup', () => {})
-})
 
 // Props
 const props = defineProps({
@@ -339,7 +300,28 @@ const allTags = ref(getTags(props.reportData))
 const caseCategories = ref(getCategories(props.reportData))
 
 const selectedTags = ref([])
-const selectedCategories = ref(caseCategories.value)
+const selectedCategories = ref([])
+
+// Search and pagination for categories
+const categorySearchQuery = ref('')
+const categoryPage = ref(1)
+const categoryPageSize = ref(50)
+
+const filteredCategoriesForSelection = computed(() => {
+  if (!categorySearchQuery.value.trim()) {
+    return caseCategories.value
+  }
+  const query = categorySearchQuery.value.toLowerCase()
+  return caseCategories.value.filter(cat => cat.toLowerCase().includes(query))
+})
+
+const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
+
+const paginatedCategories = computed(() => {
+  const start = (categoryPage.value - 1) * categoryPageSize.value
+  const end = start + categoryPageSize.value
+  return filteredCategoriesForSelection.value.slice(start, end)
+})
 
 // Search and pagination for tags
 const tagSearchQuery = ref('')
@@ -821,7 +803,7 @@ const displayTypes = [
   { type: 'table', label: '表格', icon: 'fas fa-table' },
   { type: 'bar', label: '柱状图', icon: 'fas fa-chart-bar' },
   { type: 'line', label: '折线图', icon: 'fas fa-chart-line' },
-  { type: 'radar', label: '雷达图', icon: 'fas fa-chart-radar' },
+  { type: 'radar', label: '雷达图', icon: 'fas fa-hexagon' },
   { type: 'distribution', label: '正态分布图', icon: 'fas fa-chart-area' }
 ]
 
@@ -929,10 +911,10 @@ const startEditTag = (tagName) => {
   editingTagValue.value = String(tagName ?? '')
 }
 
-const commitEditTag = (oldName) => {
-  if (editingTagKey.value !== oldName) return
-  const next = String(editingTagValue.value ?? '').trim()
+const commitEditTag = (oldName, newName) => {
+  const next = newName || String(editingTagValue.value ?? '').trim()
   editingTagKey.value = null
+  editingTagValue.value = ''
   if (!next || next === oldName) return
 
   if (tagMetricData.value && tagMetricData.value[oldName] && !tagMetricData.value[next]) {
@@ -1024,6 +1006,8 @@ const resetFilters = () => {
   selectedTags.value = []
   selectedCategories.value = []
   selectedMetrics.value = []
+  categorySearchQuery.value = ''
+  categoryPage.value = 1
   tagSearchQuery.value = ''
   tagPage.value = 1
   metricSearchQuery.value = ''
@@ -1171,6 +1155,81 @@ const getMetricValue = (tag, device, metricName) => {
 
 const getMetricDisplayValue = (tag, device, metricName) => {
   return formatMetricForDisplay(metricName, getMetricValue(tag, device, metricName))
+}
+
+const getMetricUnit = (metricName) => {
+  const metric = allMetrics.value.find(m => m.name === metricName)
+  return metric?.unit || ''
+}
+
+// 生成表格列配置
+const getTableColumns = (metricName) => {
+  const unit = getMetricUnit(metricName)
+  const columns = [
+    {
+      key: 'tag',
+      label: '用例标签',
+      editable: true,
+      resize: true,
+      class: 'tag-column'
+    }
+  ]
+
+  // 添加设备列
+  devices.value.forEach((device, index) => {
+    columns.push({
+      key: `device-${index}`,
+      label: processedDevices.value[index],
+      editable: true,
+      resize: true,
+      class: 'device-column',
+      color: '#1677ff',
+      unit: unit
+    })
+  })
+
+  return columns
+}
+
+// 生成表格数据
+const getTableData = (metricName) => {
+  return filteredTags.value.map(tag => {
+    const row = {
+      tag: tag
+    }
+
+    // 添加每个设备的数据
+    devices.value.forEach((device, index) => {
+      row[`device-${index}`] = getMetricDisplayValue(tag, device, metricName)
+    })
+
+    return row
+  })
+}
+
+// 处理表头保存
+const handleHeaderSave = ({ column, value, originalValue }) => {
+  // 如果是标签列（第一列）
+  if (column === 'tag' && value !== originalValue) {
+    commitEditTag(originalValue, value)
+  } else if (column.startsWith('device-')) {
+    // 如果是设备列
+    const index = parseInt(column.split('-')[1])
+    const device = devices.value[index]
+    if (device && value !== originalValue) {
+      editingResourceKey.value = device
+      editingResourceValue.value = value
+      commitEditResource(device)
+    }
+  }
+}
+
+// 处理单元格保存
+const handleCellSave = ({ row, column, value, originalValue }) => {
+  // 如果修改了标签名称
+  if (column === 'tag' && value !== originalValue) {
+    commitEditTag(originalValue, value)
+  }
 }
 
 // 预定义的颜色数组，确保相同设备始终使用相同颜色
@@ -1354,49 +1413,6 @@ const getChartData = (metricName) => {
   width: 100%;
 }
 
-.section-header {
-  margin-bottom: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  cursor: pointer;
-  padding: 12px 0;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-  margin: 0;
-  flex: 1;
-}
-
-.collapse-btn {
-  background: none;
-  border: none;
-  font-size: 16px;
-  color: #64748b;
-  cursor: pointer;
-  padding: 8px;
-  border-radius: 6px;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: 16px;
-}
-
-.collapse-btn:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #1677ff;
-}
-
-.collapse-btn.collapsed {
-  transform: rotate(180deg);
-}
-
 .section-content {
   animation: slideDown 0.3s ease-out;
 }
@@ -1412,318 +1428,6 @@ const getChartData = (metricName) => {
   }
 }
 
-/* Filter Card Styles */
-.filter-card {
-  padding: 0;
-  margin-bottom: 24px;
-  background: transparent;
-  width: 100%;
-  border-radius: 12px;
-}
-
-.filter-title {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 16px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.filter-content {
-  margin-bottom: 20px;
-  width: 100%;
-}
-
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 20px;
-  margin-bottom: 20px;
-  width: 100%;
-}
-
-.filter-item {
-  flex: 1;
-  min-width: 200px;
-  width: 100%;
-}
-
-.filter-label {
-  display: block;
-  font-weight: 600;
-  color: #64748b;
-  font-size: 14px;
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.tag-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 0;
-  min-height: 60px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.tag-filter-item {
-  padding: 6px 12px;
-  background: #f1f5f9;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.tag-filter-item:hover {
-  background: #e2e8f0;
-  color: #334155;
-}
-
-.tag-filter-item.active {
-  background: #1677ff;
-  color: white;
-  border-color: #1677ff;
-  box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
-}
-
-.tag-filter-section {
-  min-width: 300px;
-}
-
-.filter-hint {
-  font-weight: normal;
-  color: #10b981;
-  font-size: 12px;
-  margin-left: 8px;
-}
-
-.filter-count {
-  font-weight: normal;
-  color: #1677ff;
-  font-size: 12px;
-  margin-left: 8px;
-}
-
-.tag-search-box {
-  position: relative;
-  margin-bottom: 12px;
-  display: block;
-  width: 100%;
-  min-height: 36px;
-  box-sizing: border-box;
-}
-
-.tag-search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #94a3b8;
-  font-size: 14px;
-}
-
-.tag-search-input {
-  width: 100%;
-  padding: 8px 32px 8px 36px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
-}
-
-.tag-search-input:focus {
-  outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
-}
-
-.tag-search-clear {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px;
-  font-size: 12px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.tag-search-clear.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.tag-search-clear:hover {
-  color: #64748b;
-}
-
-.tag-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.pagination-btn {
-  padding: 6px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  background: white;
-  color: #64748b;
-  cursor: pointer;
-  font-size: 12px;
-  transition: all 0.2s ease;
-}
-
-.pagination-btn:hover:not(:disabled) {
-  border-color: #1677ff;
-  color: #1677ff;
-}
-
-.pagination-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.pagination-info {
-  font-size: 13px;
-  color: #64748b;
-}
-
-.case-type-filter {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 8px 0;
-  min-height: 60px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.case-type-item {
-  padding: 6px 12px;
-  background: #f1f5f9;
-  color: #64748b;
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.case-type-item:hover {
-  background: #e2e8f0;
-  color: #334155;
-}
-
-.case-type-item.active {
-  background: #ff6a00;
-  color: white;
-  border-color: #ff6a00;
-  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.3);
-}
-
-/* No Data Tip */
-.no-data-tip {
-  color: #94a3b8;
-  font-size: 13px;
-  font-style: italic;
-  padding: 12px;
-  text-align: center;
-  width: 100%;
-}
-
-.filter-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-}
-
-/* Metric Selection Styles */
-.metric-selection {
-  padding: 0;
-  margin-bottom: 24px;
-}
-
-.metric-selection-title {
-  font-weight: 600;
-  color: #1e293b;
-  font-size: 16px;
-  margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.metric-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.metric-tag {
-  padding: 10px 20px;
-  border: 2px solid #e2e8f0;
-  border-radius: 25px;
-  background: white;
-  color: #64748b;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  position: relative;
-}
-
-.metric-tag i {
-  font-size: 12px;
-  opacity: 0.5;
-  transition: all 0.3s ease;
-}
-
-.metric-tag:hover {
-  border-color: #1677ff;
-  color: #1677ff;
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.2);
-}
-
-.metric-tag.active {
-  background: linear-gradient(135deg, #1677ff 0%, #3690ff 100%);
-  color: white;
-  border-color: #1677ff;
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
-}
-
-.metric-tag.active i {
-  opacity: 1;
-  color: white;
-}
-
-/* No Metrics Selected */
 .no-metrics-selected {
   background: #fef3c7;
   border: 1px solid #fbbf24;
@@ -1739,100 +1443,24 @@ const getChartData = (metricName) => {
   gap: 10px;
 }
 
-.metric-search-box {
-  position: relative;
-  margin-bottom: 16px;
-}
-
-.metric-search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: #94a3b8;
-  font-size: 14px;
-}
-
-.metric-search-input {
-  width: 100%;
-  max-width: 300px;
-  padding: 8px 32px 8px 36px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  font-size: 13px;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
-}
-
-.metric-search-input:focus {
-  outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
-}
-
-.metric-search-clear {
-  position: absolute;
-  right: 8px;
-  top: 50%;
-  transform: translateY(-50%);
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px;
-  font-size: 12px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-}
-
-.metric-search-clear.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.metric-search-clear:hover {
-  color: #64748b;
-}
-
-.metric-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid #e2e8f0;
-}
-
-.metric-selection-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Metric Container Styles */
-.metric-container {
-  overflow: hidden;
-  margin-bottom: 24px;
-  border-radius: 12px;
-  width: 100%;
-}
-
 .metric-table-title {
-  color: #334155;
+  color: #1e293b;
   font-size: 16px;
   font-weight: 600;
   margin: 0;
-  padding: 10px 0;
-  border-bottom: 1px solid #f1f5f9;
+  padding: 16px 24px;
+  border-bottom: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  background: #f8fafc;
+  background: white;
   width: 100%;
   box-sizing: border-box;
+  border-radius: 24px 24px 0 0;
+  border: 1px solid #e2e8f0;
+  border-bottom: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .title-content {
@@ -1886,7 +1514,6 @@ const getChartData = (metricName) => {
   animation: slideDown 0.3s ease-out;
 }
 
-/* Display Type Selector */
 .display-type-selector {
   display: flex;
   gap: 2px;
@@ -1920,88 +1547,6 @@ const getChartData = (metricName) => {
   border-color: #1677ff;
 }
 
-/* Table Styles */
-.table-container {
-  padding: 0;
-  overflow-x: auto;
-  border-radius: 8px;
-}
-
-.data-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: white;
-  font-size: 14px;
-}
-
-.data-table th {
-  background: #f8fafc;
-  font-weight: 600;
-  padding: 14px 16px;
-  text-align: left;
-  border-bottom: 1px solid #e2e8f0;
-  color: #475569;
-  font-size: 13px;
-  white-space: normal;
-  word-break: break-word;
-  line-height: 1.4;
-  position: relative;
-}
-
-.data-table th:first-child {
-  min-width: 140px;
-  color: #1e293b;
-}
-
-.data-table th:not(:first-child) {
-  text-align: center;
-  min-width: 100px;
-  color: #1e293b;
-}
-
-.data-table th .resize-handle {
-  position: absolute;
-  right: -3px;
-  top: 0;
-  bottom: 0;
-  width: 6px;
-  cursor: col-resize;
-  background: transparent;
-  transition: background 0.2s;
-  z-index: 10;
-}
-
-.data-table th .resize-handle:hover {
-  background: rgba(22, 119, 255, 0.5);
-}
-
-.data-table td {
-  padding: 12px 16px;
-  text-align: left;
-  border-bottom: 1px solid #f1f5f9;
-  font-size: 14px;
-}
-
-.data-table td:first-child {
-  font-weight: 500;
-  color: #334155;
-}
-
-.data-table td:not(:first-child) {
-  text-align: center;
-  color: #1677ff;
-}
-
-.data-table tr:hover {
-  background-color: #f8fafc;
-}
-
-/* Chart Container */
-.chart-container {
-  padding: 20px 0;
-}
-
-/* Responsive Styles */
 @media (max-width: 768px) {
   .filter-row {
     flex-direction: column;
@@ -2018,65 +1563,5 @@ const getChartData = (metricName) => {
   .display-type-selector {
     justify-content: center;
   }
-}
-
-/* Flex Search Box */
-.search-box-flex {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 0 12px;
-  background-color: white;
-  transition: all 0.2s ease;
-  height: 36px;
-}
-
-.search-box-flex:focus-within {
-  outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
-}
-
-.search-box-flex .search-icon {
-  color: #94a3b8;
-  font-size: 14px;
-  flex-shrink: 0;
-  margin-right: 8px;
-}
-
-.search-box-flex .search-input {
-  flex-grow: 1;
-  flex-shrink: 1;
-  border: none;
-  padding: 0 8px;
-  font-size: 13px;
-  outline: none;
-  background: transparent;
-  height: 100%;
-}
-
-.search-box-flex .search-clear {
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  padding: 4px;
-  font-size: 12px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.search-box-flex .search-clear.visible {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.search-box-flex .search-clear:hover {
-  color: #64748b;
 }
 </style>

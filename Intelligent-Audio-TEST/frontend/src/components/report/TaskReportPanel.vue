@@ -27,7 +27,9 @@
         </div>
 
         <div class="report-section" id="section-analysis">
-          <h2 class="section-title">分析结论</h2>
+          <div class="section-header">
+            <h3 class="section-title">分析结论</h3>
+          </div>
           <div class="analysis-content">
             <div v-if="!localIsEditing" class="analysis-text" v-html="sanitizedAnalysisContent"></div>
             <div v-else class="analysis-edit">
@@ -158,10 +160,7 @@ const scrollToSection = (sectionId) => {
   activeSection.value = sectionId
   const element = document.getElementById(sectionId)
   if (element) {
-    const headerOffset = 100
-    const elementPosition = element.getBoundingClientRect().top
-    const offsetPosition = elementPosition + window.pageYOffset - headerOffset
-    window.scrollTo({ top: offsetPosition, behavior: 'smooth' })
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 }
 
@@ -211,8 +210,11 @@ onUnmounted(() => {
 
 .report-hero {
   position: relative;
+  margin: calc(-1 * var(--spacing-xl));
+  margin-bottom: 0;
+  width: calc(100% + 2 * var(--spacing-xl));
   background: linear-gradient(180deg, #FFF8F0 0%, #FFFFFF 100%);
-  padding: 100px 24px 80px;
+  padding: 32px 24px 24px;
   text-align: center;
 }
 
@@ -224,23 +226,23 @@ onUnmounted(() => {
 }
 
 .hero-icon {
-  width: 90px;
-  height: 90px;
-  margin: 0 auto 28px;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
   background: rgba(22, 119, 255, 0.1);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 42px;
+  font-size: 24px;
   color: #1677FF;
 }
 
 .hero-title {
-  font-size: 42px;
+  font-size: 28px;
   font-weight: 700;
   color: #1e293b;
-  margin: 0 0 16px 0;
+  margin: 0 0 12px 0;
 }
 
 .hero-subtitle {
@@ -299,32 +301,34 @@ onUnmounted(() => {
 }
 
 .report-nav {
-  width: 160px;
+  width: 140px;
   flex-shrink: 0;
   position: sticky;
   top: 80px;
   height: fit-content;
   align-self: flex-start;
+  padding-bottom: 8px;
 }
 
 .nav-menu {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  position: relative;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  border-radius: 8px;
-  text-decoration: none;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: transparent;
+  background-clip: padding-box;
   color: #64748b;
-  font-size: 14px;
+  font-size: 13px;
   transition: all 0.2s ease;
-  cursor: pointer;
+  width: 90%;
+  box-sizing: border-box;
 }
 
 .nav-item:hover {
@@ -333,7 +337,8 @@ onUnmounted(() => {
 }
 
 .nav-item.active {
-  color: #1677FF;
+  background: rgba(255, 106, 0, 0.1);
+  color: #FF6A00;
   font-weight: 500;
 }
 
@@ -342,12 +347,10 @@ onUnmounted(() => {
   height: 6px;
   border-radius: 50%;
   background: #cbd5e1;
-  transition: all 0.2s ease;
 }
 
 .nav-item.active .nav-dot {
-  background: #1677FF;
-  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.2);
+  background: #FF6A00;
 }
 
 .nav-label {
@@ -356,30 +359,39 @@ onUnmounted(() => {
 
 .nav-progress {
   position: absolute;
-  left: 22px;
-  top: 10px;
-  bottom: 10px;
+  left: 18px;
+  top: 8px;
+  bottom: 8px;
   width: 2px;
   background: #e2e8f0;
-  border-radius: 1px;
 }
 
 .progress-fill {
   width: 100%;
-  background: #1677FF;
-  border-radius: 1px;
-  transition: height 0.1s ease;
+  background: #FF6A00;
+  transition: height 0.15s ease;
 }
 
 .report-section {
   margin-bottom: 32px;
 }
 
+.section-header {
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .section-title {
   font-size: 18px;
   font-weight: 600;
   color: #1e293b;
-  margin: 0 0 16px 0;
+  margin: 0;
+  flex: 1;
 }
 
 .analysis-content {
@@ -472,24 +484,19 @@ onUnmounted(() => {
 @media (max-width: 900px) {
   .report-layout {
     flex-direction: column;
-    gap: 24px;
+    gap: 20px;
   }
   
   .report-nav {
     width: 100%;
     position: relative;
     top: 0;
-    order: -1;
   }
   
   .nav-menu {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 8px;
-  }
-  
-  .nav-item {
-    padding: 8px 12px;
+    gap: 6px;
   }
   
   .nav-progress {

@@ -23,6 +23,7 @@
 @import './components/log.css';
 @import './components/dropdown-multi-select.css';
 @import './components/test-case-card.css';
+@import './components/comparison-common.css';
 @import './device-card.css';
 @import './e2etest/dropdown.css';
 
@@ -97,6 +98,103 @@ input[type="text"].form-input {
 }
 
 /* 选择器样式由 form.css 统一管理 */
+
+/* 浮动操作按钮全局样式 - 确保在所有页面都能正确显示 */
+.report-view-page .floating-actions,
+.floating-actions {
+  position: fixed !important;
+  right: 32px !important;
+  bottom: 32px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  z-index: 14000 !important;
+}
+
+.report-view-page .action-btn,
+.floating-actions .action-btn {
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #1677FF 0%, #0958D9 100%) !important;
+  border: none !important;
+  box-shadow: 0 4px 16px rgba(22, 119, 255, 0.4) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 18px !important;
+  color: white !important;
+  cursor: pointer !important;
+  transition: all 0.25s ease !important;
+  position: relative !important;
+}
+
+.report-view-page .action-btn:hover,
+.floating-actions .action-btn:hover {
+  transform: scale(1.1) !important;
+  box-shadow: 0 6px 24px rgba(22, 119, 255, 0.5) !important;
+}
+
+.report-view-page .action-btn:active,
+.floating-actions .action-btn:active {
+  transform: scale(0.95) !important;
+}
+
+/* 历史报告页面底部浮动操作栏 */
+.history-reports-view .floating-actions-bar,
+.floating-actions-bar {
+  position: fixed !important;
+  bottom: 24px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  display: flex !important;
+  gap: 8px !important;
+  z-index: 14000 !important;
+  padding: 12px 20px !important;
+  background: white !important;
+  border-radius: 12px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+.floating-actions-bar .btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 8px 16px !important;
+  border-radius: 6px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+  border: none !important;
+}
+
+.floating-actions-bar .btn-primary {
+  background: #1677FF !important;
+  color: white !important;
+}
+
+.floating-actions-bar .btn-primary:hover {
+  background: #0958D9 !important;
+}
+
+.floating-actions-bar .btn-success {
+  background: #52C41A !important;
+  color: white !important;
+}
+
+.floating-actions-bar .btn-success:hover {
+  background: #389E0D !important;
+}
+
+.floating-actions-bar .btn-secondary {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+}
+
+.floating-actions-bar .btn-secondary:hover {
+  background: #e2e8f0 !important;
+}
 
 /* 下拉菜单链接样式 */
 .dropdown-menu a {

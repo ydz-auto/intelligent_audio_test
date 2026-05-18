@@ -345,18 +345,18 @@
         @save-conclusion="saveConclusion"
         @cancel-conclusion="cancelEditConclusion"
       />
-      <div class="floating-actions-bar">
-        <button class="btn btn-primary" @click="saveComparisonReport">
-          <i class="fas fa-save"></i> 保存
-        </button>
-        <button class="btn btn-success" @click="publishComparisonReport">
-          <i class="fas fa-paper-plane"></i> 发布
-        </button>
-        <button class="btn btn-secondary" @click="closeComparisonReport">
-          <i class="fas fa-times"></i> 关闭
-        </button>
-      </div>
     </section>
+    <div class="floating-actions-bar" v-if="showComparisonReport">
+      <button class="btn btn-primary" @click="saveComparisonReport">
+        <i class="fas fa-save"></i> 保存
+      </button>
+      <button class="btn btn-success" @click="publishComparisonReport">
+        <i class="fas fa-paper-plane"></i> 发布
+      </button>
+      <button class="btn btn-secondary" @click="closeComparisonReport">
+        <i class="fas fa-times"></i> 关闭
+      </button>
+    </div>
   </div>
 </template>
 
@@ -759,13 +759,13 @@ const sanitizedConclusion = computed(() => {
 }
 
 .floating-actions-bar {
-  position: fixed;
+  position: fixed !important;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   gap: 8px;
-  z-index: 1000;
+  z-index: 14000 !important;
   padding: 12px 20px;
   background: white;
   border-radius: 12px;

@@ -488,8 +488,9 @@ input[type="checkbox"].group-checkbox:hover, input[type="checkbox"].test-case-ch
     opacity: 1;
     visibility: visible;
     box-sizing: border-box;
-    background-color: var(--secondary-light);
+    background-color: white;
     color: var(--secondary-color);
+    border: 1px solid var(--gray-light-color);
 }
 
 /* 确保任务类型标签样式不受影响 */

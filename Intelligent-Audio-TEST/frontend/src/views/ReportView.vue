@@ -234,13 +234,13 @@ onMounted(() => {
 }
 
 .floating-actions {
-  position: fixed;
+  position: fixed !important;
   right: 32px;
   bottom: 32px;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  z-index: 1000;
+  z-index: 14000 !important;
 }
 
 .action-btn {
@@ -257,6 +257,7 @@ onMounted(() => {
   color: white;
   cursor: pointer;
   transition: all 0.25s ease;
+  position: relative;
 }
 
 .action-btn:hover {

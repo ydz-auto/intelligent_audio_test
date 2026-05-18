@@ -3,49 +3,60 @@
     <div class="detail-section">
       <h4 class="section-title"><i class="fas fa-chart-bar"></i> 评分指标</h4>
       <div class="metrics-table-wrapper">
-        <table class="modern-metrics-table">
-          <thead>
-            <tr v-if="isComparison">
-              <th>指标名称</th>
-              <th v-for="device in devices" :key="device">{{ getDeviceName(device) }}</th>
-            </tr>
-            <tr v-else>
-              <th>指标名称</th>
-              <th>指标数值</th>
-              <th>得分</th>
-              <th>详情/错误</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-if="isComparison">
-              <tr v-for="metricName in allMetricNames" :key="metricName">
-                <td class="dim-name">{{ metricName }}</td>
-                <td v-for="device in devices" :key="device">
-                  {{ getMetricValue(device, metricName) }}
-                </td>
-              </tr>
-            </template>
-            <template v-else>
-              <tr v-for="item in displayMetrics" :key="item.id || item.metric">
-                <td class="dim-name">{{ item.metric }}</td>
-                <td class="dim-value">{{ formatValue(item.value) }}</td>
-                <td>
-                  <span :class="'score-badge score-' + (item.score || '0')">
-                    {{ item.score || '-' }}分
-                  </span>
-                </td>
-                <td class="dim-detail">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts[`${item.id || item.metric}_dim`] }">
-                    <div class="text-content">{{ item.errorMessage || '-' }}</div>
-                    <div v-if="(item.errorMessage || '').length > 50" class="expand-toggle" @click="toggleText(`${item.id || item.metric}_dim`)">
-                      {{ expandedTexts[`${item.id || item.metric}_dim`] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </td>
-              </tr>
-            </template>
-          </tbody>
-        </table>
+        <DataTable
+          v-if="isComparison"
+          :columns="comparisonTableColumns"
+          :data="comparisonTableData"
+          :resizable="true"
+          :min-column-width="60"
+          :default-column-width="{ first: 200, others: 150 }"
+          table-class="report-data-table"
+          row-key="metricName"
+        >
+          <template #cell-metricName="{ row, value }">
+            <span class="dim-name">{{ row.metricName }}</span>
+          </template>
+          <template #empty>
+            <div style="padding: 20px; text-align: center; color: #94a3b8;">
+              暂无指标数据
+            </div>
+          </template>
+        </DataTable>
+        <DataTable
+          v-else
+          :columns="singleTableColumns"
+          :data="singleTableData"
+          :resizable="true"
+          :min-column-width="60"
+          :default-column-width="{ first: 200, others: 150 }"
+          table-class="report-data-table"
+          row-key="metric"
+        >
+          <template #cell-metric="{ row, value }">
+            <span class="dim-name">{{ row.metric }}</span>
+          </template>
+          <template #cell-value="{ row, value }">
+            <span class="dim-value">{{ formatValue(row.rawValue) }}</span>
+          </template>
+          <template #cell-score="{ row, value }">
+            <span :class="'score-badge score-' + (row.rawScore || '0')">
+              {{ row.rawScore || '-' }}分
+            </span>
+          </template>
+          <template #cell-errorMessage="{ row, value }">
+            <div class="collapsible-text" :class="{ expanded: expandedTexts[`${row.metric}_dim`] }">
+              <div class="text-content">{{ row.rawErrorMessage || '-' }}</div>
+              <div v-if="(row.rawErrorMessage || '').length > 50" class="expand-toggle" @click="toggleText(`${row.metric}_dim`)">
+                {{ expandedTexts[`${row.metric}_dim`] ? '收起' : '展开' }}
+              </div>
+            </div>
+          </template>
+          <template #empty>
+            <div style="padding: 20px; text-align: center; color: #94a3b8;">
+              暂无指标数据
+            </div>
+          </template>
+        </DataTable>
       </div>
 
       <TimelineComparison
@@ -167,6 +178,7 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { API_CONFIG } from '../../utils/config';
+import DataTable from './DataTable.vue';
 import TimelineComparison from '../report/TimelineComparison.vue';
 import AudioPlayerModal from './AudioPlayerModal.vue';
 import AudioTimelineVisualization from './AudioTimelineVisualization.vue';
@@ -421,6 +433,86 @@ const getMetricRawValue = (device, metricName) => {
 const getMetricValue = (device, metricName) => {
   return formatMetricForDisplay(metricName, getMetricRawValue(device, metricName))
 }
+
+const comparisonTableColumns = computed(() => {
+  const columns = [
+    {
+      key: 'metricName',
+      label: '指标名称',
+      resize: true,
+      class: 'metric-name-column'
+    }
+  ]
+
+  props.devices.forEach((device, index) => {
+    columns.push({
+      key: `device-${index}`,
+      label: getDeviceName(device),
+      resize: true,
+      class: 'device-column',
+      color: '#1677ff'
+    })
+  })
+
+  return columns
+})
+
+const comparisonTableData = computed(() => {
+  return allMetricNames.value.map(metricName => {
+    const row = {
+      metricName: metricName
+    }
+
+    props.devices.forEach((device, index) => {
+      row[`device-${index}`] = getMetricValue(device, metricName)
+    })
+
+    return row
+  })
+})
+
+const singleTableColumns = computed(() => {
+  return [
+    {
+      key: 'metric',
+      label: '指标名称',
+      resize: true,
+      class: 'metric-name-column'
+    },
+    {
+      key: 'value',
+      label: '指标数值',
+      resize: true,
+      class: 'value-column'
+    },
+    {
+      key: 'score',
+      label: '得分',
+      resize: true,
+      class: 'score-column'
+    },
+    {
+      key: 'errorMessage',
+      label: '详情/错误',
+      resize: true,
+      class: 'error-column'
+    }
+  ]
+})
+
+const singleTableData = computed(() => {
+  return displayMetrics.value.map(item => {
+    return {
+      metric: item.metric,
+      value: formatValue(item.value),
+      rawValue: item.value,
+      score: item.score ? `${item.score}分` : '-分',
+      rawScore: item.score,
+      errorMessage: item.errorMessage || '-',
+      rawErrorMessage: item.errorMessage
+    }
+  })
+})
 
 const getAsrResult = (device) => {
   if (!props.isComparison || device === 'default') return props.asrResult || '无数据';
