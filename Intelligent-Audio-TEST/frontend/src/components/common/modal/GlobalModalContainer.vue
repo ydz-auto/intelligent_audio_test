@@ -28,11 +28,11 @@
                 modalId: modalId
               }"
               @close="(data: any) => {
-                if (data instanceof Event) return;
+                if (isNativeEvent(data)) return;
                 handleClose(modalId);
               }"
               @confirm="(data: any) => {
-                if (data instanceof Event) return;
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] confirm事件触发, data:', data);
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
                   console.log('[GlobalModalContainer] 调用onSave回调');
@@ -48,13 +48,13 @@
                 handleClose(modalId);
               }"
               @cancel="(data: any) => {
-                if (data instanceof Event) return;
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] cancel事件触发, data:', data);
                 modalItem.resolve(false);
                 handleClose(modalId);
               }"
               @save="(data: any) => {
-                if (data instanceof Event) return;
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] save事件触发, data:', data);
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
                   console.log('[GlobalModalContainer] 调用onSave回调');
@@ -70,13 +70,13 @@
                 handleClose(modalId);
               }"
               @select="(data: any) => {
-                if (data instanceof Event) return;
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] select事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
               }"
               @selectMultiple="(data: any) => {
-                if (data instanceof Event) return;
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] selectMultiple事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
@@ -272,6 +272,10 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.TAG_EDIT]: TagEditModal
   }
   return componentMap[type] || null
+}
+
+const isNativeEvent = (data: any): boolean => {
+  return data !== undefined && data !== null && typeof data === 'object' && data.target !== undefined && data.type !== undefined && typeof data.preventDefault === 'function'
 }
 
 const handleClose = (modalId: string) => {
