@@ -43,7 +43,3 @@ sqlmodel>=0.0.0
 httpx>=1.0.0
 urllib3>=2.0.0
 pytest>=9.0.0
-pyaudio
-sounddevice
-hypium
-psycopg2

@@ -500,9 +500,8 @@ const confirmTaskName = () => {
 
 /* 报告区域占满背景 */
 .e2e-test-view .step-panel.active {
-  /* margin: calc(-1 * var(--spacing-xl)); */
+  margin: calc(-1 * var(--spacing-xl));
   padding: 20px;
-  margin-top: 200px;
   min-height: calc(100vh);
   background: transparent;
 }
