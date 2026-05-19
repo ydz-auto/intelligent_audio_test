@@ -4,17 +4,9 @@ from flask_socketio import SocketIO
 import os
 import sys
 
-# 获取当前脚本的目录
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# 将当前目录添加到Python路径
 sys.path.insert(0, current_dir)
 
-# 动态导入配置，确保在任何情况下都能正确导入
-# Trigger reload
-import sys
-import os
-
-# 添加当前目录到Python路径
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 from config.config import config
@@ -22,14 +14,17 @@ from backend.models.database import db
 
 import logging
 from logging.handlers import RotatingFileHandler
-import os
+
+def _get_allowed_origins():
+    origins = os.environ.get('ALLOWED_ORIGINS', '')
+    if origins:
+        return origins.split(',')
+    if os.environ.get('FLASK_ENV') == 'production':
+        return []
+    return '*'
 
 def _configure_pydub_ffmpeg():
-    """配置 pydub 的 ffmpeg 路径（在应用启动时调用）"""
     from pydub import AudioSegment
-    import os
-    
-    # 硬编码路径
     ffmpeg_path = config.get('FFMPEG_PATH', 'ffmpeg')
     ffprobe_path = config.get('FFPROBE_PATH', 'ffprobe')
     if os.path.isfile(ffmpeg_path):
@@ -37,20 +32,17 @@ def _configure_pydub_ffmpeg():
     if os.path.isfile(ffprobe_path):
         AudioSegment.ffprobe = ffprobe_path
 
-# 在任何其他模块导入之前配置 ffmpeg
 _configure_pydub_ffmpeg()
 
-# 初始化 SocketIO 实例，配置支持 WebSocket 和 HTTP 轮询
+_allowed_origins = _get_allowed_origins()
 socketio = SocketIO(
-    cors_allowed_origins="*",
-    allow_credentials=True,
-    async_mode='threading', # 使用threading模式，兼容Python 3.13
-    ping_timeout=10,        # 连接超时时间
-    ping_interval=5,        # 心跳间隔
-    logger=False,          # 禁用SocketIO日志
-    engineio_logger=False, # 禁用EngineIO日志
-    # 移除依赖app的json参数，在init_app中配置
-    # 使用默认路径，避免配置冲突
+    cors_allowed_origins=_allowed_origins,
+    allow_credentials=True if _allowed_origins != '*' else False,
+    async_mode='threading',
+    ping_timeout=10,
+    ping_interval=5,
+    logger=False,
+    engineio_logger=False,
 )
 
 # 全局应用实例，用于在后台线程中创建应用上下文

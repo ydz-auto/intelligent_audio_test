@@ -1,53 +1,55 @@
 <template>
-  <div class="modal-backdrop" @click="closeModal" v-if="visible">
-    <div class="modal-container" @click.stop>
-      <div class="modal-header">
-        <h3>中途新增测试用例</h3>
-        <button class="close-btn" @click="closeModal">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="search-filter-bar">
-          <div class="search-box">
-            <i class="fas fa-search search-icon"></i>
-            <input type="text" class="search-input" placeholder="搜索测试用例..." v-model="searchQuery" @input="handleSearch">
+  <teleport to="body">
+    <div class="modal-backdrop" @click="closeModal" v-if="visible">
+      <div class="modal-container" @click.stop>
+        <div class="modal-header">
+          <h3>中途新增测试用例</h3>
+          <button class="close-btn" @click="closeModal">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div class="search-filter-bar">
+            <div class="search-box">
+              <i class="fas fa-search search-icon"></i>
+              <input type="text" class="search-input" placeholder="搜索测试用例..." v-model="searchQuery" @input="handleSearch">
+            </div>
+            <div class="filter-select">
+              <select class="form-input" v-model="selectedTag" @change="handleFilter">
+                <option value="all">所有标签</option>
+                <option v-for="tag in availableTags" :key="tag" :value="tag">{{ tag }}</option>
+              </select>
+            </div>
           </div>
-          <div class="filter-select">
-            <select class="form-input" v-model="selectedTag" @change="handleFilter">
-              <option value="all">所有标签</option>
-              <option v-for="tag in availableTags" :key="tag" :value="tag">{{ tag }}</option>
-            </select>
+          
+          <div class="test-case-list-container">
+            <div v-if="filteredTestCases.length === 0" class="no-items-message">
+              <i class="fas fa-info-circle"></i>
+              <p>暂无匹配的测试用例</p>
+            </div>
+            <div v-else class="test-case-grid">
+              <TestCaseCard
+                v-for="testCase in filteredTestCases"
+                :key="testCase.id"
+                :test-case="testCase"
+                :is-selected="selectedTestCases.includes(testCase.id)"
+                :show-checkbox="true"
+                :show-config="false"
+                @toggle-selection="toggleTestCaseSelection"
+                :actions="[]"
+              />
+            </div>
           </div>
         </div>
-        
-        <div class="test-case-list-container">
-          <div v-if="filteredTestCases.length === 0" class="no-items-message">
-            <i class="fas fa-info-circle"></i>
-            <p>暂无匹配的测试用例</p>
-          </div>
-          <div v-else class="test-case-grid">
-            <TestCaseCard
-              v-for="testCase in filteredTestCases"
-              :key="testCase.id"
-              :test-case="testCase"
-              :is-selected="selectedTestCases.includes(testCase.id)"
-              :show-checkbox="true"
-              :show-config="false"
-              @toggle-selection="toggleTestCaseSelection"
-              :actions="[]"
-            />
-          </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" @click="closeModal">取消</button>
+          <button class="btn btn-primary" @click="addSelectedCases" :disabled="selectedTestCases.length === 0">
+            <i class="fas fa-plus"></i> 新增选中用例 ({{ selectedTestCases.length }})
+          </button>
         </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" @click="closeModal">取消</button>
-        <button class="btn btn-primary" @click="addSelectedCases" :disabled="selectedTestCases.length === 0">
-          <i class="fas fa-plus"></i> 新增选中用例 ({{ selectedTestCases.length }})
-        </button>
       </div>
     </div>
-  </div>
+  </teleport>
 </template>
 
 <script setup>
@@ -133,7 +135,7 @@ watch(() => props.visible, (newValue) => {
 });
 </script>
 
-<style scoped>
+<style>
 .modal-backdrop {
   position: fixed;
   top: 0;
@@ -144,7 +146,7 @@ watch(() => props.visible, (newValue) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 10002;
   animation: fadeIn 0.3s ease;
 }
 
@@ -202,6 +204,85 @@ watch(() => props.visible, (newValue) => {
   flex: 1;
 }
 
+.modal-footer {
+  padding: 20px 24px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: var(--border-radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background-color: var(--background-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  background-color: var(--background-tertiary);
+  border-color: var(--primary-color);
+  transform: translateY(-1px);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .modal-container {
+    width: 95%;
+    margin: 20px;
+    max-height: calc(100vh - 40px);
+  }
+}
+</style>
+
+<style scoped>
 .search-filter-bar {
   display: flex;
   gap: 16px;
@@ -288,82 +369,7 @@ watch(() => props.visible, (newValue) => {
   gap: 12px;
 }
 
-.modal-footer {
-  padding: 20px 24px;
-  border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.btn {
-  padding: 10px 24px;
-  border: none;
-  border-radius: var(--border-radius-md);
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.btn-primary {
-  background-color: var(--primary-color);
-  color: white;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: var(--primary-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background-color: var(--background-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-}
-
-.btn-secondary:hover {
-  background-color: var(--background-tertiary);
-  border-color: var(--primary-color);
-  transform: translateY(-1px);
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 @media (max-width: 768px) {
-  .modal-container {
-    width: 95%;
-    margin: 20px;
-    max-height: calc(100vh - 40px);
-  }
-  
   .search-filter-bar {
     flex-direction: column;
   }

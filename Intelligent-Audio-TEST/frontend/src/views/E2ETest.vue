@@ -261,6 +261,9 @@
           <button class="btn btn-secondary" @click="prevStep">
             <i class="fas fa-arrow-left"></i> 上一步
           </button>
+          <button class="btn btn-primary" @click="saveReport">
+            <i class="fas fa-save"></i> 保存报告
+          </button>
           <button class="btn btn-primary" @click="exportResults('pdf')">
             <i class="fas fa-download"></i> 导出报告
           </button>
@@ -268,16 +271,6 @@
             <i class="fas fa-paper-plane"></i> 发布
           </button>
           <button class="btn btn-secondary" @click="startNewTest">开始新测试</button>
-        </div>
-
-        <!-- 浮动操作按钮区域 -->
-        <div id="e2e-floating-report-actions">
-          <button class="btn btn-primary" @click="saveReport">
-            <i class="fas fa-save"></i> 保存
-          </button>
-          <button class="btn btn-success" @click="publishReport">
-            <i class="fas fa-paper-plane"></i> 发布
-          </button>
         </div>
       </TestStepContainer>
     </div>
@@ -430,6 +423,7 @@ const {
   filterDevices,
   handleToggleDeviceSelection,
   handleResourceAction,
+  handleAddDevice,
   pauseTest,
   resumeTest,
   stopTest,
@@ -489,7 +483,7 @@ const confirmTaskName = () => {
 <style>
 @import '../assets/styles/main.css';
 @import '../assets/styles/test-common.css';
-@import '../assets/styles/e2eTest.css';
+@import '../assets/styles/e2etest.css';
 @import '../assets/styles/testCaseManager.css';
 @import '../assets/styles/reportS.css';
 

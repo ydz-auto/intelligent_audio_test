@@ -18,34 +18,40 @@ from backend.utils.base_executor import BaseExecutor
 class APIExecutor(BaseExecutor):
     def __init__(self, execution_engine):
         super().__init__(execution_engine)
-        # API级别的排队机制（简化版，只保留等待队列）
-        self.api_queues = {}  # API ID到排队队列的映射 {api_id: queue.Queue}
-        self.api_waiting_counts = {}  # API ID到等待计数的映射 {api_id: int}
-        self.global_lock = Lock()  # 全局锁，用于保护共享资源的初始化
-
-        # 任务级别的锁，用于确保状态更新的原子性
-        self.task_locks = {}  # 任务锁字典，{task_id: threading.Lock()}
-        self.task_lock = Lock()  # 用于保护task_locks字典的锁
-
-        # 从统一配置文件加载配置
-        self.max_queue_size = config_manager.get_value('api_executor', 'max_queue_size', 100)  # 每个API的最大队列长度
-        self.max_wait_time = config_manager.get_value('api_executor', 'max_wait_time', 300)  # 任务在队列中的最大等待时间（秒）
+        self.api_queues = {}
+        self.api_waiting_counts = {}
+        self.global_lock = Lock()
+        self.task_locks = {}
+        self.task_lock = Lock()
+        self.completed_tasks = set()
+        self.completed_tasks_lock = Lock()
+        self.max_queue_size = config_manager.get_value('api_executor', 'max_queue_size', 100)
+        self.max_wait_time = config_manager.get_value('api_executor', 'max_wait_time', 300)
     
     def _get_task_lock(self, task_id):
-        """
-        获取任务级别的锁，确保状态更新的原子性
-        
-        Args:
-            task_id: 任务ID
-            
-        Returns:
-            threading.Lock: 任务锁对象
-        """
         task_id_str = str(task_id)
         with self.task_lock:
             if task_id_str not in self.task_locks:
                 self.task_locks[task_id_str] = Lock()
         return self.task_locks[task_id_str]
+    
+    def _cleanup_task_lock(self, task_id):
+        task_id_str = str(task_id)
+        with self.task_lock:
+            if task_id_str in self.task_locks:
+                del self.task_locks[task_id_str]
+    
+    def mark_task_completed(self, task_id):
+        with self.completed_tasks_lock:
+            self.completed_tasks.add(str(task_id))
+        self._cleanup_task_lock(task_id)
+    
+    def cleanup_completed_tasks(self):
+        with self.completed_tasks_lock:
+            completed = list(self.completed_tasks)
+            self.completed_tasks.clear()
+        for task_id in completed:
+            self._cleanup_task_lock(task_id)
     
     def _extend_log(self, task_id, **kwargs):
         """API 扩展日志字段"""
@@ -101,23 +107,7 @@ class APIExecutor(BaseExecutor):
     # 移除不可靠的“等待队列 + condition”实现，改为基于有界队列的阻塞获取，并维护等待计数用于进度统计
 
     def acquire_api_execution_right(self, api_id, task_id, current_test_case_id, max_process=5, timeout=None):
-        """
-        获取API执行权，如果并发数已满，将任务加入队列等待
-        使用有界阻塞队列，满时自动等待
-
-        Args:
-            api_id: API ID
-            task_id: 任务ID
-            current_test_case_id: 当前测试用例ID
-            max_process: 最大并发数
-            timeout: 最大等待时间（秒）
-
-        Returns:
-            bool: 是否成功获取执行权
-        """
         wait_timeout = timeout or self.max_wait_time
-
-        # 只记录一次开始执行的日志，避免重复
         self._log(
             level='DEBUG',
             content=f"API {api_id} 开始执行测试用例: {current_test_case_id}",
@@ -127,8 +117,11 @@ class APIExecutor(BaseExecutor):
 
         q = self._get_or_create_api_queue(api_id, max_process)
         start_time = time.time()
+        waiting_incremented = False
+        
         try:
             waiting_now = self._inc_waiting(api_id)
+            waiting_incremented = True
             self._log(
                 level='DEBUG',
                 content=f"尝试获取 API {api_id} 的执行权 (当前并发: {q.qsize()}/{max_process}, 等待: {waiting_now})",
@@ -143,6 +136,8 @@ class APIExecutor(BaseExecutor):
                 elapsed_time = time.time() - start_time
                 remaining_time = wait_timeout - elapsed_time
                 if remaining_time <= 0:
+                    self._dec_waiting(api_id)
+                    waiting_incremented = False
                     self._log(
                         level='WARNING',
                         content=f"获取 API {api_id} 执行权超时，已等待 {elapsed_time:.1f}秒",
@@ -172,6 +167,8 @@ class APIExecutor(BaseExecutor):
                         )
                     continue
                 except Exception as e:
+                    self._dec_waiting(api_id)
+                    waiting_incremented = False
                     self._log(
                         level='ERROR',
                         content=f"获取 API {api_id} 执行权时发生异常: {str(e)}",
@@ -181,6 +178,8 @@ class APIExecutor(BaseExecutor):
                     return False
 
         except Exception as outer_e:
+            if waiting_incremented:
+                self._dec_waiting(api_id)
             self._log(
                 level='ERROR',
                 content=f"获取 API {api_id} 执行权时发生外部异常: {str(outer_e)}",

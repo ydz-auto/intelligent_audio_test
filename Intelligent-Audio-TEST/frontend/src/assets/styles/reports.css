@@ -339,15 +339,15 @@ select.filter-select {
 
 /* 分析结论样式 */
 .analysis-conclusion-card {
-    background: linear-gradient(to right, #e6f7ff, #ffffff);
-    border: 1px solid #91d5ff;
-    border-radius: var(--border-radius-md);
-    padding: var(--spacing-xl);
-    margin-bottom: var(--spacing-xl);
-    display: flex;
-    gap: var(--spacing-lg);
-    align-items: flex-start;
-    box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
+  background: linear-gradient(to right, #e6f7ff, #ffffff);
+  border: 1px solid #91d5ff;
+  border-radius: var(--border-radius-md);
+  padding: 24px;
+  margin-bottom: var(--spacing-xl);
+  display: flex;
+  gap: var(--spacing-lg);
+  align-items: flex-start;
+  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.1);
 }
 
 .analysis-icon {

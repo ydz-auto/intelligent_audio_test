@@ -1,16 +1,47 @@
 import os
+import secrets
+from pathlib import Path
+from dotenv import load_dotenv
+
+_config_dir = Path(__file__).parent
+_env_file = _config_dir / '.env'
+if _env_file.exists():
+    load_dotenv(_env_file)
+else:
+    _root_env_file = _config_dir.parent / '.env'
+    if _root_env_file.exists():
+        load_dotenv(_root_env_file)
+
 from sqlalchemy.pool import StaticPool
 
-# 应用配置类
+def _get_secret_key():
+    key = os.environ.get('SECRET_KEY')
+    if key:
+        return key
+    if os.environ.get('FLASK_ENV') == 'production':
+        raise RuntimeError('SECRET_KEY environment variable must be set in production')
+    return secrets.token_hex(32)
+
+def _get_database_uri():
+    uri = os.environ.get('DATABASE_URI')
+    if uri:
+        return uri
+    db_user = os.environ.get('DB_USER', 'intelligent_audio_test')
+    db_password = os.environ.get('DB_PASSWORD', '')
+    db_host = os.environ.get('DB_HOST', 'localhost')
+    db_port = os.environ.get('DB_PORT', '5432')
+    db_name = os.environ.get('DB_NAME', 'intelligent_audio_test')
+    if not db_password:
+        if os.environ.get('FLASK_ENV') == 'production':
+            raise RuntimeError('DB_PASSWORD environment variable must be set in production')
+        db_password = 'intelligent_audio_test666'
+    return f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}'
+
 class Config:
-    # 密钥，用于 Session 和 CSRF 保护
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-12345')
-    # 项目根目录
+    SECRET_KEY = _get_secret_key()
     BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    # 项目全局根目录
     PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..','..','..'))
-    # 数据库连接 URI (PostgreSQL)
-    SQLALCHEMY_DATABASE_URI = 'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
+    SQLALCHEMY_DATABASE_URI = _get_database_uri()
     # 禁用 SQLAlchemy 的修改跟踪，以提高性能
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     # 配置JSON编码器使用UTF-8，直接输出中文而不是Unicode转义序列

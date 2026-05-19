@@ -302,21 +302,19 @@ export function useTaskProgress(options: TaskProgressOptions) {
     hasCalledFailedCallback.value = false
   }
 
+  const taskLogHandler = (data: any) => {
+    console.log('[TaskProgress] 收到 task_log 事件:', data)
+    
+    if (String(data.taskId) === String(currentTaskId.value)) {
+      addLog(data.log)
+    }
+  }
+
   onMounted(() => {
     console.log('[TaskProgress] 正在监听 task_progress 事件，testType:', testType)
     socketService.on('task_progress', handleTaskProgress)
     
-    // 添加对 task_log 事件的监听
     console.log('[TaskProgress] 正在监听 task_log 事件')
-    const taskLogHandler = (data: any) => {
-      console.log('[TaskProgress] 收到 task_log 事件:', data)
-      
-      // 检查 taskId 是否匹配
-      if (String(data.taskId) === String(currentTaskId.value)) {
-        // 使用 addLog 处理日志
-        addLog(data.log)
-      }
-    }
     socketService.on('task_log', taskLogHandler)
     
     console.log('[TaskProgress] Socket 连接状态:', socketService.isConnected)
@@ -326,10 +324,8 @@ export function useTaskProgress(options: TaskProgressOptions) {
     console.log('[TaskProgress] 移除 task_progress 事件监听')
     socketService.off('task_progress', handleTaskProgress)
     
-    // 移除 task_log 事件监听
     console.log('[TaskProgress] 移除 task_log 事件监听')
-    // 注意：由于我们使用了内联函数，这里无法直接移除
-    // 在生产环境中，应该保存原始回调函数以便正确移除
+    socketService.off('task_log', taskLogHandler)
   })
 
   return {

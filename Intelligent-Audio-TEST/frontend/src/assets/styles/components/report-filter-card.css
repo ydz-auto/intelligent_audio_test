@@ -1,30 +1,13 @@
 /* 报告页面筛选卡片统一样式 - 基于参考设计 */
 .report-filter-card {
-  /* background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); */ /* 移除背景 */
-  background: transparent;
+  background: #ffffff;
   border-radius: 16px;
-  /* border: 1px solid #e2e8f0; */ /* 移除边框 */
-  /* box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06); */ /* 移除阴影 */
-  padding: 0;
+  border: 1px solid #e2e8f0;
+  box-shadow: none;
+  padding: 20px;
   margin-bottom: 24px;
   transition: all 0.3s ease;
-  border: none !important;
-  box-shadow: none !important;
 }
-
-/* 覆盖 filter-card 类的边框样式 */
-.report-filter-card.filter-card {
-  border: none !important;
-  box-shadow: none !important;
-}
-
-.report-filter-card.filter-card:hover {
-  box-shadow: none !important;
-}
-
-/* .report-filter-card:hover {
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-} */
 
 .report-filter-card .filter-title {
   font-weight: 600;
@@ -471,9 +454,9 @@
 }
 
 .report-filter-card .metric-filter-item.active {
-  background: #1677ff;
-  color: white;
-  border-color: #1677ff;
+  background: #1677ff !important;
+  color: white !important;
+  border-color: #1677ff !important;
   box-shadow: 0 2px 8px rgba(22, 119, 255, 0.3);
 }
 
@@ -642,14 +625,14 @@
 }
 
 .report-filter-card .sort-filter-row .filter-select {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
-  width: 50%;
+  max-width: 50%;
   box-sizing: border-box;
 }
 
 .report-filter-card .sort-filter .filter-select {
-  min-width: 150px;
+  min-width: 120px;
 }
 
 /* 筛选输入框和下拉框样式 */

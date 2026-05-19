@@ -27,10 +27,14 @@
         </div>
 
         <div class="report-section" id="section-analysis">
-          <div class="section-header">
+          <div class="section-header" @click="toggleAnalysisCollapse">
             <h3 class="section-title">分析结论</h3>
+            <button class="collapse-btn" :class="{ collapsed: isAnalysisCollapsed }" title="折叠/展开">
+              <i class="fas fa-chevron-up" v-if="isAnalysisCollapsed"></i>
+              <i class="fas fa-chevron-down" v-else></i>
+            </button>
           </div>
-          <div class="analysis-content">
+          <div class="analysis-content" v-if="!isAnalysisCollapsed">
             <div v-if="!localIsEditing" class="analysis-text" v-html="sanitizedAnalysisContent"></div>
             <div v-else class="analysis-edit">
               <textarea 
@@ -115,8 +119,13 @@ const emit = defineEmits(['toggle-edit', 'save-report', 'cancel-edit', 'toggle-c
 
 const editableConclusion = ref('')
 const localIsEditing = ref(false)
+const isAnalysisCollapsed = ref(false)
 const activeSection = ref('section-overview')
 const progressHeight = ref('0%')
+
+const toggleAnalysisCollapse = () => {
+  isAnalysisCollapsed.value = !isAnalysisCollapsed.value
+}
 
 const navItems = [
   { id: 'section-overview', label: '概览' },
@@ -382,7 +391,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   cursor: pointer;
-  padding: 12px 0;
+  padding: var(--spacing-lg);
   width: 100%;
   box-sizing: border-box;
 }
@@ -395,6 +404,28 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
+}
+
+.collapse-btn {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.collapse-btn:hover {
+  color: #334155;
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.collapse-btn.collapsed {
+  transform: rotate(-90deg);
 }
 
 .analysis-content {

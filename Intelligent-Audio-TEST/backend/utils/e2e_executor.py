@@ -1,5 +1,6 @@
 import threading
 import time
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from backend.models.models import Audio, PlaybackDevice, Device, TaskCase, TaskDevice, PromptAudioRelation, utc8now
 from backend.models.database import db
@@ -8,6 +9,8 @@ from backend.utils.spl_service import spl_service
 from backend.device_driver import device_driver_factory, register_task_events
 from backend.algorithm.field_mapper import get_field_mapper
 from backend.utils.base_executor import BaseExecutor
+
+E2E_RESULT_COLLECTION_WAIT_TIME = float(os.environ.get('E2E_RESULT_COLLECTION_WAIT_TIME', '3.0'))
 
 
 class E2EExecutor(BaseExecutor):
@@ -183,7 +186,7 @@ class E2EExecutor(BaseExecutor):
             
             self._post_process_devices(device_info_list, case_name, task_id)
             
-            time.sleep(3)
+            time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
             collect_result = self._collect_results(
                 task_id, device_info_list, 
                 algorithm_type=algorithm_type,

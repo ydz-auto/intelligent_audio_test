@@ -93,11 +93,8 @@ export function useE2eView() {
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const taskName = ref('')
   const taskStartTime = ref<Date | null>(null)
+  const taskElapsedTimeDisplay = ref('00:00:00')
   let timeUpdateTimer: ReturnType<typeof setInterval> | null = null
-
-  type WindowWithTaskTime = Window & {
-    taskExpectedCompleteTimeDisplay?: string
-  }
 
   const stopTimeUpdateTimer = () => {
     if (timeUpdateTimer) {
@@ -115,7 +112,7 @@ export function useE2eView() {
       const hoursStr = String(Math.floor(elapsedSeconds / 3600)).padStart(2, '0')
       const minutesStr = String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(2, '0')
       const secondsStr = String(elapsedSeconds % 60).padStart(2, '0')
-      ;(window as WindowWithTaskTime).taskExpectedCompleteTimeDisplay = `${hoursStr}:${minutesStr}:${secondsStr}`
+      taskElapsedTimeDisplay.value = `${hoursStr}:${minutesStr}:${secondsStr}`
     }, 1000)
   }
 
@@ -183,12 +180,12 @@ export function useE2eView() {
       const nonOnlineDevices = associatedDevices.value.filter((d: any) => d.status !== 'online')
       if (associatedDevices.value.length === 0) {
         console.log('[nextStep] 没有选择设备')
-        alert('请选择至少一个测试设备')
+        addLog({ content: '请选择至少一个测试设备', level: 'warn' })
         return
       }
       if (nonOnlineDevices.length > 0) {
         console.log('[nextStep] 有离线设备:', nonOnlineDevices.map((d: any) => d.name))
-        alert(`以下设备处于离线状态，无法执行测试：${nonOnlineDevices.map((d: any) => d.name).join(', ')}`)
+        addLog({ content: `以下设备处于离线状态，无法执行测试：${nonOnlineDevices.map((d: any) => d.name).join(', ')}`, level: 'warn' })
         return
       }
     }
@@ -215,7 +212,7 @@ export function useE2eView() {
   }
 
   const prevStep = () => {
-    if (currentStep.value > 1) currentStep.value--
+    if (currentStep.value > 0) currentStep.value--
   }
 
   const goToStep = (step: number) => {
@@ -341,7 +338,7 @@ export function useE2eView() {
 
   const pauseTest = async () => {
     if (!currentTaskId.value) {
-      alert('无法暂停测试：当前任务ID为空')
+      addLog({ content: '无法暂停测试：当前任务ID为空', level: 'error' })
       return
     }
     if (isControlling.value) return
@@ -370,7 +367,7 @@ export function useE2eView() {
 
   const resumeTest = async () => {
     if (!currentTaskId.value) {
-      alert('无法恢复测试：当前任务ID为空')
+      addLog({ content: '无法恢复测试：当前任务ID为空', level: 'error' })
       return
     }
     if (isControlling.value) return
@@ -390,7 +387,7 @@ export function useE2eView() {
 
   const stopTest = async () => {
     if (!currentTaskId.value) {
-      alert('无法停止测试：当前任务ID为空')
+      addLog({ content: '无法停止测试：当前任务ID为空', level: 'error' })
       return
     }
     if (isControlling.value) return
@@ -555,10 +552,14 @@ export function useE2eView() {
     const device = devices.value.find((d) => String(d.id) === String(deviceId))
     if (device) {
       if (device.status !== 'online') {
-        alert('只能选择在线设备')
+        addLog({ content: '只能选择在线设备', level: 'warn' })
         return
       }
-      device.selected = !device.selected
+      if (device.selected === undefined) {
+        device.selected = true
+      } else {
+        device.selected = !device.selected
+      }
     }
   }
 
@@ -581,9 +582,8 @@ export function useE2eView() {
       handleModalClose();
     } catch (error) {
       console.error('保存失败:', error)
-      // 向用户显示错误提示
       const errorMessage = error instanceof Error ? error.message : '保存失败，请重试';
-      alert(errorMessage);
+      addLog({ content: errorMessage, level: 'error' })
     }
   }
 
@@ -600,7 +600,7 @@ export function useE2eView() {
     } catch (error) {
       console.error('删除分组失败:', error)
       const errorMessage = error instanceof Error ? error.message : '删除分组失败，请重试';
-      alert(errorMessage);
+      addLog({ content: errorMessage, level: 'error' })
     }
   }
 
@@ -615,7 +615,7 @@ export function useE2eView() {
     } catch (error) {
       console.error('删除测试用例失败:', error)
       const errorMessage = error instanceof Error ? error.message : '删除测试用例失败，请重试';
-      alert(errorMessage);
+      addLog({ content: errorMessage, level: 'error' })
     }
   }
 
@@ -627,15 +627,27 @@ export function useE2eView() {
   const toggleEditReport = () => { isEditingReport.value = !isEditingReport.value }
   const saveReport = async () => {
     try {
-      if (!currentTaskId.value) {
-        throw new Error('无法保存报告：当前任务ID为空')
+      const reportId = report.value?.id
+      if (!reportId) {
+        throw new Error('无法保存报告：报告ID为空')
       }
-      await reportsApi.update(currentTaskId.value, report.value)
+      await reportsApi.update(reportId, report.value)
       isEditingReport.value = false
-      alert('报告保存成功')
+      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '保存成功',
+        content: '报告已成功保存',
+        confirmText: '确定',
+        cancelText: ''
+      })
     } catch (error) {
       console.error('保存报告失败:', error)
-      alert(`保存报告失败: ${error instanceof Error ? error.message : String(error)}`)
+      modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
+        title: '保存失败',
+        content: `保存报告失败: ${error instanceof Error ? error.message : String(error)}`,
+        confirmText: '确定',
+        cancelText: '',
+        danger: true
+      })
     }
   }
   const cancelEditReport = () => { isEditingReport.value = false }
@@ -648,8 +660,9 @@ export function useE2eView() {
   const saveConclusion = async (content: string) => {
     report.value.conclusion = content
     report.value.analysis = content
-    if (currentTaskId.value) {
-      await reportsApi.update(currentTaskId.value, report.value)
+    const reportId = report.value?.id
+    if (reportId) {
+      await reportsApi.update(reportId, report.value)
     }
     analysisContent.value = content
     isEditingConclusion.value = false

@@ -516,6 +516,7 @@ onUnmounted(() => {
 /* 对比报告样式 */
 .comparison-report-container {
   margin-top: 24px;
+  padding: 32px 24px;
 }
 
 .comparison-header {
@@ -556,7 +557,7 @@ onUnmounted(() => {
   background: linear-gradient(to right, #e6f7ff, #ffffff);
   border: 1px solid #91d5ff;
   border-radius: 12px;
-  padding: 20px;
+  padding: 24px;
   margin-bottom: 24px;
   display: flex;
   gap: 16px;

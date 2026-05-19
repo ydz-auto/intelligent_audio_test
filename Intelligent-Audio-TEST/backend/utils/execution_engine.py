@@ -88,6 +88,19 @@ class ExecutionEngine:
                 )
         return cls._instance
 
+    def shutdown(self):
+        if hasattr(self, 'api_task_pool') and self.api_task_pool:
+            self.api_task_pool.shutdown(wait=False)
+        if hasattr(self, 'device_control_pool') and self.device_control_pool:
+            self.device_control_pool.shutdown(wait=False)
+        if hasattr(self, 'audio_playback_pool') and self.audio_playback_pool:
+            self.audio_playback_pool.shutdown(wait=False)
+        for task_id, executor in list(self.api_executors.items()):
+            executor.shutdown(wait=False)
+        self.api_executors.clear()
+        self._stop_scheduler()
+        self._log(level='INFO', content="执行引擎已关闭")
+
     def set_scheduler_app(self, app):
         """设置调度器使用的 Flask 应用实例"""
         self.scheduler_app = app
@@ -210,14 +223,12 @@ class ExecutionEngine:
             task_status = getattr(task, 'status', None)
         
         if task_id and not force:
-            # 如果状态是终止状态或开始运行状态，强制更新
             if task_status in ['running', 'completed', 'failed', 'stopped', 'paused']:
                 force = True
             else:
-                # 进度更新节流，避免频繁更新
                 current_time = time.time()
                 last_update = self.last_progress_update.get(task_id, 0)
-                if current_time - last_update < 0.1:  # 0.1秒内不重复更新
+                if current_time - last_update < 0.5:
                     return
                 self.last_progress_update[task_id] = current_time
         
@@ -1080,95 +1091,61 @@ class ExecutionEngine:
                     last_counts = None
                     
                     while True:
-                        # 使用本地会话确保独立可靠的会话
                         local_db_session = db.session()
                         try:
-                            # 刷新会话，确保读取到最新的数据库数据
                             local_db_session.expire_all()
                             
-                            # 添加调试日志
-                            self._log(
-                                level='DEBUG',
-                                content=f"开始统计任务 {task_id} 的用例状态",
-                                task_id=task_id
-                            )
-                            # 查询当前任务状态
                             task_obj = local_db_session.query(Task).filter_by(id=task_id).first()
                             task_status = task_obj.status if task_obj else 'unknown'
                             
-                            # 统计运行中状态（只包括执行中、排队中，不包括评估中/待评估）
-                            running_cases = local_db_session.query(TaskCase).filter(
-                                TaskCase.task_id == task_id,
-                                TaskCase.execution_status.in_(['running', 'queued'])
-                            ).count()
-
-                            # 统计执行中状态（execution_status为running）
-                            execution_running_cases = local_db_session.query(TaskCase).filter_by(
-                                task_id=task_id, 
-                                execution_status='running'
-                            ).count()
+                            from sqlalchemy import func
+                            status_counts = local_db_session.query(
+                                TaskCase.execution_status,
+                                TaskCase.evaluation_status,
+                                TaskCase.status,
+                                func.count(TaskCase.id)
+                            ).filter(TaskCase.task_id == task_id).group_by(
+                                TaskCase.execution_status,
+                                TaskCase.evaluation_status,
+                                TaskCase.status
+                            ).all()
                             
-                            # 统计排队中状态（从API执行器的等待队列中获取）
-                            queued_cases = local_db_session.query(TaskCase).filter(
-                                TaskCase.task_id == task_id,
-                                TaskCase.execution_status.in_(['queued'])
-                            ).count()
+                            running_cases = 0
+                            queued_cases = 0
+                            execution_running_cases = 0
+                            execution_success_cases = 0
+                            execution_failed_cases = 0
+                            evaluation_running_cases = 0
+                            evaluation_success_cases = 0
+                            evaluation_failed_cases = 0
+                            all_processed_cases = 0
+                            passed_cases = 0
+                            failed_cases = 0
                             
-                            # 统计执行完成状态（execution_status为completed）
-                            execution_success_cases = local_db_session.query(TaskCase).filter_by(
-                                task_id=task_id, 
-                                execution_status='completed'
-                            ).count()
+                            for exec_status, eval_status, final_status, count in status_counts:
+                                if exec_status in ['running', 'queued']:
+                                    running_cases += count
+                                if exec_status == 'queued':
+                                    queued_cases += count
+                                if exec_status == 'running':
+                                    execution_running_cases += count
+                                if exec_status == 'completed':
+                                    execution_success_cases += count
+                                if exec_status == 'failed':
+                                    execution_failed_cases += count
+                                if eval_status in ['running', 'queued']:
+                                    evaluation_running_cases += count
+                                if eval_status == 'completed':
+                                    evaluation_success_cases += count
+                                if eval_status == 'failed':
+                                    evaluation_failed_cases += count
+                                if final_status in ['completed', 'failed', 'skipped']:
+                                    all_processed_cases += count
+                                if final_status == 'completed':
+                                    passed_cases += count
+                                if final_status == 'failed':
+                                    failed_cases += count
                             
-                            # 统计评估中状态（evaluation_status为running或queued或pending）
-                            evaluation_running_cases = local_db_session.query(TaskCase).filter(
-                                TaskCase.task_id == task_id,
-                                TaskCase.evaluation_status.in_(['running', 'queued'])
-                            ).count()
-
-                            # 统计评估完成状态（evaluation_status为completed）
-                            evaluation_success_cases = local_db_session.query(TaskCase).filter_by(
-                                task_id=task_id, 
-                                evaluation_status='completed'
-                            ).count()
-
-                            # 统计运行中的用例数量 (只包括执行中、排队中，不包括评估中)
-                            running_cases = local_db_session.query(TaskCase).filter(
-                                TaskCase.task_id == task_id, 
-                                TaskCase.status == 'running'
-                            ).count()
-                            
-                            # 统计所有已处理的用例数量（包括成功和失败）
-                            all_processed_cases = local_db_session.query(TaskCase).filter(
-                                TaskCase.task_id == task_id,
-                                TaskCase.status.in_(['completed', 'failed', 'skipped'])
-                            ).count()
-                            
-                            # 统计最终状态为成功的用例数量
-                            passed_cases = local_db_session.query(TaskCase).filter_by(
-                                task_id=task_id, 
-                                status='completed'
-                            ).count()
-                            
-                            # 统计最终状态为失败的用例数量
-                            failed_cases = local_db_session.query(TaskCase).filter_by(
-                                task_id=task_id, 
-                                status='failed'
-                            ).count()
-                            
-                            # 统计执行失败的用例数量
-                            execution_failed_cases = local_db_session.query(TaskCase).filter_by(
-                                task_id=task_id, 
-                                execution_status='failed'
-                            ).count()
-                            
-                            # 统计评估失败的用例数量
-                            evaluation_failed_cases = local_db_session.query(TaskCase).filter_by(
-                                task_id=task_id, 
-                                evaluation_status='failed'
-                            ).count()
-                            
-                            # 构建当前状态快照，用于对比
                             current_counts = (
                                 running_cases, queued_cases, execution_running_cases, evaluation_running_cases,
                                 execution_success_cases, evaluation_success_cases,

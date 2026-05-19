@@ -35,10 +35,15 @@ class ReportControllerTask(ReportControllerBase):
                 return None, None, error_response("生成失败: 合并任务没有测试结果数据")
             return task, results, None
             
-        elif task.status == 'merged':
-            results = TestResult.query.filter_by(task_id=task_id).all()
+        elif task.type == 'merged':
+            merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
+            if merge_relations:
+                source_task_ids = [r.source_task_id for r in merge_relations]
+                results = TestResult.query.filter(TestResult.task_id.in_(source_task_ids)).all()
+            else:
+                results = TestResult.query.filter_by(task_id=task_id).all()
             if not results:
-                return None, None, error_response("生成失败: 该任务没有测试结果数据")
+                return None, None, error_response("生成失败: 合并任务没有测试结果数据")
             return task, results, None
             
         elif task.status not in ['completed', 'failed']:

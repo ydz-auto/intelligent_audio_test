@@ -4,41 +4,15 @@
       class="modal-overlay"
       v-if="props.visible"
       @click="handleMaskClick($event)"
-      style="
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 9999 !important;
-      "
     >
-      <div
-        class="modal-container"
-        @click.stop
-        style="
-          background-color: #fff;
-          border-radius: 12px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-          max-height: 90vh;
-          max-width: 800px;
-          width: 90%;
-          overflow: hidden;
-          display: flex;
-          flex-direction: column;
-        "
-      >
+      <div class="modal-container test-case-modal" @click.stop>
         <div class="modal-header">
           <h3>{{ getModalTitle() }}</h3>
           <button type="button" class="modal-close" @click="handleClose">
             <i class="fas fa-times"></i>
           </button>
         </div>
-        <div class="modal-body" style="flex: 1; overflow-y: auto; padding: 24px;">
+        <div class="modal-body">
           <GroupForm
             v-if="props.mode === 'group'"
             :form-data="props.formData"
@@ -49,6 +23,8 @@
             ref="caseFormRef"
             :form-data="props.formData"
             :test-case-groups="testCaseGroups"
+            :audio-config="audioConfig"
+            :dimension-config="dimensionConfig"
             @update="handleCaseUpdate"
             @open-audio-modal="openAudioSelectModal"
             @open-device-modal="openDeviceSelectModal"
@@ -89,112 +65,98 @@
   </teleport>
 
   <AudioSelectModal
-    :visible="showAudioModal"
-    :audio-type="currentAudioType"
+    :visible="audioConfig.showAudioModal.value"
+    :audio-type="audioConfig.currentAudioType.value"
     :is-multi-select="true"
     title="选择音频文件"
-    @close="showAudioModal = false"
+    @close="audioConfig.showAudioModal.value = false"
     @select="handleAudioSelect"
     @select-multiple="handleMultipleAudioSelect"
   />
 
   <AudioPreviewModal
-    :visible="showAudioPreviewModal"
-    :audio-id="currentPreviewAudioId ?? undefined"
-    :audio-type="currentPreviewAudioType"
-    :playback-devices="playbackDevices"
-    :initial-selected-devices="currentPreviewDeviceId ? [currentPreviewDeviceId] : []"
-    :initial-spl="currentPreviewSpl"
-    :initial-offset="currentPreviewOffset"
-    @close="showAudioPreviewModal = false"
+    :visible="audioConfig.showAudioPreviewModal.value"
+    :audio-id="audioConfig.currentPreviewAudioId.value ?? undefined"
+    :audio-type="audioConfig.currentPreviewAudioType.value"
+    :playback-devices="audioConfig.playbackDevices.value"
+    :initial-selected-devices="audioConfig.currentPreviewDeviceId.value ? [audioConfig.currentPreviewDeviceId.value] : []"
+    :initial-spl="audioConfig.currentPreviewSpl.value"
+    :initial-offset="audioConfig.currentPreviewOffset.value"
+    @close="audioConfig.showAudioPreviewModal.value = false"
     @preview="handleAudioPreview"
   />
 
   <GlobalPlaybackDeviceModal
-    :visible="showDeviceModal"
+    :visible="audioConfig.showDeviceModal.value"
     title="选择播放设备"
     :is-multi-select="false"
-    :initial-selected-devices="initialSelectedDevices"
-    :playback-devices="playbackDevices"
+    :initial-selected-devices="audioConfig.initialSelectedDevices.value"
+    :playback-devices="audioConfig.playbackDevices.value"
     audio-type="dry"
     :show-scan-devices="false"
-    @close="showDeviceModal = false"
+    @close="audioConfig.showDeviceModal.value = false"
     @confirm="handleDeviceSelect"
   />
 
   <GlobalPlaybackDeviceModal
-    :visible="showNoiseDeviceModal"
+    :visible="audioConfig.showNoiseDeviceModal.value"
     title="选择噪声播放设备"
     :is-multi-select="true"
-    :initial-selected-devices="noiseInitialSelectedDevices"
-    :playback-devices="playbackDevices"
+    :initial-selected-devices="audioConfig.noiseInitialSelectedDevices.value"
+    :playback-devices="audioConfig.playbackDevices.value"
     audio-type="noise"
     :show-scan-devices="false"
     :is-required="false"
-    @close="showNoiseDeviceModal = false"
+    @close="audioConfig.showNoiseDeviceModal.value = false"
     @confirm="handleNoiseDeviceSelect"
   />
 
   <GlobalPlaybackDeviceModal
-    :visible="showBatchDeviceModal"
+    :visible="audioConfig.showBatchDeviceModal.value"
     title="批量设置播放设备"
     :is-multi-select="false"
-    :initial-selected-devices="batchInitialSelectedDevices"
-    :playback-devices="playbackDevices"
+    :initial-selected-devices="audioConfig.batchInitialSelectedDevices.value"
+    :playback-devices="audioConfig.playbackDevices.value"
     audio-type="dry"
     :show-scan-devices="false"
-    @close="showBatchDeviceModal = false"
+    @close="audioConfig.showBatchDeviceModal.value = false"
     @confirm="handleBatchDeviceSelect"
   />
 
   <GlobalPlaybackDeviceModal
-    :visible="showCrossDeviceModal"
+    :visible="audioConfig.showCrossDeviceModal.value"
     title="选择设备进行交叉分配"
     :is-multi-select="true"
-    :initial-selected-devices="crossDeviceInitialSelectedDevices"
-    :playback-devices="playbackDevices"
+    :initial-selected-devices="audioConfig.crossDeviceInitialSelectedDevices.value"
+    :playback-devices="audioConfig.playbackDevices.value"
     audio-type="noise"
     :show-scan-devices="false"
     :is-required="true"
-    @close="showCrossDeviceModal = false"
+    @close="audioConfig.showCrossDeviceModal.value = false"
     @confirm="handleCrossDeviceSelect"
   />
 
-  <div class="modal-overlay" v-if="showBatchSplModal" @click="showBatchSplModal = false">
-    <div class="modal-container" @click.stop style="max-width: 400px;">
-      <div class="modal-header">
-        <h3>批量设置声压</h3>
-        <button type="button" class="modal-close" @click="showBatchSplModal = false">
-          <i class="fas fa-times"></i>
-        </button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group">
-          <label for="batchSplInput">声压级 (dB)</label>
-          <input type="number" id="batchSplInput" v-model.number="batchSplValue" class="form-control" min="0" max="120" placeholder="请输入0-120之间的声压级">
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" @click="showBatchSplModal = false">取消</button>
-        <button type="button" class="btn btn-primary" @click="handleBatchSplConfirm">
-          <i class="fas fa-check"></i> 确认
-        </button>
-      </div>
-    </div>
-  </div>
+  <BatchSplModal
+    v-model="audioConfig.batchSplValue.value"
+    v-model:visible="audioConfig.showBatchSplModal.value"
+    @confirm="handleBatchSplConfirm"
+  />
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
 import { testcasesApi } from '../../../../utils/api';
+import { useNotification } from '../../../../composables/useNotification';
 import AudioSelectModal from '../../AudioSelectModal.vue';
 import AudioPreviewModal from '../../modal/AudioPreviewModal.vue';
 import GlobalPlaybackDeviceModal from '../../modal/GlobalPlaybackDeviceModal.vue';
+import BatchSplModal from './BatchSplModal.vue';
 import GroupForm from './GroupForm.vue';
 import CaseForm from './CaseForm.vue';
 import ImportForm from './ImportForm.vue';
 import ExportForm from './ExportForm.vue';
 import { useAudioConfig } from './useAudioConfig';
+import { useDimensionConfig } from './useDimensionConfig';
 import type { TestCaseFormData, GroupFormData, ExportFormData, AudioItem } from './types';
 
 const props = defineProps({
@@ -206,38 +168,13 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'save']);
 
-const audioConfig = useAudioConfig();
+const notification = useNotification();
 
-const {
-  playbackDevices,
-  showAudioModal,
-  showDeviceModal,
-  showNoiseDeviceModal,
-  showBatchDeviceModal,
-  showCrossDeviceModal,
-  showBatchSplModal,
-  showAudioPreviewModal,
-  currentAudioType,
-  currentAudioIndex,
-  currentDeviceAudioIndex,
-  initialSelectedDevices,
-  noiseInitialSelectedDevices,
-  batchInitialSelectedDevices,
-  crossDeviceInitialSelectedDevices,
-  batchSplValue,
-  currentPreviewAudioId,
-  currentPreviewAudioType,
-  currentPreviewDeviceId,
-  currentPreviewSpl,
-  currentPreviewOffset,
-  loadResources,
-  handleAudioSelect: audioHandleAudioSelect,
-  handleMultipleAudioSelect: audioHandleMultipleAudioSelect,
-  handleDeviceSelect: audioHandleDeviceSelect,
-  handleNoiseDeviceSelect: audioHandleNoiseDeviceSelect,
-  handleBatchDeviceSelect: audioHandleBatchDeviceSelect,
-  handleCrossDeviceSelect: audioHandleCrossDeviceSelect
-} = audioConfig;
+const audioConfig = useAudioConfig();
+const dimensionConfig = useDimensionConfig();
+
+provide('audioConfig', audioConfig);
+provide('dimensionConfig', dimensionConfig);
 
 const testCaseGroups = ref<string[]>([]);
 const caseFormData = ref<Partial<TestCaseFormData>>({});
@@ -318,107 +255,106 @@ function handleExportUpdate(data: ExportFormData & { ids: (string | number)[] })
 }
 
 function openAudioSelectModal(audioType: 'dry' | 'noise', index?: number) {
-  currentAudioType.value = audioType;
-  currentAudioIndex.value = index ?? null;
-  showAudioModal.value = true;
+  audioConfig.currentAudioType.value = audioType;
+  audioConfig.currentAudioIndex.value = index ?? null;
+  audioConfig.showAudioModal.value = true;
 }
 
 function openDeviceSelectModal(audioIndex: number) {
-  currentDeviceAudioIndex.value = audioIndex;
+  audioConfig.currentDeviceAudioIndex.value = audioIndex;
   const audio = caseFormData.value.config?.audios?.[audioIndex];
-  initialSelectedDevices.value = audio?.playbackDeviceId ? [audio.playbackDeviceId] : [];
-  showDeviceModal.value = true;
+  audioConfig.initialSelectedDevices.value = audio?.playbackDeviceId ? [audio.playbackDeviceId] : [];
+  audioConfig.showDeviceModal.value = true;
 }
 
 function openNoiseDeviceSelectModal() {
-  noiseInitialSelectedDevices.value = caseFormData.value.config?.backgroundNoise?.deviceIds || [];
-  showNoiseDeviceModal.value = true;
+  audioConfig.noiseInitialSelectedDevices.value = caseFormData.value.config?.backgroundNoise?.deviceIds || [];
+  audioConfig.showNoiseDeviceModal.value = true;
 }
 
 function openBatchDeviceModal() {
   const e2eAudios = caseFormData.value.config?.audios?.filter(a => a.testType === 'e2e' && a.playbackDeviceId) || [];
-  batchInitialSelectedDevices.value = e2eAudios.length > 0 ? [e2eAudios[0].playbackDeviceId!] : [];
-  showBatchDeviceModal.value = true;
+  audioConfig.batchInitialSelectedDevices.value = e2eAudios.length > 0 ? [e2eAudios[0].playbackDeviceId!] : [];
+  audioConfig.showBatchDeviceModal.value = true;
 }
 
 function openBatchSplModal() {
   const e2eAudios = caseFormData.value.config?.audios?.filter(a => a.testType === 'e2e') || [];
-  batchSplValue.value = e2eAudios.length > 0 ? e2eAudios[0].spl : 65;
-  showBatchSplModal.value = true;
+  audioConfig.batchSplValue.value = e2eAudios.length > 0 ? e2eAudios[0].spl : 65;
+  audioConfig.showBatchSplModal.value = true;
 }
 
 function openCrossDeviceModal() {
   const e2eAudios = caseFormData.value.config?.audios?.filter(a => a.testType === 'e2e') || [];
   const deviceIds = [...new Set(e2eAudios.map(a => a.playbackDeviceId).filter(Boolean))];
-  crossDeviceInitialSelectedDevices.value = deviceIds;
-  showCrossDeviceModal.value = true;
+  audioConfig.crossDeviceInitialSelectedDevices.value = deviceIds;
+  audioConfig.showCrossDeviceModal.value = true;
 }
 
 function handleAudioSelect(audio: AudioItem) {
   if (caseFormData.value.config) {
-    audioHandleAudioSelect(audio, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
+    audioConfig.handleAudioSelect(audio, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
   }
 }
 
 function handleMultipleAudioSelect(audios: AudioItem[]) {
   if (caseFormData.value.config) {
-    audioHandleMultipleAudioSelect(audios, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
+    audioConfig.handleMultipleAudioSelect(audios, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
   }
 }
 
 function handleDeviceSelect(selectedDevices: string[]) {
   if (caseFormData.value.config) {
-    audioHandleDeviceSelect(selectedDevices, caseFormData.value.config.audios);
+    audioConfig.handleDeviceSelect(selectedDevices, caseFormData.value.config.audios);
   }
 }
 
 function handleNoiseDeviceSelect(selectedDevices: string[]) {
   if (caseFormData.value.config) {
-    audioHandleNoiseDeviceSelect(selectedDevices, caseFormData.value.config.backgroundNoise);
+    audioConfig.handleNoiseDeviceSelect(selectedDevices, caseFormData.value.config.backgroundNoise);
   }
 }
 
 function handleBatchDeviceSelect(selectedDevices: string[]) {
   if (caseFormData.value.config) {
-    audioHandleBatchDeviceSelect(selectedDevices, caseFormData.value.config.audios);
+    audioConfig.handleBatchDeviceSelect(selectedDevices, caseFormData.value.config.audios);
   }
 }
 
 function handleCrossDeviceSelect(selectedDevices: string[]) {
   if (caseFormData.value.config) {
-    audioHandleCrossDeviceSelect(selectedDevices, caseFormData.value.config.audios);
+    audioConfig.handleCrossDeviceSelect(selectedDevices, caseFormData.value.config.audios);
   }
 }
 
-function handleBatchSplConfirm() {
+function handleBatchSplConfirm(spl: number) {
   if (caseFormData.value.config) {
     caseFormData.value.config.audios.forEach(audio => {
       if (audio.testType === 'e2e') {
-        audio.spl = batchSplValue.value;
+        audio.spl = spl;
       }
     });
   }
-  showBatchSplModal.value = false;
 }
 
 function handlePreviewAudio(audioId: string, audioType: 'dry' | 'noise') {
-  currentPreviewAudioId.value = audioId;
-  currentPreviewAudioType.value = audioType;
+  audioConfig.currentPreviewAudioId.value = audioId;
+  audioConfig.currentPreviewAudioType.value = audioType;
 
   if (audioType === 'dry' && caseFormData.value.config) {
     const audio = caseFormData.value.config.audios.find(a => a.audioId === audioId);
     if (audio) {
-      currentPreviewDeviceId.value = audio.playbackDeviceId || null;
-      currentPreviewSpl.value = audio.spl || 65;
+      audioConfig.currentPreviewDeviceId.value = audio.playbackDeviceId || null;
+      audioConfig.currentPreviewSpl.value = audio.spl || 65;
     }
   } else if (audioType === 'noise' && caseFormData.value.config) {
     const deviceIds = caseFormData.value.config.backgroundNoise.deviceIds || [];
-    currentPreviewDeviceId.value = deviceIds.length > 0 ? deviceIds[0] : null;
-    currentPreviewSpl.value = caseFormData.value.config.backgroundNoise.spl || 65;
+    audioConfig.currentPreviewDeviceId.value = deviceIds.length > 0 ? deviceIds[0] : null;
+    audioConfig.currentPreviewSpl.value = caseFormData.value.config.backgroundNoise.spl || 65;
   }
 
-  currentPreviewOffset.value = 0;
-  showAudioPreviewModal.value = true;
+  audioConfig.currentPreviewOffset.value = 0;
+  audioConfig.showAudioPreviewModal.value = true;
 }
 
 async function handleAudioPreview(previewData: {
@@ -438,9 +374,9 @@ async function handleAudioPreview(previewData: {
       visible: true,
       title: '音频播放',
       audioId: previewData.audioId,
-      audioType: currentPreviewAudioType.value,
+      audioType: audioConfig.currentPreviewAudioType.value,
       isTestCasePreview: false,
-      playbackDevices: playbackDevices.value,
+      playbackDevices: audioConfig.playbackDevices.value,
       selectedPlaybackDevices: previewData.playbackDeviceId ? [previewData.playbackDeviceId] : previewData.noisePlaybackDeviceIds || [],
       playbackMode: previewData.playbackMode || 'frontend',
       spl: previewData.spl || 65,
@@ -448,7 +384,7 @@ async function handleAudioPreview(previewData: {
     });
   } catch (err: unknown) {
     console.error('打开音频播放器失败:', err);
-    alert('音频试听失败: ' + ((err as Error).message || '未知错误'));
+    notification.error('音频试听失败', (err as Error).message || '未知错误');
   }
 }
 
@@ -487,7 +423,7 @@ function handleSubmit() {
 
 function handleGroupSave() {
   if (!groupFormData.value.name || groupFormData.value.name.trim() === '') {
-    alert('请输入测试用例组名称');
+    notification.warning('请输入测试用例组名称');
     return;
   }
   emit('save', {
@@ -500,11 +436,11 @@ function handleGroupSave() {
 
 function handleCaseSave() {
   if (!caseFormData.value.name || caseFormData.value.name.trim() === '') {
-    alert('请输入测试用例名称');
+    notification.warning('请输入测试用例名称');
     return;
   }
   if (!caseFormData.value.group) {
-    alert('请选择所属分组');
+    notification.warning('请选择所属分组');
     return;
   }
   emit('save', {
@@ -522,7 +458,7 @@ function handleClose() {
 
 function handleMaskClick(event: MouseEvent) {
   if (event.target === event.currentTarget) {
-    return;
+    handleClose();
   }
 }
 
@@ -536,7 +472,8 @@ watch(() => props.visible, (newVal) => {
   if (newVal) {
     window.addEventListener('keydown', handleKeyDown);
     loadTestGroups();
-    loadResources();
+    audioConfig.loadResources();
+    dimensionConfig.loadDimensions();
   } else {
     window.removeEventListener('keydown', handleKeyDown);
   }
@@ -551,111 +488,32 @@ onUnmounted(() => {
 });
 </script>
 
-<style scoped>
-.modal-header {
+<style>
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid #e9ecef;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 600;
-  color: #343a40;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  cursor: pointer;
-  color: #6c757d;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  transition: all 0.2s;
+  align-items: center;
+  z-index: 10000;
 }
 
-.modal-close:hover {
-  color: #343a40;
-  background-color: #e9ecef;
-  transform: rotate(90deg);
+.modal-container {
+  background-color: white;
+  border-radius: var(--border-radius-xl);
+  box-shadow: var(--shadow-lg);
+  max-height: 90vh;
+  overflow-y: auto;
 }
+</style>
 
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid #e9ecef;
-  background: #f8f9fa;
-}
-
-.btn {
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.btn-primary {
-  background: #007bff;
-  color: white;
-  border: none;
-}
-
-.btn-primary:hover {
-  background: #0056b3;
-}
-
-.btn-primary:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background: #6c757d;
-  color: white;
-  border: none;
-}
-
-.btn-secondary:hover {
-  background: #5a6268;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 8px;
-  font-weight: 500;
-  color: #495057;
-}
-
-.form-control {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #ced4da;
-  border-radius: 6px;
-  font-size: 14px;
-  transition: all 0.2s;
-  box-sizing: border-box;
-}
-
-.form-control:focus {
-  outline: none;
-  border-color: #007bff;
-  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+<style scoped>
+.test-case-modal {
+  max-width: 900px;
+  width: 95%;
 }
 </style>

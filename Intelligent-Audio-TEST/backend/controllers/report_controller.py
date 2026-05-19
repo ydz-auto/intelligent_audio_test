@@ -443,30 +443,57 @@ class ReportController(ReportControllerBase):
                         TestResult.test_case_id.in_(filtered_case_ids),
                         TestResult.task_id == task_id
                     ).all()
-            elif task.status == 'merged':
-                task_cases = TaskCase.query.filter_by(task_id=task_id).all()
-                test_case_ids = [tc.test_case_id for tc in task_cases]
-                query = TestCase.query.filter(TestCase.id.in_(test_case_ids))
-                if category and category != 'all':
-                    query = query.filter(TestCase.group.has(name=category))
-                if categories and len(categories) > 0:
-                    from backend.models.models import TestCaseGroup
-                    query = query.filter(TestCase.group.has(TestCaseGroup.name.in_(categories)))
-                if include_untagged:
-                    if tags and len(tags) > 0:
+            elif task.type == 'merged':
+                merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
+                if merge_relations:
+                    source_task_ids = [r.source_task_id for r in merge_relations]
+                    task_cases = TaskCase.query.filter(TaskCase.task_id.in_(source_task_ids)).all()
+                    test_case_ids = [tc.test_case_id for tc in task_cases]
+                    query = TestCase.query.filter(TestCase.id.in_(test_case_ids))
+                    if category and category != 'all':
+                        query = query.filter(TestCase.group.has(name=category))
+                    if categories and len(categories) > 0:
+                        from backend.models.models import TestCaseGroup
+                        query = query.filter(TestCase.group.has(TestCaseGroup.name.in_(categories)))
+                    if include_untagged:
+                        if tags and len(tags) > 0:
+                            from backend.models.models import Tag
+                            query = query.filter(or_(TestCase.tags.any(Tag.name.in_(tags)), ~TestCase.tags.any()))
+                        else:
+                            query = query.filter(~TestCase.tags.any())
+                    elif tags and len(tags) > 0:
                         from backend.models.models import Tag
-                        query = query.filter(or_(TestCase.tags.any(Tag.name.in_(tags)), ~TestCase.tags.any()))
-                    else:
-                        query = query.filter(~TestCase.tags.any())
-                elif tags and len(tags) > 0:
-                    from backend.models.models import Tag
-                    query = query.join(TestCase.tags).filter(Tag.name.in_(tags))
-                test_cases = query.all()
-                filtered_case_ids = [case.id for case in test_cases]
-                test_results = TestResult.query.filter(
-                    TestResult.test_case_id.in_(filtered_case_ids),
-                    TestResult.task_id == task_id
-                ).all()
+                        query = query.join(TestCase.tags).filter(Tag.name.in_(tags))
+                    test_cases = query.all()
+                    filtered_case_ids = [case.id for case in test_cases]
+                    test_results = TestResult.query.filter(
+                        TestResult.test_case_id.in_(filtered_case_ids),
+                        TestResult.task_id.in_(source_task_ids)
+                    ).all()
+                else:
+                    task_cases = TaskCase.query.filter_by(task_id=task_id).all()
+                    test_case_ids = [tc.test_case_id for tc in task_cases]
+                    query = TestCase.query.filter(TestCase.id.in_(test_case_ids))
+                    if category and category != 'all':
+                        query = query.filter(TestCase.group.has(name=category))
+                    if categories and len(categories) > 0:
+                        from backend.models.models import TestCaseGroup
+                        query = query.filter(TestCase.group.has(TestCaseGroup.name.in_(categories)))
+                    if include_untagged:
+                        if tags and len(tags) > 0:
+                            from backend.models.models import Tag
+                            query = query.filter(or_(TestCase.tags.any(Tag.name.in_(tags)), ~TestCase.tags.any()))
+                        else:
+                            query = query.filter(~TestCase.tags.any())
+                    elif tags and len(tags) > 0:
+                        from backend.models.models import Tag
+                        query = query.join(TestCase.tags).filter(Tag.name.in_(tags))
+                    test_cases = query.all()
+                    filtered_case_ids = [case.id for case in test_cases]
+                    test_results = TestResult.query.filter(
+                        TestResult.test_case_id.in_(filtered_case_ids),
+                        TestResult.task_id == task_id
+                    ).all()
             else:
                 task_cases = TaskCase.query.filter_by(task_id=task_id).all()
                 test_case_ids = [tc.test_case_id for tc in task_cases]

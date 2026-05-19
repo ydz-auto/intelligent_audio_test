@@ -593,12 +593,14 @@ class ReportControllerBase:
                         zf.writestr("adjusted_reference_params.json", params_json)
 
             zip_buffer.seek(0)
+            zip_data = zip_buffer.getvalue()
 
             response = Response(
-                zip_buffer.getvalue(),
+                zip_data,
                 mimetype='application/zip',
                 headers={
                     'Content-Disposition': f'attachment; filename*=UTF-8\'\'{zip_filename}',
+                    'Content-Length': str(len(zip_data)),
                     'X-Content-Type-Options': 'nosniff',
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache',

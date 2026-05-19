@@ -64,9 +64,6 @@ class APIClient:
 
     @staticmethod
     def _call_websocket(endpoint, data=None, headers=None, timeout=30, meta=None):
-        """
-        WebSocket 流式调用逻辑
-        """
         if websocket is None:
             return {
                 "status_code": 500,
@@ -79,82 +76,99 @@ class APIClient:
         start_time = time.time()
         meta = meta or {}
         
-        # 用于存储流式响应过程中的所有消息
         all_responses = []
         last_json = {}
         error = None
+        max_retries = meta.get('max_retries', 2)
+        retry_count = 0
         
         ws = None
-        try:
-            # 建立连接
-            ws = websocket.create_connection(endpoint, timeout=timeout, header=headers)
-            
-            # 1. 发送初始配置数据 (JSON)
-            if data:
-                if isinstance(data, (dict, list)):
-                    ws.send(json.dumps(data, ensure_ascii=False))
-                else:
-                    ws.send(str(data))
-            
-            # 2. 如果配置了流式发送音频文件
-            audio_path = meta.get('audio_path')
-            stream_audio = meta.get('stream_audio', True) # 默认开启流式发送
-            
-            if stream_audio and audio_path and os.path.exists(audio_path):
-                chunk_size = meta.get('chunk_size', 4096)
-                with open(audio_path, 'rb') as f:
-                    while True:
-                        chunk = f.read(chunk_size)
-                        if not chunk:
-                            break
-                        ws.send_binary(chunk)
-                        # 控制发送速率，模拟真实流式
-                        sleep_time = meta.get('chunk_interval', 0.02)
-                        if sleep_time > 0:
-                            time.sleep(sleep_time)
+        while retry_count <= max_retries:
+            try:
+                ws = websocket.create_connection(endpoint, timeout=timeout, header=headers)
                 
-                # 发送结束标志 (如果 API 需要)
-                eos_message = meta.get('eos_message')
-                if eos_message:
-                    ws.send(json.dumps(eos_message, ensure_ascii=False) if isinstance(eos_message, dict) else str(eos_message))
-
-            # 3. 持续接收响应直到会话结束或超时
-            # 使用 session_end_mapping 来判断是否结束 (由 APIDriver 传递或在此解析)
-            session_end_path = meta.get('session_end_mapping')
-            
-            ws.settimeout(meta.get('recv_timeout', 5)) # 接收单条消息的超时
-            
-            max_responses = meta.get('max_responses', 100)
-            for _ in range(max_responses):
-                try:
-                    msg = ws.recv()
-                    if not msg: break
-                    
-                    all_responses.append(msg)
-                    
-                    # 尝试解析 JSON 并检查结束标志
-                    try:
-                        msg_json = json.loads(msg)
-                        last_json = msg_json
-                        
-                        # 如果配置了结束标志路径，则检查
-                        if session_end_path:
-                            if APIClient._extract_by_path(msg_json, session_end_path) is True:
+                if data:
+                    if isinstance(data, (dict, list)):
+                        ws.send(json.dumps(data, ensure_ascii=False))
+                    else:
+                        ws.send(str(data))
+                
+                audio_path = meta.get('audio_path')
+                stream_audio = meta.get('stream_audio', True)
+                
+                if stream_audio and audio_path and os.path.exists(audio_path):
+                    chunk_size = meta.get('chunk_size', 4096)
+                    with open(audio_path, 'rb') as f:
+                        while True:
+                            chunk = f.read(chunk_size)
+                            if not chunk:
                                 break
-                    except:
-                        pass
-                except websocket.WebSocketTimeoutException:
-                    # 如果超时了还没有收到结束标志，可能是发送完了或者网络延迟
-                    break
-                except Exception as e:
-                    error = f"Recv error: {str(e)}"
-                    break
+                            ws.send_binary(chunk)
+                            sleep_time = meta.get('chunk_interval', 0.02)
+                            if sleep_time > 0:
+                                time.sleep(sleep_time)
                     
-        except Exception as e:
-            error = str(e)
-        finally:
-            if ws:
-                ws.close()
+                    eos_message = meta.get('eos_message')
+                    if eos_message:
+                        ws.send(json.dumps(eos_message, ensure_ascii=False) if isinstance(eos_message, dict) else str(eos_message))
+
+                session_end_path = meta.get('session_end_mapping')
+                
+                ws.settimeout(meta.get('recv_timeout', 5))
+                
+                max_responses = meta.get('max_responses', 100)
+                for _ in range(max_responses):
+                    try:
+                        msg = ws.recv()
+                        if not msg: break
+                        
+                        all_responses.append(msg)
+                        
+                        try:
+                            msg_json = json.loads(msg)
+                            last_json = msg_json
+                            
+                            if session_end_path:
+                                if APIClient._extract_by_path(msg_json, session_end_path) is True:
+                                    break
+                        except:
+                            pass
+                    except websocket.WebSocketTimeoutException:
+                        if all_responses:
+                            break
+                        retry_count += 1
+                        if retry_count <= max_retries:
+                            if ws:
+                                ws.close()
+                            ws = None
+                            continue
+                        break
+                    except websocket.WebSocketConnectionClosedException:
+                        if all_responses:
+                            break
+                        retry_count += 1
+                        if retry_count <= max_retries:
+                            if ws:
+                                ws.close()
+                            ws = None
+                            continue
+                        error = "WebSocket连接已关闭"
+                        break
+                    except Exception as e:
+                        error = f"Recv error: {str(e)}"
+                        break
+                
+                break
+                    
+            except Exception as e:
+                retry_count += 1
+                if retry_count <= max_retries:
+                    continue
+                error = str(e)
+            finally:
+                if ws:
+                    ws.close()
+                    ws = None
                 
         latency = int((time.time() - start_time) * 1000)
         
@@ -162,9 +176,10 @@ class APIClient:
             "status_code": 200 if not error else 500,
             "latency": latency,
             "raw_response": "\n".join(all_responses) if all_responses else "",
-            "json": last_json, # 返回最后一条响应的 JSON 作为主要参考
-            "all_responses": all_responses, # 返回所有原始响应供后续聚合
-            "error": error
+            "json": last_json,
+            "all_responses": all_responses,
+            "error": error,
+            "retry_count": retry_count
         }
 
     @staticmethod
