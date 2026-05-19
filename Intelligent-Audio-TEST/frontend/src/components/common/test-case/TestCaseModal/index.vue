@@ -187,9 +187,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { testcasesApi } from '../../../../utils/api';
-import AudioSelectModal from '../AudioSelectModal.vue';
-import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
-import GlobalPlaybackDeviceModal from '../modal/GlobalPlaybackDeviceModal.vue';
+import AudioSelectModal from '../../AudioSelectModal.vue';
+import AudioPreviewModal from '../../modal/AudioPreviewModal.vue';
+import GlobalPlaybackDeviceModal from '../../modal/GlobalPlaybackDeviceModal.vue';
 import GroupForm from './GroupForm.vue';
 import CaseForm from './CaseForm.vue';
 import ImportForm from './ImportForm.vue';

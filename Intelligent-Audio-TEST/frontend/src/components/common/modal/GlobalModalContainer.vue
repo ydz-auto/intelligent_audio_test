@@ -27,13 +27,10 @@
                 visible: true,
                 modalId: modalId
               }"
-              @close="(data: any) => {
-                if (isNativeEvent(data)) return;
-                handleClose(modalId);
-              }"
+              @close="handleClose(modalId)"
               @confirm="(data: any) => {
-                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] confirm事件触发, data:', data);
+                // 调用onSave回调（如果存在）
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
                   console.log('[GlobalModalContainer] 调用onSave回调');
                   try {
@@ -48,14 +45,13 @@
                 handleClose(modalId);
               }"
               @cancel="(data: any) => {
-                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] cancel事件触发, data:', data);
                 modalItem.resolve(false);
                 handleClose(modalId);
               }"
               @save="(data: any) => {
-                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] save事件触发, data:', data);
+                // 调用onSave回调（如果存在）
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
                   console.log('[GlobalModalContainer] 调用onSave回调');
                   try {
@@ -70,13 +66,11 @@
                 handleClose(modalId);
               }"
               @select="(data: any) => {
-                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] select事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
               }"
               @selectMultiple="(data: any) => {
-                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] selectMultiple事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
@@ -101,7 +95,7 @@ import { getModalManager } from '../../../composables/useModal'
 import { type ActiveModal, MODAL_TYPES } from '../../../shared/types'
 import BasicModal from './BasicModal.vue'
 import { testcasesApi } from '../../../utils/api'
-import TestCaseModal from '../test-case/TestCaseModal.vue'
+import TestCaseModal from '../test-case/TestCaseModal/index.vue'
 import AddTestCaseModal from '../test-case/AddTestCaseModal.vue'
 import ModalConfirm from './ModalConfirm.vue'
 import APIEditModal from './APIEditModal.vue'
@@ -272,10 +266,6 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.TAG_EDIT]: TagEditModal
   }
   return componentMap[type] || null
-}
-
-const isNativeEvent = (data: any): boolean => {
-  return data !== undefined && data !== null && typeof data === 'object' && data.target !== undefined && data.type !== undefined && typeof data.preventDefault === 'function'
 }
 
 const handleClose = (modalId: string) => {

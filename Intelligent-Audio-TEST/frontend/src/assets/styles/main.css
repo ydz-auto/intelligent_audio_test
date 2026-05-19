@@ -351,26 +351,3 @@ input[type="text"].form-input {
     box-shadow: none !important;
 }
 /* 6. 测试用例分组样式 */
-
-/* 7. 修复 Trae IDE 浏览器工具可能带来的文本选择干扰 */
-.trae-browser-inspect-draggable {
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    -moz-user-select: text !important;
-    -ms-user-select: text !important;
-    pointer-events: auto !important;
-}
-
-/* 确保模态窗内的 input 字段可以正常选择文本 */
-.modal input,
-.modal textarea,
-.modal-overlay input,
-.modal-overlay textarea,
-.crud-form-modal input,
-.crud-form-modal textarea {
-    user-select: text !important;
-    -webkit-user-select: text !important;
-    -moz-user-select: text !important;
-    -ms-user-select: text !important;
-    pointer-events: auto !important;
-}

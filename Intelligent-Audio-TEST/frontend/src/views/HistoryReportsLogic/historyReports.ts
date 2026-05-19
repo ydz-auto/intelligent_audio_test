@@ -2,8 +2,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { reportsApi } from '../../utils/api';
 import { useAlgorithmLabels } from '../../composables/useAlgorithmLabels';
-import reportService from '../../services/reportService';
-import { getReportTypeLabel, getReportStatusLabel } from '../../shared/constants/reportConstants';
+import { getReportTypeLabel } from '../../shared/constants/reportConstants';
 import type { Report, ReportListParams } from '../../shared/types/index';
 
 interface AlgorithmOption {
@@ -54,10 +53,6 @@ export function useHistoryReports() {
   const pageSize = ref(10);
   const loading = ref(false);
   const selectedReports = ref<Set<string | number>>(new Set());
-  const showComparisonReport = ref(false);
-
-  const isEditingReport = ref(false);
-  const isEditingConclusion = ref(false);
 
   const { algorithmOptions, loadAlgorithms, getAlgorithmLabel } = useAlgorithmLabels();
 
@@ -280,53 +275,19 @@ export function useHistoryReports() {
     try {
       const ids = Array.from(selectedReports.value);
       const result = await reportsApi.secondaryCompare(ids);
-      const report = await reportsApi.getOne(result.id);
-      
-      const conclusion = report.analysis || report.conclusion || '';
-      
-      reportService.comparisonReport.value = {
-        ...report, 
-        name: report.name, 
-        description: report.description || '', 
-        conclusion: conclusion,
-        tags: report.tags || [], 
-        summary: report.summary || { totalCases: 0, completedCases: 0, failedCases: 0, allMetrics: [], detailedResults: []}
-      };
-      
-      reportService.extractDevicesFromTasks([], report);
-      
-      if (!conclusion) {
-        reportService.updateComparisonReportConclusion([]);
-      }
-      
-      showComparisonReport.value = true;
       showToast('success', '对比报告生成成功');
+      router.push({ name: 'reportView', params: { id: result.id } });
     } catch (error: any) {
       showToast('error', '生成对比报告失败: ' + (error.message || '未知错误'));
     }
   };
 
-  const viewReport = async (reportId: string | number) => {
-    router.push(`/report/${reportId}`);
+  const viewReport = (reportId: string | number, type?: string) => {
+    router.push({ name: 'reportView', params: { id: reportId } });
   };
 
-  const editReport = async (reportId: string | number) => {
-    try {
-      const report = await reportsApi.getOne(reportId);
-      reportService.comparisonReport.value = {
-        ...report, 
-        name: report.name, 
-        description: report.description || '', 
-        conclusion: (report.analysis || report.conclusion) || '',
-        tags: report.tags || [], 
-        summary: report.summary || { totalCases: 0, completedCases: 0, failedCases: 0, allMetrics: [], detailedResults: []}
-      };
-      reportService.extractDevicesFromTasks([], report);
-      isEditingReport.value = true;
-      showComparisonReport.value = true;
-    } catch (error: any) {
-      showToast('error', '编辑报告失败: ' + (error.message || '未知错误'));
-    }
+  const editReport = (reportId: string | number) => {
+    router.push({ name: 'reportView', params: { id: reportId } });
   };
 
   const deleteReport = async (reportId: string | number) => {
@@ -354,97 +315,6 @@ export function useHistoryReports() {
     }
   };
 
-  const closeComparisonReport = () => {
-    showComparisonReport.value = false;
-    selectedReports.value.clear();
-  };
-
-  const saveComparisonReport = async () => {
-    try {
-      if (reportService.comparisonReport.value) {
-        await reportService.saveReport(reportService.comparisonReport.value);
-        isEditingReport.value = false;
-        showToast('success', '报告保存成功');
-      }
-    } catch (error: any) {
-      showToast('error', '保存失败: ' + (error.message || '未知错误'));
-    }
-  };
-
-  const publishComparisonReport = async () => {
-    if (confirm('确定要发布该报告吗？')) {
-      try {
-        const reportId = reportService.comparisonReport.value?.id;
-        if (reportId) {
-          await reportService.publishReport(reportId);
-          if (reportService.comparisonReport.value) {
-            reportService.comparisonReport.value.status = 'published';
-          }
-          showToast('success', '报告发布成功');
-        }
-      } catch (error: any) {
-        showToast('error', '发布失败: ' + (error.message || '未知错误'));
-      }
-    }
-  };
-
-  const exportComparisonReport = async () => {
-    try {
-      const reportId = reportService.comparisonReport.value?.id;
-      if (reportId) {
-        const blob = await reportService.exportReport(reportId);
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        const contentType = blob.type;
-        let extension = 'xlsx';
-        if (contentType.includes('pdf')) {
-          extension = 'pdf';
-        } else if (contentType.includes('csv') || contentType.includes('text/csv')) {
-          extension = 'csv';
-        } else if (contentType.includes('spreadsheetml') || contentType.includes('excel')) {
-          extension = 'xlsx';
-        }
-        link.setAttribute('download', `comparison_report_${new Date().getTime()}.${extension}`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        showToast('success', '报告导出成功');
-      }
-    } catch (error: any) {
-      showToast('error', '导出失败: ' + (error.message || '未知错误'));
-    }
-  };
-
-  const toggleEditReport = () => {
-    isEditingReport.value = !isEditingReport.value;
-  };
-
-  const cancelEditReport = () => {
-    isEditingReport.value = false;
-  };
-
-  const toggleEditConclusion = () => {
-    isEditingConclusion.value = !isEditingConclusion.value;
-  };
-
-  const cancelEditConclusion = () => {
-    isEditingConclusion.value = false;
-  };
-
-  const saveConclusion = async () => {
-    try {
-      if (reportService.comparisonReport.value) {
-        await reportService.saveReport(reportService.comparisonReport.value);
-        isEditingConclusion.value = false;
-        showToast('success', '结论保存成功');
-      }
-    } catch (error: any) {
-      showToast('error', '结论保存失败: ' + (error.message || '未知错误'));
-    }
-  };
-
   onMounted(() => {
     loadReports();
     loadAlgorithmOptions();
@@ -455,16 +325,12 @@ export function useHistoryReports() {
   });
 
   return {
-    reportService,
     allReports,
     totalItems,
     currentPage,
     pageSize,
     loading,
     selectedReports,
-    showComparisonReport,
-    isEditingReport,
-    isEditingConclusion,
     filters,
     sort,
     algorithmOptions,
@@ -492,15 +358,6 @@ export function useHistoryReports() {
     viewReport,
     editReport,
     deleteReport,
-    publishReport,
-    closeComparisonReport,
-    saveComparisonReport,
-    publishComparisonReport,
-    exportComparisonReport,
-    toggleEditReport,
-    cancelEditReport,
-    toggleEditConclusion,
-    cancelEditConclusion,
-    saveConclusion
+    publishReport
   };
 }

@@ -41,12 +41,10 @@ withDefaults(defineProps<Props>(), {
 
 <style scoped>
 .chartStatsCard {
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  background: white;
   border-radius: 8px;
   padding: 20px;
   margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  border: 1px solid #e2e8f0;
   box-sizing: border-box;
   width: 100%;
   overflow: auto;

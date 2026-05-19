@@ -64,10 +64,9 @@
 
 /* 图表容器样式 */
 .chart-container {
-    background-color: var(--background-secondary);
+    background-color: white;
     padding: 16px;
     border-radius: var(--border-radius-md);
-    box-shadow: var(--shadow-sm);
     height: fit-content;
 }
 

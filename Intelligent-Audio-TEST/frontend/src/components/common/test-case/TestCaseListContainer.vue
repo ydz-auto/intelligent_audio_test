@@ -263,7 +263,7 @@ import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, shallowR
 import TestCaseCard from './TestCaseCard.vue'
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
-import TestCaseModal from './TestCaseModal.vue';
+import TestCaseModal from './TestCaseModal/index.vue';
 import AudioPlayerModal from '../AudioPlayerModal.vue';
 import GlobalPlaybackDeviceModal from '../modal/GlobalPlaybackDeviceModal.vue';
 import CRUDFormModal from '../modal/CRUDFormModal.vue';

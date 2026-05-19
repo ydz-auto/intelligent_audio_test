@@ -110,7 +110,7 @@
             <span class="tick-label">{{ tick.label }}</span>
           </div>
         </div>
-        <span class="scale-end">{{ maxDuration.toFixed(1) }}s</span>
+        <span class="scale-end">{{ effectiveDuration.toFixed(1) }}s</span>
       </div>
     </div>
 
@@ -182,17 +182,13 @@ export default {
     },
 
     timeTicks() {
-      const totalDur = this.maxDuration;
-      const effectiveDur = this.effectiveDuration;
+      const duration = this.effectiveDuration;
       const ticks = [];
-      // 根据缩放后的显示范围确定间隔，确保刻度合理分布
-      const interval = effectiveDur <= 10 ? 2 : (effectiveDur <= 30 ? 5 : 10);
-      // 计算实际时间的间隔
-      const actualInterval = interval * this.scale;
-      for (let i = 0; i <= totalDur; i += actualInterval) {
+      const interval = duration <= 10 ? 2 : (duration <= 30 ? 5 : 10);
+      for (let i = 0; i <= duration; i += interval) {
         ticks.push({
           label: `${i}s`,
-          percent: (i / effectiveDur) * 100
+          percent: (i / duration) * 100
         });
       }
       return ticks;
@@ -785,7 +781,7 @@ export default {
 
 <style scoped>
 .timeline-comparison {
-  background: #fafafa;
+  background: white;
   border-radius: 8px;
   padding: 16px;
   margin-top: 16px;

@@ -868,22 +868,20 @@ const closeAudioModal = () => {
 }
 
 .reference-row {
-  background: #fafafa;
+  background: white;
   padding: 12px;
   border-radius: 8px;
 }
 
 .text-card {
-  background: var(--background-secondary);
+  background: white;
   padding: 12px;
   border-radius: 6px;
-  border: 1px solid var(--border-color);
   min-height: 80px;
 }
 
 .text-card.reference {
-  background: #f0f7ff;
-  border-color: #bae7ff;
+  background: white;
 }
 
 .text-group {

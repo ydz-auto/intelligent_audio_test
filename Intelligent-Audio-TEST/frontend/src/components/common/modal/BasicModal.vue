@@ -11,6 +11,7 @@
         :style="modalStyle"
         ref="modalContentRef"
         @click.stop
+        @mouseup="handleMouseUp"
       >
         <div class="modal-header">
           <h3 class="modal-title">{{ title }}</h3>
@@ -110,8 +111,36 @@ const handleCancel = () => {
   emit('update:visible', false)
 }
 
+const handleMouseUp = (event: MouseEvent) => {
+  console.log('[BasicModal] handleMouseUp, target:', (event.target as HTMLElement).tagName)
+  const target = event.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+    console.log('[BasicModal] mouseup on input/textarea/select - allowing selection')
+    return
+  }
+  if (target.isContentEditable) {
+    return
+  }
+  console.log('[BasicModal] mouseup on modal content - clearing selection')
+  const selection = window.getSelection()
+  if (selection) {
+    selection.removeAllRanges()
+  }
+}
+
 const handleKeyDown = (event: KeyboardEvent) => {
+  console.log('[BasicModal] handleKeyDown:', event.key, 'ctrlKey:', event.ctrlKey, 'target tag:', (event.target as HTMLElement).tagName)
+
+  if (event.ctrlKey && event.key === 'a') {
+    console.log('[BasicModal] Ctrl+A detected, target:', (event.target as HTMLElement).tagName)
+    event.stopPropagation()
+    event.preventDefault()
+    console.log('[BasicModal] Ctrl+A prevented')
+    return
+  }
+
   if (event.key === 'Escape' && props.visible) {
+    console.log('[BasicModal] Escape pressed - closing')
     handleClose()
   }
 }

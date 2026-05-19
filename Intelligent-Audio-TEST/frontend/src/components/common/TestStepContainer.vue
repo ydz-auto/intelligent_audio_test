@@ -1,7 +1,7 @@
 <template>
   <div class="step-panel" :class="{ active: isActive }" :id="panelId">
     <!-- 步骤头部 -->
-    <div v-if="title" class="step-header">
+    <div v-if="title && showHeader" class="step-header">
       <h3 class="step-title">{{ title }}</h3>
       <slot name="header-extra"></slot>
     </div>
@@ -31,6 +31,7 @@ defineProps({
   isActive: { type: Boolean, default: false },
   panelId: String,
   title: String,
+  showHeader: { type: Boolean, default: true },
   showActions: { type: Boolean, default: true },
   showPrev: { type: Boolean, default: true },
   showNext: { type: Boolean, default: true },

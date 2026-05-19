@@ -2,7 +2,7 @@
   <div class="algorithm-selector">
     <div class="options-grid">
       <div class="option-item full-width">
-        <label>关联算法 <span class="hint">(可多选)</span></label>
+        <label>关联算法 <span class="hint" v-if="!props.single">(可多选)</span></label>
         <div class="algorithm-multi-select" ref="dropdownRef">
           <div class="select-header" @click="toggleDropdown">
             <div class="selected-tags" v-if="selectedAlgorithms.length > 0">
@@ -10,10 +10,10 @@
                 v-for="algo in selectedAlgorithms" 
                 :key="algo.algorithmType" 
                 class="algo-tag"
-                :class="{ 'is-primary': algo.isPrimary }"
+                :class="{ 'is-primary': algo.isPrimary && !props.single }"
               >
                 <span class="algo-name">{{ getAlgorithmName(algo.algorithmType) }}</span>
-                <span v-if="algo.isPrimary" class="primary-badge">主</span>
+                <span v-if="algo.isPrimary && !props.single" class="primary-badge">主</span>
                 <i class="fas fa-times" @click.stop="removeAlgorithm(algo.algorithmType)"></i>
               </span>
             </div>
@@ -45,11 +45,11 @@
                     @click="toggleAlgorithm(opt.value)"
                   >
                     <div class="item-checkbox">
-                      <i :class="isAlgorithmSelected(opt.value) ? 'fas fa-check-square' : 'far fa-square'"></i>
+                      <i :class="props.single ? (isAlgorithmSelected(opt.value) ? 'fas fa-check-circle' : 'far fa-circle') : (isAlgorithmSelected(opt.value) ? 'fas fa-check-square' : 'far fa-square')"></i>
                     </div>
                     <span class="item-name">{{ opt.name }}</span>
                     <button 
-                      v-if="isAlgorithmSelected(opt.value)" 
+                      v-if="isAlgorithmSelected(opt.value) && !props.single" 
                       class="set-primary-btn"
                       :class="{ primary: isPrimaryAlgorithm(opt.value) }"
                       @click.stop="setPrimaryAlgorithm(opt.value)"
@@ -110,6 +110,7 @@ interface Props {
   algorithmRelations?: AlgorithmRelation[]
   initialParams?: Record<string, any>
   showParams?: boolean
+  single?: boolean
 }
 
 interface Emits {
@@ -124,7 +125,8 @@ const props = withDefaults(defineProps<Props>(), {
   modelValue: '',
   algorithmRelations: () => [],
   initialParams: () => ({}),
-  showParams: true
+  showParams: true,
+  single: false
 })
 
 const emit = defineEmits<Emits>()
@@ -202,19 +204,31 @@ function closeDropdown(event: MouseEvent) {
 }
 
 function toggleAlgorithm(type: string) {
-  const index = selectedAlgorithms.value.findIndex(a => a.algorithmType === type)
-  if (index >= 0) {
-    selectedAlgorithms.value.splice(index, 1)
-    if (selectedAlgorithms.value.length > 0 && !selectedAlgorithms.value.some(a => a.isPrimary)) {
-      selectedAlgorithms.value[0].isPrimary = true
+  if (props.single) {
+    if (selectedAlgorithms.value.length === 1 && selectedAlgorithms.value[0].algorithmType === type) {
+      selectedAlgorithms.value = []
+    } else {
+      selectedAlgorithms.value = [{
+        algorithmType: type,
+        isPrimary: true,
+        weight: 1.0
+      }]
     }
   } else {
-    const isFirst = selectedAlgorithms.value.length === 0
-    selectedAlgorithms.value.push({
-      algorithmType: type,
-      isPrimary: isFirst,
-      weight: 1.0
-    })
+    const index = selectedAlgorithms.value.findIndex(a => a.algorithmType === type)
+    if (index >= 0) {
+      selectedAlgorithms.value.splice(index, 1)
+      if (selectedAlgorithms.value.length > 0 && !selectedAlgorithms.value.some(a => a.isPrimary)) {
+        selectedAlgorithms.value[0].isPrimary = true
+      }
+    } else {
+      const isFirst = selectedAlgorithms.value.length === 0
+      selectedAlgorithms.value.push({
+        algorithmType: type,
+        isPrimary: isFirst,
+        weight: 1.0
+      })
+    }
   }
   emitChanges()
 }

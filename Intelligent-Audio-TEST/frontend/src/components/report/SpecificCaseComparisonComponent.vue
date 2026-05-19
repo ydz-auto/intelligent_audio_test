@@ -1857,7 +1857,7 @@ const applyFilters = () => {
   padding: 0;
   overflow: hidden;
   background: white;
-  border-radius: 8px;
+  border-radius: 16px;
   width: 100%;
 }
 

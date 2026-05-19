@@ -1,5 +1,5 @@
 from flask import request
-from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio
+from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.error_codes import ErrorCode
@@ -86,13 +86,18 @@ class ReportControllerTask(ReportControllerBase):
         return dim_results_map, dim_stats
 
     @staticmethod
-    def _get_resource_result_types_batch(task_id, device_ids, api_ids):
+    def _get_resource_result_types_batch(task_id_or_ids, device_ids, api_ids):
         device_result_types = {}
         api_result_types = {}
         
+        if isinstance(task_id_or_ids, list):
+            task_id_filter = TestResult.task_id.in_(task_id_or_ids)
+        else:
+            task_id_filter = TestResult.task_id == task_id_or_ids
+        
         if device_ids:
             device_results = TestResult.query.filter(
-                TestResult.task_id == task_id,
+                task_id_filter,
                 TestResult.device_id.in_(device_ids)
             ).all()
             
@@ -103,7 +108,7 @@ class ReportControllerTask(ReportControllerBase):
         
         if api_ids:
             api_results = TestResult.query.filter(
-                TestResult.task_id == task_id,
+                task_id_filter,
                 TestResult.api_id.in_(api_ids)
             ).all()
             
@@ -403,6 +408,158 @@ class ReportControllerTask(ReportControllerBase):
         
         return resources
 
+    @staticmethod
+    def _get_source_task_ids(task):
+        if task.type == 'merged' and task.status == 'completed':
+            from backend.models.models import TaskMergeRelation
+            merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task.id).all()
+            return [r.source_task_id for r in merge_relations]
+        return []
+
+    @staticmethod
+    def _get_task_resources(task_id):
+        from backend.models.models import TaskDevice, Device, TaskAPI, API
+        
+        task_devices = TaskDevice.query.filter_by(task_id=task_id).all()
+        device_ids = [td.device_id for td in task_devices]
+        devices = Device.query.filter(Device.id.in_(device_ids)).all() if device_ids else []
+        devices_list = [ReportUtils.serialize_device(d) for d in devices if d]
+        
+        task_apis = TaskAPI.query.filter_by(task_id=task_id).all()
+        api_ids = [ta.api_id for ta in task_apis]
+        apis = API.query.filter(API.id.in_(api_ids)).all() if api_ids else []
+        apis_list = [ReportUtils.serialize_api(a) for a in apis if a]
+        
+        return devices_list, apis_list, device_ids, api_ids
+
+    @staticmethod
+    def _get_task_test_cases(task_id):
+        from backend.models.models import TaskCase
+        
+        task_cases = TaskCase.query.filter_by(task_id=task_id).all()
+        test_case_ids = [tc.test_case_id for tc in task_cases]
+        test_cases = TestCase.query.filter(TestCase.id.in_(test_case_ids)).all()
+        return test_cases, test_case_ids
+
+    @staticmethod
+    def _calculate_summary_dimensions(dim_stats):
+        summary_dim_values = []
+        for d_id, stat in dim_stats.items():
+            avg_value = (stat["total_dimension_value"] / stat["count"]) if stat["count"] > 0 else 0
+            summary_dim_values.append({
+                "id": d_id,
+                "name": stat["name"],
+                "average_value": avg_value
+            })
+        return summary_dim_values
+
+    @staticmethod
+    def _build_all_metrics(all_dimensions):
+        all_metrics = []
+        for dim in all_dimensions:
+            unit = dim.score_unit if dim.score_unit and dim.score_unit.strip() else "%"
+            decimal_places = dim.decimal_places if dim.decimal_places is not None else 2
+            all_metrics.append({"id": dim.id, "name": dim.name, "unit": unit, "decimal_places": decimal_places})
+        return all_metrics
+
+    @staticmethod
+    def _create_report_record(name, task_id, summary, description, cases):
+        new_report = Report(
+            name=name,
+            type='task',
+            task_id=task_id,
+            summary=summary,
+            description=description,
+            status='draft',
+            test_reports_cases=cases
+        )
+        db.session.add(new_report)
+        db.session.flush()
+        return new_report
+
+    @staticmethod
+    def _create_report_summary(report_id, task, summary):
+        total_cases = summary.get('total_cases', 0)
+        completed_cases = summary.get('completed_cases', 0)
+        
+        summary_info = ReportSummary(
+            report_id=report_id,
+            total_cases=total_cases,
+            completed_cases=completed_cases,
+            failed_cases=summary.get('failed_cases', 0),
+            pass_rate=round((completed_cases / total_cases * 100), 2) if total_cases > 0 else 0,
+            dimension_values=json.dumps(summary.get('dimension_values', []), ensure_ascii=False),
+            duration=task.actual_duration,
+            started_at=task.started_at,
+            completed_at=task.completed_at,
+            case_categories=json.dumps(summary.get('case_categories', []), ensure_ascii=False),
+            all_case_tags=json.dumps(summary.get('all_case_tags', []), ensure_ascii=False),
+            devices=json.dumps(summary.get('devices', []), ensure_ascii=False),
+            apis=json.dumps(summary.get('apis', []), ensure_ascii=False),
+            resources=json.dumps(summary.get('resources', []), ensure_ascii=False),
+            resource_headers=json.dumps(summary.get('resource_headers', []), ensure_ascii=False),
+            all_metrics=json.dumps(summary.get('all_metrics', []), ensure_ascii=False)
+        )
+        db.session.add(summary_info)
+        return summary_info
+
+    @staticmethod
+    def _create_report_detail_data(report_id, summary):
+        detail_data = ReportDetailData(
+            report_id=report_id,
+            raw_data=json.dumps(summary.get('raw_data', []), ensure_ascii=False),
+            metric_data=json.dumps(summary.get('metric_data', []), ensure_ascii=False),
+            tag_metric_data=json.dumps(summary.get('tag_metric_data', []), ensure_ascii=False),
+            case_type_stats=json.dumps(summary.get('case_type_stats', []), ensure_ascii=False),
+            cases=json.dumps(summary.get('cases', []), ensure_ascii=False)
+        )
+        db.session.add(detail_data)
+        return detail_data
+
+    @staticmethod
+    def _build_response(report, task, summary_info, detail_data):
+        def to_json(val):
+            if val is None:
+                return []
+            if isinstance(val, (list, dict)):
+                return val
+            if isinstance(val, str):
+                return json.loads(val)
+            return val if isinstance(val, list) else []
+
+        simplified_summary = {
+            "raw_data": to_json(detail_data.raw_data) if detail_data else [],
+            "metric_data": to_json(detail_data.metric_data) if detail_data else [],
+            "tag_metric_data": to_json(detail_data.tag_metric_data) if detail_data else [],
+            "case_categories": to_json(summary_info.case_categories) if summary_info else [],
+            "all_case_tags": to_json(summary_info.all_case_tags) if summary_info else [],
+            "resources": to_json(summary_info.resources) if summary_info else [],
+            "resource_headers": to_json(summary_info.resource_headers) if summary_info else [],
+            "all_metrics": to_json(summary_info.all_metrics) if summary_info else [],
+            "device_stats": [],
+            "api_stats": [],
+            "case_type_stats": to_json(detail_data.case_type_stats) if detail_data else [],
+            "devices": to_json(summary_info.devices) if summary_info else [],
+            "apis": to_json(summary_info.apis) if summary_info else [],
+            "total_cases": summary_info.total_cases if summary_info else 0,
+            "completed_cases": summary_info.completed_cases if summary_info else 0,
+            "failed_cases": summary_info.failed_cases if summary_info else 0
+        }
+
+        return {
+            "id": report.id,
+            "name": report.name,
+            "type": report.type,
+            "task_id": report.task_id,
+            "task_name": task.name if task else "对比报告/趋势报告",
+            "summary": simplified_summary,
+            "description": report.description,
+            "status": report.status,
+            "analysis": report.analysis,
+            "created_at": report.created_at.isoformat() if report.created_at else None,
+            "updated_at": report.updated_at.isoformat() if report.updated_at else None
+        }
+
     def generate_task_report():
         try:
             validated_data = GenerateTaskReportRequest.model_validate(request.get_json())
@@ -428,6 +585,9 @@ class ReportControllerTask(ReportControllerBase):
             if not name:
                 name = f"任务报告_{task.name}_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d%H%M%S')}"
 
+            source_task_ids = ReportControllerTask._get_source_task_ids(task)
+            task_ids_for_query = source_task_ids if source_task_ids else [task_id]
+
             total_cases = task.total_cases
             completed_cases = task.completed_cases - task.failed_cases
             failed_cases = task.failed_cases
@@ -441,60 +601,39 @@ class ReportControllerTask(ReportControllerBase):
                 return error_response("生成失败: 未找到维度得分数据")
 
             all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).all()
-            
-            summary_dim_values = []
-            for d_id, stat in dim_stats.items():
-                avg_value = (stat["total_dimension_value"] / stat["count"]) if stat["count"] > 0 else 0
-                summary_dim_values.append({
-                    "id": d_id,
-                    "name": stat["name"],
-                    "average_value": avg_value
-                })
+            summary_dim_values = ReportControllerTask._calculate_summary_dimensions(dim_stats)
 
             if dim_stats:
                 all_dimensions = [d for d in all_dimensions_all if d.id in dim_stats]
             else:
                 all_dimensions = all_dimensions_all
 
-            from backend.models.models import TaskCase
-            task_cases = TaskCase.query.filter_by(task_id=task_id).all()
-            test_case_ids = [tc.test_case_id for tc in task_cases]
-            
-            test_cases = TestCase.query.filter(TestCase.id.in_(test_case_ids)).all()
-
-            from backend.models.models import TaskDevice, Device, TaskAPI, API
-            
-            task_devices = TaskDevice.query.filter_by(task_id=task_id).all()
-            device_ids = [td.device_id for td in task_devices]
-            devices = Device.query.filter(Device.id.in_(device_ids)).all() if device_ids else []
-            devices_list = [ReportUtils.serialize_device(d) for d in devices if d]
-            
-            task_apis = TaskAPI.query.filter_by(task_id=task_id).all()
-            api_ids = [ta.api_id for ta in task_apis]
-            apis = API.query.filter(API.id.in_(api_ids)).all() if api_ids else []
-            apis_list = [ReportUtils.serialize_api(a) for a in apis if a]
+            test_cases, test_case_ids = ReportControllerTask._get_task_test_cases(task_id)
+            devices_list, apis_list, device_ids, api_ids = ReportControllerTask._get_task_resources(task_id)
 
             device_result_types, api_result_types = ReportControllerTask._get_resource_result_types_batch(
-                task_id, device_ids, api_ids
+                task_ids_for_query, device_ids, api_ids
             )
             
             resources = ReportControllerTask._build_resources_list(
-                devices, apis, task, device_result_types, api_result_types
+                [d for d in Device.query.filter(Device.id.in_(device_ids)).all()] if device_ids else [],
+                [a for a in API.query.filter(API.id.in_(api_ids)).all()] if api_ids else [],
+                task, device_result_types, api_result_types
             )
 
-            all_metrics = []
-            for dim in all_dimensions:
-                unit = dim.score_unit if dim.score_unit and dim.score_unit.strip() else "%"
-                decimal_places = dim.decimal_places if dim.decimal_places is not None else 2
-                all_metrics.append({"id": dim.id, "name": dim.name, "unit": unit, "decimal_places": decimal_places})
+            all_metrics = ReportControllerTask._build_all_metrics(all_dimensions)
 
-            if not devices and not apis:
+            if not devices_list and not apis_list:
                 return error_response("生成失败: 任务没有关联任何设备或API")
 
             if not all_metrics:
                 return error_response("生成失败: 任务没有关联任何评估维度")
 
             tasks_map = {task.id: task}
+            if source_task_ids:
+                source_tasks = Task.query.filter(Task.id.in_(source_task_ids)).all()
+                for st in source_tasks:
+                    tasks_map[st.id] = st
             
             core_metrics = ReportUtils.calculate_core_metrics(
                 results=results,
@@ -553,102 +692,27 @@ class ReportControllerTask(ReportControllerBase):
                 "device_stats": device_stats,
                 "api_stats": api_stats,
                 "case_type_stats": case_type_stats,
-                "cases": cases
+                "cases": cases,
+                "source_task_ids": source_task_ids,
+                "is_merged": bool(source_task_ids)
             }
             
             summary = ReportUtils.normalize_summary_metrics(summary)
 
-            new_report = Report(
-                name=name,
-                type='task',
-                task_id=task_id,
-                summary=summary,
-                description=description,
-                status='draft',
-                test_reports_cases=cases
-            )
-            db.session.add(new_report)
-            db.session.flush()
-
-            summary_info = ReportSummary(
-                report_id=new_report.id,
-                total_cases=total_cases,
-                completed_cases=completed_cases,
-                failed_cases=failed_cases,
-                pass_rate=round((completed_cases / total_cases * 100), 2) if total_cases > 0 else 0,
-                dimension_values=json.dumps(summary.get('dimension_values', []), ensure_ascii=False),
-                duration=task.actual_duration,
-                started_at=task.started_at,
-                completed_at=task.completed_at,
-                case_categories=json.dumps(summary.get('case_categories', []), ensure_ascii=False),
-                all_case_tags=json.dumps(summary.get('all_case_tags', []), ensure_ascii=False),
-                devices=json.dumps(summary.get('devices', []), ensure_ascii=False),
-                apis=json.dumps(summary.get('apis', []), ensure_ascii=False),
-                resources=json.dumps(summary.get('resources', []), ensure_ascii=False),
-                resource_headers=json.dumps(summary.get('resource_headers', []), ensure_ascii=False),
-                all_metrics=json.dumps(summary.get('all_metrics', []), ensure_ascii=False)
-            )
-            db.session.add(summary_info)
-
-            detail_data = ReportDetailData(
-                report_id=new_report.id,
-                raw_data=json.dumps(summary.get('raw_data', []), ensure_ascii=False),
-                metric_data=json.dumps(summary.get('metric_data', []), ensure_ascii=False),
-                tag_metric_data=json.dumps(summary.get('tag_metric_data', []), ensure_ascii=False),
-                case_type_stats=json.dumps(summary.get('case_type_stats', []), ensure_ascii=False),
-                cases=json.dumps(summary.get('cases', []), ensure_ascii=False)
-            )
-            db.session.add(detail_data)
+            new_report = ReportControllerTask._create_report_record(name, task_id, summary, description, cases)
+            ReportControllerTask._create_report_summary(new_report.id, task, summary)
+            ReportControllerTask._create_report_detail_data(new_report.id, summary)
 
             db.session.commit()
             
             report = new_report
             task = db.session.get(Task, report.task_id) if report.task_id else None
-            
             summary_info = db.session.get(ReportSummary, report.id)
             detail_data = db.session.get(ReportDetailData, report.id)
             
-            def to_json(val):
-                if val is None:
-                    return []
-                if isinstance(val, (list, dict)):
-                    return val
-                if isinstance(val, str):
-                    return json.loads(val)
-                return val if isinstance(val, list) else []
+            response_data = ReportControllerTask._build_response(report, task, summary_info, detail_data)
 
-            simplified_summary = {
-                "raw_data": to_json(detail_data.raw_data) if detail_data else [],
-                "metric_data": to_json(detail_data.metric_data) if detail_data else [],
-                "tag_metric_data": to_json(detail_data.tag_metric_data) if detail_data else [],
-                "case_categories": to_json(summary_info.case_categories) if summary_info else [],
-                "all_case_tags": to_json(summary_info.all_case_tags) if summary_info else [],
-                "resources": to_json(summary_info.resources) if summary_info else [],
-                "resource_headers": to_json(summary_info.resource_headers) if summary_info else [],
-                "all_metrics": to_json(summary_info.all_metrics) if summary_info else [],
-                "device_stats": [],
-                "api_stats": [],
-                "case_type_stats": to_json(detail_data.case_type_stats) if detail_data else [],
-                "devices": to_json(summary_info.devices) if summary_info else [],
-                "apis": to_json(summary_info.apis) if summary_info else [],
-                "total_cases": summary_info.total_cases if summary_info else 0,
-                "completed_cases": summary_info.completed_cases if summary_info else 0,
-                "failed_cases": summary_info.failed_cases if summary_info else 0
-            }
-
-            return success_response({
-                "id": report.id,
-                "name": report.name,
-                "type": report.type,
-                "task_id": report.task_id,
-                "task_name": task.name if task else "对比报告/趋势报告",
-                "summary": simplified_summary,
-                "description": report.description,
-                "status": report.status,
-                "analysis": report.analysis,
-                "created_at": report.created_at.isoformat() if report.created_at else None,
-                "updated_at": report.updated_at.isoformat() if report.updated_at else None
-            }, "任务报告生成成功", ErrorCode.SUCCESS, 201)
+            return success_response(response_data, "任务报告生成成功", ErrorCode.SUCCESS, 201)
         except Exception as e:
             db.session.rollback()
             log_and_emit('ERROR', 'report', f'[generate_task_report] Error: {e}\n{traceback.format_exc()}', task_id=task_id)

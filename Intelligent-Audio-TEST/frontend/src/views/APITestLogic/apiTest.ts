@@ -1,4 +1,5 @@
 import { ref, computed, watch, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { reportService } from '../../services/reportService'
 import { useModalControl, MODAL_TYPES } from '../../composables/useModal'
@@ -38,6 +39,7 @@ interface WindowWithTaskTime {
 }
 
 export function useApiTest() {
+  const router = useRouter()
   const testCaseStore = useTestCaseStore()
   const {
     testCaseGroups,
@@ -217,19 +219,16 @@ export function useApiTest() {
             updatedAt: new Date().toISOString()
           } as any)
           report.value = { ...report.value, ...reportData }
-          currentStep.value = 4
+          if (report.value?.id) {
+            router.push({ name: 'reportView', params: { id: report.value.id } })
+          } else {
+            currentStep.value = 4
+          }
         }
       } catch (error) {
         console.error('[API测试] 加载报告数据失败:', error)
         currentStep.value = 4
       }
-      modalManager.open(MODAL_TYPES.TASK_COMPLETE, {
-        title: 'API测试成功',
-        content: `测试任务已完成，成功完成 ${completedTests.value} 个测试用例`,
-        confirmText: '查看结果',
-        cancelText: '关闭',
-        danger: false
-      })
     },
     onFailed: async (progressData) => {
       console.error('[API测试] 任务执行失败:', progressData)
@@ -245,19 +244,16 @@ export function useApiTest() {
             updatedAt: new Date().toISOString()
           } as any)
           report.value = { ...report.value, ...reportData }
-          currentStep.value = 4
+          if (report.value?.id) {
+            router.push({ name: 'reportView', params: { id: report.value.id } })
+          } else {
+            currentStep.value = 4
+          }
         }
       } catch (error) {
         console.error('[API测试] 加载报告数据失败:', error)
         currentStep.value = 4
       }
-      modalManager.open(MODAL_TYPES.TASK_COMPLETE, {
-        title: 'API测试失败',
-        content: `测试任务已结束，存在执行失败或评估失败的用例，请查看详细结果`,
-        confirmText: '查看结果',
-        cancelText: '关闭',
-        danger: true
-      })
     }
   })
 

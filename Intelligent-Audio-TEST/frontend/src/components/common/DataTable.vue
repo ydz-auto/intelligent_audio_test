@@ -16,14 +16,14 @@
           >
             <slot :name="`header-${column.key}`" :column="column" :index="colIndex">
               <span
-                v-if="column.editable"
+                v-if="column.editable && editingHeaderIndex === -1"
                 class="editable"
                 @click.stop="handleHeaderClick(colIndex, column)"
               >
                 {{ column.label }}
                 <span v-if="column.resize !== false" class="resize-handle"></span>
               </span>
-              <template v-else>
+              <template v-else-if="editingHeaderIndex === -1">
                 {{ column.label }}
                 <span v-if="column.resize !== false" class="resize-handle"></span>
               </template>

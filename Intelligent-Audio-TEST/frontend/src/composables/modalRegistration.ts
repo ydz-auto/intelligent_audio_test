@@ -1,6 +1,6 @@
 import { getModalManager } from './useModal';
 import { MODAL_TYPES } from '../shared/types';
-import TestCaseModal from '../components/common/test-case/TestCaseModal.vue';
+import TestCaseModal from '../components/common/test-case/TestCaseModal/index.vue';
 import AddTestCaseModal from '../components/common/test-case/AddTestCaseModal.vue';
 import ModalConfirm from '../components/common/modal/ModalConfirm.vue';
 import APIEditModal from '../components/common/modal/APIEditModal.vue';

@@ -222,6 +222,7 @@
           <!-- 表格容器 -->
           <div v-if="activeDisplayType === 'table'" class="table-container">
             <DataTable
+              :ref="el => setTableRef(metric.name, el)"
               :columns="getTableColumns(metric.name)"
               :data="getTableData(metric.name)"
               :resizable="true"
@@ -233,8 +234,11 @@
               @cell-save="handleCellSave"
             >
               <!-- 自定义第一列（用例分组） -->
-              <template #cell-category="{ row, value }">
-                <span class="editable-cell">{{ row.category }}</span>
+              <template #cell-category="{ row, value, rowIndex, colIndex }">
+                <span 
+                  class="editable-cell" 
+                  @click.stop="handleCategoryCellClick(metric.name, rowIndex, colIndex, row)"
+                >{{ row.category }}</span>
               </template>
 
               <!-- 自定义数据列 -->
@@ -288,6 +292,14 @@ const collapsedMetrics = ref({})
 // 切换评估维度折叠状态
 const toggleMetricCollapse = (metricName) => {
   collapsedMetrics.value[metricName] = !collapsedMetrics.value[metricName]
+}
+
+// 表格引用
+const tableRefs = ref({})
+
+// 设置表格引用
+const setTableRef = (metricName, el) => {
+  tableRefs.value[metricName] = el
 }
 
 // Props
@@ -1158,8 +1170,18 @@ const getTableData = (metricName) => {
   })
 }
 
-const handleHeaderSave = ({ colIndex, value }) => {
-  if (colIndex === 0) return
+const handleHeaderSave = ({ colIndex, value, column }) => {
+  // 如果是第一列（用例分组），则调用 commitEditCategory
+  if (colIndex === 0) {
+    if (column && column.key === 'category') {
+      const oldName = column.label
+      if (value !== oldName) {
+        commitEditCategory(oldName, value)
+      }
+    }
+    return
+  }
+  // 如果是设备列，则调用 commitEditResource
   const deviceIndex = colIndex - 1
   if (deviceIndex >= 0 && deviceIndex < devices.value.length) {
     const device = devices.value[deviceIndex]
@@ -1173,6 +1195,14 @@ const handleCellSave = ({ rowIndex, colIndex, value }) => {
     if (category) {
       commitEditCategory(category, value)
     }
+  }
+}
+
+// 处理行头（用例分组）单元格点击
+const handleCategoryCellClick = (metricName, rowIndex, colIndex, row) => {
+  const tableRef = tableRefs.value[metricName]
+  if (tableRef) {
+    tableRef.startEditCell(rowIndex, colIndex)
   }
 }
 
@@ -1410,7 +1440,7 @@ const getChartData = (metricName) => {
   background: white;
   width: 100%;
   box-sizing: border-box;
-  border-radius: 24px 24px 0 0;
+  border-radius: 16px 16px 0 0;
   border: 1px solid #e2e8f0;
   border-bottom: none;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);

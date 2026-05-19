@@ -241,26 +241,19 @@
         :show-actions="false"
       >
         <!-- 任务报告区域 -->
-        <section class="comparison-report-container" id="api-comparison-report-container">
-          <div class="comparison-header" style="display: flex; flex-direction: column; gap: 8px; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); align-items: center; text-align: center;">
-            <h3 style="margin: 0; font-size: 28px; font-weight: 700; color: #2c3e50; background: linear-gradient(135deg, #FF6A00 0%, #FF8C40 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">{{ report.name || '任务报告' }}</h3>
-            <p style="margin: 0; font-size: 15px; color: #7f8c8d; line-height: 1.5; max-width: 600px;">详细分析测试任务的执行情况和结果，帮助您识别系统性能瓶颈和质量问题，为后续优化提供依据。</p>
-          </div>
-          
-          <TaskReportPanel 
-            :report="report"
-            :is-editing-report="isEditingReport"
-            :is-editing-conclusion="isEditingConclusion"
-            :analysis-content="analysisContent"
-            :tables="reportTables"
-            @toggle-edit="toggleEditReport"
-            @save-report="saveReport"
-            @cancel-edit="cancelEditReport"
-            @toggle-conclusion-edit="toggleEditConclusion"
-            @save-conclusion="saveConclusion"
-            @cancel-conclusion="cancelEditConclusion"
-          />
-        </section>
+        <TaskReportPanel 
+          :report="report"
+          :is-editing-report="isEditingReport"
+          :is-editing-conclusion="isEditingConclusion"
+          :analysis-content="analysisContent"
+          :tables="reportTables"
+          @toggle-edit="toggleEditReport"
+          @save-report="saveReport"
+          @cancel-edit="cancelEditReport"
+          @toggle-conclusion-edit="toggleEditConclusion"
+          @save-conclusion="saveConclusion"
+          @cancel-conclusion="cancelEditConclusion"
+        />
 
         <!-- 操作按钮区域 -->
         <div class="step-actions">

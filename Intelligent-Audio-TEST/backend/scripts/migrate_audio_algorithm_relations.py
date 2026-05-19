@@ -5,6 +5,7 @@
 1. 创建 audio_algorithm_relations 表（如果不存在）
 2. 从现有测试用例的 algorithm_type 迁移到音频的算法关联
 3. 保留原有的测试用例关联
+4. 将所有音频关联到说话人识别算法
 
 使用方法：
     python -m backend.scripts.migrate_audio_algorithm_relations
@@ -15,6 +16,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from sqlalchemy import text
 from backend.app import create_app
 from backend.models.database import db
 from backend.models.models import Audio, TestCase, AudioAlgorithmRelation
@@ -24,7 +26,7 @@ from backend.models.algorithm_models import AlgorithmDefinition
 def create_table_if_not_exists():
     """创建 audio_algorithm_relations 表（如果不存在）"""
     try:
-        db.engine.execute("""
+        db.session.execute(text("""
             CREATE TABLE IF NOT EXISTS audio_algorithm_relations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 audio_id INTEGER NOT NULL,
@@ -36,21 +38,23 @@ def create_table_if_not_exists():
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-        """)
+        """))
         
-        db.engine.execute("""
+        db.session.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_audio_algorithm_audio 
             ON audio_algorithm_relations(audio_id)
-        """)
+        """))
         
-        db.engine.execute("""
+        db.session.execute(text("""
             CREATE INDEX IF NOT EXISTS idx_audio_algorithm_type 
             ON audio_algorithm_relations(algorithm_type)
-        """)
+        """))
         
+        db.session.commit()
         print("表 audio_algorithm_relations 创建成功或已存在")
         return True
     except Exception as e:
+        db.session.rollback()
         print(f"创建表失败: {e}")
         return False
 
@@ -160,16 +164,82 @@ def verify_migration():
     total_relations = AudioAlgorithmRelation.query.filter_by(deleted=False).count()
     print(f"音频算法关联总数: {total_relations}")
     
-    algorithm_stats = db.session.execute("""
+    algorithm_stats = db.session.execute(text("""
         SELECT algorithm_type, COUNT(*) as count 
         FROM audio_algorithm_relations 
         WHERE deleted = 0 
         GROUP BY algorithm_type
-    """).fetchall()
+    """)).fetchall()
     
     print("\n各算法关联统计:")
     for algo_type, count in algorithm_stats:
         print(f"  {algo_type}: {count} 条")
+
+
+def link_all_audios_to_speaker_recognition():
+    """将所有音频关联到说话人识别算法"""
+    print("\n" + "=" * 60)
+    print("开始将所有音频关联到说话人识别算法...")
+    print("=" * 60)
+    
+    speaker_recognition_type = 'speaker_recognition'
+    
+    algo = AlgorithmDefinition.query.filter_by(
+        type=speaker_recognition_type, 
+        deleted=False
+    ).first()
+    
+    if not algo:
+        print(f"警告: 未找到说话人识别算法定义 (type={speaker_recognition_type})")
+        print("请确保 algorithm_definitions 表中存在该算法类型")
+        return
+    
+    audios = Audio.query.filter_by(deleted=False).all()
+    print(f"找到 {len(audios)} 个音频文件")
+    
+    linked_count = 0
+    skipped_count = 0
+    
+    for audio in audios:
+        existing = AudioAlgorithmRelation.query.filter_by(
+            audio_id=audio.id,
+            algorithm_type=speaker_recognition_type,
+            deleted=False
+        ).first()
+        
+        if existing:
+            skipped_count += 1
+            continue
+        
+        try:
+            relation = AudioAlgorithmRelation(
+                audio_id=audio.id,
+                algorithm_type=speaker_recognition_type,
+                is_primary=False,
+                weight=1.0
+            )
+            db.session.add(relation)
+            linked_count += 1
+            
+            if linked_count % 100 == 0:
+                db.session.commit()
+                print(f"已关联 {linked_count} 条记录...")
+                
+        except Exception as e:
+            print(f"创建关联失败: audio_id={audio.id}, error={e}")
+    
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"提交事务失败: {e}")
+        return
+    
+    print("=" * 60)
+    print("说话人识别算法关联完成!")
+    print(f"新增关联: {linked_count} 条")
+    print(f"已存在跳过: {skipped_count} 条")
+    print("=" * 60)
 
 
 if __name__ == '__main__':
@@ -180,6 +250,7 @@ if __name__ == '__main__':
         
         if create_table_if_not_exists():
             migrate_audio_algorithm_relations()
+            link_all_audios_to_speaker_recognition()
             verify_migration()
         else:
             print("迁移失败: 无法创建表")

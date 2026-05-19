@@ -214,7 +214,7 @@ onUnmounted(() => {
   margin-bottom: 0;
   width: calc(100% + 2 * var(--spacing-xl));
   background: linear-gradient(180deg, #FFF8F0 0%, #FFFFFF 100%);
-  padding: 32px 24px 24px;
+  padding: 32px 24px 0px;
   text-align: center;
 }
 
@@ -381,17 +381,20 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  cursor: pointer;
   padding: 12px 0;
   width: 100%;
   box-sizing: border-box;
 }
 
 .section-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e293b;
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
   margin: 0;
-  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 
 .analysis-content {

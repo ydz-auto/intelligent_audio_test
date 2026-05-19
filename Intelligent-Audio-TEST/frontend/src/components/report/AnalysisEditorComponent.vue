@@ -1,9 +1,9 @@
 <template>
   <div class="analysis-editor-container">
-    <div class="editor-header">
-      <h3 class="editor-title">分析结论</h3>
+    <div class="section-header">
+      <h3 class="section-title">分析结论</h3>
       <div class="editor-actions">
-        <span class="editor-status" :class="`status-${status}`">{{ statusLabel }}</span>
+        <span class="status" :class="`status-${status}`">{{ statusLabel }}</span>
         <button 
           class="btn" 
           :class="isEditing ? 'btn-primary' : 'btn-secondary'"
@@ -195,24 +195,30 @@ export default {
   background: #ffffff;
   border-radius: 12px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  padding: 24px;
+  padding: 0;
   margin-bottom: 24px;
+  width: 100%;
 }
 
-.editor-header {
+.section-header {
+  margin-bottom: 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 16px;
+  cursor: pointer;
+  padding: 12px 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.editor-title {
-  font-size: 18px;
-  font-weight: bold;
-  color: #333;
+.section-title {
+  font-size: var(--font-size-xxl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
 }
 
 .editor-actions {
@@ -220,6 +226,13 @@ export default {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.status {
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .status-draft {
@@ -247,17 +260,11 @@ export default {
   color: #666;
 }
 
-.status {
-  padding: 6px 12px;
-  border-radius: 16px;
-  font-size: 14px;
-  font-weight: 500;
-}
-
 .editor-content {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  padding: 0;
 }
 
 .analysis-text-wrapper {

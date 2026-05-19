@@ -606,7 +606,8 @@ export function useAudioConfig() {
     backgroundNoise.spl = 0;
   }
 
-  function getNoiseDeviceNames(backgroundNoise: BackgroundNoiseConfig): string {
+  function getNoiseDeviceNames(backgroundNoise: BackgroundNoiseConfig | undefined): string {
+    if (!backgroundNoise) return '';
     const deviceIds = backgroundNoise.deviceIds || [];
     if (deviceIds.length === 0) return '';
     return deviceIds.map(id => getDeviceName(id)).join(', ');

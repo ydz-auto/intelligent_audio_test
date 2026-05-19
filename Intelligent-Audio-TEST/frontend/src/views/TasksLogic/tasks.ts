@@ -437,15 +437,10 @@ export function useTasks() {
 
   const viewTaskReport = async (task: Task) => {
     try {
-      await reportService.viewTaskReport(task);
-      isViewingReport.value = true;
-      // 滚动到报告区域
-      setTimeout(() => {
-        const reportElement = document.getElementById('task-comparison-report-container');
-        if (reportElement) {
-          reportElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-      }, 100);
+      const result = await reportService.viewTaskReport(task);
+      if (result && result.id) {
+        router.push({ name: 'reportView', params: { id: result.id } });
+      }
     } catch (error) {
       console.error('Failed to view task report:', error);
     }

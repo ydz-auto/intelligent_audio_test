@@ -1,4 +1,5 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { tasksApi, reportsApi, testcasesApi, groupsApi } from '../utils/api'
 import { useTestCaseCard } from './useTestCaseCard'
 import { useDeviceManagement } from './useDeviceManagement'
@@ -30,6 +31,7 @@ export function normalizeSelectedCaseIds(ids: (string | number)[]) {
 }
 
 export function useE2eView() {
+  const router = useRouter()
   const { 
     devices, 
     filteredDevices, 
@@ -138,27 +140,21 @@ export function useE2eView() {
     currentTaskId,
     onCompleted: async (data: any) => {
       isExecuting.value = false
-      currentStep.value = 4
       await fetchReport()
-      modalManager.open(MODAL_TYPES.TASK_COMPLETE, {
-        title: 'E2E测试成功',
-        content: `测试任务已完成，成功完成 ${completedTests.value} 个测试用例`,
-        confirmText: '查看结果',
-        cancelText: '关闭',
-        danger: false
-      })
+      if (report.value?.id) {
+        router.push({ name: 'reportView', params: { id: report.value.id } })
+      } else {
+        currentStep.value = 4
+      }
     },
     onFailed: (data: any) => {
       isExecuting.value = false
-      currentStep.value = 4
       fetchReport()
-      modalManager.open(MODAL_TYPES.TASK_COMPLETE, {
-        title: 'E2E测试失败',
-        content: `测试任务已结束，存在执行失败或评估失败的用例，请查看详细结果`,
-        confirmText: '查看结果',
-        cancelText: '关闭',
-        danger: true
-      })
+      if (report.value?.id) {
+        router.push({ name: 'reportView', params: { id: report.value.id } })
+      } else {
+        currentStep.value = 4
+      }
     }
   })
 

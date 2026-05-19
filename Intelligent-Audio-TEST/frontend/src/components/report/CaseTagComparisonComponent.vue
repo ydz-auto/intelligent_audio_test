@@ -204,6 +204,7 @@
           <!-- 表格容器 -->
           <div v-if="activeDisplayType === 'table'" class="table-container">
             <DataTable
+              :ref="el => setTableRef(metric.name, el)"
               :columns="getTableColumns(metric.name)"
               :data="getTableData(metric.name)"
               :resizable="true"
@@ -215,8 +216,11 @@
               @cell-save="handleCellSave"
             >
               <!-- 自定义第一列（用例标签） -->
-              <template #cell-tag="{ row, value }">
-                <span class="editable-cell">{{ row.tag }}</span>
+              <template #cell-tag="{ row, value, rowIndex, colIndex }">
+                <span 
+                  class="editable-cell" 
+                  @click.stop="handleTagCellClick(metric.name, rowIndex, colIndex, row)"
+                >{{ row.tag }}</span>
               </template>
 
               <!-- 自定义数据列 -->
@@ -269,6 +273,14 @@ const collapsedMetrics = ref({})
 // 切换评估维度折叠状态
 const toggleMetricCollapse = (metricName) => {
   collapsedMetrics.value[metricName] = !collapsedMetrics.value[metricName]
+}
+
+// 表格引用
+const tableRefs = ref({})
+
+// 设置表格引用
+const setTableRef = (metricName, el) => {
+  tableRefs.value[metricName] = el
 }
 
 // Props
@@ -1212,7 +1224,7 @@ const handleHeaderSave = ({ column, value, originalValue }) => {
   // 如果是标签列（第一列）
   if (column === 'tag' && value !== originalValue) {
     commitEditTag(originalValue, value)
-  } else if (column.startsWith('device-')) {
+  } else if (typeof column === 'string' && column.startsWith('device-')) {
     // 如果是设备列
     const index = parseInt(column.split('-')[1])
     const device = devices.value[index]
@@ -1229,6 +1241,14 @@ const handleCellSave = ({ row, column, value, originalValue }) => {
   // 如果修改了标签名称
   if (column === 'tag' && value !== originalValue) {
     commitEditTag(originalValue, value)
+  }
+}
+
+// 处理行头（用例标签）单元格点击
+const handleTagCellClick = (metricName, rowIndex, colIndex, row) => {
+  const tableRef = tableRefs.value[metricName]
+  if (tableRef) {
+    tableRef.startEditCell(rowIndex, colIndex)
   }
 }
 

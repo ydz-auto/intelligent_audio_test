@@ -4,6 +4,14 @@
   min-height: 100vh;
 }
 
+/* 报告区域占满背景 */
+.api-test-view .step-panel.active {
+ margin: calc(-1 * var(--spacing-xl));
+  padding: 20px;
+  min-height: calc(100vh);
+  background: transparent;
+}
+
 /* 页面标题 */
 .page-header {
   margin-bottom: 24px;

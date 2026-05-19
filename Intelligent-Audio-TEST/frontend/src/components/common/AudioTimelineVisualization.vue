@@ -59,7 +59,7 @@
             <span class="tick-label">{{ tick.label }}</span>
           </div>
         </div>
-        <span class="scale-end">{{ formatTime(totalDuration) }}</span>
+        <span class="scale-end">{{ formatTime(effectiveDuration) }}</span>
       </div>
 
       <div class="audio-legend">
@@ -215,7 +215,7 @@ const closeAudioModal = () => {
 
 <style scoped>
 .audio-timeline-viz {
-  background: #fafafa;
+  background: white;
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;

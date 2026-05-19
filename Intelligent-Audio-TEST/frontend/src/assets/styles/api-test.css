@@ -145,10 +145,9 @@
 
 /* 图表容器样式 */
 .chart-container {
-    background-color: #fafafa;
+    background-color: white;
     border-radius: var(--border-radius-md);
     padding: 20px;
-    box-shadow: var(--shadow-sm);
     height: 400px;
     min-height: 350px;
 }

@@ -71,6 +71,7 @@
     <AlgorithmSelector
       v-model="localFormData.algorithmType"
       :initial-params="algorithmParams"
+      :single="true"
       @params-change="handleAlgorithmParamsChange"
       @algorithm-type-change="handleAlgorithmTypeChange"
     />
@@ -219,6 +220,14 @@
               <button type="button" class="btn btn-secondary" @click="$emit('previewAudio', audioConfig.audioId, 'dry')" :disabled="!audioConfig.audioId">
                 <i class="fas fa-play"></i> 试听
               </button>
+            </div>
+            <div class="audio-tags-container" v-if="audioConfig.audioId && getNormalizedTags(getAudioTags(audioConfig.audioId)).length > 0">
+              <span class="audio-tags-label">标签：</span>
+              <div class="audio-tags-list">
+                <span v-for="tag in getNormalizedTags(getAudioTags(audioConfig.audioId))" :key="tag" class="audio-tag-item">
+                  {{ tag }}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -549,19 +558,13 @@ function handleAlgorithmTypeChange() {
 const {
   playbackDevices,
   getAudioName,
+  getAudioTags,
+  getNormalizedTags,
   getDeviceName,
   getNoiseDeviceNames,
-  addAudioConfig,
-  removeAudioConfig,
-  copyAudioConfig,
-  clearAllAudioConfigs,
   handleAudioDragStart,
   handleAudioDragEnd,
   handleAudioDragOver,
-  handleAudioDrop,
-  shuffleAudioConfigs,
-  sortByFileName,
-  clearNoiseConfig,
   draggedAudioIndex,
   dragOverAudioIndex,
   showTagSelector,
@@ -571,7 +574,6 @@ const {
   tagDeviceMapping,
   hasValidTagDeviceMapping,
   getTagDeviceMapping,
-  getUniqueTagsFromConfigs,
   toggleTagSelector,
   toggleTagSelection,
   interleaveByTags,
@@ -582,14 +584,62 @@ const {
   assignDeviceByTags
 } = audioConfig;
 
+function handleAudioDrop(index: number, event: DragEvent) {
+  audioConfig.handleAudioDrop(index, localFormData.value.config.audios);
+}
+
+function clearNoiseConfig() {
+  audioConfig.clearNoiseConfig(localFormData.value.config.backgroundNoise);
+}
+
+function getUniqueTagsFromConfigs() {
+  return audioConfig.getUniqueTagsFromConfigs(localFormData.value.config.audios);
+}
+
+function sortByFileName(order: 'asc' | 'desc') {
+  audioConfig.sortByFileName(localFormData.value.config.audios, order);
+}
+
+function shuffleAudioConfigs() {
+  audioConfig.shuffleAudioConfigs(localFormData.value.config.audios);
+}
+
+function clearAllAudioConfigs() {
+  audioConfig.clearAllAudioConfigs(localFormData.value.config.audios);
+}
+
+function addAudioConfig() {
+  audioConfig.addAudioConfig(localFormData.value.config.audios);
+}
+
+function removeAudioConfig(index: number) {
+  audioConfig.removeAudioConfig(index, localFormData.value.config.audios);
+}
+
+function copyAudioConfig(index: number) {
+  audioConfig.copyAudioConfig(index, localFormData.value.config.audios);
+}
+
 const {
   filteredAvailableDimensions,
-  associatedDimensions,
-  isDimensionSelected,
-  toggleDimensionSelection,
-  removeAPIDimension,
-  removeE2EDimension
+  associatedDimensions
 } = dimensionConfig;
+
+function isDimensionSelected(dimensionName: string, dimensionType: 'api' | 'e2e'): boolean {
+  return dimensionConfig.isDimensionSelected(dimensionName, dimensionType, localFormData.value.config.dimensions);
+}
+
+function toggleDimensionSelection(dimension: any, dimensionType: 'api' | 'e2e') {
+  dimensionConfig.toggleDimensionSelection(dimension, dimensionType, localFormData.value.config.dimensions);
+}
+
+function removeAPIDimension(index: number) {
+  dimensionConfig.removeAPIDimension(index, localFormData.value.config.dimensions);
+}
+
+function removeE2EDimension(index: number) {
+  dimensionConfig.removeE2EDimension(index, localFormData.value.config.dimensions);
+}
 
 watch(() => props.formData, () => {
   initFormData();
@@ -749,6 +799,39 @@ onMounted(async () => {
   margin-top: 8px;
 }
 
+.audio-tags-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.audio-tags-label {
+  font-size: 12px;
+  color: #6c757d;
+  flex-shrink: 0;
+}
+
+.audio-tags-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.audio-tag-item {
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: default;
+  background-color: transparent;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--border-radius-full);
+  white-space: nowrap;
+}
+
 .tags-container {
   display: flex;
   flex-wrap: wrap;
@@ -758,10 +841,14 @@ onMounted(async () => {
 .tag-item {
   display: inline-flex;
   align-items: center;
-  padding: 4px 8px;
-  background: #e9ecef;
-  border-radius: 4px;
-  font-size: 12px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: default;
+  background-color: transparent;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--border-radius-full);
+  white-space: nowrap;
 }
 
 .tag-remove {
