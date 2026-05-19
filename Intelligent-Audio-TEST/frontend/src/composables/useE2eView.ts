@@ -56,10 +56,6 @@ export function useE2eView() {
   } = useDeviceManagement('test')
 
   const { 
-    showTestCaseModal, 
-    showGroupModal, 
-    showImportModal, 
-    showExportModal, 
     formData, 
     groupFormData, 
     editingTestCase, 
@@ -70,7 +66,6 @@ export function useE2eView() {
     openEditGroupModal,
     openImportTestCaseModal,
     openExportTestCaseModal,
-    handleModalClose,
     handleModalSave,
     handleTestCaseAction
   } = useTestCaseCard();
@@ -415,11 +410,10 @@ export function useE2eView() {
     }
   }
 
-  const handleOpenEditModal = (testCase: TestCase) => {
+  const handleOpenEditModal = async (testCase: TestCase) => {
     editingTestCase.value = testCase
-    // 转换testCase对象为TestCaseFormData格式
     formData.value = {
-      id: testCase.id, // 修复：添加id属性，确保编辑时能正确识别用例
+      id: testCase.id,
       name: testCase.name,
       description: testCase.description,
       type: testCase.type,
@@ -440,7 +434,22 @@ export function useE2eView() {
       algorithmType: testCase.algorithmType,
       algorithmParams: testCase.algorithmParams
     }
-    showTestCaseModal.value = true
+    
+    try {
+      const result = await modalManager.open(MODAL_TYPES.TEST_CASE_RELATED, {
+        visible: true,
+        mode: 'case',
+        testType: 'e2e',
+        formData: formData.value,
+        title: '编辑测试用例'
+      });
+      
+      if (result) {
+        await handleModalSave(result);
+      }
+    } catch (error) {
+      console.error('[useE2eView] 打开编辑用例模态窗失败:', error);
+    }
   }
 
   // 算法相关
@@ -579,7 +588,6 @@ export function useE2eView() {
       if (result?.needRefresh) {
         await initializeE2eTests();
       }
-      handleModalClose();
     } catch (error) {
       console.error('保存失败:', error)
       const errorMessage = error instanceof Error ? error.message : '保存失败，请重试';
@@ -743,10 +751,6 @@ export function useE2eView() {
     logs,
     associatedCases,
     testProgress: [],
-    showTestCaseModal,
-    showGroupModal,
-    showImportModal,
-    showExportModal,
     formData,
     groupFormData,
     editingTestCase,
@@ -770,7 +774,6 @@ export function useE2eView() {
     openEditGroupModal,
     openImportTestCaseModal,
     openExportTestCaseModal,
-    handleModalClose,
     handleSaveModal,
     updateSelectedCases,
     addDevice,

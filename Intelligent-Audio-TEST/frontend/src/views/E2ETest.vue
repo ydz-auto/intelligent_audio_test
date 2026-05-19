@@ -111,14 +111,6 @@
           :test-case-groups="testCaseGroups"
           :tags="tags"
           :algorithm-type-filter="selectedAlgorithmType || 'all'"
-          :show-test-case-modal="showTestCaseModal || false"
-          :show-group-modal="showGroupModal || false"
-          :show-import-modal="showImportModal || false"
-          :show-export-modal="showExportModal || false"
-          :form-data="formData || {}"
-          :group-form-data="groupFormData || {}"
-          :editing-test-case="editingTestCase || null"
-          :editing-group="editingGroup || null"
           :is-loading="isLoading || false"
           @delete-group="handleDeleteGroup"
           @delete-test-case="handleDeleteTestCase"
@@ -128,8 +120,6 @@
           @open-edit-group-modal="openEditGroupModal"
           @open-import-modal="openImportTestCaseModal"
           @open-export-modal="openExportTestCaseModal"
-          @close-modal="handleModalClose"
-          @save-modal="handleSaveModal"
           @updateSelectedCases="updateSelectedCases"
         />
       </TestStepContainer>
@@ -372,17 +362,11 @@ const {
   associatedCases,
   testProgress,
 
-  // 模态框状态
-  showTestCaseModal,
-  showGroupModal,
-  showImportModal,
-  showExportModal,
   formData,
   groupFormData,
   editingTestCase,
   editingGroup,
   
-  // 计算属性
   filteredDevices,
   algorithmFilteredDevices,
   selectedDeviceIdsList,
@@ -414,8 +398,6 @@ const {
   openEditGroupModal,
   openImportTestCaseModal,
   openExportTestCaseModal,
-  handleModalClose,
-  handleSaveModal,
   updateSelectedCases,
   addDevice,
   scanDevices,
@@ -492,11 +474,16 @@ const confirmTaskName = () => {
   min-height: 100vh;
 }
 
+.e2e-test-view .step-content {
+  overflow: visible;
+  max-height: none;
+}
+
 /* 报告区域占满背景 */
 .e2e-test-view .step-panel.active {
   margin: calc(-1 * var(--spacing-xl));
   padding: 20px;
-  min-height: calc(100vh);
+  min-height: calc(100vh - 200px);
   background: transparent;
 }
 
@@ -525,9 +512,6 @@ const confirmTaskName = () => {
   margin-top: 24px;
   padding-top: 24px;
   border-top: 1px solid #e8e8e8;
-  position: static;
-  bottom: auto;
-  z-index: auto;
 }
 
 /* 按钮样式 - 扩展 */

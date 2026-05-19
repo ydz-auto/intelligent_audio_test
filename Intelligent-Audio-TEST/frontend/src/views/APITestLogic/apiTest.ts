@@ -55,10 +55,6 @@ export function useApiTest() {
   } = testCaseStore
 
   const {
-    showTestCaseModal,
-    showGroupModal,
-    showImportModal,
-    showExportModal,
     formData,
     groupFormData,
     editingTestCase,
@@ -69,7 +65,6 @@ export function useApiTest() {
     openEditGroupModal,
     openImportTestCaseModal,
     openExportTestCaseModal,
-    handleModalClose,
     handleModalSave,
     handleTestCaseAction
   } = useTestCaseCard();
@@ -810,10 +805,6 @@ export function useApiTest() {
     tags,
     isLoading,
     casePaginationInfo: paginationInfo,
-    showTestCaseModal,
-    showGroupModal,
-    showImportModal,
-    showExportModal,
     formData,
     groupFormData,
     editingTestCase,
@@ -844,8 +835,6 @@ export function useApiTest() {
     openEditGroupModal,
     openImportTestCaseModal,
     openExportTestCaseModal,
-    handleModalClose,
-    handleSaveModal,
     publishReport,
     saveReport,
     isEditingConclusion,

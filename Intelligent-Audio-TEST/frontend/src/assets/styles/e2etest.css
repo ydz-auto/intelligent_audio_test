@@ -1,9 +1,6 @@
 /* 用例卡片样式已移至 test-case-manager/case.css */
 
-/* 进度导航悬停提示样式 */
-.progress-step {
-    position: relative;
-}
+/* 进度导航样式已移至 components/navigation.css */
 
 /* Association Tabs Styles */
 .association-tabs .tab-btn {

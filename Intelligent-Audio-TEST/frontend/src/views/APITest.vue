@@ -112,14 +112,6 @@
           :test-case-groups="testCaseGroups"
           :tags="tags"
           :algorithm-type-filter="selectedAlgorithmType || 'all'"
-          :show-test-case-modal="showTestCaseModal || false"
-          :show-group-modal="showGroupModal || false"
-          :show-import-modal="showImportModal || false"
-          :show-export-modal="showExportModal || false"
-          :form-data="formData || {}"
-          :group-form-data="groupFormData || {}"
-          :editing-test-case="editingTestCase || null"
-          :editing-group="editingGroup || null"
           :is-loading="isLoading || false"
           @delete-group="handleDeleteGroup"
           @delete-test-case="handleDeleteTestCase"
@@ -129,8 +121,6 @@
           @open-edit-group-modal="openEditGroupModal"
           @open-import-modal="openImportTestCaseModal"
           @open-export-modal="openExportTestCaseModal"
-          @close-modal="handleModalClose"
-          @save-modal="handleSaveModal"
           @updateSelectedCases="updateSelectedCases"
         />
       </TestStepContainer>
@@ -414,17 +404,11 @@ const {
   tags,
   isLoading,
   
-  // 测试用例卡片状态
-  showTestCaseModal,
-  showGroupModal,
-  showImportModal,
-  showExportModal,
   formData,
   groupFormData,
   editingTestCase,
   editingGroup,
   
-  // 方法
   initAPITest,
   nextStep,
   prevStep,
@@ -450,8 +434,6 @@ const {
   openEditGroupModal,
   openImportTestCaseModal,
   openExportTestCaseModal,
-  handleModalClose,
-  handleSaveModal,
   publishReport,
   saveReport,
   toggleEditConclusion,

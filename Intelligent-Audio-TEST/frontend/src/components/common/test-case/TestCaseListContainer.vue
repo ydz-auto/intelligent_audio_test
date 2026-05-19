@@ -193,21 +193,7 @@
     <div>showExportModal: {{ props.showExportModal }}</div>
   </div> -->
   
-  <!-- TestCaseModal已经有自己的teleport，所以不需要在这里包裹 -->
-  <TestCaseModal
-    :visible="props.showTestCaseModal || props.showGroupModal || props.showImportModal || props.showExportModal"
-    :mode="getModalMode()"
-    :test-type="'e2e'"
-    :form-data="getModalFormData()"
-    @close="() => {
-      console.log('[TestCaseListContainer] Received close event from TestCaseModal');
-      emit('closeModal');
-    }"
-    @save="(data) => {
-      console.log('[TestCaseListContainer] Received save event from TestCaseModal:', data);
-      emit('saveModal', data);
-    }"
-  />
+  <!-- 模态窗现在使用全局模态窗系统，不再需要内联组件 -->
   
   <teleport to="body">
     <div class="modal-overlay" v-if="showAudioTypeModal" style="opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; z-index: 9999 !important;">
@@ -263,7 +249,6 @@ import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, shallowR
 import TestCaseCard from './TestCaseCard.vue'
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
-import TestCaseModal from './TestCaseModal/index.vue';
 import AudioPlayerModal from '../AudioPlayerModal.vue';
 import GlobalPlaybackDeviceModal from '../modal/GlobalPlaybackDeviceModal.vue';
 import CRUDFormModal from '../modal/CRUDFormModal.vue';
@@ -271,7 +256,7 @@ import { playbackApi, algorithmApi } from '../../../utils/api';
 import { useTestCaseStore } from '../../../store/testCaseStore';
 import { normalizeTestCaseConfig } from '../../../utils/utils';
 import { useModalControl, MODAL_TYPES } from '../../../composables/useModal';
-import type { TestCase, ModalSaveData, PaginationInfo, PlaybackDevice } from '../../../shared/types';
+import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../shared/types';
 
 function useDebounce<T>(value: Ref<T>, delay: number = 300): Ref<T> {
   const debouncedValue = ref(value.value) as Ref<T>;
@@ -293,26 +278,10 @@ const props = defineProps<{
   testCaseGroups?: Record<string, TestCase[]>;
   tags?: string[];
   paginationInfo?: PaginationInfo;
-  showTestCaseModal?: boolean;
-  showGroupModal?: boolean;
-  showImportModal?: boolean;
-  showExportModal?: boolean;
-  formData?: any;
-  groupFormData?: any;
-  editingTestCase?: TestCase | null;
-  editingGroup?: any;
   isLoading?: boolean;
   algorithmTypeFilter?: string;
 }>();
 
-// 调试：监控模态窗 props 的变化
-watch(() => props.showTestCaseModal, (newVal, oldVal) => {
-  console.log('[TestCaseListContainer] showTestCaseModal changed:', oldVal, '→', newVal);
-}, { immediate: true });
-
-watch(() => props.showGroupModal, (newVal, oldVal) => {
-  console.log('[TestCaseListContainer] showGroupModal changed:', oldVal, '→', newVal);
-}, { immediate: true });
 const emit = defineEmits<{
   (e: 'deleteGroup', groupName: string): void;
   (e: 'deleteTestCase', testCase: TestCase): void;
@@ -322,8 +291,6 @@ const emit = defineEmits<{
   (e: 'openEditGroupModal', groupName: string): void;
   (e: 'openImportModal'): void;
   (e: 'openExportModal'): void;
-  (e: 'closeModal'): void;
-  (e: 'saveModal', data: ModalSaveData): void;
   (e: 'updateSelectedCases', selectedCases: (string | number)[]): void;
 }>();
 
@@ -697,40 +664,6 @@ const getTestCaseActions = () => {
     { id: 'edit', icon: 'fa-edit', title: '编辑用例' },
     { id: 'delete', icon: 'fa-trash', title: '删除用例' }
   ];
-};
-
-const getModalMode = () => {
-  console.log('TestCaseListContainer: getModalMode() called, props:', {
-    showImportModal: props.showImportModal,
-    showExportModal: props.showExportModal,
-    showGroupModal: props.showGroupModal,
-    showTestCaseModal: props.showTestCaseModal
-  });
-  let mode;
-  if (props.showImportModal) {
-    mode = 'import';
-  } else if (props.showExportModal) {
-    mode = 'export';
-  } else if (props.showGroupModal) {
-    mode = 'group';
-  } else if (props.showTestCaseModal) {
-    mode = 'case';
-  } else {
-    mode = 'case';
-  }
-  console.log('TestCaseListContainer: getModalMode() returned:', mode);
-  return mode;
-};
-
-const getModalFormData = () => {
-  console.log('TestCaseListContainer: getModalFormData() called, props.showGroupModal:', props.showGroupModal);
-  const baseFormData = props.showGroupModal ? props.groupFormData : props.formData;
-  const formData = {
-    ...baseFormData,
-    algorithmType: (baseFormData?.algorithmType) || (algorithmTypeFilter.value === 'all' ? '' : algorithmTypeFilter.value)
-  };
-  console.log('TestCaseListContainer: getModalFormData() returned:', formData);
-  return formData;
 };
 
 const toggleCategory = async (group: string) => {

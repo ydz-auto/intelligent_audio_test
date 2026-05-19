@@ -37,8 +37,6 @@ export function useTestCaseManagement() {
   } = testCaseStore;
 
   const { 
-    showTestCaseModal, 
-    showGroupModal, 
     editingTestCase, 
     editingGroup, 
     formData, 
@@ -224,8 +222,6 @@ export function useTestCaseManagement() {
     copyTestCase,
     addGroup,
     deleteGroup,
-    showTestCaseModal,
-    showGroupModal,
     editingTestCase,
     editingGroup,
     formData,

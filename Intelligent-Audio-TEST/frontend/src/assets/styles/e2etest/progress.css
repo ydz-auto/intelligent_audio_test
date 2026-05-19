@@ -1,41 +1,4 @@
-/* 进度导航悬停提示样式 */
-.progress-step {
-    position: relative;
-}
-
-.progress-tooltip {
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: rgba(0, 0, 0, 0.8);
-    color: white;
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 12px;
-    white-space: nowrap;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s, visibility 0.3s;
-    margin-bottom: 8px;
-    z-index: 1000;
-}
-
-.progress-step:hover .progress-tooltip {
-    opacity: 1;
-    visibility: visible;
-}
-
-.progress-tooltip::after {
-    content: '';
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    border-width: 4px;
-    border-style: solid;
-    border-color: rgba(0, 0, 0, 0.8) transparent transparent transparent;
-}
+/* 进度导航样式已移至 components/navigation.css */
 
 /* 进度概览卡片样式 */
 .progress-overview {

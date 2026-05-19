@@ -7,10 +7,6 @@ import type { TestCase, ModalSaveData } from '../../shared/types';
 
 export function useTestCaseManager() {
   const {
-    showTestCaseModal,
-    showGroupModal,
-    showImportModal,
-    showExportModal,
     formData,
     groupFormData,
     editingTestCase,
@@ -21,7 +17,6 @@ export function useTestCaseManager() {
     openEditGroupModal,
     openImportTestCaseModal,
     openExportTestCaseModal,
-    handleModalClose,
     handleModalSave,
     handleTestCaseAction
   } = useTestCaseCard();
@@ -78,10 +73,6 @@ export function useTestCaseManager() {
     testCaseGroups,
     tags,
     paginationInfo,
-    showTestCaseModal,
-    showGroupModal,
-    showImportModal,
-    showExportModal,
     formData,
     groupFormData,
     editingTestCase,
@@ -95,7 +86,6 @@ export function useTestCaseManager() {
     openEditGroupModal,
     openImportTestCaseModal,
     openExportTestCaseModal,
-    handleModalClose,
     handleSaveModal,
     handleTestCaseAction
   };
