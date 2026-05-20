@@ -34,7 +34,7 @@
       <div class="existing-tags" v-if="existingTags.length > 0">
         <span class="existing-tags-label">已有标签：</span>
         <span
-          v-for="tag in existingTags"
+          v-for="tag in paginatedExistingTags"
           :key="tag"
           class="tag-item existing-tag"
           :class="{ 'selected': selectedOldTag === tag }"
@@ -42,6 +42,15 @@
         >
           {{ tag }}
         </span>
+        <div class="tag-pagination" v-if="totalRenameTagPages > 1">
+          <button type="button" class="page-btn" :disabled="currentRenameTagPage === 1" @click="prevRenameTagPage">
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <span class="page-info">{{ currentRenameTagPage }} / {{ totalRenameTagPages }}</span>
+          <button type="button" class="page-btn" :disabled="currentRenameTagPage === totalRenameTagPages" @click="nextRenameTagPage">
+            <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -78,13 +87,22 @@
       <div class="existing-tags mt-2" v-if="availableSuggestions.length > 0">
         <span class="existing-tags-label">已有标签（点击添加）：</span>
         <span
-          v-for="tag in availableSuggestions"
+          v-for="tag in paginatedSuggestions"
           :key="tag"
           class="tag-item existing-tag"
           @click="addExistingTag(tag)"
         >
           {{ tag }}
         </span>
+        <div class="tag-pagination" v-if="totalTagPages > 1">
+          <button type="button" class="page-btn" :disabled="currentTagPage === 1" @click="prevTagPage">
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <span class="page-info">{{ currentTagPage }} / {{ totalTagPages }}</span>
+          <button type="button" class="page-btn" :disabled="currentTagPage === totalTagPages" @click="nextTagPage">
+            <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -101,13 +119,22 @@
       <div class="existing-tags mt-2" v-if="existingTags.length > 0">
         <span class="existing-tags-label">已有标签（点击移除）：</span>
         <span
-          v-for="tag in existingTags"
+          v-for="tag in paginatedExistingTags"
           :key="tag"
           class="tag-item existing-tag"
           @click="addExistingTag(tag)"
         >
           {{ tag }}
         </span>
+        <div class="tag-pagination" v-if="totalRenameTagPages > 1">
+          <button type="button" class="page-btn" :disabled="currentRenameTagPage === 1" @click="prevRenameTagPage">
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <span class="page-info">{{ currentRenameTagPage }} / {{ totalRenameTagPages }}</span>
+          <button type="button" class="page-btn" :disabled="currentRenameTagPage === totalRenameTagPages" @click="nextRenameTagPage">
+            <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -119,7 +146,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { testcasesApi } from '../../../utils/api'
 
 interface Props {
@@ -148,6 +175,10 @@ const existingTags = ref<string[]>([])
 const selectedOldTag = ref('')
 const newTagName = ref('')
 
+const TAGS_PER_PAGE = 20
+const currentTagPage = ref(1)
+const currentRenameTagPage = ref(1)
+
 const headerDescription = computed(() => {
   return `将为 ${props.caseCount} 个用例${actionText.value}标签`
 })
@@ -170,6 +201,26 @@ const isValid = computed(() => {
 
 const availableSuggestions = computed(() => {
   return existingTags.value.filter(tag => !selectedTags.value.includes(tag))
+})
+
+const totalTagPages = computed(() => {
+  return Math.ceil(availableSuggestions.value.length / TAGS_PER_PAGE)
+})
+
+const paginatedSuggestions = computed(() => {
+  const start = (currentTagPage.value - 1) * TAGS_PER_PAGE
+  const end = start + TAGS_PER_PAGE
+  return availableSuggestions.value.slice(start, end)
+})
+
+const totalRenameTagPages = computed(() => {
+  return Math.ceil(existingTags.value.length / TAGS_PER_PAGE)
+})
+
+const paginatedExistingTags = computed(() => {
+  const start = (currentRenameTagPage.value - 1) * TAGS_PER_PAGE
+  const end = start + TAGS_PER_PAGE
+  return existingTags.value.slice(start, end)
 })
 
 async function loadExistingTags() {
@@ -218,6 +269,35 @@ function removeTag(tag: string) {
 function selectOldTag(tag: string) {
   selectedOldTag.value = tag
 }
+
+function prevTagPage() {
+  if (currentTagPage.value > 1) {
+    currentTagPage.value--
+  }
+}
+
+function nextTagPage() {
+  if (currentTagPage.value < totalTagPages.value) {
+    currentTagPage.value++
+  }
+}
+
+function prevRenameTagPage() {
+  if (currentRenameTagPage.value > 1) {
+    currentRenameTagPage.value--
+  }
+}
+
+function nextRenameTagPage() {
+  if (currentRenameTagPage.value < totalRenameTagPages.value) {
+    currentRenameTagPage.value++
+  }
+}
+
+watch(action, () => {
+  currentTagPage.value = 1
+  currentRenameTagPage.value = 1
+})
 
 function handleConfirm() {
   if (action.value === 'rename') {
@@ -433,5 +513,45 @@ select.form-control {
 .btn-primary:disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+.tag-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+.page-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #666;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+.page-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.page-info {
+  font-size: 12px;
+  color: #666;
+  min-width: 50px;
+  text-align: center;
 }
 </style>
