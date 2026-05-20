@@ -8,9 +8,9 @@ import { useModalControl, MODAL_TYPES } from './useModal'
 import { useDeleteConfirm } from './useDeleteConfirm'
 import { useE2eTest } from './useE2eTest'
 import { useTestControl } from './useTestControl'
+import { useAlgorithmSelection } from './useAlgorithmSelection'
 import { useTestCaseStore } from '../store/testCaseStore'
 import { type Report, type Log, type TestCase } from '../shared/types'
-import { loadAlgorithmDetail } from './useAlgorithmConfig'
 
 export function normalizeSelectedCaseIds(ids: (string | number)[]) {
   const normalizedIds = ids.filter((id): id is string | number => {
@@ -386,92 +386,29 @@ export function useE2eView() {
     }
   }
 
-  // 算法相关
-  const algorithmList = ref<any[]>([])
-  const selectedAlgorithmType = ref<string>('')
-  const algorithmModalVisible = ref(false)
-  const algorithmModalMode = ref<'list' | 'create' | 'edit'>('list')
-  const algorithmEditData = ref<any>(null)
-  const algorithmSearchQuery = ref('')
-
-  const filteredAlgorithmList = computed(() => {
-    if (!algorithmSearchQuery.value.trim()) {
-      return algorithmList.value
+  const {
+    algorithmList,
+    selectedAlgorithmType,
+    algorithmModalVisible,
+    algorithmSearchQuery,
+    editingAlgorithm,
+    filteredAlgorithmList,
+    loadAlgorithms,
+    selectAlgorithm,
+    getAlgorithmName,
+    openAlgorithmModal,
+    openAlgorithmConfigModal,
+    closeAlgorithmModal
+  } = useAlgorithmSelection({
+    onSelectCallback: async (type: string | null) => {
+      if (type) {
+        await initializeE2eTests(type)
+      } else {
+        await initializeE2eTests()
+      }
     }
-    const query = algorithmSearchQuery.value.toLowerCase().trim()
-    return algorithmList.value.filter((algo: any) => 
-      algo.name?.toLowerCase().includes(query) ||
-      algo.group_name?.toLowerCase().includes(query) ||
-      algo.value?.toLowerCase().includes(query)
-    )
   })
 
-  const searchAlgorithms = () => {
-    // 搜索逻辑通过 computed 属性 filteredAlgorithmList 自动处理
-  }
-
-  const loadAlgorithms = async () => {
-    try {
-      const response = await fetch('/api/v1/algorithm/options')
-      const result = await response.json()
-      if (result.success) {
-        algorithmList.value = result.data.algorithms || []
-      }
-    } catch (error) {
-      console.error('加载算法列表失败:', error)
-      algorithmList.value = []
-    }
-  }
-
-  const selectAlgorithm = async (algorithmType: string) => {
-    if (selectedAlgorithmType.value === algorithmType) {
-      selectedAlgorithmType.value = ''
-      await initializeE2eTests()
-    } else {
-      selectedAlgorithmType.value = algorithmType || ''
-      await initializeE2eTests(algorithmType || undefined)
-    }
-  }
-
-  const getAlgorithmName = (type: string) => {
-    const algorithm = algorithmList.value.find((a: any) => a.value === type)
-    return algorithm?.name || type || '未知算法'
-  }
-
-  const openAlgorithmModal = () => {
-    algorithmModalMode.value = 'list'
-    algorithmEditData.value = null
-    algorithmModalVisible.value = true
-  }
-
-  const openCreateAlgorithmModal = () => {
-    algorithmModalMode.value = 'create'
-    algorithmEditData.value = null
-    algorithmModalVisible.value = true
-  }
-
-  const openEditAlgorithmModal = (algorithm: any) => {
-    algorithmModalMode.value = 'edit'
-    algorithmEditData.value = algorithm
-    algorithmModalVisible.value = true
-  }
-
-  const openAlgorithmConfigModal = async (algorithm: any) => {
-    const detail = await loadAlgorithmDetail(algorithm.value)
-    if (detail) {
-      algorithmEditData.value = detail
-    } else {
-      algorithmEditData.value = algorithm
-    }
-    algorithmModalMode.value = 'edit'
-    algorithmModalVisible.value = true
-  }
-
-  const closeAlgorithmModal = () => {
-    algorithmModalVisible.value = false
-  }
-
-  // 根据算法类型过滤设备
   const algorithmFilteredDevices = computed(() => {
     if (!selectedAlgorithmType.value) {
       return filteredDevices.value
@@ -753,15 +690,11 @@ export function useE2eView() {
     selectAlgorithm,
     getAlgorithmName,
     openAlgorithmModal,
-    openCreateAlgorithmModal,
-    openEditAlgorithmModal,
     openAlgorithmConfigModal,
     closeAlgorithmModal,
     algorithmModalVisible,
-    algorithmModalMode,
-    algorithmEditData,
+    editingAlgorithm,
     algorithmSearchQuery,
-    filteredAlgorithmList,
-    searchAlgorithms
+    filteredAlgorithmList
   }
 }

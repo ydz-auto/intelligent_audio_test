@@ -2,6 +2,7 @@ import threading
 import time
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor
+from collections import deque
 from backend.models.models import Task, TaskCase,  TestCase, API
 from backend.models.database import db
 from backend.controllers.log_controller import LogController
@@ -51,11 +52,12 @@ class ExecutionEngine:
                 cls._instance.max_queue_size = config_manager.get_value('execution_engine', 'max_queue_size', 100)  # 任务队列最大长度
                 
                 # 任务队列管理
-                cls._instance.task_queue = []  # 任务队列，存储待执行的任务
+                cls._instance.task_queue = deque()  # 任务队列，使用deque提高效率
                 cls._instance.queue_lock = threading.Lock()  # 队列锁，确保线程安全
                 cls._instance.running_tasks = {}  # 运行中任务，{task_id: task_type}
                 cls._instance.running_apis = set()  # 运行中API集合，存储正在使用的API ID
                 cls._instance.running_e2e = False  # E2E任务运行状态
+                cls._instance.scheduler_event = threading.Event()  # 调度器事件，用于事件驱动
                 
                 # 任务级别的锁，用于确保状态更新的原子性
                 cls._instance.task_locks = {}  # 任务锁字典，{task_id: threading.Lock()}
@@ -127,12 +129,17 @@ class ExecutionEngine:
     def _stop_scheduler(self):
         """停止后台调度线程"""
         self.scheduler_stop_event.set()
+        self.scheduler_event.set()  # 唤醒调度器以便快速退出
         if self.scheduler_thread is not None and self.scheduler_thread.is_alive():
             self.scheduler_thread.join(timeout=5)
         self._log(level='INFO', content="任务调度器已停止")
+    
+    def trigger_scheduler_check(self):
+        """触发调度器立即检查，用于事件驱动"""
+        self.scheduler_event.set()
 
     def _scheduler_loop(self):
-        """调度器主循环，定期检查并启动 pending 任务"""
+        """调度器主循环，定期检查并启动 pending 任务，支持事件驱动"""
         if self.scheduler_stop_event is None or self.scheduler_app is None:
             return
 
@@ -145,7 +152,8 @@ class ExecutionEngine:
                 except Exception as e:
                     print(f"[Scheduler] 调度器检查任务时发生错误: {str(e)}")
 
-                self.scheduler_stop_event.wait(timeout=check_interval)
+                self.scheduler_event.wait(timeout=check_interval)
+                self.scheduler_event.clear()
 
     def _schedule_pending_tasks(self):
         """检查并自动启动 pending 状态的任务
@@ -359,78 +367,79 @@ class ExecutionEngine:
                     local_db_session.commit()
             finally:
                 local_db_session.close()
-                
+            
+            # 触发调度器立即检查
+            self.trigger_scheduler_check()
+            
             return True, "任务已加入队列"
     
     def _check_queue(self):
-        """检查任务队列，启动可以执行的任务
-        """
-        # 使用单个数据库会话处理整个队列检查过程，减少连接开销
+        """检查任务队列，启动可以执行的任务，一次启动多个可执行任务"""
         local_db_session = db.session()
         try:
+            tasks_to_start = []
+            
             with self.queue_lock:
-                # 遍历队列，检查每个任务是否可以执行
-                i = 0
-                while i < len(self.task_queue):
-                    queued_task = self.task_queue[i]
+                remaining_tasks = deque()
+                
+                while self.task_queue:
+                    queued_task = self.task_queue.popleft()
                     task_id = queued_task['id']
                     task_type = queued_task['type']
                     api_ids = queued_task['api_ids']
                     app = queued_task['app']
                     
-                    # 检查任务状态，跳过已停止的任务
                     task = local_db_session.query(Task).get(task_id)
                     task_status = task.status if task else None
                     
-                    # 如果任务已停止，从队列中移除
                     if task_status == 'stopped':
-                        self.task_queue.pop(i)
                         continue
                     
                     can_run = False
                     
                     if task_type == 'e2e':
-                        # E2E任务：检查是否有E2E任务在运行
                         if not self.running_e2e:
                             can_run = True
                     else:
-                        # API任务：检查是否有相同API在运行
                         overlapping_apis = set(api_ids) & self.running_apis
                         if not overlapping_apis:
                             can_run = True
                     
                     if can_run:
-                        # 可以执行，从队列中移除
-                        self.task_queue.pop(i)
-                        
-                        # 更新运行状态
                         self.running_tasks[task_id] = task_type
                         if task_type == 'e2e':
                             self.running_e2e = True
                         else:
                             self.running_apis.update(api_ids)
                         
-                        # 更新任务状态为running
                         if task:
                             task.status = 'running'
                             local_db_session.commit()
                         
-                        # 创建停止和暂停事件
-                        stop_event = threading.Event()
-                        pause_event = threading.Event()
-                        pause_event.set()  # 初始状态为非暂停
-                        
-                        # 创建任务执行线程
-                        thread = threading.Thread(target=self._run_task, args=(app, task_id, stop_event, pause_event))
-                        self.workers[task_id] = thread
-                        self.stop_flags[task_id] = stop_event
-                        self.pause_flags[task_id] = pause_event
-                        
-                        # 启动线程
-                        thread.start()
-                        break
+                        tasks_to_start.append({
+                            'task_id': task_id,
+                            'app': app,
+                            'task': task
+                        })
                     else:
-                        i += 1
+                        remaining_tasks.append(queued_task)
+                
+                self.task_queue = remaining_tasks
+            
+            for task_info in tasks_to_start:
+                task_id = task_info['task_id']
+                app = task_info['app']
+                
+                stop_event = threading.Event()
+                pause_event = threading.Event()
+                pause_event.set()
+                
+                thread = threading.Thread(target=self._run_task, args=(app, task_id, stop_event, pause_event))
+                self.workers[task_id] = thread
+                self.stop_flags[task_id] = stop_event
+                self.pause_flags[task_id] = pause_event
+                
+                thread.start()
         finally:
             local_db_session.close()
     
@@ -442,12 +451,15 @@ class ExecutionEngine:
             task_id: 任务ID
         """
         with self.queue_lock:
-            # 遍历队列，查找并移除指定任务
-            for i, queued_task in enumerate(self.task_queue):
+            new_queue = deque()
+            removed = False
+            for queued_task in self.task_queue:
                 if queued_task['id'] == task_id:
-                    self.task_queue.pop(i)
-                    return True
-        return False
+                    removed = True
+                else:
+                    new_queue.append(queued_task)
+            self.task_queue = new_queue
+        return removed
 
     def control_task(self, app, task_id, action):
         """
@@ -463,12 +475,7 @@ class ExecutionEngine:
         """
         # 处理停止任务操作，从队列中移除
         if action == 'stop':
-            # 先从队列中移除任务
-            with self.queue_lock:
-                for i, queued_task in enumerate(self.task_queue):
-                    if queued_task['id'] == task_id:
-                        self.task_queue.pop(i)
-                        break
+            self.remove_from_queue(task_id)
 
         with app.app_context():
             # 使用本地会话确保独立可靠的会话
@@ -567,6 +574,7 @@ class ExecutionEngine:
                             task.status = 'queued'
                             local_db_session.commit()
                             self._emit_progress(task)
+                            self.trigger_scheduler_check()
                             return True, "任务已恢复"
                         return False, "未找到运行中的任务"
 

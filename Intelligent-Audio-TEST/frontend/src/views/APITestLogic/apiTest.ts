@@ -9,8 +9,8 @@ import { useTestCaseCard } from '../../composables/useTestCaseCard'
 import { useDeviceManagement } from '../../composables/useDeviceManagement'
 import { useTaskProgress } from '../../composables/useTaskProgress'
 import { useTestControl } from '../../composables/useTestControl'
+import { useAlgorithmSelection } from '../../composables/useAlgorithmSelection'
 import { apisApi, tasksApi, reportsApi } from '../../utils/api'
-import { loadAlgorithmDetail } from '../../composables/useAlgorithmConfig'
 import { generateDeviceFields } from '../../utils/utils'
 import type { 
   TestCase, 
@@ -79,74 +79,28 @@ export function useApiTest() {
     { number: 4, title: '查看报告', description: '查看和导出测试报告' }
   ]
 
-  const algorithmList = ref<{ value: string; name: string; group_id?: number; group_name?: string }[]>([])
-  const selectedAlgorithmType = ref<string | null>(null)
-  const algorithmModalVisible = ref(false)
-  const algorithmSearchQuery = ref('')
-  const editingAlgorithm = ref<{ value: string; name: string; group_id?: number; group_name?: string } | null>(null)
-
-  const filteredAlgorithmList = computed(() => {
-    if (!algorithmSearchQuery.value.trim()) {
-      return algorithmList.value
-    }
-    const query = algorithmSearchQuery.value.toLowerCase().trim()
-    return algorithmList.value.filter(algo => 
-      algo.name?.toLowerCase().includes(query) ||
-      algo.group_name?.toLowerCase().includes(query) ||
-      algo.value?.toLowerCase().includes(query)
-    )
-  })
-
-  async function loadAlgorithms() {
-    try {
-      const response = await fetch('/api/v1/algorithm/options')
-      const result = await response.json()
-      if (result.success) {
-        algorithmList.value = result.data.algorithms || []
+  const {
+    algorithmList,
+    selectedAlgorithmType,
+    algorithmModalVisible,
+    algorithmSearchQuery,
+    editingAlgorithm,
+    filteredAlgorithmList,
+    loadAlgorithms,
+    selectAlgorithm,
+    getAlgorithmName,
+    openAlgorithmModal,
+    openAlgorithmConfigModal,
+    closeAlgorithmModal
+  } = useAlgorithmSelection({
+    onSelectCallback: async (type: string | null) => {
+      if (type) {
+        await fetchTestCases({ algorithmType: type })
+      } else {
+        await fetchTestCases()
       }
-    } catch (error) {
-      console.error('加载算法列表失败:', error)
     }
-  }
-
-  async function selectAlgorithm(type: string) {
-    if (selectedAlgorithmType.value === type) {
-      selectedAlgorithmType.value = ''
-      await fetchTestCases()
-    } else {
-      selectedAlgorithmType.value = type
-      await fetchTestCases({ algorithmType: type })
-    }
-  }
-
-  function getAlgorithmName(type: string): string {
-    const algo = algorithmList.value.find(a => a.value === type)
-    return algo?.name || type
-  }
-
-  function openAlgorithmModal() {
-    algorithmModalVisible.value = true
-  }
-
-  async function openAlgorithmConfigModal(algo: { value: string; name: string; group_id?: number; group_name?: string }) {
-    const detail = await loadAlgorithmDetail(algo.value)
-    if (detail) {
-      editingAlgorithm.value = detail
-    } else {
-      editingAlgorithm.value = algo
-    }
-    algorithmModalVisible.value = true
-  }
-
-  function closeAlgorithmModal() {
-    algorithmModalVisible.value = false
-  }
-
-  async function init() {
-    await loadAlgorithms()
-  }
-
-  init()
+  })
 
   const apis = ref<APIConfig[]>([])
   const apiSearchQuery = ref('')
@@ -686,6 +640,7 @@ export function useApiTest() {
   ]
 
   const initAPITest = async () => {
+    await loadAlgorithms()
     const algorithmType = selectedAlgorithmType.value || undefined
     await fetchTestCases({ algorithmType })
 

@@ -18,14 +18,13 @@ from backend.utils.base_executor import BaseExecutor
 class APIExecutor(BaseExecutor):
     def __init__(self, execution_engine):
         super().__init__(execution_engine)
-        self.api_queues = {}
-        self.api_waiting_counts = {}
+        self.api_semaphores = {}  # API信号量 {api_id: Semaphore}
+        self.api_waiting_counts = {}  # API等待计数 {api_id: int}
         self.global_lock = Lock()
         self.task_locks = {}
         self.task_lock = Lock()
         self.completed_tasks = set()
         self.completed_tasks_lock = Lock()
-        self.max_queue_size = config_manager.get_value('api_executor', 'max_queue_size', 100)
         self.max_wait_time = config_manager.get_value('api_executor', 'max_wait_time', 300)
     
     def _get_task_lock(self, task_id):
@@ -68,27 +67,28 @@ class APIExecutor(BaseExecutor):
         self.current_api_id = final_api_id
         return {}
 
-    def _get_or_create_api_queue(self, api_id, max_size):
+    def _get_or_create_semaphore(self, api_id, max_process):
         """
-        获取或创建API的任务队列（用于排队控制）
-
+        获取或创建API的信号量
+        
         Args:
             api_id: API ID
-            max_size: 最大队列长度
-
+            max_process: 最大并发数
+            
         Returns:
-            queue.Queue: API任务队列
+            threading.Semaphore: API信号量
         """
+        import threading
         with self.global_lock:
-            if api_id not in self.api_queues:
-                self.api_queues[api_id] = queue.Queue(maxsize=max_size)
+            if api_id not in self.api_semaphores:
+                self.api_semaphores[api_id] = threading.Semaphore(max_process)
                 self._log(
                     level='DEBUG',
-                    content=f"为 API {api_id} 创建排队队列，最大队列长度: {max_size}",
+                    content=f"为 API {api_id} 创建信号量，最大并发数: {max_process}",
                     task_id=None,
                     api_id=api_id
                 )
-            return self.api_queues[api_id]
+            return self.api_semaphores[api_id]
 
     def _inc_waiting(self, api_id):
         with self.global_lock:
@@ -115,7 +115,7 @@ class APIExecutor(BaseExecutor):
             api_id=api_id
         )
 
-        q = self._get_or_create_api_queue(api_id, max_process)
+        semaphore = self._get_or_create_semaphore(api_id, max_process)
         start_time = time.time()
         waiting_incremented = False
         

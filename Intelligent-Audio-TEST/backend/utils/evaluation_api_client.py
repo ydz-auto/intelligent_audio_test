@@ -102,9 +102,31 @@ class evaluationApiClient:
                 content=f'初始化线程池失败: {str(e)} 堆栈信息: {stack_trace}'
             )
     
+    def _get_or_create_semaphore(self, endpoint, max_process):
+        """
+        获取或创建端点的信号量
+        
+        Args:
+            endpoint: 端点URL
+            max_process: 最大并发数
+            
+        Returns:
+            threading.Semaphore: 端点信号量
+        """
+        import threading
+        with self.global_lock:
+            if endpoint not in self.endpoint_semaphores:
+                self.endpoint_semaphores[endpoint] = threading.Semaphore(max_process)
+                self._log(
+                    level='DEBUG',
+                    category='system',
+                    content=f'为端点 {endpoint} 创建信号量，最大并发数: {max_process}'
+                )
+            return self.endpoint_semaphores[endpoint]
+    
     def acquire_endpoint_slot(self, endpoint, timeout=None):
         """
-        获取端点的并发槽位，支持队列等待
+        获取端点的并发槽位，使用信号量实现
         
         Args:
             endpoint: 端点URL
@@ -113,96 +135,44 @@ class evaluationApiClient:
         Returns:
             bool: 是否成功获取槽位
         """
-        import threading
-        
-        # 使用默认超时时间
         wait_timeout = timeout or self.max_wait_time
         
         with self.global_lock:
-            # 确保端点配置存在
             if endpoint not in self.endpoint_configs:
                 self.endpoint_configs[endpoint] = 1
-            
-            # 确保端点锁存在
-            if endpoint not in self.endpoint_locks:
-                self.endpoint_locks[endpoint] = Lock()
-            
-            # 确保队列和队列锁存在
-            if endpoint not in self.endpoint_queues:
-                self.endpoint_queues[endpoint] = []
-            if endpoint not in self.endpoint_queue_locks:
-                self.endpoint_queue_locks[endpoint] = Lock()
         
         max_process = self.endpoint_configs[endpoint]
-        start_time = time.time()
+        semaphore = self._get_or_create_semaphore(endpoint, max_process)
         
-        while True:
-            # 尝试获取槽位
-            with self.endpoint_locks[endpoint]:
-                current_concurrent = self.endpoint_concurrent_counts.get(endpoint, 0)
-                if current_concurrent < max_process:
-                    # 成功获取槽位
-                    self.endpoint_concurrent_counts[endpoint] = current_concurrent + 1
+        start_time = time.time()
+        remaining_time = wait_timeout
+        
+        while remaining_time > 0:
+            try:
+                acquired = semaphore.acquire(blocking=True, timeout=min(0.5, remaining_time))
+                if acquired:
                     return True
-            
-            # 计算剩余等待时间
-            elapsed_time = time.time() - start_time
-            remaining_time = wait_timeout - elapsed_time
-            
-            if remaining_time <= 0:
-                # 超时，返回失败
-                return False
-            
-            # 创建条件变量并加入队列
-            condition = threading.Condition()
-            with self.endpoint_queue_locks[endpoint]:
-                # 检查队列长度，超过限制则拒绝
-                if len(self.endpoint_queues[endpoint]) >= self.max_queue_size:
-                    return False
                 
-                # 将条件变量加入队列
-                self.endpoint_queues[endpoint].append(condition)
-            
-            # 等待槽位释放或超时
-            with condition:
-                try:
-                    condition.wait(timeout=remaining_time)
-                except threading.ThreadError:
-                    with self.endpoint_queue_locks[endpoint]:
-                        if condition in self.endpoint_queues[endpoint]:
-                            self.endpoint_queues[endpoint].remove(condition)
-                    return False
-
-            if time.time() - start_time >= wait_timeout:
-                with self.endpoint_queue_locks[endpoint]:
-                    if condition in self.endpoint_queues[endpoint]:
-                        self.endpoint_queues[endpoint].remove(condition)
+                elapsed_time = time.time() - start_time
+                remaining_time = wait_timeout - elapsed_time
+            except Exception:
                 return False
+        
+        return False
     
     def release_endpoint_slot(self, endpoint):
         """
-        释放端点的并发槽位，并通知队列中的等待任务
+        释放端点的并发槽位
         """
-        if endpoint in self.endpoint_locks:
-            with self.endpoint_locks[endpoint]:
-                if endpoint in self.endpoint_concurrent_counts:
-                    self.endpoint_concurrent_counts[endpoint] = max(0, self.endpoint_concurrent_counts[endpoint] - 1)
-            
-            # 通知队列中的等待任务
-            with self.endpoint_queue_locks.get(endpoint, Lock()):
-                if endpoint in self.endpoint_queues and self.endpoint_queues[endpoint]:
-                    # 获取队列中的第一个等待任务
-                    condition = self.endpoint_queues[endpoint].pop(0)
-                    with condition:
-                        # 通知该任务可以尝试获取槽位
-                        condition.notify()
-            
-            # 确保队列和队列锁被正确初始化（防止后续访问错误）
-            with self.global_lock:
-                if endpoint not in self.endpoint_queues:
-                    self.endpoint_queues[endpoint] = []
-                if endpoint not in self.endpoint_queue_locks:
-                    self.endpoint_queue_locks[endpoint] = Lock()
+        if endpoint in self.endpoint_semaphores:
+            try:
+                self.endpoint_semaphores[endpoint].release()
+            except ValueError:
+                self._log(
+                    level='WARNING',
+                    category='system',
+                    content=f'端点 {endpoint} 信号量释放失败（可能已超过最大值）'
+                )
     
     def select_endpoint(self, endpoints):
         """
