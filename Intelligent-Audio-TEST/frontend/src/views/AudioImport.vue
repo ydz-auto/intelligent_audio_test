@@ -55,8 +55,9 @@
           :total-audios="totalAudios"
           :current-page="currentPage"
           :page-size="pageSize"
-          :all-tags="allTags"
-          :selected-tags="selectedTags"
+          :all-tags="allTags.value || []"
+          :selected-tags="selectedTags.value || []"
+          :tag-modes="tagModesObject.value || {}"
           :enable-selection="true"
           :show-status="true"
           :audio-type="audioTypeFilter"
@@ -218,6 +219,8 @@ const {
   selectedAudios: selectedAudios, 
   filters, 
   selectedTags: selectedTags,
+  tagModes: tagModes,
+  tagModesObject: tagModesObject,
   allTags: allTags, 
   urlImportData: urlImportData, 
   convertAudioInfo: convertAudioInfo, 
@@ -320,17 +323,17 @@ const resetSearch = () => {
 // 修复筛选功能：确保所有筛选条件都被正确处理
 const filterAudios = (newFilters?: any) => {
   if (newFilters) {
-    // 更新筛选条件
     if (newFilters.format) filters.value.format = newFilters.format;
     if (newFilters.sampleRate) filters.value.sampleRate = newFilters.sampleRate;
     if (newFilters.duration) filters.value.duration = newFilters.duration;
     if (newFilters.audioType) filters.value.audioType = newFilters.audioType;
     if (newFilters.tags) {
-      // 更新选中的标签
       selectedTags.value = newFilters.tags || [];
     }
+    if (newFilters.tagModes) {
+      tagModes.value = new Map(Object.entries(newFilters.tagModes));
+    }
     if (newFilters.keyword) {
-      // 更新搜索词
       searchQuery.value = newFilters.keyword;
     }
   }

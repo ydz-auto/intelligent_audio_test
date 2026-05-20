@@ -1,5 +1,5 @@
 <template>
-  <div class="api-test-view">
+  <div class="test-view-common">
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">

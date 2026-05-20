@@ -52,7 +52,7 @@ defineEmits(['prev', 'next']);
 .step-panel.active {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  min-height: 100%;
 }
 
 .step-header {
@@ -71,18 +71,7 @@ defineEmits(['prev', 'next']);
 
 .step-body {
   flex: 1;
-  overflow-y: auto;
   padding-bottom: 20px;
-}
-
-.step-actions {
-  display: flex;
-  padding: 20px 0;
-  border-top: 1px solid #edf2f7;
-  background: white;
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
 }
 
 .actions-spacer {

@@ -54,6 +54,12 @@ export function useAudioConfig() {
       const audios: AudioItem[] = Array.isArray(allAudiosRes?.items)
         ? allAudiosRes.items
         : [];
+      
+      console.log('[useAudioConfig] loaded audios count:', audios.length);
+      if (audios.length > 0) {
+        console.log('[useAudioConfig] first audio sample:', audios[0]);
+        console.log('[useAudioConfig] first audio tags:', (audios[0] as any).tags, (audios[0] as any).tag);
+      }
 
       let dryAudioList: AudioItem[] = audios.filter((a: AudioItem) => a.audioType === 'dry');
       let noiseAudioList: AudioItem[] = audios.filter((a: AudioItem) => a.audioType === 'noise');
@@ -98,13 +104,13 @@ export function useAudioConfig() {
   function getAudioTags(audioId: string | number): string {
     const allAudios = [...dryAudios.value, ...noiseAudios.value];
     const audio = allAudios.find(a => String(a.id) === String(audioId));
-    if (audio && audio.tags) {
-      if (Array.isArray(audio.tags)) {
-        return audio.tags.join(', ');
-      }
-      return String(audio.tags);
+    if (!audio) return '';
+    
+    const rawTags = (audio as any).tags || (audio as any).tag || '';
+    if (Array.isArray(rawTags)) {
+      return rawTags.join(', ');
     }
-    return '';
+    return String(rawTags);
   }
 
   function getNormalizedTags(tagsStr: string): string[] {
@@ -435,11 +441,16 @@ export function useAudioConfig() {
     const tagSet = new Set<string>();
     audios.forEach(config => {
       if (config.audioId) {
-        const tags = getNormalizedTags(getAudioTags(config.audioId));
+        const tagsStr = getAudioTags(config.audioId);
+        console.log('[useAudioConfig] audioId:', config.audioId, 'tagsStr:', tagsStr);
+        const tags = getNormalizedTags(tagsStr);
+        console.log('[useAudioConfig] normalized tags:', tags);
         tags.forEach(tag => tagSet.add(tag));
       }
     });
-    return Array.from(tagSet);
+    const result = Array.from(tagSet);
+    console.log('[useAudioConfig] getUniqueTagsFromConfigs result:', result);
+    return result;
   }
 
   function toggleTagSelector() {

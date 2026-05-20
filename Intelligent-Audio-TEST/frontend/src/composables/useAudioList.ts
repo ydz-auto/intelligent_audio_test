@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue';
 import { audiosApi } from '../utils/api';
 import { formatFileSize, formatDuration } from '../utils/audioUtils';
+import { useTagFilter } from './useTagFilter';
 
 export interface AudioItem {
   id: string | number;
@@ -55,9 +56,18 @@ export function useAudioList() {
   const pageSize = ref(20);
   const searchQuery = ref('');
   const allTags = ref<string[]>([]);
-  const selectedTags = ref<string[]>([]);
   const tagMatchMode = ref<'or' | 'and'>('and');
-  const tagModes = ref<Map<string, 'or' | 'and'>>(new Map());
+  
+  const {
+    selectedTags,
+    tagModes,
+    tagModesObject,
+    handleTagClick: tagFilterHandleTagClick,
+    setTagMode: tagFilterSetTagMode,
+    removeTag: tagFilterRemoveTag,
+    clearTags
+  } = useTagFilter();
+  
   const filters = ref({
     format: 'all',
     sampleRate: 'all',
@@ -215,10 +225,18 @@ export function useAudioList() {
     }
   };
 
+  let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
   const handleSearch = (query: string) => {
     searchQuery.value = query;
     currentPage.value = 1;
-    loadAudios();
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+    }
+    searchDebounceTimer = setTimeout(() => {
+      loadAudios();
+      searchDebounceTimer = null;
+    }, 300);
   };
 
   const handleFilterChange = (newFilters: any) => {
@@ -264,11 +282,10 @@ export function useAudioList() {
     loadAudios();
   };
 
-  const handleTagClick = (tag: string, mode: 'or' | 'and') => {
-    if (selectedTags.value.includes(tag)) {
-      tagModes.value.set(tag, mode);
-    }
-    handleToggleTag(tag, mode);
+  const handleTagClick = (tag: string, mode?: 'or' | 'and') => {
+    tagFilterHandleTagClick(tag);
+    currentPage.value = 1;
+    loadAudios();
   };
 
   const handlePageChange = (page: number) => {
@@ -282,17 +299,17 @@ export function useAudioList() {
     loadAudios();
   };
 
-  const resetFilters = (options?: { resetSearch?: boolean; resetPage?: boolean }) => {
+  const resetFilters = (options?: { resetSearch?: boolean; resetPage?: boolean; preserveAudioType?: boolean; audioType?: string }) => {
     searchQuery.value = options?.resetSearch ? '' : searchQuery.value;
+    const preservedAudioType = options?.preserveAudioType ? filters.value.audioType : (options?.audioType || 'all');
     filters.value = {
       format: 'all',
       sampleRate: 'all',
       duration: 'all',
-      audioType: 'all',
+      audioType: preservedAudioType,
       direction: 'all'
     };
-    selectedTags.value = [];
-    tagModes.value = new Map();
+    clearTags();
     tagMatchMode.value = 'and';
     if (options?.resetPage !== false) {
       currentPage.value = 1;
@@ -316,6 +333,7 @@ export function useAudioList() {
     selectedTags,
     tagMatchMode,
     tagModes,
+    tagModesObject,
     filters,
     totalPages,
     formatFilePath,

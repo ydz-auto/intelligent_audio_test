@@ -243,6 +243,13 @@ function handleExportUpdate(data: ExportFormData & { ids: (string | number)[] })
 }
 
 function openAudioSelectModal(audioType: 'dry' | 'noise', index?: number) {
+  if (!caseFormData.value.config) {
+    caseFormData.value.config = {
+      audios: [{ audioId: '', testType: 'api', playbackDeviceId: '', spl: 65, playOrder: 0 }],
+      dimensions: { api: [], e2e: [] },
+      backgroundNoise: { audioId: '', deviceIds: [], spl: 0 }
+    };
+  }
   audioConfig.currentAudioType.value = audioType;
   audioConfig.currentAudioIndex.value = index ?? null;
   audioConfig.showAudioModal.value = true;

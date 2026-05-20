@@ -29,9 +29,9 @@
               :total-audios="totalAudios"
               :current-page="currentPage"
               :page-size="pageSize"
-              :all-tags="allTags"
-              :selected-tags="selectedTags"
-              :tag-modes="Object.fromEntries(tagModes)"
+              :all-tags="allTags.value || []"
+              :selected-tags="selectedTags.value || []"
+              :tag-modes="tagModesObject.value || {}"
               @search="handleSearch"
               @filterChange="handleFilterChange"
               @toggleTag="(tag, mode) => handleTagClick(tag, mode)"
@@ -128,6 +128,7 @@ const {
   allTags,
   selectedTags,
   tagModes,
+  tagModesObject,
   filters,
   loadAudios,
   loadAllTags,
@@ -217,6 +218,7 @@ const handleClose = () => {
 
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.key === 'Escape' && props.visible) {
+    event.stopPropagation();
     handleClose();
   }
 };
@@ -247,7 +249,7 @@ watch(() => props.visible, (newVal) => {
     window.addEventListener('keydown', handleKeyDown);
     selectedAudios.value = [];
     allAudiosCache.value = [];
-    resetFilters();
+    resetFilters({ audioType: props.audioType });
     loadAudios();
     loadAllTags();
   } else {
@@ -413,7 +415,7 @@ watch(uploadProgress, (newProgress) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 13001 !important;
+  z-index: calc(var(--z-index-modal-top, 13000) + 1) !important;
   animation: fadeIn 0.3s ease;
   opacity: 1;
   visibility: visible;

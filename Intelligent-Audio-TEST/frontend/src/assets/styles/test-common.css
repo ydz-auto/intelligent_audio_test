@@ -1,6 +1,9 @@
 .test-view-common {
   padding: 20px;
-  min-height: 100vh;
+  padding-bottom: 0;
+  min-height: calc(100vh - 84px);
+  display: flex;
+  flex-direction: column;
 }
 
 .test-view-common .page-header {
@@ -34,19 +37,45 @@
 }
 
 .test-view-common .step-content {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
 
 .test-view-common .step-panel {
   display: none;
-  padding: 24px;
 }
 
 .test-view-common .step-panel.active {
-  display: block;
+  margin: 0;
+  padding: 24px;
+  padding-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  min-height: calc(100vh - 200px);
+}
+
+.test-view-common .step-panel.active .step-body {
+  flex: 1;
+}
+
+.test-view-common .step-panel.active .step-actions {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  position: sticky;
+  bottom: -32px;
+  z-index: 10001;
+  margin: 24px 0 0 0;
+  padding: 20px 0;
+  border-top: 1px solid #e8e8e8;
 }
 
 .test-view-common .step-title {
@@ -54,15 +83,6 @@
   font-weight: 600;
   color: #333;
   margin: 0 0 24px 0;
-}
-
-.test-view-common .step-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #e8e8e8;
 }
 
 .test-view-common .device-toolbar {
@@ -210,24 +230,26 @@
 .algorithm-card {
   background: white;
   border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  border: 2px solid transparent;
+  outline: 1px solid #e2e8f0;
+  outline-offset: -2px;
   padding: 16px;
   display: flex;
   flex-direction: column;
-  transition: all 0.3s ease;
+  transition: border-color 0.2s ease-out, background-color 0.2s ease-out, box-shadow 0.2s ease-out, transform 0.2s ease-out;
   cursor: pointer;
   height: 100%;
   position: relative;
 }
 
 .algorithm-card:hover {
-  border-color: var(--primary-color);
+  border-color: rgba(255, 106, 0, 0.5);
   box-shadow: 0 4px 12px rgba(255, 106, 0, 0.15);
   transform: translateY(-2px);
 }
 
 .algorithm-card.selected {
-  border: 2px solid var(--primary-color);
+  border-color: var(--primary-color);
   background-color: rgba(255, 106, 0, 0.08);
   box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.2), 0 4px 16px rgba(255, 106, 0, 0.1);
 }
@@ -264,6 +286,11 @@
   font-size: 16px;
   color: #2d3748;
   margin-bottom: 4px;
+  transition: color 0.2s ease-out;
+}
+
+.algorithm-card.selected .algorithm-name {
+  color: var(--primary-color);
 }
 
 .algorithm-type-badge {
@@ -274,6 +301,7 @@
   color: #666;
   font-size: 12px;
   text-transform: capitalize;
+  transition: background-color 0.2s ease-out, color 0.2s ease-out;
 }
 
 .algorithm-card.selected .algorithm-type-badge {
@@ -293,7 +321,7 @@
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-  transition: all 0.2s;
+  transition: background-color 0.2s ease-out, color 0.2s ease-out;
 }
 
 .algorithm-card .btn-icon-only:hover:not(:disabled) {
@@ -337,6 +365,11 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  transition: border-color 0.2s ease-out;
+}
+
+.algorithm-card.selected .algorithm-card-footer {
+  border-color: rgba(255, 106, 0, 0.2);
 }
 
 .algorithm-checkbox {
@@ -354,18 +387,20 @@
   border: 1px solid #e2e8f0;
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.2s;
+    transition: all var(--transition-fast);
 }
 
 .algorithm-card.selected .algorithm-select-btn {
   background: var(--primary-color);
   color: white;
   border-color: var(--primary-color);
+  transition: all var(--transition-fast);
 }
 
 .algorithm-select-btn.disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transition: all var(--transition-fast);
 }
 
 .selected-info {

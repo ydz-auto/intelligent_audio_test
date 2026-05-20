@@ -157,7 +157,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     align-items: center;
     justify-content: center;
     gap: var(--spacing-lg);
-    margin: var(--spacing-lg) 0;
+    margin: var(--spacing-lg);
     padding: var(--spacing-md);
     background: #fff;
     border-radius: var(--border-radius-lg);
@@ -188,7 +188,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     font-size: var(--font-size-lg);
     font-weight: var(--font-weight-bold);
     border: 3px solid var(--border-color);
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: background-color var(--transition-fast);
     box-shadow: none;
     position: relative;
     z-index: 2;
@@ -234,6 +234,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     color: #FFFFFF;
     box-shadow: 0 0 0 8px rgba(255, 106, 0, 0.15);
     border-color: #FFFFFF;
+    transition: all var(--transition-fast);
 }
 
 .progress-step.active .progress-step-label {
@@ -247,6 +248,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     color: var(--white-color);
     border-color: var(--success-color);
     box-shadow: 0 0 15px rgba(82, 196, 26, 0.4);
+
 }
 
 .progress-step.completed .progress-step-number::after {
@@ -260,8 +262,11 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
 }
 
 .progress-step:hover .progress-step-number {
-    transform: scale(1.05);
-    box-shadow: 0 0 0 4px rgba(255, 106, 0, 0.2);
+    color: #FFFFFF;
+    background-color: var(--primary-color);
+    box-shadow: 0 0 0 8px rgba(255, 106, 0, 0.15);
+    border-color: #FFFFFF;
+    transition: all var(--transition-fast);
 }
 
 .progress-step.active:hover .progress-step-number {

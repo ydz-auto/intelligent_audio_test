@@ -1,82 +1,11 @@
-/* API测试页面样式 */
-.api-test-view {
-  padding: 20px;
-  min-height: 100vh;
-}
+/* API测试页面样式 - 使用 test-view-common 公共样式 */
 
-/* 报告区域占满背景 */
-.api-test-view .step-panel.active {
- margin: calc(-1 * var(--spacing-xl));
+/* API测试特殊样式：报告区域透明背景 */
+.test-view-common .step-panel.active.api-report-step {
+  margin: calc(-1 * var(--spacing-xl));
   padding: 20px;
   min-height: calc(100vh);
   background: transparent;
-}
-
-/* 页面标题 */
-.page-header {
-  margin-bottom: 24px;
-}
-
-.header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.page-title {
-  color: var(--primary-color);
-  font-size: 24px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0;
-}
-
-.page-description {
-  color: #666;
-  font-size: 14px;
-  margin: 0;
-}
-
-/* 进度导航 */
-.progress-nav {
-  margin-bottom: 24px;
-}
-
-/* 步骤内容区域 */
-.step-content {
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-}
-
-/* 步骤面板 */
-.step-panel {
-  display: none;
-  padding: 24px;
-}
-
-.step-panel.active {
-  display: block;
-}
-
-.step-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 20px;
-}
-
-/* 步骤操作按钮 */
-.step-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #e8e8e8;
 }
 
 /* API网格布局 */

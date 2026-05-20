@@ -4,6 +4,7 @@ import SparkMD5 from 'spark-md5';
 import { getModalManager } from '../../utils/modalManager';
 import { useModalStore } from '../../store/modalStore';
 import { useUploadState } from '../../composables/useUploadState';
+import { useTagFilter } from '../../composables/useTagFilter';
 import type { 
   AudioInfo, 
   AudioUploadFile, 
@@ -45,11 +46,17 @@ export function useAudioImport() {
     tagMatchMode: 'and' as 'or' | 'and'
   });
 
-  // 初始化为空数组，等待真实数据加载
   const allTags = ref<string[]>([]);
-  const selectedTags = ref<string[]>([]);
-  const tagModes = ref<Map<string, 'or' | 'and'>>(new Map());
   const tagsLoaded = ref(false);
+  
+  const {
+    selectedTags,
+    tagModes,
+    tagModesObject,
+    handleTagClick: tagFilterHandleTagClick,
+    toggleTag: tagFilterToggleTag,
+    clearTags
+  } = useTagFilter();
 
   function isAllTagsSelected(): boolean {
     if (!tagsLoaded.value) return false;
@@ -595,7 +602,7 @@ export function useAudioImport() {
   
   async function fetchDevices() {
     try {
-      const response = await devicesApi.getTestDevices({ params: { per_page: 100 } });
+      const response = await devicesApi.getAll({ per_page: 100 });
       if (response && response.items) {
         deviceList.value = response.items.map((d: any) => ({
           value: d.id,
@@ -633,18 +640,7 @@ export function useAudioImport() {
   }
 
   function toggleTag(tag: string, mode?: 'or' | 'and') {
-    const index = selectedTags.value.indexOf(tag);
-    if (index === -1) {
-      selectedTags.value.push(tag);
-      if (mode) {
-        tagModes.value.set(tag, mode);
-      } else {
-        tagModes.value.set(tag, 'and');
-      }
-    } else {
-      selectedTags.value.splice(index, 1);
-      tagModes.value.delete(tag);
-    }
+    tagFilterToggleTag(tag, mode);
     fetchAudios();
   }
 
@@ -1966,6 +1962,8 @@ export function useAudioImport() {
     selectedAudios,
     filters,
     selectedTags,
+    tagModes,
+    tagModesObject,
     allTags,
     urlImportData,
     convertAudioInfo,

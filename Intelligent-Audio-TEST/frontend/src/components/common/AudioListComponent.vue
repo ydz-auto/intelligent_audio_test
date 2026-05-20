@@ -594,6 +594,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { buildFolderTree, isFolderOpen as checkFolderOpen, toggleFolder as toggleFolderState, extractAllTags, filterAudios as filterAudiosUtil } from '../../utils/audioUtils';
+import { useTagFilter, type TagFilterState } from '../../composables/useTagFilter';
 import AudioPlayerModal from './AudioPlayerModal.vue';
 import PaginationComponent from './PaginationComponent.vue';
 
@@ -669,51 +670,45 @@ const filters = ref({
   format: 'all',
   sampleRate: 'all',
   duration: 'all',
-  audioType: props.audioType
+  audioType: props.audioType || 'all'
 });
 
-const selectedTags = ref<string[]>([...props.selectedTags]);
-const tagModes = ref<Map<string, 'or' | 'and'>>(new Map());
+const {
+  selectedTags: localSelectedTags,
+  tagModes: localTagModes,
+  tagModesObject,
+  isTagSelected,
+  getTagMode,
+  handleTagClick: localHandleTagClick,
+  setTagMode: localSetTagMode,
+  removeTag: localRemoveTag,
+  setTagsFromProps
+} = useTagFilter();
+
 const showTagModeMenu = ref(false);
 const menuPosition = ref({ x: 0, y: 0 });
 const currentMenuTag = ref('');
 
-const isTagSelected = (tag: string) => selectedTags.value.includes(tag);
+const selectedTags = computed(() => {
+  if (props.selectedTags && props.selectedTags.length > 0) {
+    return props.selectedTags;
+  }
+  return localSelectedTags.value;
+});
 
-const getTagMode = (tag: string): 'or' | 'and' | null => {
-  return tagModes.value.get(tag) || null;
-};
+const tagModes = computed(() => {
+  if (props.tagModes && Object.keys(props.tagModes).length > 0) {
+    return new Map(Object.entries(props.tagModes));
+  }
+  return localTagModes.value;
+});
 
 const handleTagClick = (tagName: string) => {
-  const currentMode = tagModes.value.get(tagName);
-  
-  if (!currentMode || currentMode === undefined) {
-    // 未选中 → 选中(AND)
-    selectedTags.value.push(tagName);
-    tagModes.value.set(tagName, 'and');
-    emit('filterChange', { 
-      tags: [...selectedTags.value],
-      tagModes: Object.fromEntries(tagModes.value)
-    });
-  } else if (currentMode === 'and') {
-    // AND → 切换到 OR
-    tagModes.value.set(tagName, 'or');
-    emit('filterChange', { 
-      tags: [...selectedTags.value],
-      tagModes: Object.fromEntries(tagModes.value)
-    });
-  } else if (currentMode === 'or') {
-    // OR → 取消选中
-    const index = selectedTags.value.indexOf(tagName);
-    if (index > -1) {
-      selectedTags.value.splice(index, 1);
-      tagModes.value.delete(tagName);
-    }
-    emit('filterChange', { 
-      tags: [...selectedTags.value],
-      tagModes: Object.fromEntries(tagModes.value)
-    });
-  }
+  const result = localHandleTagClick(tagName);
+  emit('filterChange', {
+    tags: result.selectedTags,
+    tagModes: result.tagModes
+  });
 };
 
 const showTagMenu = (event: MouseEvent, tag: string) => {
@@ -733,11 +728,11 @@ const showTagMenu = (event: MouseEvent, tag: string) => {
 
 const setTagMode = (mode: 'or' | 'and') => {
   if (currentMenuTag.value) {
-    tagModes.value.set(currentMenuTag.value, mode);
-    emit('filterChange', { 
-      ...filters.value, 
-      tags: selectedTags.value, 
-      tagMatchMode: mode === 'or' ? 'or' : 'and' 
+    const result = localSetTagMode(currentMenuTag.value, mode);
+    emit('filterChange', {
+      ...filters.value,
+      tags: result.selectedTags,
+      tagModes: result.tagModes
     });
   }
   showTagModeMenu.value = false;
@@ -745,23 +740,16 @@ const setTagMode = (mode: 'or' | 'and') => {
 
 const removeTag = () => {
   if (currentMenuTag.value) {
-    const index = selectedTags.value.indexOf(currentMenuTag.value);
-    if (index > -1) {
-      selectedTags.value.splice(index, 1);
-      tagModes.value.delete(currentMenuTag.value);
-    }
-    emit('toggleTag', currentMenuTag.value);
+    const result = localRemoveTag(currentMenuTag.value);
+    emit('filterChange', {
+      tags: result.selectedTags,
+      tagModes: result.tagModes
+    });
   }
   showTagModeMenu.value = false;
 };
 
 const toggleTag = (tagName: string) => {
-  const index = selectedTags.value.indexOf(tagName);
-  if (index === -1) {
-    selectedTags.value.push(tagName);
-  } else {
-    selectedTags.value.splice(index, 1);
-  }
   emit('toggleTag', tagName);
 };
 
@@ -850,8 +838,9 @@ watch(() => props.audios, (newAudios) => {
 }, { deep: true });
 
 watch(() => props.audioType, (newType) => {
-  filters.value.audioType = newType;
-});
+  filters.value.audioType = newType || 'all';
+  emit('filterChange', { ...filters.value });
+}, { immediate: true });
 
 watch(() => props.selectedAudios, (newSelected) => {
   localSelectedAudios.value = [...newSelected];
@@ -859,16 +848,6 @@ watch(() => props.selectedAudios, (newSelected) => {
 
 watch(() => props.allTags, (newAllTags) => {
   allTags.value = [...newAllTags];
-}, { deep: true });
-
-watch(() => props.selectedTags, (newSelectedTags) => {
-  selectedTags.value = [...newSelectedTags];
-}, { deep: true });
-
-watch(() => props.tagModes, (newTagModes) => {
-  if (newTagModes) {
-    tagModes.value = new Map(Object.entries(newTagModes));
-  }
 }, { deep: true });
 
 watch(
@@ -893,15 +872,13 @@ const handleFilterChange = () => {
 };
 
 const resetFilters = () => {
-  filters.value = { format: 'all', sampleRate: 'all', duration: 'all', audioType: props.audioType };
+  filters.value = { format: 'all', sampleRate: 'all', duration: 'all', audioType: props.audioType || 'all' };
   searchQuery.value = '';
-  selectedTags.value = [];
-  tagModes.value = new Map();
-  emit('filterChange', { ...filters.value, tags: selectedTags.value, tagModes: Object.fromEntries(tagModes.value), resetSearch: true });
+  emit('filterChange', { ...filters.value, tags: [], tagModes: {}, resetSearch: true });
 };
 
 const applyFilters = () => {
-  emit('filterChange', { ...filters.value, tags: selectedTags.value });
+  emit('filterChange', { ...filters.value, tags: [...selectedTags.value], tagModes: Object.fromEntries(tagModes.value) });
 };
 
 // 直接使用props.audios，因为它已经是在父组件中过滤过的音频列表

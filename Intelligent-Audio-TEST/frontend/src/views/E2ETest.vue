@@ -1,5 +1,5 @@
 <template>
-  <div class="e2e-test-view">
+  <div class="test-view-common">
     <!-- 页面标题 -->
     <div class="page-header">
       <div class="header-left">
@@ -469,29 +469,6 @@ const confirmTaskName = () => {
 @import '../assets/styles/testCaseManager.css';
 @import '../assets/styles/reportS.css';
 
-.e2e-test-view {
-  padding: 20px;
-  min-height: 100vh;
-}
-
-.e2e-test-view .step-content {
-  overflow: visible;
-  max-height: none;
-}
-
-/* 报告区域占满背景 */
-.e2e-test-view .step-panel.active {
-  margin: calc(-1 * var(--spacing-xl));
-  padding: 20px;
-  min-height: calc(100vh - 200px);
-  background: transparent;
-}
-
-/* 步骤面板 */
-.e2e-test-view .step-panel {
-  display: none;
-}
-
 /* 设备管理头部 */
 .device-management-header {
   margin-bottom: 24px;
@@ -502,20 +479,6 @@ const confirmTaskName = () => {
   position: relative;
   flex: 1;
   max-width: 300px;
-}
-
-/* 步骤操作按钮 */
-.e2e-test-view .step-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding: 24px 0;
-  border-top: 1px solid #e8e8e8;
-  background: #ffffff;
-  position: sticky;
-  bottom: 0;
-  z-index: 10;
 }
 
 /* 按钮样式 - 扩展 */

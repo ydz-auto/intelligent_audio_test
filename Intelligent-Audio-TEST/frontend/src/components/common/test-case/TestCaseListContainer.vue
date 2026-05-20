@@ -1650,8 +1650,7 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   flex-direction: column;
   gap: 20px;
   width: 100%;
-  max-height: calc(100vh - 200px);
-  overflow-y: auto;
+  overflow-y: visible;
   padding-right: 8px;
   scroll-behavior: smooth;
 }

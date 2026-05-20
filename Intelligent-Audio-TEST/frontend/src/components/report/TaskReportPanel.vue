@@ -219,12 +219,12 @@ onUnmounted(() => {
 
 .report-hero {
   position: relative;
-  margin: calc(-1 * var(--spacing-xl));
-  margin-bottom: 0;
-  width: calc(100% + 2 * var(--spacing-xl));
+  margin: 0;
+  width: 100%;
   background: linear-gradient(180deg, #FFF8F0 0%, #FFFFFF 100%);
   padding: 32px 24px 0px;
   text-align: center;
+  border-radius: 12px 12px 0 0;
 }
 
 .hero-content {
