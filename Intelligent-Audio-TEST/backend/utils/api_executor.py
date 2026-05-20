@@ -104,8 +104,6 @@ class APIExecutor(BaseExecutor):
             self.api_waiting_counts[api_id] = current - 1
             return self.api_waiting_counts[api_id]
 
-    # 移除不可靠的“等待队列 + condition”实现，改为基于有界队列的阻塞获取，并维护等待计数用于进度统计
-
     def acquire_api_execution_right(self, api_id, task_id, current_test_case_id, max_process=5, timeout=None):
         wait_timeout = timeout or self.max_wait_time
         self._log(
@@ -120,16 +118,25 @@ class APIExecutor(BaseExecutor):
         waiting_incremented = False
         
         try:
+            acquired = semaphore.acquire(blocking=False)
+            if acquired:
+                self._log(
+                    level='INFO',
+                    content=f"成功获取 API {api_id} 的执行权 (无需等待)",
+                    task_id=task_id,
+                    api_id=api_id
+                )
+                return True
+            
             waiting_now = self._inc_waiting(api_id)
             waiting_incremented = True
             self._log(
                 level='DEBUG',
-                content=f"尝试获取 API {api_id} 的执行权 (当前并发: {q.qsize()}/{max_process}, 等待: {waiting_now})",
+                content=f"API {api_id} 并发已满，进入等待队列 (等待数: {waiting_now})",
                 task_id=task_id,
                 api_id=api_id
             )
 
-            entered_wait = False
             while True:
                 self._handle_control(task_id)
 
@@ -147,25 +154,16 @@ class APIExecutor(BaseExecutor):
                     return False
 
                 try:
-                    q.put(task_id, timeout=min(0.5, remaining_time))
-                    elapsed_time = time.time() - start_time
-                    self._log(
-                        level='INFO',
-                        content=f"成功获取 API {api_id} 的执行权 (等待: {elapsed_time:.1f}秒, 并发: {q.qsize()}/{max_process})",
-                        task_id=task_id,
-                        api_id=api_id
-                    )
-                    return True
-                except queue.Full:
-                    if not entered_wait:
-                        entered_wait = True
+                    acquired = semaphore.acquire(blocking=True, timeout=min(0.5, remaining_time))
+                    if acquired:
+                        elapsed_time = time.time() - start_time
                         self._log(
-                            level='DEBUG',
-                            content=f"API {api_id} 并发已满，进入等待队列",
+                            level='INFO',
+                            content=f"成功获取 API {api_id} 的执行权 (等待: {elapsed_time:.1f}秒)",
                             task_id=task_id,
                             api_id=api_id
                         )
-                    continue
+                        return True
                 except Exception as e:
                     self._dec_waiting(api_id)
                     waiting_incremented = False
@@ -190,29 +188,26 @@ class APIExecutor(BaseExecutor):
 
     def release_api_execution_right(self, api_id, task_id):
         """
-        释放API执行权，并通知等待队列中的下一个任务
-
+        释放API执行权
+        
         Args:
             api_id: API ID
             task_id: 任务ID
         """
-        if api_id in self.api_queues:
-            q = self.api_queues[api_id]
+        if api_id in self.api_semaphores:
             try:
-                q.get_nowait()
-                # 减少等待计数，因为任务已从队列取出准备执行
+                self.api_semaphores[api_id].release()
                 self._dec_waiting(api_id)
-                
                 self._log(
                     level='DEBUG',
-                    content=f"释放 API {api_id} 的执行权 (当前排队: {q.qsize()}/{q.maxsize})",
+                    content=f"释放 API {api_id} 的执行权",
                     task_id=task_id,
                     api_id=api_id
                 )
-            except queue.Empty:
+            except ValueError:
                 self._log(
                     level='WARNING',
-                    content=f"尝试释放 API {api_id} 的执行权，但队列已空",
+                    content=f"尝试释放 API {api_id} 的执行权，但信号量已达到最大值",
                     task_id=task_id,
                     api_id=api_id
                 )

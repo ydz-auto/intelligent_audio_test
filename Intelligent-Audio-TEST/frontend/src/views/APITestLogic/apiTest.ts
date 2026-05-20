@@ -10,6 +10,7 @@ import { useDeviceManagement } from '../../composables/useDeviceManagement'
 import { useTaskProgress } from '../../composables/useTaskProgress'
 import { useTestControl } from '../../composables/useTestControl'
 import { useAlgorithmSelection } from '../../composables/useAlgorithmSelection'
+import { useTestReport } from '../../composables/useTestReport'
 import { apisApi, tasksApi, reportsApi } from '../../utils/api'
 import { generateDeviceFields } from '../../utils/utils'
 import type { 
@@ -132,19 +133,6 @@ export function useApiTest() {
   const apiPageSize = ref(12)
   const apiTotalItems = ref(0)
   const apiTotalPages = computed(() => Math.ceil(apiTotalItems.value / apiPageSize.value))
-
-  const report = ref<Partial<Report>>({
-    id: '',
-    name: '',
-    description: '',
-    conclusion: '',
-    analysis: '',
-    type: 'task',
-    status: 'draft',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    summary: { totalCases: 0, passedCases: 0, failedCases: 0, passRate: 0, avgScore: 0 } as ReportSummary
-  })
 
   const modalManager = useModalControl()
   
@@ -481,30 +469,21 @@ export function useApiTest() {
     currentStep.value = step
   }
 
-  const isEditingReport = ref(false)
-  const isEditingConclusion = ref(false)
-  const toggleEditReport = () => {
-    isEditingReport.value = !isEditingReport.value
-  }
-  const toggleEditConclusion = () => {
-    isEditingConclusion.value = !isEditingConclusion.value
-  }
-  const cancelEditReport = () => {
-    isEditingReport.value = false
-  }
-  const cancelEditConclusion = () => {
-    isEditingConclusion.value = false
-  }
-  const saveConclusion = async (content: string) => {
-    if (report.value) {
-      report.value.conclusion = content
-      report.value.analysis = content
-      if (report.value.id) {
-        await reportsApi.update(report.value.id, report.value)
-      }
-    }
-    isEditingConclusion.value = false
-  }
+  const {
+    report,
+    isEditingReport,
+    isEditingConclusion,
+    analysisContent,
+    setReport,
+    toggleEditReport,
+    toggleEditConclusion,
+    cancelEditReport,
+    cancelEditConclusion,
+    saveConclusion,
+    exportResults,
+    publishReport,
+    startNewTest
+  } = useTestReport()
 
   const { confirmDeleteGroup, confirmDeleteTestCase } = useDeleteConfirm();
 
@@ -571,13 +550,6 @@ export function useApiTest() {
 
   const deviceApiComparisonData = computed(() => reportService.deviceApiComparisonData.value)
   const caseExecutionData = computed(() => reportService.caseExecutionData.value)
-  const analysisContent = computed(() => report.value.analysis || report.value.conclusion || '正在生成结论...')
-
-  const publishReport = () => {
-    if (report.value) {
-      report.value.status = report.value.status === 'draft' ? 'published' : 'draft'
-    }
-  }
 
   const saveReport = async () => {
     try {
@@ -595,11 +567,6 @@ export function useApiTest() {
     }
   }
 
-  const exportResults = (format: string) => {
-    console.log(`Exporting results in ${format} format...`)
-    alert(`正在导出 ${format} 格式的报告...`)
-  }
-
   const skipTestCase = (testCaseId: string | number) => {
     console.log(`Skipping test case ${testCaseId}...`)
   }
@@ -610,10 +577,6 @@ export function useApiTest() {
 
   const removeTestCase = (testCaseId: string | number) => {
     console.log(`Removing test case ${testCaseId}...`)
-  }
-
-  const startNewTest = () => {
-    goToStep(1)
   }
 
   const deviceAPIColumns = [

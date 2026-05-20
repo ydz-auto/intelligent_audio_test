@@ -871,13 +871,17 @@ onMounted(async () => {
 .tag-item {
   display: inline-flex;
   align-items: center;
-  padding: 4px 10px;
+  padding: 2px 8px;
   font-size: 12px;
   font-weight: 500;
-  background: var(--primary-light);
-  color: var(--primary-color);
+  background: var(--secondary-light);
+  color: var(--secondary-color);
   border-radius: var(--border-radius-full);
   border: 1px solid transparent;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tag-item.removable {
@@ -889,7 +893,7 @@ onMounted(async () => {
   border: none;
   margin-left: 4px;
   cursor: pointer;
-  color: var(--primary-color);
+  color: var(--secondary-color);
   opacity: 0.7;
   padding: 2px;
   display: flex;
@@ -1003,10 +1007,9 @@ onMounted(async () => {
 }
 
 .tag-item.selectable.already-added {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: var(--gray-light-color);
-  color: var(--text-light);
+  background: var(--secondary-color);
+  color: white;
+  cursor: default;
 }
 
 .tag-selector-panel {
@@ -1406,9 +1409,9 @@ onMounted(async () => {
 }
 
 .dimension-chip.selected {
-  background: var(--primary-color);
+  background: var(--secondary-color);
   color: white;
-  border-color: var(--primary-color);
+  border-color: var(--secondary-color);
 }
 
 .selected-dimensions {

@@ -9,6 +9,7 @@ import { useDeleteConfirm } from './useDeleteConfirm'
 import { useE2eTest } from './useE2eTest'
 import { useTestControl } from './useTestControl'
 import { useAlgorithmSelection } from './useAlgorithmSelection'
+import { useTestReport } from './useTestReport'
 import { useTestCaseStore } from '../store/testCaseStore'
 import { type Report, type Log, type TestCase } from '../shared/types'
 
@@ -79,16 +80,28 @@ export function useE2eView() {
   const isExecuting = ref(false)
   const activeTab = ref('cases')
   const concurrentTasks = ref(4)
-  const isEditingReport = ref(false)
-  const isEditingConclusion = ref(false)
-  const report = ref<any>({ title: '端到端测试报告', conclusion: '', analysis: '', summary: {} })
-  const analysisContent = ref('')
   const reportTables = ref([])
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const taskName = ref('')
   const taskStartTime = ref<Date | null>(null)
   const taskElapsedTimeDisplay = ref('00:00:00')
   let timeUpdateTimer: ReturnType<typeof setInterval> | null = null
+
+  const {
+    report,
+    isEditingReport,
+    isEditingConclusion,
+    analysisContent,
+    setReport,
+    toggleEditReport,
+    toggleEditConclusion,
+    cancelEditReport,
+    cancelEditConclusion,
+    saveConclusion,
+    exportResults,
+    publishReport,
+    startNewTest
+  } = useTestReport()
 
   const {
     isPaused,
@@ -375,7 +388,8 @@ export function useE2eView() {
         mode: 'case',
         testType: 'e2e',
         formData: formData.value,
-        title: '编辑测试用例'
+        title: '编辑测试用例',
+        width: '900px'
       });
       
       if (result) {
@@ -503,7 +517,6 @@ export function useE2eView() {
     console.log('Selected cases updated:', selectedTestCaseIds.value)
   }
 
-  const toggleEditReport = () => { isEditingReport.value = !isEditingReport.value }
   const saveReport = async () => {
     try {
       const reportId = report.value?.id
@@ -528,31 +541,6 @@ export function useE2eView() {
         danger: true
       })
     }
-  }
-  const cancelEditReport = () => { isEditingReport.value = false }
-  const toggleEditConclusion = () => {
-    isEditingConclusion.value = !isEditingConclusion.value
-  }
-  const cancelEditConclusion = () => {
-    isEditingConclusion.value = false
-  }
-  const saveConclusion = async (content: string) => {
-    report.value.conclusion = content
-    report.value.analysis = content
-    const reportId = report.value?.id
-    if (reportId) {
-      await reportsApi.update(reportId, report.value)
-    }
-    analysisContent.value = content
-    isEditingConclusion.value = false
-  }
-  const exportResults = (format: string) => { console.log('Exporting as', format) }
-  const publishReport = () => { console.log('Publishing report') }
-  const startNewTest = () => {
-    currentStep.value = 1
-    currentTaskId.value = null
-    isExecuting.value = false
-    resetProgress()
   }
 
   const showTestCaseDetails = (testCaseId: string | number) => {

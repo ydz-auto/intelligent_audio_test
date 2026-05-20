@@ -250,7 +250,6 @@ watch(() => props.visible, (newVal) => {
     selectedAudios.value = [];
     allAudiosCache.value = [];
     resetFilters({ audioType: props.audioType });
-    loadAudios();
     loadAllTags();
   } else {
     window.removeEventListener('keydown', handleKeyDown);

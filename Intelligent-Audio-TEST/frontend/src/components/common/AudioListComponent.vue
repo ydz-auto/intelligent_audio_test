@@ -839,7 +839,6 @@ watch(() => props.audios, (newAudios) => {
 
 watch(() => props.audioType, (newType) => {
   filters.value.audioType = newType || 'all';
-  emit('filterChange', { ...filters.value });
 }, { immediate: true });
 
 watch(() => props.selectedAudios, (newSelected) => {
@@ -847,8 +846,10 @@ watch(() => props.selectedAudios, (newSelected) => {
 }, { deep: true });
 
 watch(() => props.allTags, (newAllTags) => {
-  allTags.value = [...newAllTags];
-}, { deep: true });
+  if (newAllTags && newAllTags.length > 0) {
+    allTags.value = [...newAllTags];
+  }
+}, { deep: true, immediate: true });
 
 watch(
   () => props.viewMode,

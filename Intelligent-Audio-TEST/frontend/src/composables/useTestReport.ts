@@ -1,9 +1,11 @@
 import { ref } from 'vue'
+import { reportsApi } from '../utils/api'
 
 export interface ReportData {
   id?: string | number
   conclusion?: string
   analysis?: string
+  status?: string
   [key: string]: any
 }
 
@@ -12,6 +14,7 @@ export interface UseTestReportOptions {
 }
 
 export function useTestReport(options: UseTestReportOptions = {}) {
+  const { onReportUpdate } = options
   const report = ref<ReportData | null>(null)
   const isEditingReport = ref(false)
   const isEditingConclusion = ref(false)
@@ -21,6 +24,9 @@ export function useTestReport(options: UseTestReportOptions = {}) {
     report.value = newReport
     if (newReport?.analysis) {
       analysisContent.value = newReport.analysis
+    }
+    if (onReportUpdate && newReport) {
+      onReportUpdate(newReport)
     }
   }
 
@@ -37,6 +43,18 @@ export function useTestReport(options: UseTestReportOptions = {}) {
   }
 
   function cancelEditConclusion() {
+    isEditingConclusion.value = false
+  }
+
+  async function saveConclusion(content: string) {
+    if (report.value) {
+      report.value.conclusion = content
+      report.value.analysis = content
+      analysisContent.value = content
+      if (report.value.id) {
+        await reportsApi.update(report.value.id, report.value)
+      }
+    }
     isEditingConclusion.value = false
   }
 
@@ -75,6 +93,7 @@ export function useTestReport(options: UseTestReportOptions = {}) {
     toggleEditConclusion,
     cancelEditReport,
     cancelEditConclusion,
+    saveConclusion,
     updateAnalysisContent,
     exportResults,
     publishReport,
