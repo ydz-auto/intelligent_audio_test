@@ -8,6 +8,7 @@ import { useTestCaseStore } from '../../store/testCaseStore'
 import { useTestCaseCard } from '../../composables/useTestCaseCard'
 import { useDeviceManagement } from '../../composables/useDeviceManagement'
 import { useTaskProgress } from '../../composables/useTaskProgress'
+import { useTestControl } from '../../composables/useTestControl'
 import { apisApi, tasksApi, reportsApi } from '../../utils/api'
 import { loadAlgorithmDetail } from '../../composables/useAlgorithmConfig'
 import { generateDeviceFields } from '../../utils/utils'
@@ -156,10 +157,21 @@ export function useApiTest() {
   const taskName = ref('API测试任务')
   const concurrentTasks = ref(5)
   const currentTaskId = ref<string | number | null>(null)
-  const isPaused = ref(false)
-  const isControlling = ref(false)
   const isExecuting = computed(() => taskStatus.value === 'running' || taskStatus.value === 'starting' || taskStatus.value === 'pending')
   const executionProgress = computed(() => progressPercentage.value)
+  
+  const {
+    isPaused,
+    isControlling,
+    pauseTest,
+    resumeTest,
+    stopTest
+  } = useTestControl({
+    currentTaskId,
+    onStopped: () => {
+      isExecuting.value = false
+    }
+  })
   
   // 分页状态
   const apiCurrentPage = ref(1)
@@ -513,67 +525,6 @@ export function useApiTest() {
 
   const goToStep = (step: number) => {
     currentStep.value = step
-  }
-
-  const pauseTest = async () => {
-    if (currentTaskId.value && !isControlling.value) {
-      const confirmed = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '暂停测试',
-        content: '确定要暂停当前的测试任务吗？',
-        confirmText: '暂停',
-        cancelText: '取消'
-      })
-
-      if (confirmed) {
-        isControlling.value = true
-        try {
-          await tasksApi.control(currentTaskId.value, 'pause')
-          isPaused.value = true
-        } catch (error: any) {
-          console.error('暂停测试失败:', error)
-        } finally {
-          isControlling.value = false
-        }
-      }
-    }
-  }
-
-  const stopTest = async () => {
-    if (currentTaskId.value && !isControlling.value) {
-      const confirmed = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-        title: '停止测试',
-        content: '确定要停止当前的测试任务吗？停止后将无法恢复。',
-        confirmText: '停止测试',
-        cancelText: '取消',
-        danger: true
-      })
-
-      if (confirmed) {
-        isControlling.value = true
-        try {
-          await tasksApi.control(currentTaskId.value, 'stop')
-          isPaused.value = false
-        } catch (error: any) {
-          console.error('停止测试失败:', error)
-        } finally {
-          isControlling.value = false
-        }
-      }
-    }
-  }
-
-  const resumeTest = async () => {
-    if (currentTaskId.value && !isControlling.value) {
-      isControlling.value = true
-      try {
-        await tasksApi.control(currentTaskId.value, 'resume')
-        isPaused.value = false
-      } catch (error: any) {
-        console.error('继续测试失败:', error)
-      } finally {
-        isControlling.value = false
-      }
-    }
   }
 
   const isEditingReport = ref(false)

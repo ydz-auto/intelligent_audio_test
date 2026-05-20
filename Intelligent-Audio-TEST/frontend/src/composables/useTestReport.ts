@@ -1,8 +1,7 @@
 import { ref } from 'vue'
-import { reportsApi } from '@/api/reports'
 
 export interface ReportData {
-  id?: string
+  id?: string | number
   conclusion?: string
   analysis?: string
   [key: string]: any
@@ -41,28 +40,12 @@ export function useTestReport(options: UseTestReportOptions = {}) {
     isEditingConclusion.value = false
   }
 
-  async function saveConclusion(content: string) {
+  function updateAnalysisContent(content: string) {
+    analysisContent.value = content
     if (report.value) {
-      report.value.conclusion = content
       report.value.analysis = content
-      if (report.value.id) {
-        await reportsApi.update(report.value.id, report.value)
-      }
-      if (options.onReportUpdate) {
-        options.onReportUpdate(report.value)
-      }
+      report.value.conclusion = content
     }
-    isEditingConclusion.value = false
-  }
-
-  async function saveReport() {
-    if (report.value?.id) {
-      await reportsApi.update(report.value.id, report.value)
-      if (options.onReportUpdate) {
-        options.onReportUpdate(report.value)
-      }
-    }
-    isEditingReport.value = false
   }
 
   function exportResults(format: string) {
@@ -70,7 +53,9 @@ export function useTestReport(options: UseTestReportOptions = {}) {
   }
 
   function publishReport() {
-    console.log('发布报告')
+    if (report.value) {
+      report.value.status = report.value.status === 'draft' ? 'published' : 'draft'
+    }
   }
 
   function startNewTest() {
@@ -90,8 +75,7 @@ export function useTestReport(options: UseTestReportOptions = {}) {
     toggleEditConclusion,
     cancelEditReport,
     cancelEditConclusion,
-    saveConclusion,
-    saveReport,
+    updateAnalysisContent,
     exportResults,
     publishReport,
     startNewTest

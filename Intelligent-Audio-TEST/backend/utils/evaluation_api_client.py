@@ -28,15 +28,11 @@ class evaluationApiClient:
         )
     
     def __init__(self):
-        self.endpoint_concurrent_counts = {}  # 端点并发计数 {endpoint: count}
-        self.endpoint_locks = {}  # 端点锁 {endpoint: Lock()}
+        self.endpoint_semaphores = {}  # 端点信号量 {endpoint: Semaphore}
         self.endpoint_configs = {}  # 端点配置缓存 {endpoint: max_process}
         self.thread_pool = None  # 全局线程池，动态创建
-        self.global_lock = Lock()  # 全局锁，用于保护端点锁的创建
+        self.global_lock = Lock()  # 全局锁，用于保护端点资源创建
         
-        # 排队机制相关
-        self.endpoint_queues = {}  # 端点任务队列 {endpoint: list of threading.Condition}
-        self.endpoint_queue_locks = {}  # 端点队列锁 {endpoint: Lock()}
         # 从统一配置文件加载并发配置
         self.max_queue_size = config_manager.get_value('evaluation_service', 'max_queue_size', 100)  # 每个端点的最大队列长度
         self.max_wait_time = config_manager.get_value('evaluation_service', 'max_wait_time', 30)  # 任务在队列中的最大等待时间（秒）

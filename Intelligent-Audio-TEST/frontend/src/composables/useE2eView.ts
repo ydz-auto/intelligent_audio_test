@@ -7,6 +7,7 @@ import { useTaskProgress } from './useTaskProgress'
 import { useModalControl, MODAL_TYPES } from './useModal'
 import { useDeleteConfirm } from './useDeleteConfirm'
 import { useE2eTest } from './useE2eTest'
+import { useTestControl } from './useTestControl'
 import { useTestCaseStore } from '../store/testCaseStore'
 import { type Report, type Log, type TestCase } from '../shared/types'
 import { loadAlgorithmDetail } from './useAlgorithmConfig'
@@ -76,8 +77,6 @@ export function useE2eView() {
   const currentStep = ref(0)
   const currentTaskId = ref<number | null>(null)
   const isExecuting = ref(false)
-  const isPaused = ref(false)
-  const isControlling = ref(false)
   const activeTab = ref('cases')
   const concurrentTasks = ref(4)
   const isEditingReport = ref(false)
@@ -90,6 +89,20 @@ export function useE2eView() {
   const taskStartTime = ref<Date | null>(null)
   const taskElapsedTimeDisplay = ref('00:00:00')
   let timeUpdateTimer: ReturnType<typeof setInterval> | null = null
+
+  const {
+    isPaused,
+    isControlling,
+    pauseTest,
+    resumeTest,
+    stopTest
+  } = useTestControl({
+    currentTaskId: currentTaskId as any,
+    onStopped: () => {
+      isExecuting.value = false
+    },
+    addLog: (log) => addLog(log)
+  })
 
   const stopTimeUpdateTimer = () => {
     if (timeUpdateTimer) {
@@ -328,85 +341,6 @@ export function useE2eView() {
       // 不再使用 alert 弹窗
       console.log('[startTest] 返回false，将触发步骤回退')
       return false
-    }
-  }
-
-  const pauseTest = async () => {
-    if (!currentTaskId.value) {
-      addLog({ content: '无法暂停测试：当前任务ID为空', level: 'error' })
-      return
-    }
-    if (isControlling.value) return
-
-    const confirmed = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '暂停测试',
-      content: '确定要暂停当前的测试任务吗？',
-      confirmText: '暂停',
-      cancelText: '取消'
-    })
-
-    if (confirmed) {
-      isControlling.value = true
-      try {
-        await tasksApi.control(currentTaskId.value, 'pause')
-        isPaused.value = true
-        addLog({ content: '测试任务已暂停', level: 'warn' })
-      } catch (error) {
-        console.error('暂停测试失败:', error)
-        addLog({ content: `暂停测试失败: ${error instanceof Error ? error.message : String(error)}`, level: 'error' })
-      } finally {
-        isControlling.value = false
-      }
-    }
-  }
-
-  const resumeTest = async () => {
-    if (!currentTaskId.value) {
-      addLog({ content: '无法恢复测试：当前任务ID为空', level: 'error' })
-      return
-    }
-    if (isControlling.value) return
-
-    isControlling.value = true
-    try {
-      await tasksApi.control(currentTaskId.value, 'resume')
-      isPaused.value = false
-      addLog({ content: '测试任务已恢复', level: 'info' })
-    } catch (error) {
-      console.error('恢复测试失败:', error)
-      addLog({ content: `恢复测试失败: ${error instanceof Error ? error.message : String(error)}`, level: 'error' })
-    } finally {
-      isControlling.value = false
-    }
-  }
-
-  const stopTest = async () => {
-    if (!currentTaskId.value) {
-      addLog({ content: '无法停止测试：当前任务ID为空', level: 'error' })
-      return
-    }
-    if (isControlling.value) return
-
-    const confirmed = await modalManager.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '停止测试',
-      content: '确定要停止当前的测试任务吗？停止后将无法恢复。',
-      confirmText: '停止测试',
-      cancelText: '取消',
-      danger: true
-    })
-
-    if (confirmed) {
-      isControlling.value = true
-      try {
-        await tasksApi.stop(currentTaskId.value)
-        isExecuting.value = false
-        addLog({ content: '测试任务已停止', level: 'warn' })
-      } catch (error) {
-        console.error('停止测试失败:', error)
-        addLog({ content: `停止测试失败: ${error instanceof Error ? error.message : String(error)}`, level: 'error' })
-      } finally {
-        isControlling.value = false
-      }
     }
   }
 
