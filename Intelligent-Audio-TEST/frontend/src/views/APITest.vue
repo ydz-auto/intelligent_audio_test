@@ -42,62 +42,13 @@
           </div>
         </template>
 
-        <div class="algorithm-selection">
-          <div v-if="filteredAlgorithmList.length === 0" class="empty-state">
-            <i class="fas fa-inbox empty-icon"></i>
-            <p>暂无可用算法，请先配置算法</p>
-          </div>
-
-          <div v-else class="algorithm-grid">
-            <div
-              v-for="algo in filteredAlgorithmList"
-              :key="algo.value"
-              class="algorithm-card"
-              :class="{ selected: selectedAlgorithmType === algo.value }"
-              @click="selectAlgorithm(algo.value)"
-            >
-              <div class="algorithm-card-header">
-                <div class="card-info">
-                  <span class="algorithm-icon"><i :class="['fas', getAlgorithmIcon(algo.group_name)]"></i></span>
-                  <div class="algorithm-name">{{ algo.name }}</div>
-                </div>
-                <div class="card-actions">
-                  <button class="btn-icon-only" title="算法配置" @click.stop="openAlgorithmConfigModal(algo)">
-                    <i class="fas fa-cog"></i>
-                  </button>
-                </div>
-              </div>
-              <div class="card-content">
-                <div class="algorithm-meta">
-                  <div class="algorithm-meta-item">
-                    <span class="algorithm-meta-label">分组:</span>
-                    <span class="algorithm-meta-value">{{ algo.group_name || '未分组' }}</span>
-                  </div>
-                </div>
-              </div>
-              <div class="algorithm-card-footer">
-                <input
-                  type="checkbox"
-                  :id="`algo-${algo.value}`"
-                  class="algorithm-checkbox"
-                  :checked="selectedAlgorithmType === algo.value"
-                  @click.stop
-                  @change="selectAlgorithm(algo.value)"
-                >
-                <label
-                  class="algorithm-select-btn"
-                  @click.stop="selectAlgorithm(algo.value)"
-                >
-                  {{ selectedAlgorithmType === algo.value ? '已选择' : '选择' }}
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <div v-if="selectedAlgorithmType" class="selected-info">
-            <span class="selected-label">当前选择：{{ getAlgorithmName(selectedAlgorithmType) }}</span>
-          </div>
-        </div>
+        <AlgorithmSelectionPanel
+          :algorithm-list="algorithmList"
+          :selected-algorithm-type="selectedAlgorithmType"
+          :search-query="algorithmSearchQuery"
+          @select="selectAlgorithm"
+          @open-config="openAlgorithmConfigModal"
+        />
       </TestStepContainer>
 
       <!-- 步骤1：选择测试用例 -->
@@ -311,7 +262,7 @@
 <script setup lang="ts">
 import { onMounted, computed, ref } from 'vue'
 import { useApiTest } from './APITestLogic/apiTest'
-import { useAlgorithmConfig, getAlgorithmIcon } from '../composables/useAlgorithmConfig'
+import { useAlgorithmConfig } from '../composables/useAlgorithmConfig'
 
 import ProgressNav from '../components/ProgressNav.vue'
 import TestCaseListContainer from '../components/common/test-case/TestCaseListContainer.vue'
@@ -321,6 +272,7 @@ import ResourceSelectionGrid from '../components/common/ResourceSelectionGrid.vu
 import BasicModal from '../components/common/modal/BasicModal.vue'
 import PaginationComponent from '../components/common/PaginationComponent.vue'
 import AlgorithmConfigModal from '../components/algorithm/AlgorithmConfigModal.vue'
+import AlgorithmSelectionPanel from '../components/algorithm/AlgorithmSelectionPanel.vue'
 
 // 导入报告相关组件
 import ComparisonTableComponent from '../components/report/ComparisonTableComponent.vue'
