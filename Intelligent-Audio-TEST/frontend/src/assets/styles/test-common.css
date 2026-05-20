@@ -387,7 +387,7 @@
   border: 1px solid #e2e8f0;
   font-size: 14px;
   cursor: pointer;
-    transition: all var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .algorithm-card.selected .algorithm-select-btn {

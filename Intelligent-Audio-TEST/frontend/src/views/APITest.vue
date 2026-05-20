@@ -85,8 +85,8 @@
                   @change="selectAlgorithm(algo.value)"
                 >
                 <label
-                  :for="`algo-${algo.value}`"
                   class="algorithm-select-btn"
+                  @click.stop="selectAlgorithm(algo.value)"
                 >
                   {{ selectedAlgorithmType === algo.value ? '已选择' : '选择' }}
                 </label>

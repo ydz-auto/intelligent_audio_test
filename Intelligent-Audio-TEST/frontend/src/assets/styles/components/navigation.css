@@ -248,6 +248,7 @@ nav a:hover .nav-icon, nav a.active .nav-icon, nav .router-link-active .nav-icon
     color: var(--white-color);
     border-color: var(--success-color);
     box-shadow: 0 0 15px rgba(82, 196, 26, 0.4);
+    
 
 }
 
