@@ -6,12 +6,6 @@
       <span>{{ toast.message }}</span>
     </div>
 
-    <!-- 返回按钮 -->
-    <!-- <div class="back-section">
-      <button class="btn btn-secondary" @click="goBack">
-        <i class="fas fa-arrow-left"></i> 返回历史报告
-      </button>
-    </div> -->
 
     <div v-if="loading" class="loading-state">
       <div class="loading-spinner"></div>

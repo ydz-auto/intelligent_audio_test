@@ -516,6 +516,8 @@ class ReportControllerTask(ReportControllerBase):
             metric_data=json.dumps(summary.get('metric_data', []), ensure_ascii=False),
             tag_metric_data=json.dumps(summary.get('tag_metric_data', []), ensure_ascii=False),
             case_type_stats=json.dumps(summary.get('case_type_stats', []), ensure_ascii=False),
+            device_stats=json.dumps(summary.get('device_stats', []), ensure_ascii=False),
+            api_stats=json.dumps(summary.get('api_stats', []), ensure_ascii=False),
             cases=json.dumps(summary.get('cases', []), ensure_ascii=False)
         )
         db.session.add(detail_data)
@@ -541,8 +543,8 @@ class ReportControllerTask(ReportControllerBase):
             "resources": to_json(summary_info.resources) if summary_info else [],
             "resource_headers": to_json(summary_info.resource_headers) if summary_info else [],
             "all_metrics": to_json(summary_info.all_metrics) if summary_info else [],
-            "device_stats": [],
-            "api_stats": [],
+            "device_stats": to_json(detail_data.device_stats) if detail_data else [],
+            "api_stats": to_json(detail_data.api_stats) if detail_data else [],
             "case_type_stats": to_json(detail_data.case_type_stats) if detail_data else [],
             "devices": to_json(summary_info.devices) if summary_info else [],
             "apis": to_json(summary_info.apis) if summary_info else [],

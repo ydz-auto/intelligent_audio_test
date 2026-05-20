@@ -510,8 +510,12 @@ const confirmTaskName = () => {
   justify-content: flex-end;
   gap: 12px;
   margin-top: 24px;
-  padding-top: 24px;
+  padding: 24px 0;
   border-top: 1px solid #e8e8e8;
+  background: #ffffff;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
 }
 
 /* 按钮样式 - 扩展 */

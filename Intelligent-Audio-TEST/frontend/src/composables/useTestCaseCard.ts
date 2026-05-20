@@ -81,7 +81,8 @@ export function useTestCaseCard() {
         mode: 'case',
         testType: 'e2e',
         formData: formData.value,
-        title: '新增测试用例'
+        title: '新增测试用例',
+        width: '900px'
       });
       
       if (result) {
@@ -121,7 +122,8 @@ export function useTestCaseCard() {
         mode: 'case',
         testType: 'e2e',
         formData: formData.value,
-        title: '编辑测试用例'
+        title: '编辑测试用例',
+        width: '900px'
       });
       
       if (result) {
@@ -150,7 +152,8 @@ export function useTestCaseCard() {
         visible: true,
         mode: 'group',
         formData: groupFormData.value,
-        title: '编辑分组'
+        title: '编辑分组',
+        width: '500px'
       });
       
       if (result) {
@@ -174,7 +177,8 @@ export function useTestCaseCard() {
         visible: true,
         mode: 'group',
         formData: groupFormData.value,
-        title: '创建分组'
+        title: '创建分组',
+        width: '500px'
       });
       
       if (result) {
@@ -190,7 +194,8 @@ export function useTestCaseCard() {
       const result = await modalControl.open(MODAL_TYPES.TEST_CASE_IMPORT, {
         visible: true,
         mode: 'import',
-        title: '批量导入测试用例'
+        title: '批量导入测试用例',
+        width: '600px'
       });
       
       if (result) {
@@ -207,7 +212,8 @@ export function useTestCaseCard() {
         visible: true,
         mode: 'export',
         testType: 'e2e',
-        title: '批量导出测试用例'
+        title: '批量导出测试用例',
+        width: '600px'
       });
       
       if (result) {

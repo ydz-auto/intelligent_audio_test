@@ -624,6 +624,8 @@ class ReportControllerCompare(ReportControllerBase):
                 metric_data=json.dumps(metric_data, ensure_ascii=False),
                 tag_metric_data=json.dumps(tag_metric_data, ensure_ascii=False),
                 case_type_stats=json.dumps(case_type_stats, ensure_ascii=False),
+                device_stats=json.dumps(device_stats, ensure_ascii=False),
+                api_stats=json.dumps(api_stats, ensure_ascii=False),
                 cases=json.dumps(source_cases, ensure_ascii=False)
             )
             db.session.add(detail_data)

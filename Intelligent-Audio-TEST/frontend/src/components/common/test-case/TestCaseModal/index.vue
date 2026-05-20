@@ -1,146 +1,132 @@
 <template>
-  <teleport to="body">
-    <div
-      class="modal-overlay"
-      v-if="props.visible"
-      @click="handleMaskClick($event)"
-    >
-      <div class="modal-container test-case-modal" @click.stop>
-        <div class="modal-header">
-          <h3>{{ getModalTitle() }}</h3>
-          <button type="button" class="modal-close" @click="handleClose">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-        <div class="modal-body">
-          <GroupForm
-            v-if="props.mode === 'group'"
-            :form-data="props.formData"
-            @update="handleGroupUpdate"
-          />
-          <CaseForm
-            v-else-if="props.mode === 'case'"
-            ref="caseFormRef"
-            :form-data="props.formData"
-            :test-case-groups="testCaseGroups"
-            :audio-config="audioConfig"
-            :dimension-config="dimensionConfig"
-            @update="handleCaseUpdate"
-            @open-audio-modal="openAudioSelectModal"
-            @open-device-modal="openDeviceSelectModal"
-            @open-noise-device-modal="openNoiseDeviceSelectModal"
-            @open-batch-device-modal="openBatchDeviceModal"
-            @open-cross-device-modal="openCrossDeviceModal"
-            @open-batch-spl-modal="openBatchSplModal"
-            @preview-audio="handlePreviewAudio"
-          />
-          <ImportForm
-            v-else-if="props.mode === 'import'"
-            ref="importFormRef"
-            @update="handleImportUpdate"
-            @submit="handleImportSubmit"
-          />
-          <ExportForm
-            v-else-if="props.mode === 'export'"
-            ref="exportFormRef"
-            :test-case-groups="testCaseGroups"
-            :test-type="props.testType"
-            @update="handleExportUpdate"
-            @submit="handleExportSubmit"
-          />
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" @click="handleClose">取消</button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            :disabled="isSubmitDisabled"
-            @click="handleSubmit"
-          >
-            {{ getSubmitButtonText() }}
-          </button>
-        </div>
-      </div>
+  <div class="test-case-modal-content">
+    <div class="modal-body-content">
+      <GroupForm
+        v-if="props.mode === 'group'"
+        :form-data="props.formData"
+        @update="handleGroupUpdate"
+      />
+      <CaseForm
+        v-else-if="props.mode === 'case'"
+        ref="caseFormRef"
+        :form-data="props.formData"
+        :test-case-groups="testCaseGroups"
+        :audio-config="audioConfig"
+        :dimension-config="dimensionConfig"
+        @update="handleCaseUpdate"
+        @open-audio-modal="openAudioSelectModal"
+        @open-device-modal="openDeviceSelectModal"
+        @open-noise-device-modal="openNoiseDeviceSelectModal"
+        @open-batch-device-modal="openBatchDeviceModal"
+        @open-cross-device-modal="openCrossDeviceModal"
+        @open-batch-spl-modal="openBatchSplModal"
+        @preview-audio="handlePreviewAudio"
+      />
+      <ImportForm
+        v-else-if="props.mode === 'import'"
+        ref="importFormRef"
+        @update="handleImportUpdate"
+        @submit="handleImportSubmit"
+      />
+      <ExportForm
+        v-else-if="props.mode === 'export'"
+        ref="exportFormRef"
+        :test-case-groups="testCaseGroups"
+        :test-type="props.testType"
+        @update="handleExportUpdate"
+        @submit="handleExportSubmit"
+      />
     </div>
-  </teleport>
+    <div class="modal-footer-content">
+      <button type="button" class="btn btn-secondary" @click="handleClose">取消</button>
+      <button
+        type="button"
+        class="btn btn-primary"
+        :disabled="isSubmitDisabled"
+        @click="handleSubmit"
+      >
+        {{ getSubmitButtonText() }}
+      </button>
+    </div>
 
-  <AudioSelectModal
-    :visible="audioConfig.showAudioModal.value"
-    :audio-type="audioConfig.currentAudioType.value"
-    :is-multi-select="true"
-    title="选择音频文件"
-    @close="audioConfig.showAudioModal.value = false"
-    @select="handleAudioSelect"
-    @select-multiple="handleMultipleAudioSelect"
-  />
+    <AudioSelectModal
+      :visible="audioConfig.showAudioModal.value"
+      :audio-type="audioConfig.currentAudioType.value"
+      :is-multi-select="true"
+      title="选择音频文件"
+      @close="audioConfig.showAudioModal.value = false"
+      @select="handleAudioSelect"
+      @select-multiple="handleMultipleAudioSelect"
+    />
 
-  <AudioPreviewModal
-    :visible="audioConfig.showAudioPreviewModal.value"
-    :audio-id="audioConfig.currentPreviewAudioId.value ?? undefined"
-    :audio-type="audioConfig.currentPreviewAudioType.value"
-    :playback-devices="audioConfig.playbackDevices.value"
-    :initial-selected-devices="audioConfig.currentPreviewDeviceId.value ? [audioConfig.currentPreviewDeviceId.value] : []"
-    :initial-spl="audioConfig.currentPreviewSpl.value"
-    :initial-offset="audioConfig.currentPreviewOffset.value"
-    @close="audioConfig.showAudioPreviewModal.value = false"
-    @preview="handleAudioPreview"
-  />
+    <AudioPreviewModal
+      :visible="audioConfig.showAudioPreviewModal.value"
+      :audio-id="audioConfig.currentPreviewAudioId.value ?? undefined"
+      :audio-type="audioConfig.currentPreviewAudioType.value"
+      :playback-devices="audioConfig.playbackDevices.value"
+      :initial-selected-devices="audioConfig.currentPreviewDeviceId.value ? [audioConfig.currentPreviewDeviceId.value] : []"
+      :initial-spl="audioConfig.currentPreviewSpl.value"
+      :initial-offset="audioConfig.currentPreviewOffset.value"
+      @close="audioConfig.showAudioPreviewModal.value = false"
+      @preview="handleAudioPreview"
+    />
 
-  <GlobalPlaybackDeviceModal
-    :visible="audioConfig.showDeviceModal.value"
-    title="选择播放设备"
-    :is-multi-select="false"
-    :initial-selected-devices="audioConfig.initialSelectedDevices.value"
-    :playback-devices="audioConfig.playbackDevices.value"
-    audio-type="dry"
-    :show-scan-devices="false"
-    @close="audioConfig.showDeviceModal.value = false"
-    @confirm="handleDeviceSelect"
-  />
+    <GlobalPlaybackDeviceModal
+      :visible="audioConfig.showDeviceModal.value"
+      title="选择播放设备"
+      :is-multi-select="false"
+      :initial-selected-devices="audioConfig.initialSelectedDevices.value"
+      :playback-devices="audioConfig.playbackDevices.value"
+      audio-type="dry"
+      :show-scan-devices="false"
+      @close="audioConfig.showDeviceModal.value = false"
+      @confirm="handleDeviceSelect"
+    />
 
-  <GlobalPlaybackDeviceModal
-    :visible="audioConfig.showNoiseDeviceModal.value"
-    title="选择噪声播放设备"
-    :is-multi-select="true"
-    :initial-selected-devices="audioConfig.noiseInitialSelectedDevices.value"
-    :playback-devices="audioConfig.playbackDevices.value"
-    audio-type="noise"
-    :show-scan-devices="false"
-    :is-required="false"
-    @close="audioConfig.showNoiseDeviceModal.value = false"
-    @confirm="handleNoiseDeviceSelect"
-  />
+    <GlobalPlaybackDeviceModal
+      :visible="audioConfig.showNoiseDeviceModal.value"
+      title="选择噪声播放设备"
+      :is-multi-select="true"
+      :initial-selected-devices="audioConfig.noiseInitialSelectedDevices.value"
+      :playback-devices="audioConfig.playbackDevices.value"
+      audio-type="noise"
+      :show-scan-devices="false"
+      :is-required="false"
+      @close="audioConfig.showNoiseDeviceModal.value = false"
+      @confirm="handleNoiseDeviceSelect"
+    />
 
-  <GlobalPlaybackDeviceModal
-    :visible="audioConfig.showBatchDeviceModal.value"
-    title="批量设置播放设备"
-    :is-multi-select="false"
-    :initial-selected-devices="audioConfig.batchInitialSelectedDevices.value"
-    :playback-devices="audioConfig.playbackDevices.value"
-    audio-type="dry"
-    :show-scan-devices="false"
-    @close="audioConfig.showBatchDeviceModal.value = false"
-    @confirm="handleBatchDeviceSelect"
-  />
+    <GlobalPlaybackDeviceModal
+      :visible="audioConfig.showBatchDeviceModal.value"
+      title="批量设置播放设备"
+      :is-multi-select="false"
+      :initial-selected-devices="audioConfig.batchInitialSelectedDevices.value"
+      :playback-devices="audioConfig.playbackDevices.value"
+      audio-type="dry"
+      :show-scan-devices="false"
+      @close="audioConfig.showBatchDeviceModal.value = false"
+      @confirm="handleBatchDeviceSelect"
+    />
 
-  <GlobalPlaybackDeviceModal
-    :visible="audioConfig.showCrossDeviceModal.value"
-    title="选择设备进行交叉分配"
-    :is-multi-select="true"
-    :initial-selected-devices="audioConfig.crossDeviceInitialSelectedDevices.value"
-    :playback-devices="audioConfig.playbackDevices.value"
-    audio-type="noise"
-    :show-scan-devices="false"
-    :is-required="true"
-    @close="audioConfig.showCrossDeviceModal.value = false"
-    @confirm="handleCrossDeviceSelect"
-  />
+    <GlobalPlaybackDeviceModal
+      :visible="audioConfig.showCrossDeviceModal.value"
+      title="选择设备进行交叉分配"
+      :is-multi-select="true"
+      :initial-selected-devices="audioConfig.crossDeviceInitialSelectedDevices.value"
+      :playback-devices="audioConfig.playbackDevices.value"
+      audio-type="noise"
+      :show-scan-devices="false"
+      :is-required="true"
+      @close="audioConfig.showCrossDeviceModal.value = false"
+      @confirm="handleCrossDeviceSelect"
+    />
 
-  <BatchSplModal
-    v-model="audioConfig.batchSplValue.value"
-    v-model:visible="audioConfig.showBatchSplModal.value"
-    @confirm="handleBatchSplConfirm"
-  />
+    <BatchSplModal
+      v-model="audioConfig.batchSplValue.value"
+      v-model:visible="audioConfig.showBatchSplModal.value"
+      @confirm="handleBatchSplConfirm"
+    />
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -163,10 +149,11 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   mode: { type: String, default: 'case', validator: (value: string) => ['case', 'group', 'import', 'export'].includes(value) },
   testType: { type: String, default: 'api' },
-  formData: { type: Object, default: () => ({}) }
+  formData: { type: Object, default: () => ({}) },
+  title: { type: String, default: '' }
 });
 
-const emit = defineEmits(['close', 'save']);
+const emit = defineEmits(['close', 'save', 'confirm']);
 
 const notification = useNotification();
 
@@ -200,6 +187,7 @@ const isSubmitDisabled = computed(() => {
 });
 
 function getModalTitle() {
+  if (props.title) return props.title;
   switch (props.mode) {
     case 'case':
       return isEditMode.value ? '编辑测试用例' : '新增测试用例';
@@ -456,64 +444,38 @@ function handleClose() {
   emit('close');
 }
 
-function handleMaskClick(event: MouseEvent) {
-  if (event.target === event.currentTarget) {
-    handleClose();
-  }
-}
-
-function handleKeyDown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && props.visible) {
-    handleClose();
-  }
-}
-
 watch(() => props.visible, (newVal) => {
   if (newVal) {
-    window.addEventListener('keydown', handleKeyDown);
     loadTestGroups();
-    audioConfig.loadResources();
-    dimensionConfig.loadDimensions();
-  } else {
-    window.removeEventListener('keydown', handleKeyDown);
+    if (props.mode === 'case') {
+      audioConfig.loadResources();
+      dimensionConfig.loadDimensions();
+    }
   }
 }, { immediate: true });
 
 onMounted(() => {
   loadTestGroups();
 });
-
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleKeyDown);
-});
 </script>
 
-<style>
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 10000;
-}
-
-.modal-container {
-  background-color: white;
-  border-radius: var(--border-radius-xl);
-  box-shadow: var(--shadow-lg);
-  max-height: 90vh;
-  overflow-y: auto;
-}
-</style>
-
 <style scoped>
-.test-case-modal {
-  max-width: 900px;
-  width: 95%;
+.test-case-modal-content {
+  width: 100%;
+}
+
+.modal-body-content {
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.modal-footer-content {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--background-secondary);
 }
 </style>

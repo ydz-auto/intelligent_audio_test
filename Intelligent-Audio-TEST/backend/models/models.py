@@ -600,6 +600,8 @@ class ReportDetailData(db.Model):
     tag_metric_data = Column(JSON, comment='标签指标数据')
     tag_category_metric_data = Column(JSON, comment='按标签分类的指标数据')
     case_type_stats = Column(JSON, comment='用例类型统计数据')
+    device_stats = Column(JSON, comment='设备统计数据')
+    api_stats = Column(JSON, comment='API统计数据')
     cases = Column(JSON, comment='用例详情列表')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')

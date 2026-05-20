@@ -46,6 +46,10 @@
           <div v-if="availableTags && availableTags.length > 0" class="existing-tags-section mt-2">
             <div class="existing-tags-header">
               <span class="existing-tags-label">已有标签：</span>
+              <div class="tag-search-box">
+                <i class="fas fa-search"></i>
+                <input type="text" v-model="tagSearchQuery" placeholder="搜索标签..." class="tag-search-input">
+              </div>
               <div class="tag-pagination" v-if="totalTagPages > 1">
                 <button type="button" class="tag-page-btn" :disabled="currentTagPage === 1" @click="currentTagPage--">
                   <i class="fas fa-chevron-left"></i>
@@ -103,7 +107,7 @@
               <i class="fas fa-random"></i>
             </button>
           </div>
-          <div class="action-group" v-if="getUniqueTagsFromConfigs().length > 1">
+          <div class="action-group" v-if="getUniqueTagsFromConfigs(localFormData.config.audios).length > 1">
             <span class="action-group-label">标签操作</span>
             <button type="button" class="btn btn-sm btn-outline-info" @click="toggleTagSelector">
               <i class="fas fa-exchange-alt"></i> 标签交叉排列
@@ -132,10 +136,10 @@
         </div>
       </div>
 
-      <div class="tag-selector-panel" v-if="showTagSelector && getUniqueTagsFromConfigs().length > 1">
+      <div class="tag-selector-panel" v-if="showTagSelector && getUniqueTagsFromConfigs(localFormData.config.audios).length > 1">
         <div class="tag-selector-list">
           <span
-            v-for="tag in getUniqueTagsFromConfigs()"
+            v-for="tag in getUniqueTagsFromConfigs(localFormData.config.audios)"
             :key="tag"
             class="tag-checkbox-item"
             :class="{ selected: selectedTagsForInterleave.includes(tag) }"
@@ -163,9 +167,9 @@
         </div>
       </div>
 
-      <div class="tag-selector-panel" v-if="showTagDeviceSelector && getUniqueTagsFromConfigs().length > 0">
+      <div class="tag-selector-panel" v-if="showTagDeviceSelector && getUniqueTagsFromConfigs(localFormData.config.audios).length > 0">
         <div class="tag-device-mapping-list">
-          <div v-for="tag in getUniqueTagsFromConfigs()" :key="tag" class="tag-device-mapping-row">
+          <div v-for="tag in getUniqueTagsFromConfigs(localFormData.config.audios)" :key="tag" class="tag-device-mapping-row">
             <span class="tag-name">{{ tag }}</span>
             <span class="arrow">→</span>
             <select :value="getDeviceForTag(tag)" @change="updateTagDeviceMapping(tag, ($event.target as HTMLSelectElement).value)" class="form-control form-control-sm device-select">
@@ -233,7 +237,7 @@
             </div>
           </div>
           <div class="audio-card-body">
-            <div class="audio-field">
+            <div class="audio-field audio-field-full">
               <label>音频文件 <span class="required">*</span></label>
               <div class="audio-selector" @click="$emit('openAudioModal', 'dry', index)">
                 <div class="selected-info" v-if="audioConfig.audioId">
@@ -242,10 +246,10 @@
                 <div class="placeholder" v-else>未选择音频</div>
               </div>
               <div class="audio-actions">
-                <button type="button" class="btn btn-sm btn-primary" @click="$emit('openAudioModal', 'dry', index)">
+                <button type="button" class="btn btn-sm btn-primary" @click.stop="$emit('openAudioModal', 'dry', index)">
                   <i class="fas fa-search"></i> 选择
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" @click="$emit('previewAudio', audioConfig.audioId, 'dry')" :disabled="!audioConfig.audioId">
+                <button type="button" class="btn btn-sm btn-outline-secondary" @click.stop="$emit('previewAudio', audioConfig.audioId, 'dry')" :disabled="!audioConfig.audioId">
                   <i class="fas fa-play"></i> 试听
                 </button>
               </div>
@@ -258,33 +262,39 @@
                 </div>
               </div>
             </div>
-            <div class="audio-field">
-              <label>测试类型 <span class="required">*</span></label>
-              <select v-model="audioConfig.testType" class="form-control">
-                <option value="api">API测试</option>
-                <option value="e2e">端到端测试</option>
-              </select>
-            </div>
-            <div class="audio-field" v-if="audioConfig.testType === 'e2e'">
-              <label>播放设备 <span class="required">*</span></label>
-              <div class="audio-selector" @click="$emit('openDeviceModal', index)">
-                <div class="selected-info" v-if="audioConfig.playbackDeviceId">
-                  {{ getDeviceName(audioConfig.playbackDeviceId) }}
-                </div>
-                <div class="placeholder" v-else>未选择设备</div>
+            <div class="audio-field-row">
+              <div class="audio-field">
+                <label>测试类型 <span class="required">*</span></label>
+                <select v-model="audioConfig.testType" class="form-control">
+                  <option value="api">API测试</option>
+                  <option value="e2e">端到端测试</option>
+                </select>
               </div>
-              <button type="button" class="btn btn-sm btn-primary mt-1" @click="$emit('openDeviceModal', index)">
-                <i class="fas fa-search"></i> 选择设备
-              </button>
+              <div class="audio-field audio-field-sm">
+                <label>播放顺序</label>
+                <input type="number" v-model.number="audioConfig.playOrder" class="form-control" min="0">
+              </div>
             </div>
-            <div class="audio-field audio-field-sm" v-if="audioConfig.testType === 'e2e'">
-              <label>声压级 (dB) <span class="required">*</span></label>
-              <input type="number" v-model.number="audioConfig.spl" class="form-control" min="0" max="120">
-            </div>
-            <div class="audio-field audio-field-sm">
-              <label>播放顺序 <span class="required">*</span></label>
-              <input type="number" v-model.number="audioConfig.playOrder" class="form-control" min="0">
-            </div>
+            <template v-if="audioConfig.testType === 'e2e'">
+              <div class="audio-field-row">
+                <div class="audio-field">
+                  <label>播放设备 <span class="required">*</span></label>
+                  <div class="audio-selector" @click="$emit('openDeviceModal', index)">
+                    <div class="selected-info" v-if="audioConfig.playbackDeviceId">
+                      {{ getDeviceName(audioConfig.playbackDeviceId) }}
+                    </div>
+                    <div class="placeholder" v-else>未选择设备</div>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-primary mt-1" @click.stop="$emit('openDeviceModal', index)">
+                    <i class="fas fa-search"></i> 选择设备
+                  </button>
+                </div>
+                <div class="audio-field audio-field-sm">
+                  <label>声压级 (dB) <span class="required">*</span></label>
+                  <input type="number" v-model.number="audioConfig.spl" class="form-control" min="0" max="120">
+                </div>
+              </div>
+            </template>
           </div>
         </div>
       </div>
@@ -466,6 +476,7 @@ const algorithmOptions = ref<{ value: string; name: string }[]>([]);
 
 const TAGS_PER_PAGE = 15;
 const currentTagPage = ref(1);
+const tagSearchQuery = ref('');
 
 function createInitialFormData(): TestCaseFormData {
   return {
@@ -491,15 +502,24 @@ const hasE2eAudio = computed(() => {
   return localFormData.value.config.audios.some(audio => audio.testType === 'e2e');
 });
 
-const totalTagPages = computed(() => {
-  return Math.ceil(availableTags.value.length / TAGS_PER_PAGE);
-});
+const filteredAvailableTags = computed(() => {
+    let tags = availableTags.value;
+    if (tagSearchQuery.value.trim()) {
+      const query = tagSearchQuery.value.toLowerCase().trim();
+      tags = tags.filter(tag => tag.toLowerCase().includes(query));
+    }
+    return tags;
+  });
 
-const paginatedAvailableTags = computed(() => {
-  const start = (currentTagPage.value - 1) * TAGS_PER_PAGE;
-  const end = start + TAGS_PER_PAGE;
-  return availableTags.value.slice(start, end);
-});
+  const totalTagPages = computed(() => {
+    return Math.ceil(filteredAvailableTags.value.length / TAGS_PER_PAGE);
+  });
+
+  const paginatedAvailableTags = computed(() => {
+    const start = (currentTagPage.value - 1) * TAGS_PER_PAGE;
+    const end = start + TAGS_PER_PAGE;
+    return filteredAvailableTags.value.slice(start, end);
+  });
 
 const playbackDevices = computed<PlaybackDevice[]>(() => {
   return audioConfig?.playbackDevices?.value || [];
@@ -557,6 +577,9 @@ function initFormData() {
       backgroundNoise: { audioId: '', deviceIds: [], spl: 0 }
     }
   };
+  if (localFormData.value.algorithmType && dimensionConfig) {
+    dimensionConfig.updateAssociatedDimensions(localFormData.value.algorithmType);
+  }
 }
 
 function addTags() {
@@ -714,6 +737,10 @@ function removeE2EDimension(index: number) {
 watch(() => props.formData, () => {
   initFormData();
 }, { immediate: true, deep: true });
+
+watch(() => tagSearchQuery.value, () => {
+  currentTagPage.value = 1;
+});
 
 watch(() => localFormData.value, (newVal) => {
   emit('update', { ...newVal });
@@ -886,11 +913,43 @@ onMounted(async () => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .existing-tags-label {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.tag-search-box {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 4px 8px;
+  flex: 1;
+  max-width: 200px;
+}
+
+.tag-search-box i {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.tag-search-input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 12px;
+  width: 100%;
+  color: var(--text-primary);
+}
+
+.tag-search-input::placeholder {
+  color: var(--text-light);
 }
 
 .tag-pagination {
@@ -1171,8 +1230,8 @@ onMounted(async () => {
 
 .audio-card-body {
   padding: 16px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 
@@ -1180,6 +1239,21 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.audio-field-full {
+  width: 100%;
+}
+
+.audio-field-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.audio-field-row .audio-field {
+  flex: 1;
+  min-width: 150px;
 }
 
 .audio-field-sm {

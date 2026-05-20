@@ -3,6 +3,7 @@
     <div
       class="modal-overlay"
       :class="{ active: visible }"
+      :style="overlayStyle"
       @click="handleMaskClick($event)"
       v-if="visible"
     >
@@ -79,7 +80,14 @@ const props = defineProps({
   showCancelBtn: { type: Boolean, default: true },
   confirmText: { type: String, default: '确认' },
   cancelText: { type: String, default: '取消' },
-  confirmLoading: { type: Boolean, default: false }
+  confirmLoading: { type: Boolean, default: false },
+  zIndexOffset: { type: Number, default: 0 }
+})
+
+const overlayStyle = computed(() => {
+  const baseZIndex = 13000
+  const offset = props.zIndexOffset * 100
+  return { zIndex: baseZIndex + offset }
 })
 
 const emit = defineEmits(['close', 'confirm', 'cancel', 'update:visible'])
@@ -169,7 +177,6 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: var(--z-index-modal-top);
   transition: opacity 0.3s ease, visibility 0.3s ease;
   overflow: hidden;
 }

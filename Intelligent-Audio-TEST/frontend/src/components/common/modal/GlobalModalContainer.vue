@@ -4,7 +4,7 @@
       class="modal-container-wrapper"
       :class="{ 'modal-container-wrapper--active': activeModals.length > 0 }"
     >
-      <template v-for="[modalId, modalItem] in activeModals" :key="modalId">
+      <template v-for="[modalId, modalItem, index] in activeModalsWithIndex" :key="modalId">
         <BasicModal
           v-if="modalItem && typeof modalItem === 'object'"
           :visible="true"
@@ -16,6 +16,7 @@
           :closable="modalItem.props?.closable !== false"
           :mask-closable="modalItem.props?.maskClosable === true"
           :show-footer="false"
+          :z-index-offset="index"
           @close="handleClose(modalId)"
           @cancel="handleCancel(modalId, $event)"
         >
@@ -211,6 +212,11 @@ const activeModals = computed(() => {
   return modals.map(modal => [modal.id, modal] as [string, any])
 })
 
+const activeModalsWithIndex = computed(() => {
+  const modals = manager.getActiveModals()
+  return modals.map((modal, index) => [modal.id, modal, index] as [string, any, number])
+})
+
 // 移除对不存在的 activeModals 属性的监听
 // watch(
 //   () => manager.activeModals,
@@ -370,7 +376,6 @@ const handleSelectFolder = (modalId: string, data: any) => {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: var(--z-index-modal-top);
   pointer-events: none;
 }
 
