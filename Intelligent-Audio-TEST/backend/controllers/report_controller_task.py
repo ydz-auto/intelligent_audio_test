@@ -616,16 +616,30 @@ class ReportControllerTask(ReportControllerBase):
                 return success_response({"taskId": task_id, "status": "generating"}, "报告正在生成中", ErrorCode.SUCCESS)
             _generating_tasks.add(task_id)
 
+        log_and_emit('INFO', 'report', f'[generate_task_report] Submitting async task for task_id={task_id}', task_id=task_id)
         _report_executor.submit(
             ReportControllerTask._generate_task_report_async,
             task_id, name, description
         )
+        log_and_emit('INFO', 'report', f'[generate_task_report] Async task submitted for task_id={task_id}', task_id=task_id)
 
         return success_response({"taskId": task_id, "status": "generating"}, "报告生成中，请稍后刷新", ErrorCode.SUCCESS)
 
     @staticmethod
     def _generate_task_report_async(task_id, name, description):
-        with socketio.app.app_context():
+        from backend.app import app as flask_app
+        if flask_app is None:
+            log_and_emit('ERROR', 'report', f'[generate_task_report_async] Flask app is None, cannot create context', task_id=task_id)
+            with _generating_lock:
+                _generating_tasks.discard(task_id)
+            socketio.emit('report_generated', {
+                'taskId': task_id,
+                'success': False,
+                'error': '服务器内部错误'
+            })
+            return
+            
+        with flask_app.app_context():
             try:
                 log_and_emit('INFO', 'report', f'[generate_task_report_async] Starting for task_id={task_id}', task_id=task_id)
 
@@ -798,21 +812,25 @@ class ReportControllerTask(ReportControllerBase):
                 
                 log_and_emit('INFO', 'report', f'[generate_task_report_async] Report generated successfully, report_id={report_id}', task_id=task_id)
 
-                socketio.emit('report_generated', {
+                emit_data = {
                     'taskId': task_id,
                     'reportId': report_id,
                     'success': True,
                     'status': 'completed'
-                })
+                }
+                log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting report_generated: {emit_data}', task_id=task_id)
+                socketio.emit('report_generated', emit_data)
 
             except Exception as e:
                 db.session.rollback()
                 log_and_emit('ERROR', 'report', f'[generate_task_report_async] Error: {e}\n{traceback.format_exc()}', task_id=task_id)
-                socketio.emit('report_generated', {
+                emit_data = {
                     'taskId': task_id,
                     'success': False,
                     'error': '报告生成失败，请稍后重试'
-                })
+                }
+                log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting error: {emit_data}', task_id=task_id)
+                socketio.emit('report_generated', emit_data)
             finally:
                 with _generating_lock:
                     _generating_tasks.discard(task_id)

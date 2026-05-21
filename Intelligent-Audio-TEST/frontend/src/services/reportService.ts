@@ -589,6 +589,8 @@ async function viewTaskReport(task: Task): Promise<Report> {
     console.log('generateTaskReport result:', result);
     
     if (result.status === 'generating') {
+      socketService.connect();
+      
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           socketService.off('report_generated', handleReportGenerated);
@@ -596,6 +598,7 @@ async function viewTaskReport(task: Task): Promise<Report> {
         }, 120000);
         
         const handleReportGenerated = async (data: any) => {
+          console.log('[reportService] Received report_generated event:', data);
           if (data.taskId === task.id) {
             clearTimeout(timeout);
             socketService.off('report_generated', handleReportGenerated);
