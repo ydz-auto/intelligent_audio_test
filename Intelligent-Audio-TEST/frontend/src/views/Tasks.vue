@@ -308,7 +308,7 @@
             <!-- 非编辑模式下显示静态文本 -->
             <div v-if="!isEditingReport" class="analysis-text">
               <div>
-                {{ reportServiceData.description || '请输入报告描述' }}
+                {{ reportServiceData?.description || '请输入报告描述' }}
               </div>
             </div>
             
@@ -320,7 +320,7 @@
               </div>
               <div class="edit-field">
                 <label for="report-description">报告描述</label>
-                <textarea id="report-description" placeholder="请输入报告描述" rows="3" v-model="reportServiceData.description"></textarea>
+                <textarea id="report-description" placeholder="请输入报告描述" rows="3" v-model="reportServiceData!.description"></textarea>
               </div>
             </div>
             

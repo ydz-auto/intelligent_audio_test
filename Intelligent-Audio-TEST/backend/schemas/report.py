@@ -61,6 +61,37 @@ class ReportCaseTypeStatGroup(APIModel):
     group_name: str = Field(..., alias='groupName', validation_alias='groupName')
     metrics: List[ReportMetricValue] = Field(default_factory=list, alias='metrics', validation_alias='metrics')
 
+
+class ReportDeviceStat(APIModel):
+    id: int = Field(..., alias='id', validation_alias='id')
+    name: str = Field(..., alias='name', validation_alias='name')
+    model: Optional[str] = Field(None, alias='model', validation_alias='model')
+    type: Optional[str] = Field(None, alias='type', validation_alias='type')
+    system: Optional[str] = Field(None, alias='system', validation_alias='system')
+    system_version: Optional[str] = Field(None, alias='systemVersion', validation_alias=AliasChoices('system_version', 'systemVersion'))
+    status: Optional[str] = Field(None, alias='status', validation_alias='status')
+    metrics: Optional[Dict[str, Any]] = Field(None, alias='metrics', validation_alias='metrics')
+    total_cases: int = Field(0, alias='totalCases', validation_alias=AliasChoices('total_cases', 'totalCases'))
+    completed_cases: int = Field(0, alias='completedCases', validation_alias=AliasChoices('completed_cases', 'completedCases'))
+    failed_cases: int = Field(0, alias='failedCases', validation_alias=AliasChoices('failed_cases', 'failedCases'))
+    success_rate: float = Field(0, alias='successRate', validation_alias=AliasChoices('success_rate', 'successRate'))
+
+
+class ReportApiStat(APIModel):
+    id: int = Field(..., alias='id', validation_alias='id')
+    name: str = Field(..., alias='name', validation_alias='name')
+    status: Optional[str] = Field(None, alias='status', validation_alias='status')
+    max_process: Optional[int] = Field(None, alias='maxProcess', validation_alias=AliasChoices('max_process', 'maxProcess'))
+    health_score: Optional[float] = Field(None, alias='healthScore', validation_alias=AliasChoices('health_score', 'healthScore'))
+    metrics: Optional[Dict[str, Any]] = Field(None, alias='metrics', validation_alias='metrics')
+    total_cases: int = Field(0, alias='totalCases', validation_alias=AliasChoices('total_cases', 'totalCases'))
+    completed_cases: int = Field(0, alias='completedCases', validation_alias=AliasChoices('completed_cases', 'completedCases'))
+    failed_cases: int = Field(0, alias='failedCases', validation_alias=AliasChoices('failed_cases', 'failedCases'))
+    success_rate: float = Field(0, alias='successRate', validation_alias=AliasChoices('success_rate', 'successRate'))
+    avg_response_time: Optional[float] = Field(None, alias='avgResponseTime', validation_alias=AliasChoices('avg_response_time', 'avgResponseTime'))
+    stability: Optional[float] = Field(None, alias='stability', validation_alias='stability')
+
+
 class ReportDeviceInfo(APIModel):
     id: int = Field(..., alias='id', validation_alias='id')
     name: str = Field(..., alias='name', validation_alias='name')
@@ -145,8 +176,8 @@ class ReportSummarySimplified(APIModel):
     resources: List[Any] = Field(default_factory=list, alias='resources', validation_alias=AliasChoices('resources'))
     resource_headers: List[ReportResourceHeader] = Field(default_factory=list, alias='resourceHeaders', validation_alias=AliasChoices('resource_headers', 'resourceHeaders'))
     all_metrics: List[Any] = Field(default_factory=list, alias='allMetrics', validation_alias=AliasChoices('all_metrics', 'allMetrics'))
-    device_stats: List[Any] = Field(default_factory=list, alias='deviceStats', validation_alias=AliasChoices('device_stats', 'deviceStats'))
-    api_stats: List[Any] = Field(default_factory=list, alias='apiStats', validation_alias=AliasChoices('api_stats', 'apiStats'))
+    device_stats: List[ReportDeviceStat] = Field(default_factory=list, alias='deviceStats', validation_alias=AliasChoices('device_stats', 'deviceStats'))
+    api_stats: List[ReportApiStat] = Field(default_factory=list, alias='apiStats', validation_alias=AliasChoices('api_stats', 'apiStats'))
     case_type_stats: List[ReportCaseTypeStatGroup] = Field(default_factory=list, alias='caseTypeStats', validation_alias=AliasChoices('case_type_stats', 'caseTypeStats'))
     devices: List[ReportDeviceInfo] = Field(default_factory=list, alias='devices', validation_alias=AliasChoices('devices'))
     apis: List[ReportApiInfo] = Field(default_factory=list, alias='apis', validation_alias=AliasChoices('apis'))

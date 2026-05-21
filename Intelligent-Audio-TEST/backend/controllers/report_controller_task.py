@@ -18,6 +18,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 _report_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='report_gen')
+_generating_tasks = set()
+_generating_lock = threading.Lock()
 
 class ReportControllerTask(ReportControllerBase):
     
@@ -609,6 +611,11 @@ class ReportControllerTask(ReportControllerBase):
         if task.status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]:
             return error_response("只有任务状态为completed或failed时才能生成报告")
 
+        with _generating_lock:
+            if task_id in _generating_tasks:
+                return success_response({"taskId": task_id, "status": "generating"}, "报告正在生成中", ErrorCode.SUCCESS)
+            _generating_tasks.add(task_id)
+
         _report_executor.submit(
             ReportControllerTask._generate_task_report_async,
             task_id, name, description
@@ -624,6 +631,8 @@ class ReportControllerTask(ReportControllerBase):
 
                 task, results, error = ReportControllerTask._validate_task_and_get_results(task_id)
                 if error:
+                    with _generating_lock:
+                        _generating_tasks.discard(task_id)
                     socketio.emit('report_generated', {
                         'taskId': task_id,
                         'success': False,
@@ -633,6 +642,8 @@ class ReportControllerTask(ReportControllerBase):
 
                 existing_report = Report.query.filter_by(task_id=task_id).first()
                 if existing_report:
+                    with _generating_lock:
+                        _generating_tasks.discard(task_id)
                     socketio.emit('report_generated', {
                         'taskId': task_id,
                         'reportId': existing_report.id,
@@ -802,3 +813,6 @@ class ReportControllerTask(ReportControllerBase):
                     'success': False,
                     'error': '报告生成失败，请稍后重试'
                 })
+            finally:
+                with _generating_lock:
+                    _generating_tasks.discard(task_id)

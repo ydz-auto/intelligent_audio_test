@@ -236,6 +236,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { sanitizeConclusion } from '../utils/sanitize'
+import { normalizeReport } from '../utils/fieldNaming'
 import TaskReportPanel from '../components/report/TaskReportPanel.vue'
 import ComparisonTableComponent from '../components/report/ComparisonTableComponent.vue'
 import CaseCategoryComparisonComponent from '../components/report/CaseCategoryComparisonComponent.vue'
@@ -299,13 +300,14 @@ const loadReport = async (reportId: string) => {
   try {
     const response = await reportsApi.getOne(reportId)
     if (response) {
+      const normalizedResponse = normalizeReport(response)
       report.value = {
-        ...response,
-        name: response.name,
-        description: response.description || '',
-        conclusion: (response.analysis || response.conclusion) || '',
-        tags: response.tags || [],
-        summary: response.summary || { totalCases: 0, completedCases: 0, failedCases: 0, allMetrics: [], detailedResults: [] }
+        ...normalizedResponse,
+        name: normalizedResponse.name,
+        description: normalizedResponse.description || '',
+        conclusion: (normalizedResponse.analysis || normalizedResponse.conclusion) || '',
+        tags: normalizedResponse.tags || [],
+        summary: normalizedResponse.summary || { totalCases: 0, completedCases: 0, failedCases: 0, allMetrics: [], detailedResults: [], deviceStats: [], apiStats: [] }
       }
       reportName.value = report.value.name
       
@@ -435,7 +437,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  reportService.comparisonReport.value = null
+  reportService.resetReportState()
 })
 </script>
 

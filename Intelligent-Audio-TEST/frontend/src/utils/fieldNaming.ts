@@ -103,6 +103,14 @@ export function normalizeReportSummary(summary: Record<string, any>): Record<str
     }
   }
   
+  if (normalized.deviceStats && Array.isArray(normalized.deviceStats)) {
+    normalized.deviceStats = normalized.deviceStats.map(stat => snakeToCamelObject(stat));
+  }
+  
+  if (normalized.apiStats && Array.isArray(normalized.apiStats)) {
+    normalized.apiStats = normalized.apiStats.map(stat => snakeToCamelObject(stat));
+  }
+  
   return normalized;
 }
 

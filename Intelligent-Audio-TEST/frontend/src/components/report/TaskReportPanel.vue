@@ -26,6 +26,99 @@
           <OverviewCardComponent :reportData="report" />
         </div>
 
+        <div class="report-section" id="section-devices" v-if="hasDeviceOrApiStats">
+          <div class="section-header" @click="toggleDevicesCollapse">
+            <h3 class="section-title">
+              <i class="fas fa-microchip"></i> 设备与API统计
+            </h3>
+            <button class="collapse-btn" :class="{ collapsed: isDevicesCollapsed }" title="折叠/展开">
+              <i class="fas fa-chevron-up" v-if="isDevicesCollapsed"></i>
+              <i class="fas fa-chevron-down" v-else></i>
+            </button>
+          </div>
+          <div class="devices-content" v-if="!isDevicesCollapsed">
+            <div class="device-cards-container">
+              <div v-for="device in deviceStats" :key="device.id" class="device-stat-card">
+                <div class="device-card-header">
+                  <div class="device-icon">
+                    <i class="fas fa-headphones"></i>
+                  </div>
+                  <div class="device-info">
+                    <span class="device-name">{{ device.name }}</span>
+                    <span class="device-model">{{ device.model || device.type || '设备' }}</span>
+                  </div>
+                  <span class="device-status" :class="device.status">{{ device.status === 'online' ? '在线' : '离线' }}</span>
+                </div>
+                <div class="device-card-body">
+                  <div class="stat-row">
+                    <span class="stat-label">总用例数</span>
+                    <span class="stat-value">{{ device.totalCases || 0 }} 个</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">完成数</span>
+                    <span class="stat-value success">{{ device.completedCases || 0 }} 个</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">失败数</span>
+                    <span class="stat-value danger">{{ device.failedCases || 0 }} 个</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">成功率</span>
+                    <span class="stat-value" :class="getSuccessRateClass(device.successRate)">{{ formatPercent(device.successRate) }}</span>
+                  </div>
+                </div>
+                <div class="device-card-footer" v-if="device.metrics && Object.keys(device.metrics).length > 0">
+                  <div class="metrics-grid">
+                    <div v-for="(value, key) in device.metrics" :key="key" class="metric-item">
+                      <span class="metric-name">{{ key }}</span>
+                      <span class="metric-value">{{ formatMetricWithUnit(value, key) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div v-for="api in apiStats" :key="api.id" class="api-stat-card">
+                <div class="api-card-header">
+                  <div class="api-icon">
+                    <i class="fas fa-exchange-alt"></i>
+                  </div>
+                  <div class="api-info">
+                    <span class="api-name">{{ api.name }}</span>
+                    <span class="api-vendor">API</span>
+                  </div>
+                  <span class="api-status" :class="api.status">{{ api.status === 'active' ? '活跃' : '离线' }}</span>
+                </div>
+                <div class="api-card-body">
+                  <div class="stat-row">
+                    <span class="stat-label">总用例数</span>
+                    <span class="stat-value">{{ api.totalCases || 0 }} 个</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">完成数</span>
+                    <span class="stat-value success">{{ api.completedCases || 0 }} 个</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">失败数</span>
+                    <span class="stat-value danger">{{ api.failedCases || 0 }} 个</span>
+                  </div>
+                  <div class="stat-row">
+                    <span class="stat-label">成功率</span>
+                    <span class="stat-value" :class="getSuccessRateClass(api.successRate)">{{ formatPercent(api.successRate) }}</span>
+                  </div>
+                </div>
+                <div class="api-card-footer" v-if="api.metrics && Object.keys(api.metrics).length > 0">
+                  <div class="metrics-grid">
+                    <div v-for="(value, key) in api.metrics" :key="key" class="metric-item">
+                      <span class="metric-name">{{ key }}</span>
+                      <span class="metric-value">{{ formatMetricWithUnit(value, key) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="report-section" id="section-analysis">
           <div class="section-header" @click="toggleAnalysisCollapse">
             <h3 class="section-title">分析结论</h3>
@@ -120,6 +213,7 @@ const emit = defineEmits(['toggle-edit', 'save-report', 'cancel-edit', 'toggle-c
 const editableConclusion = ref('')
 const localIsEditing = ref(false)
 const isAnalysisCollapsed = ref(false)
+const isDevicesCollapsed = ref(false)
 const activeSection = ref('section-overview')
 const progressHeight = ref('0%')
 
@@ -127,13 +221,78 @@ const toggleAnalysisCollapse = () => {
   isAnalysisCollapsed.value = !isAnalysisCollapsed.value
 }
 
-const navItems = [
-  { id: 'section-overview', label: '概览' },
-  { id: 'section-analysis', label: '分析结论' },
-  { id: 'section-category', label: '用例分组' },
-  { id: 'section-tag', label: '用例标签' },
-  { id: 'section-case', label: '具体用例' },
-]
+const toggleDevicesCollapse = () => {
+  isDevicesCollapsed.value = !isDevicesCollapsed.value
+}
+
+const deviceStats = computed(() => {
+  const stats = props.report?.summary?.deviceStats || props.report?.summary?.device_stats || []
+  return Array.isArray(stats) ? stats : []
+})
+
+const apiStats = computed(() => {
+  const stats = props.report?.summary?.apiStats || props.report?.summary?.api_stats || []
+  return Array.isArray(stats) ? stats : []
+})
+
+const hasDeviceOrApiStats = computed(() => {
+  return deviceStats.value.length > 0 || apiStats.value.length > 0
+})
+
+const allMetrics = computed(() => {
+  const metrics = props.report?.summary?.allMetrics || props.report?.summary?.all_metrics || []
+  return Array.isArray(metrics) ? metrics : []
+})
+
+const getMetricUnit = (metricName) => {
+  const metric = allMetrics.value.find(m => m.name === metricName)
+  return metric?.unit || ''
+}
+
+const formatPercent = (value) => {
+  if (value === null || value === undefined) return '0%'
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num)) return '0%'
+  return `${num.toFixed(1)}%`
+}
+
+const formatMetricValue = (value) => {
+  if (value === null || value === undefined) return '-'
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num)) return String(value)
+  return num.toFixed(2)
+}
+
+const formatMetricWithUnit = (value, metricName) => {
+  const formattedValue = formatMetricValue(value)
+  const unit = getMetricUnit(metricName)
+  return unit ? `${formattedValue}${unit}` : formattedValue
+}
+
+const getSuccessRateClass = (rate) => {
+  if (rate === null || rate === undefined) return ''
+  const num = typeof rate === 'number' ? rate : Number(rate)
+  if (!Number.isFinite(num)) return ''
+  if (num >= 80) return 'success'
+  if (num >= 50) return 'warning'
+  return 'danger'
+}
+
+const navItems = computed(() => {
+  const items = [
+    { id: 'section-overview', label: '概览' },
+  ]
+  if (hasDeviceOrApiStats.value) {
+    items.push({ id: 'section-devices', label: '设备与API' })
+  }
+  items.push(
+    { id: 'section-analysis', label: '分析结论' },
+    { id: 'section-category', label: '用例分组' },
+    { id: 'section-tag', label: '用例标签' },
+    { id: 'section-case', label: '具体用例' },
+  )
+  return items
+})
 
 const formatDate = (dateStr) => {
   if (!dateStr) return ''
@@ -174,7 +333,7 @@ const scrollToSection = (sectionId) => {
 }
 
 const handleScroll = () => {
-  const sections = navItems.map(item => ({
+  const sections = navItems.value.map(item => ({
     id: item.id,
     element: document.getElementById(item.id)
   }))
@@ -535,6 +694,192 @@ onUnmounted(() => {
   
   .nav-progress {
     display: none;
+  }
+}
+
+.devices-content {
+  animation: slideDown 0.3s ease-out;
+}
+
+.device-cards-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 0;
+}
+
+.device-stat-card,
+.api-stat-card {
+  flex: 1;
+  min-width: 280px;
+  max-width: 400px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.device-stat-card:hover,
+.api-stat-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transform: translateY(-2px);
+}
+
+.device-card-header,
+.api-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.api-card-header {
+  background: #ffffff;
+}
+
+.device-icon,
+.api-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.device-icon {
+  background: rgba(255, 106, 0, 0.1);
+  color: #FF6A00;
+}
+
+.api-icon {
+  background: rgba(22, 119, 255, 0.1);
+  color: #1677FF;
+}
+
+.device-info,
+.api-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-name,
+.api-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.device-model,
+.api-vendor {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.device-status,
+.api-status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.device-status.online,
+.api-status.active {
+  background: rgba(82, 196, 26, 0.1);
+  color: #52C41A;
+}
+
+.device-status.offline,
+.api-status.inactive {
+  background: rgba(250, 173, 20, 0.1);
+  color: #FAAD14;
+}
+
+.device-card-body,
+.api-card-body {
+  padding: 16px;
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.stat-row:last-child {
+  border-bottom: none;
+}
+
+.stat-label {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.stat-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.stat-value.success {
+  color: #52C41A;
+}
+
+.stat-value.warning {
+  color: #FAAD14;
+}
+
+.stat-value.danger {
+  color: #F5222D;
+}
+
+.device-card-footer,
+.api-card-footer {
+  padding: 12px 16px;
+  background: #ffffff;
+  border-top: 1px solid #e2e8f0;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-name {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.metric-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1677FF;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 </style>

@@ -60,7 +60,7 @@ function show(msg, msgType = 'error', msgDetails = '') {
   if (timer) clearTimeout(timer)
   timer = setTimeout(() => {
     close()
-  }, 10000)
+  }, 15000)
 }
 
 function close() {

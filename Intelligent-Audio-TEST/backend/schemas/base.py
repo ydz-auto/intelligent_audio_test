@@ -7,5 +7,6 @@ class APIModel(BaseModel):
         alias_generator=to_camel,
         populate_by_name=True,
         populate_by_alias=True,
+        serialize_by_alias=True,
         extra="ignore",
     )

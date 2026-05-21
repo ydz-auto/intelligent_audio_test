@@ -21,7 +21,7 @@
           <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
             <i class="fas fa-info-circle" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">状态: </span>
-            <span :class="'status-tag ' + detail.executionStatus.toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
+            <span :class="'status-tag ' + (detail.executionStatus || 'pending').toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
               {{ 
                 detail.executionStatus === 'completed' ? (
                   (detail.evaluationStatus === 'completed' || detail.evaluationStatus === 'failed') ? '已完成' : '评估中'

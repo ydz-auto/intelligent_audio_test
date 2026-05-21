@@ -400,6 +400,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           upsertTestCaseLocal(newTestCase as TestCase);
         }
       }
+      notification.success('添加测试用例成功');
       return true;
     } catch (err: any) {
       return handleError(err, '添加测试用例失败');
@@ -415,6 +416,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       if (updatedTestCase) {
         upsertTestCaseLocal(updatedTestCase as TestCase);
       }
+      notification.success('更新测试用例成功');
       return true;
     } catch (err: any) {
       return handleError(err, '更新测试用例失败');
@@ -443,6 +445,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           upsertTestCaseLocal(newTestCase as TestCase);
         }
       }
+      notification.success('复制测试用例成功');
       return true;
     } catch (err: any) {
       return handleError(err, '复制测试用例失败');
@@ -810,6 +813,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       testCases.value = testCases.value.filter(tc => tc.groupId?.toString() !== groupId.toString());
       
       organizeTestCasesByGroup();
+      notification.success('删除分组成功');
       return true;
     } catch (err: any) {
       return handleError(err, '删除分组失败');

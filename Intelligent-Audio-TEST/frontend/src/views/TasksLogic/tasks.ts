@@ -145,7 +145,7 @@ export function useTasks() {
     }
   });
   const reportDevices = computed(() => reportService.devices.value || []);
-  const reportServiceData = computed(() => reportService.comparisonReport.value || null);
+  const reportServiceData = computed(() => reportService.comparisonReport.value);
 
   const fetchTasks = async () => {
     try {
