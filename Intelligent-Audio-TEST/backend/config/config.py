@@ -37,17 +37,58 @@ def _get_database_uri():
         db_password = 'intelligent_audio_test666'
     return f'postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}'
 
+def _get_ffmpeg_path():
+    ffmpeg_path = os.environ.get('FFMPEG_PATH', '').strip()
+    if ffmpeg_path and os.path.isfile(ffmpeg_path):
+        return ffmpeg_path
+    elif ffmpeg_path:
+        pass
+    hardcoded_path = r'E:\02_code_build_envirenment\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe'
+    if os.path.isfile(hardcoded_path):
+        return hardcoded_path
+    return 'ffmpeg'
+
+def _get_ffprobe_path(ffmpeg_path):
+    ffprobe_path = os.environ.get('FFPROBE_PATH', '').strip()
+    if ffprobe_path and os.path.isfile(ffprobe_path):
+        return ffprobe_path
+    if ffmpeg_path and ffmpeg_path != 'ffmpeg':
+        ffprobe_in_ffmpeg_dir = os.path.join(os.path.dirname(ffmpeg_path), 'ffprobe.exe')
+        if os.path.isfile(ffprobe_in_ffmpeg_dir):
+            return ffprobe_in_ffmpeg_dir
+    hardcoded_ffprobe = r'E:\02_code_build_envirenment\ffmpeg-master-latest-win64-gpl\bin\ffprobe.exe'
+    if os.path.isfile(hardcoded_ffprobe):
+        return hardcoded_ffprobe
+    return 'ffprobe'
+
+def _get_log_level():
+    return os.environ.get('LOG_LEVEL', 'INFO').upper()
+
+def _get_console_log_enabled():
+    val = os.environ.get('CONSOLE_LOG_ENABLED', 'true').lower()
+    return val in ('true', '1', 'yes', 'on')
+
+def _get_path_env(key, default_path):
+    path = os.environ.get(key, '').strip()
+    return path if path else default_path
+
+def _get_int_env(key, default):
+    val = os.environ.get(key)
+    if val:
+        try:
+            return int(val)
+        except ValueError:
+            pass
+    return default
+
 class Config:
     SECRET_KEY = _get_secret_key()
     BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
     PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..','..','..'))
     SQLALCHEMY_DATABASE_URI = _get_database_uri()
-    # 禁用 SQLAlchemy 的修改跟踪，以提高性能
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    # 配置JSON编码器使用UTF-8，直接输出中文而不是Unicode转义序列
     JSON_AS_ASCII = False
     
-    # 数据库引擎配置
     SQLALCHEMY_ENGINE_OPTIONS = {
         'pool_pre_ping': True,
         'pool_size': 20,
@@ -56,62 +97,19 @@ class Config:
         'pool_recycle': 1800,
     }
     
-    # FFmpeg/FFprobe 路径配置
-    FFMPEG_PATH = os.environ.get('FFMPEG_PATH', '')
-    if FFMPEG_PATH:
-        # 如果设置了环境变量，优先使用环境变量中的路径
-        if not os.path.isfile(FFMPEG_PATH):
-            # 如果指定的路径不存在，回退到默认路径
-            FFMPEG_PATH = r'E:\02_code_build_envirenment\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe'
-            if not os.path.isfile(FFMPEG_PATH):
-                # 如果硬编码路径也不存在，使用系统 PATH 中的 ffmpeg
-                FFMPEG_PATH = 'ffmpeg'
-    else:
-        # 没有设置环境变量，先尝试硬编码路径，再回退到系统 PATH
-        hardcoded_path = r'E:\02_code_build_envirenment\ffmpeg-master-latest-win64-gpl\bin\ffmpeg.exe'
-        if os.path.isfile(hardcoded_path):
-            FFMPEG_PATH = hardcoded_path
-        else:
-            FFMPEG_PATH = 'ffmpeg'
+    FFMPEG_PATH = _get_ffmpeg_path()
+    FFPROBE_PATH = _get_ffprobe_path(FFMPEG_PATH)
     
-    # FFprobe 路径配置（与 ffmpeg 同目录）
-    FFPROBE_PATH = os.environ.get('FFPROBE_PATH', '')
-    if FFPROBE_PATH:
-        if not os.path.isfile(FFPROBE_PATH):
-            # 回退到 ffmpeg 同目录下的 ffprobe.exe
-            ffprobe_in_ffmpeg_dir = os.path.join(os.path.dirname(FFMPEG_PATH), 'ffprobe.exe')
-            if os.path.isfile(ffprobe_in_ffmpeg_dir):
-                FFPROBE_PATH = ffprobe_in_ffmpeg_dir
-            else:
-                FFPROBE_PATH = 'ffprobe'
-    else:
-        # 尝试 ffmpeg 同目录下的 ffprobe.exe
-        ffprobe_in_ffmpeg_dir = os.path.join(os.path.dirname(FFMPEG_PATH), 'ffprobe.exe')
-        if os.path.isfile(ffprobe_in_ffmpeg_dir):
-            FFPROBE_PATH = ffprobe_in_ffmpeg_dir
-        else:
-            FFPROBE_PATH = 'ffprobe'
-    
-    # 静态资源路径配置
-    # 静态资源基础路径
-    STATIC_BASE_PATH = os.path.join(PROJECT_ROOT, 'static')
-    # 音频文件存储路径
-    AUDIO_STORAGE_PATH = os.path.join(STATIC_BASE_PATH, 'audios')
-    # 上传文件临时路径
-    UPLOAD_TEMP_PATH = os.path.join(PROJECT_ROOT, 'temp_uploads')
-    # 预重采样临时文件路径
-    RESAMPLE_TEMP_PATH = os.path.join(AUDIO_STORAGE_PATH, 'temp_resample')
-    # 静态资源URL前缀
+    STATIC_BASE_PATH = _get_path_env('STATIC_BASE_PATH', os.path.join(PROJECT_ROOT, 'static'))
+    ARCHIVE_PATH = _get_path_env('ARCHIVE_PATH', os.path.join(PROJECT_ROOT, 'archives'))
+    AUDIO_STORAGE_PATH = _get_path_env('AUDIO_STORAGE_PATH', os.path.join(STATIC_BASE_PATH, 'audios'))
+    UPLOAD_TEMP_PATH = _get_path_env('UPLOAD_TEMP_PATH', os.path.join(PROJECT_ROOT, 'temp_uploads'))
+    RESAMPLE_TEMP_PATH = _get_path_env('RESAMPLE_TEMP_PATH', os.path.join(AUDIO_STORAGE_PATH, 'temp_resample'))
     STATIC_URL_PREFIX = '/static/'
-    # 音频文件URL前缀
     AUDIO_URL_PREFIX = '/static/audios/'
     
-    # API执行配置
-    # 最大等待时间（秒）
-    API_MAX_WAIT_TIME = 43200
-    # 轮询间隔（秒）
-    API_POLL_INTERVAL = 30
-    # API路径映射
+    API_MAX_WAIT_TIME = _get_int_env('API_MAX_WAIT_TIME', 43200)
+    API_POLL_INTERVAL = _get_int_env('API_POLL_INTERVAL', 30)
     API_PATHS = {
         'health': '/health',
         'create_task': '/api/create_task',
@@ -121,54 +119,39 @@ class Config:
         'delete_task': '/api/delete_task/{task_id}'
     }
     
-    # WebSocket配置
-    # WebSocket消息推送节流间隔（秒），0表示关闭节流
     WEBSOCKET_MIN_UPDATE_INTERVAL = 0
 
-    # 执行引擎配置
-    # 任务调度器检查间隔（秒）
-    EXECUTION_ENGINE_SCHEDULER_INTERVAL = 3
-    # 等待测试用例执行完成的超时时间（秒）
-    EXECUTION_ENGINE_TEST_CASE_WAIT_TIME = 300
-    # 任务队列最大长度
-    EXECUTION_ENGINE_MAX_QUEUE_SIZE = 100
+    EXECUTION_ENGINE_SCHEDULER_INTERVAL = _get_int_env('EXECUTION_ENGINE_SCHEDULER_INTERVAL', 3)
+    EXECUTION_ENGINE_TEST_CASE_WAIT_TIME = _get_int_env('EXECUTION_ENGINE_TEST_CASE_WAIT_TIME', 300)
+    EXECUTION_ENGINE_MAX_QUEUE_SIZE = _get_int_env('EXECUTION_ENGINE_MAX_QUEUE_SIZE', 100)
     
-    # API执行器配置（默认值，可被 concurrency_config.json 覆盖）
-    API_EXECUTOR_MAX_QUEUE_SIZE = 10
-    API_EXECUTOR_MAX_WAIT_TIME = 3000
+    API_EXECUTOR_MAX_QUEUE_SIZE = _get_int_env('API_EXECUTOR_MAX_QUEUE_SIZE', 10)
+    API_EXECUTOR_MAX_WAIT_TIME = _get_int_env('API_EXECUTOR_MAX_WAIT_TIME', 3000)
     
-    # 评估服务配置（默认值，可被 concurrency_config.json 覆盖）
-    EVALUATION_SERVICE_MAX_QUEUE_SIZE = 10
-    EVALUATION_SERVICE_MAX_WAIT_TIME = 300
+    EVALUATION_SERVICE_MAX_QUEUE_SIZE = _get_int_env('EVALUATION_SERVICE_MAX_QUEUE_SIZE', 10)
+    EVALUATION_SERVICE_MAX_WAIT_TIME = _get_int_env('EVALUATION_SERVICE_MAX_WAIT_TIME', 300)
      
-    # 环境模式配置
-    # 日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL
-    LOG_LEVEL = 'INFO'
-    # 是否启用控制台日志输出
-    CONSOLE_LOG_ENABLED = True
-    # SocketIO 调试模式
+    LOG_LEVEL = _get_log_level()
+    CONSOLE_LOG_ENABLED = _get_console_log_enabled()
     SOCKETIO_DEBUG = False
     
-# 开发环境配置
 class DevelopmentConfig(Config):
     DEBUG = True
-    LOG_LEVEL = 'DEBUG'
-    CONSOLE_LOG_ENABLED = True
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG').upper()
+    CONSOLE_LOG_ENABLED = _get_console_log_enabled()
     SOCKETIO_DEBUG = False
 
-# 生产环境配置
 class ProductionConfig(Config):
     DEBUG = False
-    LOG_LEVEL = 'INFO'
-    CONSOLE_LOG_ENABLED = False
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
+    CONSOLE_LOG_ENABLED = _get_console_log_enabled()
     SOCKETIO_DEBUG = False
 
-# 测试环境配置
 class TestingConfig(Config):
     TESTING = True
     DEBUG = True
-    LOG_LEVEL = 'DEBUG'
-    CONSOLE_LOG_ENABLED = True
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'DEBUG').upper()
+    CONSOLE_LOG_ENABLED = _get_console_log_enabled()
     SOCKETIO_DEBUG = True
     SQLALCHEMY_ENGINE_OPTIONS = {
         "poolclass": StaticPool,
@@ -177,7 +160,6 @@ class TestingConfig(Config):
         }
     }
 
-# 配置映射
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
