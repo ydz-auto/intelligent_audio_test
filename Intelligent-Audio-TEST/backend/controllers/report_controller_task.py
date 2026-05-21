@@ -8,7 +8,7 @@ from backend.utils.log_handler import log_and_emit
 from backend.utils.report_query_builder import ReportQueryBuilder
 from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
 from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
-from backend.schemas.report import GenerateTaskReportRequest
+from backend.schemas.report import GenerateTaskReportRequest, ReportDetailData as ReportDetailDataSchema, ReportSummarySimplified
 from datetime import datetime, timedelta, timezone
 from backend.controllers.report_controller_base import ReportControllerBase
 import json
@@ -515,6 +515,7 @@ class ReportControllerTask(ReportControllerBase):
             raw_data=json.dumps(summary.get('raw_data', []), ensure_ascii=False),
             metric_data=json.dumps(summary.get('metric_data', []), ensure_ascii=False),
             tag_metric_data=json.dumps(summary.get('tag_metric_data', []), ensure_ascii=False),
+            tag_category_metric_data=json.dumps(summary.get('tag_category_metric_data', {}), ensure_ascii=False),
             case_type_stats=json.dumps(summary.get('case_type_stats', []), ensure_ascii=False),
             device_stats=json.dumps(summary.get('device_stats', []), ensure_ascii=False),
             api_stats=json.dumps(summary.get('api_stats', []), ensure_ascii=False),
@@ -534,38 +535,40 @@ class ReportControllerTask(ReportControllerBase):
                 return json.loads(val)
             return val if isinstance(val, list) else []
 
-        simplified_summary = {
-            "raw_data": to_json(detail_data.raw_data) if detail_data else [],
-            "metric_data": to_json(detail_data.metric_data) if detail_data else [],
-            "tag_metric_data": to_json(detail_data.tag_metric_data) if detail_data else [],
-            "case_categories": to_json(summary_info.case_categories) if summary_info else [],
-            "all_case_tags": to_json(summary_info.all_case_tags) if summary_info else [],
-            "resources": to_json(summary_info.resources) if summary_info else [],
-            "resource_headers": to_json(summary_info.resource_headers) if summary_info else [],
-            "all_metrics": to_json(summary_info.all_metrics) if summary_info else [],
-            "device_stats": to_json(detail_data.device_stats) if detail_data else [],
-            "api_stats": to_json(detail_data.api_stats) if detail_data else [],
-            "case_type_stats": to_json(detail_data.case_type_stats) if detail_data else [],
-            "devices": to_json(summary_info.devices) if summary_info else [],
-            "apis": to_json(summary_info.apis) if summary_info else [],
-            "total_cases": summary_info.total_cases if summary_info else 0,
-            "completed_cases": summary_info.completed_cases if summary_info else 0,
-            "failed_cases": summary_info.failed_cases if summary_info else 0
-        }
+        simplified_summary = ReportSummarySimplified(
+            raw_data=to_json(detail_data.raw_data) if detail_data else [],
+            metric_data=to_json(detail_data.metric_data) if detail_data else [],
+            tag_metric_data=to_json(detail_data.tag_metric_data) if detail_data else [],
+            case_categories=to_json(summary_info.case_categories) if summary_info else [],
+            all_case_tags=to_json(summary_info.all_case_tags) if summary_info else [],
+            resources=to_json(summary_info.resources) if summary_info else [],
+            resource_headers=to_json(summary_info.resource_headers) if summary_info else [],
+            all_metrics=to_json(summary_info.all_metrics) if summary_info else [],
+            device_stats=to_json(detail_data.device_stats) if detail_data else [],
+            api_stats=to_json(detail_data.api_stats) if detail_data else [],
+            case_type_stats=to_json(detail_data.case_type_stats) if detail_data else [],
+            devices=to_json(summary_info.devices) if summary_info else [],
+            apis=to_json(summary_info.apis) if summary_info else [],
+            total_cases=summary_info.total_cases if summary_info else 0,
+            completed_cases=summary_info.completed_cases if summary_info else 0,
+            failed_cases=summary_info.failed_cases if summary_info else 0
+        )
 
-        return {
-            "id": report.id,
-            "name": report.name,
-            "type": report.type,
-            "task_id": report.task_id,
-            "task_name": task.name if task else "对比报告/趋势报告",
-            "summary": simplified_summary,
-            "description": report.description,
-            "status": report.status,
-            "analysis": report.analysis,
-            "created_at": report.created_at.isoformat() if report.created_at else None,
-            "updated_at": report.updated_at.isoformat() if report.updated_at else None
-        }
+        response_schema = ReportDetailDataSchema(
+            id=report.id,
+            name=report.name,
+            type=report.type,
+            task_id=report.task_id,
+            task_name=task.name if task else "对比报告/趋势报告",
+            summary=simplified_summary,
+            description=report.description,
+            status=report.status,
+            analysis=report.analysis,
+            created_at=report.created_at.isoformat() if report.created_at else None,
+            updated_at=report.updated_at.isoformat() if report.updated_at else None
+        )
+
+        return response_schema.model_dump(by_alias=True)
 
     def generate_task_report():
         try:
@@ -714,8 +717,8 @@ class ReportControllerTask(ReportControllerBase):
             
             report = new_report
             task = db.session.get(Task, report.task_id) if report.task_id else None
-            summary_info = db.session.get(ReportSummary, report.id)
-            detail_data = db.session.get(ReportDetailData, report.id)
+            summary_info = ReportSummary.query.filter_by(report_id=report.id).first()
+            detail_data = ReportDetailData.query.filter_by(report_id=report.id).first()
             
             response_data = ReportControllerTask._build_response(report, task, summary_info, detail_data)
 

@@ -587,8 +587,8 @@ class Report(db.Model):
 
     task = relationship('Task', backref='reports')
 
-    summary_info = relationship('ReportSummary', backref='report', uselist=False, lazy='select', cascade="all, delete-orphan")
-    detail_data = relationship('ReportDetailData', backref='report', uselist=False, lazy='select', cascade="all, delete-orphan")
+    summary_info = relationship('ReportSummary', backref='report', uselist=False, lazy='select', passive_deletes=True)
+    detail_data = relationship('ReportDetailData', backref='report', uselist=False, lazy='select', passive_deletes=True)
 
 class ReportSummary(db.Model):
     """

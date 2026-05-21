@@ -131,8 +131,8 @@ class ReportController(ReportControllerBase):
             if status is not None:
                 report.status = str(status)
 
-            summary_info = db.session.get(ReportSummary, report.id)
-            detail_data = db.session.get(ReportDetailData, report.id)
+            summary_info = ReportSummary.query.filter_by(report_id=report.id).first()
+            detail_data = ReportDetailData.query.filter_by(report_id=report.id).first()
 
             if not summary_info or not detail_data:
                 return error_response("报告数据未迁移，请先运行迁移脚本", 500)
@@ -289,7 +289,7 @@ class ReportController(ReportControllerBase):
 
             export_data = []
             for report in reports:
-                summary_info = db.session.get(ReportSummary, report.id)
+                summary_info = ReportSummary.query.filter_by(report_id=report.id).first()
                 if summary_info:
                     total_cases = summary_info.total_cases or 0
                     pass_rate = summary_info.pass_rate or 0

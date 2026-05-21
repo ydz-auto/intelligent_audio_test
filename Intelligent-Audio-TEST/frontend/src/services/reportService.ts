@@ -2,6 +2,7 @@ import { ref } from 'vue';
 import { reportsApi } from '../utils/api';
 import { useModalControl, MODAL_TYPES } from '../composables/useModal';
 import { sanitizeConclusion } from '../utils/sanitize';
+import { normalizeReport } from '../utils/fieldNaming';
 import { 
   TASK_STATUS_MAP, 
   REPORT_TYPE_MAP, 
@@ -594,6 +595,8 @@ async function viewTaskReport(task: Task): Promise<Report> {
       throw new Error('无法获取报告详情');
     }
 
+    report = normalizeReport(report);
+
     const cases = extractCasesFromReport(report);
 
     const summary = report.summary || {};
@@ -645,10 +648,12 @@ async function batchCompare(taskIds: (string | number)[], tasks: Task[]): Promis
       throw new Error('对比报告生成失败');
     }
 
-    const report = await reportsApi.getOne(reportId);
+    let report = await reportsApi.getOne(reportId);
     if (!report) {
       throw new Error('获取对比报告详情失败');
     }
+
+    report = normalizeReport(report);
 
     const cases = extractCasesFromReport(report);
 

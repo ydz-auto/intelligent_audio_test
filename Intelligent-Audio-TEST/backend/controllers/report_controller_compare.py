@@ -424,7 +424,7 @@ class ReportControllerCompare(ReportControllerBase):
         for task_id in task_ids:
             report = reports_by_task.get(task_id)
             if report:
-                detail_data = db.session.get(ReportDetailData, report.id)
+                detail_data = ReportDetailData.query.filter_by(report_id=report.id).first()
                 if detail_data and detail_data.cases:
                     if isinstance(detail_data.cases, list):
                         source_cases.extend(detail_data.cases)

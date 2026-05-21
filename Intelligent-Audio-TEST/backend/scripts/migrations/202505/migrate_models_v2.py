@@ -426,6 +426,72 @@ def migrate_audio_algorithm_relations(cursor):
     print(f"  当前 {algorithm_type} 关联音频数: {final_count}")
 
 
+def get_foreign_key_constraint_name(cursor, table_name, column_name):
+    """获取外键约束名称"""
+    cursor.execute("""
+        SELECT tc.constraint_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+            ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+            AND tc.table_name = %s
+            AND kcu.column_name = %s
+            AND tc.table_schema = 'public'
+    """, (table_name, column_name))
+    result = cursor.fetchone()
+    return result[0] if result else None
+
+
+def fix_report_cascade_delete(cursor):
+    """修复报告关联表的级联删除外键约束"""
+    print("\n修复报告关联表的外键约束...")
+    
+    tables_to_fix = [
+        ('report_summaries', 'report_id', 'test_reports', 'id'),
+        ('report_detail_data', 'report_id', 'test_reports', 'id'),
+    ]
+    
+    for table_name, column_name, ref_table, ref_column in tables_to_fix:
+        if not check_table_exists(cursor, table_name):
+            print(f"  [跳过] {table_name} 表不存在")
+            continue
+        
+        constraint_name = get_foreign_key_constraint_name(cursor, table_name, column_name)
+        
+        if not constraint_name:
+            print(f"  [警告] {table_name}.{column_name} 没有找到外键约束")
+            continue
+        
+        cursor.execute("""
+            SELECT rc.delete_rule
+            FROM information_schema.referential_constraints rc
+            WHERE rc.constraint_name = %s
+        """, (constraint_name,))
+        result = cursor.fetchone()
+        current_rule = result[0] if result else None
+        
+        if current_rule == 'CASCADE':
+            print(f"  [跳过] {table_name}.{column_name} 外键已是 CASCADE")
+            continue
+        
+        try:
+            cursor.execute(f"ALTER TABLE {table_name} DROP CONSTRAINT {constraint_name}")
+            print(f"  [完成] 删除旧外键约束 {constraint_name}")
+            
+            new_constraint_name = f"fk_{table_name}_{column_name}_cascade"
+            cursor.execute(f"""
+                ALTER TABLE {table_name}
+                ADD CONSTRAINT {new_constraint_name}
+                FOREIGN KEY ({column_name})
+                REFERENCES {ref_table}({ref_column})
+                ON DELETE CASCADE
+            """)
+            print(f"  [完成] 添加级联删除外键约束 {new_constraint_name}")
+        except Exception as e:
+            print(f"  [警告] 修复 {table_name}.{column_name} 外键失败: {e}")
+
+
 def verify_migration(cursor):
     """验证迁移结果"""
     print("\n验证迁移结果...")
@@ -489,40 +555,43 @@ def run_migration():
         conn.autocommit = False
         cursor = conn.cursor()
 
-        print("\n[1/12] 创建新表...")
+        print("\n[1/13] 创建新表...")
         create_tag_categories_table(cursor)
         create_report_summaries_table(cursor)
         create_report_detail_data_table(cursor)
         create_audio_algorithm_relations_table(cursor)
 
-        print("\n[2/12] 检查已存在表的缺失字段...")
+        print("\n[2/13] 检查已存在表的缺失字段...")
         check_all_existing_tables_columns(cursor)
 
-        print("\n[3/12] 删除废弃字段...")
+        print("\n[3/13] 删除废弃字段...")
         remove_task_case_columns(cursor)
 
-        print("\n[4/12] 添加报告索引...")
+        print("\n[4/13] 添加报告索引...")
         add_report_indexes(cursor)
 
-        print("\n[5/12] 添加日志索引...")
+        print("\n[5/13] 添加日志索引...")
         add_log_indexes(cursor)
 
-        print("\n[6/12] 修改主键类型为 BIGINT...")
+        print("\n[6/13] 修改主键类型为 BIGINT...")
         alter_column_types_to_bigint(cursor)
 
-        print("\n[7/12] 修改外键类型为 BIGINT...")
+        print("\n[7/13] 修改外键类型为 BIGINT...")
         alter_foreign_keys_to_bigint(cursor)
 
-        print("\n[8/12] 更新算法模型 BIGINT 类型...")
+        print("\n[8/13] 更新算法模型 BIGINT 类型...")
         update_algorithm_models_bigint(cursor)
 
-        print("\n[9/12] 迁移用例分组算法类型...")
+        print("\n[9/13] 迁移用例分组算法类型...")
         migrate_case_groups_algorithm(cursor)
 
-        print("\n[10/12] 迁移音频算法关联...")
+        print("\n[10/13] 迁移音频算法关联...")
         migrate_audio_algorithm_relations(cursor)
 
-        print("\n[11/12] 验证迁移结果...")
+        print("\n[11/13] 修复报告关联表级联删除...")
+        fix_report_cascade_delete(cursor)
+
+        print("\n[12/13] 验证迁移结果...")
         verify_migration(cursor)
 
         conn.commit()

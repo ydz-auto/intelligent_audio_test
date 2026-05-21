@@ -366,8 +366,8 @@ class ReportControllerBase:
 
         task = db.session.get(Task, report.task_id) if report.task_id else None
 
-        summary_info = db.session.get(ReportSummary, report.id)
-        detail_data = db.session.get(ReportDetailDataModel, report.id)
+        summary_info = ReportSummary.query.filter_by(report_id=report.id).first()
+        detail_data = ReportDetailDataModel.query.filter_by(report_id=report.id).first()
 
         if not summary_info or not detail_data:
             return error_response("报告数据未迁移，请先运行迁移脚本", 500)
@@ -443,7 +443,7 @@ class ReportControllerBase:
         query_params_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
         query_params = ReportCaseListQuery.model_validate(query_params_dict)
 
-        detail_data = db.session.get(ReportDetailDataModel, report.id)
+        detail_data = ReportDetailDataModel.query.filter_by(report_id=report.id).first()
         if not detail_data:
             return error_response("报告数据未迁移，请先运行迁移脚本", 500)
 
@@ -646,7 +646,7 @@ class ReportControllerBase:
         else:
             tags = [t.strip() for t in str(raw_tags).split(',') if t.strip()]
 
-        detail_data = db.session.get(ReportDetailDataModel, report.id)
+        detail_data = ReportDetailDataModel.query.filter_by(report_id=report.id).first()
         if not detail_data:
             return error_response("报告数据未迁移，请先运行迁移脚本", 500)
 

@@ -430,7 +430,7 @@ class ReportControllerSecondary(ReportControllerBase):
             # 1. 从源任务报告获取用例数据
             source_cases = []
             for report in reports:
-                detail_data = db.session.get(ReportDetailData, report.id)
+                detail_data = ReportDetailData.query.filter_by(report_id=report.id).first()
                 if detail_data and detail_data.cases:
                     if isinstance(detail_data.cases, list):
                         source_cases.extend(detail_data.cases)
