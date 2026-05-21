@@ -1308,7 +1308,7 @@ onMounted(async () => {
   gap: 8px;
   margin-top: 8px;
   padding: 8px;
-  background: var(--background-secondary);
+  background: white;
   border-radius: var(--border-radius-sm);
 }
 
