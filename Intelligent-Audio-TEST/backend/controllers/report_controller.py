@@ -1,5 +1,5 @@
 from flask import request, send_file, Response, stream_with_context, jsonify
-from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI
+from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
 from backend.models.database import db
 from backend.utils.response import success_response, error_response, format_response
 from backend.utils.error_codes import ErrorCode
@@ -72,7 +72,9 @@ class ReportController(ReportControllerBase):
             return success_response(None, "测试报告已删除")
         except Exception as e:
             db.session.rollback()
-            return error_response(str(e))
+            import traceback
+            traceback.print_exc()
+            return error_response("删除报告失败，请稍后重试")
 
     @staticmethod
     def update(report_id):
@@ -208,7 +210,9 @@ class ReportController(ReportControllerBase):
             )
         except Exception as e:
             db.session.rollback()
-            return error_response(str(e))
+            import traceback
+            traceback.print_exc()
+            return error_response("更新报告失败，请稍后重试")
 
     @staticmethod
     def publish(report_id):
@@ -216,13 +220,15 @@ class ReportController(ReportControllerBase):
         if not report:
             return error_response("未找到测试报告", 404)
         try:
-            report.status = "published"
+            report.status = ReportStatus.PUBLISHED.value
             report.updated_at = datetime.now(timezone(timedelta(hours=8)))
             db.session.commit()
             return success_response({"id": report.id, "status": report.status}, "报告已发布")
         except Exception as e:
             db.session.rollback()
-            return error_response(str(e))
+            import traceback
+            traceback.print_exc()
+            return error_response("发布报告失败，请稍后重试")
 
     # 批量删除测试报告
     @staticmethod
@@ -236,6 +242,9 @@ class ReportController(ReportControllerBase):
 
         if not report_ids:
             return error_response("缺少必要参数: reportIds")
+        
+        if len(report_ids) > 100:
+            return error_response("单次最多删除100个报告")
 
         try:
             reports = Report.query.filter(Report.id.in_(report_ids)).all()
@@ -249,7 +258,9 @@ class ReportController(ReportControllerBase):
             return success_response(None, f"成功删除 {len(reports)} 个测试报告")
         except Exception as e:
             db.session.rollback()
-            return error_response(str(e))
+            import traceback
+            traceback.print_exc()
+            return error_response("批量删除报告失败，请稍后重试")
 
     # 导出测试报告 (CSV/Excel/PDF)
     @staticmethod
@@ -366,7 +377,9 @@ class ReportController(ReportControllerBase):
                     headers={"Content-Disposition": f"attachment; filename={filename}"}
                 )
         except Exception as e:
-            return error_response(str(e))
+            import traceback
+            traceback.print_exc()
+            return error_response("导出报告失败，请稍后重试")
 
     # 按分组和标签获取用例平均值
     @staticmethod
@@ -646,4 +659,6 @@ class ReportController(ReportControllerBase):
                 }
             })
         except Exception as e:
-            return error_response(str(e))
+            import traceback
+            traceback.print_exc()
+            return error_response("获取用例平均值失败，请稍后重试")

@@ -184,7 +184,7 @@ class IdData(APIModel):
 
 
 class ReportBatchDeleteRequest(APIModel):
-    report_ids: List[int] = Field(..., alias='reportIds', validation_alias='reportIds')
+    report_ids: List[int] = Field(..., alias='reportIds', validation_alias='reportIds', max_length=100)
 
 
 class ReportExportRequest(APIModel):

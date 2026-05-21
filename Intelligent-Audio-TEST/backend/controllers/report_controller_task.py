@@ -1,5 +1,5 @@
 from flask import request
-from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API
+from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.error_codes import ErrorCode
@@ -24,7 +24,7 @@ class ReportControllerTask(ReportControllerBase):
         
         from backend.models.models import TaskMergeRelation
         
-        if task.type == 'merged' and task.status == 'completed':
+        if task.type == 'merged' and task.status == TaskStatus.COMPLETED.value:
             merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
             if merge_relations:
                 source_task_ids = [r.source_task_id for r in merge_relations]
@@ -46,7 +46,7 @@ class ReportControllerTask(ReportControllerBase):
                 return None, None, error_response("生成失败: 合并任务没有测试结果数据")
             return task, results, None
             
-        elif task.status not in ['completed', 'failed']:
+        elif task.status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]:
             return None, None, error_response("只有任务状态为completed或failed时才能生成报告")
         
         results = TestResult.query.filter_by(task_id=task_id).all()
@@ -415,7 +415,7 @@ class ReportControllerTask(ReportControllerBase):
 
     @staticmethod
     def _get_source_task_ids(task):
-        if task.type == 'merged' and task.status == 'completed':
+        if task.type == 'merged' and task.status == TaskStatus.COMPLETED.value:
             from backend.models.models import TaskMergeRelation
             merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task.id).all()
             return [r.source_task_id for r in merge_relations]
@@ -471,11 +471,11 @@ class ReportControllerTask(ReportControllerBase):
     def _create_report_record(name, task_id, summary, description, cases):
         new_report = Report(
             name=name,
-            type='task',
+            type=ReportType.TASK.value,
             task_id=task_id,
             summary=summary,
             description=description,
-            status='draft',
+            status=ReportStatus.DRAFT.value,
             test_reports_cases=cases
         )
         db.session.add(new_report)
@@ -723,4 +723,4 @@ class ReportControllerTask(ReportControllerBase):
         except Exception as e:
             db.session.rollback()
             log_and_emit('ERROR', 'report', f'[generate_task_report] Error: {e}\n{traceback.format_exc()}', task_id=task_id)
-            return error_response(str(e))
+            return error_response("报告生成失败，请稍后重试")

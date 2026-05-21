@@ -178,6 +178,13 @@ class ReportUtils:
         raw_data = {res: {dim.name: [] for dim in all_dimensions} for res in resources}
         
         results_by_group = {}
+        
+        # 预加载所有 TestCase，避免循环内 N+1 查询
+        test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
+        test_cases_map = {}
+        if test_case_ids:
+            test_cases = TestCase.query.filter(TestCase.id.in_(test_case_ids)).all()
+            test_cases_map = {tc.id: tc for tc in test_cases}
 
         for result in results:
             task = tasks_map.get(result.task_id) if tasks_map else None
@@ -188,8 +195,8 @@ class ReportUtils:
                 if resource not in resources:
                     resources.append(resource)
             
-            # 3. 获取用例信息
-            test_case = db.session.get(TestCase, result.test_case_id)
+            # 3. 获取用例信息（使用预加载的映射）
+            test_case = test_cases_map.get(result.test_case_id)
             if not test_case:
                 continue
             
@@ -399,8 +406,15 @@ class ReportUtils:
         """
         group_scores = {} # {group_id: {dim_name: [scores]}}
         
+        # 预加载所有 TestCase，避免循环内 N+1 查询
+        test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
+        test_cases_map = {}
+        if test_case_ids:
+            test_cases = TestCase.query.filter(TestCase.id.in_(test_case_ids)).all()
+            test_cases_map = {tc.id: tc for tc in test_cases}
+        
         for result in results:
-            test_case = db.session.get(TestCase, result.test_case_id)
+            test_case = test_cases_map.get(result.test_case_id)
             if not test_case:
                 continue
             group_id = test_case.group.id if test_case.group else "default_group"

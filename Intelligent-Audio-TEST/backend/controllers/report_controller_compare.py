@@ -1,6 +1,6 @@
 from flask import request
 from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, \
-    TaskDevice, TaskAPI
+    TaskDevice, TaskAPI, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.error_codes import ErrorCode
@@ -18,7 +18,7 @@ class ReportControllerCompare(ReportControllerBase):
     
     @staticmethod
     def _validate_and_get_tasks(task_ids):
-        tasks = Task.query.filter(Task.id.in_(task_ids), Task.status.in_(['completed', 'failed', 'merged'])).all()
+        tasks = Task.query.filter(Task.id.in_(task_ids), Task.status.in_([TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.MERGED.value])).all()
         if not tasks:
             return None, error_response("未找到指定任务或任务状态不是completed、failed或merged")
         return tasks, None
@@ -588,11 +588,11 @@ class ReportControllerCompare(ReportControllerBase):
 
             new_report = Report(
                 name=name,
-                type='comparison',
+                type=ReportType.COMPARISON.value,
                 summary=summary,
                 comparison_data=comparison_data,
                 description=description,
-                status='draft',
+                status=ReportStatus.DRAFT.value,
                 test_reports_cases=source_cases
             )
             db.session.add(new_report)
@@ -637,4 +637,6 @@ class ReportControllerCompare(ReportControllerBase):
             return success_response(response_data, message="对比报告生成成功", code=ErrorCode.SUCCESS, http_code=201)
         except Exception as e:
             db.session.rollback()
-            return error_response(str(e))
+            import traceback
+            traceback.print_exc()
+            return error_response("对比报告生成失败，请稍后重试")

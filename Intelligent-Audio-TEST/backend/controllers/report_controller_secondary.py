@@ -1,5 +1,5 @@
 from flask import request
-from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, API, TaskCase, TaskDevice, TaskAPI, Device
+from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, API, TaskCase, TaskDevice, TaskAPI, Device, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.error_codes import ErrorCode
@@ -52,7 +52,7 @@ class ReportControllerSecondary(ReportControllerBase):
             # 获取所有任务（如果有），支持 merged 状态的任务（数据不再转移）
             tasks = []
             if task_ids:
-                tasks = Task.query.filter(Task.id.in_(task_ids), Task.status.in_(['completed', 'failed', 'merged'])).all()
+                tasks = Task.query.filter(Task.id.in_(task_ids), Task.status.in_([TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.MERGED.value])).all()
             included_task_types = {t.type for t in tasks if getattr(t, "type", None)}
             report_task_type = (
                 "api"
@@ -532,11 +532,11 @@ class ReportControllerSecondary(ReportControllerBase):
             name = f"二次对比报告_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d%H%M%S')}"
             new_report = Report(
                 name=name,
-                type='secondary_comparison',
+                type=ReportType.SECONDARY_COMPARISON.value,
                 summary=summary,
                 comparison_data=comparison_data,
                 description=description,
-                status='draft',
+                status=ReportStatus.DRAFT.value,
                 test_reports_cases=source_cases
             )
             db.session.add(new_report)
@@ -582,4 +582,6 @@ class ReportControllerSecondary(ReportControllerBase):
             return success_response(response_data, message="二次对比报告生成成功", code=ErrorCode.SUCCESS, http_code=201)
         except Exception as e:
             db.session.rollback()
-            return error_response(str(e))
+            import traceback
+            traceback.print_exc()
+            return error_response("二次对比报告生成失败，请稍后重试")

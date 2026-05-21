@@ -11,9 +11,33 @@
 - 所有模型继承自 db.Model
 """
 from datetime import datetime, timezone, timedelta
+from enum import Enum
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, JSON, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .database import db
+
+
+class ReportStatus(str, Enum):
+    """报告状态枚举"""
+    DRAFT = 'draft'
+    PUBLISHED = 'published'
+
+
+class TaskStatus(str, Enum):
+    """任务状态枚举"""
+    PENDING = 'pending'
+    RUNNING = 'running'
+    COMPLETED = 'completed'
+    FAILED = 'failed'
+    MERGED = 'merged'
+
+
+class ReportType(str, Enum):
+    """报告类型枚举"""
+    TASK = 'task'
+    COMPARISON = 'comparison'
+    SECONDARY_COMPARISON = 'secondary_comparison'
+
 
 # 东八区时间辅助函数
 def utc8now():
@@ -541,6 +565,13 @@ class Report(db.Model):
     存储任务执行完成后生成的汇总分析报告。
     """
     __tablename__ = 'test_reports'
+    __table_args__ = (
+        Index('idx_report_task_id', 'task_id'),
+        Index('idx_report_type', 'type'),
+        Index('idx_report_status', 'status'),
+        Index('idx_report_created_at', 'created_at'),
+        Index('idx_report_type_status', 'type', 'status'),
+    )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='报告唯一ID')
     name = Column(String(255), nullable=False, comment='报告名称')
     type = Column(String(30), nullable=False, comment='报告类型')
@@ -556,8 +587,8 @@ class Report(db.Model):
 
     task = relationship('Task', backref='reports')
 
-    summary_info = relationship('ReportSummary', backref='report', uselist=False, lazy='select')
-    detail_data = relationship('ReportDetailData', backref='report', uselist=False, lazy='select')
+    summary_info = relationship('ReportSummary', backref='report', uselist=False, lazy='select', cascade="all, delete-orphan")
+    detail_data = relationship('ReportDetailData', backref='report', uselist=False, lazy='select', cascade="all, delete-orphan")
 
 class ReportSummary(db.Model):
     """
