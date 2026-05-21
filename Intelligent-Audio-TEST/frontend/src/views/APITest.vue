@@ -180,6 +180,7 @@
         panel-id="api-step4"
         title="测试结果"
         :show-actions="false"
+        custom-class="report-step"
       >
         <!-- 任务报告区域 -->
         <TaskReportPanel 

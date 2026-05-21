@@ -213,7 +213,7 @@ onUnmounted(() => {
 <style scoped>
 .task-report-panel {
   width: 100%;
-  min-height: 100vh;
+  min-height: auto;
   background: white;
 }
 
@@ -224,7 +224,7 @@ onUnmounted(() => {
   background: linear-gradient(180deg, #FFF8F0 0%, #FFFFFF 100%);
   padding: 32px 24px 0px;
   text-align: center;
-  border-radius: 12px 12px 0 0;
+  border-radius: 0;
 }
 
 .hero-content {

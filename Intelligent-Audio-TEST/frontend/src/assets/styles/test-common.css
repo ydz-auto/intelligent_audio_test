@@ -59,6 +59,34 @@
   min-height: calc(100vh - 200px);
 }
 
+.test-view-common .step-panel.active.report-step {
+  margin: -20px -20px 0 -20px;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.test-view-common .step-panel.active.report-step .task-report-panel {
+  margin: 0;
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.test-view-common .step-panel.active.report-step .step-header {
+  display: none;
+}
+
+.test-view-common .step-panel.active.report-step .step-actions {
+  margin: 0;
+  padding: 20px;
+  background: white;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .test-view-common .step-panel.active .step-body {
   flex: 1;
 }

@@ -444,6 +444,10 @@ onUnmounted(() => {
 
 .report-view-page {
   min-height: 100vh;
+  padding: 0;
+  margin: -32px;
+  width: calc(100% + 64px);
+  background: white;
 }
 
 .back-section {
@@ -509,7 +513,7 @@ onUnmounted(() => {
 
 /* 对比报告样式 */
 .comparison-report-container {
-  margin-top: 24px;
+  margin-top: 0;
   padding: 32px 24px;
 }
 
