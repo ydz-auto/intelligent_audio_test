@@ -4,7 +4,8 @@
 提供自动刷新统计缓存的功能，在数据变化时调用。
 """
 from flask import Blueprint
-from sqlalchemy import func
+from sqlalchemy import func, or_
+from sqlalchemy.dialects.postgresql import JSONB
 from backend.models.database import db
 from backend.models.models import TestCase, Task, Device, Audio, PlaybackDevice, API, Report, TestCaseGroup, Dimension
 from datetime import datetime, timezone, timedelta
@@ -116,15 +117,15 @@ def refresh_stats_cache():
 
         dimensions_with_endpoints = db.session.query(func.count(Dimension.id)).filter(
             Dimension.deleted == False,
-            Dimension.api_endpoints != None,
-            Dimension.api_endpoints != '[]'
+            Dimension.api_endpoints.isnot(None),
+            func.jsonb_array_length(Dimension.api_endpoints.cast(JSONB)) > 0
         ).scalar() or 0
 
         dimensions_endpoints_total = 0
         dimensions_data = db.session.query(Dimension.api_endpoints).filter(
             Dimension.deleted == False,
-            Dimension.api_endpoints != None,
-            Dimension.api_endpoints != '[]'
+            Dimension.api_endpoints.isnot(None),
+            func.jsonb_array_length(Dimension.api_endpoints.cast(JSONB)) > 0
         ).all()
         for api_endpoints, in dimensions_data:
             if api_endpoints and isinstance(api_endpoints, list):

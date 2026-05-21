@@ -8,7 +8,7 @@
 4. 删除字段：task_case_relations.algorithm_type, task_case_relations.algorithm_params
 5. 添加索引：test_reports, logs 表
 6. 更新外键约束：级联删除
-7. 数据迁移：用例分组关联 speaker_diarization，音频关联到 speaker_diarization
+7. 数据迁移：用例分组关联 speaker_recognition，音频关联到 speaker_recognition
 """
 import os
 import sys
@@ -71,6 +71,22 @@ def check_index_exists(cursor, table_name, index_name):
         )
     """, (table_name, index_name))
     return cursor.fetchone()[0]
+
+
+def add_missing_columns(cursor, table_name, columns_definition):
+    """为已存在的表添加缺失字段"""
+    if not check_table_exists(cursor, table_name):
+        return
+    
+    for column_name, column_type, fk_reference in columns_definition:
+        if not check_column_exists(cursor, table_name, column_name):
+            alter_sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+            if fk_reference:
+                alter_sql += f" REFERENCES {fk_reference}"
+            cursor.execute(alter_sql)
+            print(f"  [完成] 添加 {table_name}.{column_name} 字段")
+        else:
+            print(f"  [跳过] {table_name}.{column_name} 字段已存在")
 
 
 def create_tag_categories_table(cursor):
@@ -175,28 +191,37 @@ def create_audio_algorithm_relations_table(cursor):
     print("  [完成] 创建 audio_algorithm_relations 表")
 
 
-def add_tags_columns(cursor):
-    """为 tags 表添加新字段"""
-    if check_column_exists(cursor, 'tags', 'category_id'):
-        print("  [跳过] tags.category_id 字段已存在")
-    else:
-        cursor.execute("ALTER TABLE tags ADD COLUMN category_id INTEGER REFERENCES tag_categories(id)")
-        print("  [完成] 添加 tags.category_id 字段")
-
-    if check_column_exists(cursor, 'tags', 'sort_order'):
-        print("  [跳过] tags.sort_order 字段已存在")
-    else:
-        cursor.execute("ALTER TABLE tags ADD COLUMN sort_order INTEGER DEFAULT 0")
-        print("  [完成] 添加 tags.sort_order 字段")
-
-
-def add_test_case_groups_column(cursor):
-    """为 test_case_groups 表添加 algorithm_type 字段"""
-    if check_column_exists(cursor, 'test_case_groups', 'algorithm_type'):
-        print("  [跳过] test_case_groups.algorithm_type 字段已存在")
-    else:
-        cursor.execute("ALTER TABLE test_case_groups ADD COLUMN algorithm_type VARCHAR(50)")
-        print("  [完成] 添加 test_case_groups.algorithm_type 字段")
+def check_all_existing_tables_columns(cursor):
+    """检查所有已存在表的缺失字段"""
+    print("\n检查已存在表的缺失字段...")
+    
+    # tags 表新增字段
+    add_missing_columns(cursor, 'tags', [
+        ('category_id', 'INTEGER', 'tag_categories(id)'),
+        ('sort_order', 'INTEGER DEFAULT 0', None),
+    ])
+    
+    # test_case_groups 表新增字段
+    add_missing_columns(cursor, 'test_case_groups', [
+        ('algorithm_type', 'VARCHAR(50)', None),
+    ])
+    
+    # report_detail_data 表新增字段
+    add_missing_columns(cursor, 'report_detail_data', [
+        ('device_stats', 'JSONB', None),
+        ('api_stats', 'JSONB', None),
+    ])
+    
+    # test_result_dimensions 表新增字段
+    add_missing_columns(cursor, 'test_result_dimensions', [
+        ('api_raw_response', 'JSONB', None),
+        ('api_request_body', 'JSONB', None),
+    ])
+    
+    # test_case_tags 表类型变更 (tag_id 从 Integer 改为 BigInteger)
+    add_missing_columns(cursor, 'test_case_tags', [
+        ('tag_id', 'BIGINT', 'tags(id)'),
+    ])
 
 
 def remove_task_case_columns(cursor):
@@ -423,6 +448,21 @@ def verify_migration(cursor):
         status = "✓" if exists else "✗"
         print(f"  {status} 索引 {index} {'存在' if exists else '不存在'}")
     
+    # 检查关键字段
+    columns_to_check = [
+        ('tags', 'category_id'),
+        ('tags', 'sort_order'),
+        ('test_case_groups', 'algorithm_type'),
+        ('report_detail_data', 'device_stats'),
+        ('report_detail_data', 'api_stats'),
+        ('test_result_dimensions', 'api_raw_response'),
+        ('test_result_dimensions', 'api_request_body'),
+    ]
+    for table, column in columns_to_check:
+        exists = check_column_exists(cursor, table, column)
+        status = "✓" if exists else "✗"
+        print(f"  {status} 字段 {table}.{column} {'存在' if exists else '不存在'}")
+    
     cursor.execute("""
         SELECT COUNT(*) FROM test_case_groups WHERE algorithm_type = 'speaker_recognition'
     """)
@@ -449,41 +489,40 @@ def run_migration():
         conn.autocommit = False
         cursor = conn.cursor()
 
-        print("\n[1/11] 创建新表...")
+        print("\n[1/12] 创建新表...")
         create_tag_categories_table(cursor)
         create_report_summaries_table(cursor)
         create_report_detail_data_table(cursor)
         create_audio_algorithm_relations_table(cursor)
 
-        print("\n[2/11] 添加新字段...")
-        add_tags_columns(cursor)
-        add_test_case_groups_column(cursor)
+        print("\n[2/12] 检查已存在表的缺失字段...")
+        check_all_existing_tables_columns(cursor)
 
-        print("\n[3/11] 删除废弃字段...")
+        print("\n[3/12] 删除废弃字段...")
         remove_task_case_columns(cursor)
 
-        print("\n[4/11] 添加报告索引...")
+        print("\n[4/12] 添加报告索引...")
         add_report_indexes(cursor)
 
-        print("\n[5/11] 添加日志索引...")
+        print("\n[5/12] 添加日志索引...")
         add_log_indexes(cursor)
 
-        print("\n[6/11] 修改主键类型为 BIGINT...")
+        print("\n[6/12] 修改主键类型为 BIGINT...")
         alter_column_types_to_bigint(cursor)
 
-        print("\n[7/11] 修改外键类型为 BIGINT...")
+        print("\n[7/12] 修改外键类型为 BIGINT...")
         alter_foreign_keys_to_bigint(cursor)
 
-        print("\n[8/11] 更新算法模型 BIGINT 类型...")
+        print("\n[8/12] 更新算法模型 BIGINT 类型...")
         update_algorithm_models_bigint(cursor)
 
-        print("\n[9/11] 迁移用例分组算法类型...")
+        print("\n[9/12] 迁移用例分组算法类型...")
         migrate_case_groups_algorithm(cursor)
 
-        print("\n[10/11] 迁移音频算法关联...")
+        print("\n[10/12] 迁移音频算法关联...")
         migrate_audio_algorithm_relations(cursor)
 
-        print("\n[11/11] 验证迁移结果...")
+        print("\n[11/12] 验证迁移结果...")
         verify_migration(cursor)
 
         conn.commit()
