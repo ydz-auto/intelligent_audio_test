@@ -621,7 +621,7 @@ export const useWebSocket = () => {
 - **框架**：Flask + Flask-SocketIO
 - **异步处理**：asyncio + aiohttp
 - **并发控制**：asyncio.Semaphore
-- **数据存储**：SQLite + SQLAlchemy
+- **数据存储**：PostgreSql + SQLAlchemy
 - **网络通信**：WebSocket + RESTful API
 - **HTTP客户端**：aiohttp（异步HTTP客户端）
 - **性能监控**：psutil（系统资源监控）

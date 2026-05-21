@@ -2,7 +2,7 @@
 
 ## 概述
 
-VibeCoding（氛围编程）是一种利用大模型 AI（如 Claude、GPT 等）辅助编程的新型开发模式。本项目（智能语音测试管理系统）采用 Electron + Vue 3 + TypeScript + Flask + SQLAlchemy + SQLite 技术栈，在 1 人团队、5 个月时间内完成了约 500 人天的工作量。由于**前后端联调效率低下**，整体 AI 辅助效率约 **5 倍**。
+VibeCoding（氛围编程）是一种利用大模型 AI（如 Claude、GPT 等）辅助编程的新型开发模式。本项目（智能语音测试管理系统）采用 Electron + Vue 3 + TypeScript + Flask + SQLAlchemy + PostgreSql 技术栈，在 1 人团队、5 个月时间内完成了约 500 人天的工作量。由于**前后端联调效率低下**，整体 AI 辅助效率约 **5 倍**。
 
 **核心原则**：AI 辅助开发 ≠ 完全依赖 AI。**前后端代码全 AI 生成**，**人工负责调试 + 审核 + 测试**。设计阶段和易用性问题必须人工介入。
 

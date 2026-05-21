@@ -166,7 +166,6 @@ class ProductionConfig(Config):
 # 测试环境配置
 class TestingConfig(Config):
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'  # 使用内存数据库进行测试
     DEBUG = True
     LOG_LEVEL = 'DEBUG'
     CONSOLE_LOG_ENABLED = True

@@ -1042,7 +1042,7 @@
           </div>
           <div class="info-row">
             <span class="info-label">后端框架</span>
-            <span class="info-value">Flask + SQLite</span>
+            <span class="info-value">Flask + PostgreSql</span>
           </div>
           <div class="info-row">
             <span class="info-label">Python版本</span>

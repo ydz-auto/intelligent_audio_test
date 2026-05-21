@@ -6,7 +6,7 @@
 | ---- | --------------------------------- |
 | 页面路由 | `/LogView`                        |
 | 页面功能 | 日志查看、筛选、导出、实时监控                   |
-| 技术栈  | Electron + Vue 3 + Flask + SQLite |
+| 技术栈  | Electron + Vue 3 + Flask + PostgreSql |
 
 ***
 

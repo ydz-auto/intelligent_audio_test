@@ -6,7 +6,6 @@
 
 导出内容:
 - db: SQLAlchemy 数据库实例
-- setup_sqlite_pragma: SQLite 性能优化配置函数
 - 各类业务实体模型 (User, TestCase, Device, Task, etc.)
 """
 

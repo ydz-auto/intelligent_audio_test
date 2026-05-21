@@ -14,7 +14,7 @@
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Boolean, Float, ForeignKey, UniqueConstraint, DateTime, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, Float, ForeignKey, UniqueConstraint, DateTime, JSON
 from sqlalchemy.orm import relationship
 from .database import db
 
@@ -53,10 +53,10 @@ class AlgorithmDefinition(db.Model):
 
     __tablename__ = 'algorithm_definitions'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     type = Column(String(50), unique=True, nullable=False, comment='算法类型代码')
     name = Column(String(100), nullable=False, comment='算法显示名称')
-    group_id = Column(Integer, ForeignKey('algorithm_groups.id', ondelete='SET NULL'), comment='关联分组ID')
+    group_id = Column(BigInteger, ForeignKey('algorithm_groups.id', ondelete='SET NULL'), comment='关联分组ID')
     description = Column(Text, comment='算法描述')
     status = Column(String(20), default='online', comment='状态：online, offline')
     icon = Column(String(200), comment='图标URL')
@@ -415,7 +415,7 @@ class Language(db.Model):
 
     __tablename__ = 'languages'
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     code = Column(String(10), nullable=False, unique=True, comment='语言代码 (如 zh, en, ja)')
     name = Column(String(50), nullable=False, comment='语言名称 (如 中文, 英语, 日语)')
     name_en = Column(String(50), comment='语言英文名称 (如 Chinese, English, Japanese)')

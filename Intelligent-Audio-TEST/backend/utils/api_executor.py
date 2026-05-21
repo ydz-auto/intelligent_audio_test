@@ -1152,10 +1152,11 @@ class APIExecutor(BaseExecutor):
                     if key not in algo_result and value is not None:
                         algo_result[key] = value
 
-            # 直接使用SQL插入语句
+            # 直接使用SQL插入语句（PostgreSQL使用RETURNING id返回插入的ID）
             insert_sql = text("""
                 INSERT INTO test_results (task_id, test_case_id, device_id, api_id, algorithm_type, execution_status, response_time, algorithm_result, execution_steps, result_data, error_message, created_at)
                 VALUES (:task_id, :test_case_id, :device_id, :api_id, :algorithm_type, :execution_status, :response_time, :algorithm_result, :execution_steps, :result_data, :error_message, :created_at)
+                RETURNING id
             """)
 
             # 准备参数
@@ -1187,14 +1188,12 @@ class APIExecutor(BaseExecutor):
             
             # 执行插入（使用正确的SQLAlchemy连接方式和参数传递）
             with db.engine.connect() as conn:
-                # 执行插入语句，使用字典方式传递参数
+                # 执行插入语句，使用字典方式传递参数，RETURNING id直接返回插入的ID
                 result = conn.execute(insert_sql, params)
+                # 从RETURNING子句获取插入的ID
+                result_id = result.scalar()
                 # 提交事务
                 conn.commit()
-                
-                # 获取插入的ID（使用SQLite的last_insert_rowid()函数）
-                last_id_sql = text("SELECT last_insert_rowid()")
-                result_id = conn.execute(last_id_sql).scalar()
                 self._log(
                     level='DEBUG',
                     category='database',

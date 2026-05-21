@@ -28,15 +28,15 @@ def create_table_if_not_exists():
     try:
         db.session.execute(text("""
             CREATE TABLE IF NOT EXISTS audio_algorithm_relations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                audio_id INTEGER NOT NULL,
+                id BIGSERIAL PRIMARY KEY,
+                audio_id BIGINT NOT NULL,
                 algorithm_type VARCHAR(50) NOT NULL,
                 is_primary BOOLEAN DEFAULT FALSE,
                 weight FLOAT DEFAULT 1.0,
                 params JSON,
                 deleted BOOLEAN DEFAULT FALSE,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """))
         

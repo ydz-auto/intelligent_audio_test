@@ -12,7 +12,7 @@
 """
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float, JSON, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, Boolean, Float, JSON, Index, UniqueConstraint
 from sqlalchemy.orm import relationship
 from .database import db
 
@@ -51,7 +51,7 @@ class User(db.Model):
     存储系统登录用户信息及基本权限角色。
     """
     __tablename__ = 'users'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='用户唯一ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='用户唯一ID')
     username = Column(String(50), unique=True, nullable=False, comment='用户名')
     password_hash = Column(String(255), nullable=False, comment='密码哈希值')
     email = Column(String(100), unique=True, nullable=False, comment='电子邮箱')
@@ -77,9 +77,9 @@ class UserPermission(db.Model):
     维护用户与权限之间的多对多映射关系。
     """
     __tablename__ = 'user_permissions'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
-    user_id = Column(Integer, ForeignKey('users.id'), comment='关联用户ID')
-    permission_id = Column(Integer, ForeignKey('permissions.id'), comment='关联权限ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    user_id = Column(BigInteger, ForeignKey('users.id'), comment='关联用户ID')
+    permission_id = Column(BigInteger, ForeignKey('permissions.id'), comment='关联权限ID')
 
 # 2. 标签管理 (Tag Management)
 
@@ -177,9 +177,9 @@ class TestCaseTag(db.Model):
     维护测试用例与标签之间的多对多映射关系。
     """
     __tablename__ = 'test_case_tags'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
     test_case_id = Column(String(50), ForeignKey('test_cases.id'), comment='关联测试用例ID')
-    tag_id = Column(Integer, ForeignKey('tags.id'), comment='关联标签ID')
+    tag_id = Column(BigInteger, ForeignKey('tags.id'), comment='关联标签ID')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
 
 
@@ -259,7 +259,7 @@ class TranslationDirection(db.Model):
     定义音频翻译支持的源语言和目标语言组合。
     """
     __tablename__ = 'translation_directions'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
     source_language = Column(String(20), nullable=False, comment='源语言代码 (如 zh, en)')
     target_language = Column(String(20), nullable=False, comment='目标语言代码 (如 en, ja)')
     description = Column(Text, comment='描述')
@@ -347,8 +347,8 @@ class AudioAlgorithmRelation(db.Model):
         Index('idx_audio_algorithm_type', 'algorithm_type'),
         UniqueConstraint('audio_id', 'algorithm_type', name='uq_audio_algorithm'),
     )
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
-    audio_id = Column(Integer, ForeignKey('audios.id', ondelete='CASCADE'), nullable=False, comment='关联音频ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    audio_id = Column(BigInteger, ForeignKey('audios.id', ondelete='CASCADE'), nullable=False, comment='关联音频ID')
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
     is_primary = Column(Boolean, default=False, comment='是否主要算法')
     weight = Column(Float, default=1.0, comment='权重')
@@ -457,9 +457,9 @@ class TaskTag(db.Model):
     维护测试任务与标签之间的多对多映射关系。
     """
     __tablename__ = 'task_tags'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
-    task_id = Column(Integer, ForeignKey('test_tasks.id'), comment='关联测试任务ID')
-    tag_id = Column(Integer, ForeignKey('tags.id'), comment='关联标签ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    task_id = Column(BigInteger, ForeignKey('test_tasks.id'), comment='关联测试任务ID')
+    tag_id = Column(BigInteger, ForeignKey('tags.id'), comment='关联标签ID')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
 
 class TaskCase(db.Model):
@@ -469,7 +469,7 @@ class TaskCase(db.Model):
     """
     __tablename__ = 'task_case_relations'
     id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
-    task_id = Column(Integer, ForeignKey('test_tasks.id'), comment='关联测试任务ID')
+    task_id = Column(BigInteger, ForeignKey('test_tasks.id'), comment='关联测试任务ID')
     test_case_id = Column(String(50), ForeignKey('test_cases.id'), comment='关联测试用例ID')
     status = Column(String(50), default='pending', nullable=True, comment='该用例在任务中的最终结果 (pending/completed/failed/skipped)')
     execution_status = Column(String(20), default='pending', nullable=False, comment='执行过程状态 (pending/running/completed/stopped/failed)')
@@ -546,9 +546,9 @@ class TestResultDimension(db.Model):
     支持多种算法类型 (translation, asr, tts, speaker_recognition 等)。
     """
     __tablename__ = 'test_result_dimensions'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
-    test_result_id = Column(Integer, ForeignKey('test_results.id'), comment='关联测试结果ID')
-    dimension_id = Column(Integer, ForeignKey('dimensions.id'), comment='关联评估维度ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
+    test_result_id = Column(BigInteger, ForeignKey('test_results.id'), comment='关联测试结果ID')
+    dimension_id = Column(BigInteger, ForeignKey('dimensions.id'), comment='关联评估维度ID')
     algorithm_type = Column(String(50), comment='算法类型 (如: translation, asr, tts, speaker_recognition)')
     dimension_value = Column(Float, comment='维度计算出的原始值 (如 BLEU 分数)')
     score = Column(Float, comment='维度最终得分')
@@ -597,8 +597,8 @@ class ReportSummary(db.Model):
     与 Report 一对一关联。
     """
     __tablename__ = 'report_summaries'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='摘要唯一ID')
-    report_id = Column(Integer, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='摘要唯一ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
     total_cases = Column(Integer, default=0, comment='总用例数')
     completed_cases = Column(Integer, default=0, comment='完成用例数')
     failed_cases = Column(Integer, default=0, comment='失败用例数')
@@ -803,7 +803,7 @@ class UploadChunk(db.Model):
     存储单个文件分片的上传信息
     """
     __tablename__ = 'upload_chunks'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='分片唯一ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='分片唯一ID')
     file_id = Column(String(50), ForeignKey('upload_files.id'), comment='关联上传文件ID')
     chunk_index = Column(Integer, nullable=False, comment='分片索引')
     chunk_size = Column(Integer, nullable=False, comment='分片大小 (字节)')
@@ -824,7 +824,7 @@ class StatsCache(db.Model):
     数据变化时自动更新缓存。
     """
     __tablename__ = 'stats_cache'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='缓存唯一ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='缓存唯一ID')
     cache_key = Column(String(100), nullable=False, unique=True, comment='缓存键值')
     cache_value = Column(JSON, nullable=False, comment='缓存数据 (JSON格式)')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='最后更新时间')

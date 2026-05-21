@@ -3,7 +3,7 @@
 ## 1. 项目概述
 
 本项目是一个**语音测试自动化系统**，采用前后端分离架构：
-- **后端**：Python Flask + SQLite
+- **后端**：Python Flask + PostgreSql
 - **前端**：Vue.js 3 + TypeScript + Vite
 - **桌面端**：Electron
 

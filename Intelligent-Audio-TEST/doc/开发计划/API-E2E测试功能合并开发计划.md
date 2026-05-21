@@ -6,7 +6,7 @@
 |---------|-------------------------------------|
 | 目标页面 | APITest.vue 及 E2ETest.vue |
 | 后端模块 | API管理、任务执行、评估服务、设备驱动、报告服务 |
-| 技术栈 | Electron + Vue 3 + Flask + SQLite |
+| 技术栈 | Electron + Vue 3 + Flask + PostgreSql |
 | 代码规模 | 前端 ~10,000 行，后端 ~15,000 行 |
 
 > **说明**：本文档将 APITest开发计划 和 E2ETest开发计划 合并为一个统一文档，避免重复工作量估算。
@@ -611,7 +611,7 @@ class BaseExecutor(ABC):
                     │                    │
                     ▼                    ▼
 ┌─────────────────────────────────────────────────────────┐
-│              Shared SQLite Database                     │
+│              Shared PostgreSql Database                     │
 │  - 任务表、报告表、设备表 (共用)                          │
 │  - API配置表 (API Service专用)                          │
 │  - 播放设备表 (E2E Service专用)                         │
@@ -646,7 +646,7 @@ class BaseExecutor(ABC):
 
 ### 12.1 迁移背景
 
-当前系统使用SQLite数据库，存在以下局限性：
+当前系统使用PostgreSql数据库，存在以下局限性：
 - 并发写入能力有限，不适合多用户场景
 - 无法高效支持远程访问和集群部署
 - 备份和恢复机制相对简单
@@ -655,7 +655,7 @@ class BaseExecutor(ABC):
 
 | 序号 | 功能点 | 说明 | 工作量 | 代码位置 | 状态 |
 |------|--------|------|--------|----------|------|
-| PG1 | 数据库迁移与时区配置 | SQLite迁移到PostgreSQL + UTC8时区配置 + 数据验证 | 4人天 | backend/models/ | 待开发 |
+| PG1 | 数据库迁移与时区配置 | PostgreSql迁移到PostgreSQL + UTC8时区配置 + 数据验证 | 4人天 | backend/models/ | 待开发 |
 
 ---
 

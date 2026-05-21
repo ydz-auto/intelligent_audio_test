@@ -29,7 +29,7 @@ sudo apt-get update && sudo apt-get upgrade -y
 
 ```bash
 sudo apt-get install -y python3.12 python3.12-venv python3-pip
-sudo apt-get install -y ffmpeg sqlite3
+sudo apt-get install -y ffmpeg PostgreSql3
 ```
 
 ### 1.3 安装Docker
@@ -86,8 +86,8 @@ FLASK_CONFIG=production
 SECRET_KEY=your-secure-secret-key-change-this-in-production
 
 # 数据库配置
-DATABASE_URL=sqlite:///data.db
-SQLALCHEMY_DATABASE_URI=sqlite:///data.db
+DATABASE_URL=PostgreSql:///data.db
+SQLALCHEMY_DATABASE_URI=PostgreSql:///data.db
 
 # 日志配置
 LOG_LEVEL=INFO
@@ -112,7 +112,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     ffmpeg \
-    sqlite3 \
+    PostgreSql3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

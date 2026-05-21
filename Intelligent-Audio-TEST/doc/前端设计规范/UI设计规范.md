@@ -11,7 +11,7 @@
 - **Electron桌面应用**：充分利用窗口管理、原生OS集成特性
 - **MVC架构**：清晰分离View层（HTML呈现）、Controller层（交互逻辑）和Model层（数据管理）
 - **原生HTML/CSS/JS**：组件化开发、高效渲染
-- **Flask+SQLite**：本地数据存储与管理、API服务集成
+- **Flask+PostgreSql**：本地数据存储与管理、API服务集成
 
 ## 2. 视觉设计系统
 

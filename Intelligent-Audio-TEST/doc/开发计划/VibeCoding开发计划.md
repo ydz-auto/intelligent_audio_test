@@ -5,7 +5,7 @@
 | 属性   | 说明                                                          |
 | ---- | ----------------------------------------------------------- |
 | 项目名称 | 智能语音测试管理系统                                                  |
-| 技术栈  | Electron + Vue 3 + TypeScript + Flask + SQLAlchemy + SQLite |
+| 技术栈  | Electron + Vue 3 + TypeScript + Flask + SQLAlchemy + PostgreSql |
 | 代码规模 | 后端 \~38,000 行，前端 \~65,000 行，177+ 个 API                      |
 | 架构   | 前后端分离 + 桌面应用                                                |
 | 开发模式 | Vibe Coding（AI辅助编程）                                         |
@@ -27,7 +27,7 @@
 | **首页基础**           | 18 人天         | 英雄区域、统计卡片、测试入口、功能模块展示、工作流程导航                   |
 | **核心功能已完成**        | -             | LogView、34个模态窗组件、音频导入、设备管理、测试报告、用例管理等          |
 | **已完成总计**          | **约 500+ 人天** | **实际用时：5个月（1人团队）**                              |
-| PostgreSQL迁移 | 4 人天 | SQLite迁移到PostgreSQL + UTC8时区配置 |
+| PostgreSQL迁移 | 4 人天 | PostgreSql迁移到PostgreSQL + UTC8时区配置 |
 | **已完成后端总计**          | **约 500+ 人天** | 含APITest异步并发API、E2ETest设备驱动等 |
 
 ### 2.2 实际开发效率

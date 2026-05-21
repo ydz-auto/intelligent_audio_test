@@ -110,7 +110,7 @@ FLASK_CONFIG=production
 SECRET_KEY=your-secure-secret-key-here
 
 # 数据库配置
-DATABASE_URL=sqlite:///data.db
+DATABASE_URL=PostgreSql:///data.db
 
 # 服务端口
 BACKEND_PORT=5000
