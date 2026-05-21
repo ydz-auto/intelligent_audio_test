@@ -87,6 +87,8 @@ class Config:
     PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..','..','..'))
     SQLALCHEMY_DATABASE_URI = _get_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_COMMIT_ON_TEARDOWN = False
+    SQLALCHEMY_ECHO = False
     JSON_AS_ASCII = False
     
     SQLALCHEMY_ENGINE_OPTIONS = {

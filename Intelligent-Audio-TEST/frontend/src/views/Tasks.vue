@@ -301,7 +301,7 @@
               <h4 class="analysis-title">{{ reportName || '任务对比报告' }}</h4>
               <div class="analysis-status">
                 <span class="status-dot"></span>
-                {{ reportServiceData.status === 'draft' ? '草稿' : '已发布' }}
+                {{ reportServiceData?.status === 'draft' ? '草稿' : '已发布' }}
               </div>
             </div>
             

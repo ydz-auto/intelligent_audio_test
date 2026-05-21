@@ -89,11 +89,13 @@ export function useHistoryReports() {
       if (filters.value.algorithmType && filters.value.algorithmType !== 'all') params.algorithmType = filters.value.algorithmType;
       
       const data = await reportsApi.getAll(params);
-      allReports.value = data.items || [];
-      totalItems.value = data.total || 0;
+      allReports.value = data?.items || [];
+      totalItems.value = data?.total || 0;
     } catch (error) {
       console.error('加载报告失败:', error);
       showToast('error', '加载报告失败，请稍后重试');
+      allReports.value = [];
+      totalItems.value = 0;
     } finally {
       loading.value = false;
     }

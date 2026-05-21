@@ -200,16 +200,17 @@ class ReportUtils:
             if not test_case:
                 continue
             
-            # 4. 获取分类(Group)和标签(Tags) - 统一使用 ID
+            # 4. 获取分类(Group)和标签(Tags)
+            # category 使用 ID，tags 使用 name（前端需要显示名称）
             category = test_case.group.id if test_case.group else "default_group"
             
             tc_tags = getattr(test_case, 'tags', []) or []
-            tags = [tag.id for tag in tc_tags] or ["default_tag"]
+            tags = [tag.name for tag in tc_tags if tag.name] or ["default_tag"]
             
             tag_category_map = {}
             for tag in tc_tags:
                 if hasattr(tag, 'category_id') and tag.category_id:
-                    tag_category_map[tag.id] = tag.category_id
+                    tag_category_map[tag.name] = tag.category_id
 
             # 5. 收集分组统计数据
             if category not in results_by_group:
@@ -312,30 +313,30 @@ class ReportUtils:
         辅助函数：按标签分类计算平均值
         
         参数:
-            tag_accumulator: 标签累加器 {tag_id: {resource: {dim: {sum, count}}}}
-            tag_category_map: 标签到分类的映射 {tag_id: category_id}
+            tag_accumulator: 标签累加器 {tag_name: {resource: {dim: {sum, count}}}}
+            tag_category_map: 标签到分类的映射 {tag_name: category_id}
         
         返回:
             dict: 按分类组织的统计数据
         """
-        from backend.models.models import TagCategory, Tag
+        from backend.models.models import TagCategory
         
         result_data = {}
         
         category_tags = {}
-        for tag_id in tag_accumulator.keys():
-            if tag_id == "default_tag":
+        for tag_name in tag_accumulator.keys():
+            if tag_name == "default_tag":
                 continue
-            category_id = tag_category_map.get(tag_id)
+            category_id = tag_category_map.get(tag_name)
             if category_id not in category_tags:
                 category_tags[category_id] = []
-            category_tags[category_id].append(tag_id)
+            category_tags[category_id].append(tag_name)
         
         uncategorized_tags = [t for t in tag_accumulator.keys() if t not in tag_category_map and t != "default_tag"]
         if uncategorized_tags:
             category_tags[None] = uncategorized_tags
         
-        for category_id, tag_ids in category_tags.items():
+        for category_id, tag_names in category_tags.items():
             category_info = {}
             
             if category_id:
@@ -347,11 +348,8 @@ class ReportUtils:
                         'category_color': cat.color
                     }
             
-            for tag_id in tag_ids:
-                tag_data = tag_accumulator.get(tag_id, {})
-                tag = db.session.get(Tag, tag_id) if isinstance(tag_id, int) else None
-                
-                tag_name = tag.name if tag else str(tag_id)
+            for tag_name in tag_names:
+                tag_data = tag_accumulator.get(tag_name, {})
                 
                 for resource, dims in tag_data.items():
                     if resource not in result_data:
@@ -369,7 +367,6 @@ class ReportUtils:
                         tag_metrics[dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
                     
                     result_data[resource]['categories'][cat_key]['tags'].append({
-                        'tag_id': tag_id,
                         'tag_name': tag_name,
                         'category_id': category_id,
                         'category_name': category_info.get('category_name'),

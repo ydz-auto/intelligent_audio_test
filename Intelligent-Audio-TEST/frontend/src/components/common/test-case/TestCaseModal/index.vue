@@ -455,11 +455,27 @@ watch(() => props.visible, (newVal) => {
   if (newVal) {
     loadTestGroups();
     if (props.mode === 'case') {
-      audioConfig.loadResources();
+      const configuredAudioIds = extractConfiguredAudioIds(props.formData);
+      audioConfig.loadResources(configuredAudioIds);
       dimensionConfig.loadDimensions();
     }
   }
 }, { immediate: true });
+
+function extractConfiguredAudioIds(formData: any): (string | number)[] {
+  const ids: (string | number)[] = [];
+  if (formData?.config?.audios && Array.isArray(formData.config.audios)) {
+    formData.config.audios.forEach((audio: any) => {
+      if (audio.audioId) {
+        ids.push(audio.audioId);
+      }
+    });
+  }
+  if (formData?.config?.backgroundNoise?.audioId) {
+    ids.push(formData.config.backgroundNoise.audioId);
+  }
+  return ids;
+}
 
 onMounted(() => {
   loadTestGroups();

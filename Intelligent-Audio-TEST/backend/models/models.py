@@ -624,8 +624,8 @@ class ReportDetailData(db.Model):
     与 Report 一对一关联。
     """
     __tablename__ = 'report_detail_data'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='详情唯一ID')
-    report_id = Column(Integer, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='详情唯一ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
     raw_data = Column(JSON, comment='原始维度分数数据')
     metric_data = Column(JSON, comment='分组指标数据')
     tag_metric_data = Column(JSON, comment='标签指标数据')

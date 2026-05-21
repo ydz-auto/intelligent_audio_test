@@ -120,23 +120,32 @@ export function useTasks() {
   });
 
   const reportConclusion = computed({
-    get: () => reportService.comparisonReport.value?.conclusion || '',
+    get: () => {
+      const report = reportService.comparisonReport.value;
+      return report?.conclusion || '';
+    },
     set: (val) => {
-      if (reportService.comparisonReport.value) {
-        reportService.comparisonReport.value.conclusion = val;
+      const report = reportService.comparisonReport.value;
+      if (report) {
+        report.conclusion = val;
       }
     }
   });
   const reportName = computed({
-    get: () => reportService.comparisonReport.value?.title || '',
+    get: () => {
+      const report = reportService.comparisonReport.value;
+      return report?.title || report?.name || '';
+    },
     set: (val) => {
-      if (reportService.comparisonReport.value) {
-        reportService.comparisonReport.value.title = val;
+      const report = reportService.comparisonReport.value;
+      if (report) {
+        report.title = val;
+        report.name = val;
       }
     }
   });
-  const reportDevices = computed(() => reportService.devices.value);
-  const reportServiceData = computed(() => reportService.comparisonReport.value);
+  const reportDevices = computed(() => reportService.devices.value || []);
+  const reportServiceData = computed(() => reportService.comparisonReport.value || null);
 
   const fetchTasks = async () => {
     try {
@@ -436,13 +445,16 @@ export function useTasks() {
   };
 
   const viewTaskReport = async (task: Task) => {
+    notification.info('正在生成报告，请稍候...');
     try {
       const result = await reportService.viewTaskReport(task);
       if (result && result.id) {
+        notification.success('报告生成成功');
         router.push({ name: 'reportView', params: { id: result.id } });
       }
     } catch (error) {
       console.error('Failed to view task report:', error);
+      notification.error('报告生成失败');
     }
   };
 

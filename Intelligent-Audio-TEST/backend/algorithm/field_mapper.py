@@ -131,7 +131,6 @@ class FieldMapper:
                     })
             except (ValueError, IndexError):
                 pass
-        print('segments ', segments)
         return {
             'text': text,
             'json': segments
