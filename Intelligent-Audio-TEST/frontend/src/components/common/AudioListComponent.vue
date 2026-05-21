@@ -88,18 +88,49 @@
             
             <!-- 标签云筛选 -->
             <div class="filter-item">
-              <TagFilterPanel
-                :items="allTags"
-                :selected-items="selectedTags"
-                :item-modes="tagModesObject"
-                title="标签云"
-                :show-mode="true"
-                :page-size="20"
-                search-placeholder="搜索标签..."
-                empty-hint="显示全部"
-                no-data-hint="暂无标签"
-                @change="handleTagChange"
-              />
+              <label class="filter-label">标签云</label>
+              <div class="tag-search-wrapper">
+                <input 
+                  type="text" 
+                  v-model="tagSearchQuery"
+                  placeholder="搜索标签..."
+                  class="tag-search-input"
+                />
+              </div>
+              <div class="tag-filter">
+                <div 
+                  v-for="tag in filteredTags" 
+                  :key="tag"
+                  :class="['tag-filter-item', { active: isTagSelected(tag), 'tag-or': getTagMode(tag) === 'or', 'tag-and': getTagMode(tag) === 'and' }]"
+                  @click="handleTagClick(tag)"
+                  @contextmenu.prevent="showTagMenu($event, tag)"
+                >
+                  {{ tag }}
+                  <span v-if="getTagMode(tag)" class="tag-mode-badge">{{ getTagMode(tag) === 'or' ? 'OR' : 'AND' }}</span>
+                </div>
+                <div v-if="filteredTags.length === 0" class="no-data-tip">
+                  暂无可用的用例标签或用例分组
+                </div>
+              </div>
+              <!-- 标签模式选择菜单 -->
+              <div 
+                v-if="showTagModeMenu" 
+                class="tag-mode-menu"
+                :style="{ top: menuPosition.y + 'px', left: menuPosition.x + 'px' }"
+              >
+                <div class="tag-mode-menu-item" @click="setTagMode('or')">
+                  <span class="tag-mode-icon or">OR</span>
+                  满足任一标签
+                </div>
+                <div class="tag-mode-menu-item" @click="setTagMode('and')">
+                  <span class="tag-mode-icon and">AND</span>
+                  满足所有标签
+                </div>
+                <div class="tag-mode-menu-divider"></div>
+                <div class="tag-mode-menu-item remove" @click="removeTag">
+                  <i class="fas fa-times"></i> 移除标签
+                </div>
+              </div>
             </div>
             
             <!-- 时长筛选 -->
@@ -564,7 +595,6 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { buildFolderTree, isFolderOpen as checkFolderOpen, toggleFolder as toggleFolderState, extractAllTags, filterAudios as filterAudiosUtil } from '../../utils/audioUtils';
 import { useTagFilter, type TagFilterState } from '../../composables/useTagFilter';
-import { TagFilterPanel } from './filter';
 import AudioPlayerModal from './AudioPlayerModal.vue';
 import PaginationComponent from './PaginationComponent.vue';
 
@@ -635,6 +665,7 @@ const emit = defineEmits<{
 const viewMode = ref<'list' | 'folder' | 'diagnostics'>(props.viewMode ?? 'list');
 
 const searchQuery = ref('');
+const tagSearchQuery = ref('');
 const filters = ref({
   format: 'all',
   sampleRate: 'all',
@@ -644,8 +675,19 @@ const filters = ref({
 
 const {
   selectedTags: localSelectedTags,
-  tagModesObject: localTagModesObject
+  tagModes: localTagModes,
+  tagModesObject,
+  isTagSelected,
+  getTagMode,
+  handleTagClick: localHandleTagClick,
+  setTagMode: localSetTagMode,
+  removeTag: localRemoveTag,
+  setTagsFromProps
 } = useTagFilter();
+
+const showTagModeMenu = ref(false);
+const menuPosition = ref({ x: 0, y: 0 });
+const currentMenuTag = ref('');
 
 const selectedTags = computed(() => {
   if (props.selectedTags && props.selectedTags.length > 0) {
@@ -654,21 +696,103 @@ const selectedTags = computed(() => {
   return localSelectedTags.value;
 });
 
-const tagModesObject = computed(() => {
+const tagModes = computed(() => {
   if (props.tagModes && Object.keys(props.tagModes).length > 0) {
-    return props.tagModes;
+    return new Map(Object.entries(props.tagModes));
   }
-  return localTagModesObject.value;
+  return localTagModes.value;
 });
 
-const handleTagChange = (tags: string[], modes: Record<string, 'or' | 'and'>) => {
+const handleTagClick = (tagName: string) => {
+  const result = localHandleTagClick(tagName);
   emit('filterChange', {
-    tags,
-    tagModes: modes
+    tags: result.selectedTags,
+    tagModes: result.tagModes
   });
 };
 
-const allTags = ref(props.allTags);
+const showTagMenu = (event: MouseEvent, tag: string) => {
+  if (!selectedTags.value.includes(tag)) return;
+  currentMenuTag.value = tag;
+  menuPosition.value = { x: event.pageX, y: event.pageY };
+  showTagModeMenu.value = true;
+  
+  const closeMenu = () => {
+    showTagModeMenu.value = false;
+    document.removeEventListener('click', closeMenu);
+  };
+  setTimeout(() => {
+    document.addEventListener('click', closeMenu);
+  }, 0);
+};
+
+const setTagMode = (mode: 'or' | 'and') => {
+  if (currentMenuTag.value) {
+    const result = localSetTagMode(currentMenuTag.value, mode);
+    emit('filterChange', {
+      ...filters.value,
+      tags: result.selectedTags,
+      tagModes: result.tagModes
+    });
+  }
+  showTagModeMenu.value = false;
+};
+
+const removeTag = () => {
+  if (currentMenuTag.value) {
+    const result = localRemoveTag(currentMenuTag.value);
+    emit('filterChange', {
+      tags: result.selectedTags,
+      tagModes: result.tagModes
+    });
+  }
+  showTagModeMenu.value = false;
+};
+
+const toggleTag = (tagName: string) => {
+  emit('toggleTag', tagName);
+};
+
+const localAllTags = ref<string[]>([]);
+
+const allTags = computed(() => {
+  if (props.allTags && props.allTags.length > 0) {
+    return props.allTags;
+  }
+  return localAllTags.value;
+});
+
+const filteredTags = computed(() => {
+  let tags = [...allTags.value];
+  
+  if (tagSearchQuery.value.trim()) {
+    const query = tagSearchQuery.value.toLowerCase();
+    tags = tags.filter(tag => tag.toLowerCase().includes(query));
+  }
+  
+  const selectedAudioIds = new Set(localSelectedAudios.value);
+  const selectedAudioTagCounts = new Map<string, number>();
+  
+  props.audios.forEach(audio => {
+    if (selectedAudioIds.has(audio.id) && audio.tags) {
+      const audioTags = Array.isArray(audio.tags) ? audio.tags : String(audio.tags).split(',');
+      audioTags.forEach((tag: string) => {
+        const trimmedTag = tag.trim();
+        if (trimmedTag) {
+          selectedAudioTagCounts.set(trimmedTag, (selectedAudioTagCounts.get(trimmedTag) || 0) + 1);
+        }
+      });
+    }
+  });
+  
+  tags.sort((a, b) => {
+    const countA = selectedAudioTagCounts.get(a) || 0;
+    const countB = selectedAudioTagCounts.get(b) || 0;
+    return countB - countA;
+  });
+  
+  return tags;
+});
 
 const localSelectedAudios = ref<(string | number)[]>([...props.selectedAudios]);
 const headerCheckboxChecked = ref(false);
@@ -730,7 +854,7 @@ watch(() => props.selectedAudios, (newSelected) => {
 
 watch(() => props.allTags, (newAllTags) => {
   if (newAllTags && newAllTags.length > 0) {
-    allTags.value = [...newAllTags];
+    localAllTags.value = [...newAllTags];
   }
 }, { deep: true, immediate: true });
 
@@ -877,8 +1001,7 @@ const handleClickOutside = (event: MouseEvent) => {
 };
 
 onMounted(() => {
-  // 使用父组件传递的完整标签列表，而不是从当前音频中提取
-  allTags.value = [...props.allTags];
+  localAllTags.value = [...props.allTags];
   folderTree.value = buildFolderTree(props.audios);
   document.addEventListener('click', handleClickOutside);
 });

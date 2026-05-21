@@ -1,5 +1,5 @@
 <template>
-  <div class="step-panel" :class="{ active: isActive }" :id="panelId">
+  <div class="step-panel" :class="[isActive ? 'active' : '', customClass]" :id="panelId">
     <!-- 步骤头部 -->
     <div v-if="title && showHeader" class="step-header">
       <h3 class="step-title">{{ title }}</h3>
@@ -37,7 +37,8 @@ defineProps({
   showNext: { type: Boolean, default: true },
   prevLabel: { type: String, default: '上一步' },
   nextLabel: { type: String, default: '下一步' },
-  nextDisabled: { type: Boolean, default: false }
+  nextDisabled: { type: Boolean, default: false },
+  customClass: { type: String, default: '' }
 });
 
 defineEmits(['prev', 'next']);

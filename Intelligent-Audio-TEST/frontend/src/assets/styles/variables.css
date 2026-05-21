@@ -7,8 +7,8 @@
     --primary-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
     
     /* 次要色调 */
-    --secondary-color: #1677FF;
-    --secondary-light: rgba(22, 119, 255, 0.1);
+    --secondary-color: #1976d2;
+    --secondary-light: #e3f2fd;
     --secondary-dark: #0958D9;
     --secondary-gradient: linear-gradient(135deg, var(--secondary-color) 0%, var(--secondary-dark) 100%);
 

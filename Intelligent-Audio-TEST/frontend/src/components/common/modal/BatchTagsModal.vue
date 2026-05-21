@@ -403,8 +403,8 @@ select.form-control {
 }
 
 .tag-item {
-  background-color: #e3f2fd;
-  color: #1976d2;
+  background-color: var(--secondary-light);
+  color: var(--secondary-color);
   padding: 4px 10px;
   border-radius: 16px;
   font-size: 12px;
@@ -426,7 +426,7 @@ select.form-control {
 .tag-remove {
   background: none;
   border: none;
-  color: #1976d2;
+  color: var(--secondary-color);
   cursor: pointer;
   font-size: 12px;
   padding: 0;
@@ -438,7 +438,7 @@ select.form-control {
 }
 
 .tag-remove:hover {
-  color: #0d47a1;
+  color: var(--secondary-dark);
 }
 
 .existing-tags {
@@ -461,12 +461,12 @@ select.form-control {
 
 .existing-tag:hover {
   background-color: #bbdefb;
-  border-color: #1976d2;
+  border-color: var(--secondary-color);
 }
 
 .existing-tag.selected {
   background-color: #bbdefb;
-  border-color: #1976d2;
+  border-color: var(--secondary-color);
 }
 
 .mt-2 {
