@@ -88,7 +88,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = _get_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_COMMIT_ON_TEARDOWN = False
-    SQLALCHEMY_ECHO = False
+    SQLALCHEMY_ECHO = os.environ.get('SQLALCHEMY_ECHO', 'false').lower() in ('true', '1', 'yes')
     JSON_AS_ASCII = False
     
     SQLALCHEMY_ENGINE_OPTIONS = {

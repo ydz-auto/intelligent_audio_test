@@ -584,10 +584,7 @@ class Report(db.Model):
     description = Column(Text, comment='报告详细描述')
     task_id = Column(Integer, ForeignKey('test_tasks.id'), comment='关联测试任务ID')
     status = Column(String(20), nullable=False, default='draft', comment='报告状态 (draft/published)')
-    summary = Column(JSON, comment='数据摘要统计 (JSON)')
-    comparison_data = Column(JSON, comment='对比分析数据 (JSON)')
     analysis = Column(Text, comment='人工/自动分析结论')
-    test_reports_cases = Column(JSON, comment='存储报告用例列表信息 (JSON)，用于用例搜索和二次对比')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 
@@ -603,8 +600,12 @@ class ReportSummary(db.Model):
     与 Report 一对一关联。
     """
     __tablename__ = 'report_summaries'
+    __table_args__ = (
+        Index('idx_report_summary_report_id', 'report_id'),
+    )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='摘要唯一ID')
     report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    task_ids = Column(JSON, comment='关联任务ID列表 (对比报告使用)')
     total_cases = Column(Integer, default=0, comment='总用例数')
     completed_cases = Column(Integer, default=0, comment='完成用例数')
     failed_cases = Column(Integer, default=0, comment='失败用例数')
@@ -630,6 +631,9 @@ class ReportDetailData(db.Model):
     与 Report 一对一关联。
     """
     __tablename__ = 'report_detail_data'
+    __table_args__ = (
+        Index('idx_report_detail_report_id', 'report_id'),
+    )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='详情唯一ID')
     report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
     raw_data = Column(JSON, comment='原始维度分数数据')
@@ -640,6 +644,7 @@ class ReportDetailData(db.Model):
     device_stats = Column(JSON, comment='设备统计数据')
     api_stats = Column(JSON, comment='API统计数据')
     cases = Column(JSON, comment='用例详情列表')
+    comparison_matrix = Column(JSON, comment='对比矩阵数据 (对比报告使用)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 

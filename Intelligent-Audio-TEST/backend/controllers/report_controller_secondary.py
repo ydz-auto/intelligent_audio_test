@@ -41,9 +41,8 @@ class ReportControllerSecondary(ReportControllerBase):
             for report in reports:
                 if report.task_id:
                     task_ids.add(report.task_id)
-                elif report.type == 'comparison' and report.comparison_data:
-                    # 从对比报告中提取任务ID
-                    c_task_ids = report.comparison_data.get('task_ids', [])
+                elif report.type == 'comparison' and report.summary_info:
+                    c_task_ids = report.summary_info.task_ids or []
                     for tid in c_task_ids:
                         task_ids.add(tid)
             
@@ -519,7 +518,7 @@ class ReportControllerSecondary(ReportControllerBase):
                         "values": dim_values
                     }
 
-            comparison_data = {
+            comparison_matrix_data = {
                 "report_ids": report_ids,
                 "report_names": [r.name for r in reports],
                 "task_ids": task_ids,
@@ -528,22 +527,19 @@ class ReportControllerSecondary(ReportControllerBase):
                 "generated_at": datetime.now(timezone(timedelta(hours=8))).isoformat()
             }
 
-            # 2. 创建报告记录
             name = f"二次对比报告_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d%H%M%S')}"
             new_report = Report(
                 name=name,
                 type=ReportType.SECONDARY_COMPARISON.value,
-                summary=summary,
-                comparison_data=comparison_data,
                 description=description,
-                status=ReportStatus.DRAFT.value,
-                test_reports_cases=source_cases
+                status=ReportStatus.DRAFT.value
             )
             db.session.add(new_report)
             db.session.flush()
 
             summary_info = ReportSummary(
                 report_id=new_report.id,
+                task_ids=task_ids,
                 total_cases=total_cases,
                 completed_cases=completed_cases,
                 failed_cases=failed_cases,
@@ -570,7 +566,8 @@ class ReportControllerSecondary(ReportControllerBase):
                 case_type_stats=json.dumps(case_type_stats, ensure_ascii=False),
                 device_stats=json.dumps(device_stats, ensure_ascii=False),
                 api_stats=json.dumps(api_stats, ensure_ascii=False),
-                cases=json.dumps(source_cases, ensure_ascii=False)
+                cases=json.dumps(source_cases, ensure_ascii=False),
+                comparison_matrix=json.dumps(comparison_matrix_data, ensure_ascii=False)
             )
             db.session.add(detail_data)
 

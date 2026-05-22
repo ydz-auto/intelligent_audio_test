@@ -198,7 +198,6 @@ class ReportDetailData(APIModel):
     task_name: str = Field(..., alias='taskName', validation_alias=AliasChoices('task_name', 'taskName'))
     algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias=AliasChoices('algorithm_type', 'algorithmType'))
     summary: ReportSummarySimplified = Field(..., alias='summary', validation_alias=AliasChoices('summary'))
-    comparison_data: Optional[Any] = Field(None, alias='comparisonData', validation_alias=AliasChoices('comparison_data', 'comparisonData'))
     description: Optional[str] = Field(None, alias='description', validation_alias=AliasChoices('description'))
     status: str = Field(..., alias='status', validation_alias=AliasChoices('status'))
     analysis: Optional[str] = Field(None, alias='analysis', validation_alias=AliasChoices('analysis'))

@@ -453,7 +453,6 @@ class ReportControllerBase:
                 task_name=task.name if task else "对比报告/趋势报告",
                 algorithm_type=task.algorithm_type if task else None,
                 summary=ReportSummarySimplified(**simplified_summary),
-                comparison_data=report.comparison_data,
                 description=report.description,
                 status=report.status,
                 analysis=report.analysis,
