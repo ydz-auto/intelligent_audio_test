@@ -426,6 +426,12 @@ class Task(db.Model):
     代表一次完整的测试执行过程，关联了用例、设备、API、算法配置及最终结果。
     """
     __tablename__ = 'test_tasks'
+    __table_args__ = (
+        Index('idx_task_status', 'status'),
+        Index('idx_task_algorithm_type', 'algorithm_type'),
+        Index('idx_task_created_at', 'created_at'),
+        Index('idx_task_status_deleted', 'status', 'deleted'),
+    )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='任务唯一ID')
     name = Column(String(255), nullable=False, comment='任务名称')
     description = Column(Text, comment='任务描述')

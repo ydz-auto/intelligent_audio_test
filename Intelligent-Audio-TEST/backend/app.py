@@ -311,19 +311,21 @@ def create_app(config_name='default'):
     @app.before_request
     def before_request():
         """
-        统一请求拦截器 - 打印请求参数
+        统一请求拦截器 - 打印请求参数并记录开始时间
         """
         import json
+        import time
         from flask import request
         from backend.utils.log_handler import log_and_emit
+        from datetime import datetime, timezone, timedelta
+        
+        request._start_time = time.time()
         
         try:
-            # 获取请求参数
             args = dict(request.args) if request.args else {}
             form = dict(request.form) if request.form else {}
             json_data = request.get_json(silent=True)
             
-            # 构建日志内容
             log_content = f"API Request - URL: {request.path} | Method: {request.method}"
             
             if args:
@@ -352,29 +354,36 @@ def create_app(config_name='default'):
         4. 打印响应内容到日志
         """
         import json
+        import time
         from flask import request
         from backend.utils.log_handler import log_and_emit
+        
+        elapsed_ms = None
+        if hasattr(request, '_start_time'):
+            elapsed_ms = round((time.time() - request._start_time) * 1000, 2)
         
         try:
             content_type = response.headers.get('Content-Type', '')
             if 'zip' in content_type.lower() or 'octet-stream' in content_type.lower():
                 pass
             else:
+                elapsed_str = f" | Elapsed: {elapsed_ms}ms" if elapsed_ms else ""
                 log_and_emit(
-                    level='DEBUG',
+                    level='INFO' if elapsed_ms and elapsed_ms > 1000 else 'DEBUG',
                     module='after_request',
-                    content=f"API Response - URL: {request.path} | Method: {request.method} | Status: {response.status_code}",
+                    content=f"API Response - URL: {request.path} | Method: {request.method} | Status: {response.status_code}{elapsed_str}",
                     push_to_websocket=False
                 )
         except Exception:
             pass
         
-        # 添加安全头
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['X-Frame-Options'] = 'SAMEORIGIN'
         response.headers['X-XSS-Protection'] = '1; mode=block'
         
-        # 记录响应时间
+        if elapsed_ms:
+            response.headers['X-Elapsed-Time-Ms'] = str(elapsed_ms)
+        
         from datetime import datetime as dt
         response.headers['X-Response-Time'] = dt.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         
