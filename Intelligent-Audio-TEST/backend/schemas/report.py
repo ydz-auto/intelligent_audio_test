@@ -170,7 +170,7 @@ class ReportListData(APIModel):
 
 
 class ReportSummarySimplified(APIModel):
-    raw_data: List[ReportRawDataGroup] = Field(default_factory=list, alias='rawData', validation_alias=AliasChoices('raw_data', 'rawData'))
+    raw_data: Any = Field(default_factory=dict, alias='rawData', validation_alias=AliasChoices('raw_data', 'rawData'))
     case_categories: List[Any] = Field(default_factory=list, alias='caseCategories', validation_alias=AliasChoices('case_categories', 'caseCategories'))
     all_case_tags: List[Any] = Field(default_factory=list, alias='allCaseTags', validation_alias=AliasChoices('all_case_tags', 'allCaseTags'))
     resources: List[Any] = Field(default_factory=list, alias='resources', validation_alias=AliasChoices('resources'))
@@ -182,8 +182,8 @@ class ReportSummarySimplified(APIModel):
     devices: List[ReportDeviceInfo] = Field(default_factory=list, alias='devices', validation_alias=AliasChoices('devices'))
     apis: List[ReportApiInfo] = Field(default_factory=list, alias='apis', validation_alias=AliasChoices('apis'))
     cases: List[Any] = Field(default_factory=list, alias='cases', validation_alias=AliasChoices('cases'))
-    metric_data: List[ReportMetricByResource] = Field(default_factory=list, alias='metricData', validation_alias=AliasChoices('metric_data', 'metricData'))
-    tag_metric_data: List[ReportTagMetricByResource] = Field(default_factory=list, alias='tagMetricData', validation_alias=AliasChoices('tag_metric_data', 'tagMetricData'))
+    metric_data: Any = Field(default_factory=dict, alias='metricData', validation_alias=AliasChoices('metric_data', 'metricData'))
+    tag_metric_data: Any = Field(default_factory=dict, alias='tagMetricData', validation_alias=AliasChoices('tag_metric_data', 'tagMetricData'))
     total_cases: int = Field(0, alias='totalCases', validation_alias=AliasChoices('total_cases', 'totalCases'))
     completed_cases: int = Field(0, alias='completedCases', validation_alias=AliasChoices('completed_cases', 'completedCases'))
     failed_cases: int = Field(0, alias='failedCases', validation_alias=AliasChoices('failed_cases', 'failedCases'))
@@ -228,9 +228,9 @@ class ReportUpdateSummaryField(APIModel):
     all_tags: Optional[List[Any]] = Field(None, alias='allTags', validation_alias='allTags')
     resource_headers: Optional[List[Any]] = Field(None, alias='resourceHeaders', validation_alias='resourceHeaders')
     all_metrics: Optional[List[Any]] = Field(None, alias='allMetrics', validation_alias='allMetrics')
-    metric_data: Optional[List[Any]] = Field(None, alias='metricData', validation_alias='metricData')
-    tag_metric_data: Optional[List[Any]] = Field(None, alias='tagMetricData', validation_alias='tagMetricData')
-    raw_data: Optional[List[Any]] = Field(None, alias='rawData', validation_alias='rawData')
+    metric_data: Optional[Any] = Field(None, alias='metricData', validation_alias='metricData')
+    tag_metric_data: Optional[Any] = Field(None, alias='tagMetricData', validation_alias='tagMetricData')
+    raw_data: Optional[Any] = Field(None, alias='rawData', validation_alias='rawData')
     device_stats: Optional[List[Any]] = Field(None, alias='deviceStats', validation_alias='deviceStats')
     api_stats: Optional[List[Any]] = Field(None, alias='apiStats', validation_alias='apiStats')
     case_type_stats: Optional[List[Any]] = Field(None, alias='caseTypeStats', validation_alias='caseTypeStats')
