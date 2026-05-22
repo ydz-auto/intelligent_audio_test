@@ -103,7 +103,7 @@ class Config:
     FFPROBE_PATH = _get_ffprobe_path(FFMPEG_PATH)
     
     STATIC_BASE_PATH = _get_path_env('STATIC_BASE_PATH', os.path.join(PROJECT_ROOT, 'static'))
-    ARCHIVE_PATH = _get_path_env('ARCHIVE_PATH', os.path.join(PROJECT_ROOT, 'archives'))
+    ARCHIVE_PATH = _get_path_env('ARCHIVE_PATH', os.path.join(STATIC_BASE_PATH, 'archives'))
     AUDIO_STORAGE_PATH = _get_path_env('AUDIO_STORAGE_PATH', os.path.join(STATIC_BASE_PATH, 'audios'))
     UPLOAD_TEMP_PATH = _get_path_env('UPLOAD_TEMP_PATH', os.path.join(PROJECT_ROOT, 'temp_uploads'))
     RESAMPLE_TEMP_PATH = _get_path_env('RESAMPLE_TEMP_PATH', os.path.join(AUDIO_STORAGE_PATH, 'temp_resample'))

@@ -49,3 +49,5 @@ temp_uploads/
 static/audios/temp_resample/
 
 .migrations/
+
+archives/
