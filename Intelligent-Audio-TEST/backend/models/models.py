@@ -608,7 +608,7 @@ class ReportSummary(db.Model):
         Index('idx_report_summary_report_id', 'report_id'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='摘要唯一ID')
-    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id', ondelete='CASCADE'), nullable=False, unique=True, comment='关联报告ID')
     task_ids = Column(JSON, comment='关联任务ID列表 (对比报告使用)')
     total_cases = Column(Integer, default=0, comment='总用例数')
     completed_cases = Column(Integer, default=0, comment='完成用例数')
@@ -632,7 +632,7 @@ class ReportSummaryMeta(db.Model):
         Index('idx_report_summary_meta_report_id', 'report_id'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='元数据唯一ID')
-    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id', ondelete='CASCADE'), nullable=False, unique=True, comment='关联报告ID')
     dimension_values = Column(JSON, comment='维度平均分列表')
     case_categories = Column(JSON, comment='用例分组列表')
     all_case_tags = Column(JSON, comment='用例标签列表')
@@ -656,7 +656,7 @@ class ReportRawData(db.Model):
         Index('idx_report_raw_data_report_id', 'report_id'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='原始数据唯一ID')
-    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id', ondelete='CASCADE'), nullable=False, unique=True, comment='关联报告ID')
     raw_data = Column(JSON, comment='原始维度分数数据')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
@@ -673,7 +673,7 @@ class ReportCases(db.Model):
         Index('idx_report_cases_report_id', 'report_id'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='用例数据唯一ID')
-    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id', ondelete='CASCADE'), nullable=False, unique=True, comment='关联报告ID')
     cases = Column(JSON, comment='用例详情列表')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
@@ -690,7 +690,7 @@ class ReportMetricStats(db.Model):
         Index('idx_report_metric_stats_report_id', 'report_id'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='统计数据唯一ID')
-    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id', ondelete='CASCADE'), nullable=False, unique=True, comment='关联报告ID')
     metric_data = Column(JSON, comment='分组指标数据')
     tag_metric_data = Column(JSON, comment='标签指标数据')
     tag_category_metric_data = Column(JSON, comment='按标签分类的指标数据')
@@ -712,7 +712,7 @@ class ReportComparisonMatrix(db.Model):
         Index('idx_report_comparison_matrix_report_id', 'report_id'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='对比矩阵唯一ID')
-    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id', ondelete='CASCADE'), nullable=False, unique=True, comment='关联报告ID')
     comparison_matrix = Column(JSON, comment='对比矩阵数据 (对比报告使用)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
