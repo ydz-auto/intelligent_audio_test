@@ -270,7 +270,6 @@ class ReportControllerBase:
         order = query_params.order
         
         query = Report.query.options(
-            joinedload(Report.task),
             joinedload(Report.summary_info).load_only(
                 ReportSummary.total_cases,
                 ReportSummary.completed_cases,
@@ -278,6 +277,10 @@ class ReportControllerBase:
                 ReportSummary.pass_rate
             )
         )
+        
+        need_join_task = algorithm_type and algorithm_type != 'all'
+        if need_join_task:
+            query = query.options(joinedload(Report.task))
         
         if report_type and report_type != 'all':
             query = query.filter(Report.type == report_type)
@@ -311,13 +314,27 @@ class ReportControllerBase:
             query = query.order_by(sort_attr.asc())
         else:
             query = query.order_by(sort_attr.desc())
-            
+        
+        import time
+        paginate_start = time.time()
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        paginate_elapsed = round((time.time() - paginate_start) * 1000, 2)
+        print(f"[PERF] paginate elapsed: {paginate_elapsed}ms, total: {pagination.total}")
+        
         reports = pagination.items
+        
+        task_ids = [r.task_id for r in reports if r.task_id]
+        tasks_map = {}
+        if task_ids:
+            task_start = time.time()
+            tasks = Task.query.filter(Task.id.in_(task_ids)).all()
+            tasks_map = {t.id: t for t in tasks}
+            task_elapsed = round((time.time() - task_start) * 1000, 2)
+            print(f"[PERF] load tasks elapsed: {task_elapsed}ms, count: {len(tasks)}")
 
         data = []
         for report in reports:
-            task = report.task
+            task = tasks_map.get(report.task_id) if report.task_id else None
             summary_info = report.summary_info
 
             if not summary_info:
