@@ -316,12 +316,16 @@ class ReportControllerBase:
             query = query.order_by(sort_attr.desc())
         
         import time
-        paginate_start = time.time()
-        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
-        paginate_elapsed = round((time.time() - paginate_start) * 1000, 2)
-        print(f"[PERF] paginate elapsed: {paginate_elapsed}ms, total: {pagination.total}")
         
-        reports = pagination.items
+        count_start = time.time()
+        total = query.count()
+        count_elapsed = round((time.time() - count_start) * 1000, 2)
+        print(f"[PERF] COUNT query elapsed: {count_elapsed}ms, total: {total}")
+        
+        data_start = time.time()
+        reports = query.offset((page - 1) * per_page).limit(per_page).all()
+        data_elapsed = round((time.time() - data_start) * 1000, 2)
+        print(f"[PERF] Data query elapsed: {data_elapsed}ms, items: {len(reports)}")
         
         task_ids = [r.task_id for r in reports if r.task_id]
         tasks_map = {}
@@ -375,10 +379,10 @@ class ReportControllerBase:
         return success_response(
             ReportListData(
                 items=data,
-                total=pagination.total,
-                page=pagination.page,
-                per_page=pagination.per_page,
-                pages=pagination.pages,
+                total=total,
+                page=page,
+                per_page=per_page,
+                pages=(total + per_page - 1) // per_page if total > 0 else 0,
             )
         )
 
