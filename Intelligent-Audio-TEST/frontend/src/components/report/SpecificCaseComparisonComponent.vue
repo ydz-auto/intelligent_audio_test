@@ -1450,6 +1450,22 @@ const downloadCaseLogZip = async (caseItem) => {
 
   try {
     const downloadUrl = reportsApi.getCaseLogsDownloadUrl(reportId, caseId)
+    const response = await fetch(downloadUrl, { method: 'HEAD' })
+    if (!response.ok) {
+      let errorMsg = '下载日志失败'
+      try {
+        const errorData = await response.json()
+        errorMsg = errorData?.message || errorData?.detail || errorMsg
+      } catch {
+        if (response.status === 404) {
+          errorMsg = '未找到用例日志目录'
+        } else if (response.status === 500) {
+          errorMsg = '服务器内部错误'
+        }
+      }
+      notification.error(errorMsg)
+      return
+    }
     const link = document.createElement('a')
     link.href = downloadUrl
     link.setAttribute('download', `case_${caseId}_logs.zip`)
@@ -1459,7 +1475,8 @@ const downloadCaseLogZip = async (caseItem) => {
     notification.success('日志下载已开始，请查看浏览器下载管理器')
   } catch (error) {
     console.error('下载日志失败:', error)
-    notification.error('下载日志失败，请稍后重试')
+    const errorMsg = error?.message || '下载日志失败，请稍后重试'
+    notification.error(errorMsg)
   } finally {
     isDownloadingLog.value = false
     downloadingCaseName.value = ''
