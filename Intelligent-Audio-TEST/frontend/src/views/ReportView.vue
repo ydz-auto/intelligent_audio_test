@@ -199,7 +199,7 @@
     <div v-else class="empty-state">
       <h2>未找到报告</h2>
       <p>请提供有效的报告ID</p>
-      <button class="btn-primary" @click="goBack">查看历史报告</button>
+      <button class="btn-primary" @click="goToHistoryReports">查看历史报告</button>
     </div>
 
     <!-- 底部浮动操作按钮 -->
@@ -425,7 +425,8 @@ const copyLink = async () => {
   }
 }
 
-const goBack = () => router.push('/history-reports')
+const goBack = () => router.back()
+const goToHistoryReports = () => router.push('/history-reports')
 
 onMounted(() => {
   const reportId = route.params.id as string || route.query.id as string

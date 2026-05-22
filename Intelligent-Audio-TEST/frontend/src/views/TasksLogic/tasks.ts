@@ -66,6 +66,7 @@ export function useTasks() {
   const currentTask = ref<Task | null>(null);
   const isViewingReport = ref(false);
   const isControlling = ref<Set<string | number>>(new Set());
+  const isGeneratingReport = ref(false);
 
   const taskLogs = ref<UILog[]>([]);
   const taskLogSearchTerm = ref('');
@@ -425,6 +426,15 @@ export function useTasks() {
   };
 
   const viewTaskReport = async (task: Task) => {
+    if (router.currentRoute.value.name === 'reportView') {
+      notification.info('当前已有报告打开，请先关闭当前报告');
+      return;
+    }
+    if (isGeneratingReport.value) {
+      notification.info('正在生成报告，请稍候...');
+      return;
+    }
+    isGeneratingReport.value = true;
     notification.info('正在生成报告，请稍候...');
     try {
       const result = await reportService.viewTaskReport(task);
@@ -435,6 +445,8 @@ export function useTasks() {
     } catch (error) {
       console.error('Failed to view task report:', error);
       notification.error('报告生成失败');
+    } finally {
+      isGeneratingReport.value = false;
     }
   };
 
