@@ -37,7 +37,7 @@
           </div>
           <div class="tags-container mt-2" v-if="localFormData.tags && localFormData.tags.length > 0">
             <span v-for="(tag, index) in localFormData.tags" :key="index" class="tag-item removable">
-              {{ tag }}
+              <span class="tag-text" :title="tag">{{ tag }}</span>
               <button type="button" class="tag-remove" @click="removeTag(index)">
                 <i class="fas fa-times"></i>
               </button>
@@ -879,16 +879,22 @@ onMounted(async () => {
   border-radius: var(--border-radius-full);
   border: 1px solid transparent;
   max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .tag-item.removable {
   padding-right: 6px;
 }
 
+.tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
 .tag-remove {
+  flex-shrink: 0;
   background: none;
   border: none;
   margin-left: 4px;

@@ -990,6 +990,11 @@ export const reportsApi = {
 
   async downloadCaseLogs(reportId: string | number, caseId: string | number): Promise<Blob> {
     return request<Blob>('GET', `/reports/${reportId}/cases/${caseId}/logs/download`, null, { responseType: 'blob' });
+  },
+
+  getCaseLogsDownloadUrl(reportId: string | number, caseId: string | number): string {
+    const base = apiBaseUrl.replace(/\/$/, '');
+    return `${base}/reports/${reportId}/cases/${caseId}/logs/download`;
   }
 };
 

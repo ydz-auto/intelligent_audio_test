@@ -253,7 +253,7 @@
             :show-config="false"
             :current-page="currentPage"
             :page-size="pageSize"
-            :total-items="filteredTasks.length"
+            :total-items="totalTasks"
             :total-pages="totalPages"
             :actions="[
               { id: 'view-details', label: '查看详情', icon: 'fa-eye', type: 'secondary' },
@@ -262,15 +262,15 @@
               { id: 'resume', label: '继续', icon: 'fa-play', type: 'secondary', show: (task: any) => ['paused', 'stopped'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => ['running', 'paused', 'queued'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'retry', label: '重试', icon: 'fa-redo', type: 'success', show: (task: any) => ['pending', 'failed'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => ['completed', 'failed', 'stopped', 'paused', 'skipped'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => ['completed', 'failed', 'stopped', 'paused', 'skipped', 'merged'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.has(task.id) }
             ]"
             :search-query="searchTerm"
             @toggle-selection="toggleTaskSelection"
             @action="handleTaskAction"
             @name-updated="handleNameUpdated"
-            @page-change="currentPage = $event"
-            @page-size-change="pageSize = $event; currentPage = 1"
+            @page-change="handlePageChange"
+            @page-size-change="handlePageSizeChange"
           />
         </div>
       </section>
@@ -502,6 +502,8 @@ const {
   reportService,
   isEditingReport,
   reportConclusion,
+  handlePageChange,
+  handlePageSizeChange,
   reportServiceData,
   reportName,
   reportDevices,

@@ -53,8 +53,21 @@ class ReportControllerTask(ReportControllerBase):
                 return None, None, error_response("生成失败: 合并任务没有测试结果数据")
             return task, results, None
             
+        elif task.status == TaskStatus.MERGED.value:
+            merge_relations = TaskMergeRelation.query.filter_by(source_task_id=task_id).all()
+            if merge_relations:
+                merged_task_id = merge_relations[0].merged_task_id
+                source_relations = TaskMergeRelation.query.filter_by(merged_task_id=merged_task_id).all()
+                source_task_ids = [r.source_task_id for r in source_relations]
+                results = TestResult.query.filter(TestResult.task_id.in_(source_task_ids)).all()
+            else:
+                results = TestResult.query.filter_by(task_id=task_id).all()
+            if not results:
+                return None, None, error_response("生成失败: 任务没有测试结果数据")
+            return task, results, None
+            
         elif task.status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]:
-            return None, None, error_response("只有任务状态为completed或failed时才能生成报告")
+            return None, None, error_response("只有任务状态为completed、failed或merged时才能生成报告")
         
         results = TestResult.query.filter_by(task_id=task_id).all()
         if not results:
@@ -608,8 +621,8 @@ class ReportControllerTask(ReportControllerBase):
         if existing_report:
             return success_response({"id": existing_report.id, "status": "exists"}, "任务报告已存在", ErrorCode.SUCCESS)
 
-        if task.status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value]:
-            return error_response("只有任务状态为completed或failed时才能生成报告")
+        if task.status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.MERGED.value]:
+            return error_response("只有任务状态为completed、failed或merged时才能生成报告")
 
         with _generating_lock:
             if task_id in _generating_tasks:

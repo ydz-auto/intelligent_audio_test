@@ -1449,16 +1449,14 @@ const downloadCaseLogZip = async (caseItem) => {
   downloadingCaseName.value = caseItem.name || caseId
 
   try {
-    const blob = await reportsApi.downloadCaseLogs(reportId, caseId)
-    const url = window.URL.createObjectURL(blob)
+    const downloadUrl = reportsApi.getCaseLogsDownloadUrl(reportId, caseId)
     const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', `case_log_${caseId}_${new Date().getTime()}.zip`)
+    link.href = downloadUrl
+    link.setAttribute('download', `case_${caseId}_logs.zip`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-    notification.success('日志下载成功')
+    notification.success('日志下载已开始，请查看浏览器下载管理器')
   } catch (error) {
     console.error('下载日志失败:', error)
     notification.error('下载日志失败，请稍后重试')

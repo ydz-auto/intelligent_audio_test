@@ -22,6 +22,7 @@ export function useTasks() {
   const selectedTasks = ref<Set<string | number>>(new Set());
   const currentPage = ref(1);
   const pageSize = ref(10);
+  const totalItems = ref(0);
   const sortConfig = ref({ field: 'createdAt', order: 'desc' });
   const selectedTags = ref<string[]>([]);
   const searchTerm = ref('');
@@ -97,7 +98,7 @@ export function useTasks() {
     return allTags.value.slice(start, start + tagPageSize.value);
   });
 
-  const totalTasks = computed(() => tasks.value.length);
+  const totalTasks = computed(() => totalItems.value);
   const pendingTasks = computed(() => tasks.value.filter(t => t.status === 'pending' || t.status === 'queued').length);
   const inProgressTasks = computed(() => tasks.value.filter(t => t.status === 'running').length);
   const completedTasks = computed(() => tasks.value.filter(t => t.status === 'completed').length);
@@ -106,14 +107,10 @@ export function useTasks() {
   const queuedTasks = computed(() => tasks.value.filter(t => t.status === 'queued').length);
 
   const totalPages = computed(() => {
-    const pages = Math.ceil(filteredTasks.value.length / pageSize.value) || 1;
-    console.log('[DEBUG] totalPages computed:', pages, 'filteredTasks.length:', filteredTasks.value.length, 'pageSize:', pageSize.value);
+    const pages = Math.ceil(totalItems.value / pageSize.value) || 1;
     return pages;
   });
-  const paginatedTasks = computed(() => {
-    const start = (currentPage.value - 1) * pageSize.value;
-    return filteredTasks.value.slice(start, start + pageSize.value);
-  });
+  const paginatedTasks = computed(() => filteredTasks.value);
 
   const isAllSelected = computed(() => {
     return paginatedTasks.value.length > 0 && paginatedTasks.value.every(t => selectedTasks.value.has(t.id));
@@ -149,29 +146,80 @@ export function useTasks() {
 
   const fetchTasks = async () => {
     try {
-      const response = await tasksApi.getAll({ per_page: 10000 }) as any;
-      console.log('[DEBUG] fetchTasks response:', response);
-      console.log('[DEBUG] response type:', typeof response);
-      console.log('[DEBUG] Is array?', Array.isArray(response));
-      console.log('[DEBUG] response.data:', response?.data);
-      console.log('[DEBUG] response.items:', response?.items);
+      const params: Record<string, any> = {
+        page: currentPage.value,
+        per_page: pageSize.value
+      };
+      
+      if (searchTerm.value) {
+        params.search = searchTerm.value;
+      }
+      
+      if (filters.value.status && filters.value.status !== 'all') {
+        params.status = filters.value.status;
+      }
+      if (filters.value.type && filters.value.type !== 'all') {
+        params.type = filters.value.type;
+      }
+      if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
+        params.algorithm_type = filters.value.algorithmType;
+      }
+      if (filters.value.timeRange && filters.value.timeRange !== 'all') {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        switch (filters.value.timeRange) {
+          case 'today':
+            params.start_date = today.toISOString();
+            break;
+          case 'yesterday':
+            const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+            params.start_date = yesterday.toISOString();
+            params.end_date = today.toISOString();
+            break;
+          case 'week':
+            const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+            params.start_date = weekAgo.toISOString();
+            break;
+          case 'month':
+            const monthAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+            params.start_date = monthAgo.toISOString();
+            break;
+          case 'custom':
+            if (customDateRange.value.start) {
+              params.start_date = new Date(customDateRange.value.start).toISOString();
+            }
+            if (customDateRange.value.end) {
+              const endDate = new Date(customDateRange.value.end);
+              endDate.setHours(23, 59, 59, 999);
+              params.end_date = endDate.toISOString();
+            }
+            break;
+        }
+      }
+      
+      const response = await tasksApi.getAll(params) as any;
       
       let taskList: any[] = [];
-      if (Array.isArray(response)) {
-        taskList = response;
-      } else if (response?.items) {
+      let total = 0;
+      
+      if (response?.items) {
         taskList = response.items;
+        total = response.total || taskList.length;
       } else if (response?.data?.items) {
         taskList = response.data.items;
-      } else if (response?.data && Array.isArray(response.data)) {
-        taskList = response.data;
+        total = response.data.total || taskList.length;
+      } else if (Array.isArray(response)) {
+        taskList = response;
+        total = response.length;
       } else {
         taskList = response || [];
       }
       
-      console.log('[DEBUG] taskList length:', taskList.length);
       tasks.value = taskList;
-      applyFilters();
+      totalItems.value = total;
+      filteredTasks.value = taskList;
+      
       setTimeout(() => {
         updateCharts();
       }, 0);
@@ -181,92 +229,24 @@ export function useTasks() {
   };
 
   const applyFilters = () => {
-    console.log('[DEBUG] applyFilters called, tasks.value length:', tasks.value.length);
-    let result = [...tasks.value];
-
-    result = result.filter(t => !t.deleted);
-
-    if (searchTerm.value) {
-      const term = searchTerm.value.toLowerCase();
-      result = result.filter(t => 
-        (t.name && t.name.toLowerCase().includes(term)) || 
-        (t.id && t.id.toString().includes(term))
-      );
-    }
-
-    if (filters.value.status && filters.value.status !== 'all') {
-      result = result.filter(t => t.status === filters.value.status);
-    }
-
-    if (filters.value.type && filters.value.type !== 'all') {
-      result = result.filter(t => t.type === filters.value.type);
-    }
-
-    if (filters.value.algorithmType && filters.value.algorithmType !== 'all') {
-      result = result.filter(t => t.algorithmType === filters.value.algorithmType);
-    }
-
-    if (filters.value.timeRange && filters.value.timeRange !== 'all') {
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      
-      switch (filters.value.timeRange) {
-        case 'today':
-          result = result.filter(t => new Date(t.createdAt || '').getTime() >= today);
-          break;
-        case 'yesterday':
-          const yesterday = today - 24 * 60 * 60 * 1000;
-          result = result.filter(t => {
-            const time = new Date(t.createdAt || '').getTime();
-            return time >= yesterday && time < today;
-          });
-          break;
-        case 'week':
-          const weekAgo = today - 7 * 24 * 60 * 60 * 1000;
-          result = result.filter(t => new Date(t.createdAt || '').getTime() >= weekAgo);
-          break;
-        case 'month':
-          const monthAgo = today - 30 * 24 * 60 * 60 * 1000;
-          result = result.filter(t => new Date(t.createdAt || '').getTime() >= monthAgo);
-          break;
-        case 'custom':
-          if (customDateRange.value.start) {
-            const start = new Date(customDateRange.value.start).getTime();
-            result = result.filter(t => new Date(t.createdAt || '').getTime() >= start);
-          }
-          if (customDateRange.value.end) {
-            const endDate = new Date(customDateRange.value.end);
-            endDate.setHours(23, 59, 59, 999);
-            result = result.filter(t => new Date(t.createdAt || '').getTime() <= endDate.getTime());
-          }
-          break;
-      }
-    }
-
-    if (selectedTags.value.length > 0) {
-      result = result.filter(t => {
-        if (!t.tags) return false;
-        const taskTags = Array.isArray(t.tags) ? t.tags : [];
-        return selectedTags.value.every(tag => {
-          return taskTags.some(tTag => {
-            if (typeof tTag === 'string') return tTag === tag;
-            if (typeof tTag === 'object' && tTag !== null) {
-              return (tTag as any).name === tag;
-            }
-            return false;
-          });
-        });
-      });
-    }
-
-    filteredTasks.value = result;
-    console.log('[DEBUG] filteredTasks.value length:', filteredTasks.value.length);
-    sortTasks();
     currentPage.value = 1;
+    fetchTasks();
   };
 
   const handleSearch = () => {
-    applyFilters();
+    currentPage.value = 1;
+    fetchTasks();
+  };
+
+  const handlePageChange = (page: number) => {
+    currentPage.value = page;
+    fetchTasks();
+  };
+
+  const handlePageSizeChange = (size: number) => {
+    pageSize.value = size;
+    currentPage.value = 1;
+    fetchTasks();
   };
 
   const sortTasks = () => {
@@ -1044,6 +1024,8 @@ export function useTasks() {
     startEditingConclusion,
     saveConclusion,
     toggleEditConclusion,
+    handlePageChange,
+    handlePageSizeChange,
     cancelEditConclusion,
     toggleEditReport,
     cancelEditReport,

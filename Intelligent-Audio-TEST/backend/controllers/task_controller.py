@@ -83,6 +83,8 @@ class TaskController:
         per_page = request.args.get('per_page', 10, type=int)
         status = request.args.get('status')
         type_ = request.args.get('type')
+        algorithm_type = request.args.get('algorithm_type')
+        search = request.args.get('search')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
 
@@ -91,6 +93,15 @@ class TaskController:
             query = query.filter_by(status=status)
         if type_:
             query = query.filter_by(type=type_)
+        if algorithm_type:
+            query = query.filter_by(algorithm_type=algorithm_type)
+        if search:
+            query = query.filter(
+                db.or_(
+                    Task.name.ilike(f'%{search}%'),
+                    Task.id.cast(db.String).ilike(f'%{search}%')
+                )
+            )
         
         # 时间范围过滤
         if start_date:

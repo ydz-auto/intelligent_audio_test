@@ -6,7 +6,7 @@ from backend.utils.report_utils import ReportUtils
 from backend.utils.query_utils import escape_like_pattern, sanitize_keyword, normalize_sort_field, normalize_sort_order
 from backend.schemas.report import ReportDetailData, ReportListData, ReportListItem, ReportListItemSummary, ReportSummarySimplified, ReportListQuery, ReportCaseListQuery, ReportSearchCasesRequest
 from datetime import datetime
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, load_only
 import os
 import zipfile
 import json
@@ -269,7 +269,15 @@ class ReportControllerBase:
         sort_by = query_params.sort_by
         order = query_params.order
         
-        query = Report.query.options(joinedload(Report.task), joinedload(Report.summary_info))
+        query = Report.query.options(
+            joinedload(Report.task),
+            joinedload(Report.summary_info).load_only(
+                ReportSummary.total_cases,
+                ReportSummary.completed_cases,
+                ReportSummary.failed_cases,
+                ReportSummary.pass_rate
+            )
+        )
         
         if report_type and report_type != 'all':
             query = query.filter(Report.type == report_type)
@@ -524,7 +532,7 @@ class ReportControllerBase:
     @staticmethod
     def download_case_logs(report_id, case_id):
         from backend.utils.log_handler import log_and_emit
-        from backend.models.models import TestResult
+        from backend.models.models import TestResult, TaskMergeRelation
         from flask import Response
 
         log_and_emit(
@@ -560,37 +568,48 @@ class ReportControllerBase:
             )
             return error_response("服务器未配置静态文件路径", 500)
 
-        local_dir = os.path.join(static_base_path, 'case_result', str(task_id), str(case_id))
-
-        if not os.path.exists(local_dir):
-            log_and_emit(
-                level='WARNING',
-                module='report',
-                content=f'下载用例日志失败 - 未找到用例日志目录: {local_dir}'
-            )
-            return error_response(f"未找到用例日志目录: {local_dir}", 404)
+        merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
+        task_ids_to_search = [task_id]
+        if merge_relations:
+            task_ids_to_search = [r.source_task_id for r in merge_relations]
 
         zip_filename = f"case_{case_id}_logs.zip"
 
         try:
-            test_result = TestResult.query.filter_by(
-                task_id=task_id,
-                test_case_id=case_id
+            test_result = TestResult.query.filter(
+                TestResult.task_id.in_(task_ids_to_search),
+                TestResult.test_case_id == case_id
             ).first()
 
             zip_buffer = io.BytesIO()
+            found_any = False
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for root, dirs, files in os.walk(local_dir):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        arcname = os.path.relpath(file_path, local_dir)
-                        zf.write(file_path, arcname)
+                for search_task_id in task_ids_to_search:
+                    local_dir = os.path.join(static_base_path, 'case_result', str(search_task_id), str(case_id))
+                    
+                    if os.path.exists(local_dir):
+                        found_any = True
+                        for root, dirs, files in os.walk(local_dir):
+                            for file in files:
+                                file_path = os.path.join(root, file)
+                                arcname = os.path.relpath(file_path, local_dir)
+                                if len(task_ids_to_search) > 1:
+                                    arcname = os.path.join(f"task_{search_task_id}", arcname)
+                                zf.write(file_path, arcname)
 
                 if test_result and test_result.result_data and 'adjusted_reference_params' in test_result.result_data:
                     adjusted_params = test_result.result_data['adjusted_reference_params']
                     if adjusted_params:
                         params_json = json.dumps(adjusted_params, ensure_ascii=False, indent=2)
                         zf.writestr("adjusted_reference_params.json", params_json)
+
+            if not found_any:
+                log_and_emit(
+                    level='WARNING',
+                    module='report',
+                    content=f'下载用例日志失败 - 未找到用例日志目录，搜索任务IDs: {task_ids_to_search}'
+                )
+                return error_response(f"未找到用例日志目录", 404)
 
             zip_buffer.seek(0)
             zip_data = zip_buffer.getvalue()
