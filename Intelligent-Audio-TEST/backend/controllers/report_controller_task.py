@@ -503,10 +503,8 @@ class ReportControllerTask(ReportControllerBase):
             name=name,
             type=ReportType.TASK.value,
             task_id=task_id,
-            summary=summary,
             description=description,
-            status=ReportStatus.DRAFT.value,
-            test_reports_cases=cases
+            status=ReportStatus.DRAFT.value
         )
         db.session.add(new_report)
         db.session.flush()

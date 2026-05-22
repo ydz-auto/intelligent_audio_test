@@ -944,8 +944,8 @@ export const reportsApi = {
     return request<{ id?: string | number; reportId?: string | number }>('POST', '/reports/compare', { taskIds: taskIds, name });
   },
 
-  async secondaryCompare(reportIds: (string | number)[]): Promise<{ id: string | number }> {
-    return request<{ id: string | number }>('POST', '/reports/secondary-compare', { reportIds: reportIds });
+  async secondaryCompare(reportIds: (string | number)[]): Promise<{ reportKey: (string | number)[]; status: string }> {
+    return request<{ reportKey: (string | number)[]; status: string }>('POST', '/reports/secondary-compare', { reportIds: reportIds });
   },
 
   async export(reportIds: (string | number)[], format: string = 'excel'): Promise<Blob> {

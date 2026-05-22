@@ -4,6 +4,7 @@ import { reportsApi } from '../../utils/api';
 import { useAlgorithmLabels } from '../../composables/useAlgorithmLabels';
 import { getReportTypeLabel } from '../../shared/constants/reportConstants';
 import type { Report, ReportListParams } from '../../shared/types/index';
+import socketService from '../../utils/socket';
 
 interface AlgorithmOption {
   value: string;
@@ -269,6 +270,8 @@ export function useHistoryReports() {
     selectedReports.value.clear();
   };
 
+  const pendingSecondaryCompareReports = ref<Map<string, { reportIds: (string | number)[]; resolve: (id: string | number) => void; reject: (err: Error) => void }>>(new Map());
+
   const handleBatchCompare = async () => {
     if (selectedReports.value.size < 2) {
       showToast('warning', '请至少选择2个报告进行对比');
@@ -277,8 +280,43 @@ export function useHistoryReports() {
     try {
       const ids = Array.from(selectedReports.value);
       const result = await reportsApi.secondaryCompare(ids);
-      showToast('success', '对比报告生成成功');
-      router.push({ name: 'reportView', params: { id: result.id } });
+
+      if (result.status === 'generating') {
+        showToast('info', '对比报告生成中，请稍后...');
+        socketService.connect();
+
+        const reportKey = result.reportKey.join(',');
+        const reportId = await new Promise<string | number>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            pendingSecondaryCompareReports.value.delete(reportKey);
+            socketService.off('secondary_compare_generated', handleSecondaryCompareGenerated);
+            reject(new Error('对比报告生成超时'));
+          }, 180000);
+
+          const handleSecondaryCompareGenerated = (data: any) => {
+            const dataKey = (data.reportIds || []).sort().join(',');
+            if (dataKey === reportKey) {
+              clearTimeout(timeout);
+              socketService.off('secondary_compare_generated', handleSecondaryCompareGenerated);
+              pendingSecondaryCompareReports.value.delete(reportKey);
+
+              if (!data.success) {
+                reject(new Error(data.error || '对比报告生成失败'));
+                return;
+              }
+              resolve(data.reportId);
+            }
+          };
+
+          pendingSecondaryCompareReports.value.set(reportKey, { reportIds: ids, resolve, reject });
+          socketService.on('secondary_compare_generated', handleSecondaryCompareGenerated);
+        });
+
+        showToast('success', '对比报告生成成功');
+        router.push({ name: 'reportView', params: { id: reportId } });
+      } else {
+        showToast('success', '对比报告生成成功');
+      }
     } catch (error: any) {
       showToast('error', '生成对比报告失败: ' + (error.message || '未知错误'));
     }
@@ -324,6 +362,7 @@ export function useHistoryReports() {
 
   onBeforeUnmount(() => {
     selectedReports.value.clear();
+    pendingSecondaryCompareReports.value.clear();
   });
 
   return {

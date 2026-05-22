@@ -589,11 +589,8 @@ class ReportControllerCompare(ReportControllerBase):
             new_report = Report(
                 name=name,
                 type=ReportType.COMPARISON.value,
-                summary=summary,
-                comparison_data=comparison_data,
                 description=description,
-                status=ReportStatus.DRAFT.value,
-                test_reports_cases=source_cases
+                status=ReportStatus.DRAFT.value
             )
             db.session.add(new_report)
             db.session.flush()
@@ -644,6 +641,12 @@ class ReportControllerCompare(ReportControllerBase):
                 api_stats=json.dumps(api_stats, ensure_ascii=False)
             )
             db.session.add(metric_stats_record)
+
+            comparison_matrix_record = ReportComparisonMatrix(
+                report_id=new_report.id,
+                comparison_matrix=json.dumps(comparison_data, ensure_ascii=False)
+            )
+            db.session.add(comparison_matrix_record)
 
             db.session.commit()
 
