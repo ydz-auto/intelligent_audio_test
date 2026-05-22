@@ -178,7 +178,7 @@ class ReportSummarySimplified(APIModel):
     all_metrics: List[Any] = Field(default_factory=list, alias='allMetrics', validation_alias=AliasChoices('all_metrics', 'allMetrics'))
     device_stats: List[ReportDeviceStat] = Field(default_factory=list, alias='deviceStats', validation_alias=AliasChoices('device_stats', 'deviceStats'))
     api_stats: List[ReportApiStat] = Field(default_factory=list, alias='apiStats', validation_alias=AliasChoices('api_stats', 'apiStats'))
-    case_type_stats: List[ReportCaseTypeStatGroup] = Field(default_factory=list, alias='caseTypeStats', validation_alias=AliasChoices('case_type_stats', 'caseTypeStats'))
+    case_type_stats: Any = Field(default_factory=dict, alias='caseTypeStats', validation_alias=AliasChoices('case_type_stats', 'caseTypeStats'))
     devices: List[ReportDeviceInfo] = Field(default_factory=list, alias='devices', validation_alias=AliasChoices('devices'))
     apis: List[ReportApiInfo] = Field(default_factory=list, alias='apis', validation_alias=AliasChoices('apis'))
     cases: List[Any] = Field(default_factory=list, alias='cases', validation_alias=AliasChoices('cases'))
