@@ -1,5 +1,5 @@
 from flask import request
-from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, API, TaskCase, TaskDevice, TaskAPI, Device, ReportStatus, ReportType, TaskStatus
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases, ReportMetricStats, ReportComparisonMatrix, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, API, TaskCase, TaskDevice, TaskAPI, Device, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.error_codes import ErrorCode
@@ -544,10 +544,15 @@ class ReportControllerSecondary(ReportControllerBase):
                 completed_cases=completed_cases,
                 failed_cases=failed_cases,
                 pass_rate=round(success_rate, 2),
-                dimension_values=json.dumps(summary.get('dimension_values', []), ensure_ascii=False),
                 duration=0,
                 started_at=None,
-                completed_at=None,
+                completed_at=None
+            )
+            db.session.add(summary_info)
+
+            summary_meta = ReportSummaryMeta(
+                report_id=new_report.id,
+                dimension_values=json.dumps(summary.get('dimension_values', []), ensure_ascii=False),
                 case_categories=json.dumps(case_categories_list, ensure_ascii=False),
                 all_case_tags=json.dumps(case_tags_list, ensure_ascii=False),
                 devices=json.dumps(device_list, ensure_ascii=False),
@@ -556,20 +561,35 @@ class ReportControllerSecondary(ReportControllerBase):
                 resource_headers=json.dumps(resource_headers, ensure_ascii=False),
                 all_metrics=json.dumps(all_metrics, ensure_ascii=False)
             )
-            db.session.add(summary_info)
+            db.session.add(summary_meta)
 
-            detail_data = ReportDetailData(
+            raw_data_record = ReportRawData(
                 report_id=new_report.id,
-                raw_data=json.dumps(raw_data, ensure_ascii=False),
+                raw_data=json.dumps(raw_data, ensure_ascii=False)
+            )
+            db.session.add(raw_data_record)
+
+            cases_record = ReportCases(
+                report_id=new_report.id,
+                cases=json.dumps(source_cases, ensure_ascii=False)
+            )
+            db.session.add(cases_record)
+
+            metric_stats_record = ReportMetricStats(
+                report_id=new_report.id,
                 metric_data=json.dumps(metric_data, ensure_ascii=False),
                 tag_metric_data=json.dumps(tag_metric_data, ensure_ascii=False),
                 case_type_stats=json.dumps(case_type_stats, ensure_ascii=False),
                 device_stats=json.dumps(device_stats, ensure_ascii=False),
-                api_stats=json.dumps(api_stats, ensure_ascii=False),
-                cases=json.dumps(source_cases, ensure_ascii=False),
+                api_stats=json.dumps(api_stats, ensure_ascii=False)
+            )
+            db.session.add(metric_stats_record)
+
+            comparison_matrix_record = ReportComparisonMatrix(
+                report_id=new_report.id,
                 comparison_matrix=json.dumps(comparison_matrix_data, ensure_ascii=False)
             )
-            db.session.add(detail_data)
+            db.session.add(comparison_matrix_record)
 
             db.session.commit()
 

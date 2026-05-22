@@ -1,5 +1,5 @@
 from flask import request
-from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, ReportStatus, ReportType, TaskStatus
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.error_codes import ErrorCode
@@ -523,10 +523,15 @@ class ReportControllerTask(ReportControllerBase):
             completed_cases=completed_cases,
             failed_cases=summary.get('failed_cases', 0),
             pass_rate=round((completed_cases / total_cases * 100), 2) if total_cases > 0 else 0,
-            dimension_values=json.dumps(summary.get('dimension_values', []), ensure_ascii=False),
             duration=task.actual_duration,
             started_at=task.started_at,
-            completed_at=task.completed_at,
+            completed_at=task.completed_at
+        )
+        db.session.add(summary_info)
+
+        summary_meta = ReportSummaryMeta(
+            report_id=report_id,
+            dimension_values=json.dumps(summary.get('dimension_values', []), ensure_ascii=False),
             case_categories=json.dumps(summary.get('case_categories', []), ensure_ascii=False),
             all_case_tags=json.dumps(summary.get('all_case_tags', []), ensure_ascii=False),
             devices=json.dumps(summary.get('devices', []), ensure_ascii=False),
@@ -535,27 +540,39 @@ class ReportControllerTask(ReportControllerBase):
             resource_headers=json.dumps(summary.get('resource_headers', []), ensure_ascii=False),
             all_metrics=json.dumps(summary.get('all_metrics', []), ensure_ascii=False)
         )
-        db.session.add(summary_info)
-        return summary_info
+        db.session.add(summary_meta)
+        
+        return summary_info, summary_meta
 
     @staticmethod
     def _create_report_detail_data(report_id, summary):
-        detail_data = ReportDetailData(
+        raw_data_record = ReportRawData(
             report_id=report_id,
-            raw_data=json.dumps(summary.get('raw_data', []), ensure_ascii=False),
+            raw_data=json.dumps(summary.get('raw_data', []), ensure_ascii=False)
+        )
+        db.session.add(raw_data_record)
+
+        cases_record = ReportCases(
+            report_id=report_id,
+            cases=json.dumps(summary.get('cases', []), ensure_ascii=False)
+        )
+        db.session.add(cases_record)
+
+        metric_stats_record = ReportMetricStats(
+            report_id=report_id,
             metric_data=json.dumps(summary.get('metric_data', []), ensure_ascii=False),
             tag_metric_data=json.dumps(summary.get('tag_metric_data', []), ensure_ascii=False),
             tag_category_metric_data=json.dumps(summary.get('tag_category_metric_data', {}), ensure_ascii=False),
             case_type_stats=json.dumps(summary.get('case_type_stats', []), ensure_ascii=False),
             device_stats=json.dumps(summary.get('device_stats', []), ensure_ascii=False),
-            api_stats=json.dumps(summary.get('api_stats', []), ensure_ascii=False),
-            cases=json.dumps(summary.get('cases', []), ensure_ascii=False)
+            api_stats=json.dumps(summary.get('api_stats', []), ensure_ascii=False)
         )
-        db.session.add(detail_data)
-        return detail_data
+        db.session.add(metric_stats_record)
+        
+        return raw_data_record, cases_record, metric_stats_record
 
     @staticmethod
-    def _build_response(report, task, summary_info, detail_data):
+    def _build_response(report, task, summary_info, summary_meta, raw_data_record, cases_record, metric_stats_record):
         def to_json(val):
             if val is None:
                 return []
@@ -566,19 +583,19 @@ class ReportControllerTask(ReportControllerBase):
             return val if isinstance(val, list) else []
 
         simplified_summary = ReportSummarySimplified(
-            raw_data=to_json(detail_data.raw_data) if detail_data else [],
-            metric_data=to_json(detail_data.metric_data) if detail_data else [],
-            tag_metric_data=to_json(detail_data.tag_metric_data) if detail_data else [],
-            case_categories=to_json(summary_info.case_categories) if summary_info else [],
-            all_case_tags=to_json(summary_info.all_case_tags) if summary_info else [],
-            resources=to_json(summary_info.resources) if summary_info else [],
-            resource_headers=to_json(summary_info.resource_headers) if summary_info else [],
-            all_metrics=to_json(summary_info.all_metrics) if summary_info else [],
-            device_stats=to_json(detail_data.device_stats) if detail_data else [],
-            api_stats=to_json(detail_data.api_stats) if detail_data else [],
-            case_type_stats=to_json(detail_data.case_type_stats) if detail_data else [],
-            devices=to_json(summary_info.devices) if summary_info else [],
-            apis=to_json(summary_info.apis) if summary_info else [],
+            raw_data=to_json(raw_data_record.raw_data) if raw_data_record else [],
+            metric_data=to_json(metric_stats_record.metric_data) if metric_stats_record else [],
+            tag_metric_data=to_json(metric_stats_record.tag_metric_data) if metric_stats_record else [],
+            case_categories=to_json(summary_meta.case_categories) if summary_meta else [],
+            all_case_tags=to_json(summary_meta.all_case_tags) if summary_meta else [],
+            resources=to_json(summary_meta.resources) if summary_meta else [],
+            resource_headers=to_json(summary_meta.resource_headers) if summary_meta else [],
+            all_metrics=to_json(summary_meta.all_metrics) if summary_meta else [],
+            device_stats=to_json(metric_stats_record.device_stats) if metric_stats_record else [],
+            api_stats=to_json(metric_stats_record.api_stats) if metric_stats_record else [],
+            case_type_stats=to_json(metric_stats_record.case_type_stats) if metric_stats_record else [],
+            devices=to_json(summary_meta.devices) if summary_meta else [],
+            apis=to_json(summary_meta.apis) if summary_meta else [],
             total_cases=summary_info.total_cases if summary_info else 0,
             completed_cases=summary_info.completed_cases if summary_info else 0,
             failed_cases=summary_info.failed_cases if summary_info else 0
@@ -814,11 +831,11 @@ class ReportControllerTask(ReportControllerBase):
                 new_report = ReportControllerTask._create_report_record(name, task_id, summary, description, cases)
                 log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created report id={new_report.id}', task_id=task_id)
                 
-                summary_info = ReportControllerTask._create_report_summary(new_report.id, task, summary)
+                summary_info, summary_meta = ReportControllerTask._create_report_summary(new_report.id, task, summary)
                 log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created summary_info id={summary_info.id}, report_id={summary_info.report_id}', task_id=task_id)
                 
-                detail_data = ReportControllerTask._create_report_detail_data(new_report.id, summary)
-                log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail_data id={detail_data.id}, report_id={detail_data.report_id}', task_id=task_id)
+                raw_data_record, cases_record, metric_stats_record = ReportControllerTask._create_report_detail_data(new_report.id, summary)
+                log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report.id}', task_id=task_id)
 
                 report_id = new_report.id
                 db.session.commit()

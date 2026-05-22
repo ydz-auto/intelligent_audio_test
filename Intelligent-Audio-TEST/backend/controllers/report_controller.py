@@ -1,5 +1,5 @@
 from flask import request, send_file, Response, stream_with_context, jsonify
-from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
 from backend.models.database import db
 from backend.utils.response import success_response, error_response, format_response
 from backend.utils.error_codes import ErrorCode
@@ -132,9 +132,11 @@ class ReportController(ReportControllerBase):
                 report.status = str(status)
 
             summary_info = ReportSummary.query.filter_by(report_id=report.id).first()
-            detail_data = ReportDetailData.query.filter_by(report_id=report.id).first()
+            summary_meta = ReportSummaryMeta.query.filter_by(report_id=report.id).first()
+            raw_data_record = ReportRawData.query.filter_by(report_id=report.id).first()
+            metric_stats_record = ReportMetricStats.query.filter_by(report_id=report.id).first()
 
-            if not summary_info or not detail_data:
+            if not summary_info:
                 return error_response("报告数据未迁移，请先运行迁移脚本", 500)
 
             if incoming_summary is not None:
@@ -151,14 +153,15 @@ class ReportController(ReportControllerBase):
                 if 'pass_rate' in normalized_incoming:
                     summary_info.pass_rate = normalized_incoming['pass_rate']
 
-                if 'raw_data' in normalized_incoming:
-                    detail_data.raw_data = json.dumps(normalized_incoming['raw_data'], ensure_ascii=False)
-                if 'metric_data' in normalized_incoming:
-                    detail_data.metric_data = json.dumps(normalized_incoming['metric_data'], ensure_ascii=False)
-                if 'tag_metric_data' in normalized_incoming:
-                    detail_data.tag_metric_data = json.dumps(normalized_incoming['tag_metric_data'], ensure_ascii=False)
-                if 'case_type_stats' in normalized_incoming:
-                    detail_data.case_type_stats = json.dumps(normalized_incoming['case_type_stats'], ensure_ascii=False)
+                if raw_data_record and 'raw_data' in normalized_incoming:
+                    raw_data_record.raw_data = json.dumps(normalized_incoming['raw_data'], ensure_ascii=False)
+                if metric_stats_record:
+                    if 'metric_data' in normalized_incoming:
+                        metric_stats_record.metric_data = json.dumps(normalized_incoming['metric_data'], ensure_ascii=False)
+                    if 'tag_metric_data' in normalized_incoming:
+                        metric_stats_record.tag_metric_data = json.dumps(normalized_incoming['tag_metric_data'], ensure_ascii=False)
+                    if 'case_type_stats' in normalized_incoming:
+                        metric_stats_record.case_type_stats = json.dumps(normalized_incoming['case_type_stats'], ensure_ascii=False)
 
             report.updated_at = datetime.now(timezone(timedelta(hours=8)))
             db.session.commit()
@@ -173,19 +176,19 @@ class ReportController(ReportControllerBase):
                 return val if isinstance(val, list) else []
 
             simplified_summary = {
-                "raw_data": to_json(detail_data.raw_data),
-                "case_categories": to_json(summary_info.case_categories),
-                "all_case_tags": to_json(summary_info.all_case_tags),
-                "resources": to_json(summary_info.resources),
-                "resource_headers": to_json(summary_info.resource_headers),
-                "all_metrics": to_json(summary_info.all_metrics),
-                "device_stats": to_json(detail_data.device_stats),
-                "api_stats": to_json(detail_data.api_stats),
-                "case_type_stats": to_json(detail_data.case_type_stats),
-                "devices": to_json(summary_info.devices),
-                "apis": to_json(summary_info.apis),
-                "metric_data": to_json(detail_data.metric_data),
-                "tag_metric_data": to_json(detail_data.tag_metric_data),
+                "raw_data": to_json(raw_data_record.raw_data) if raw_data_record else [],
+                "case_categories": to_json(summary_meta.case_categories) if summary_meta else [],
+                "all_case_tags": to_json(summary_meta.all_case_tags) if summary_meta else [],
+                "resources": to_json(summary_meta.resources) if summary_meta else [],
+                "resource_headers": to_json(summary_meta.resource_headers) if summary_meta else [],
+                "all_metrics": to_json(summary_meta.all_metrics) if summary_meta else [],
+                "device_stats": to_json(metric_stats_record.device_stats) if metric_stats_record else [],
+                "api_stats": to_json(metric_stats_record.api_stats) if metric_stats_record else [],
+                "case_type_stats": to_json(metric_stats_record.case_type_stats) if metric_stats_record else [],
+                "devices": to_json(summary_meta.devices) if summary_meta else [],
+                "apis": to_json(summary_meta.apis) if summary_meta else [],
+                "metric_data": to_json(metric_stats_record.metric_data) if metric_stats_record else {},
+                "tag_metric_data": to_json(metric_stats_record.tag_metric_data) if metric_stats_record else {},
                 "total_cases": summary_info.total_cases or 0,
                 "completed_cases": summary_info.completed_cases or 0,
                 "failed_cases": summary_info.failed_cases or 0,

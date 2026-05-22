@@ -590,8 +590,12 @@ class Report(db.Model):
 
     task = relationship('Task', backref='reports')
 
-    summary_info = relationship('ReportSummary', backref='report', uselist=False, lazy='joined', passive_deletes=True)
-    detail_data = relationship('ReportDetailData', backref='report', uselist=False, lazy='joined', passive_deletes=True)
+    summary_info = relationship('ReportSummary', backref='report', uselist=False, lazy='select', passive_deletes=True)
+    summary_meta = relationship('ReportSummaryMeta', backref='report', uselist=False, lazy='select', passive_deletes=True)
+    raw_data = relationship('ReportRawData', backref='report', uselist=False, lazy='select', passive_deletes=True)
+    cases_data = relationship('ReportCases', backref='report', uselist=False, lazy='select', passive_deletes=True)
+    metric_stats = relationship('ReportMetricStats', backref='report', uselist=False, lazy='select', passive_deletes=True)
+    comparison_matrix_data = relationship('ReportComparisonMatrix', backref='report', uselist=False, lazy='select', passive_deletes=True)
 
 class ReportSummary(db.Model):
     """
@@ -610,10 +614,26 @@ class ReportSummary(db.Model):
     completed_cases = Column(Integer, default=0, comment='完成用例数')
     failed_cases = Column(Integer, default=0, comment='失败用例数')
     pass_rate = Column(Float, default=0, comment='通过率')
-    dimension_values = Column(JSON, comment='维度平均分列表')
     duration = Column(Float, default=0, comment='任务执行时长(秒)')
     started_at = Column(DateTime, comment='任务开始时间')
     completed_at = Column(DateTime, comment='任务完成时间')
+    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+
+
+class ReportSummaryMeta(db.Model):
+    """
+    报告摘要元数据模型 (Report Summary Meta Model)
+    存储报告摘要的 JSON 元数据，按需加载。
+    与 Report 一对一关联。
+    """
+    __tablename__ = 'report_summary_meta'
+    __table_args__ = (
+        Index('idx_report_summary_meta_report_id', 'report_id'),
+    )
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='元数据唯一ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    dimension_values = Column(JSON, comment='维度平均分列表')
     case_categories = Column(JSON, comment='用例分组列表')
     all_case_tags = Column(JSON, comment='用例标签列表')
     devices = Column(JSON, comment='设备列表')
@@ -624,26 +644,75 @@ class ReportSummary(db.Model):
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 
-class ReportDetailData(db.Model):
+
+class ReportRawData(db.Model):
     """
-    报告详情数据模型 (Report Detail Data Model)
-    存储报告的大数据量详情信息，用于详情页按需加载。
+    报告原始数据模型 (Report Raw Data Model)
+    存储报告的原始维度分数数据，按需加载。
     与 Report 一对一关联。
     """
-    __tablename__ = 'report_detail_data'
+    __tablename__ = 'report_raw_data'
     __table_args__ = (
-        Index('idx_report_detail_report_id', 'report_id'),
+        Index('idx_report_raw_data_report_id', 'report_id'),
     )
-    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='详情唯一ID')
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='原始数据唯一ID')
     report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
     raw_data = Column(JSON, comment='原始维度分数数据')
+    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+
+
+class ReportCases(db.Model):
+    """
+    报告用例数据模型 (Report Cases Model)
+    存储报告的用例详情列表，按需加载。
+    与 Report 一对一关联。
+    """
+    __tablename__ = 'report_cases'
+    __table_args__ = (
+        Index('idx_report_cases_report_id', 'report_id'),
+    )
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='用例数据唯一ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
+    cases = Column(JSON, comment='用例详情列表')
+    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+
+
+class ReportMetricStats(db.Model):
+    """
+    报告指标统计数据模型 (Report Metric Stats Model)
+    存储报告的分组指标数据、统计数据，按需加载。
+    与 Report 一对一关联。
+    """
+    __tablename__ = 'report_metric_stats'
+    __table_args__ = (
+        Index('idx_report_metric_stats_report_id', 'report_id'),
+    )
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='统计数据唯一ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
     metric_data = Column(JSON, comment='分组指标数据')
     tag_metric_data = Column(JSON, comment='标签指标数据')
     tag_category_metric_data = Column(JSON, comment='按标签分类的指标数据')
     case_type_stats = Column(JSON, comment='用例类型统计数据')
     device_stats = Column(JSON, comment='设备统计数据')
     api_stats = Column(JSON, comment='API统计数据')
-    cases = Column(JSON, comment='用例详情列表')
+    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
+
+
+class ReportComparisonMatrix(db.Model):
+    """
+    报告对比矩阵数据模型 (Report Comparison Matrix Model)
+    存储对比报告的矩阵数据，按需加载。
+    与 Report 一对一关联。
+    """
+    __tablename__ = 'report_comparison_matrix'
+    __table_args__ = (
+        Index('idx_report_comparison_matrix_report_id', 'report_id'),
+    )
+    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='对比矩阵唯一ID')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id'), nullable=False, unique=True, comment='关联报告ID')
     comparison_matrix = Column(JSON, comment='对比矩阵数据 (对比报告使用)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')

@@ -1,5 +1,5 @@
 from flask import request
-from backend.models.models import Report, ReportSummary, ReportDetailData, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, \
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, \
     TaskDevice, TaskAPI, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
@@ -424,13 +424,13 @@ class ReportControllerCompare(ReportControllerBase):
         for task_id in task_ids:
             report = reports_by_task.get(task_id)
             if report:
-                detail_data = ReportDetailData.query.filter_by(report_id=report.id).first()
-                if detail_data and detail_data.cases:
-                    if isinstance(detail_data.cases, list):
-                        source_cases.extend(detail_data.cases)
-                    elif isinstance(detail_data.cases, str):
+                cases_data = ReportCases.query.filter_by(report_id=report.id).first()
+                if cases_data and cases_data.cases:
+                    if isinstance(cases_data.cases, list):
+                        source_cases.extend(cases_data.cases)
+                    elif isinstance(cases_data.cases, str):
                         try:
-                            source_cases.extend(json.loads(detail_data.cases))
+                            source_cases.extend(json.loads(cases_data.cases))
                         except json.JSONDecodeError:
                             pass
         
@@ -604,10 +604,15 @@ class ReportControllerCompare(ReportControllerBase):
                 completed_cases=total_cases,
                 failed_cases=0,
                 pass_rate=round(success_rate, 2),
-                dimension_values=json.dumps(summary.get('dimension_values', []), ensure_ascii=False),
                 duration=0,
                 started_at=None,
-                completed_at=None,
+                completed_at=None
+            )
+            db.session.add(summary_info)
+
+            summary_meta = ReportSummaryMeta(
+                report_id=new_report.id,
+                dimension_values=json.dumps(summary.get('dimension_values', []), ensure_ascii=False),
                 case_categories=json.dumps(case_categories_list, ensure_ascii=False),
                 all_case_tags=json.dumps(case_tags_list, ensure_ascii=False),
                 devices=json.dumps(device_list, ensure_ascii=False),
@@ -616,19 +621,29 @@ class ReportControllerCompare(ReportControllerBase):
                 resource_headers=json.dumps(resource_headers, ensure_ascii=False),
                 all_metrics=json.dumps(all_metrics, ensure_ascii=False)
             )
-            db.session.add(summary_info)
+            db.session.add(summary_meta)
 
-            detail_data = ReportDetailData(
+            raw_data_record = ReportRawData(
                 report_id=new_report.id,
-                raw_data=json.dumps(raw_data, ensure_ascii=False),
+                raw_data=json.dumps(raw_data, ensure_ascii=False)
+            )
+            db.session.add(raw_data_record)
+
+            cases_record = ReportCases(
+                report_id=new_report.id,
+                cases=json.dumps(source_cases, ensure_ascii=False)
+            )
+            db.session.add(cases_record)
+
+            metric_stats_record = ReportMetricStats(
+                report_id=new_report.id,
                 metric_data=json.dumps(metric_data, ensure_ascii=False),
                 tag_metric_data=json.dumps(tag_metric_data, ensure_ascii=False),
                 case_type_stats=json.dumps(case_type_stats, ensure_ascii=False),
                 device_stats=json.dumps(device_stats, ensure_ascii=False),
-                api_stats=json.dumps(api_stats, ensure_ascii=False),
-                cases=json.dumps(source_cases, ensure_ascii=False)
+                api_stats=json.dumps(api_stats, ensure_ascii=False)
             )
-            db.session.add(detail_data)
+            db.session.add(metric_stats_record)
 
             db.session.commit()
 

@@ -1,5 +1,5 @@
 from flask import request, send_file, current_app
-from backend.models.models import Report, ReportSummary, ReportDetailData as ReportDetailDataModel, Task, Audio
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases, ReportMetricStats, ReportComparisonMatrix, Task, Audio
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.report_utils import ReportUtils
@@ -306,39 +306,24 @@ class ReportControllerBase:
         else:
             query = query.order_by(sort_attr.desc())
         
-        import time
-        
-        count_start = time.time()
-        total = query.count()
-        count_elapsed = round((time.time() - count_start) * 1000, 2)
-        print(f"[PERF] COUNT query elapsed: {count_elapsed}ms, total: {total}")
-        
-        data_start = time.time()
-        reports = query.offset((page - 1) * per_page).limit(per_page).all()
-        data_elapsed = round((time.time() - data_start) * 1000, 2)
-        print(f"[PERF] Data query elapsed: {data_elapsed}ms, items: {len(reports)}")
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        reports = pagination.items
         
         report_ids = [r.id for r in reports]
         summaries_map = {}
         if report_ids:
-            summary_start = time.time()
-            summaries = ReportSummary.query.filter(ReportSummary.report_id.in_(report_ids)).all()
+            summaries = db.session.query(
+                ReportSummary.report_id,
+                ReportSummary.total_cases,
+                ReportSummary.completed_cases,
+                ReportSummary.failed_cases,
+                ReportSummary.pass_rate
+            ).filter(ReportSummary.report_id.in_(report_ids)).all()
             summaries_map = {s.report_id: s for s in summaries}
-            summary_elapsed = round((time.time() - summary_start) * 1000, 2)
-            print(f"[PERF] load summaries elapsed: {summary_elapsed}ms, count: {len(summaries)}")
-        
-        task_ids = [r.task_id for r in reports if r.task_id]
-        tasks_map = {}
-        if task_ids:
-            task_start = time.time()
-            tasks = Task.query.filter(Task.id.in_(task_ids)).all()
-            tasks_map = {t.id: t for t in tasks}
-            task_elapsed = round((time.time() - task_start) * 1000, 2)
-            print(f"[PERF] load tasks elapsed: {task_elapsed}ms, count: {len(tasks)}")
 
         data = []
         for report in reports:
-            task = tasks_map.get(report.task_id) if report.task_id else None
+            task = report.task
             summary_info = summaries_map.get(report.id)
 
             if not summary_info:
@@ -379,10 +364,10 @@ class ReportControllerBase:
         return success_response(
             ReportListData(
                 items=data,
-                total=total,
-                page=page,
-                per_page=per_page,
-                pages=(total + per_page - 1) // per_page if total > 0 else 0,
+                total=pagination.total,
+                page=pagination.page,
+                per_page=pagination.per_page,
+                pages=pagination.pages,
             )
         )
 
@@ -396,9 +381,11 @@ class ReportControllerBase:
         task = db.session.get(Task, report.task_id) if report.task_id else None
 
         summary_info = ReportSummary.query.filter_by(report_id=report.id).first()
-        detail_data = ReportDetailDataModel.query.filter_by(report_id=report.id).first()
+        summary_meta = ReportSummaryMeta.query.filter_by(report_id=report.id).first()
+        raw_data = ReportRawData.query.filter_by(report_id=report.id).first()
+        metric_stats = ReportMetricStats.query.filter_by(report_id=report.id).first()
 
-        if not summary_info or not detail_data:
+        if not summary_info:
             return error_response("报告数据未迁移，请先运行迁移脚本", 500)
 
         def to_json(val):
@@ -422,19 +409,19 @@ class ReportControllerBase:
             return val if isinstance(val, dict) else {}
 
         simplified_summary = {
-            "raw_data": to_json(detail_data.raw_data),
-            "case_categories": to_json(summary_info.case_categories),
-            "all_case_tags": to_json(summary_info.all_case_tags),
-            "resources": to_json(summary_info.resources),
-            "resource_headers": to_json(summary_info.resource_headers),
-            "all_metrics": to_json(summary_info.all_metrics),
-            "device_stats": to_json(detail_data.device_stats),
-            "api_stats": to_json(detail_data.api_stats),
-            "case_type_stats": to_json(detail_data.case_type_stats),
-            "devices": to_json(summary_info.devices),
-            "apis": to_json(summary_info.apis),
-            "metric_data": to_json(detail_data.metric_data),
-            "tag_metric_data": to_json(detail_data.tag_metric_data),
+            "raw_data": to_json(raw_data.raw_data) if raw_data else [],
+            "case_categories": to_json(summary_meta.case_categories) if summary_meta else [],
+            "all_case_tags": to_json(summary_meta.all_case_tags) if summary_meta else [],
+            "resources": to_json(summary_meta.resources) if summary_meta else [],
+            "resource_headers": to_json(summary_meta.resource_headers) if summary_meta else [],
+            "all_metrics": to_json(summary_meta.all_metrics) if summary_meta else [],
+            "device_stats": to_json(metric_stats.device_stats) if metric_stats else [],
+            "api_stats": to_json(metric_stats.api_stats) if metric_stats else [],
+            "case_type_stats": to_json(metric_stats.case_type_stats) if metric_stats else [],
+            "devices": to_json(summary_meta.devices) if summary_meta else [],
+            "apis": to_json(summary_meta.apis) if summary_meta else [],
+            "metric_data": to_json(metric_stats.metric_data) if metric_stats else {},
+            "tag_metric_data": to_json(metric_stats.tag_metric_data) if metric_stats else {},
             "total_cases": summary_info.total_cases or 0,
             "completed_cases": summary_info.completed_cases or 0,
             "failed_cases": summary_info.failed_cases or 0
@@ -471,8 +458,8 @@ class ReportControllerBase:
         query_params_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
         query_params = ReportCaseListQuery.model_validate(query_params_dict)
 
-        detail_data = ReportDetailDataModel.query.filter_by(report_id=report.id).first()
-        if not detail_data:
+        cases_data = ReportCases.query.filter_by(report_id=report.id).first()
+        if not cases_data:
             return error_response("报告数据未迁移，请先运行迁移脚本", 500)
 
         def to_json(val):
@@ -485,7 +472,7 @@ class ReportControllerBase:
                 return json.loads(val)
             return []
 
-        cases = to_json(detail_data.cases)
+        cases = to_json(cases_data.cases)
 
         keyword = query_params.keyword
         category = query_params.category
@@ -685,8 +672,8 @@ class ReportControllerBase:
         else:
             tags = [t.strip() for t in str(raw_tags).split(',') if t.strip()]
 
-        detail_data = ReportDetailDataModel.query.filter_by(report_id=report.id).first()
-        if not detail_data:
+        cases_data = ReportCases.query.filter_by(report_id=report.id).first()
+        if not cases_data:
             return error_response("报告数据未迁移，请先运行迁移脚本", 500)
 
         def to_json_cases(val):
@@ -699,7 +686,7 @@ class ReportControllerBase:
                 return json.loads(val)
             return []
 
-        cases = to_json_cases(detail_data.cases)
+        cases = to_json_cases(cases_data.cases)
 
         # 应用筛选条件
         if keyword:

@@ -23,88 +23,169 @@
 
 ### 根本原因
 
-**Report 表包含三个大 JSON 字段，导致 SELECT * 查询慢：**
+**Report 表及相关表包含大量 JSON 字段，导致 SELECT 查询慢：**
 
-```python
-summary = Column(JSON, comment='数据摘要统计
-comparison_data = Column(JSON, comment='对比分析数据
-test_reports_cases = Column(JSON, comment='存储报告用例列表信息
-```
+1. **Report 表**（已删除）：
+   - `summary` - 数据摘要统计
+   - `comparison_data` - 对比分析数据
+   - `test_reports_cases` - 报告用例列表信息
 
-这些字段存储了大量数据，即使只有几条记录，`SELECT *` 也会读取所有大字段数据，导致查询耗时 5-8 秒。
+2. **ReportSummary 表**（已拆分）：
+   - `dimension_values` - 维度平均分列表
+   - `case_categories` - 用例分组列表
+   - `all_case_tags` - 用例标签列表
+   - `devices` - 设备列表
+   - `apis` - API列表
+   - `resources` - 资源列表
+   - `resource_headers` - 资源头信息
+   - `all_metrics` - 评估维度列表
+
+3. **ReportDetailData 表**（已拆分）：
+   - `raw_data` - 原始维度分数数据（最大）
+   - `metric_data` - 分组指标数据
+   - `tag_metric_data` - 标签指标数据
+   - `cases` - 用例详情列表（很大）
+   - `comparison_matrix` - 对比矩阵数据
+   - 其他统计数据字段
 
 ## 解决方案
 
 ### 1. 删除 Report 表的大 JSON 字段
 
-Report 表本身不需要存储这些大数据，因为已经有拆分表：
-- `ReportSummary` - 存储摘要数据（列表页使用）
-- `ReportDetailData` - 存储详情数据（详情页按需加载）
+Report 表本身不需要存储这些大数据。
 
-### 2. 将对比报告数据迁移到拆分表
+### 2. 拆分 ReportSummary 和 ReportDetailData 的 JSON 字段到新表
 
-- `ReportSummary.task_ids` - 存储对比报告关联的任务 ID
-- `ReportDetailData.comparison_matrix` - 存储对比矩阵数据
+创建以下新表，直接关联到 Report 表：
 
-### 3. 修改相关代码
+| 新表名 | 存储内容 | 用途 |
+|--------|----------|------|
+| `report_summary_meta` | dimension_values, case_categories, all_case_tags, devices, apis, resources, resource_headers, all_metrics | 详情页按需加载 |
+| `report_raw_data` | raw_data | 详情页按需加载 |
+| `report_cases` | cases | 用例列表页按需加载 |
+| `report_metric_stats` | metric_data, tag_metric_data, tag_category_metric_data, case_type_stats, device_stats, api_stats | 详情页按需加载 |
+| `report_comparison_matrix` | comparison_matrix | 对比报告按需加载 |
 
-- 模型定义 (`models.py`)
-- Schema 定义 (`schemas/report.py`)
-- 控制器代码 (`report_controller_base.py`, `report_controller_secondary.py`)
+### 3. ReportSummary 只保留基本统计字段
+
+保留：`report_id`, `task_ids`, `total_cases`, `completed_cases`, `failed_cases`, `pass_rate`, `duration`, `started_at`, `completed_at`
+
+这些字段用于列表页快速查询，不需要加载大 JSON 字段。
+
+### 4. 删除 ReportDetailData 表
+
+数据已迁移到新表，不再需要此表。
 
 ## 修改的文件
 
 | 文件 | 修改内容 |
 |------|----------|
-| `backend/models/models.py` | 删除 Report 表的 summary/comparison_data/test_reports_cases 字段，添加 ReportSummary.task_ids 和 ReportDetailData.comparison_matrix 字段 |
-| `backend/schemas/report.py` | 删除 ReportDetailData 的 comparisonData 字段 |
-| `backend/controllers/report_controller_base.py` | 删除 comparison_data 相关代码，添加查询计时日志 |
-| `backend/controllers/report_controller_secondary.py` | 将 comparison_data 数据存储到 ReportDetailData.comparison_matrix |
+| `backend/models/models.py` | 创建新模型，删除旧 JSON 字段，添加 Report relationship |
+| `backend/controllers/report_controller_base.py` | 修改 get_one、get_report_cases 方法，从新表获取数据 |
+| `backend/controllers/report_controller_task.py` | 修改报告生成逻辑，数据存储到新表 |
+| `backend/controllers/report_controller_secondary.py` | 修改二次对比报告生成逻辑 |
+| `backend/controllers/report_controller_compare.py` | 修改对比报告生成逻辑 |
+| `backend/controllers/report_controller.py` | 修改报告更新逻辑 |
 | `backend/app.py` | 添加请求耗时日志 |
+
+## 新表结构
+
+### report_summary_meta
+```sql
+CREATE TABLE report_summary_meta (
+    id BIGSERIAL PRIMARY KEY,
+    report_id BIGINT NOT NULL UNIQUE REFERENCES test_reports(id),
+    dimension_values JSONB,
+    case_categories JSONB,
+    all_case_tags JSONB,
+    devices JSONB,
+    apis JSONB,
+    resources JSONB,
+    resource_headers JSONB,
+    all_metrics JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### report_raw_data
+```sql
+CREATE TABLE report_raw_data (
+    id BIGSERIAL PRIMARY KEY,
+    report_id BIGINT NOT NULL UNIQUE REFERENCES test_reports(id),
+    raw_data JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### report_cases
+```sql
+CREATE TABLE report_cases (
+    id BIGSERIAL PRIMARY KEY,
+    report_id BIGINT NOT NULL UNIQUE REFERENCES test_reports(id),
+    cases JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### report_metric_stats
+```sql
+CREATE TABLE report_metric_stats (
+    id BIGSERIAL PRIMARY KEY,
+    report_id BIGINT NOT NULL UNIQUE REFERENCES test_reports(id),
+    metric_data JSONB,
+    tag_metric_data JSONB,
+    tag_category_metric_data JSONB,
+    case_type_stats JSONB,
+    device_stats JSONB,
+    api_stats JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+### report_comparison_matrix
+```sql
+CREATE TABLE report_comparison_matrix (
+    id BIGSERIAL PRIMARY KEY,
+    report_id BIGINT NOT NULL UNIQUE REFERENCES test_reports(id),
+    comparison_matrix JSONB,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
 
 ## 迁移脚本
 
-### 1. 删除大字段并添加新字段
+### 运行迁移脚本
 
 ```bash
-python backend/scripts/migrations/202505/remove_report_large_columns.py
+python backend/scripts/migrations/202505/split_report_json_fields.py
 ```
 
-或直接执行 SQL：
+### 迁移脚本执行内容
 
-```sql
-ALTER TABLE test_reports DROP COLUMN IF EXISTS summary;
-ALTER TABLE test_reports DROP COLUMN IF EXISTS comparison_data;
-ALTER TABLE test_reports DROP COLUMN IF EXISTS test_reports_cases;
-ALTER TABLE report_summaries ADD COLUMN IF NOT EXISTS task_ids JSON;
-ALTER TABLE report_detail_data ADD COLUMN IF NOT EXISTS comparison_matrix JSON;
-```
-
-### 2. 为 Task 表添加索引（可选优化）
-
-```bash
-python backend/scripts/migrations/202505/add_task_indexes.py
-```
-
-或直接执行 SQL：
-
-```sql
-CREATE INDEX IF NOT EXISTS idx_task_status ON test_tasks (status);
-CREATE INDEX IF NOT EXISTS idx_task_algorithm_type ON test_tasks (algorithm_type);
-CREATE INDEX IF NOT EXISTS idx_task_created_at ON test_tasks (created_at);
-CREATE INDEX IF NOT EXISTS idx_task_status_deleted ON test_tasks (status, deleted);
-ANALYZE test_tasks;
-```
+1. 创建 5 个新表
+2. 创建索引
+3. 从旧表迁移数据到新表
+4. 删除旧表的 JSON 字段
+5. 删除 Report 表的旧 JSON 字段
 
 ## 预期效果
 
 执行迁移后，历史报告页面加载时间应从 **10 秒降低到毫秒级别**。
 
+列表查询只加载 ReportSummary 的基本统计字段（`total_cases`, `completed_cases`, `failed_cases`, `pass_rate`），不加载任何大 JSON 字段。
+
+详情页和用例列表页按需加载对应的新表数据。
+
 ## 注意事项
 
-1. **旧数据兼容**：此修改不兼容旧报告数据，旧报告的 summary/comparison_data 数据将丢失
-2. **前端影响**：前端 `comparisonData` prop 仍然可用，数据来源改为从 `ReportDetailData.comparison_matrix` 获取
-3. **需要重启后端**：修改模型后需要重启后端服务
+1. **旧数据兼容**：此修改不兼容旧报告数据，迁移脚本会将数据迁移到新表
+2. **需要重启后端**：修改模型后需要重启后端服务
+3. **前端无影响**：前端接口调用不变，数据格式不变
 
 ## 相关 Issue
 
