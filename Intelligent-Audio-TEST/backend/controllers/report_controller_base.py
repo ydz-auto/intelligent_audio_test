@@ -269,18 +269,11 @@ class ReportControllerBase:
         sort_by = query_params.sort_by
         order = query_params.order
         
-        query = Report.query.options(
-            joinedload(Report.summary_info).load_only(
-                ReportSummary.total_cases,
-                ReportSummary.completed_cases,
-                ReportSummary.failed_cases,
-                ReportSummary.pass_rate
-            )
-        )
+        query = Report.query
         
         need_join_task = algorithm_type and algorithm_type != 'all'
         if need_join_task:
-            query = query.options(joinedload(Report.task))
+            query = query.join(Task, Report.task_id == Task.id).filter(Task.algorithm_type == algorithm_type)
         
         if report_type and report_type != 'all':
             query = query.filter(Report.type == report_type)
@@ -301,8 +294,6 @@ class ReportControllerBase:
                 query = query.filter(Report.created_at <= datetime.fromisoformat(end_time))
             except ValueError:
                 pass
-        if algorithm_type and algorithm_type != 'all':
-            query = query.join(Task, Report.task_id == Task.id).filter(Task.algorithm_type == algorithm_type)
 
         allowed_sort_fields = ['created_at', 'name', 'type', 'status', 'updated_at']
         safe_sort_by = normalize_sort_field(sort_by, allowed_sort_fields, 'created_at')
@@ -327,6 +318,15 @@ class ReportControllerBase:
         data_elapsed = round((time.time() - data_start) * 1000, 2)
         print(f"[PERF] Data query elapsed: {data_elapsed}ms, items: {len(reports)}")
         
+        report_ids = [r.id for r in reports]
+        summaries_map = {}
+        if report_ids:
+            summary_start = time.time()
+            summaries = ReportSummary.query.filter(ReportSummary.report_id.in_(report_ids)).all()
+            summaries_map = {s.report_id: s for s in summaries}
+            summary_elapsed = round((time.time() - summary_start) * 1000, 2)
+            print(f"[PERF] load summaries elapsed: {summary_elapsed}ms, count: {len(summaries)}")
+        
         task_ids = [r.task_id for r in reports if r.task_id]
         tasks_map = {}
         if task_ids:
@@ -339,7 +339,7 @@ class ReportControllerBase:
         data = []
         for report in reports:
             task = tasks_map.get(report.task_id) if report.task_id else None
-            summary_info = report.summary_info
+            summary_info = summaries_map.get(report.id)
 
             if not summary_info:
                 continue
