@@ -429,13 +429,13 @@ class ReportControllerSecondary(ReportControllerBase):
             # 1. 从源任务报告获取用例数据
             source_cases = []
             for report in reports:
-                detail_data = ReportDetailData.query.filter_by(report_id=report.id).first()
-                if detail_data and detail_data.cases:
-                    if isinstance(detail_data.cases, list):
-                        source_cases.extend(detail_data.cases)
-                    elif isinstance(detail_data.cases, str):
+                cases_data = ReportCases.query.filter_by(report_id=report.id).first()
+                if cases_data and cases_data.cases:
+                    if isinstance(cases_data.cases, list):
+                        source_cases.extend(cases_data.cases)
+                    elif isinstance(cases_data.cases, str):
                         import json
-                        source_cases.extend(json.loads(detail_data.cases))
+                        source_cases.extend(json.loads(cases_data.cases))
             
             # 如果没有从源报告获取到用例数据，使用构建的 cases
             if not source_cases:
