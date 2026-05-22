@@ -372,6 +372,25 @@
       :deviceName="currentAudioDeviceName"
       @close="showAudioModal = false"
     />
+
+    <!-- Download Progress Modal -->
+    <teleport to="body">
+      <div v-if="isDownloadingLog" class="download-loading-overlay">
+        <div class="download-loading-modal">
+          <div class="download-loading-spinner"></div>
+          <div class="download-loading-title">正在下载日志</div>
+          <div class="download-loading-text">{{ downloadingCaseName }}</div>
+          <div class="download-progress-bar-container">
+            <div class="download-progress-bar" :style="{ width: downloadProgress + '%' }"></div>
+          </div>
+          <div class="download-progress-info">
+            <span>{{ downloadProgress }}%</span>
+            <span v-if="downloadSize && downloadTotal">{{ downloadSize }} / {{ downloadTotal }}</span>
+            <span v-if="downloadSpeed">{{ downloadSpeed }}</span>
+          </div>
+        </div>
+      </div>
+    </teleport>
     </div>
   </div>
 </template>
@@ -514,6 +533,10 @@ const casesLoading = ref(false)
 const casesLoadError = ref('')
 const isDownloadingLog = ref(false)
 const downloadingCaseName = ref('')
+const downloadProgress = ref(0)
+const downloadSpeed = ref('')
+const downloadSize = ref('')
+const downloadTotal = ref('')
 
 const currentCaseDetailWithPreparedData = computed(() => {
   if (!currentCaseDetail.value) return null
@@ -1429,6 +1452,14 @@ const copyToClipboard = (text) => {
   }
 }
 
+const formatFileSize = (bytes) => {
+  if (bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+}
+
 const downloadCaseLogZip = async (caseItem) => {
   const notification = useNotification()
   const reportId = props.reportData?.id || props.reportData?.reportId
@@ -1447,10 +1478,15 @@ const downloadCaseLogZip = async (caseItem) => {
 
   isDownloadingLog.value = true
   downloadingCaseName.value = caseItem.name || caseId
+  downloadProgress.value = 0
+  downloadSpeed.value = ''
+  downloadSize.value = ''
+  downloadTotal.value = ''
 
   try {
     const downloadUrl = reportsApi.getCaseLogsDownloadUrl(reportId, caseId)
-    const response = await fetch(downloadUrl, { method: 'HEAD' })
+    const response = await fetch(downloadUrl)
+    
     if (!response.ok) {
       let errorMsg = '下载日志失败'
       try {
@@ -1466,20 +1502,79 @@ const downloadCaseLogZip = async (caseItem) => {
       notification.error(errorMsg)
       return
     }
+
+    const contentLength = response.headers.get('content-length')
+    const totalBytes = contentLength ? parseInt(contentLength, 10) : 0
+    downloadTotal.value = formatFileSize(totalBytes)
+
+    if (!response.body) {
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `case_${caseId}_logs.zip`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      notification.success('日志下载成功')
+      return
+    }
+
+    const reader = response.body.getReader()
+    const chunks = []
+    let receivedBytes = 0
+    let lastTime = Date.now()
+    let lastBytes = 0
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      chunks.push(value)
+      receivedBytes += value.length
+      downloadSize.value = formatFileSize(receivedBytes)
+      
+      if (totalBytes > 0) {
+        downloadProgress.value = Math.round((receivedBytes / totalBytes) * 100)
+      }
+
+      const now = Date.now()
+      const timeDiff = now - lastTime
+      if (timeDiff >= 500) {
+        const bytesDiff = receivedBytes - lastBytes
+        const speed = bytesDiff / (timeDiff / 1000)
+        downloadSpeed.value = formatFileSize(speed) + '/s'
+        lastTime = now
+        lastBytes = receivedBytes
+      }
+    }
+
+    const blob = new Blob(chunks, { type: 'application/zip' })
+    const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
-    link.href = downloadUrl
+    link.href = url
     link.setAttribute('download', `case_${caseId}_logs.zip`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
-    notification.success('日志下载已开始，请查看浏览器下载管理器')
+    window.URL.revokeObjectURL(url)
+    
+    downloadProgress.value = 100
+    notification.success('日志下载成功')
   } catch (error) {
     console.error('下载日志失败:', error)
     const errorMsg = error?.message || '下载日志失败，请稍后重试'
     notification.error(errorMsg)
   } finally {
-    isDownloadingLog.value = false
-    downloadingCaseName.value = ''
+    setTimeout(() => {
+      isDownloadingLog.value = false
+      downloadingCaseName.value = ''
+      downloadProgress.value = 0
+      downloadSpeed.value = ''
+      downloadSize.value = ''
+      downloadTotal.value = ''
+    }, 500)
   }
 }
 
@@ -2098,5 +2193,29 @@ const applyFilters = () => {
 .download-loading-hint {
   font-size: 13px;
   color: #9ca3af;
+}
+
+.download-progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background: #e9ecef;
+  border-radius: 4px;
+  margin: 16px 0 8px;
+  overflow: hidden;
+}
+
+.download-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #1677ff, #40a9ff);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.download-progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #6b7280;
+  width: 100%;
 }
 </style>
