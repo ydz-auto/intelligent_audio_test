@@ -2144,6 +2144,7 @@ const applyFilters = () => {
   text-align: center;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   animation: fadeIn 0.2s ease;
+  min-width: 400px;
 }
 
 @keyframes fadeIn {
