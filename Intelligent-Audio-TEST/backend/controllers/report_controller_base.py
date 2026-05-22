@@ -540,7 +540,7 @@ class ReportControllerBase:
     def download_case_logs(report_id, case_id):
         from backend.utils.log_handler import log_and_emit
         from backend.models.models import TestResult, TaskMergeRelation
-        from flask import Response
+        from flask import Response, stream_with_context
 
         log_and_emit(
             level='INFO',
@@ -620,13 +620,22 @@ class ReportControllerBase:
 
             zip_buffer.seek(0)
             zip_data = zip_buffer.getvalue()
+            total_size = len(zip_data)
+            
+            CHUNK_SIZE = 64 * 1024
+            
+            def generate():
+                offset = 0
+                while offset < total_size:
+                    yield zip_data[offset:offset + CHUNK_SIZE]
+                    offset += CHUNK_SIZE
 
             response = Response(
-                zip_data,
+                stream_with_context(generate()),
                 mimetype='application/zip',
                 headers={
                     'Content-Disposition': f'attachment; filename*=UTF-8\'\'{zip_filename}',
-                    'Content-Length': str(len(zip_data)),
+                    'Content-Length': str(total_size),
                     'X-Content-Type-Options': 'nosniff',
                     'Cache-Control': 'no-cache, no-store, must-revalidate',
                     'Pragma': 'no-cache',
@@ -636,7 +645,7 @@ class ReportControllerBase:
             log_and_emit(
                 level='INFO',
                 module='report',
-                content=f'用例日志下载成功 - report_id: {report_id}, case_id: {case_id}'
+                content=f'用例日志下载成功 - report_id: {report_id}, case_id: {case_id}, size: {total_size}'
             )
             return response
         except Exception as e:
