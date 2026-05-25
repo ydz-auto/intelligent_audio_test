@@ -1,0 +1,65 @@
+server:
+  host: ${SERVER_HOST:0.0.0.0}
+  port: ${SERVER_PORT:8000}
+  dev_mode: false
+  workers: 2
+  max_concurrency: 100  # 最大并发数
+  # 任务类型并发限制
+  task_concurrency:
+    zh2en: 20  # 中译英最大并发数
+    en2zh: 20  # 英译中最大并发数
+    default: 10  # 默认任务类型最大并发数
+
+audio:
+  frame_duration_ms: 80        # 每帧时长（毫秒）
+  sample_rate: 16000           # 采样率（Hz）
+  channels: 1                  # 声道数
+  bit_depth: 16                # 位深
+  frame_send_interval_ms: 10   # 帧发送间隔
+
+websocket:
+  reconnect_max: 5             # 最大重连次数
+  result_recv_timeout: 30      # 结果接收超时（秒）
+  connect_timeout: 10          # 建联超时（秒）
+  no_heartbeat: true           # 无心跳机制
+
+vendor:
+  volc_ast:
+    ws_url: ${VOLC_WS_URL}
+    connect_headers:
+      X-Api-App-Key: ${VOLC_APP_KEY}
+      X-Api-Access-Key: ${VOLC_ACCESS_KEY}
+      X-Api-Resource-Id: ${VOLC_RESOURCE_ID}
+      Content-Type: application/json
+    frame_header_template:
+      request_meta:
+        session_id: "{session_id}"
+        source_language: "{source_lang}"
+        target_language: "{target_lang}"
+      seq: "{seq}"
+    result_parser:
+      asr_field: source_subtitle_response.subtitle
+      trans_field: translation_response.subtitle
+  
+  # Mock vendor configuration for testing
+  mock:
+    ws_url: ws://localhost:8080
+    connect_headers:
+      X-Api-App-Key: mock_app_key
+      X-Api-Access-Key: mock_access_key
+      X-Api-Resource-Id: mock_resource_id
+      Content-Type: application/json
+    frame_header_template:
+      request_meta:
+        session_id: "{session_id}"
+        source_language: "{source_lang}"
+        target_language: "{target_lang}"
+      seq: "{seq}"
+    result_parser:
+      asr_field: source_subtitle_response.subtitle
+      trans_field: translation_response.subtitle
+
+result:
+  max_frame_count: 100000      # 最大存储帧数
+  task_expire_minutes: 60      # 任务过期时间（分钟）
+  default_page_size: 1000      # 分页默认大小

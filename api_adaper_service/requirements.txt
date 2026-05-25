@@ -1,0 +1,24 @@
+# Web Framework
+flask>=2.0.0
+flask-cors>=3.0.10
+
+# Configuration
+pyyaml>=0.2.5
+python-dotenv>=0.20.0
+
+# WebSocket
+websocket-client>=1.4.0
+
+# Audio Processing
+pydub>=0.25.1
+soundfile>=0.10.3.post1
+
+# Production Server
+gunicorn>=20.1.0
+
+# Logging
+colorlog>=6.6.0
+
+# Utility
+requests>=2.28.0
+uuid>=1.30
