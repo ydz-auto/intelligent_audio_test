@@ -181,7 +181,6 @@ class ReportSummarySimplified(APIModel):
     case_type_stats: Any = Field(default_factory=dict, alias='caseTypeStats', validation_alias=AliasChoices('case_type_stats', 'caseTypeStats'))
     devices: List[ReportDeviceInfo] = Field(default_factory=list, alias='devices', validation_alias=AliasChoices('devices'))
     apis: List[ReportApiInfo] = Field(default_factory=list, alias='apis', validation_alias=AliasChoices('apis'))
-    cases: List[Any] = Field(default_factory=list, alias='cases', validation_alias=AliasChoices('cases'))
     metric_data: Any = Field(default_factory=dict, alias='metricData', validation_alias=AliasChoices('metric_data', 'metricData'))
     tag_metric_data: Any = Field(default_factory=dict, alias='tagMetricData', validation_alias=AliasChoices('tag_metric_data', 'tagMetricData'))
     total_cases: int = Field(0, alias='totalCases', validation_alias=AliasChoices('total_cases', 'totalCases'))
@@ -285,17 +284,17 @@ class ReportListQuery(APIModel):
 
 
 class ReportCaseListQuery(APIModel):
-    page: int = Field(1, alias='page', validation_alias='page')
-    per_page: int = Field(20, alias='perPage', validation_alias='perPage')
-    keyword: Optional[str] = Field(None, alias='keyword', validation_alias='keyword')
-    category: Optional[str] = Field(None, alias='category', validation_alias='category')
-    tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
+    page: int = Field(1, alias='page', validation_alias=AliasChoices('page'))
+    per_page: int = Field(20, alias='perPage', validation_alias=AliasChoices('per_page', 'perPage'))
+    keyword: Optional[str] = Field(None, alias='keyword', validation_alias=AliasChoices('keyword'))
+    category: Optional[str] = Field(None, alias='category', validation_alias=AliasChoices('category'))
+    tags: Optional[List[str]] = Field(None, alias='tags', validation_alias=AliasChoices('tags'))
 
 
 class ReportSearchCasesRequest(APIModel):
-    keyword: Optional[str] = Field(None, alias='keyword', validation_alias='keyword')
-    category: Optional[str] = Field(None, alias='category', validation_alias='category')
-    include_untagged: Optional[bool] = Field(None, alias='includeUntagged', validation_alias='includeUntagged')
-    tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
-    page: int = Field(1, alias='page', validation_alias='page')
-    per_page: int = Field(20, alias='perPage', validation_alias='perPage')
+    keyword: Optional[str] = Field(None, alias='keyword', validation_alias=AliasChoices('keyword'))
+    category: Optional[str] = Field(None, alias='category', validation_alias=AliasChoices('category'))
+    include_untagged: Optional[bool] = Field(None, alias='includeUntagged', validation_alias=AliasChoices('include_untagged', 'includeUntagged'))
+    tags: Optional[List[str]] = Field(None, alias='tags', validation_alias=AliasChoices('tags'))
+    page: int = Field(1, alias='page', validation_alias=AliasChoices('page'))
+    per_page: int = Field(20, alias='perPage', validation_alias=AliasChoices('per_page', 'perPage'))

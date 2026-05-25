@@ -87,9 +87,7 @@ const filteredTasks = computed(() => {
 });
 
 const paginatedTasks = computed(() => {
-  const startIndex = (props.currentPage - 1) * props.pageSize;
-  const endIndex = startIndex + props.pageSize;
-  return props.tasks.slice(startIndex, endIndex);
+  return props.tasks;
 });
 
 const handleToggleSelection = (taskId) => {

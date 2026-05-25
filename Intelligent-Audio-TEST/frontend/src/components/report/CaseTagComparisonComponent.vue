@@ -959,17 +959,26 @@ const filteredTags = computed(() => {
 
 // 根据selectedCategories过滤标签数据
 const filteredTagMetricData = computed(() => {
-  if (selectedCategories.value.length === 0) {
+  const selectedTagSet = new Set(selectedTags.value || [])
+  const selectedCategorySet = new Set(selectedCategories.value || [])
+  const useTagFilter = selectedTagSet.size > 0
+  const useCategoryFilter = selectedCategorySet.size > 0
+
+  if (!useTagFilter && !useCategoryFilter) {
     return tagMetricData.value
   }
 
-  const filteredData = {};
+  const filteredData = {}
+  const data = tagMetricData.value || {}
 
-  const data = tagMetricData.value || {};
-  for (const [tag, resources] of Object.entries(data)) {
-    if (filteredTags.value.includes(tag)) {
-      filteredData[tag] = resources
+  if (useTagFilter) {
+    for (const [tag, resources] of Object.entries(data)) {
+      if (selectedTagSet.has(tag)) {
+        filteredData[tag] = resources
+      }
     }
+  } else {
+    Object.assign(filteredData, data)
   }
 
   return filteredData
@@ -1035,8 +1044,29 @@ const applyFilters = async () => {
   });
   
   try {
-    // 1. 调用API获取筛选后的数据
-    const taskId = props.reportData.taskId || props.reportData.summary?.taskId;
+    const reportData = props.reportData || {}
+    const reportId = reportData.id || reportData.reportId || reportData.report_id
+
+    if (reportId) {
+      const selectedTagList = selectedTags.value || []
+      const includeUntagged = selectedTagList.includes('无标签') || selectedTagList.includes('未标记')
+      const normalizedTags = selectedTagList.filter(t => t !== '无标签' && t !== '未标记')
+
+      const body = {
+        page: 1,
+        per_page: 5000,
+        tags: normalizedTags,
+        includeUntagged,
+        category: (selectedCategories.value || []).length === 1 ? selectedCategories.value[0] : null
+      }
+
+      const res = await reportsApi.searchCases(reportId, body)
+      const cases = res?.items || res?.data?.items || []
+      tagMetricData.value = computeTagMetricDataFromCases(cases)
+      return
+    }
+
+    const taskId = reportData.taskId || reportData.summary?.taskId;
     if (taskId) {
       const result = await reportsApi.getCaseAveragesByFilters(taskId, {
         tags: selectedTags.value,
@@ -1045,92 +1075,111 @@ const applyFilters = async () => {
       
       console.log('API返回结果:', result);
       
-      // 更新内部tagMetricData ref，触发重新渲染
       const extractedFromApi = extractInitialTagMetricData(result);
       if (extractedFromApi && Object.keys(extractedFromApi).length > 0) {
         tagMetricData.value = extractedFromApi;
         return;
       }
-    } else {
-      // 2. 如果没有taskId，使用本地数据进行筛选
-      // 从detailedResults中提取筛选后的标签数据
-      const filteredDetailedResults = [];
-      
-      // 筛选detailedResults，只保留符合类别条件的结果
-      ;(props.reportData.detailedResults || []).forEach(result => {
-        let categoryName = "未分类";
-        // 处理testCaseGroup，可能是对象或字符串
-        if (result.testCaseGroup) {
-          if (typeof result.testCaseGroup === 'object') {
-            categoryName = result.testCaseGroup.name;
-          } else {
-            categoryName = result.testCaseGroup;
-          }
-        }
-        if (selectedCategories.value.includes(categoryName)) {
-          filteredDetailedResults.push(result);
-        }
-      });
-      
-      // 创建临时报告数据，只包含筛选后的detailedResults
-      const tempReportData = {...props.reportData, detailedResults: filteredDetailedResults};
-      
-      // 重新提取标签数据
-      const extractedTagMetricData = extractInitialTagMetricData(tempReportData);
-      
-      // 更新内部tagMetricData ref，触发重新渲染
-      tagMetricData.value = extractedTagMetricData;
-      return;
     }
-
-    const filteredDetailedResults = [];
-    ;(props.reportData.detailedResults || []).forEach(result => {
-      let categoryName = "未分类";
-      if (result.testCaseGroup) {
-        if (typeof result.testCaseGroup === 'object') {
-          categoryName = result.testCaseGroup.name;
-        } else {
-          categoryName = result.testCaseGroup;
-        }
-      }
-      if (selectedCategories.value.includes(categoryName)) {
-        filteredDetailedResults.push(result);
-      }
-    });
-    const tempReportData = { ...props.reportData, detailedResults: filteredDetailedResults };
-    tagMetricData.value = extractInitialTagMetricData(tempReportData);
   } catch (error) {
     console.error('调用API失败:', error);
-    
-    // 3. API调用失败时，使用本地数据进行筛选
-    // 从detailedResults中提取筛选后的标签数据
-    const filteredDetailedResults = [];
-    
-    // 筛选detailedResults，只保留符合类别条件的结果
-    ;(props.reportData.detailedResults || []).forEach(result => {
-      let categoryName = "未分类";
-      // 处理testCaseGroup，可能是对象或字符串
-      if (result.testCaseGroup) {
-        if (typeof result.testCaseGroup === 'object') {
-          categoryName = result.testCaseGroup.name;
-        } else {
-          categoryName = result.testCaseGroup;
-        }
-      }
-      if (selectedCategories.value.includes(categoryName)) {
-        filteredDetailedResults.push(result);
-      }
-    });
-    
-    // 创建临时报告数据，只包含筛选后的detailedResults
-    const tempReportData = {...props.reportData, detailedResults: filteredDetailedResults};
-    
-    // 重新提取标签数据
-    const extractedTagMetricData = extractInitialTagMetricData(tempReportData);
-    
-    // 更新内部tagMetricData ref，触发重新渲染
-    tagMetricData.value = extractedTagMetricData;
   }
+}
+
+const computeTagMetricDataFromCases = (cases) => {
+  const selectedTagSet = new Set(selectedTags.value || [])
+  const selectedCategorySet = new Set(selectedCategories.value || [])
+  const includeUntagged = selectedTagSet.has('无标签') || selectedTagSet.has('未标记')
+  selectedTagSet.delete('无标签')
+  selectedTagSet.delete('未标记')
+  const useTagFilter = selectedTagSet.size > 0 || includeUntagged
+  const useCategoryFilter = selectedCategorySet.size > 0
+
+  const accumulator = {}
+
+  ;(cases || []).forEach(caseItem => {
+    if (!caseItem) return
+
+    const category = caseItem.category || '未分类'
+    if (useCategoryFilter && !selectedCategorySet.has(category)) return
+
+    const caseTagsRaw = caseItem.tags || []
+    const caseTagNames = Array.isArray(caseTagsRaw)
+      ? caseTagsRaw.map(t => (typeof t === 'object' ? t?.name : t)).filter(Boolean)
+      : []
+
+    const tagsToAggregate = useTagFilter
+      ? caseTagNames.filter(t => selectedTagSet.has(t))
+      : caseTagNames
+
+    if (useTagFilter && includeUntagged && caseTagNames.length === 0) {
+      tagsToAggregate.push('未标记')
+    }
+
+    if (tagsToAggregate.length === 0) return
+
+    const caseMetrics = caseItem.metrics || {}
+
+    tagsToAggregate.forEach(tagName => {
+      if (!accumulator[tagName]) accumulator[tagName] = {}
+
+      if (Array.isArray(caseMetrics)) {
+        caseMetrics.forEach(group => {
+          if (!group || !group.resource || !Array.isArray(group.metrics)) return
+          const resourceKey = group.resource
+          if (!accumulator[tagName][resourceKey]) accumulator[tagName][resourceKey] = {}
+          group.metrics.forEach(m => {
+            if (!m || !m.metric) return
+            const dim = m.metric
+            if (!accumulator[tagName][resourceKey][dim]) {
+              accumulator[tagName][resourceKey][dim] = { sum: 0, count: 0, values: [] }
+            }
+            const val = m.value
+            if (val !== null && val !== undefined) {
+              accumulator[tagName][resourceKey][dim].sum += Number(val)
+              accumulator[tagName][resourceKey][dim].count += 1
+              accumulator[tagName][resourceKey][dim].values.push(Number(val))
+            }
+          })
+        })
+      } else {
+        Object.keys(caseMetrics).forEach(resourceKey => {
+          if (!accumulator[tagName][resourceKey]) accumulator[tagName][resourceKey] = {}
+          const metrics = caseMetrics[resourceKey] || {}
+          Object.keys(metrics).forEach(dim => {
+            if (!accumulator[tagName][resourceKey][dim]) {
+              accumulator[tagName][resourceKey][dim] = { sum: 0, count: 0, values: [] }
+            }
+            const val = metrics[dim]
+            if (val !== null && val !== undefined) {
+              accumulator[tagName][resourceKey][dim].sum += Number(val)
+              accumulator[tagName][resourceKey][dim].count += 1
+              accumulator[tagName][resourceKey][dim].values.push(Number(val))
+            }
+          })
+        })
+      }
+    })
+  })
+
+  const reconstructedData = {}
+  Object.keys(accumulator).forEach(tag => {
+    reconstructedData[tag] = {}
+    Object.keys(accumulator[tag]).forEach(resourceKey => {
+      reconstructedData[tag][resourceKey] = {}
+      Object.keys(accumulator[tag][resourceKey]).forEach(dim => {
+        const stats = accumulator[tag][resourceKey][dim]
+        if (stats.count > 0) {
+          reconstructedData[tag][resourceKey][dim] = Number((stats.sum / stats.count).toFixed(4))
+          reconstructedData[tag][resourceKey][`${dim}_raw`] = stats.values
+        } else {
+          reconstructedData[tag][resourceKey][dim] = 0
+        }
+      })
+    })
+  })
+
+  return reconstructedData
 }
 
 const getMetricValue = (tag, device, metricName) => {

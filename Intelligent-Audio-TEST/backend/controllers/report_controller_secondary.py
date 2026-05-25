@@ -1,6 +1,6 @@
 from flask import request
 from backend.models.models import (
-    Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases,
+    Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase,
     ReportMetricStats, ReportComparisonMatrix, Task, TestResult, TestResultDimension,
     Dimension, TestCase, TaskCase, TaskDevice, TaskAPI, Device, API,
     ReportStatus, ReportType, TaskStatus
@@ -156,12 +156,23 @@ class ReportControllerSecondary(ReportControllerBase):
     def _get_source_cases_from_reports(reports):
         source_cases = []
         for report in reports:
-            cases_data = ReportCases.query.filter_by(report_id=report.id).first()
-            if cases_data and cases_data.cases:
-                if isinstance(cases_data.cases, list):
-                    source_cases.extend(cases_data.cases)
-                elif isinstance(cases_data.cases, str):
-                    source_cases.extend(json.loads(cases_data.cases))
+            case_records = ReportCase.query.filter_by(report_id=report.id).all()
+            for case_record in case_records:
+                case_item = {
+                    "id": case_record.test_case_id,
+                    "name": case_record.name,
+                    "description": case_record.description or "",
+                    "category": case_record.category,
+                    "tags": case_record.tags or [],
+                    "metrics": case_record.metrics or {},
+                    "results": case_record.results or [],
+                    "audios": case_record.audios or [],
+                    "reference_params": case_record.reference_params,
+                    "algorithm_results": case_record.algorithm_results,
+                    "algorithm_type": case_record.algorithm_type,
+                    "logs": case_record.logs
+                }
+                source_cases.append(case_item)
         return source_cases
 
     @staticmethod
@@ -209,11 +220,25 @@ class ReportControllerSecondary(ReportControllerBase):
         )
         db.session.add(raw_data_record)
 
-        cases_record = ReportCases(
-            report_id=new_report_id,
-            cases=json.dumps(source_cases, ensure_ascii=False)
-        )
-        db.session.add(cases_record)
+        for case_item in source_cases:
+            if not isinstance(case_item, dict):
+                continue
+            case_record = ReportCase(
+                report_id=new_report_id,
+                test_case_id=case_item.get('id'),
+                name=case_item.get('name'),
+                description=case_item.get('description'),
+                category=case_item.get('category'),
+                tags=case_item.get('tags'),
+                metrics=case_item.get('metrics'),
+                results=case_item.get('results'),
+                audios=case_item.get('audios'),
+                reference_params=case_item.get('reference_params'),
+                algorithm_results=case_item.get('algorithm_results'),
+                algorithm_type=case_item.get('algorithm_type'),
+                logs=case_item.get('logs')
+            )
+            db.session.add(case_record)
 
         metric_stats_record = ReportMetricStats(
             report_id=new_report_id,

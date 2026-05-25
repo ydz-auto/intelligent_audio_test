@@ -1,5 +1,5 @@
 from flask import request, send_file, current_app
-from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases, ReportMetricStats, ReportComparisonMatrix, Task, Audio
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, ReportComparisonMatrix, Task, Audio
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.report_utils import ReportUtils
@@ -427,9 +427,6 @@ class ReportControllerBase:
             "failed_cases": summary_info.failed_cases or 0
         }
 
-        if 'cases' in simplified_summary:
-            del simplified_summary['cases']
-
         return success_response(
             ReportDetailData(
                 id=report.id,
@@ -458,21 +455,7 @@ class ReportControllerBase:
         query_params_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
         query_params = ReportCaseListQuery.model_validate(query_params_dict)
 
-        cases_data = ReportCases.query.filter_by(report_id=report.id).first()
-        if not cases_data:
-            return error_response("报告数据未迁移，请先运行迁移脚本", 500)
-
-        def to_json(val):
-            if val is None:
-                return []
-            if isinstance(val, list):
-                return val
-            if isinstance(val, str):
-                import json
-                return json.loads(val)
-            return []
-
-        cases = to_json(cases_data.cases)
+        query = ReportCase.query.filter_by(report_id=report.id)
 
         keyword = query_params.keyword
         category = query_params.category
@@ -485,55 +468,48 @@ class ReportControllerBase:
         
         if keyword:
             kw = str(keyword).lower()
-            cases = [
-                c for c in cases
-                if isinstance(c, dict)
-                and (
-                    kw in str(c.get('name', '')).lower()
-                    or kw in str(c.get('description', '')).lower()
+            query = query.filter(
+                db.or_(
+                    db.func.lower(ReportCase.name).contains(kw),
+                    db.func.lower(ReportCase.description).contains(kw)
                 )
-            ]
+            )
         
         if category:
-            cases = [
-                c for c in cases
-                if isinstance(c, dict) and str(c.get('category', '')) == str(category)
-            ]
+            query = query.filter(ReportCase.category == str(category))
         
         if tags:
-            tag_set = set(str(t) for t in tags)
-            filtered = []
-            for c in cases:
-                if not isinstance(c, dict):
-                    continue
-                case_tags = c.get('tags') or []
-                case_tag_names = []
-                if isinstance(case_tags, list):
-                    for t in case_tags:
-                        case_tag_names.append(str(t.get('name')) if isinstance(t, dict) else str(t))
-                if tag_set.intersection(case_tag_names):
-                    filtered.append(c)
-            cases = filtered
+            for tag in tags:
+                query = query.filter(ReportCase.tags.contains([tag]))
         
-        # 分页参数
         page = query_params.page
         per_page = query_params.per_page
         
-        # 计算分页
-        total = len(cases)
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated_cases = cases[start:end]
+        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
         
-        # 计算总页数
-        pages = (total + per_page - 1) // per_page
+        items = []
+        for case in paginated.items:
+            items.append({
+                "id": case.test_case_id,
+                "name": case.name,
+                "description": case.description or "",
+                "category": case.category,
+                "tags": case.tags or [],
+                "metrics": case.metrics or {},
+                "results": case.results or [],
+                "audios": case.audios or [],
+                "referenceParams": case.reference_params,
+                "algorithmResults": case.algorithm_results,
+                "algorithmType": case.algorithm_type,
+                "logs": case.logs
+            })
         
         return success_response({
-            "items": paginated_cases,
-            "total": total,
+            "items": items,
+            "total": paginated.total,
             "page": page,
-            "per_page": per_page,
-            "pages": pages
+            "perPage": per_page,
+            "pages": paginated.pages
         })
 
     @staticmethod
@@ -681,62 +657,33 @@ class ReportControllerBase:
         else:
             tags = [t.strip() for t in str(raw_tags).split(',') if t.strip()]
 
-        cases_data = ReportCases.query.filter_by(report_id=report.id).first()
-        if not cases_data:
-            return error_response("报告数据未迁移，请先运行迁移脚本", 500)
+        query = ReportCase.query.filter_by(report_id=report.id)
 
-        def to_json_cases(val):
-            if val is None:
-                return []
-            if isinstance(val, list):
-                return val
-            if isinstance(val, str):
-                import json
-                return json.loads(val)
-            return []
-
-        cases = to_json_cases(cases_data.cases)
-
-        # 应用筛选条件
         if keyword:
             kw = str(keyword).lower()
-            cases = [
-                c for c in cases
-                if isinstance(c, dict)
-                and (
-                    kw in str(c.get('name', '')).lower()
-                    or kw in str(c.get('description', '')).lower()
+            query = query.filter(
+                db.or_(
+                    db.func.lower(ReportCase.name).contains(kw),
+                    db.func.lower(ReportCase.description).contains(kw)
                 )
-            ]
+            )
         
         if category:
-            cases = [
-                c for c in cases
-                if isinstance(c, dict) and str(c.get('category', '')) == str(category)
-            ]
+            query = query.filter(ReportCase.category == str(category))
         
         if tags or include_untagged:
             tag_set = set(str(t) for t in tags)
-            filtered = []
-            for c in cases:
-                if not isinstance(c, dict):
-                    continue
-                case_tags = c.get('tags') or []
-                case_tag_names = []
-                if isinstance(case_tags, list):
-                    for t in case_tags:
-                        case_tag_names.append(str(t.get('name')) if isinstance(t, dict) else str(t))
-                
-                is_untagged = len(case_tag_names) == 0
-                has_tag_match = bool(tag_set.intersection(case_tag_names)) if tag_set else False
-                
-                if include_untagged:
-                    if (tag_set and (has_tag_match or is_untagged)) or (not tag_set and is_untagged):
-                        filtered.append(c)
-                else:
-                    if has_tag_match:
-                        filtered.append(c)
-            cases = filtered
+            if include_untagged and not tag_set:
+                query = query.filter(
+                    db.or_(
+                        ReportCase.tags == None,
+                        ReportCase.tags == [],
+                        db.func.json_length(ReportCase.tags) == 0
+                    )
+                )
+            elif tag_set:
+                for tag in tags:
+                    query = query.filter(ReportCase.tags.contains([tag]))
         
         page = data.page
         per_page = data.per_page
@@ -745,16 +692,29 @@ class ReportControllerBase:
         if per_page < 1:
             per_page = 20
         
-        total = len(cases)
-        start = (page - 1) * per_page
-        end = start + per_page
-        paginated_cases = cases[start:end]
-        pages = (total + per_page - 1) // per_page if total > 0 else 0
+        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+        
+        items = []
+        for case in paginated.items:
+            items.append({
+                "id": case.test_case_id,
+                "name": case.name,
+                "description": case.description or "",
+                "category": case.category,
+                "tags": case.tags or [],
+                "metrics": case.metrics or {},
+                "results": case.results or [],
+                "audios": case.audios or [],
+                "referenceParams": case.reference_params,
+                "algorithmResults": case.algorithm_results,
+                "algorithmType": case.algorithm_type,
+                "logs": case.logs
+            })
         
         return success_response({
-            "items": paginated_cases,
-            "total": total,
+            "items": items,
+            "total": paginated.total,
             "page": page,
-            "per_page": per_page,
-            "pages": pages
+            "perPage": per_page,
+            "pages": paginated.pages
         })

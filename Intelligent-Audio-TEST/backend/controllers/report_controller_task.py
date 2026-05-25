@@ -1,5 +1,5 @@
 from flask import request
-from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, ReportStatus, ReportType, TaskStatus
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
 from backend.utils.response import success_response, error_response
 from backend.utils.error_codes import ErrorCode
@@ -228,7 +228,7 @@ class ReportControllerTask(ReportControllerBase):
                 "name": test_case.name,
                 "description": test_case.description or "",
                 "category": test_case.group.name if test_case.group else "未分类",
-                "tags": [tag.name for tag in (getattr(test_case, 'tags', []) or [])],
+                "tags": [{"name": tag.name} for tag in (getattr(test_case, 'tags', []) or [])],
                 "metrics": metrics_list,
                 "results": [],
                 "audios": audios_list,
@@ -498,7 +498,7 @@ class ReportControllerTask(ReportControllerBase):
         return all_metrics
 
     @staticmethod
-    def _create_report_record(name, task_id, summary, description, cases):
+    def _create_report_record(name, task_id, description):
         new_report = Report(
             name=name,
             type=ReportType.TASK.value,
@@ -550,11 +550,28 @@ class ReportControllerTask(ReportControllerBase):
         )
         db.session.add(raw_data_record)
 
-        cases_record = ReportCases(
-            report_id=report_id,
-            cases=json.dumps(summary.get('cases', []), ensure_ascii=False)
-        )
-        db.session.add(cases_record)
+        cases = summary.get('cases', [])
+        if isinstance(cases, str):
+            cases = json.loads(cases)
+        for case_item in cases:
+            if not isinstance(case_item, dict):
+                continue
+            case_record = ReportCase(
+                report_id=report_id,
+                test_case_id=case_item.get('id'),
+                name=case_item.get('name'),
+                description=case_item.get('description'),
+                category=case_item.get('category'),
+                tags=case_item.get('tags'),
+                metrics=case_item.get('metrics'),
+                results=case_item.get('results'),
+                audios=case_item.get('audios'),
+                reference_params=case_item.get('reference_params'),
+                algorithm_results=case_item.get('algorithm_results'),
+                algorithm_type=case_item.get('algorithm_type'),
+                logs=case_item.get('logs')
+            )
+            db.session.add(case_record)
 
         metric_stats_record = ReportMetricStats(
             report_id=report_id,
@@ -567,10 +584,10 @@ class ReportControllerTask(ReportControllerBase):
         )
         db.session.add(metric_stats_record)
         
-        return raw_data_record, cases_record, metric_stats_record
+        return raw_data_record, metric_stats_record
 
     @staticmethod
-    def _build_response(report, task, summary_info, summary_meta, raw_data_record, cases_record, metric_stats_record):
+    def _build_response(report, task, summary_info, summary_meta, raw_data_record, metric_stats_record):
         def to_json(val):
             if val is None:
                 return []
@@ -826,13 +843,13 @@ class ReportControllerTask(ReportControllerBase):
                 
                 summary = ReportUtils.normalize_summary_metrics(summary)
 
-                new_report = ReportControllerTask._create_report_record(name, task_id, summary, description, cases)
+                new_report = ReportControllerTask._create_report_record(name, task_id, description)
                 log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created report id={new_report.id}', task_id=task_id)
                 
                 summary_info, summary_meta = ReportControllerTask._create_report_summary(new_report.id, task, summary)
                 log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created summary_info id={summary_info.id}, report_id={summary_info.report_id}', task_id=task_id)
                 
-                raw_data_record, cases_record, metric_stats_record = ReportControllerTask._create_report_detail_data(new_report.id, summary)
+                raw_data_record, metric_stats_record = ReportControllerTask._create_report_detail_data(new_report.id, summary)
                 log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report.id}', task_id=task_id)
 
                 report_id = new_report.id

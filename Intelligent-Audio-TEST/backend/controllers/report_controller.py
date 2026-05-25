@@ -1,5 +1,5 @@
 from flask import request, send_file, Response, stream_with_context, jsonify
-from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCases, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
+from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
 from backend.models.database import db
 from backend.utils.response import success_response, error_response, format_response
 from backend.utils.error_codes import ErrorCode

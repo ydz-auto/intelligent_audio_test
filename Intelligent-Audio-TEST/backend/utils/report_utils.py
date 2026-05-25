@@ -788,8 +788,8 @@ class ReportUtils:
                 by_category = by_resource["categories"].setdefault(
                     category_id,
                     {
-                        "category_id": category_id,
-                        "category_name": str(category_name) if category_name is not None else category_id_to_name.get(category_id, category_id),
+                        "categoryId": category_id,
+                        "categoryName": str(category_name) if category_name is not None else category_id_to_name.get(category_id, category_id),
                         "metrics": {},
                     },
                 )
@@ -822,8 +822,8 @@ class ReportUtils:
                     ]
                     categories.append(
                         {
-                            "category_id": c["category_id"],
-                            "category_name": c["category_name"],
+                            "categoryId": c["categoryId"],
+                            "categoryName": c["categoryName"],
                             "metrics": metrics,
                         }
                     )
@@ -847,7 +847,7 @@ class ReportUtils:
                 by_resource = grouped.setdefault(str(resource), {"resource": str(resource), "categories": {}})
                 by_category = by_resource["categories"].setdefault(
                     category_id,
-                    {"category_id": category_id, "category_name": category_name, "metrics": {}},
+                    {"categoryId": category_id, "categoryName": category_name, "metrics": {}},
                 )
                 for metric in sorted(resource_metrics.keys(), key=lambda x: str(x)):
                     value = resource_metrics.get(metric)
@@ -865,7 +865,7 @@ class ReportUtils:
                     {"id": metric_name_to_id.get(k), "metric": k, "value": v}
                     for k, v in sorted(c["metrics"].items(), key=lambda kv: kv[0])
                 ]
-                categories.append({"category_id": c["category_id"], "category_name": c["category_name"], "metrics": metrics})
+                categories.append({"categoryId": c["categoryId"], "categoryName": c["categoryName"], "metrics": metrics})
             out.append({"resource": resource, "categories": categories})
         return out
     

@@ -593,7 +593,7 @@ class Report(db.Model):
     summary_info = relationship('ReportSummary', backref='report', uselist=False, lazy='select', passive_deletes=True)
     summary_meta = relationship('ReportSummaryMeta', backref='report', uselist=False, lazy='select', passive_deletes=True)
     raw_data = relationship('ReportRawData', backref='report', uselist=False, lazy='select', passive_deletes=True)
-    cases_data = relationship('ReportCases', backref='report', uselist=False, lazy='select', passive_deletes=True)
+    cases = relationship('ReportCase', backref='report', lazy='dynamic', passive_deletes=True)
     metric_stats = relationship('ReportMetricStats', backref='report', uselist=False, lazy='select', passive_deletes=True)
     comparison_matrix_data = relationship('ReportComparisonMatrix', backref='report', uselist=False, lazy='select', passive_deletes=True)
 
@@ -662,19 +662,32 @@ class ReportRawData(db.Model):
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 
 
-class ReportCases(db.Model):
+class ReportCase(db.Model):
     """
-    报告用例数据模型 (Report Cases Model)
-    存储报告的用例详情列表，按需加载。
-    与 Report 一对一关联。
+    报告用例数据模型 (Report Case Model)
+    存储报告的单个用例详情，一个 case 一行记录。
+    与 Report 多对一关联。
     """
     __tablename__ = 'report_cases'
     __table_args__ = (
         Index('idx_report_cases_report_id', 'report_id'),
+        Index('idx_report_cases_test_case_id', 'test_case_id'),
+        Index('idx_report_cases_category', 'category'),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='用例数据唯一ID')
-    report_id = Column(BigInteger, ForeignKey('test_reports.id', ondelete='CASCADE'), nullable=False, unique=True, comment='关联报告ID')
-    cases = Column(JSON, comment='用例详情列表')
+    report_id = Column(BigInteger, ForeignKey('test_reports.id', ondelete='CASCADE'), nullable=False, comment='关联报告ID')
+    test_case_id = Column(String(50), comment='关联测试用例ID')
+    name = Column(String(500), comment='用例名称')
+    description = Column(Text, comment='用例描述')
+    category = Column(String(255), comment='用例分组')
+    tags = Column(JSON, comment='用例标签列表')
+    metrics = Column(JSON, comment='指标数据 {resource: {dim_name: value}}')
+    results = Column(JSON, comment='执行结果列表')
+    audios = Column(JSON, comment='音频列表')
+    reference_params = Column(JSON, comment='参考参数')
+    algorithm_results = Column(JSON, comment='算法结果')
+    algorithm_type = Column(String(100), comment='算法类型')
+    logs = Column(Text, comment='日志')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 

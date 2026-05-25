@@ -261,7 +261,7 @@
               </div>
               <div class="case-tags-container" v-if="caseItem.tags && caseItem.tags.length > 0">
                 <div class="case-tags">
-                  <span v-for="tag in caseItem.tags" :key="tag" class="tag">{{ tag }}</span>
+                  <span v-for="tag in caseItem.tags" :key="typeof tag === 'object' ? tag.name : tag" class="tag">{{ typeof tag === 'object' ? tag.name : tag }}</span>
                 </div>
               </div>
             </div>
@@ -1245,7 +1245,11 @@ const filteredCases = computed(() => {
     // Tag filter - if all tags are selected, match all cases
     const allTagsSelected = selectedTags.value.length === allTags.value.length
     const tagMatch = allTagsSelected || selectedTags.value.length === 0 || 
-      selectedTags.value.some(tag => caseItem.tags && caseItem.tags.includes(tag))
+      selectedTags.value.some(tag => {
+        if (!caseItem.tags) return false
+        const tagNames = caseItem.tags.map(t => typeof t === 'object' ? t.name : t)
+        return tagNames.includes(tag)
+      })
     
     // Metric filter - if all metrics are selected, match all cases
     const allMetricsSelected = selectedMetrics.value.length === actualAllMetrics.value.length
@@ -1283,8 +1287,10 @@ const filteredCases = computed(() => {
           break
         case 'tags':
           // Sort by the first tag in alphabetical order
-          aVal = (a.tags && a.tags.length > 0) ? a.tags[0].toLowerCase() : ''
-          bVal = (b.tags && b.tags.length > 0) ? b.tags[0].toLowerCase() : ''
+          const aTags = a.tags ? a.tags.map(t => typeof t === 'object' ? t.name : t) : []
+          const bTags = b.tags ? b.tags.map(t => typeof t === 'object' ? t.name : t) : []
+          aVal = aTags.length > 0 ? aTags[0].toLowerCase() : ''
+          bVal = bTags.length > 0 ? bTags[0].toLowerCase() : ''
           break
         case 'createdAt':
           // 使用startTime作为createdAt的代理
