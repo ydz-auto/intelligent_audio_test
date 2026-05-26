@@ -492,11 +492,17 @@ class ReportUtils:
         if not isinstance(items, list):
             return mapping
         for item in items:
-            if isinstance(item, dict) and item.get('id') is not None:
-                key = str(item.get('id'))
-                name = item.get('name')
-                if name is not None:
-                    mapping[key] = str(name)
+            if isinstance(item, dict):
+                if item.get('id') is not None:
+                    key = str(item.get('id'))
+                    name = item.get('name')
+                    if name is not None:
+                        mapping[key] = str(name)
+                elif item.get('name') is not None:
+                    name = str(item.get('name'))
+                    mapping[name] = name
+            elif isinstance(item, str):
+                mapping[item] = item
         return mapping
 
     @staticmethod
@@ -962,16 +968,16 @@ class ReportUtils:
             tag_data = tag_metric_data.get(tag_key)
             if not isinstance(tag_data, dict):
                 continue
-            tag_id = str(tag_key)
-            tag_name = tag_id_to_name.get(tag_id, tag_id)
+            tag_key_str = str(tag_key)
+            tag_name = tag_id_to_name.get(tag_key_str) or tag_key_str
             for resource in sorted(tag_data.keys(), key=lambda x: str(x)):
                 resource_metrics = tag_data.get(resource)
                 if not isinstance(resource_metrics, dict):
                     continue
                 by_resource = grouped.setdefault(str(resource), {"resource": str(resource), "tags": {}})
                 by_tag = by_resource["tags"].setdefault(
-                    tag_id,
-                    {"tag_id": tag_id, "tag_name": tag_name, "metrics": {}},
+                    tag_key_str,
+                    {"tag_id": tag_key_str, "tag_name": tag_name, "metrics": {}},
                 )
                 for metric in sorted(resource_metrics.keys(), key=lambda x: str(x)):
                     value = resource_metrics.get(metric)
@@ -983,8 +989,8 @@ class ReportUtils:
         for resource in sorted(grouped.keys(), key=lambda x: str(x)):
             tag_map = grouped[resource]["tags"]
             tags = []
-            for tag_id in sorted(tag_map.keys(), key=lambda x: str(x)):
-                t = tag_map[tag_id]
+            for tag_key in sorted(tag_map.keys(), key=lambda x: str(x)):
+                t = tag_map[tag_key]
                 metrics = [
                     {"id": metric_name_to_id.get(k), "metric": k, "value": v}
                     for k, v in sorted(t["metrics"].items(), key=lambda kv: kv[0])

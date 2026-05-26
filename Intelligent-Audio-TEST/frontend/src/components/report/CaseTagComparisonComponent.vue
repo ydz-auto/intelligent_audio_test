@@ -442,7 +442,7 @@ const extractInitialTagMetricData = (reportData) => {
         const resourceKey = row.resource || '0-默认资源';
         row.tags.forEach(t => {
           if (!t) return;
-          const tag = t.tagName || t.tagId || '未标记';
+          const tag = t.tagName || t.tag_name || t.tagId || t.tag_id || '未标记';
           if (!mergedData[tag]) mergedData[tag] = {};
           if (!mergedData[tag][resourceKey]) mergedData[tag][resourceKey] = {};
           (t.metrics || []).forEach(m => {
@@ -451,7 +451,7 @@ const extractInitialTagMetricData = (reportData) => {
           });
         });
       } else {
-        const tag = row.tagName || row.tagId || '未标记';
+        const tag = row.tagName || row.tag_name || row.tagId || row.tag_id || '未标记';
         const resourceKey = row.resource || '0-默认资源';
         if (!mergedData[tag]) mergedData[tag] = {};
         if (!mergedData[tag][resourceKey]) mergedData[tag][resourceKey] = {};
