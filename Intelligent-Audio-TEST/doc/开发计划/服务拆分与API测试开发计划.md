@@ -68,83 +68,85 @@
 
 | 阶段 | 内容 | 时间 |
 |------|------|------|
-| 阶段一 | 服务拆分实施 | 第1周 |
-| 阶段二 | API Test Service完善 | 第2周 |
-| 阶段三 | API测试功能开发 | 第3周 |
-| 阶段四 | 集成测试与优化 | 第4周 |
+| 阶段一 | API测试功能开发 | 第1周 |
+| 阶段二 | 适配器服务完善 | 第2周 |
+| 阶段三 | 功能联调与测试 | 第3周 |
+| 阶段四 | 服务拆分实施 | 第4周 |
+
+**优先级说明:**
+- 先在现有单体架构中完成API测试功能开发和调通
+- 确保功能正常后再进行服务拆分
+- 降低风险，先验证功能再重构架构
 
 ---
 
-## 2. 阶段一: 服务拆分实施 (第1周)
+## 2. 阶段一: API测试功能开发 (第1周)
 
-### 2.1 Day 1-2: 服务注册与发现
+**目标: 在现有单体架构中完成API测试功能开发和调通**
+
+### 2.1 Day 1-2: 后端API测试功能
 
 | 任务 | 文件 | 说明 |
 |------|------|------|
-| 创建服务注册表 | `models/models.py` | ServiceRegistry模型 |
-| 实现服务发现 | `shared/utils/service_discovery.py` | 服务发现与负载均衡 |
-| 实现服务管理API | `blueprints/service_bp.py` | 服务CRUD、心跳 |
-| 实现健康检查 | 各服务 `/internal/health` | 健康检查接口 |
+| API配置管理完善 | `controllers/api_controller.py` | CRUD完善 |
+| API测试执行接口 | `controllers/api_test_controller.py` | 新增执行接口 |
+| 测试任务管理 | `controllers/task_controller.py` | 任务状态管理 |
+| 结果收集与存储 | `services/api_result_service.py` | 结果处理 |
+| WebSocket进度推送 | `blueprints/ws_bp.py` | 实时推送 |
 
-### 2.2 Day 3-4: 服务拆分
+### 2.2 Day 3-4: 前端API测试页面
 
-| 任务 | 源文件 | 目标位置 | 说明 |
-|------|--------|----------|------|
-| **拆分API Gateway** | `app.py` | `api_gateway/` | 保留路由、认证、限流 |
-| **拆分Task Service** | `execution_engine.py` | `task_service/` | 任务调度、分发 |
-| **拆分E2E Test Service** | `e2e_executor.py`, `device_driver/` | `e2e_test_service/` | 设备驱动、音频播放 |
-| **整合API Test Service** | `api_executor.py`, `api_adaper_service/` | `api_test_service/` | API测试执行 |
+| 任务 | 文件 | 说明 |
+|------|------|------|
+| API管理页面 | `views/APITest/ApiManage.vue` | API配置管理 |
+| 测试配置页面 | `views/APITest/TestConfig.vue` | 测试参数配置 |
+| 测试执行页面 | `views/APITest/TestExecution.vue` | 执行监控 |
+| 结果展示页面 | `views/APITest/TestResult.vue` | 结果分析 |
+| 对比分析页面 | `views/APITest/Comparison.vue` | 多API对比 |
 
-### 2.3 Day 5: 服务间通信
+### 2.3 Day 5: 功能联调
 
 | 任务 | 说明 |
 |------|------|
-| gRPC接口定义 | E2E Test Service gRPC接口 |
-| HTTP客户端封装 | Task Service调用API Test Service |
-| WebSocket聚合 | API Gateway聚合各服务推送 |
-| Redis Pub/Sub | 进度推送、日志推送 |
+| 前后端联调 | 接口对接 |
+| WebSocket联调 | 实时通信 |
+| 功能测试 | 端到端测试 |
 
 ---
 
-## 3. 阶段二: API Test Service完善 (第2周)
+## 3. 阶段二: 适配器服务完善 (第2周)
 
-### 3.1 API Test Service架构
+**目标: 完善api_adaper_service，支持多厂商API调用**
+
+### 3.1 适配器服务架构
 
 ```
-api_test_service/
+api_adaper_service/
 ├── app/
-│   ├── main.py                    # Flask入口
-│   └── config.py                  # 配置
-├── core/
-│   ├── api_executor.py            # API执行器
-│   ├── api_driver.py              # API驱动
-│   ├── api_client.py              # API客户端
-│   ├── concurrent_controller.py   # 并发控制器 (新增)
-│   └── health_monitor.py          # 健康监控 (新增)
-├── adapters/                       # 从api_adaper_service整合
+│   └── main.py                    # Flask入口
+├── adapters/
 │   ├── base/
-│   │   ├── base_adapter.py
-│   │   ├── asr_adapter.py
-│   │   └── llm_adapter.py
+│   │   ├── base_adapter.py        # 适配器基类
+│   │   ├── asr_adapter.py         # ASR适配器基类
+│   │   └── llm_adapter.py         # LLM适配器基类
 │   ├── volcengine/
-│   │   ├── volc_asr_adapter.py
-│   │   └── volc_ast_adapter.py
+│   │   ├── volc_asr_adapter.py    # 火山引擎ASR
+│   │   └── volc_ast_adapter.py    # 火山引擎AST
 │   ├── aliyun/
-│   │   ├── bailian_asr_adapter.py
-│   │   └── qwen_ast_adapter.py
+│   │   ├── bailian_asr_adapter.py # 阿里云百炼ASR
+│   │   └── qwen_ast_adapter.py    # 通义千问AST
 │   └── openai/
-│       ├── openai_adapter.py
-│       └── whisper_adapter.py
+│       ├── openai_adapter.py      # OpenAI (支持中转站)
+│       └── whisper_adapter.py     # Whisper ASR
 ├── models/
-│   ├── execution_config.py
-│   └── api_response.py
+│   ├── execution_config.py        # 执行配置
+│   └── api_response.py            # 响应模型
 ├── services/
-│   ├── adapter_factory.py
-│   └── task_manager.py
-├── blueprints/
-│   ├── execute_bp.py              # 执行接口
-│   └── health_bp.py               # 健康检查
-└── requirements.txt
+│   ├── adapter_factory.py         # 适配器工厂
+│   └── task_manager.py            # 任务管理
+└── blueprints/
+    ├── execute_bp.py              # 执行接口
+    └── health_bp.py               # 健康检查
 ```
 
 ### 3.2 Day 1-2: 适配器框架完善
@@ -168,97 +170,99 @@ api_test_service/
 | 火山引擎AST适配器 | `adapters/volcengine/volc_ast_adapter.py` | P1 |
 | 通义千问AST适配器 | `adapters/aliyun/qwen_ast_adapter.py` | P1 |
 
-### 3.4 Day 5: 服务接口实现
+### 3.4 Day 5: 服务接口完善
 
 | 任务 | 文件 | 说明 |
 |------|------|------|
-| 执行接口 | `blueprints/execute_bp.py` | POST /execute |
+| 执行接口 | `blueprints/execute_bp.py` | POST /api/execute |
 | 健康检查 | `blueprints/health_bp.py` | GET /internal/health |
-| 适配器列表 | `blueprints/execute_bp.py` | GET /adapters |
-| 心跳上报 | `app/main.py` | 定时心跳到API Gateway |
+| 适配器列表 | `blueprints/execute_bp.py` | GET /api/adapters |
+| 主服务集成 | `backend/utils/api_driver.py` | 调用适配器服务 |
 
 ---
 
-## 4. 阶段三: API测试功能开发 (第3周)
+## 4. 阶段三: 功能联调与测试 (第3周)
 
-### 4.1 Day 1-2: 后端API测试功能
-
-| 任务 | 文件 | 说明 |
-|------|------|------|
-| API配置管理完善 | `api_gateway/controllers/api_controller.py` | CRUD完善 |
-| API测试执行接口 | `api_gateway/controllers/api_test_controller.py` | 新增 |
-| 测试任务管理 | `task_service/controllers/task_controller.py` | 任务状态管理 |
-| 结果收集与存储 | `task_service/services/result_service.py` | 结果处理 |
-| WebSocket进度推送 | `api_gateway/blueprints/ws_bp.py` | 实时推送 |
-
-### 4.2 Day 3-4: 前端API测试页面
-
-| 任务 | 文件 | 说明 |
-|------|------|------|
-| API管理页面 | `views/APITest/ApiManage.vue` | API配置管理 |
-| 测试配置页面 | `views/APITest/TestConfig.vue` | 测试参数配置 |
-| 测试执行页面 | `views/APITest/TestExecution.vue` | 执行监控 |
-| 结果展示页面 | `views/APITest/TestResult.vue` | 结果分析 |
-| 对比分析页面 | `views/APITest/Comparison.vue` | 多API对比 |
-
-### 4.3 Day 5: 功能联调
+### 4.1 Day 1-2: 主服务与适配器服务联调
 
 | 任务 | 说明 |
 |------|------|
-| 前后端联调 | 接口对接 |
-| WebSocket联调 | 实时通信 |
-| 功能测试 | 端到端测试 |
+| 配置传递测试 | 主服务构建ExecutionConfig传递给适配器 |
+| 执行流程测试 | 完整API测试执行流程 |
+| 结果解析测试 | 响应结果正确解析和存储 |
+| 错误处理测试 | 异常场景处理 |
 
----
-
-## 5. 阶段四: 集成测试与优化 (第4周)
-
-### 5.1 Day 1-2: 集成测试
+### 4.2 Day 2-3: 端到端测试
 
 | 任务 | 说明 |
 |------|------|
-| 服务间通信测试 | API Gateway ↔ Task Service ↔ API Test Service |
-| gRPC通信测试 | Task Service ↔ E2E Test Service |
-| 端到端测试 | 完整测试流程 |
-| 性能测试 | 并发、压力测试 |
+| 火山引擎ASR测试 | 使用真实音频测试 |
+| 阿里云百炼ASR测试 | 使用真实音频测试 |
+| OpenAI测试 | 直连和中转站测试 |
+| 多API对比测试 | 多个API同时测试对比 |
 
-### 5.2 Day 3-4: 优化与修复
+### 4.3 Day 4-5: 性能测试与优化
 
 | 任务 | 说明 |
 |------|------|
-| 性能优化 | 响应时间、并发处理 |
+| 并发测试 | 多任务并发执行 |
+| 性能优化 | 响应时间优化 |
 | Bug修复 | 测试发现的问题 |
-| 代码重构 | 优化代码结构 |
-| 文档完善 | API文档、部署文档 |
+| 文档完善 | 使用文档 |
 
-### 5.3 Day 5: 部署与交付
+---
+
+## 5. 阶段四: 服务拆分实施 (第4周)
+
+**前提: API测试功能已开发和调通**
+
+### 5.1 Day 1-2: 服务注册与发现
+
+| 任务 | 文件 | 说明 |
+|------|------|------|
+| 创建服务注册表 | `models/models.py` | ServiceRegistry模型 |
+| 实现服务发现 | `shared/utils/service_discovery.py` | 服务发现与负载均衡 |
+| 实现服务管理API | `blueprints/service_bp.py` | 服务CRUD、心跳 |
+| 实现健康检查 | 各服务 `/internal/health` | 健康检查接口 |
+
+### 5.2 Day 3-4: 服务拆分
+
+| 任务 | 源文件 | 目标位置 | 说明 |
+|------|--------|----------|------|
+| **拆分API Gateway** | `app.py` | `api_gateway/` | 保留路由、认证、限流 |
+| **拆分Task Service** | `execution_engine.py` | `task_service/` | 任务调度、分发 |
+| **拆分E2E Test Service** | `e2e_executor.py`, `device_driver/` | `e2e_test_service/` | 设备驱动、音频播放 |
+| **整合API Test Service** | `api_executor.py`, `api_adaper_service/` | `api_test_service/` | API测试执行 |
+
+### 5.3 Day 5: 服务间通信与部署
 
 | 任务 | 说明 |
 |------|------|
+| gRPC接口定义 | E2E Test Service gRPC接口 |
+| HTTP客户端封装 | Task Service调用API Test Service |
+| WebSocket聚合 | API Gateway聚合各服务推送 |
 | Docker配置 | 各服务Dockerfile |
 | Docker Compose | 本地开发环境 |
-| 部署文档 | 部署指南 |
-| 功能验收 | 功能验收测试 |
 
 ---
 
 ## 6. 详细任务清单
 
-### 6.1 服务拆分任务 (阶段一)
+### 6.1 API测试功能任务 (阶段一)
 
-| ID | 任务 | 服务 | 优先级 | 状态 |
+| ID | 任务 | 文件 | 优先级 | 状态 |
 |----|------|------|--------|------|
-| S1 | 创建ServiceRegistry模型 | 共享 | P0 | 待开发 |
-| S2 | 实现服务发现模块 | 共享 | P0 | 待开发 |
-| S3 | 实现服务管理API | API Gateway | P0 | 待开发 |
-| S4 | 拆分API Gateway | API Gateway | P0 | 待开发 |
-| S5 | 拆分Task Service | Task Service | P0 | 待开发 |
-| S6 | 拆分E2E Test Service | E2E Test Service | P1 | 待开发 |
-| S7 | 整合API Test Service | API Test Service | P0 | 待开发 |
-| S8 | gRPC接口定义 | E2E Test Service | P1 | 待开发 |
-| S9 | WebSocket聚合 | API Gateway | P1 | 待开发 |
+| T1 | API配置管理完善 | `controllers/api_controller.py` | P0 | 待开发 |
+| T2 | API测试执行接口 | `controllers/api_test_controller.py` | P0 | 待开发 |
+| T3 | 测试结果存储 | `services/api_result_service.py` | P0 | 待开发 |
+| T4 | WebSocket进度推送 | `blueprints/ws_bp.py` | P0 | 待开发 |
+| T5 | API管理页面 | `views/APITest/ApiManage.vue` | P0 | 待开发 |
+| T6 | 测试执行页面 | `views/APITest/TestExecution.vue` | P0 | 待开发 |
+| T7 | 结果展示页面 | `views/APITest/TestResult.vue` | P0 | 待开发 |
+| T8 | 测试配置页面 | `views/APITest/TestConfig.vue` | P1 | 待开发 |
+| T9 | 对比分析页面 | `views/APITest/Comparison.vue` | P1 | 待开发 |
 
-### 6.2 API Test Service任务 (阶段二)
+### 6.2 适配器服务任务 (阶段二)
 
 | ID | 任务 | 文件 | 优先级 | 状态 |
 |----|------|------|--------|------|
@@ -271,21 +275,34 @@ api_test_service/
 | A7 | OpenAI适配器 | `adapters/openai/openai_adapter.py` | P0 | 待开发 |
 | A8 | 火山引擎AST适配器 | `adapters/volcengine/volc_ast_adapter.py` | P1 | 待开发 |
 | A9 | 通义千问AST适配器 | `adapters/aliyun/qwen_ast_adapter.py` | P1 | 待开发 |
-| A10 | 并发控制器 | `core/concurrent_controller.py` | P1 | 待开发 |
-| A11 | 健康监控 | `core/health_monitor.py` | P2 | 待开发 |
+| A10 | 主服务集成适配器 | `backend/utils/api_driver.py` | P0 | 待开发 |
 
-### 6.3 API测试功能任务 (阶段三)
+### 6.3 功能联调任务 (阶段三)
 
-| ID | 任务 | 文件 | 优先级 | 状态 |
+| ID | 任务 | 说明 | 优先级 | 状态 |
 |----|------|------|--------|------|
-| T1 | API测试执行接口 | `api_gateway/controllers/api_test_controller.py` | P0 | 待开发 |
-| T2 | 测试结果存储 | `task_service/services/result_service.py` | P0 | 待开发 |
-| T3 | WebSocket进度推送 | `api_gateway/blueprints/ws_bp.py` | P0 | 待开发 |
-| T4 | API管理页面 | `views/APITest/ApiManage.vue` | P0 | 待开发 |
-| T5 | 测试执行页面 | `views/APITest/TestExecution.vue` | P0 | 待开发 |
-| T6 | 结果展示页面 | `views/APITest/TestResult.vue` | P0 | 待开发 |
-| T7 | 测试配置页面 | `views/APITest/TestConfig.vue` | P1 | 待开发 |
-| T8 | 对比分析页面 | `views/APITest/Comparison.vue` | P1 | 待开发 |
+| I1 | 配置传递测试 | 主服务构建ExecutionConfig传递给适配器 | P0 | 待开发 |
+| I2 | 执行流程测试 | 完整API测试执行流程 | P0 | 待开发 |
+| I3 | 火山引擎ASR测试 | 使用真实音频测试 | P0 | 待开发 |
+| I4 | 阿里云百炼ASR测试 | 使用真实音频测试 | P0 | 待开发 |
+| I5 | OpenAI测试 | 直连和中转站测试 | P0 | 待开发 |
+| I6 | 多API对比测试 | 多个API同时测试对比 | P1 | 待开发 |
+| I7 | 并发测试 | 多任务并发执行 | P1 | 待开发 |
+
+### 6.4 服务拆分任务 (阶段四)
+
+| ID | 任务 | 服务 | 优先级 | 状态 |
+|----|------|------|--------|------|
+| S1 | 创建ServiceRegistry模型 | 共享 | P0 | 待开发 |
+| S2 | 实现服务发现模块 | 共享 | P0 | 待开发 |
+| S3 | 实现服务管理API | API Gateway | P0 | 待开发 |
+| S4 | 拆分API Gateway | API Gateway | P0 | 待开发 |
+| S5 | 拆分Task Service | Task Service | P0 | 待开发 |
+| S6 | 拆分E2E Test Service | E2E Test Service | P1 | 待开发 |
+| S7 | 整合API Test Service | API Test Service | P0 | 待开发 |
+| S8 | gRPC接口定义 | E2E Test Service | P1 | 待开发 |
+| S9 | WebSocket聚合 | API Gateway | P1 | 待开发 |
+| S10 | Docker配置 | 各服务 | P1 | 待开发 |
 
 ---
 
