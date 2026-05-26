@@ -9,17 +9,6 @@
           </button>
         </div>
         <div class="modal-body">
-          <div class="scan-status" v-if="isScanning || scanError">
-            <div v-if="isScanning" class="scan-status-scanning">
-              <i class="fas fa-spinner fa-spin"></i>
-              <span>正在扫描可用设备...</span>
-            </div>
-            <div v-else-if="scanError" class="scan-status-error">
-              <i class="fas fa-exclamation-circle"></i>
-              <span>{{ scanError }}</span>
-            </div>
-          </div>
-
           <div class="form-section">
             <h4>选择播放模式 <span class="required">*</span></h4>
             <div class="radio-group">
@@ -33,47 +22,16 @@
               </label>
             </div>
             <p class="mode-description" v-if="previewConfig.playbackMode === 'frontend'">
-              <i class="fas fa-info-circle"></i> 音频将通过浏览器前端直接播放，无需选择设备
+              <i class="fas fa-info-circle"></i> 音频将通过浏览器前端直接播放
             </p>
             <p class="mode-description" v-else>
-              <i class="fas fa-info-circle"></i> 音频将通过选择的设备在后端播放，请选择播放设备
+              <i class="fas fa-info-circle"></i> 音频将通过用例配置中的播放设备在后端播放
             </p>
-          </div>
-
-          <div class="form-section" v-if="props.audioType === 'dry' && previewConfig.playbackMode === 'backend'">
-            <h4>选择播放设备 <span class="required">*</span></h4>
-            <div class="form-group">
-              <label for="playbackDevice">播放设备</label>
-              <select v-model="previewConfig.playbackDeviceId" class="form-control" required>
-                <option value="">请选择设备</option>
-                <option v-for="device in props.playbackDevices" 
-                        :key="device.id" 
-                        :value="device.id">
-                  {{ device.name }} (通道 {{ device.channelIndex }}) [{{ device.deviceType === 'dry' ? '干声' : device.deviceType === 'noise' ? '噪声' : device.deviceType || '未知' }}]
-                </option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-section" v-if="audioType === 'noise' && previewConfig.playbackMode === 'backend'">
-            <h4>选择噪声播放设备 <span class="required">*</span></h4>
-            
-            <div v-if="props.playbackDevices.length > 0" class="device-group">
-              <div class="checkbox-group">
-                <label v-for="device in props.playbackDevices" 
-                       :key="device.id" class="checkbox-item">
-                  <input type="checkbox" 
-                         :value="device.id" 
-                         v-model="previewConfig.noisePlaybackDeviceIds">
-                  <span>{{ device.name }} (通道 {{ device.channelIndex }}) [{{ device.deviceType === 'dry' ? '干声' : device.deviceType === 'noise' ? '噪声' : device.deviceType || '未知' }}]</span>
-                </label>
-              </div>
-            </div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" @click="handleClose">取消</button>
-          <button type="button" class="btn btn-primary" @click="handlePreview" :disabled="!isFormValid">
+          <button type="button" class="btn btn-primary" @click="handlePreview">
             <i class="fas fa-play"></i> 开始试听
           </button>
         </div>
@@ -83,8 +41,8 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { playbackApi, audiosApi } from '../../../utils/api';
+import { ref, watch, onUnmounted } from 'vue';
+import { audiosApi } from '../../../utils/api';
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
@@ -98,175 +56,45 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'preview']);
 
-const scanDevices = ref([]);
-const isScanning = ref(false);
-const scanError = ref('');
-
 const previewConfig = ref({
-  deviceUniqueIds: [],
-  playbackDeviceId: '',
-  noisePlaybackDeviceIds: [],
-  playbackMode: 'frontend',
-  spl: props.initialSpl,
-  offset: props.initialOffset
+  playbackMode: 'frontend'
 });
 
-watch(() => props.visible, async (newValue) => {
+watch(() => props.visible, (newValue) => {
   if (newValue) {
-    resetForm();
-    await scanAvailableDevices();
+    previewConfig.value.playbackMode = 'frontend';
   }
 });
 
-const scanAvailableDevices = async () => {
-  isScanning.value = true;
-  scanError.value = '';
-  
-  try {
-    const devices = await playbackApi.scan();
-    scanDevices.value = devices || [];
-  } catch (error) {
-    console.error('扫描设备失败:', error);
-    scanError.value = '扫描设备失败，请重试';
-    scanDevices.value = [];
-  } finally {
-    isScanning.value = false;
-  }
-};
-
-const filteredDevices = computed(() => {
-  const dbDeviceKeys = new Set(props.playbackDevices.map(device => `${device.name}|${device.channelIndex}`));
-  
-  const uniqueScanDevices = scanDevices.value.filter(scanDevice => {
-    const scanDeviceKey = `${scanDevice.name}|${scanDevice.channelIndex}`;
-    return !dbDeviceKeys.has(scanDeviceKey);
-  });
-  
-  if (props.audioType === 'dry') {
-    const dbDryDevices = props.playbackDevices.filter(device => device.deviceType === 'dry');
-    return [...dbDryDevices, ...uniqueScanDevices];
-  } else {
-    const dbNoiseDevices = props.playbackDevices.filter(device => device.deviceType === 'noise');
-    return [...dbNoiseDevices, ...uniqueScanDevices];
-  }
-});
-
-const isFormValid = computed(() => {
-  // 前端播放模式：只需要选择播放模式，不需要选择设备
-  if (previewConfig.value.playbackMode === 'frontend') {
-    return !!previewConfig.value.playbackMode;
-  }
-  
-  // 后端播放模式：需要选择播放模式和设备
-  if (previewConfig.value.playbackMode === 'backend') {
-    if (props.audioType === 'dry') {
-      return !!previewConfig.value.playbackDeviceId;
-    } else if (props.audioType === 'noise') {
-      return previewConfig.value.noisePlaybackDeviceIds.length > 0;
-    }
-  }
-  
-  return false;
-});
-
-const resetForm = () => {
-  console.log('[AudioPreviewModal] resetForm, initialSelectedDevices:', props.initialSelectedDevices);
-  const initialDevice = props.initialSelectedDevices.length > 0 ? props.initialSelectedDevices[0] : '';
-  console.log('[AudioPreviewModal] initialDevice:', initialDevice);
-  previewConfig.value = {
-    deviceUniqueIds: initialDevice ? [initialDevice] : [],
-    playbackDeviceId: initialDevice,
-    noisePlaybackDeviceIds: [...props.initialSelectedDevices],
-    playbackMode: previewConfig.value?.playbackMode || 'frontend',
-    spl: props.initialSpl,
-    offset: props.initialOffset
-  };
-  console.log('[AudioPreviewModal] previewConfig after reset:', previewConfig.value);
-};
-
-const stopPreview = async () => {
-  try {
-    console.log('[AudioPreviewModal] stopPreview called');
-    if (props.audioId && previewConfig.value.playbackMode === 'backend') {
-      console.log('[AudioPreviewModal] 后端播放模式，调用停止预览接口');
-      await audiosApi.stopPreview(props.audioId);
-      console.log('[AudioPreviewModal] 停止预览成功');
-    }
-  } catch (error) {
-    console.error('[AudioPreviewModal] 停止预览失败:', error);
-  }
-};
-
-const handleClose = async () => {
-  await stopPreview();
+const handleClose = () => {
   emit('close');
 };
 
-const handleKeyDown = async (event) => {
+const handleKeyDown = (event) => {
   if (event.key === 'Escape' && props.visible) {
-    await handleClose();
+    handleClose();
   }
 };
 
-watch(() => props.visible, async (newVal) => {
+watch(() => props.visible, (newVal) => {
   if (newVal) {
     window.addEventListener('keydown', handleKeyDown);
   } else {
     window.removeEventListener('keydown', handleKeyDown);
-    await stopPreview();
   }
 }, { immediate: true });
 
-onUnmounted(async () => {
+onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
-  await stopPreview();
 });
 
 const handlePreview = () => {
-  console.log('[AudioPreviewModal] handlePreview, previewConfig:', previewConfig.value);
-  
-  let deviceUniqueIds = [];
-  let playbackDeviceId = '';
-  let noisePlaybackDeviceIds = [];
-  
-  // 只有后端播放模式才需要收集设备信息
-  if (previewConfig.value.playbackMode === 'backend') {
-    console.log('[AudioPreviewModal] 后端播放模式，收集设备信息');
-    if (props.audioType === 'dry') {
-      if (previewConfig.value.playbackDeviceId) {
-        deviceUniqueIds = [previewConfig.value.playbackDeviceId];
-        playbackDeviceId = previewConfig.value.playbackDeviceId;
-        console.log('[AudioPreviewModal] 干声设备ID:', playbackDeviceId);
-      }
-    } else if (props.audioType === 'noise') {
-      deviceUniqueIds = [...previewConfig.value.noisePlaybackDeviceIds];
-      noisePlaybackDeviceIds = [...previewConfig.value.noisePlaybackDeviceIds];
-      console.log('[AudioPreviewModal] 噪声设备ID:', noisePlaybackDeviceIds);
-    }
-  } else {
-    console.log('[AudioPreviewModal] 前端播放模式，跳过设备收集');
-  }
-  
-  previewConfig.value.deviceUniqueIds = deviceUniqueIds;
-  
   const result = {
     audioId: props.audioId,
-    deviceUniqueIds: deviceUniqueIds,
-    playbackMode: previewConfig.value.playbackMode,
-    playbackDeviceId: playbackDeviceId,
-    noisePlaybackDeviceIds: noisePlaybackDeviceIds,
-    spl: previewConfig.value.spl,
-    offset: previewConfig.value.offset
+    playbackMode: previewConfig.value.playbackMode
   };
-  console.log('[AudioPreviewModal] emit preview result:', result);
-  
   emit('preview', result);
   handleClose();
-};
-
-const handleMultiSelectChange = (event) => {
-  const selectedOptions = Array.from(event.target.selectedOptions);
-  previewConfig.value.noisePlaybackDeviceIds = selectedOptions.map(option => option.value);
 };
 </script>
 

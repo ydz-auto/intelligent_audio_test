@@ -219,26 +219,24 @@
       </div>
     </div>
     
-    <GlobalPlaybackDeviceModal
-      :visible="showPlaybackDeviceModal"
-      :title="'选择播放设备'"
-      :is-multi-select="false"
-      :initial-selected-devices="[]"
-      :playback-devices="playbackDevices"
+    <AudioPreviewModal
+      :visible="showAudioPreviewModal"
+      :audio-id="currentTestCaseId"
       :audio-type="'dry'"
-      @close="showPlaybackDeviceModal = false"
-      @confirm="handleDeviceSelect"
+      :playback-devices="playbackDevices.filter((d: PlaybackDevice) => d.deviceType === 'dry')"
+      @close="handleAudioPreviewModalClose"
+      @preview="handleAudioPreviewConfirm"
     />
     
     <AudioPlayerModal
       v-if="showAudioPlayer && currentTestCase"
       :visible="showAudioPlayer"
       :title="'测试用例预览'"
-      :audio-id="currentTestCase.id"
+      :audio-id="currentTestCaseCaseId"
       :audio-title="'测试用例音频'"
       :audio-type="selectedAudioType === 'api' ? 'api' : 'e2e'"
-      :selected-devices="selectedPlaybackDevices"
       :is-test-case-preview="true"
+      :playback-mode="previewPlaybackMode"
       @close="handleAudioPlayerClose"
     />
   </teleport>
@@ -250,7 +248,7 @@ import TestCaseCard from './TestCaseCard.vue'
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
 import AudioPlayerModal from '../AudioPlayerModal.vue';
-import GlobalPlaybackDeviceModal from '../modal/GlobalPlaybackDeviceModal.vue';
+import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import CRUDFormModal from '../modal/CRUDFormModal.vue';
 import { playbackApi, algorithmApi } from '../../../utils/api';
 import { useTestCaseStore } from '../../../store/testCaseStore';
@@ -313,16 +311,16 @@ const hasMoreGroups = ref(true);
 const listContainerRef = ref<HTMLElement | null>(null);
 
 const showAudioPlayer = ref(false);
-const currentTestCaseId = ref<string | number | null>(null);
+const currentTestCaseCaseId = ref<string | number | null>(null);
 const showAudioTypeModal = ref(false);
 const currentTestCase = ref<TestCase | null>(null);
 const currentHasAPIConfig = ref(false);
 const currentHasE2eConfig = ref(false);
 const selectedAudioType = ref('');
-const showPlaybackDeviceModal = ref(false);
-const selectedPlaybackDevices = ref<PlaybackDevice[]>([]);
 const playbackDevices = ref<PlaybackDevice[]>([]);
 const algorithmOptions = ref<{ value: string; label: string }[]>([]);
+const showAudioPreviewModal = ref(false);
+const previewPlaybackMode = ref<'frontend' | 'backend'>('frontend');
 
 async function loadAlgorithmOptions() {
   try {
@@ -413,6 +411,9 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
     if (showAudioTypeModal.value) {
       handleCloseAudioTypeModal();
+    }
+    if (showAudioPreviewModal.value) {
+      handleAudioPreviewModalClose();
     }
     if (showPlaybackDeviceModal.value) {
       showPlaybackDeviceModal.value = false;
@@ -781,50 +782,28 @@ const selectAudioType = (audioType: string) => {
   selectedAudioType.value = audioType;
   showAudioTypeModal.value = false;
   
-  // 获取并设置实际的音频ID
-  if (currentTestCase.value) {
-    const config = normalizeTestCaseConfig(currentTestCase.value.config || {});
-    if (audioType === 'api' && config.apiAudios.length > 0) {
-      currentTestCaseId.value = config.apiAudios[0].audioId;
-    } else if (audioType === 'e2e' && config.dryAudios.length > 0) {
-      currentTestCaseId.value = config.dryAudios[0].audioId;
-    }
-  }
-  
   if (audioType === 'api') {
-    // API测试音频：直接播放，不需要选择设备
     showAudioPlayer.value = true;
   } else if (audioType === 'e2e') {
-    showAudioPlayer.value = true;
+    showAudioPreviewModal.value = true;
   }
 };
 
-const handleDeviceSelect = (deviceIds: (string | number)[]) => {
-  const deviceObjects = deviceIds.map((deviceId: string | number) => {
-    const foundDevice = playbackDevices.value.find((device: any) => device.id === deviceId);
-    if (foundDevice) {
-      return foundDevice;
-    }
-    return { id: deviceId, name: `设备 ${deviceId}`, deviceType: 'dry' };
-  });
-  selectedPlaybackDevices.value = deviceObjects as any[];
-  showPlaybackDeviceModal.value = false;
+const handleAudioPreviewModalClose = () => {
+  showAudioPreviewModal.value = false;
+};
+
+const handleAudioPreviewConfirm = (previewData: any) => {
+  showAudioPreviewModal.value = false;
+  previewPlaybackMode.value = previewData.playbackMode || 'frontend';
   showAudioPlayer.value = true;
 };
 
 const handleAudioPlayerClose = () => {
-  if (typeof showAudioPlayer === 'object' && showAudioPlayer !== null && 'value' in showAudioPlayer) {
-    showAudioPlayer.value = false;
-  }
-  if (typeof currentTestCaseId === 'object' && currentTestCaseId !== null && 'value' in currentTestCaseId) {
-    currentTestCaseId.value = null;
-  }
-  if (typeof selectedAudioType === 'object' && selectedAudioType !== null && 'value' in selectedAudioType) {
-    selectedAudioType.value = '';
-  }
-  if (typeof selectedPlaybackDevices === 'object' && selectedPlaybackDevices !== null && 'value' in selectedPlaybackDevices) {
-    selectedPlaybackDevices.value = [];
-  }
+  showAudioPlayer.value = false;
+  currentTestCaseCaseId.value = null;
+  selectedAudioType.value = '';
+  previewPlaybackMode.value = 'frontend';
 };
 
 const handleGroupDelete = (group: string) => {
@@ -1245,10 +1224,9 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
       
       if (hasAudioConfig) {
         try {
-          const { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds } = checkTestCaseConfig(testCase);
+          const { hasAPIConfig, hasE2eConfig } = checkTestCaseConfig(testCase);
           currentTestCase.value = testCase;
-          // 使用实际的音频ID，而不是测试用例ID
-          currentTestCaseId.value = hasAPIConfig ? apiAudioId : (e2eAudioIds[0] || testCase.id);
+          currentTestCaseCaseId.value = testCase.id;
           currentHasAPIConfig.value = hasAPIConfig;
           currentHasE2eConfig.value = hasE2eConfig;
           
@@ -1256,11 +1234,10 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
             showAudioTypeModal.value = true;
           } else if (hasAPIConfig) {
             selectedAudioType.value = 'api';
-            // API测试音频：直接播放，不需要选择设备
             showAudioPlayer.value = true;
           } else if (hasE2eConfig) {
             selectedAudioType.value = 'e2e';
-            showAudioPlayer.value = true;
+            showAudioPreviewModal.value = true;
           }
         } catch (error: any) {
           console.error('音频试听失败:', error);

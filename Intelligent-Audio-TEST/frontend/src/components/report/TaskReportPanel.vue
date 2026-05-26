@@ -699,6 +699,7 @@ onUnmounted(() => {
 
 .devices-content {
   animation: slideDown 0.3s ease-out;
+  padding: var(--spacing-lg);
 }
 
 .device-cards-container {

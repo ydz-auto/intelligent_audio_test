@@ -77,14 +77,10 @@ interface Props {
   audioId?: string | number | null;
   audioTitle?: string;
   audioType?: string;
-  selectedDevices: PlaybackDevice[];
-  selectedPlaybackDevices?: PlaybackDevice[];
+  selectedDevices?: PlaybackDevice[];
   isTestCasePreview?: boolean;
   modalId?: string;
-  playbackDevices?: PlaybackDevice[];
   playbackMode?: string;
-  spl?: number;
-  offset?: number;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -93,10 +89,8 @@ const props = withDefaults(defineProps<Props>(), {
   audioTitle: '未知音频',
   audioType: 'dry',
   selectedDevices: () => [],
-  selectedPlaybackDevices: () => [],
   isTestCasePreview: false,
   modalId: '',
-  playbackDevices: () => [],
   playbackMode: 'frontend'
 });
 
@@ -364,52 +358,21 @@ const play = async () => {
   try {
     console.log('play() method called', { audioType: props.audioType, isTestCasePreview: props.isTestCasePreview, playbackMode: props.playbackMode });
     
-    // 清除之前的错误
     playError.value = '';
     
     isPlaying.value = true;
     emit('play');
 
-    // 播放逻辑说明：
-    // 1. API测试音频（audioType='api'）：直接在前端播放
-    // 2. 测试用例预览（isTestCasePreview=true, audioType='e2e'）：后端播放，调用 /testcases/preview
-    // 3. TestCaseModal后端播放（isTestCasePreview=false, playbackMode='backend'）：后端播放，调用 /audios/preview
-    
-    const shouldPlayOnFrontend = props.audioType === 'api' || (!props.isTestCasePreview && props.playbackMode === 'frontend');
-    
-    if (shouldPlayOnFrontend) {
-      // 前端播放模式：直接在前端扬声器播放
+    if (props.isTestCasePreview) {
+      console.log('TestCase Preview: calling /testcases/preview API with playbackMode:', props.playbackMode);
+      await playTestCasePreview();
+    } else if (props.audioType === 'api') {
+      console.log('API audio: Playing directly on frontend speakers');
+      await playAudioStream();
+    } else if (props.playbackMode === 'frontend') {
       console.log('Frontend playback mode: Playing directly on frontend speakers');
-      if (audio.value && props.audioId) {
-        const audioStreamUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
-        audio.value.src = audioStreamUrl;
-        
-        // 添加错误处理
-        audio.value.addEventListener('error', (e) => {
-          console.error('Audio element error:', audio.value?.error);
-          if (audio.value?.error?.code === 4) {
-            playError.value = '音频格式不支持或服务器返回错误(400)。可能的原因：音频文件格式不正确或后端服务异常';
-          }
-        });
-        
-        try {
-          await audio.value.load();
-          await audio.value.play();
-          console.log('Local audio playback started');
-        } catch (playError: any) {
-          console.error('Audio play error:', playError);
-          if (playError.name === 'NotSupportedError') {
-            playError.value = '浏览器不支持该音频格式，请尝试使用其他格式的音频文件';
-          } else if (playError.message && playError.message.includes('400')) {
-            playError.value = '服务器返回400错误，可能是音频文件不存在或格式不正确';
-          } else {
-            playError.value = '音频播放失败，请检查音频文件是否有效';
-          }
-          isPlaying.value = false;
-        }
-      }
+      await playAudioStream();
     } else {
-      // 后端播放模式：调用后端接口在选定设备上播放
       console.log('Backend playback mode: Calling backend API to play on selected devices');
       await playOnExternalDevices();
       
@@ -437,6 +400,97 @@ const play = async () => {
     if (progressUpdateTimer.value) {
       clearInterval(progressUpdateTimer.value);
       progressUpdateTimer.value = null;
+    }
+  }
+};
+
+const playTestCasePreview = async () => {
+  try {
+    if (!props.audioId) {
+      console.warn('Cannot play preview: audioId is null or undefined');
+      return;
+    }
+    
+    const previewPayload: any = {
+      offset: 0,
+      playbackMode: props.playbackMode || 'frontend'
+    };
+    
+    if (props.audioType === 'e2e') {
+      previewPayload.previewType = 'e2e';
+    } else if (props.audioType === 'api') {
+      previewPayload.previewType = 'api';
+    }
+    
+    console.log(`[API Request] POST /testcases/${props.audioId}/preview with payload:`, JSON.stringify(previewPayload));
+    const previewResult = await testcasesApi.preview(props.audioId, previewPayload);
+    console.log('[SUCCESS] 测试用例预览响应:', previewResult);
+    
+    if (previewResult && previewResult.duration) {
+      duration.value = previewResult.duration;
+      console.log('Set real duration from testcases preview API:', duration.value);
+    }
+    
+    if (previewResult && previewResult.playbackMode === 'frontend' && previewResult.audioStreamUrl) {
+      console.log('Frontend mode: Playing audio stream URL:', previewResult.audioStreamUrl);
+      if (audio.value) {
+        const fullStreamUrl = `${apiBaseUrl}${previewResult.audioStreamUrl}`;
+        audio.value.src = fullStreamUrl;
+        try {
+          await audio.value.load();
+          await audio.value.play();
+          console.log('Local audio playback started');
+        } catch (playError: any) {
+          console.error('Audio play error:', playError);
+          playError.value = '音频播放失败，请检查音频文件是否有效';
+          isPlaying.value = false;
+        }
+      }
+    } else {
+      console.log('Backend mode: Audio playing on external devices');
+      if (duration.value === 0) {
+        duration.value = defaultSimulatedDuration;
+      }
+      
+      if (progressUpdateTimer.value) {
+        clearInterval(progressUpdateTimer.value);
+        progressUpdateTimer.value = null;
+      }
+      progressUpdateTimer.value = setInterval(updateProgressSimulated, 100);
+      console.log('Started simulated progress update timer for backend playback');
+    }
+  } catch (error: any) {
+    console.error('Error in playTestCasePreview:', error);
+    throw error;
+  }
+};
+
+const playAudioStream = async () => {
+  if (audio.value && props.audioId) {
+    const audioStreamUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
+    audio.value.src = audioStreamUrl;
+    
+    audio.value.addEventListener('error', (e) => {
+      console.error('Audio element error:', audio.value?.error);
+      if (audio.value?.error?.code === 4) {
+        playError.value = '音频格式不支持或服务器返回错误(400)。可能的原因：音频文件格式不正确或后端服务异常';
+      }
+    });
+    
+    try {
+      await audio.value.load();
+      await audio.value.play();
+      console.log('Local audio playback started');
+    } catch (playError: any) {
+      console.error('Audio play error:', playError);
+      if (playError.name === 'NotSupportedError') {
+        playError.value = '浏览器不支持该音频格式，请尝试使用其他格式的音频文件';
+      } else if (playError.message && playError.message.includes('400')) {
+        playError.value = '服务器返回400错误，可能是音频文件不存在或格式不正确';
+      } else {
+        playError.value = '音频播放失败，请检查音频文件是否有效';
+      }
+      isPlaying.value = false;
     }
   }
 };
@@ -621,11 +675,7 @@ const stopOnExternalDevices = async () => {
       return;
     }
     
-    // 停止接口调用优先级：
-    // 1. isTestCasePreview=true 且 audioType !== 'api' → 调用 /testcases/{id}/stop_preview
-    // 2. playbackMode === 'backend' → 调用 /audios/{id}/stop-preview
-    
-    if (props.isTestCasePreview && props.audioType !== 'api') {
+    if (props.isTestCasePreview) {
       console.log(`[API Request] POST /testcases/${props.audioId}/stop_preview`);
       await testcasesApi.stopPreview(props.audioId);
       console.log('[SUCCESS] 测试用例预览已停止');

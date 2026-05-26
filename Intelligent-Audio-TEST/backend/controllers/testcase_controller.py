@@ -679,11 +679,10 @@ class TestCaseController:
     @staticmethod
     def preview(tc_id):
         """
-        预览测试用例：检查关联设备状态并实际启动播放流程，与实际测试中的音频播放保持一致
+        预览测试用例：支持前端播放和后端播放两种模式
+        - frontend: 返回音频流URL，由前端浏览器播放
+        - backend: 通过后端扬声器播放
         """
-        if has_running_e2e_tasks():
-            return error_response("当前有待执行的E2E测试任务，不允许使用后端扬声器播放", 403)
-
         tc = TestCase.query.filter_by(id=tc_id, deleted=False).first()
         if not tc:
             return error_response("未找到测试用例", 404)
@@ -692,6 +691,7 @@ class TestCaseController:
         
         offset = req_data.offset
         preview_type = req_data.preview_type
+        playback_mode = req_data.playback_mode or 'backend'
         
         config = tc.config or {}
         algorithm_params = tc.algorithm_params or {}
@@ -702,33 +702,78 @@ class TestCaseController:
         
         audios_config = config.get('audios', [])
         
-        from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
-        overlap_time = CaseParameterExtractor.get_overlap_time(config) if config else 0
-        overlap_rate = CaseParameterExtractor.get_overlap_rate(config) if config else 0
-
-        TestCaseController._log('info', f"Preview EXTRACTED overlap_time: {overlap_time}, overlap_rate: {overlap_rate}", test_case_id=tc_id, category='preview')
-        TestCaseController._log('info', f"config with algorithm_params: {config.get('algorithm_params')}", test_case_id=tc_id, category='preview')
-        
-        TestCaseController._log('info', f"[DEBUG] Before execute_audio_playback call: overlap_time={overlap_time}, overlap_rate={overlap_rate}", test_case_id=tc_id, category='preview')
-        
         # 1. 检查音频配置
         if not audios_config:
             return error_response("用例未配置任何音频资源，无法预览")
 
-        # 2. 初始化服务
+        # 根据preview_type过滤需要预览的音频
+        if preview_type:
+            preview_audios = [audio for audio in audios_config if audio.get('test_type') == preview_type]
+        else:
+            preview_audios = audios_config
+        
+        if not preview_audios:
+            return error_response("用例未配置有效的音频资源")
+
+        # 获取第一个有效音频的ID
+        first_audio_id = None
+        for audio_config in preview_audios:
+            audio_id = audio_config.get('audio_id') or audio_config.get('audioId')
+            if audio_id:
+                first_audio_id = audio_id
+                break
+        
+        if not first_audio_id:
+            return error_response("用例未配置有效的音频ID")
+
+        # 计算总时长
+        from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
+        overlap_time = CaseParameterExtractor.get_overlap_time(config) if config else 0
+        overlap_rate = CaseParameterExtractor.get_overlap_rate(config) if config else 0
+        
+        total_duration = 0
+        try:
+            from backend.models.models import Audio
+            audio_record = Audio.query.filter_by(id=first_audio_id, deleted=False).first()
+            if audio_record and audio_record.duration:
+                total_duration = audio_record.duration
+        except:
+            pass
+
+        # 前端播放模式：返回音频流URL
+        if playback_mode == 'frontend':
+            from flask import url_for
+            audio_stream_url = f"/audios/{first_audio_id}/stream"
+            
+            return success_response(
+                TestCasePreviewData(
+                    test_case_id=tc_id,
+                    preview_task_id=None,
+                    status="frontend_preview_ready",
+                    message="前端播放模式，返回音频流URL",
+                    duration=total_duration,
+                    playback_mode='frontend',
+                    audio_id=first_audio_id,
+                    audio_stream_url=audio_stream_url,
+                )
+            )
+        
+        # 后端播放模式：检查E2E任务并执行播放
+        if has_running_e2e_tasks():
+            return error_response("当前有待执行的E2E测试任务，不允许使用后端扬声器播放", 403)
+
         from backend.utils.audio_engine import audio_service
         from backend.utils.spl_service import spl_service
         from backend.models.models import PlaybackDevice, Audio
         
         preview_task_id = f"PREVIEW_{tc_id}"
         
-        # 停止之前的预览（如果存在）- 包括所有 PREVIEW_ 开头的任务
+        # 停止之前的预览
         audio_service.stop_task_audio_by_pattern("PREVIEW_")
         
         # 清除设备缓存，强制重新扫描
         audio_service._device_cache = None
         
-        # 等待之前的播放完全停止
         import time
         time.sleep(0.2)
 
@@ -739,17 +784,6 @@ class TestCaseController:
         preview_stop_flags[tc_id] = False
 
         try:
-            # 3. 根据preview_type过滤需要预览的音频
-            if preview_type:
-                # 只预览指定类型的音频
-                preview_audios = [audio for audio in audios_config if audio.get('test_type') == preview_type]
-            else:
-                # 预览所有类型的音频（API和E2E）
-                preview_audios = audios_config
-            
-            if not preview_audios:
-                return error_response("用例未配置有效的音频资源")
-
             from backend.utils.audio_engine import prepare_audio_playback_info, execute_audio_playback
             
             playback_info = prepare_audio_playback_info(preview_audios, config, db.session)
@@ -763,8 +797,6 @@ class TestCaseController:
             
             TestCaseController._log('info', f"Preview prepared: dry_audios={len(dry_audios_info)}, dry_devices={len(dry_devices)}, noise_devices={len(all_noise_devices)}", test_case_id=tc_id, category='preview')
             
-            # 6. 计算时间轴映射
-            # 需要考虑 speaker 感知和交叠率来计算实际的总播放时间
             app = current_app._get_current_object()
             from backend.utils.audio_engine import build_audio_timelines, build_speakers_map_from_dry_audios
 
@@ -773,12 +805,7 @@ class TestCaseController:
 
             total_duration = max((t.get('end', 0) for t in audio_timelines), default=0) if audio_timelines else 0
             
-            # 7. 根据全局 offset 决定播放哪些音频
-            # 在预览模式下，如果进行了 Seeking，我们主要定位到当前时间点应该播放的那个音频
             TestCaseController._log('info', f"Previewing test case {tc_id} with offset {offset}", test_case_id=tc_id, category='preview')
-            TestCaseController._log('info', f"Test case config: {tc.config}", test_case_id=tc_id, category='preview')
-            TestCaseController._log('info', f"Number of audio timelines: {len(audio_timelines)}", test_case_id=tc_id, category='preview')
-            
             TestCaseController._log('info', f"Preview with offset {offset}: dry_devices count={len(dry_devices)}, noise_devices count={len(all_noise_devices)}", test_case_id=tc_id, category='preview')
             
             def play_audio(app):
@@ -810,9 +837,6 @@ class TestCaseController:
             if dry_audios_info:
                 from backend.utils.execution_engine import execution_engine
                 execution_engine.audio_playback_pool.submit(play_audio, app)
-            
-            # 注意：预览模式下，噪声会与干声并行播放，直到调用stop_preview方法停止
-            # 不再立即停止背景噪声，让噪声与干声并行播放
 
             return success_response(
                 TestCasePreviewData(
@@ -821,6 +845,9 @@ class TestCaseController:
                     status="preview_started",
                     message="已启动用例预览放音",
                     duration=total_duration,
+                    playback_mode='backend',
+                    audio_id=first_audio_id,
+                    audio_stream_url=None,
                 )
             )
         except Exception as e:

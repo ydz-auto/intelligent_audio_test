@@ -110,6 +110,9 @@ class TestCasePreviewData(APIModel):
     status: str = Field(..., alias='status', validation_alias='status')
     message: Optional[str] = Field(None, alias='message', validation_alias='message')
     duration: Optional[float] = Field(None, alias='duration', validation_alias='duration')
+    playback_mode: Optional[str] = Field('backend', alias='playbackMode', validation_alias='playbackMode')
+    audio_id: Optional[Union[int, str]] = Field(None, alias='audioId', validation_alias='audioId')
+    audio_stream_url: Optional[str] = Field(None, alias='audioStreamUrl', validation_alias='audioStreamUrl')
 
 
 class TestCaseStopPreviewData(APIModel):
@@ -387,6 +390,7 @@ class TestCaseCreateSchema(APIModel):
 class TestCasePreviewRequest(APIModel):
     offset: Optional[float] = Field(0, alias='offset', validation_alias='offset')
     preview_type: Optional[str] = Field(None, alias='previewType', validation_alias=AliasChoices('preview_type', 'previewType'))
+    playback_mode: Optional[str] = Field('backend', alias='playbackMode', validation_alias=AliasChoices('playback_mode', 'playbackMode'))
 
     @field_validator('offset', mode='before')
     @classmethod
@@ -394,6 +398,15 @@ class TestCasePreviewRequest(APIModel):
         if v is None:
             return 0
         return int(v)
+
+    @field_validator('playback_mode', mode='before')
+    @classmethod
+    def validate_playback_mode(cls, v):
+        if v is None:
+            return 'backend'
+        if v not in ['frontend', 'backend']:
+            return 'backend'
+        return v
 
 
 class TestCaseBatchActionRequest(APIModel):
