@@ -433,7 +433,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, inject } from 'vue';
+import { ref, computed, watch, onMounted, inject, nextTick } from 'vue';
 import AlgorithmSelector from '../../AlgorithmSelector.vue';
 import { useAlgorithmConfig } from '../../../../composables/useAlgorithmConfig';
 import { useAlgorithmLabels } from '../../../../composables/useAlgorithmLabels';
@@ -473,6 +473,7 @@ const newGroupName = ref('');
 const availableTags = ref<string[]>([]);
 const algorithmParams = ref<Record<string, any>>({});
 const algorithmOptions = ref<{ value: string; name: string }[]>([]);
+let isSyncingFromParent = false;
 
 const TAGS_PER_PAGE = 15;
 const currentTagPage = ref(1);
@@ -571,6 +572,8 @@ function initFormData() {
     group: raw.group || raw.groupName || raw.group_name || '',
     tags: raw.tags || [],
     algorithmType: raw.algorithmType || raw.algorithm_type || '',
+    algorithmParams: raw.algorithmParams || raw.algorithm_params || {},
+    referenceParams: raw.referenceParams || raw.reference_params || {},
     config: raw.config || {
       audios: [{ audioId: '', testType: 'api', playbackDeviceId: '', spl: 65, playOrder: 0 }],
       dimensions: { api: [], e2e: [] },
@@ -579,6 +582,9 @@ function initFormData() {
   };
   if (localFormData.value.algorithmType && dimensionConfig) {
     dimensionConfig.updateAssociatedDimensions(localFormData.value.algorithmType);
+  }
+  if (raw.algorithmParams && typeof raw.algorithmParams === 'object') {
+    algorithmParams.value = raw.algorithmParams;
   }
 }
 
@@ -735,15 +741,46 @@ function removeE2EDimension(index: number) {
 }
 
 watch(() => props.formData, () => {
+  isSyncingFromParent = true;
   initFormData();
-}, { immediate: true, deep: true });
+  nextTick(() => {
+    isSyncingFromParent = false;
+  });
+}, { immediate: true });
+
+function syncConfigFromParent() {
+  if (!props.formData?.config) return;
+  isSyncingFromParent = true;
+  const parentConfig = props.formData.config;
+  if (parentConfig.audios && Array.isArray(parentConfig.audios)) {
+    localFormData.value.config.audios = parentConfig.audios;
+  }
+  if (parentConfig.backgroundNoise) {
+    Object.assign(localFormData.value.config.backgroundNoise, parentConfig.backgroundNoise);
+  }
+  if (parentConfig.dimensions) {
+    if (parentConfig.dimensions.api) {
+      localFormData.value.config.dimensions.api = parentConfig.dimensions.api;
+    }
+    if (parentConfig.dimensions.e2e) {
+      localFormData.value.config.dimensions.e2e = parentConfig.dimensions.e2e;
+    }
+  }
+  nextTick(() => {
+    isSyncingFromParent = false;
+  });
+}
+
+defineExpose({ syncConfigFromParent, initFormData, algorithmParams, newGroupName });
 
 watch(() => tagSearchQuery.value, () => {
   currentTagPage.value = 1;
 });
 
 watch(() => localFormData.value, (newVal) => {
-  emit('update', { ...newVal });
+  if (!isSyncingFromParent) {
+    emit('update', { ...newVal });
+  }
 }, { deep: true });
 
 onMounted(async () => {

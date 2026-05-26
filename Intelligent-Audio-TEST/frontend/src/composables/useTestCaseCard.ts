@@ -141,11 +141,6 @@ export function useTestCaseCard() {
       description: '',
       algorithmType: ''
     };
-    formData.value = {
-      ...initialFormData,
-      name: groupName,
-      group: '默认分组'
-    };
     
     try {
       const result = await modalControl.open(MODAL_TYPES.TEST_GROUP, {
@@ -311,6 +306,13 @@ export function useTestCaseCard() {
         if (isEdit) {
           success = await store.updateTestCase(id!, data);
         } else {
+          if (data.createNewGroup && data.group) {
+            try {
+              await store.addGroup({ name: data.group, description: '', algorithmType: data.algorithmType || '' });
+            } catch (e) {
+              console.warn('[useTestCaseCard] 创建新分组失败（可能已存在）:', e);
+            }
+          }
           success = await store.addTestCase(data);
         }
       } else if (mode === 'group') {

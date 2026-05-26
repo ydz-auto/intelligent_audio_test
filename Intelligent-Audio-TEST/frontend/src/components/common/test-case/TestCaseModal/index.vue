@@ -9,7 +9,7 @@
       <CaseForm
         v-else-if="props.mode === 'case'"
         ref="caseFormRef"
-        :form-data="props.formData"
+        :form-data="caseFormData"
         :test-case-groups="testCaseGroups"
         :audio-config="audioConfig"
         :dimension-config="dimensionConfig"
@@ -243,13 +243,6 @@ function handleExportUpdate(data: ExportFormData & { ids: (string | number)[] })
 }
 
 function openAudioSelectModal(audioType: 'dry' | 'noise', index?: number) {
-  if (!caseFormData.value.config) {
-    caseFormData.value.config = {
-      audios: [{ audioId: '', testType: 'api', playbackDeviceId: '', spl: 65, playOrder: 0 }],
-      dimensions: { api: [], e2e: [] },
-      backgroundNoise: { audioId: '', deviceIds: [], spl: 0 }
-    };
-  }
   audioConfig.currentAudioType.value = audioType;
   audioConfig.currentAudioIndex.value = index ?? null;
   audioConfig.showAudioModal.value = true;
@@ -289,36 +282,42 @@ function openCrossDeviceModal() {
 function handleAudioSelect(audio: AudioItem) {
   if (caseFormData.value.config) {
     audioConfig.handleAudioSelect(audio, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
+    caseFormRef.value?.syncConfigFromParent();
   }
 }
 
 function handleMultipleAudioSelect(audios: AudioItem[]) {
   if (caseFormData.value.config) {
     audioConfig.handleMultipleAudioSelect(audios, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
+    caseFormRef.value?.syncConfigFromParent();
   }
 }
 
 function handleDeviceSelect(selectedDevices: string[]) {
   if (caseFormData.value.config) {
     audioConfig.handleDeviceSelect(selectedDevices, caseFormData.value.config.audios);
+    caseFormRef.value?.syncConfigFromParent();
   }
 }
 
 function handleNoiseDeviceSelect(selectedDevices: string[]) {
   if (caseFormData.value.config) {
     audioConfig.handleNoiseDeviceSelect(selectedDevices, caseFormData.value.config.backgroundNoise);
+    caseFormRef.value?.syncConfigFromParent();
   }
 }
 
 function handleBatchDeviceSelect(selectedDevices: string[]) {
   if (caseFormData.value.config) {
     audioConfig.handleBatchDeviceSelect(selectedDevices, caseFormData.value.config.audios);
+    caseFormRef.value?.syncConfigFromParent();
   }
 }
 
 function handleCrossDeviceSelect(selectedDevices: string[]) {
   if (caseFormData.value.config) {
     audioConfig.handleCrossDeviceSelect(selectedDevices, caseFormData.value.config.audios);
+    caseFormRef.value?.syncConfigFromParent();
   }
 }
 
@@ -329,6 +328,7 @@ function handleBatchSplConfirm(spl: number) {
         audio.spl = spl;
       }
     });
+    caseFormRef.value?.syncConfigFromParent();
   }
 }
 
@@ -438,11 +438,28 @@ function handleCaseSave() {
     notification.warning('请选择所属分组');
     return;
   }
+  const saveData: any = { ...caseFormData.value };
+  if (caseFormData.value.group === 'new-group') {
+    const caseForm = caseFormRef.value as any;
+    const newGroupName = caseForm?.newGroupName?.value?.trim();
+    if (!newGroupName) {
+      notification.warning('请输入新分组名称');
+      return;
+    }
+    saveData.group = newGroupName;
+    saveData.createNewGroup = true;
+  }
+  if (caseFormRef.value) {
+    const formAlgParams = (caseFormRef.value as any).algorithmParams;
+    if (formAlgParams && Object.keys(formAlgParams).length > 0) {
+      saveData.algorithmParams = formAlgParams;
+    }
+  }
   emit('save', {
     mode: 'case',
     isEdit: isEditMode.value,
     id: caseFormData.value.id,
-    data: { ...caseFormData.value }
+    data: saveData
   });
   handleClose();
 }
@@ -455,7 +472,8 @@ watch(() => props.visible, (newVal) => {
   if (newVal) {
     loadTestGroups();
     if (props.mode === 'case') {
-      const configuredAudioIds = extractConfiguredAudioIds(props.formData);
+      caseFormData.value = JSON.parse(JSON.stringify(props.formData || {}));
+      const configuredAudioIds = extractConfiguredAudioIds(caseFormData.value);
       audioConfig.loadResources(configuredAudioIds);
       dimensionConfig.loadDimensions();
     }

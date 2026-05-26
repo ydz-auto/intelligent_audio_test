@@ -1,6 +1,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { tasksApi, reportsApi, testcasesApi, groupsApi } from '../utils/api'
+import { normalizeTestCaseConfig } from '../utils/utils'
 import { useTestCaseCard } from './useTestCaseCard'
 import { useDeviceManagement } from './useDeviceManagement'
 import { useTaskProgress } from './useTaskProgress'
@@ -11,7 +12,19 @@ import { useTestControl } from './useTestControl'
 import { useAlgorithmSelection } from './useAlgorithmSelection'
 import { useTestReport } from './useTestReport'
 import { useTestCaseStore } from '../store/testCaseStore'
-import { type Report, type Log, type TestCase } from '../shared/types'
+import { type Report, type Log, type TestCase, type TestCaseFormData } from '../shared/types'
+
+function normalizeAlgorithmParams(params: any[]): Record<string, any> {
+  if (!Array.isArray(params)) return {}
+  return params.reduce((acc: Record<string, any>, item: any) => {
+    const code = item.fieldCode || item.field_code
+    const value = item.fieldValue || item.field_value
+    if (code) {
+      acc[code] = value
+    }
+    return acc
+  }, {})
+}
 
 export function normalizeSelectedCaseIds(ids: (string | number)[]) {
   const normalizedIds = ids.filter((id): id is string | number => {
@@ -359,27 +372,23 @@ export function useE2eView() {
 
   const handleOpenEditModal = async (testCase: TestCase) => {
     editingTestCase.value = testCase
+    
+    const normalized = normalizeTestCaseConfig(testCase.config || {})
+    const { apiAudios, dryAudios, ...configRest } = normalized
+    
     formData.value = {
       id: testCase.id,
-      name: testCase.name,
-      description: testCase.description,
-      type: testCase.type,
-      config: testCase.config || {
-        backgroundNoise: { audioId: null, spl: null, deviceId: null },
-        audios: [],
-        dimensions: { api: [], e2e: [] }
-      },
-      groupId: testCase.groupId,
-      group: testCase.groupName,
-      tags: Array.isArray(testCase.tags) ? 
-        testCase.tags.map(tag => typeof tag === 'string' ? tag : tag.name) : 
-        [],
-      tagsInput: Array.isArray(testCase.tags) ? 
-        testCase.tags.map(tag => typeof tag === 'string' ? tag : tag.name).join(', ') : 
-        '',
+      name: testCase.name || '',
+      group: testCase.groupName || '',
+      groupId: testCase.groupId || '',
+      description: testCase.description || '',
+      tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
+      tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
+      config: configRest as TestCaseFormData['config'],
       translationDirectionId: testCase.translationDirectionId,
-      algorithmType: testCase.algorithmType,
-      algorithmParams: testCase.algorithmParams
+      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
+      algorithmParams: normalizeAlgorithmParams((testCase as any).algorithmParams || (testCase as any).algorithm_params || []),
+      referenceParams: normalizeAlgorithmParams((testCase as any).referenceParams || (testCase as any).reference_params || [])
     }
     
     try {

@@ -321,6 +321,7 @@ const playbackDevices = ref<PlaybackDevice[]>([]);
 const algorithmOptions = ref<{ value: string; label: string }[]>([]);
 const showAudioPreviewModal = ref(false);
 const previewPlaybackMode = ref<'frontend' | 'backend'>('frontend');
+const showPlaybackDeviceModal = ref(false);
 
 async function loadAlgorithmOptions() {
   try {

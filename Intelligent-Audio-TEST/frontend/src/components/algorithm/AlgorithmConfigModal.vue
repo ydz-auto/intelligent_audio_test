@@ -3,7 +3,7 @@
     :visible="visible"
     :title="title"
     :width="modalWidth"
-    :show-footer="mode !== 'list'"
+    :show-footer="effectiveMode !== 'list'"
     :confirm-text="okText"
     :cancel-text="cancelText"
     @close="handleCancel"
@@ -11,7 +11,7 @@
     @confirm="handleOk"
   >
     <div class="algorithm-config-modal">
-      <div v-if="mode === 'list'" class="mode-list">
+      <div v-if="effectiveMode === 'list'" class="mode-list">
         <div class="modal-toolbar">
           <button class="btn btn-primary btn-sm" @click="handleCreate">
             <i class="fas fa-plus btn-icon"></i>新建算法
@@ -100,7 +100,7 @@
                 type="text"
                 class="form-input"
                 v-model="formState.type"
-                :disabled="mode === 'edit'"
+                :disabled="effectiveMode === 'edit'"
                 placeholder="如: translation, asr"
               >
             </div>
@@ -115,7 +115,7 @@
             </div>
             <div class="form-group">
               <label>所属分组 <span class="required">*</span></label>
-              <select class="form-input" v-model="formState.group_id" :disabled="mode === 'edit'">
+              <select class="form-input" v-model="formState.group_id" :disabled="effectiveMode === 'edit'">
                 <option :value="null">请选择分组</option>
                 <option v-for="group in groups" :key="group.id" :value="group.id">
                   {{ group.name }}
@@ -258,7 +258,7 @@
                     <input type="text" class="form-input form-input-sm" v-model="param.param_name" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
-                    <select class="form-input form-input-sm" v-model="param.param_type" @change="handleCaseParamBlur(param, index)">
+                    <select class="form-input form-input-sm" v-model="param.param_type" @change="handleCaseParamTypeChange(param, index)">
                       <option value="select">下拉框</option>
                       <option value="text">文本</option>
                       <option value="number">数字</option>
@@ -562,6 +562,14 @@ const props = withDefaults(defineProps<ModalProps>(), {
   editData: null
 })
 
+const internalMode = ref<'list' | 'create' | 'edit' | 'select'>(props.mode)
+
+watch(() => props.mode, (newMode) => {
+  internalMode.value = newMode
+})
+
+const effectiveMode = computed(() => internalMode.value)
+
 const emit = defineEmits<{
   (e: 'update:visible', visible: boolean): void
   (e: 'select', data: AlgorithmRecord): void
@@ -579,7 +587,7 @@ const formTabs = [
 ]
 
 const modalWidth = computed(() => {
-  if (props.mode === 'list') return '700px'
+  if (effectiveMode.value === 'list') return '700px'
   return '1200px'
 })
 
@@ -590,11 +598,11 @@ const title = computed(() => {
     edit: '编辑算法',
     select: '选择算法'
   }
-  return titles[props.mode]
+  return titles[effectiveMode.value]
 })
 
 const okText = computed(() => {
-  if (props.mode === 'select') return '选择'
+  if (effectiveMode.value === 'select') return '选择'
   return '确定'
 })
 
@@ -744,9 +752,9 @@ function getGroupTagClass(groupName: string | undefined): string {
 
 watch(() => props.visible, (visible) => {
   if (visible) {
-    if (props.mode === 'list') {
+    if (effectiveMode.value === 'list') {
       loadAlgorithms()
-    } else if (props.mode === 'create') {
+    } else if (effectiveMode.value === 'create') {
       resetForm()
     }
     loadGroups()
@@ -873,12 +881,16 @@ function resetForm() {
 }
 
 function handleCancel() {
-  emit('update:visible', false)
+  if (internalMode.value !== props.mode && props.mode === 'list') {
+    internalMode.value = 'list'
+  } else {
+    emit('update:visible', false)
+  }
 }
 
 async function handleOk() {
-  console.log('handleOk:', { mode: props.mode, formState: JSON.stringify(formState) })
-  if (props.mode === 'select') {
+  console.log('handleOk:', { mode: effectiveMode.value, formState: JSON.stringify(formState) })
+  if (effectiveMode.value === 'select') {
     if (props.editData) {
       emit('select', props.editData)
       emit('update:visible', false)
@@ -905,10 +917,16 @@ async function saveAlgorithm() {
       description: formState.description,
       status: formState.status,
       icon: formState.icon,
-      display_order: formState.display_order
+      display_order: formState.display_order,
+      device_params: formState.device_params,
+      api_params: formState.api_params,
+      case_params: formState.case_params,
+      mappings: formState.mappings,
+      associated_dimensions: formState.associated_dimensions,
+      reference_params: formState.reference_params
     }
 
-    if (props.mode === 'edit') {
+    if (effectiveMode.value === 'edit') {
       await algorithmApi.updateDefinition(formState.type, bodyData)
     } else {
       await algorithmApi.createDefinition(bodyData)
@@ -923,40 +941,55 @@ async function saveAlgorithm() {
 
 function handleCreate() {
   resetForm()
-  emit('update:visible', true)
+  internalMode.value = 'create'
 }
 
-function handleEdit(record: AlgorithmRecord) {
-  const refConfig = record.reference_params ?? record.referenceConfig ?? record.reference_config ?? record.referenceParams
-  Object.assign(formState, {
-    type: record.type,
-    name: record.name,
-    group_id: record.groupId ?? record.group_id ?? null,
-    category: record.category || '',
-    description: record.description || '',
-    status: record.status as 'online' | 'offline',
-    icon: record.icon || '',
-    display_order: (record.displayOrder ?? record.display_order) || 0,
-    device_params: (record.deviceParams ?? record.device_params) || [],
-    api_params: (record.apiParams ?? record.api_params) || [],
-    case_params: (record.caseParams ?? record.case_params) || [],
-    mappings: record.mappings || { device: [], api: [], evaluation: [] },
-    associated_dimensions: ((record.associatedDimensions ?? record.associated_dimensions) || []).map((d: any) => ({
-      dimension_id: d.dimensionId ?? d.dimension_id,
-      weight: d.weight ?? 1.0,
-      is_default: d.isDefault ?? d.is_default ?? false
-    })),
-    reference_params: (refConfig || []).map((p: any) => ({
-      id: p.id,
-      code: p.code || '',
-      name: p.name || '',
-      type: p.type || 'text',
-      annotation_code: p.annotation_code || '',
-      annotation_format: p.annotation_format || '',
-      help_text: p.help_text || ''
-    }))
-  })
-  paramConfigType.value = 'device'
+async function handleEdit(record: AlgorithmRecord) {
+  try {
+    const result = await algorithmApi.getDefinition(record.type)
+    if (result) {
+      const editData = result
+      const deviceParams = ((editData.deviceParams ?? editData.device_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
+      const apiParams = ((editData.apiParams ?? editData.api_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
+      const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(p => ({ ...p }))
+      const refConfig = editData.reference_params ?? editData.referenceConfig ?? editData.reference_config ?? editData.referenceParams
+      
+      Object.assign(formState, {
+        type: editData.type,
+        name: editData.name,
+        group_id: editData.groupId ?? editData.group_id ?? null,
+        description: editData.description || '',
+        status: editData.status as 'online' | 'offline',
+        statusSwitch: editData.status === 'online',
+        icon: editData.icon || '',
+        display_order: (editData.displayOrder ?? editData.display_order) || 0,
+        device_params: deviceParams,
+        api_params: apiParams,
+        case_params: caseParams,
+        params: editData.params || [],
+        mappings: JSON.parse(JSON.stringify(editData.mappings || { device: [], api: [], evaluation: [] })),
+        associated_dimensions: ((editData.associatedDimensions ?? editData.associated_dimensions) || []).map((d: any) => ({
+          id: d.id,
+          dimension_id: d.dimensionId ?? d.dimension_id,
+          weight: d.weight ?? 1.0,
+          is_default: d.isDefault ?? d.is_default ?? false
+        })),
+        reference_params: (refConfig || []).map((p: any) => ({
+          id: p.id,
+          code: p.code || '',
+          name: p.name || '',
+          type: p.type || 'text',
+          annotation_code: p.annotation_code || '',
+          annotation_format: p.annotation_format || '',
+          help_text: p.help_text || ''
+        }))
+      })
+      paramConfigType.value = 'device'
+      internalMode.value = 'edit'
+    }
+  } catch (error) {
+    console.error('加载算法详情失败:', error)
+  }
 }
 
 function handleSelect(record: AlgorithmRecord) {
@@ -1015,6 +1048,10 @@ function handleAddParam() {
       param_code: '',
       param_name: '',
       param_type: 'text',
+      component: 'input',
+      options_source: '',
+      options_field: '',
+      options_label_field: '',
       required: false,
       default_value: '',
       ui_order: formState.case_params.length
@@ -1042,10 +1079,12 @@ function handleAddParam() {
 function handleRemoveCaseParam(index: number) {
   const param = formState.case_params[index]
   if (param && param.id) {
-    algorithmApi.deleteCaseParam(param.id).then(() => {
-      formState.case_params.splice(index, 1)
-    }).catch(err => {
+    const backup = { ...param }
+    formState.case_params.splice(index, 1)
+    algorithmApi.deleteCaseParam(param.id).catch(err => {
       console.error('删除用例参数失败:', err)
+      formState.case_params.splice(index, 0, backup)
+      alert('删除用例参数失败，已恢复')
     })
   } else {
     formState.case_params.splice(index, 1)
@@ -1067,10 +1106,12 @@ function handleAddReferenceParam() {
 function handleRemoveReferenceParam(index: number) {
   const param = formState.reference_params[index]
   if (param && param.id) {
-    algorithmApi.deleteReferenceParam(param.id, formState.type).then(() => {
-      formState.reference_params.splice(index, 1)
-    }).catch(err => {
+    const backup = { ...param }
+    formState.reference_params.splice(index, 1)
+    algorithmApi.deleteReferenceParam(param.id, formState.type).catch(err => {
       console.error('删除参考参数失败:', err)
+      formState.reference_params.splice(index, 0, backup)
+      alert('删除参考参数失败，已恢复')
     })
   } else {
     formState.reference_params.splice(index, 1)
@@ -1089,7 +1130,21 @@ function getDefaultComponent(paramType: string): string {
   return typeComponentMap[paramType] || 'input'
 }
 
+function handleCaseParamTypeChange(param: any, index: number) {
+  if (param.param_type !== 'select') {
+    param.component = getDefaultComponent(param.param_type)
+    param.options_source = ''
+    param.options_field = ''
+    param.options_label_field = ''
+  } else {
+    param.component = 'select'
+  }
+  handleCaseParamBlur(param, index)
+}
+
 let saveTimeout: any = null
+let caseParamSaveTimeout: any = null
+let referenceParamSaveTimeout: any = null
 
 async function handleParamBlur(param: any, index: number, paramType: string) {
   if (!formState.type || !param.param_code) return
@@ -1101,8 +1156,8 @@ async function handleParamBlur(param: any, index: number, paramType: string) {
 
 async function handleCaseParamBlur(param: any, index: number) {
   if (!formState.type || !param.param_code) return
-  if (saveTimeout) clearTimeout(saveTimeout)
-  saveTimeout = setTimeout(async () => {
+  if (caseParamSaveTimeout) clearTimeout(caseParamSaveTimeout)
+  caseParamSaveTimeout = setTimeout(async () => {
     await autoSaveCaseParams(param, index)
   }, 1000)
 }
@@ -1151,11 +1206,9 @@ async function autoSaveCaseParams(param: any, index: number) {
       ui_order: param.ui_order,
       hidden: param.hidden
     }
-    if (param.options_source) {
-      bodyData.options_source = param.options_source
-      bodyData.options_field = param.options_field
-      bodyData.options_label_field = param.options_label_field
-    }
+    bodyData.options_source = param.options_source || null
+    bodyData.options_field = param.options_field || null
+    bodyData.options_label_field = param.options_label_field || null
     let result
     if (param.id) {
       result = await algorithmApi.updateCaseParam(param.id, bodyData)
@@ -1170,8 +1223,8 @@ async function autoSaveCaseParams(param: any, index: number) {
 
 async function handleReferenceParamBlur(param: any, index: number) {
   if (!formState.type || !param.code) return
-  if (saveTimeout) clearTimeout(saveTimeout)
-  saveTimeout = setTimeout(async () => {
+  if (referenceParamSaveTimeout) clearTimeout(referenceParamSaveTimeout)
+  referenceParamSaveTimeout = setTimeout(async () => {
     await autoSaveReferenceParams(param, index)
   }, 1000)
 }
@@ -1203,10 +1256,12 @@ function handleRemoveParam(index: number) {
   const params = paramConfigType.value === 'device' ? formState.device_params : formState.api_params
   const param = params[index]
   if (param && param.id) {
-    algorithmApi.deleteParam(param.id).then(() => {
-      params.splice(index, 1)
-    }).catch(err => {
+    const backup = { ...param }
+    params.splice(index, 1)
+    algorithmApi.deleteParam(param.id).catch(err => {
       console.error('删除参数失败:', err)
+      params.splice(index, 0, backup)
+      alert('删除参数失败，已恢复')
     })
   } else {
     params.splice(index, 1)
@@ -1234,7 +1289,7 @@ function handleAddDimension() {
 function handleRemoveDimension(index: number) {
   const dim = formState.associated_dimensions[index]
   formState.associated_dimensions.splice(index, 1)
-  if (props.mode === 'edit' && formState.type && dim) {
+  if (effectiveMode.value === 'edit' && formState.type && dim) {
     if (dim.id) {
       algorithmApi.deleteDimensionRelation(dim.id).catch(err => {
         console.error('删除维度关联失败:', err)
@@ -1259,7 +1314,7 @@ async function handleDimensionChange(index: number) {
     })
   }
 
-  if (props.mode === 'edit' && formState.type && dim.id) {
+  if (effectiveMode.value === 'edit' && formState.type && dim.id) {
     try {
       await algorithmApi.updateDimensionRelation(dim.id, {
         weight: dim.weight,
@@ -1286,7 +1341,7 @@ async function handleDimensionBlur(index: number) {
     })
   }
 
-  if (props.mode === 'edit' && formState.type) {
+  if (effectiveMode.value === 'edit' && formState.type) {
     try {
       if (dim.id) {
         await algorithmApi.updateDimensionRelation(dim.id, {

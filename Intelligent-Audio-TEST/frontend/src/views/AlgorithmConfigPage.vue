@@ -61,12 +61,6 @@
                   <option value="offline">下线</option>
                 </select>
               </div>
-              <div class="filter-select">
-                <select class="form-input" v-model="groupFilter" @change="handleFilter">
-                  <option value="">按分组筛选</option>
-                  <option v-for="group in groups" :key="group.id" :value="group.id">{{ group.name }}</option>
-                </select>
-              </div>
             </div>
 
             <div class="table-container">
@@ -291,8 +285,6 @@ interface AlgorithmRecord {
   status: string
   icon?: string
   display_order: number
-  group_id?: number
-  group_name?: string
   params?: any[]
   mappings?: {
     device: any[]
@@ -459,11 +451,18 @@ async function handleClone(record: AlgorithmRecord) {
   if (!confirmed) return
   
   try {
+    const detailResponse = await fetch(`/api/v1/algorithm/definitions/${record.type}`)
+    const detailResult = await detailResponse.json()
+    let cloneData: any = { ...record }
+    if (detailResult.success && detailResult.data) {
+      cloneData = normalizeAlgorithmFields(detailResult.data)
+    }
+    
     const response = await fetch('/api/v1/algorithm/definitions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        ...record,
+        ...cloneData,
         type: `${record.type}_copy`,
         name: `${record.name} (副本)`
       })
