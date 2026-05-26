@@ -31,6 +31,8 @@
 
 ### 1.3 支持的厂商
 
+#### 1.3.1 直连厂商
+
 | 区域 | 厂商 | 服务类型 |
 |------|------|----------|
 | 国内 | 火山引擎 | ASR/AST/实时语音对话 |
@@ -41,6 +43,24 @@
 | 海外 | Google | Gemini Live/Speech-to-Text |
 | 海外 | Azure | Speech Services |
 | 海外 | AWS | Transcribe/Polly |
+
+#### 1.3.2 LLM API中转站
+
+中转站用于转发LLM API请求，解决海外API访问问题，提供统一的接口格式。
+
+| 中转站 | 端点 | 支持模型 | 特点 |
+|--------|------|----------|------|
+| 讯星API | `https://az.gptplus5.com/v1` | GPT-4, Claude, Gemini | OpenAI兼容格式 |
+| OpenAI-SB | `https://api.openai-sb.com/v1` | GPT系列 | OpenAI兼容格式 |
+| API2D | `https://api2d.com/v1` | GPT-4, Claude | OpenAI兼容格式 |
+| CloseAI | `https://api.closeai-proxy.xyz/v1` | GPT系列 | OpenAI兼容格式 |
+| 自建中转 | 自定义端点 | 自定义 | OpenAI兼容格式 |
+
+**中转站特点:**
+- 使用OpenAI兼容的API格式
+- 只需更换`base_url`和`api_key`
+- 无需修改请求参数结构
+- 支持流式响应
 
 ---
 
@@ -1761,6 +1781,329 @@ Intelligent-Audio-TEST/
         "requires_proxy": true
     }
 }
+```
+
+### 7.4 LLM API中转站配置
+
+#### 7.4.1 讯星API中转站 (GPT-4)
+
+```json
+{
+    "name": "讯星API-GPT4",
+    "vendor": "proxy_xunxing",
+    "api_url": "https://az.gptplus5.com/v1/chat/completions",
+    "algorithm_type": "llm",
+    "meta": {
+        "adapter_type": "openai_llm",
+        "protocol": "http",
+        "auth_type": "bearer",
+        "method": "POST",
+        "is_proxy": true,
+        
+        "headers": {
+            "Authorization": "Bearer {{api_key}}",
+            "Content-Type": "application/json"
+        },
+        
+        "body_template": {
+            "model": "{{model}}",
+            "messages": "{{messages}}",
+            "temperature": 0.7,
+            "max_tokens": 2048,
+            "stream": false
+        },
+        
+        "response_mappings": {
+            "content_mapping": "choices[0].message.content",
+            "usage_mapping": "usage",
+            "finish_reason_mapping": "choices[0].finish_reason"
+        },
+        
+        "supported_models": [
+            "gpt-4o",
+            "gpt-4-turbo",
+            "gpt-4",
+            "gpt-3.5-turbo",
+            "claude-3-opus",
+            "claude-3-sonnet",
+            "gemini-pro"
+        ]
+    },
+    
+    "api_endpoints": [
+        {
+            "endpoint": "https://az.gptplus5.com/v1/chat/completions",
+            "name": "讯星API主节点",
+            "max_timeout": 60,
+            "max_process": 10
+        }
+    ]
+}
+```
+
+#### 7.4.2 OpenAI-SB中转站
+
+```json
+{
+    "name": "OpenAI-SB",
+    "vendor": "proxy_openaisb",
+    "api_url": "https://api.openai-sb.com/v1/chat/completions",
+    "algorithm_type": "llm",
+    "meta": {
+        "adapter_type": "openai_llm",
+        "protocol": "http",
+        "auth_type": "bearer",
+        "method": "POST",
+        "is_proxy": true,
+        
+        "headers": {
+            "Authorization": "Bearer {{api_key}}",
+            "Content-Type": "application/json"
+        },
+        
+        "body_template": {
+            "model": "{{model}}",
+            "messages": "{{messages}}",
+            "temperature": 0.7
+        },
+        
+        "response_mappings": {
+            "content_mapping": "choices[0].message.content"
+        },
+        
+        "supported_models": [
+            "gpt-4o",
+            "gpt-4-turbo",
+            "gpt-3.5-turbo"
+        ]
+    }
+}
+```
+
+#### 7.4.3 自建中转站配置
+
+```json
+{
+    "name": "自建OpenAI中转",
+    "vendor": "proxy_custom",
+    "api_url": "{{custom_base_url}}/v1/chat/completions",
+    "algorithm_type": "llm",
+    "meta": {
+        "adapter_type": "openai_llm",
+        "protocol": "http",
+        "auth_type": "bearer",
+        "method": "POST",
+        "is_proxy": true,
+        "custom_base_url": true,
+        
+        "headers": {
+            "Authorization": "Bearer {{api_key}}",
+            "Content-Type": "application/json"
+        },
+        
+        "body_template": {
+            "model": "{{model}}",
+            "messages": "{{messages}}",
+            "temperature": "{{temperature}}",
+            "max_tokens": "{{max_tokens}}",
+            "stream": "{{stream}}"
+        },
+        
+        "response_mappings": {
+            "content_mapping": "choices[0].message.content",
+            "usage_mapping": "usage"
+        }
+    }
+}
+```
+
+### 7.5 中转站与直连对比
+
+| 特性 | 直连OpenAI | 中转站 |
+|------|------------|--------|
+| 端点 | `api.openai.com` | 中转站域名 |
+| 需要代理 | ✅ 是 | ❌ 否 |
+| 响应速度 | 较慢(需代理) | 较快 |
+| 稳定性 | 依赖代理 | 较稳定 |
+| 费用 | 官方价格 | 可能有折扣 |
+| 模型支持 | 全部 | 部分模型 |
+| 流式响应 | ✅ 支持 | ✅ 支持 |
+
+### 7.6 中转站适配器实现
+
+**文件**: `api_adaper_service/adapters/proxy/openai_proxy_adapter.py`
+
+```python
+"""
+OpenAI兼容中转站适配器
+
+支持所有使用OpenAI兼容API格式的中转站:
+- 讯星API (az.gptplus5.com)
+- OpenAI-SB (api.openai-sb.com)
+- API2D (api2d.com)
+- 自建中转站
+"""
+import time
+import json
+import requests
+from typing import List, Dict, Any, Optional
+
+from api_adaper_service.adapters.base.llm_adapter import LLMAdapter
+from api_adaper_service.models.execution_config import ExecutionConfig
+from api_adaper_service.models.api_response import APIResponse, LLMResult, LatencyStats
+
+
+class OpenAIProxyAdapter(LLMAdapter):
+    """
+    OpenAI兼容中转站适配器
+    
+    特点:
+    - 使用OpenAI兼容的API格式
+    - 只需更换base_url即可使用不同中转站
+    - 无需代理，直接访问
+    """
+    
+    vendor = "proxy"
+    api_type = "llm"
+    
+    @classmethod
+    def get_required_credentials(cls) -> List[str]:
+        return ['api_key']
+    
+    def _execute_chat(self, config: ExecutionConfig, 
+                      messages: List[dict], 
+                      model: str) -> APIResponse:
+        """执行对话"""
+        
+        latency = LatencyStats()
+        latency.request_start_time = datetime.now()
+        
+        try:
+            # 构建请求
+            headers = {
+                "Authorization": f"Bearer {config.credentials.get('api_key')}",
+                "Content-Type": "application/json"
+            }
+            
+            body = self._build_request_body(config, messages, model)
+            
+            # 发送请求 (中转站不需要代理)
+            response = requests.post(
+                config.endpoint,
+                headers=headers,
+                json=body,
+                timeout=config.max_timeout
+            )
+            
+            latency.first_byte_latency_ms = response.elapsed.total_seconds() * 1000
+            
+            if response.status_code != 200:
+                return APIResponse(
+                    success=False,
+                    vendor=config.vendor,
+                    api_type=self.api_type,
+                    error_code=str(response.status_code),
+                    error_message=response.text,
+                    latency=latency
+                )
+            
+            # 解析响应
+            result = response.json()
+            latency.request_end_time = datetime.now()
+            latency.total_latency_ms = (latency.request_end_time - latency.request_start_time).total_seconds() * 1000
+            
+            # 提取内容
+            content_mapping = config.meta.get('response_mappings', {}).get('content_mapping', 'choices[0].message.content')
+            content = self._extract_by_path(result, content_mapping)
+            
+            usage_mapping = config.meta.get('response_mappings', {}).get('usage_mapping', 'usage')
+            usage = self._extract_by_path(result, usage_mapping) or {}
+            
+            return APIResponse(
+                success=True,
+                vendor=config.vendor,
+                api_type=self.api_type,
+                result=LLMResult(
+                    content=content,
+                    model=model,
+                    usage=usage,
+                    raw_response=result
+                ),
+                latency=latency,
+                raw_response=result
+            )
+            
+        except Exception as e:
+            latency.request_end_time = datetime.now()
+            latency.total_latency_ms = (latency.request_end_time - latency.request_start_time).total_seconds() * 1000
+            
+            return APIResponse(
+                success=False,
+                vendor=config.vendor,
+                api_type=self.api_type,
+                error_code='REQUEST_ERROR',
+                error_message=str(e),
+                latency=latency
+            )
+    
+    def _build_request_body(self, config: ExecutionConfig, 
+                            messages: List[dict], 
+                            model: str) -> dict:
+        """构建请求体"""
+        body_template = config.meta.get('body_template', {})
+        
+        body = {
+            "model": model,
+            "messages": messages,
+        }
+        
+        # 添加可选参数
+        if 'temperature' in body_template:
+            body['temperature'] = config.test_params.get('temperature', body_template['temperature'])
+        if 'max_tokens' in body_template:
+            body['max_tokens'] = config.test_params.get('max_tokens', body_template['max_tokens'])
+        if 'stream' in body_template:
+            body['stream'] = config.test_params.get('stream', False)
+        
+        return body
+    
+    def _extract_by_path(self, data, path: str):
+        """从字典中根据路径提取值"""
+        if not path or not data:
+            return None
+        try:
+            for key in path.replace('[', '.').replace(']', '').split('.'):
+                if key.isdigit():
+                    data = data[int(key)]
+                elif isinstance(data, dict):
+                    data = data.get(key)
+                else:
+                    return None
+            return data
+        except:
+            return None
+    
+    @classmethod
+    def get_supported_features(cls) -> List[str]:
+        return ['streaming', 'function_calling', 'vision']
+```
+
+### 7.7 中转站适配器注册
+
+```python
+# 在 adapter_factory.py 中注册
+
+def auto_register_adapters():
+    # ... 其他适配器注册 ...
+    
+    # 注册中转站适配器 (使用同一个适配器类，不同的vendor)
+    from api_adaper_service.adapters.proxy.openai_proxy_adapter import OpenAIProxyAdapter
+    
+    AdapterFactory.register("proxy_xunxing", "llm", OpenAIProxyAdapter)
+    AdapterFactory.register("proxy_openaisb", "llm", OpenAIProxyAdapter)
+    AdapterFactory.register("proxy_api2d", "llm", OpenAIProxyAdapter)
+    AdapterFactory.register("proxy_closeai", "llm", OpenAIProxyAdapter)
+    AdapterFactory.register("proxy_custom", "llm", OpenAIProxyAdapter)
 ```
 
 ---
