@@ -84,6 +84,8 @@ export function useApiTest() {
     algorithmList,
     selectedAlgorithmType,
     algorithmModalVisible,
+    algorithmModalMode,
+    algorithmEditData,
     algorithmSearchQuery,
     editingAlgorithm,
     filteredAlgorithmList,
@@ -727,6 +729,8 @@ export function useApiTest() {
     openAlgorithmConfigModal,
     closeAlgorithmModal,
     algorithmModalVisible,
+    algorithmModalMode,
+    algorithmEditData,
     editingAlgorithm
   }
 }

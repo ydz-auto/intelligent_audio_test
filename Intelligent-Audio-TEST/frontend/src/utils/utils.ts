@@ -228,6 +228,26 @@ export function convertTestCaseFormData(formData: TestCaseFormData): Record<stri
     delete convertedData.config.apiAudios;
     delete convertedData.config.dryAudios;
   }
+
+  if (convertedData.algorithmParams && typeof convertedData.algorithmParams === 'object' && !Array.isArray(convertedData.algorithmParams)) {
+    const params = convertedData.algorithmParams as Record<string, any>;
+    convertedData.algorithmParams = Object.entries(params).map(([key, value]) => ({
+      fieldCode: key,
+      fieldValue: value
+    }));
+  }
+
+  if (convertedData.referenceParams && typeof convertedData.referenceParams === 'object' && !Array.isArray(convertedData.referenceParams)) {
+    const params = convertedData.referenceParams as Record<string, any>;
+    if (Object.keys(params).length === 0) {
+      delete convertedData.referenceParams;
+    } else {
+      convertedData.referenceParams = Object.entries(params).map(([key, value]) => ({
+        code: key,
+        ...value
+      }));
+    }
+  }
   
   return convertToSnakeCase(convertedData);
 }

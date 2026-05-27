@@ -441,7 +441,9 @@ function handleCaseSave() {
   const saveData: any = { ...caseFormData.value };
   if (caseFormData.value.group === 'new-group') {
     const caseForm = caseFormRef.value as any;
-    const newGroupName = caseForm?.newGroupName?.value?.trim();
+    const newGroupName = typeof caseForm?.newGroupName === 'string'
+      ? caseForm.newGroupName.trim()
+      : caseForm?.newGroupName?.value?.trim();
     if (!newGroupName) {
       notification.warning('请输入新分组名称');
       return;

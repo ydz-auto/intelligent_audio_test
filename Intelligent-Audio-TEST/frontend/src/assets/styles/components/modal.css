@@ -233,3 +233,11 @@
         width: 100%;
     }
 }
+
+.modal input,
+.modal textarea,
+.modal-overlay input,
+.modal-overlay textarea {
+    user-select: text !important;
+    pointer-events: auto !important;
+}

@@ -255,8 +255,8 @@
   <!-- 算法配置模态窗 -->
   <AlgorithmConfigModal
     v-model:visible="algorithmModalVisible"
-    :mode="editingAlgorithm ? 'edit' : 'list'"
-    :edit-data="editingAlgorithm"
+    :mode="algorithmModalMode"
+    :edit-data="algorithmEditData"
   />
 </template>
 
@@ -310,6 +310,8 @@ const {
   filteredAlgorithmList,
   algorithmSearchQuery,
   algorithmModalVisible,
+  algorithmModalMode,
+  algorithmEditData,
   editingAlgorithm,
   selectedAlgorithmType,
   loadAlgorithms,

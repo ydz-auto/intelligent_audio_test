@@ -83,18 +83,28 @@ export function useAlgorithmSelection(options: UseAlgorithmSelectionOptions = {}
     editingAlgorithm.value = null
   }
 
-  async function openAlgorithmConfigModal(algo: AlgorithmOption) {
-    try {
-      const response = await fetch(`/api/v1/algorithm/${algo.value}`)
-      const result = await response.json()
-      if (result.success && result.data) {
-        editingAlgorithm.value = result.data
-      } else {
+  async function openAlgorithmConfigModal(algo?: AlgorithmOption) {
+    if (algo) {
+      try {
+        const response = await fetch(`/api/v1/algorithm/definitions/${algo.value}`)
+        const result = await response.json()
+        if (result.success && result.data) {
+          editingAlgorithm.value = result.data
+          algorithmEditData.value = result.data
+        } else {
+          editingAlgorithm.value = algo
+          algorithmEditData.value = algo as any
+        }
+      } catch (error) {
+        console.error('加载算法详情失败:', error)
         editingAlgorithm.value = algo
+        algorithmEditData.value = algo as any
       }
-    } catch (error) {
-      console.error('加载算法详情失败:', error)
-      editingAlgorithm.value = algo
+      algorithmModalMode.value = 'edit'
+    } else {
+      algorithmModalMode.value = 'list'
+      algorithmEditData.value = null
+      editingAlgorithm.value = null
     }
     algorithmModalVisible.value = true
   }

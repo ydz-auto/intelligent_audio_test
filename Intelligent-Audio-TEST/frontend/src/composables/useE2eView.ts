@@ -413,6 +413,8 @@ export function useE2eView() {
     algorithmList,
     selectedAlgorithmType,
     algorithmModalVisible,
+    algorithmModalMode,
+    algorithmEditData,
     algorithmSearchQuery,
     editingAlgorithm,
     filteredAlgorithmList,
@@ -420,6 +422,7 @@ export function useE2eView() {
     selectAlgorithm,
     getAlgorithmName,
     openAlgorithmModal,
+    openCreateAlgorithmModal,
     openAlgorithmConfigModal,
     closeAlgorithmModal
   } = useAlgorithmSelection({
@@ -687,9 +690,12 @@ export function useE2eView() {
     selectAlgorithm,
     getAlgorithmName,
     openAlgorithmModal,
+    openCreateAlgorithmModal,
     openAlgorithmConfigModal,
     closeAlgorithmModal,
     algorithmModalVisible,
+    algorithmModalMode,
+    algorithmEditData,
     editingAlgorithm,
     algorithmSearchQuery,
     filteredAlgorithmList

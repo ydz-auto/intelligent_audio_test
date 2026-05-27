@@ -563,6 +563,21 @@ async function loadAvailableTags() {
   }
 }
 
+function normalizeParams(params: any): Record<string, any> {
+  if (!params || typeof params !== 'object') return {};
+  if (Array.isArray(params)) {
+    return params.reduce((acc: Record<string, any>, item: any) => {
+      const code = item.fieldCode || item.field_code;
+      const value = item.fieldValue || item.field_value;
+      if (code) {
+        acc[code] = value;
+      }
+      return acc;
+    }, {});
+  }
+  return params;
+}
+
 function initFormData() {
   const raw = props.formData || {};
   localFormData.value = {
@@ -572,8 +587,8 @@ function initFormData() {
     group: raw.group || raw.groupName || raw.group_name || '',
     tags: raw.tags || [],
     algorithmType: raw.algorithmType || raw.algorithm_type || '',
-    algorithmParams: raw.algorithmParams || raw.algorithm_params || {},
-    referenceParams: raw.referenceParams || raw.reference_params || {},
+    algorithmParams: normalizeParams(raw.algorithmParams || raw.algorithm_params || {}),
+    referenceParams: normalizeParams(raw.referenceParams || raw.reference_params || {}),
     config: raw.config || {
       audios: [{ audioId: '', testType: 'api', playbackDeviceId: '', spl: 65, playOrder: 0 }],
       dimensions: { api: [], e2e: [] },
@@ -583,9 +598,7 @@ function initFormData() {
   if (localFormData.value.algorithmType && dimensionConfig) {
     dimensionConfig.updateAssociatedDimensions(localFormData.value.algorithmType);
   }
-  if (raw.algorithmParams && typeof raw.algorithmParams === 'object') {
-    algorithmParams.value = raw.algorithmParams;
-  }
+  algorithmParams.value = localFormData.value.algorithmParams;
 }
 
 function addTags() {

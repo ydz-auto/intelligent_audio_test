@@ -385,7 +385,6 @@ const {
   getAlgorithmName,
   openAlgorithmModal,
   openCreateAlgorithmModal,
-  openEditAlgorithmModal,
   openAlgorithmConfigModal,
   algorithmModalVisible,
   algorithmModalMode,
