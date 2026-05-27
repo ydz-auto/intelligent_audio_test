@@ -351,21 +351,23 @@ class CaseParameterExtractor:
         if isinstance(algorithm_params, list):
             for p in algorithm_params:
                 if p.get('field_code') == 'overlap_rate':
-                    value = float(p.get('field_value', 0) or 0)
-                    log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_rate] found list format, value={value}", category='preview')
-                    return value
+                    value = p.get('field_value') or 0
+                    try:
+                        result = max(0.0, min(1.0, float(value)))
+                        log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_rate] found list format, value={value}, result={result}", category='preview')
+                        return result
+                    except (ValueError, TypeError):
+                        return 0
             log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_rate] list format but not found overlap_rate", category='preview')
             return 0
 
-        if not algorithm_params:
-            algorithm_params = case_config.get('algorithm_params', {}) if case_config else {}
-
         overlap_rate = algorithm_params.get('overlap_rate', 0)
-        if not isinstance(overlap_rate, (int, float)):
+        try:
+            result = max(0.0, min(1.0, float(overlap_rate)))
+            log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_rate] dict format, result={result}", category='preview')
+            return result
+        except (ValueError, TypeError):
             return 0
-        result = max(0.0, min(1.0, float(overlap_rate)))
-        log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_rate] dict format, result={result}", category='preview')
-        return result
     
     @classmethod
     def get_overlap_time(cls, case_config: Dict) -> float:
@@ -375,22 +377,23 @@ class CaseParameterExtractor:
         if isinstance(algorithm_params, list):
             for p in algorithm_params:
                 if p.get('field_code') == 'overlap_time':
-                    value = float(p.get('field_value', 0) or 0)
-                    result = max(0.0, value)
-                    log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_time] found list format, value={value}, result={result}", category='preview')
-                    return result
+                    value = p.get('field_value') or 0
+                    try:
+                        result = max(0.0, float(value))
+                        log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_time] found list format, value={value}, result={result}", category='preview')
+                        return result
+                    except (ValueError, TypeError):
+                        return 0
             log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_time] list format but not found overlap_time", category='preview')
             return 0
 
-        if not algorithm_params:
-            algorithm_params = case_config.get('algorithm_params', {}) if case_config else {}
-
         overlap_time = algorithm_params.get('overlap_time', 0)
-        if not isinstance(overlap_time, (int, float)):
+        try:
+            result = max(0.0, float(overlap_time))
+            log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_time] dict format, result={result}", category='preview')
+            return result
+        except (ValueError, TypeError):
             return 0
-        result = max(0.0, float(overlap_time))
-        log_not_emit('DEBUG', 'CaseParameterExtractor', f"[get_overlap_time] dict format, result={result}", category='preview')
-        return result
 
 
 

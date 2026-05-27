@@ -349,13 +349,18 @@ def _get_overlap_rate(config: Dict) -> float:
     algorithm_params = config.get('algorithm_params', {})
     if isinstance(algorithm_params, list):
         for p in algorithm_params:
-            if p.get('field_code') == 'overlap_rate' or p.get('fieldCode') == 'overlap_rate':
-                return max(0.0, min(1.0, float(p.get('field_value', p.get('fieldValue', 0)) or 0)))
+            if p.get('field_code') == 'overlap_rate':
+                value = p.get('field_value') or 0
+                try:
+                    return max(0.0, min(1.0, float(value)))
+                except (ValueError, TypeError):
+                    return 0
         return 0
     overlap_rate = algorithm_params.get('overlap_rate', 0)
-    if not isinstance(overlap_rate, (int, float)):
+    try:
+        return max(0.0, min(1.0, float(overlap_rate)))
+    except (ValueError, TypeError):
         return 0
-    return max(0.0, min(1.0, float(overlap_rate)))
 
 
 def _get_overlap_time(config: Dict) -> float:
@@ -363,13 +368,18 @@ def _get_overlap_time(config: Dict) -> float:
     algorithm_params = config.get('algorithm_params', {})
     if isinstance(algorithm_params, list):
         for p in algorithm_params:
-            if p.get('field_code') == 'overlap_time' or p.get('fieldCode') == 'overlap_time':
-                return float(p.get('field_value', p.get('fieldValue', 0)) or 0)
+            if p.get('field_code') == 'overlap_time':
+                value = p.get('field_value') or 0
+                try:
+                    return float(value)
+                except (ValueError, TypeError):
+                    return 0
         return 0
     overlap_time = algorithm_params.get('overlap_time', 0)
-    if not isinstance(overlap_time, (int, float)):
+    try:
+        return max(0.0, float(overlap_time))
+    except (ValueError, TypeError):
         return 0
-    return max(0.0, float(overlap_time))
 
 
 def _extract_speakers_from_audio(audio_id: int, annotation_map: Dict = None) -> set:

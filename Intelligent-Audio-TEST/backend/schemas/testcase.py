@@ -311,9 +311,12 @@ class AlgorithmParamItem(APIModel):
             result = []
             for item in params:
                 if isinstance(item, dict):
+                    field_value = item.get('field_value')
+                    if field_value is not None:
+                        field_value = str(field_value)
                     result.append(AlgorithmParamItem(
                         field_code=item.get('field_code'),
-                        field_value=item.get('field_value')
+                        field_value=field_value
                     ))
                 elif isinstance(item, AlgorithmParamItem):
                     result.append(item)
@@ -321,6 +324,8 @@ class AlgorithmParamItem(APIModel):
         elif isinstance(params, dict):
             result = []
             for key, value in params.items():
+                if value is not None:
+                    value = str(value)
                 result.append(AlgorithmParamItem(
                     field_code=key,
                     field_value=value
@@ -379,7 +384,13 @@ class TestCaseCreateSchema(APIModel):
     def get_algorithm_params_dict(self) -> Optional[List[Dict[str, Any]]]:
         if not self.algorithm_params:
             return None
-        return [p.model_dump() for p in self.algorithm_params]
+        result = []
+        for p in self.algorithm_params:
+            item = p.model_dump(by_alias=False)
+            if item.get('field_value') is not None:
+                item['field_value'] = str(item['field_value'])
+            result.append(item)
+        return result
 
     def get_reference_params_dict(self) -> Optional[List[Dict[str, Any]]]:
         if not self.reference_params:
@@ -459,7 +470,13 @@ class TestCaseUpdateSchema(APIModel):
     def get_algorithm_params_dict(self) -> Optional[List[Dict[str, Any]]]:
         if not self.algorithm_params:
             return None
-        return [p.model_dump() for p in self.algorithm_params]
+        result = []
+        for p in self.algorithm_params:
+            item = p.model_dump(by_alias=False)
+            if item.get('field_value') is not None:
+                item['field_value'] = str(item['field_value'])
+            result.append(item)
+        return result
 
     def get_reference_params_dict(self) -> Optional[List[Dict[str, Any]]]:
         if not self.reference_params:
