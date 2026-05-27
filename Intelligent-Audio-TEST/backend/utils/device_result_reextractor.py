@@ -186,7 +186,7 @@ class DeviceResultReextractor:
             }
         """
         from backend.models.database import db
-        from backend.models.models import TestResult, TaskCase, Device, TestResultDimension, Task
+        from backend.models.models import TestResult, TaskCase, Device, TestResultDimension, Task, TestCase
 
         try:
             task = db.session.get(Task, task_id)
@@ -229,6 +229,8 @@ class DeviceResultReextractor:
             for tc_rel in tc_relations:
                 test_case_id = tc_rel.test_case_id
 
+                test_case = db.session.get(TestCase, test_case_id)
+
                 existing_results = db.session.query(TestResult).filter(
                     TestResult.task_id == task_id,
                     TestResult.test_case_id == test_case_id
@@ -248,6 +250,12 @@ class DeviceResultReextractor:
                         if adjusted_reference_params:
                             break
 
+                original_reference_params = None
+                if test_case and test_case.reference_params:
+                    original_reference_params = test_case.reference_params
+                    log_and_emit('DEBUG', 'reextractor', f"获取原始 reference_params 成功", task_id=task_id,
+                                 test_case_id=test_case_id)
+
                 for device_id, device in device_map.items():
                     if not device.serial_number:
                         log_and_emit('WARNING', 'reextractor', f"跳过: 设备无序列号", task_id=task_id,
@@ -258,7 +266,7 @@ class DeviceResultReextractor:
                     if device_results:
                         algorithm_type = device_results[0].algorithm_type or 'asr'
                     else:
-                        algorithm_type = 'asr'
+                        algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'asr'
 
                     extracted_results, driver_type = _extract_device_output_from_archive(
                         device=device,
@@ -273,14 +281,6 @@ class DeviceResultReextractor:
                         continue
 
                     new_result_ids = []
-
-                    from backend.models.models import TestCase
-                    test_case = db.session.get(TestCase, test_case_id)
-                    original_reference_params = None
-                    if test_case and test_case.reference_params:
-                        original_reference_params = test_case.reference_params
-                        log_and_emit('DEBUG', 'reextractor', f"获取原始 reference_params 成功", task_id=task_id,
-                                     test_case_id=test_case_id, device_id=device_id)
 
                     for extracted_result in extracted_results:
                         if not extracted_result or not extracted_result.get('success'):
