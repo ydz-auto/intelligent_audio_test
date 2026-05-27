@@ -20,50 +20,52 @@
             <span v-else class="placeholder">请选择算法</span>
             <i class="fas fa-chevron-down dropdown-icon" :class="{ 'rotated': showDropdown }"></i>
           </div>
-          <div class="dropdown-menu" v-if="showDropdown">
-            <div class="dropdown-search">
-              <input 
-                type="text" 
-                v-model="searchQuery" 
-                placeholder="搜索算法..."
-                class="search-input"
-                @click.stop
-              >
-            </div>
-            <div class="dropdown-list">
-              <template v-if="filteredGroups.length > 0">
-                <template v-for="group in filteredGroups" :key="group.name">
-                  <div class="group-header" v-if="group.algorithms.length > 0">
-                    <span class="group-name">{{ group.name }}</span>
-                    <span class="group-count">{{ group.algorithms.length }}</span>
-                  </div>
-                  <div 
-                    v-for="opt in group.algorithms" 
-                    :key="opt.value" 
-                    class="dropdown-item"
-                    :class="{ selected: isAlgorithmSelected(opt.value) }"
-                    @click="toggleAlgorithm(opt.value)"
-                  >
-                    <div class="item-checkbox">
-                      <i :class="props.single ? (isAlgorithmSelected(opt.value) ? 'fas fa-check-circle' : 'far fa-circle') : (isAlgorithmSelected(opt.value) ? 'fas fa-check-square' : 'far fa-square')"></i>
+          <Teleport to="body">
+            <div class="dropdown-menu" v-if="showDropdown" ref="dropdownMenuRef" :style="dropdownMenuStyle">
+              <div class="dropdown-search">
+                <input 
+                  type="text" 
+                  v-model="searchQuery" 
+                  placeholder="搜索算法..."
+                  class="search-input"
+                  @click.stop
+                >
+              </div>
+              <div class="dropdown-list">
+                <template v-if="filteredGroups.length > 0">
+                  <template v-for="group in filteredGroups" :key="group.name">
+                    <div class="group-header" v-if="group.algorithms.length > 0">
+                      <span class="group-name">{{ group.name }}</span>
+                      <span class="group-count">{{ group.algorithms.length }}</span>
                     </div>
-                    <span class="item-name">{{ opt.name }}</span>
-                    <button 
-                      v-if="isAlgorithmSelected(opt.value) && !props.single" 
-                      class="set-primary-btn"
-                      :class="{ primary: isPrimaryAlgorithm(opt.value) }"
-                      @click.stop="setPrimaryAlgorithm(opt.value)"
+                    <div 
+                      v-for="opt in group.algorithms" 
+                      :key="opt.value" 
+                      class="dropdown-item"
+                      :class="{ selected: isAlgorithmSelected(opt.value) }"
+                      @click="toggleAlgorithm(opt.value)"
                     >
-                      {{ isPrimaryAlgorithm(opt.value) ? '主算法' : '设为主' }}
-                    </button>
-                  </div>
+                      <div class="item-checkbox">
+                        <i :class="props.single ? (isAlgorithmSelected(opt.value) ? 'fas fa-check-circle' : 'far fa-circle') : (isAlgorithmSelected(opt.value) ? 'fas fa-check-square' : 'far fa-square')"></i>
+                      </div>
+                      <span class="item-name">{{ opt.name }}</span>
+                      <button 
+                        v-if="isAlgorithmSelected(opt.value) && !props.single" 
+                        class="set-primary-btn"
+                        :class="{ primary: isPrimaryAlgorithm(opt.value) }"
+                        @click.stop="setPrimaryAlgorithm(opt.value)"
+                      >
+                        {{ isPrimaryAlgorithm(opt.value) ? '主算法' : '设为主' }}
+                      </button>
+                    </div>
+                  </template>
                 </template>
-              </template>
-              <div v-else class="dropdown-empty">
-                未找到匹配的算法
+                <div v-else class="dropdown-empty">
+                  未找到匹配的算法
+                </div>
               </div>
             </div>
-          </div>
+          </Teleport>
         </div>
       </div>
     </div>
@@ -87,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, computed, onUnmounted } from 'vue'
+import { ref, watch, onMounted, computed, onUnmounted, nextTick } from 'vue'
 import DynamicForm from '../algorithm/DynamicForm.vue'
 import { useAlgorithmConfig } from '../../composables/useAlgorithmConfig'
 
@@ -149,6 +151,35 @@ const dynamicFormRef = ref<InstanceType<typeof DynamicForm> | null>(null)
 const showDropdown = ref(false)
 const searchQuery = ref('')
 const dropdownRef = ref<HTMLElement | null>(null)
+const dropdownMenuRef = ref<HTMLElement | null>(null)
+const dropdownMenuStyle = ref<Record<string, string>>({})
+
+function updateDropdownPosition() {
+  if (!dropdownRef.value || !showDropdown.value) return
+  const rect = dropdownRef.value.getBoundingClientRect()
+  const viewportHeight = window.innerHeight
+  const menuMaxHeight = 300
+  const spaceBelow = viewportHeight - rect.bottom
+  const spaceAbove = rect.top
+  const openUpward = spaceBelow < menuMaxHeight && spaceAbove > spaceBelow
+  dropdownMenuStyle.value = {
+    position: 'fixed',
+    left: `${rect.left}px`,
+    width: `${rect.width}px`,
+    zIndex: '14000',
+    ...(openUpward
+      ? { bottom: `${viewportHeight - rect.top + 4}px`, top: 'auto' }
+      : { top: `${rect.bottom + 4}px`, bottom: 'auto' })
+  }
+}
+
+function toggleDropdown() {
+  showDropdown.value = !showDropdown.value
+  if (showDropdown.value) {
+    searchQuery.value = ''
+    nextTick(() => updateDropdownPosition())
+  }
+}
 
 const primaryAlgorithmType = computed(() => {
   const primary = selectedAlgorithms.value.find(a => a.isPrimary)
@@ -190,15 +221,10 @@ function isPrimaryAlgorithm(type: string): boolean {
   return algo ? algo.isPrimary : false
 }
 
-function toggleDropdown() {
-  showDropdown.value = !showDropdown.value
-  if (showDropdown.value) {
-    searchQuery.value = ''
-  }
-}
-
 function closeDropdown(event: MouseEvent) {
-  if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
+  const target = event.target as Node
+  if (dropdownRef.value && !dropdownRef.value.contains(target) &&
+      dropdownMenuRef.value && !dropdownMenuRef.value.contains(target)) {
     showDropdown.value = false
   }
 }
@@ -376,6 +402,8 @@ watch(() => props.initialParams, (newValue) => {
 
 onMounted(async () => {
   document.addEventListener('click', closeDropdown)
+  window.addEventListener('resize', updateDropdownPosition)
+  window.addEventListener('scroll', updateDropdownPosition, true)
   await loadAlgorithmOptions()
   
   if (props.algorithmRelations && props.algorithmRelations.length > 0) {
@@ -396,6 +424,8 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('click', closeDropdown)
+  window.removeEventListener('resize', updateDropdownPosition)
+  window.removeEventListener('scroll', updateDropdownPosition, true)
 })
 
 defineExpose({
@@ -516,16 +546,10 @@ defineExpose({
 }
 
 .dropdown-menu {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  margin-top: 4px;
   background: var(--white-color);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius-md);
   box-shadow: var(--shadow-lg);
-  z-index: 100;
   max-height: 300px;
   overflow: hidden;
   display: flex;

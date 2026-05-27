@@ -30,8 +30,8 @@
               }"
               @close="handleClose(modalId)"
               @confirm="(data: any) => {
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] confirm事件触发, data:', data);
-                // 调用onSave回调（如果存在）
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
                   console.log('[GlobalModalContainer] 调用onSave回调');
                   try {
@@ -46,13 +46,14 @@
                 handleClose(modalId);
               }"
               @cancel="(data: any) => {
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] cancel事件触发, data:', data);
                 modalItem.resolve(false);
                 handleClose(modalId);
               }"
               @save="(data: any) => {
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] save事件触发, data:', data);
-                // 调用onSave回调（如果存在）
                 if (modalItem.props && typeof modalItem.props.onSave === 'function') {
                   console.log('[GlobalModalContainer] 调用onSave回调');
                   try {
@@ -67,14 +68,26 @@
                 handleClose(modalId);
               }"
               @select="(data: any) => {
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] select事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
               }"
               @selectMultiple="(data: any) => {
+                if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] selectMultiple事件触发, data:', data);
                 modalItem.resolve(data);
                 handleClose(modalId);
+              }"
+              @uploadRequest="() => {
+                console.log('[GlobalModalContainer] uploadRequest事件触发');
+                handleClose(modalId);
+                requestUploadAction('openUploadModal');
+              }"
+              @folderImportRequest="() => {
+                console.log('[GlobalModalContainer] folderImportRequest事件触发');
+                handleClose(modalId);
+                requestUploadAction('openFolderImport');
               }"
             />
           </template>
@@ -93,6 +106,7 @@
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { getModalManager } from '../../../composables/useModal'
+import { useUploadState } from '../../../composables/useUploadState'
 import { type ActiveModal, MODAL_TYPES } from '../../../shared/types'
 import BasicModal from './BasicModal.vue'
 import { testcasesApi } from '../../../utils/api'
@@ -125,12 +139,21 @@ import AudioPlayerModal from '../AudioPlayerModal.vue'
 import AudioSelectModal from '../AudioSelectModal.vue'
 import ReevaluateSelectModal from './ReevaluateSelectModal.vue'
 
+const isNativeEvent = (data: any): boolean => {
+  return data !== undefined && data !== null
+    && typeof data === 'object'
+    && data.target !== undefined
+    && data.type !== undefined
+    && typeof data.preventDefault === 'function'
+}
+
 defineProps({
   includeStyles: { type: Boolean, default: true }
 })
 
 // 使用局部定义的ModalManager类型，避免与shared/types/index.ts中的定义冲突
 const manager = getModalManager()
+const { requestAction: requestUploadAction } = useUploadState()
 
 const confirmedEvents = new Map<string, { timestamp: number, data: any }>()
 

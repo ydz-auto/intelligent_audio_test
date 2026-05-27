@@ -35,7 +35,7 @@
 
     <!-- 全局上传进度显示 -->
     <UploadProgressCard
-      v-if="uploadProgress > 0 && !showUploadModal"
+      v-if="uploadProgress > 0 && uploadStatus !== 'idle'"
       :upload-progress="uploadProgress"
       :current-task="currentTask"
       :current-uploading-file="currentUploadingFile"
@@ -186,6 +186,7 @@ import UploadProgressCard from '../components/common/UploadProgressCard.vue';
 import GlobalPlaybackDeviceModal from '../components/common/modal/GlobalPlaybackDeviceModal.vue';
 import AudioPlayerModal from '../components/common/AudioPlayerModal.vue';
 import { useAudioImport } from './AudioImportLogic/audioImport';
+import { useUploadState } from '../composables/useUploadState';
 import { formatAudioData } from '../utils/audioUtils';
 
 interface AudioUploadTask {
@@ -247,7 +248,6 @@ const {
   selectAllPages: selectAllPages,
   showSelectAllOptions: showSelectAllOptions,
   openUploadModal: openUploadModal, 
-  showUploadModal: showUploadModal,
   closeModal: closeModal, 
   pickFiles: pickFiles,
   handleDrop: handleDrop, 
@@ -294,6 +294,25 @@ const {
   currentPreviewAudioType,
   pathBasename: pathBasename
 } = useAudioImport();
+
+const { pendingAction, consumeAction } = useUploadState();
+
+watch(pendingAction, (payload) => {
+  const { action, taskId } = payload;
+  if (!action) return;
+  consumeAction();
+  if (action === 'openUploadModal') {
+    openUploadModal();
+  } else if (action === 'openFolderImport') {
+    batchImportFromFolder();
+  } else if (action === 'dismissTask' && taskId) {
+    dismissTask(taskId);
+  } else if (action === 'pauseTask' && taskId) {
+    pauseUploadTask(taskId);
+  } else if (action === 'retryTask' && taskId) {
+    retryFailedFiles(taskId);
+  }
+});
 
 // 进度条事件处理
 const handleDismiss = (taskId: string) => {

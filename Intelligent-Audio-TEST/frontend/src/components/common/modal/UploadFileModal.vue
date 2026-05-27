@@ -132,14 +132,6 @@
         </div>
       </div>
       
-      <!-- 上传进度 -->
-      <div v-if="showProgress && uploadProgress > 0" class="upload-progress">
-        <div class="progress-bar-container">
-          <div class="progress-bar" :style="{ width: uploadProgress + '%' }"></div>
-        </div>
-        <p class="progress-text">{{ uploadProgress }}%</p>
-      </div>
-      
       <!-- 上传选项 -->
       <UploadOptions
         v-if="hasUploadOptions"
@@ -204,7 +196,6 @@ const selectedFiles = ref([])
 const selectedTxtFiles = ref([])
 const isDragging = ref(false)
 const uploading = ref(false)
-const uploadProgress = ref(0)
 const tags = ref('')
 const annotationCode = ref('')
 
@@ -538,13 +529,11 @@ const removeFile = () => {
   }
 }
 
-const showProgress = computed(() => uploading.value)
 
 const handleUpload = async () => {
   if (!canUpload.value) return
   
   uploading.value = true
-  uploadProgress.value = 0
   
   try {
     const tagList = tags.value.split(',').map(t => t.trim()).filter(t => t)
@@ -581,7 +570,7 @@ const handleUpload = async () => {
       files: filesWithMetadata,
       tags: [...tagList, ...allSpeakerNames, ...speakerCountTag],
       options: uploadConfig.value,
-      progress: (p) => { uploadProgress.value = p }
+      progress: (p) => {}
     })
   } catch (error) {
     console.error('上传失败:', error)
@@ -976,36 +965,6 @@ h3 {
   color: #334155;
   flex: 1;
   word-break: break-all;
-}
-
-/* 上传进度 */
-.upload-progress {
-  background-color: #f8fafc;
-  padding: 16px;
-  border-radius: 8px;
-}
-
-.progress-bar-container {
-  width: 100%;
-  height: 8px;
-  background-color: #e2e8f0;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 8px;
-}
-
-.progress-bar {
-  height: 100%;
-  background-color: #3b82f6;
-  border-radius: 4px;
-  transition: width 0.3s ease;
-}
-
-.progress-text {
-  margin: 0;
-  font-size: 14px;
-  color: #64748b;
-  text-align: center;
 }
 
 /* 上传选项 */

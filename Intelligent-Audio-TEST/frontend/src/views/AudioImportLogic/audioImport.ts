@@ -33,7 +33,6 @@ export function useAudioImport() {
   const audioTypeFilter = ref<'all' | 'dry' | 'noise' | 'prompt' | 'mixed'>('all');
   const viewMode = ref<'list' | 'folder'>('list');
   const showConvertModal = ref(false);
-  const showUploadModal = ref(false);
   const selectedAudios = ref<(string | number)[]>([]);
   
   const filters = ref({
@@ -205,6 +204,8 @@ export function useAudioImport() {
   const fileList = ref<AudioUploadFile[]>([]);
   
   let abortController : AbortController | null = null;
+  let isOpeningUploadModal = false;
+  let isOpeningFolderImport = false;
 
   const filteredAudios = computed(() => {
     return audioList.value.filter(audio => {
@@ -778,7 +779,9 @@ export function useAudioImport() {
   });
 
   async function openUploadModal() {
-    // 确保获取最新的播放设备和翻译方向数据
+    if (isOpeningUploadModal) return;
+    isOpeningUploadModal = true;
+    try {
     await fetchPlaybackDevices();
     await fetchTranslationDirections();
     await fetchAlgorithmOptions();
@@ -894,7 +897,6 @@ export function useAudioImport() {
           if (options?.audioType !== undefined) uploadOptions.audioType = options.audioType;
           if (options?.createTestCase !== undefined) uploadOptions.createTestCase = options.createTestCase;
           if (data?.tags !== undefined) uploadOptions.tags = data.tags;
-          if (data?.description !== undefined) uploadOptions.description = data.description;
           if (options?.testTypes !== undefined) uploadOptions.testTypes = options.testTypes;
           if (options?.playbackDeviceId !== undefined) uploadOptions.playbackDeviceId = options.playbackDeviceId;
           if (options?.defaultSpl !== undefined) uploadOptions.spl = options.defaultSpl;
@@ -916,6 +918,9 @@ export function useAudioImport() {
         }
       }
     });
+    } finally {
+      isOpeningUploadModal = false;
+    }
   }
 
   function closeModal(modalId?: string) {
@@ -1769,7 +1774,9 @@ export function useAudioImport() {
   };
 
   async function batchImportFromFolder() {
-    // 确保获取最新的播放设备和翻译方向数据
+    if (isOpeningFolderImport) return;
+    isOpeningFolderImport = true;
+    try {
     await fetchPlaybackDevices();
     await fetchTranslationDirections();
     await fetchAlgorithmOptions();
@@ -1878,7 +1885,6 @@ export function useAudioImport() {
           if (options?.audioType !== undefined) uploadOptions.audioType = options.audioType;
           if (options?.createTestCase !== undefined) uploadOptions.createTestCase = options.createTestCase;
           if (data?.tags !== undefined) uploadOptions.tags = data.tags;
-          if (data?.description !== undefined) uploadOptions.description = data.description;
           if (options?.testTypes !== undefined) uploadOptions.testTypes = options.testTypes;
           if (options?.playbackDeviceId !== undefined) uploadOptions.playbackDeviceId = options.playbackDeviceId;
           if (options?.defaultSpl !== undefined) uploadOptions.spl = options.defaultSpl;
@@ -1899,6 +1905,9 @@ export function useAudioImport() {
         }
       }
     });
+    } finally {
+      isOpeningFolderImport = false;
+    }
   }
 
   onMounted(() => {
@@ -1958,7 +1967,6 @@ export function useAudioImport() {
     audioTypeFilter,
     viewMode,
     showConvertModal,
-    showUploadModal,
     selectedAudios,
     filters,
     selectedTags,

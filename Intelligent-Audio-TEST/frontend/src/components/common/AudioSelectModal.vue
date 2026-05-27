@@ -101,7 +101,6 @@ import AudioListComponent from './AudioListComponent.vue';
 import UploadProgressCard from './UploadProgressCard.vue';
 import { useAudioList, type AudioItem } from '../../composables/useAudioList';
 import { useUploadState } from '../../composables/useUploadState';
-import { useAudioImport } from '../../views/AudioImportLogic/audioImport';
 import { getModalManager } from '../../composables/useModal';
 import { MODAL_TYPES } from '../../shared/types';
 import { parseDuration, formatDurationLong } from '../../utils/audioUtils';
@@ -117,6 +116,8 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'select', audio: AudioItem): void;
   (e: 'selectMultiple', audios: AudioItem[]): void;
+  (e: 'uploadRequest'): void;
+  (e: 'folderImportRequest'): void;
 }>();
 
 const {
@@ -143,45 +144,16 @@ const {
 
 const loading = ref(false);
 
-const { uploadProgress, currentTask, currentUploadingFile, isRetryingFailed, uploadStatus } = useUploadState();
-
-let audioImport: ReturnType<typeof useAudioImport> | null = null;
-
-const getAudioImport = () => {
-  if (!audioImport) {
-    audioImport = useAudioImport();
-  }
-  return audioImport;
-};
+const { uploadProgress, currentTask, currentUploadingFile, isRetryingFailed, uploadStatus, requestAction } = useUploadState();
 
 const modalManager = getModalManager();
 
-const dismissTask = (taskId: string) => {
-  getAudioImport().dismissTask(taskId);
+const openUploadModal = () => {
+  emit('uploadRequest');
 };
 
-const pauseUploadTask = (taskId: string) => {
-  getAudioImport().pauseUploadTask(taskId);
-};
-
-const retryFailedFiles = async (taskId: string) => {
-  await getAudioImport().retryFailedFiles(taskId);
-};
-
-const openUploadModal = async () => {
-  try {
-    await getAudioImport().openUploadModal();
-  } catch (error) {
-    console.error('打开上传模态窗失败:', error);
-  }
-};
-
-const batchImportFromFolder = async () => {
-  try {
-    await getAudioImport().batchImportFromFolder();
-  } catch (error) {
-    console.error('打开文件夹导入模态窗失败:', error);
-  }
+const batchImportFromFolder = () => {
+  emit('folderImportRequest');
 };
 
 // 上传任务相关方法
@@ -213,6 +185,7 @@ const selectedAudiosDuration = computed(() => {
 });
 
 const handleClose = () => {
+  modalManager.closeAll()
   emit('close');
 };
 
@@ -224,15 +197,15 @@ const handleKeyDown = (event: KeyboardEvent) => {
 };
 
 const handleDismiss = (taskId: string) => {
-  dismissTask(taskId);
+  requestAction('dismissTask', taskId);
 };
 
 const handlePause = (taskId: string) => {
-  pauseUploadTask(taskId);
+  requestAction('pauseTask', taskId);
 };
 
 const handleRetry = (taskId: string) => {
-  retryFailedFiles(taskId);
+  requestAction('retryTask', taskId);
 };
 
 const handleSelectionChange = (audioId: string | number) => {
@@ -393,12 +366,11 @@ const openAudioMetadataModal = async (audioId: string | number) => {
   }
 };
 
-watch(uploadProgress, (newProgress) => {
-  if (newProgress === 100) {
-    console.log('AudioSelectModal: 检测到上传完成，刷新音频列表');
+watch(uploadStatus, (newStatus) => {
+  if (newStatus === 'completed') {
     setTimeout(() => {
       loadAudios();
-    }, 1000);
+    }, 500);
   }
 });
 </script>
