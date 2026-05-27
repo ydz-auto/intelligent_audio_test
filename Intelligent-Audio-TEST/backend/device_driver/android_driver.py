@@ -293,6 +293,6 @@ class AndroidDriver(BaseDeviceDriver):
             return False
 
     @check_stop("get_results")
-    def get_results(self, device_id, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
         """获取设备输出结果 - 返回原始文本列表"""
         return {'success': True, 'message': 'Success', 'asr': 'asr中文', 'translation': 'translation中文'}

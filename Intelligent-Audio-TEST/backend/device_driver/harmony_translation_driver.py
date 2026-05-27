@@ -105,7 +105,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             driver.touch((336, 2624))
         self._log(level='INFO', content=f"成功进行面对面翻译post_process步骤")
 
-    def get_results(self, device_id, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_id)
         ori_text_list = driver.find_all_component(By.id("conv_item_input_text"))
         ori_text = '无内容'
@@ -196,7 +196,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
             return True
         return False
 
-    def get_results(self, device_id, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_id)
         if not driver:
             self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")

@@ -139,7 +139,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             return False
 
     @check_stop("get_results")
-    def get_results(self, device_id, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
         """
         获取设备输出结果 - 返回原始文本、音频列表
         """
@@ -154,8 +154,8 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             return re.sub(r'[^a-zA-Z0-9_]', '_', str(s))
 
         case_name = sanitize_path(kwargs.get('case_name', 'default_case'))
-        task_id = sanitize_path(kwargs.get('task_id', 'default_task_id'))
-        case_id = kwargs.get('case_id', 'default_id')
+        task_id = sanitize_path(task_id or kwargs.get('task_id', 'default_task_id'))
+        case_id = case_id or kwargs.get('case_id', 'default_id')
 
         local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{case_id}', f'{device_id}')
 

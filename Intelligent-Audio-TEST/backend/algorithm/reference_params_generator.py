@@ -403,11 +403,11 @@ def _extract_speakers_from_audio(audio_id: int, annotation_map: Dict = None) -> 
         if isinstance(ann.data, dict):
             segments = ann.data.get('segments', [])
             for seg in segments:
-                if 'speaker' in seg:
+                if 'speaker' in seg and seg['speaker']:
                     speakers.add(seg['speaker'])
         elif isinstance(ann.data, list):
             for seg in ann.data:
-                if isinstance(seg, dict) and 'speaker' in seg:
+                if isinstance(seg, dict) and 'speaker' in seg and seg['speaker']:
                     speakers.add(seg['speaker'])
     
     log_not_emit('DEBUG', 'reference_params_generator', 

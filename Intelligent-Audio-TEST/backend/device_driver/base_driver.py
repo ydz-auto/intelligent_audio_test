@@ -74,11 +74,12 @@ class BaseDeviceDriver:
         """
         pass
 
-    def get_results(self, device_id, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
         """获取设备结果
         
         Args:
             device_id: 设备ID
+            task_id: 任务ID
             **kwargs: 其他参数
             
         Returns:

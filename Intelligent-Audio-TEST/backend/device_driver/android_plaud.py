@@ -161,7 +161,7 @@ class PlaudDriver(AndroidDriver):
         return True
 
     @check_stop("get_results")
-    def get_results(self, device_id, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
         """获取设备输出结果 - 返回原始文本列表"""
         driver = self._get_driver(device_id)
         if not driver:
@@ -240,8 +240,8 @@ class PlaudDriver(AndroidDriver):
             time.sleep(1)
         share_device_driver.click(By.text('接收'))
 
-        task_id = kwargs.get('task_id', 'default_task_id')
-        case_id = kwargs.get('case_id', 'default_case_id')
+        task_id = task_id or kwargs.get('task_id', 'default_task_id')
+        case_id = case_id or kwargs.get('case_id', 'default_case_id')
 
         local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{case_id}', f'{device_id}')
         os.makedirs(local_dir, exist_ok=True)

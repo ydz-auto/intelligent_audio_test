@@ -41,9 +41,11 @@ class DeviceResultCollector:
             }
             try:
                 if info["driver"]:
-                    merged_params = {**extra_params, 'task_id': task_id, **kwargs}
+                    merged_params = {**extra_params, **kwargs}
                     raw_results = info["driver"].get_results(
                         info.get("device_connect_id") or info["device_id"],
+                        task_id=task_id,
+                        case_id=kwargs.get('case_id'),
                         **merged_params
                     )
 

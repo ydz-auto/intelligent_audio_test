@@ -120,11 +120,11 @@ def extract_speakers_from_annotations(audio_id, app=None):
         if isinstance(ann.data, dict):
             segments = ann.data.get('segments', [])
             for seg in segments:
-                if 'speaker' in seg:
+                if 'speaker' in seg and seg['speaker']:
                     speakers.add(seg['speaker'])
         elif isinstance(ann.data, list):
             for seg in ann.data:
-                if isinstance(seg, dict) and 'speaker' in seg:
+                if isinstance(seg, dict) and 'speaker' in seg and seg['speaker']:
                     speakers.add(seg['speaker'])
     
     log_and_emit('DEBUG', 'audio_engine', 
