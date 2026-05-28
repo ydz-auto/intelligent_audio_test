@@ -1269,7 +1269,15 @@ class APIExecutor(BaseExecutor):
                 update_session.close()
         except:
             pass
-            
+        
+        # DEBUG: 记录返回的 result_id 值和类型
+        self._log(
+            level='DEBUG',
+            category='database',
+            content=f"[DEBUG _create_test_result] 返回 result_id={result_id}, type={type(result_id)}, task_id={task_id}, case_id={case_id}",
+            task_id=task_id
+        )
+        
         return result_id  # 返回result_id而不是整个result对象，避免分离对象问题
     
     def _evaluate_test_result(self, task_id, result_id, case_id, case_name, case_config, 

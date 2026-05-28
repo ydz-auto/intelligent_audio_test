@@ -368,6 +368,14 @@ class EvaluationService:
         field_mapper = get_field_mapper()
         test_type = kwargs.get('test_type', 'api')
         
+        # DEBUG: 记录传入的 result_id 值和类型
+        self._log(
+            level='DEBUG',
+            content=f"[DEBUG evaluate_case] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, test_case_id={test_case_id}, test_type={test_type}",
+            task_id=task_id,
+            test_case_id=test_case_id
+        )
+        
         self._log(
             level='INFO',
             content=f"用例评估请求: TaskID={task_id}, TestCaseID={test_case_id}, ResultID={result_id}, TestType={test_type}",
@@ -534,6 +542,14 @@ class EvaluationService:
             with current_app.app_context():
                 local_db_session = db.session()
                 try:
+                    # DEBUG: 记录创建 TestResultDimension 时的 result_id 值和类型
+                    self._log(
+                        level='DEBUG',
+                        content=f"[DEBUG TestResultDimension] 创建前: result_id={result_id}, result_id_type={type(result_id)}, dim_id={dim_id}, dim_name={dim_name}",
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
+                    
                     # 获取算法类型
                     algo_type = algorithm_type
                     if not algo_type or algo_type == 'translation':
@@ -550,10 +566,44 @@ class EvaluationService:
                         error_message=None
                     )
                     
+                    # DEBUG: 记录 TestResultDimension 对象的属性值
+                    self._log(
+                        level='DEBUG',
+                        content=f"[DEBUG TestResultDimension] 对象属性: test_result_id={test_result_dimension.test_result_id}, dimension_id={test_result_dimension.dimension_id}",
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
+                    
                     local_db_session.add(test_result_dimension)
                     local_db_session.flush()
                     dimension_result_id = test_result_dimension.id
+                    
+                    # DEBUG: 记录 flush 后数据库中的实际值
+                    self._log(
+                        level='DEBUG',
+                        content=f"[DEBUG TestResultDimension] flush后查询: id={dimension_result_id}, test_result_id={test_result_dimension.test_result_id}",
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
+                    
                     local_db_session.commit()
+                    
+                    # DEBUG: 验证提交后的数据
+                    verify_dim = local_db_session.query(TestResultDimension).get(dimension_result_id)
+                    if verify_dim:
+                        self._log(
+                            level='DEBUG',
+                            content=f"[DEBUG TestResultDimension] commit后验证: id={verify_dim.id}, test_result_id={verify_dim.test_result_id}",
+                            task_id=task_id,
+                            test_case_id=test_case_id
+                        )
+                    else:
+                        self._log(
+                            level='ERROR',
+                            content=f"[DEBUG TestResultDimension] commit后验证失败: 无法查询到 id={dimension_result_id}",
+                            task_id=task_id,
+                            test_case_id=test_case_id
+                        )
                     
                     dimension_result_map[dim_id] = dimension_result_id
                     

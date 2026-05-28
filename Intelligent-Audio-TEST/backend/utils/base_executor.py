@@ -379,6 +379,13 @@ class BaseExecutor:
             test_type: 测试类型 ('api' 或 'e2e')
             case_algorithm_params: 用例算法参数 (从 test_cases.algorithm_params 获取)
         """
+        # DEBUG: 记录传入的 result_id 值和类型
+        self._log(
+            level='DEBUG',
+            content=f"[DEBUG _evaluate_result] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, case_id={case_id}, algorithm_type={algorithm_type}, test_type={test_type}",
+            task_id=task_id
+        )
+        
         self._log(
             level='DEBUG',
             content=f"[_evaluate_result] 开始评估 task_id={task_id}, result_id={result_id}, case_id={case_id}, algorithm_type={algorithm_type}, test_type={test_type}",
