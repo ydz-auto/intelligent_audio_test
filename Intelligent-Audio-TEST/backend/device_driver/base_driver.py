@@ -6,6 +6,7 @@ class BaseDeviceDriver:
     def __init__(self):
         """初始化基础驱动"""
         self._task_id = None
+        self._test_case_id = None
         self._mock_mode = False
         # 弹窗处理相关配置
         self._close_buttons = ['确定', '取消', '关闭', 'Done', 'Cancel', 'Close']
@@ -35,6 +36,14 @@ class BaseDeviceDriver:
         """
         self._task_id = task_id
 
+    def set_test_case_id(self, test_case_id):
+        """设置测试用例ID
+        
+        Args:
+            test_case_id: 测试用例ID
+        """
+        self._test_case_id = test_case_id
+
     def _get_events(self):
         """获取任务事件
         
@@ -53,11 +62,12 @@ class BaseDeviceDriver:
         """
         return []
 
-    def initialize(self, device_id, **kwargs) -> bool:
+    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
         """初始化设备
         
         Args:
             device_id: 设备ID
+            test_case_id: 测试用例ID
             **kwargs: 其他参数
             
         Returns:
@@ -74,12 +84,13 @@ class BaseDeviceDriver:
         """
         pass
 
-    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
         """获取设备结果
         
         Args:
             device_id: 设备ID
             task_id: 任务ID
+            test_case_id: 测试用例ID
             **kwargs: 其他参数
             
         Returns:
@@ -87,11 +98,12 @@ class BaseDeviceDriver:
         """
         return {}
 
-    def pre_process(self, device_id, **kwargs) -> bool:
+    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """预处理设备
         
         Args:
             device_id: 设备ID
+            test_case_id: 测试用例ID
             **kwargs: 其他参数
             
         Returns:
@@ -110,11 +122,12 @@ class BaseDeviceDriver:
         """
         return False
 
-    def post_process(self, device_id, **kwargs) -> bool:
+    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """后处理设备
         
         Args:
             device_id: 设备ID
+            test_case_id: 测试用例ID
             **kwargs: 其他参数
             
         Returns:
@@ -122,15 +135,20 @@ class BaseDeviceDriver:
         """
         return True
 
-    def _log(self, level='INFO', content='', **kwargs):
+    def _log(self, level='INFO', content='', test_case_id=None, device_id=None, task_id=None, **kwargs):
         """记录日志
         
         Args:
             level: 日志级别
             content: 日志内容
+            test_case_id: 测试用例ID
+            device_id: 设备ID
+            task_id: 任务ID
             **kwargs: 其他参数
         """
-        log_and_emit(level=level, module='DeviceDriver', content=content, **kwargs)
+        final_test_case_id = test_case_id or self._test_case_id
+        final_task_id = task_id or self._task_id
+        log_and_emit(level=level, module='DeviceDriver', content=content, task_id=final_task_id, test_case_id=final_test_case_id, device_id=device_id, **kwargs)
 
     def _check_stop(self, device_id=None, operation_name=""):
         """检查是否需要停止操作
@@ -148,18 +166,18 @@ class BaseDeviceDriver:
         
         stop_event = events.get('stop_event')
         if stop_event and stop_event.is_set():
-            self._log(level='INFO', content=f"Task stopped during {operation_name} operation")
+            self._log(level='INFO', content=f"Task stopped during {operation_name} operation", task_id=self._task_id, test_case_id=self._test_case_id)
             return True
         
         pause_event = events.get('pause_event')
         if pause_event and not pause_event.is_set():
-            self._log(level='INFO', content=f"Task paused during {operation_name} operation")
+            self._log(level='INFO', content=f"Task paused during {operation_name} operation", task_id=self._task_id, test_case_id=self._test_case_id)
             import time
             while pause_event.is_set():
                 time.sleep(0.1)
                 # 检查是否同时被停止
                 if stop_event and stop_event.is_set():
-                    self._log(level='INFO', content=f"Task stopped during {operation_name} operation")
+                    self._log(level='INFO', content=f"Task stopped during {operation_name} operation", task_id=self._task_id, test_case_id=self._test_case_id)
                     return True
         
         return False

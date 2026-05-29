@@ -10,49 +10,49 @@ from hypium.model import UiParam
 class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
     """鸿蒙 Next 专用驱动示例"""
 
-    def initialize(self, device_id, **kwargs) -> bool:
-        initialize_success = super().initialize(device_id, **kwargs)
+    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
+        initialize_success = super().initialize(device_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
             return False
         # 2. 尝试通过桌面图标启动 (使用用户提供的 Key)
-        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...")
+        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return False
         # 3. 点击右上角“用户中心/头像”
         user_center = driver.find_component(By.description("用户中心")) or \
                       driver.find_component(By.type("Image"))
         if user_center:
-            self._log(level='DEBUG', content="Clicking User Center...")
+            self._log(level='DEBUG', content="Clicking User Center...", device_id=device_id)
             user_center.click()
             time.sleep(2)
 
         # 4. 点击“设置”
         settings_btn = driver.find_component(By.text("设置"))
         if settings_btn:
-            self._log(level='DEBUG', content="Clicking Settings...")
+            self._log(level='DEBUG', content="Clicking Settings...", device_id=device_id)
             settings_btn.click()
             time.sleep(2)
 
         # 5. 点击“小艺翻译”
         trans_setting = driver.find_component(By.text("小艺翻译"))
         if trans_setting:
-            self._log(level='DEBUG', content="Clicking Celia Translation...")
+            self._log(level='DEBUG', content="Clicking Celia Translation...", device_id=device_id)
             trans_setting.click()
             time.sleep(2)
 
         # 6. 检查并点击“启用”
         enable_btn = driver.find_component(By.text("启用小艺翻译"))
         if enable_btn:
-            self._log(level='DEBUG', content="Enabling service...")
+            self._log(level='DEBUG', content="Enabling service...", device_id=device_id)
             enable_btn.click()
             time.sleep(1.5)
 
         # 7. 点击“小艺翻译助手”
         assistant_btn = driver.find_component(By.text("小艺翻译助手"))
         if assistant_btn:
-            self._log(level='DEBUG', content="Entering Assistant...")
+            self._log(level='DEBUG', content="Entering Assistant...", device_id=device_id)
             assistant_btn.click()
             time.sleep(2)
             return True
@@ -61,31 +61,31 @@ class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
 
 
 class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
-    def initialize(self, device_id, **kwargs) -> bool:
-        initialize_success = super().initialize(device_id, **kwargs)
+    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
+        initialize_success = super().initialize(device_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
             return False
-        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...")
+        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return False
         try:
             mode_text = '面对面翻译'
             mode_btn = driver.find_component(By.text(mode_text))
             if mode_btn:
-                self._log(level='DEBUG', content=f"Clicking Mode...{mode_text}")
+                self._log(level='DEBUG', content=f"Clicking Mode...{mode_text}", device_id=device_id)
                 mode_btn.click()
                 time.sleep(1)
-            self._log(level='INFO', content=f"Mode: {mode_text}")
+            self._log(level='INFO', content=f"Mode: {mode_text}", device_id=device_id)
             if driver.find_component(By.text('点击下方按钮说话')):
-                self._log(level='INFO', content=f"成功打开面对面翻译")
+                self._log(level='INFO', content=f"成功打开面对面翻译", device_id=device_id)
                 return True
         except Exception as e:
-            self._log(level='ERROR', content=f"Failed to get mode for device {device_id}: {e}")
+            self._log(level='ERROR', content=f"Failed to get mode for device {device_id}: {e}", device_id=device_id)
             return False
 
-    def pre_process(self, device_id, **kwargs) -> bool:
+    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_id)
         translation_direction = kwargs.get('translation_direction', 'zh2en')
@@ -93,9 +93,9 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             driver.touch((939, 2624))
         elif 'zh2en' in translation_direction:
             driver.touch((336, 2624))
-        self._log(level='INFO', content=f"成功进行面对面翻译pre_process步骤")
+        self._log(level='INFO', content=f"成功进行面对面翻译pre_process步骤", device_id=device_id)
 
-    def post_process(self, device_id, **kwargs) -> bool:
+    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_id)
         translation_direction = kwargs.get('translation_direction', 'zh2en')
@@ -103,9 +103,9 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             driver.touch((939, 2624))
         elif 'zh2en' in translation_direction:
             driver.touch((336, 2624))
-        self._log(level='INFO', content=f"成功进行面对面翻译post_process步骤")
+        self._log(level='INFO', content=f"成功进行面对面翻译post_process步骤", device_id=device_id)
 
-    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_id)
         ori_text_list = driver.find_all_component(By.id("conv_item_input_text"))
         ori_text = '无内容'
@@ -115,36 +115,36 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
         trans_text_list = driver.find_all_component(By.id("conv_item_translated_text"))
         if len(trans_text_list) > 0:
             trans_text = trans_text_list[-1].getText()
-        self._log('成功抓取结果：ori_text={ori_text}, trans_text={trans_text}')
+        self._log('成功抓取结果：ori_text={ori_text}, trans_text={trans_text}', device_id=device_id)
         return {'success': True, 'message': 'Success', 'asr': ori_text, 'translation': trans_text}
 
 
 class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
-    def initialize(self, device_id, **kwargs) -> bool:
-        initialize_success = super().initialize(device_id, **kwargs)
+    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
+        initialize_success = super().initialize(device_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
             return False
-        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...")
+        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return False
         try:
             mode_text = '同声传译'
             mode_btn = driver.find_component(By.text(mode_text))
             if mode_btn:
-                self._log(level='DEBUG', content=f"Clicking Mode...{mode_text}")
+                self._log(level='DEBUG', content=f"Clicking Mode...{mode_text}", device_id=device_id)
                 mode_btn.click()
                 time.sleep(1)
-            self._log(level='INFO', content=f"Mode: {mode_text}")
+            self._log(level='INFO', content=f"Mode: {mode_text}", device_id=device_id)
             if driver.find_component(By.text('开启同传')):
-                self._log(level='INFO', content=f"成功打开同传")
+                self._log(level='INFO', content=f"成功打开同传", device_id=device_id)
                 return True
         except Exception as e:
-            self._log(level='ERROR', content=f"Failed to get mode for device {device_id}: {e}")
+            self._log(level='ERROR', content=f"Failed to get mode for device {device_id}: {e}", device_id=device_id)
             return False
 
-    def pre_process(self, device_id, **kwargs) -> bool:
+    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_id)
         translation_direction = kwargs.get('translation_direction', 'zh2en')
@@ -170,33 +170,33 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
         translation_direct(driver, translation_direction)
         start_btn = driver.find_component(By.text('开启同传'))
         if start_btn:
-            self._log(level='DEBUG', content=f"Clicking Start Button...")
+            self._log(level='DEBUG', content=f"Clicking Start Button...", device_id=device_id)
             start_btn.click()
             time.sleep(0.2)
         #
         if driver.find_component(By.text('暂停')) or driver.find_component(By.text('完成')):
-            self._log(level='INFO', content=f"成功打开同传")
+            self._log(level='INFO', content=f"成功打开同传", device_id=device_id)
             return True
-        self._log(level='INFO', content=f"打开同传失败")
+        self._log(level='INFO', content=f"打开同传失败", device_id=device_id)
         return False
 
-    def post_process(self, device_id, **kwargs) -> bool:
+    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_id)
         end_btn = driver.find_component(By.text('完成'))
         if end_btn:
-            self._log(level='DEBUG', content=f"Clicking 完成 Button...")
+            self._log(level='DEBUG', content=f"Clicking 完成 Button...", device_id=device_id)
             end_btn.click()
             time.sleep(2)
         end_btn = driver.find_component(By.text('结束'))
         if end_btn:
-            self._log(level='DEBUG', content=f"Clicking 结束 Button...")
+            self._log(level='DEBUG', content=f"Clicking 结束 Button...", device_id=device_id)
             end_btn.click()
             time.sleep(2)
             return True
         return False
 
-    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_id)
         if not driver:
             self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")

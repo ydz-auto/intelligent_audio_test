@@ -43,7 +43,7 @@ class BaseExecutor:
             return None, None
         return events.get('stop_event'), events.get('pause_event')
     
-    def _log(self, level, content, task_id, test_case_id=None, device_id=None, api_id=None, category='execution', **kwargs):
+    def _log(self, level, content, task_id=None, test_case_id=None, device_id=None, api_id=None, category='execution', **kwargs):
         """统一日志记录方法"""
         final_test_case_id = test_case_id or getattr(self._thread_ctx, 'current_test_case_id', None) or self.current_test_case_id
         
@@ -183,21 +183,24 @@ class BaseExecutor:
         self._log(
             level='DEBUG',
             content=f"[_process_results] 开始处理结果 task_id={task_id}, test_case_id={test_case_id}, algorithm_type={algorithm_type}, results_count={len(all_results) if all_results else 0}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         if case_config:
             self._log(
                 level='DEBUG',
                 content=f"[_process_results] case_config: {json.dumps(case_config, ensure_ascii=False, indent=2)[:500]}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
         
         if case_reference_params:
             self._log(
                 level='DEBUG',
                 content=f"[_process_results] case_reference_params: {json.dumps(case_reference_params, ensure_ascii=False, indent=2)[:500]}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
         
         adjusted_reference_params = None
@@ -208,7 +211,8 @@ class BaseExecutor:
                     self._log(
                         level='DEBUG',
                         content=f"[_process_results] 使用调整后的参考参数",
-                        task_id=task_id
+                        task_id=task_id,
+                        test_case_id=test_case_id
                     )
                     case_reference_params = adjusted_reference_params
                 break
@@ -233,14 +237,16 @@ class BaseExecutor:
         self._log(
             level='DEBUG',
             content=f"[_process_results] after deepcopy: all_results id={id(all_results)}, results_count={len(all_results)}, raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:10] if all_results else 'empty'}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         # 调试：打印 _get_result_mapper 之前
         self._log(
             level='DEBUG',
             content=f"[_process_results] before get_result_mapper: raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:10]}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         collector = self._get_result_mapper()
@@ -249,7 +255,8 @@ class BaseExecutor:
         self._log(
             level='DEBUG',
             content=f"[_process_results] after get_result_mapper: raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:10]}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         case_params = case_config or {}
@@ -258,7 +265,8 @@ class BaseExecutor:
         self._log(
             level='DEBUG',
             content=f"[_process_results] after case_params: raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:10]}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         mapped_output_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
@@ -267,7 +275,8 @@ class BaseExecutor:
         self._log(
             level='DEBUG',
             content=f"[_process_results] after mapped_output_keys: raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:10]}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         # 再做一次深拷贝，防止后续操作修改数据
@@ -278,14 +287,16 @@ class BaseExecutor:
         self._log(
             level='DEBUG',
             content=f"[_process_results] after 2nd deepcopy: raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:10]}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         # 调试：打印 convert_results 前的数据
         self._log(
             level='DEBUG',
             content=f"[_process_results] before convert_results: all_results id={id(all_results)}, results_count={len(all_results)}, raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:5] if all_results else 'empty'}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         all_results = collector.convert_results(all_results, algorithm_type)
@@ -329,6 +340,7 @@ class BaseExecutor:
                 level='DEBUG',
                 content=f"[_process_results] 保存结果 result_id={result_id}, result_type={result_type}, success={success}, device_id={res.get(device_id_field)}, api_id={res.get(api_id_field)}",
                 task_id=task_id,
+                test_case_id=test_case_id,
                 device_id=res.get(device_id_field),
                 api_id=res.get(api_id_field)
             )
@@ -338,6 +350,7 @@ class BaseExecutor:
                     level='DEBUG',
                     content=f"[_process_results] algo_result: {json.dumps(algo_result, ensure_ascii=False, indent=2)[:500]}",
                     task_id=task_id,
+                    test_case_id=test_case_id,
                     device_id=res.get(device_id_field),
                     api_id=res.get(api_id_field)
                 )
@@ -346,13 +359,14 @@ class BaseExecutor:
                 all_eval_items.append({
                     'result_id': result_id,
                     'res': res,
-                    'case_id': test_case_id
+                    'test_case_id': test_case_id
                 })
         
         self._log(
             level='DEBUG',
             content=f"[_process_results] 处理完成 task_id={task_id}, test_case_id={test_case_id}, execution_success={execution_success}, eval_items_count={len(all_eval_items)}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         return {
@@ -363,7 +377,7 @@ class BaseExecutor:
             'algorithm_type': algorithm_type
         }
     
-    def _evaluate_result(self, task_id, result_id, case_id, algo_result, case_config=None,
+    def _evaluate_result(self, task_id, result_id, test_case_id, algo_result, case_config=None,
                         case_reference_params=None, algorithm_type='translation', test_type='api',
                         case_algorithm_params=None):
         """提交评估 - 通用方法
@@ -371,7 +385,7 @@ class BaseExecutor:
         Args:
             task_id: 任务ID
             result_id: 结果ID
-            case_id: 用例ID
+            test_case_id: 用例ID
             algo_result: 算法结果
             case_config: 用例配置
             case_reference_params: 参考参数
@@ -382,42 +396,48 @@ class BaseExecutor:
         # DEBUG: 记录传入的 result_id 值和类型
         self._log(
             level='DEBUG',
-            content=f"[DEBUG _evaluate_result] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, case_id={case_id}, algorithm_type={algorithm_type}, test_type={test_type}",
-            task_id=task_id
+            content=f"[DEBUG _evaluate_result] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, test_case_id={test_case_id}, algorithm_type={algorithm_type}, test_type={test_type}",
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         self._log(
             level='DEBUG',
-            content=f"[_evaluate_result] 开始评估 task_id={task_id}, result_id={result_id}, case_id={case_id}, algorithm_type={algorithm_type}, test_type={test_type}",
-            task_id=task_id
+            content=f"[_evaluate_result] 开始评估 task_id={task_id}, result_id={result_id}, test_case_id={test_case_id}, algorithm_type={algorithm_type}, test_type={test_type}",
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         if case_config:
             self._log(
                 level='DEBUG',
                 content=f"[_evaluate_result] case_config: {json.dumps(case_config, ensure_ascii=False, indent=2)[:500]}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
         
         if case_reference_params:
             self._log(
                 level='DEBUG',
                 content=f"[_evaluate_result] case_reference_params: {json.dumps(case_reference_params, ensure_ascii=False, indent=2)[:500]}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
         
         if case_algorithm_params:
             self._log(
                 level='DEBUG',
                 content=f"[_evaluate_result] case_algorithm_params: {json.dumps(case_algorithm_params, ensure_ascii=False, indent=2)[:500]}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
         
         if algo_result:
             self._log(
                 level='DEBUG',
                 content=f"[_evaluate_result] algo_result: {json.dumps(algo_result, ensure_ascii=False, indent=2)[:500]}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
         
         from backend.utils.evaluation_service import evaluation_service
@@ -453,13 +473,15 @@ class BaseExecutor:
         self._log(
             level='DEBUG',
             content=f"[_evaluate_result] algorithm_params: {json.dumps(algorithm_params, ensure_ascii=False, indent=2)[:500]}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         self._log(
             level='DEBUG',
             content=f"[_evaluate_result] reference_params: {json.dumps(reference_params, ensure_ascii=False, indent=2)[:500]}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         eval_params = CaseParameterExtractor.get_evaluation_params(
@@ -474,18 +496,20 @@ class BaseExecutor:
         self._log(
             level='DEBUG',
             content=f"[_evaluate_result] 调用评估服务 task_id={task_id}, result_id={result_id}, eval_params={json.dumps(eval_params, ensure_ascii=False, indent=2)[:500]}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         evaluation_service.evaluate_case(
-            task_id, result_id, case_id, algo_result,
+            task_id, result_id, test_case_id, algo_result,
             **eval_params
         )
         
         self._log(
             level='DEBUG',
-            content=f"[_evaluate_result] 评估完成 task_id={task_id}, result_id={result_id}, case_id={case_id}",
-            task_id=task_id
+            content=f"[_evaluate_result] 评估完成 task_id={task_id}, result_id={result_id}, test_case_id={test_case_id}",
+            task_id=task_id,
+            test_case_id=test_case_id
         )
     
     def _log_case_result(self, task_id, case_name, res, ref_fields=None, algorithm_type='translation', **kwargs):
@@ -496,11 +520,13 @@ class BaseExecutor:
         
         raw_results = res.get('raw_results', {})
         success = raw_results.get('success', False)
+        test_case_id = kwargs.pop('test_case_id', None)
         
         self._log(
             level='INFO' if success else 'WARNING',
             content=log_content,
             task_id=task_id,
+            test_case_id=test_case_id,
             device_id=res.get('device_id'),
             api_id=res.get('api_id')
         )
@@ -528,7 +554,8 @@ class BaseExecutor:
             self._log(
                 level='DEBUG',
                 content=f"[_validate_and_get_data] case.algorithm_type={case.algorithm_type}, case_config.algorithm_type={case_config.get('algorithm_type')}, final algorithm_type={algorithm_type}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=tc_rel.test_case_id
             )
             
             field_mapper = get_field_mapper()

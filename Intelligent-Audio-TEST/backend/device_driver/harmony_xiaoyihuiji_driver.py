@@ -22,25 +22,25 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             lock_icon_id = '.*ScreenLock-PowerIcon_Image_power'
             driver = self._get_driver(device_id)
             if not driver:
-                self._log(level='WARNING', content=f"无法获取设备{device_id}的驱动，无法检查锁屏状态")
+                self._log(level='WARNING', content=f"无法获取设备{device_id}的驱动，无法检查锁屏状态", device_id=device_id)
                 return False
             subprocess.run(['hdc', '-t', device_id, 'shell', 'power-shell', 'wakeup'], check=False)
             lock_element = driver.find_component(By.id(f'{lock_icon_id}', MatchPattern.REGEXP))
             if lock_element:
-                self._log(level='INFO', content=f"设备{device_id}已锁屏")
+                self._log(level='INFO', content=f"设备{device_id}已锁屏", device_id=device_id)
                 return True
             return False
         except Exception as e:
-            self._log(level='INFO', content=f"设备{device_id}锁屏检查失败：{e}")
+            self._log(level='INFO', content=f"设备{device_id}锁屏检查失败：{e}", device_id=device_id)
             return False
 
     @check_stop("unlock")
     def unlock(self, device_id, **kwargs) -> None:
         """唤醒设备"""
-        self._log(level='INFO', content=f"Harmony device {device_id} waking up and unlocking...")
+        self._log(level='INFO', content=f"Harmony device {device_id} waking up and unlocking...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not self.is_locked(device_id):
-            self._log(level='INFO', content=f"设备{device_id}已解锁，无需重复解锁")
+            self._log(level='INFO', content=f"设备{device_id}已解锁，无需重复解锁", device_id=device_id)
             return
 
         subprocess.run(['hdc', '-t', device_id, 'shell', 'power-shell', 'wakeup'], check=False)
@@ -54,17 +54,17 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             driver.click((1560, 1040))
             return
         except Exception as e:
-            self._log(level='WARNING', content=f"Wakeup interaction failed: {e}")
+            self._log(level='WARNING', content=f"Wakeup interaction failed: {e}", device_id=device_id)
 
         time.sleep(1)
 
     @check_stop("initialize")
-    def initialize(self, device_id, **kwargs) -> bool:
+    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
         """初始化小艺慧记设备"""
-        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...")
+        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return False
 
         try:
@@ -73,12 +73,13 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
                 ['hdc', '-t', device_id, 'shell', 'rm', '-rf', f'{LOG_DEVICE_PATH}/*'],
                 check=False, capture_output=True, text=True
             )
-            self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}")
+            self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}", device_id=device_id)
             if self._check_stop(device_id, "initialize"):
                 return False
             self.unlock(device_id)
             if self._check_stop(device_id, "initialize"):
                 return False
+            self._log(level='DEBUG', content="Clicking User Center...", device_id=device_id)
             # 检测并关闭弹窗
             self.close_popups(device_id)
             # 点击菜单
@@ -93,37 +94,37 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             driver.click(By.key('Ctrl.NewToggleBaseComponent_Image_meeting'))
             return True
         except Exception as e:
-            self._log(level='ERROR', content=f"打开{device_id}小艺慧记失败：{e}")
+            self._log(level='ERROR', content=f"打开{device_id}小艺慧记失败：{e}", device_id=device_id)
             return False
 
     @check_stop("pre_process")
-    def pre_process(self, device_id, **kwargs) -> bool:
+    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """开始处理：进入前台等准备动作"""
-        self._log(level='INFO', content=f"--- Starting pre-process for {device_id} ---")
+        self._log(level='INFO', content=f"--- Starting pre-process for {device_id} ---", device_id=device_id)
 
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return False
         try:
             driver.click(By.text('开始'))
             if driver.find_component(By.text('智能提醒')):
-                self._log(level='INFO', content=f"--- 开启{device_id} 小艺慧记 成功---")
+                self._log(level='INFO', content=f"--- 开启{device_id} 小艺慧记 成功---", device_id=device_id)
                 return True
-            self._log(level='INFO', content=f"--- 开启{device_id} 小艺慧记 失败---")
+            self._log(level='INFO', content=f"--- 开启{device_id} 小艺慧记 失败---", device_id=device_id)
             return False
         except Exception as e:
-            self._log(level='INFO', content=f": 开启{device_id} 小艺慧记 失败{e}")
+            self._log(level='INFO', content=f": 开启{device_id} 小艺慧记 失败{e}", device_id=device_id)
             return False
 
     @check_stop("post_process")
-    def post_process(self, device_id, **kwargs) -> bool:
+    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """结束处理：清理或日志记录"""
-        self._log(level='INFO', content=f"--- Finished post-process for {device_id} ---")
+        self._log(level='INFO', content=f"--- Finished post-process for {device_id} ---", device_id=device_id)
 
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return False
         try:
             driver.click(By.xpath('//Row/__Common__/Row/Button[2]/Image'))
@@ -135,19 +136,19 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             return True
 
         except Exception as e:
-            self._log(level='INFO', content=f": 结束{device_id} 小艺慧记 失败{e}")
+            self._log(level='INFO', content=f": 结束{device_id} 小艺慧记 失败{e}", device_id=device_id)
             return False
 
     @check_stop("get_results")
-    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
         """
         获取设备输出结果 - 返回原始文本、音频列表
         """
-        self._log(level='INFO', content=f"--- Finished post-process for {device_id} ---")
+        self._log(level='INFO', content=f"--- Finished post-process for {device_id} ---", device_id=device_id)
 
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return False
 
         def sanitize_path(s):
@@ -155,9 +156,9 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
 
         case_name = sanitize_path(kwargs.get('case_name', 'default_case'))
         task_id = sanitize_path(task_id or kwargs.get('task_id', 'default_task_id'))
-        case_id = case_id or kwargs.get('case_id', 'default_id')
+        test_case_id = test_case_id or kwargs.get('test_case_id', 'default_id')
 
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{case_id}', f'{device_id}')
+        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{test_case_id}', f'{device_id}')
 
         while driver.find_component(By.text('正在保存')):
             time.sleep(1)
@@ -176,7 +177,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         if driver.find_component(By.text('同意')):
             driver.click(By.text('同意'))
         time.sleep(1)
-        # file_name_ele.inputText(f'{case_id}_{file_name[-18:]}')
+        # file_name_ele.inputText(f'{test_case_id}_{file_name[-18:]}')
         # 获取文件路径
         # driver.find_component(By.xpath('//SideBarContainer/Column/Row[2]/Row[3]/Row[1]/Flex/Row/Blank')).click()
         # file_root_path = driver.find_component(By.xpath('//Column/Row[1]/Row[3]/Row[1]/TextInput')).text
@@ -187,16 +188,16 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         file_name_ele = driver.find_component(By.key(
             'pickerFileNameTextInput'))
         file_name = file_name_ele.getText()
-        self._log(level='INFO', content=f"新文件名: {file_name}")
+        self._log(level='INFO', content=f"新文件名: {file_name}", device_id=device_id)
         # 点击 保存
         driver.click(By.text('保存'))
 
         # 拉取文件到本地
-        def file_pull(device_id, file_name, file_real_path, case_name, case_id):
+        def file_pull(device_id, file_name, file_real_path, case_name, test_case_id):
             try:
                 os.makedirs(local_dir, exist_ok=True)
 
-                self._log(level='INFO', content=f"拉取日志，源: {LOG_DEVICE_PATH}")
+                self._log(level='INFO', content=f"拉取日志，源: {LOG_DEVICE_PATH}", device_id=device_id)
 
                 recv_result = subprocess.run(
                     ['hdc', '-t', device_id, 'file', 'recv', LOG_DEVICE_PATH, local_dir],
@@ -204,16 +205,16 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
                 )
 
                 if 'Fail' in recv_result.stdout:
-                    self._log(level='ERROR', content=f"日志拉取失败：{recv_result.stderr}")
+                    self._log(level='ERROR', content=f"日志拉取失败：{recv_result.stderr}", device_id=device_id)
                     return None
 
-                self._log(level='INFO', content=f"日志拉取成功: {recv_result.stdout}")
+                self._log(level='INFO', content=f"日志拉取成功: {recv_result.stdout}", device_id=device_id)
 
                 clean_result = subprocess.run(
                     ['hdc', '-t', device_id, 'shell', 'rm', '-rf', f'{LOG_DEVICE_PATH}/*'],
                     check=False, capture_output=True, text=True
                 )
-                self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}")
+                self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}", device_id=device_id)
 
                 self._log(level='INFO', content=f"文件名", task_id=task_id)
                 shell_commands = f"cp {file_real_path}/*{file_name[-18:]} /data/local/tmp/test.zip"
@@ -222,27 +223,27 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
                                         capture_output=True, text=True)
 
                 if 'bad' in result.stdout:
-                    self._log(level='WARNING', content=f"文件复制到临时目录失败：{result.stdout}")
+                    self._log(level='WARNING', content=f"文件复制到临时目录失败：{result.stdout}", device_id=device_id)
                     shell_commands = f"cp {file_real_path}/{file_name} /data/local/tmp/test.zip"
                     subprocess.run(['hdc', '-t', device_id, 'shell', 'sh', '-c', shell_commands], check=False,
                                    capture_output=True, text=True)
 
-                if case_name and case_id:
-                    local_file_name = f"{case_id}.zip"
+                if case_name and test_case_id:
+                    local_file_name = f"{test_case_id}.zip"
                 else:
                     local_file_name = "test.zip"
                 local_file_path = os.path.join(local_dir, local_file_name)
                 local_file_path = os.path.abspath(local_file_path)
-                self._log(level='INFO', content=f"拉取文件，源: /data/local/tmp/test.zip, 目标: {local_file_path}")
+                self._log(level='INFO', content=f"拉取文件，源: /data/local/tmp/test.zip, 目标: {local_file_path}", device_id=device_id)
 
                 recv_result = subprocess.run(
                     ['hdc', '-t', device_id, 'file', 'recv', '/data/local/tmp/test.zip', local_file_path],
                     check=False, capture_output=True, text=True)
                 if 'Fail' in recv_result.stdout:
-                    self._log(level='ERROR', content=f"文件拉取失败：{recv_result.stderr}")
+                    self._log(level='ERROR', content=f"文件拉取失败：{recv_result.stderr}", device_id=device_id)
                     return None
                 else:
-                    self._log(level='INFO', content=f"文件拉取成功：{file_name} -> {local_file_path}")
+                    self._log(level='INFO', content=f"文件拉取成功：{file_name} -> {local_file_path}", device_id=device_id)
 
                 subprocess.run(['hdc', '-t', device_id, 'shell', 'rm', '/data/local/tmp/test.zip'], check=False,
                                capture_output=True, text=True)
@@ -250,10 +251,10 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
                 return local_dir
             except Exception as e:
                 import traceback
-                self._log(level='ERROR', content=f"文件拉取失败：{e}, traceback: {traceback.format_exc()}")
+                self._log(level='ERROR', content=f"文件拉取失败：{e}, traceback: {traceback.format_exc()}", device_id=device_id)
                 return None
 
-        pull_result = file_pull(device_id, file_name, file_real_path, case_name, case_id)
+        pull_result = file_pull(device_id, file_name, file_real_path, case_name, test_case_id)
 
         if pull_result is None:
             return [{
@@ -266,15 +267,15 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
                 "message": "文件拉取失败",
             }]
 
-        process_results = self.extract_results_from_archive(task_id, case_id, device_id, **kwargs)
+        process_results = self.extract_results_from_archive(task_id, test_case_id, device_id, **kwargs)
         return process_results
 
-    def extract_results_from_archive(self, task_id, case_id, device_id, **kwargs):
+    def extract_results_from_archive(self, task_id, test_case_id, device_id, **kwargs):
         """从存档日志文件提取设备输出结果
 
         Args:
             task_id: 任务ID
-            case_id: 用例ID
+            test_case_id: 用例ID
             device_id: 设备ID
 
         Returns:
@@ -298,15 +299,15 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             return re.sub(r'[^a-zA-Z0-9_]', '_', str(s))
 
         task_id_sanitized = sanitize_path(task_id)
-        case_id_sanitized = sanitize_path(case_id)
+        case_id_sanitized = sanitize_path(test_case_id)
 
         local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id_sanitized}', f'{case_id_sanitized}', f'{device_id}')
         log_dir = Path(local_dir) / "log"
 
-        self._log(level='INFO', content=f"从存档提取结果，路径: {log_dir}", task_id=task_id, test_case_id=case_id)
+        self._log(level='INFO', content=f"从存档提取结果，路径: {log_dir}", task_id=task_id, test_case_id=test_case_id)
 
         if not log_dir.exists():
-            self._log(level='ERROR', content=f"存档日志目录不存在: {log_dir}", task_id=task_id, test_case_id=case_id)
+            self._log(level='ERROR', content=f"存档日志目录不存在: {log_dir}", task_id=task_id, test_case_id=test_case_id)
             return {
                 'success': False,
                 'message': f'存档日志目录不存在: {log_dir}',

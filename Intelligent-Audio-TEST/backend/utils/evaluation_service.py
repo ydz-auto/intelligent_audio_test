@@ -30,7 +30,7 @@ class EndpointWorker:
         self.stop_event = threading.Event()
         self.completion_events = {}  # task_id -> threading.Event for completion signaling
         self.completion_events_lock = threading.Lock()
-        self._log(level='INFO', content=f"端点Worker已创建: {endpoint_url}, 超时时间: {max_timeout}秒")
+        self._log(level='INFO', content=f"端点Worker已创建: {endpoint_url}, 超时时间: {max_timeout}秒", task_id=None, test_case_id=None)
     
     def _log(self, level, content, task_id=None, test_case_id=None, api_id=None, **kwargs):
         LogController.log_and_emit(
@@ -54,13 +54,13 @@ class EndpointWorker:
                 daemon=True
             )
             self.worker_thread.start()
-            self._log(level='INFO', content=f"端点Worker已启动: {self.endpoint_url}")
+            self._log(level='INFO', content=f"端点Worker已启动: {self.endpoint_url}", task_id=None, test_case_id=None)
     
     def stop(self):
         self.stop_event.set()
         if self.worker_thread and self.worker_thread.is_alive():
             self.worker_thread.join(timeout=2)
-        self._log(level='INFO', content=f"端点Worker已停止: {self.endpoint_url}")
+        self._log(level='INFO', content=f"端点Worker已停止: {self.endpoint_url}", task_id=None, test_case_id=None)
     
     def _worker_loop(self):
         current_app = get_app()
@@ -71,7 +71,7 @@ class EndpointWorker:
             time.sleep(1)
         
         if current_app is None:
-            self._log(level='ERROR', content=f"端点Worker启动失败: {self.endpoint_url}")
+            self._log(level='ERROR', content=f"端点Worker启动失败: {self.endpoint_url}", task_id=None, test_case_id=None)
             return
         
         with current_app.app_context():
@@ -87,7 +87,6 @@ class EndpointWorker:
                             task_id=task_id,
                             test_case_id=task_data.get('test_case_id')
                         )
-                        
                         self._execute_evaluation(**task_data)
                         
                         self._log(
@@ -100,7 +99,8 @@ class EndpointWorker:
                         self._log(
                             level='ERROR',
                             content=f"端点Worker处理任务异常: {str(e)}\n{traceback.format_exc()}",
-                            task_id=task_data.get('task_id')
+                            task_id=task_data.get('task_id'),
+                            test_case_id=task_data.get('test_case_id')
                         )
                     finally:
                         self.task_queue.task_done()
@@ -114,7 +114,7 @@ class EndpointWorker:
                 except queue.Empty:
                     continue
                 except Exception as e:
-                    self._log(level='ERROR', content=f"端点Worker循环异常: {str(e)}")
+                    self._log(level='ERROR', content=f"端点Worker循环异常: {str(e)}", task_id=None, test_case_id=None)
                     time.sleep(1)
     
     def _execute_evaluation(self, task_id, result_id, test_case_id, algorithm_result,
@@ -264,7 +264,9 @@ class EvaluationService:
         self._log(
             level='info',
             content='开始初始化评估服务',
-            category='system'
+            category='system',
+            task_id=None,
+            test_case_id=None
         )
         
         self.api_cache = {}
@@ -284,7 +286,9 @@ class EvaluationService:
         self._log(
             level='info',
             content='评估服务初始化完成 (多端点Worker架构)',
-            category='system'
+            category='system',
+            task_id=None,
+            test_case_id=None
         )
     
     def _log(self, level, content, task_id=None, test_case_id=None, api_id=None, **kwargs):
@@ -330,7 +334,9 @@ class EvaluationService:
                 worker.start()
                 self._log(
                     level='INFO',
-                    content=f"为端点创建新Worker: {endpoint_url}, 超时: {max_timeout}秒"
+                    content=f"为端点创建新Worker: {endpoint_url}, 超时: {max_timeout}秒",
+                    task_id=None,
+                    test_case_id=None
                 )
             return self.endpoint_workers[endpoint_url]
     
@@ -343,7 +349,7 @@ class EvaluationService:
                     try:
                         dimensions = local_db_session.query(Dimension).all()
                         self.api_client.load_endpoint_configs(dimensions)
-                        self._log(level='info', content=f"已从数据库加载 {len(dimensions)} 个维度的端点配置", category='system')
+                        self._log(level='info', content=f"已从数据库加载 {len(dimensions)} 个维度的端点配置", category='system', task_id=None, test_case_id=None)
                         
                         for dim in dimensions:
                             if dim.api_endpoints and isinstance(dim.api_endpoints, list):
@@ -357,12 +363,14 @@ class EvaluationService:
                                             worker.start()
                                             self._log(
                                                 level='INFO',
-                                                content=f"预创建端点Worker: {endpoint_url}, 超时: {timeout}秒"
+                                                content=f"预创建端点Worker: {endpoint_url}, 超时: {timeout}秒",
+                                                task_id=None,
+                                                test_case_id=None
                                             )
                     finally:
                         local_db_session.close()
                 except Exception as e:
-                    self._log(level='error', content=f"加载维度配置失败: {str(e)}", category='system')
+                    self._log(level='error', content=f"加载维度配置失败: {str(e)}", category='system', task_id=None, test_case_id=None)
     
     def evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **kwargs):
         field_mapper = get_field_mapper()
@@ -810,7 +818,8 @@ class EvaluationService:
                     self._log(
                         level='DEBUG',
                         content=f"评估后更新任务 {task_id} 统计信息: completed={completed_cases}, failed={failed_cases}, total={total_cases}",
-                        task_id=task_id
+                        task_id=task_id,
+                        test_case_id=test_case_id
                     )
                     
                     # 发送进度更新
@@ -824,7 +833,7 @@ class EvaluationService:
                 local_db_session.close()
     
     def shutdown(self):
-        self._log(level='info', content='开始关闭评估服务', category='system')
+        self._log(level='info', content='开始关闭评估服务', category='system', task_id=None, test_case_id=None)
         
         self.stop_event.set()
         
@@ -836,11 +845,11 @@ class EvaluationService:
         if self.api_client.thread_pool and not self.api_client.thread_pool._shutdown:
             try:
                 self.api_client.thread_pool.shutdown(wait=True)
-                self._log(level='info', content='评估服务线程池已关闭', category='system')
+                self._log(level='info', content='评估服务线程池已关闭', category='system', task_id=None, test_case_id=None)
             except Exception as e:
-                self._log(level='ERROR', content=f'关闭线程池失败: {str(e)}', category='system')
+                self._log(level='ERROR', content=f'关闭线程池失败: {str(e)}', category='system', task_id=None, test_case_id=None)
         
-        self._log(level='info', content='评估服务已关闭', category='system')
+        self._log(level='info', content='评估服务已关闭', category='system', task_id=None, test_case_id=None)
 
 
 evaluation_service = EvaluationService()

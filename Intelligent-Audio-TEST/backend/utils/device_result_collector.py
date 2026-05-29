@@ -22,7 +22,7 @@ class DeviceResultCollector:
             device_info_list: 设备信息列表
             extra_params: 额外参数
             log_callback: 日志回调函数 fn(level, content, task_id, device_id)
-            **kwargs: 额外参数，包含 case_name, case_id, task_id, task_name 等
+            **kwargs: 额外参数，包含 case_name, test_case_id, task_id, task_name 等
 
         Returns:
             list: 原始结果列表
@@ -45,7 +45,7 @@ class DeviceResultCollector:
                     raw_results = info["driver"].get_results(
                         info.get("device_connect_id") or info["device_id"],
                         task_id=task_id,
-                        case_id=kwargs.get('case_id'),
+                        test_case_id=kwargs.get('test_case_id'),
                         **merged_params
                     )
 

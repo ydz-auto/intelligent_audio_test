@@ -34,7 +34,8 @@ class E2EExecutor(BaseExecutor):
         self._log(
             level='DEBUG',
             content=f"E2E用例执行方法开始: task_id={task_id}, tc_rel_id={tc_rel_id}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=None
         )
         
         # 验证参数
@@ -43,7 +44,8 @@ class E2EExecutor(BaseExecutor):
             self._log(
                 level='ERROR',
                 content=f"E2E 用例执行失败: {error_msg}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=None
             )
             # 如果有tc_rel_id，更新状态为失败
             if tc_rel_id:
@@ -96,7 +98,8 @@ class E2EExecutor(BaseExecutor):
             self._log(
                 level='INFO',
                 content=f"开始执行E2E用例: {case_name}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
             
             self._handle_control(task_id)
@@ -169,8 +172,9 @@ class E2EExecutor(BaseExecutor):
             for info in device_info_list:
                 if info.get("driver"):
                     info["driver"].set_task_id(task_id)
+                    info["driver"].set_test_case_id(test_case_id)
             
-            self._initialize_devices(device_info_list, case_name, task_id, algorithm_type=algorithm_type)
+            self._initialize_devices(device_info_list, case_name, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
             
             self._execute_audio_playback(
                 task_id, case_name, playback_dev, main_audio_config, main_gain=1.0,
@@ -181,17 +185,18 @@ class E2EExecutor(BaseExecutor):
                 noise_audio_info=noise_audio_info,
                 noise_devices=noise_devices,
                 case_config=case_config,
-                algorithm_type=algorithm_type
+                algorithm_type=algorithm_type,
+                test_case_id=test_case_id
             )
             
-            self._post_process_devices(device_info_list, case_name, task_id)
+            self._post_process_devices(device_info_list, case_name, task_id, test_case_id=test_case_id)
             
             time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
             collect_result = self._collect_results(
                 task_id, device_info_list, 
                 algorithm_type=algorithm_type,
                 case_name=case_name,
-                case_id=test_case_id,
+                test_case_id=test_case_id,
                 task_name=task_name,
                 case_reference_params=case_reference_params
             )
@@ -203,13 +208,14 @@ class E2EExecutor(BaseExecutor):
                 adjusted_case_ref_params = None
             
             if adjusted_case_ref_params:
-                self._log(level='DEBUG', content=f"[execute_e2e_case] adjusted_case_ref_params types: {list(adjusted_case_ref_params.keys())}", task_id=task_id)
+                self._log(level='DEBUG', content=f"[execute_e2e_case] adjusted_case_ref_params types: {list(adjusted_case_ref_params.keys())}", task_id=task_id, test_case_id=test_case_id)
             
             # 调试：接收到的结果
             self._log(
                 level='DEBUG',
                 content=f"[e2e_executor] received all_results id={id(all_results)}, raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:10] if all_results else 'empty'}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
 
             # 直接调用 _process_results，由其内部统一调用 build_evaluation_params 构建评估参数
@@ -227,7 +233,7 @@ class E2EExecutor(BaseExecutor):
             import traceback
             error_trace = traceback.format_exc()
             error_msg = f"用例执行异常: {str(e)}"
-            self._log(level='ERROR', content=f"用例 {case_name} 执行异常: {str(e)}\n{error_trace}", task_id=task_id)
+            self._log(level='ERROR', content=f"用例 {case_name} 执行异常: {str(e)}\n{error_trace}", task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None))
             self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
             return False
     
@@ -341,7 +347,7 @@ class E2EExecutor(BaseExecutor):
     
     def _execute_audio_playback(self, task_id, case_name, playback_dev, main_audio_config, main_gain, device_index, 
                                 device_info_list, dry_audios_info, dry_devices, noise_audio_info, noise_devices, case_config, 
-                                **kwargs):
+                                test_case_id=None, **kwargs):
         algorithm_type = kwargs.get('algorithm_type', 'translation')
         
         extra_params = getattr(self, 'current_extra_params', {}) or self._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
@@ -350,12 +356,12 @@ class E2EExecutor(BaseExecutor):
         devices_not_needing_prompt = [info for info in device_info_list if not info.get("needs_prompt_audio", False)]
         
         if devices_needing_prompt:
-            self._pre_process_devices(devices_needing_prompt, case_name, task_id, "播放提示音前", extra_params=extra_params)
+            self._pre_process_devices(devices_needing_prompt, case_name, task_id, "播放提示音前", test_case_id=test_case_id, extra_params=extra_params)
         
         self._play_prompt_audio(device_info_list, case_name, task_id, device_index, playback_dev, main_gain)
         
         if devices_not_needing_prompt:
-            self._pre_process_devices(devices_not_needing_prompt, case_name, task_id, "播放提示音后", extra_params=extra_params)
+            self._pre_process_devices(devices_not_needing_prompt, case_name, task_id, "播放提示音后", test_case_id=test_case_id, extra_params=extra_params)
         
         from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
         overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
@@ -400,7 +406,7 @@ class E2EExecutor(BaseExecutor):
                     'overlap_time': overlap_time
                 })
     
-    def _pre_process_devices(self, device_info_list, case_name, task_id, phase, **kwargs):
+    def _pre_process_devices(self, device_info_list, case_name, task_id, phase, test_case_id=None, **kwargs):
         extra_params = kwargs.get('extra_params', {})
         record_start_time = time.time()
         self._playback_timestamps[task_id] = {
@@ -415,6 +421,7 @@ class E2EExecutor(BaseExecutor):
                 future = pool.submit(
                     info["driver"].pre_process, 
                     info.get("device_connect_id"),
+                    test_case_id=test_case_id,
                     **extra_params
                 )
                 futures.append(future)
@@ -422,9 +429,9 @@ class E2EExecutor(BaseExecutor):
             try:
                 future.result(timeout=60)
             except Exception as e:
-                self._log(level='ERROR', content=f"设备预处理失败: {e}", task_id=task_id)
+                self._log(level='ERROR', content=f"设备预处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
-    def _post_process_devices(self, device_info_list, case_name, task_id, **kwargs):
+    def _post_process_devices(self, device_info_list, case_name, task_id, test_case_id=None, **kwargs):
         extra_params = kwargs.get('extra_params', {})
         pool = self.execution_engine.device_control_pool
         futures = []
@@ -433,6 +440,7 @@ class E2EExecutor(BaseExecutor):
                 future = pool.submit(
                     info["driver"].post_process,
                     info.get("device_connect_id"),
+                    test_case_id=test_case_id,
                     **extra_params
                 )
                 futures.append(future)
@@ -440,7 +448,7 @@ class E2EExecutor(BaseExecutor):
             try:
                 future.result(timeout=60)
             except Exception as e:
-                self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id)
+                self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
     
     def _play_prompt_audio(self, device_info_list, case_name, task_id, device_index, playback_dev, main_gain):
         prompt_info = next((info for info in device_info_list if info["prompt_audio_path"]), None)
@@ -550,7 +558,7 @@ class E2EExecutor(BaseExecutor):
         
         return audio_offsets
     
-    def _initialize_devices(self, device_info_list, case_name, task_id, **kwargs):
+    def _initialize_devices(self, device_info_list, case_name, task_id, test_case_id=None, **kwargs):
         algorithm_type = kwargs.get('algorithm_type', 'translation')
         
         extra_params = self._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
@@ -565,7 +573,7 @@ class E2EExecutor(BaseExecutor):
             err = None
             try:
                 if info["driver"]:
-                    ok = info["driver"].initialize(info.get("device_connect_id") or info["device_id"], **extra_params)
+                    ok = info["driver"].initialize(info.get("device_connect_id") or info["device_id"], test_case_id=test_case_id, **extra_params)
                     if not ok:
                         err = "Initialize returned False"
                 else:
@@ -583,7 +591,7 @@ class E2EExecutor(BaseExecutor):
             try:
                 future.result(timeout=60)
             except Exception as e:
-                self._log(level='ERROR', content=f"设备初始化超时或失败: {e}", task_id=task_id)
+                self._log(level='ERROR', content=f"设备初始化超时或失败: {e}", task_id=task_id, test_case_id=test_case_id)
         
         failed = [r for r in results if not r['success']]
         if failed: raise RuntimeError(f"设备初始化失败: {'; '.join([f'{r.get('device_name')}: {r.get('error')}' for r in failed])}")
@@ -663,7 +671,7 @@ class E2EExecutor(BaseExecutor):
                         ref_fields[field_key] = extract_value(field_value)
                 
                 for item in all_eval_items:
-                    self._log_case_result(task_id, case_name, item['res'], ref_fields, algorithm_type=algorithm_type)
+                    self._log_case_result(task_id, case_name, item['res'], ref_fields, algorithm_type=algorithm_type, test_case_id=item['test_case_id'])
                 
                 for item in all_eval_items:
                     algo_result = item['res']
@@ -671,7 +679,7 @@ class E2EExecutor(BaseExecutor):
                     self._evaluate_result(
                         task_id=task_id,
                         result_id=item['result_id'],
-                        case_id=item['case_id'],
+                        test_case_id=item['test_case_id'],
                         algo_result=algo_result,
                         case_config=case_params,
                         case_reference_params=case_reference_params,
@@ -689,4 +697,4 @@ class E2EExecutor(BaseExecutor):
         
         log_content = f"E2E 用例 {case_name}: " + self._get_result_mapper().build_case_result_log(algorithm_type, res, ref_fields, **kwargs)
         
-        self._log(level='INFO' if res.get('success', False) else 'WARNING', content=log_content, task_id=task_id, device_id=res.get('device_id'))
+        self._log(level='INFO' if res.get('success', False) else 'WARNING', content=log_content, task_id=task_id, test_case_id=kwargs.pop('test_case_id', None), device_id=res.get('device_id'))

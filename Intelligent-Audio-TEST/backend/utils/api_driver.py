@@ -1,22 +1,39 @@
 import time
 import json
 from backend.utils.api_client import api_client
+from backend.utils.log_handler import log_and_emit
 
 class APIDriver:
     """
     API 驱动程序：封装 API 调用逻辑、参数渲染及响应解析
     """
     
-    def __init__(self, api_config, case_config=None, endpoint=None):
+    def __init__(self, api_config, case_config=None, endpoint=None, test_case_id=None, task_id=None):
         """
         :param api_config: API 模型实例 (包含 max_timeout 等配置)
         :param case_config: 用例级特定配置 (如特定的 body_template, headers)
         :param endpoint: 可选的端点 URL (优先使用此值，否则使用 api_config.endpoint)
+        :param test_case_id: 测试用例ID
+        :param task_id: 任务ID
         """
         self.api_config = api_config
         self.endpoint = endpoint or (api_config.endpoint if hasattr(api_config, 'endpoint') else None)
         self.meta = api_config.meta or {}
         self.case_config = case_config or {}
+        self._test_case_id = test_case_id
+        self._task_id = task_id
+        
+    def set_test_case_id(self, test_case_id):
+        """设置测试用例ID"""
+        self._test_case_id = test_case_id
+        
+    def set_task_id(self, task_id):
+        """设置任务ID"""
+        self._task_id = task_id
+        
+    def _log(self, level='INFO', content='', **kwargs):
+        """记录日志"""
+        log_and_emit(level=level, module='APIDriver', content=content, task_id=self._task_id, test_case_id=self._test_case_id, **kwargs)
         
     def execute(self, context_data, files=None, method=None):
         """
@@ -26,6 +43,8 @@ class APIDriver:
         :param method: 请求方法 (优先级最高)
         :return: 结构化的结果字典
         """
+        self._log(level='INFO', content=f"执行API调用, endpoint: {self.endpoint}, method: {method or 'POST'}", task_id=self._task_id, test_case_id=self._test_case_id)
+        
         # 1. 准备请求参数 (合并 API 级与用例级配置)
         endpoint = self.endpoint
         
@@ -63,6 +82,8 @@ class APIDriver:
             # POST等其他请求使用原始数据
             request_data = data
         
+        self._log(level='DEBUG', content=f"发起请求: endpoint={endpoint}, method={method}, timeout={timeout}", task_id=self._task_id, test_case_id=self._test_case_id)
+        
         resp_info = api_client.call(
             endpoint=endpoint,
             method=method,
@@ -75,6 +96,8 @@ class APIDriver:
         
         # 3. 解析响应结果
         parsed_result = self._parse_response(resp_info)
+        
+        self._log(level='INFO', content=f"API调用完成, status_code: {resp_info['status_code']}, latency: {resp_info['latency']}ms", task_id=self._task_id, test_case_id=self._test_case_id)
         
         return {
             "success": (resp_info["status_code"] >= 200 and resp_info["status_code"] < 300) and not resp_info["error"],

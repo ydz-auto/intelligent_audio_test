@@ -30,7 +30,7 @@ class HarmonyDriver(BaseDeviceDriver):
             try:
                 self._drivers[device_id] = UiDriver.connect(device_sn=device_id)
             except Exception as e:
-                self._log(level='ERROR', content=f"Failed to connect to Harmony device {device_id}: {e}")
+                self._log(level='ERROR', content=f"Failed to connect to Harmony device {device_id}: {e}", device_id=device_id)
                 return None
         return self._drivers[device_id]
 
@@ -45,25 +45,25 @@ class HarmonyDriver(BaseDeviceDriver):
             lock_icon_id = '.*LockIcon_Image_lock'
             driver = self._get_driver(device_id)
             if not driver:
-                self._log(level='WARNING', content=f"无法获取设备{device_id}的驱动，无法检查锁屏状态")
+                self._log(level='WARNING', content=f"无法获取设备{device_id}的驱动，无法检查锁屏状态", device_id=device_id)
                 return False
             subprocess.run(['hdc', '-t', device_id, 'shell', 'power-shell', 'wakeup'], check=False)
             lock_element = driver.find_component(By.id(f'{lock_icon_id}', MatchPattern.REGEXP))
             if lock_element:
-                self._log(level='INFO', content=f"设备{device_id}已锁屏")
+                self._log(level='INFO', content=f"设备{device_id}已锁屏", device_id=device_id)
                 return True
             return False
         except Exception as e:
-            self._log(level='INFO', content=f"设备{device_id}锁屏检查失败：{e}")
+            self._log(level='INFO', content=f"设备{device_id}锁屏检查失败：{e}", device_id=device_id)
             return False
 
     @check_stop("unlock")
     def unlock(self, device_id, **kwargs) -> None:
         """唤醒设备"""
-        self._log(level='INFO', content=f"Harmony device {device_id} waking up and unlocking...")
+        self._log(level='INFO', content=f"Harmony device {device_id} waking up and unlocking...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not self.is_locked(device_id):
-            self._log(level='INFO', content=f"设备{device_id}已解锁，无需重复解锁")
+            self._log(level='INFO', content=f"设备{device_id}已解锁，无需重复解锁", device_id=device_id)
             return
         if self._check_stop(device_id, "unlock"):
             return
@@ -78,7 +78,7 @@ class HarmonyDriver(BaseDeviceDriver):
                            check=False)
             time.sleep(0.5)
         except Exception as e:
-            self._log(level='WARNING', content=f"Wakeup interaction failed: {e}")
+            self._log(level='WARNING', content=f"Wakeup interaction failed: {e}", device_id=device_id)
         time.sleep(2)
 
         if self._check_stop(device_id, "unlock"):
@@ -86,7 +86,7 @@ class HarmonyDriver(BaseDeviceDriver):
         password = self._unlock_password
         try:
             if driver:
-                self._log(level='DEBUG', content=f"Attempting to input password: {password}")
+                self._log(level='DEBUG', content=f"Attempting to input password: {password}", device_id=device_id)
                 coords_cache = {}
                 for i, digit in enumerate(password):
                     if self._check_stop(device_id, "unlock"):
@@ -94,7 +94,7 @@ class HarmonyDriver(BaseDeviceDriver):
                     if digit in coords_cache:
                         center = coords_cache[digit]
                         self._log(level='DEBUG',
-                                  content=f"Clicking digit {digit} at cached {center} (position {i + 1})...")
+                                  content=f"Clicking digit {digit} at cached {center} (position {i + 1})...", device_id=device_id)
                         driver.click(center[0], center[1])
                     else:
                         btns = driver.find_components(By.text(digit), 10)
@@ -109,7 +109,7 @@ class HarmonyDriver(BaseDeviceDriver):
                                         max_y = center_y
                                         best_btn = btn
                                 except Exception as e:
-                                    self._log(level='DEBUG', content=f"Error getting button bounds: {e}")
+                                    self._log(level='DEBUG', content=f"Error getting button bounds: {e}", device_id=device_id)
                                     continue
 
                             if best_btn:
@@ -117,10 +117,10 @@ class HarmonyDriver(BaseDeviceDriver):
                                 center = [(bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2]
                                 coords_cache[digit] = center
                                 self._log(level='DEBUG',
-                                          content=f"Clicking digit {digit} at {center} (position {i + 1})...")
+                                          content=f"Clicking digit {digit} at {center} (position {i + 1})...", device_id=device_id)
                                 driver.click(center[0], center[1])
                             else:
-                                self._log(level='WARNING', content=f"Digit {digit} component found but invalid.")
+                                self._log(level='WARNING', content=f"Digit {digit} component found but invalid.", device_id=device_id)
                         else:
                             key_map = {
                                 "1": (270, 1800), "2": (540, 1800), "3": (810, 1800),
@@ -131,10 +131,10 @@ class HarmonyDriver(BaseDeviceDriver):
                             if digit in key_map:
                                 pos = key_map[digit]
                                 self._log(level='WARNING',
-                                          content=f"Digit {digit} not found, trying predicted coordinates {pos}...")
+                                      content=f"Digit {digit} not found, trying predicted coordinates {pos}...", device_id=device_id)
                                 driver.click(pos[0], pos[1])
                             else:
-                                self._log(level='ERROR', content=f"Digit {digit} not found on screen and no fallback.")
+                                self._log(level='ERROR', content=f"Digit {digit} not found on screen and no fallback.", device_id=device_id)
                     time.sleep(1.0)
 
                 if self._check_stop(device_id, "unlock"):
@@ -145,7 +145,7 @@ class HarmonyDriver(BaseDeviceDriver):
                         confirm_btn.click()
                         break
         except Exception as e:
-            self._log(level='ERROR', content=f"Unlock via clicking digits failed: {e}")
+            self._log(level='ERROR', content=f"Unlock via clicking digits failed: {e}", device_id=device_id)
 
         time.sleep(1)
 
@@ -182,12 +182,12 @@ class HarmonyDriver(BaseDeviceDriver):
         return devices
 
     @check_stop("initialize")
-    def initialize(self, device_id, **kwargs) -> bool:
+    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
         """初始化鸿蒙设备"""
-        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...")
+        self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return False
 
         try:
@@ -216,13 +216,13 @@ class HarmonyDriver(BaseDeviceDriver):
             app_icon_key = self.app_icon_key
             icon = driver.find_component(By.key(app_icon_key))
             if icon:
-                self._log(level='DEBUG', content=f"Clicking app icon...")
+                self._log(level='DEBUG', content=f"Clicking app icon...", device_id=device_id)
                 icon.click()
                 time.sleep(3)
                 # 启动应用后再次检查弹窗
                 self.close_popups(device_id)
             else:
-                self._log(level='WARNING', content="App icon not found, trying aa start...")
+                self._log(level='WARNING', content="App icon not found, trying aa start...", device_id=device_id)
                 subprocess.run(['hdc', '-t', device_id, 'shell', 'aa', 'start', '-b', self.app_name], check=False)
                 time.sleep(3)
                 # 启动应用后再次检查弹窗
@@ -232,19 +232,19 @@ class HarmonyDriver(BaseDeviceDriver):
                 return False
             return True
         except Exception as e:
-            self._log(level='ERROR', content=f"Failed to initialize via settings path: {e}")
+            self._log(level='ERROR', content=f"Failed to initialize via settings path: {e}", device_id=device_id)
             return False
 
     @check_stop("pre_process")
-    def pre_process(self, device_id, **kwargs) -> bool:
+    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """开始处理：进入前台等准备动作"""
-        self._log(level='INFO', content=f"--- Starting pre-process for {device_id} ---")
+        self._log(level='INFO', content=f"--- Starting pre-process for {device_id} ---", device_id=device_id)
         return True
 
     @check_stop("post_process")
-    def post_process(self, device_id, **kwargs) -> bool:
+    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """结束处理：清理或日志记录"""
-        self._log(level='INFO', content=f"--- Finished post-process for {device_id} ---")
+        self._log(level='INFO', content=f"--- Finished post-process for {device_id} ---", device_id=device_id)
         return True
 
     @check_stop("close_popups")
@@ -257,7 +257,7 @@ class HarmonyDriver(BaseDeviceDriver):
         Returns:
             bool: 是否成功执行
         """
-        self._log(level='INFO', content=f"Checking for popups on HarmonyOS device {device_id}...")
+        self._log(level='INFO', content=f"Checking for popups on HarmonyOS device {device_id}...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
             return False
@@ -304,15 +304,15 @@ class HarmonyDriver(BaseDeviceDriver):
 
                         if best_btn:
                             self._log(level='DEBUG',
-                                      content=f"Found popup button '{btn_text}' on HarmonyOS, clicking...")
+                                      content=f"Found popup button '{btn_text}' on HarmonyOS, clicking...", device_id=device_id)
                             try:
                                 best_btn.click()
                             except Exception as e:
-                                self._log(level='DEBUG', content=f"Failed to click button: {e}")
+                                self._log(level='DEBUG', content=f"Failed to click button: {e}", device_id=device_id)
                             time.sleep(0.5)
                             continue
                 except Exception as e:
-                    self._log(level='DEBUG', content=f"Error checking button '{btn_text}' on HarmonyOS: {e}")
+                    self._log(level='DEBUG', content=f"Error checking button '{btn_text}' on HarmonyOS: {e}", device_id=device_id)
                     continue
 
             popup_keywords = self._popup_keywords or []
@@ -324,7 +324,7 @@ class HarmonyDriver(BaseDeviceDriver):
                     elements = safe_find_components(By.textContains(keyword), 10)
                     if elements:
                         self._log(level='DEBUG',
-                                  content=f"Found popup with keyword '{keyword}' on HarmonyOS, trying to close...")
+                                  content=f"Found popup with keyword '{keyword}' on HarmonyOS, trying to close...", device_id=device_id)
                         for btn_text in close_buttons:
                             try:
                                 btn = driver.find_component(By.text(btn_text))
@@ -335,16 +335,16 @@ class HarmonyDriver(BaseDeviceDriver):
                             except Exception:
                                 continue
                 except Exception as e:
-                    self._log(level='DEBUG', content=f"Error checking keyword '{keyword}' on HarmonyOS: {e}")
+                    self._log(level='DEBUG', content=f"Error checking keyword '{keyword}' on HarmonyOS: {e}", device_id=device_id)
                     continue
 
-            self._log(level='INFO', content=f"Popup check completed for HarmonyOS device {device_id}")
+            self._log(level='INFO', content=f"Popup check completed for HarmonyOS device {device_id}", device_id=device_id)
             return True
         except Exception as e:
-            self._log(level='ERROR', content=f"Error closing popups on HarmonyOS device {device_id}: {e}")
+            self._log(level='ERROR', content=f"Error closing popups on HarmonyOS device {device_id}: {e}", device_id=device_id)
             return False
 
     @check_stop("get_results")
-    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
         """获取设备输出结果 - 返回原始文本列表"""
         return {'success': True, 'message': 'Success', 'asr': 'asr中文', 'translation': 'translation中文'}

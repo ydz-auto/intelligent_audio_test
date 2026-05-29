@@ -44,14 +44,16 @@ class EvaluationResultProcessor:
                     level='DEBUG',
                     category='database',
                     content=f"标记 TestResult {result_id} 为完成状态，影响行数: {update_count}",
-                    task_id=None
+                    task_id=None,
+                    test_case_id=None
                 )
             except Exception as e:
                 self._log(
                     level='ERROR',
                     category='database',
                     content=f"标记 TestResult 完成状态失败: {str(e)}",
-                    task_id=None
+                    task_id=None,
+                    test_case_id=None
                 )
                 local_db_session.rollback()
             finally:
@@ -112,7 +114,7 @@ class EvaluationResultProcessor:
         
         return raw_value, score
     
-    def update_dimension_result(self, dimension_result_id, raw_value, score, status, evaluation_status, error_message, api_raw_response=None, api_request_body=None, task_id=None, session=None):
+    def update_dimension_result(self, dimension_result_id, raw_value, score, status, evaluation_status, error_message, api_raw_response=None, api_request_body=None, task_id=None, test_case_id=None, session=None):
         """
         更新单个维度的评估结果到数据库
         """
@@ -147,10 +149,11 @@ class EvaluationResultProcessor:
                     level='ERROR',
                     category='database',
                     content=f'更新维度评估结果失败: {str(e)} 堆栈信息: {stack_trace}',
-                    task_id=task_id
+                    task_id=task_id,
+                    test_case_id=test_case_id
                 )
     
-    def update_dimension_result_failed(self, dimension_result_id, error_message, task_id=None, api_raw_response=None, api_request_body=None, session=None):
+    def update_dimension_result_failed(self, dimension_result_id, error_message, task_id=None, test_case_id=None, api_raw_response=None, api_request_body=None, session=None):
         """
         更新单个维度的评估结果为失败状态
         """
@@ -164,10 +167,11 @@ class EvaluationResultProcessor:
             api_raw_response=api_raw_response,
             api_request_body=api_request_body,
             task_id=task_id,
+            test_case_id=test_case_id,
             session=session
         )
     
-    def update_dimension_result_completed(self, dimension_result_id, raw_value, score, task_id=None, api_raw_response=None, api_request_body=None, session=None):
+    def update_dimension_result_completed(self, dimension_result_id, raw_value, score, task_id=None, test_case_id=None, api_raw_response=None, api_request_body=None, session=None):
         """
         更新单个维度的评估结果为成功状态
         """
@@ -181,6 +185,7 @@ class EvaluationResultProcessor:
             api_raw_response=api_raw_response,
             api_request_body=api_request_body,
             task_id=task_id,
+            test_case_id=test_case_id,
             session=session
         )
     
@@ -253,7 +258,8 @@ class EvaluationResultProcessor:
                             level='DEBUG',
                             category='database',
                             content=f"用例 {test_case_id} 结果未全 (已采集: {len(all_results)}/{expected_count})，暂不更新状态",
-                            task_id=task_id
+                            task_id=task_id,
+                            test_case_id=test_case_id
                         )
                         return
 
@@ -269,7 +275,8 @@ class EvaluationResultProcessor:
                                 level='DEBUG',
                                 category='database',
                                 content=f"用例 {test_case_id} 结果 {res.id} 维度未全 ({len(dims)}/{expected_dim_count})，继续等待",
-                                task_id=task_id
+                                task_id=task_id,
+                                test_case_id=test_case_id
                             )
                             case_all_finished = False
                             break
@@ -315,7 +322,8 @@ class EvaluationResultProcessor:
                         level='INFO',
                         category='database',
                         content=f"所有设备/API评估完成，更新TaskCase状态: id={test_case_id}, status={new_status}, 影响行数: {update_count}",
-                        task_id=task_id
+                        task_id=task_id,
+                        test_case_id=test_case_id
                     )
                     
                     local_db_session.commit()
@@ -329,7 +337,8 @@ class EvaluationResultProcessor:
                             level='INFO',
                             category='database',
                             content=f"任务状态从 evaluating 更新为 {new_status}",
-                            task_id=task_id
+                            task_id=task_id,
+                            test_case_id=test_case_id
                         )
                         
                         from backend.utils.execution_engine import execution_engine
@@ -339,13 +348,14 @@ class EvaluationResultProcessor:
                         level='ERROR',
                         category='database',
                         content=f"更新TaskCase状态失败: {str(e)}",
-                        task_id=task_id
+                        task_id=task_id,
+                        test_case_id=test_case_id
                     )
                     local_db_session.rollback()
                 finally:
                     local_db_session.close()
             except Exception as e:
-                self._log(level='ERROR', content=f"获取数据库会话失败: {str(e)}", task_id=task_id)
+                self._log(level='ERROR', content=f"获取数据库会话失败: {str(e)}", task_id=task_id, test_case_id=test_case_id)
     
     def update_all_dimensions_in_group_failed(self, group_items, error_message, task_id, test_case_id=None, api_raw_response=None, api_request_body=None):
         """
@@ -366,10 +376,11 @@ class EvaluationResultProcessor:
                         content=f"维度 {dim_name} 评估失败: {error_message}",
                         category='execution',
                         task_id=task_id,
+                        test_case_id=test_case_id,
                         push_to_websocket=True
                     )
                     
-                    self.update_dimension_result_failed(dimension_result_id, error_message, task_id=task_id, api_raw_response=api_raw_response, api_request_body=api_request_body, session=local_db_session)
+                    self.update_dimension_result_failed(dimension_result_id, error_message, task_id=task_id, test_case_id=test_case_id, api_raw_response=api_raw_response, api_request_body=api_request_body, session=local_db_session)
                 
                 # 更新 TaskCase 的 evaluation_status 和 status 都为 failed
                 if test_case_id:
@@ -390,14 +401,16 @@ class EvaluationResultProcessor:
                             level='INFO',
                             category='database',
                             content=f"更新TaskCase评估状态和用例状态为失败: test_case_id={test_case_id}, 影响行数: {update_count}",
-                            task_id=task_id
+                            task_id=task_id,
+                            test_case_id=test_case_id
                         )
                     except Exception as e:
                         self._log(
                             level='ERROR',
                             category='database',
                             content=f"更新TaskCase状态失败: {str(e)}",
-                            task_id=task_id
+                            task_id=task_id,
+                            test_case_id=test_case_id
                         )
                         local_db_session.rollback()
                 
@@ -447,7 +460,7 @@ class EvaluationResultProcessor:
         )
         
         # 更新维度评估结果 (update_dimension_result_completed 内部已经处理了 app_context)
-        self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, api_raw_response=resp_data, api_request_body=api_request_body)
+        self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, test_case_id=test_case_id, api_raw_response=resp_data, api_request_body=api_request_body)
         
         # 返回结果，用于统计
         return {
@@ -512,7 +525,7 @@ class EvaluationResultProcessor:
                     )
                     
                     # 更新维度评估结果，传入session避免重复创建
-                    self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, api_raw_response=resp_data, api_request_body=api_request_body, session=local_db_session)
+                    self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, test_case_id=test_case_id, api_raw_response=resp_data, api_request_body=api_request_body, session=local_db_session)
                 
                 # 循环结束后统一提交
                 local_db_session.commit()
@@ -555,5 +568,5 @@ class EvaluationResultProcessor:
                 finally:
                     local_db_session.close()
             except Exception as e:
-                self._log(level='ERROR', content=f"检查维度完成状态失败: {str(e)}", task_id=task_id)
+                self._log(level='ERROR', content=f"检查维度完成状态失败: {str(e)}", task_id=task_id, test_case_id=None)
                 return False

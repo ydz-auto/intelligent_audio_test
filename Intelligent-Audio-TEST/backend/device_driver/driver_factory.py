@@ -202,7 +202,8 @@ class DeviceDriverFactory:
         if device_ids:
             self._task_device_map[task_id] = device_ids
             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                         content=f"Registered devices for task {task_id}: {device_ids}")
+                         content=f"Registered devices for task {task_id}: {device_ids}",
+                         task_id=task_id, test_case_id=None)
 
     def cleanup_devices(self, task_id):
         """清理任务使用的设备驱动连接，并关闭 APP
@@ -215,7 +216,8 @@ class DeviceDriverFactory:
 
         device_ids = self._task_device_map.pop(task_id)
         log_and_emit(level='INFO', module='DeviceDriverFactory',
-                     content=f"Cleaning up devices for task {task_id}: {device_ids}")
+                     content=f"Cleaning up devices for task {task_id}: {device_ids}",
+                     task_id=task_id, test_case_id=None)
 
         for device_id in device_ids:
             for driver_key, driver in self._base_drivers.items():
@@ -228,16 +230,19 @@ class DeviceDriverFactory:
                         if driver_key == 'Android' and hasattr(conn, 'app_stop'):
                             conn.app_stop(app_name)
                             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                                         content=f"Stopped Android app {app_name} on device {device_id}")
+                                         content=f"Stopped Android app {app_name} on device {device_id}",
+                                         task_id=task_id, test_case_id=None)
                         elif driver_key == 'HarmonyOS':
                             import subprocess
                             subprocess.run(['hdc', '-t', device_id, 'shell', 'aa', 'force-stop', app_name],
                                            check=False, timeout=5)
                             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                                         content=f"Stopped Harmony app {app_name} on device {device_id}")
+                                         content=f"Stopped Harmony app {app_name} on device {device_id}",
+                                         task_id=task_id, test_case_id=None)
                     except Exception as e:
                         log_and_emit(level='WARNING', module='DeviceDriverFactory',
-                                     content=f"Failed to stop app on device {device_id}: {e}")
+                                     content=f"Failed to stop app on device {device_id}: {e}",
+                                     task_id=task_id, test_case_id=None)
 
                     try:
                         if hasattr(conn, 'quit'):
@@ -245,10 +250,12 @@ class DeviceDriverFactory:
                         elif hasattr(conn, 'close'):
                             conn.close()
                         log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                                     content=f"Closed connection for device {device_id} ({driver_key})")
+                                     content=f"Closed connection for device {device_id} ({driver_key})",
+                                     task_id=task_id, test_case_id=None)
                     except Exception as e:
                         log_and_emit(level='WARNING', module='DeviceDriverFactory',
-                                     content=f"Failed to close device {device_id}: {e}")
+                                     content=f"Failed to close device {device_id}: {e}",
+                                     task_id=task_id, test_case_id=None)
                     finally:
                         if device_id in driver._drivers:
                             del driver._drivers[device_id]
@@ -256,7 +263,8 @@ class DeviceDriverFactory:
                 driver._current_task_id = None
 
         log_and_emit(level='INFO', module='DeviceDriverFactory',
-                     content=f"Cleanup completed for task {task_id}")
+                     content=f"Cleanup completed for task {task_id}",
+                     task_id=task_id, test_case_id=None)
 
     def scan_devices(self):
         """扫描所有设备"""

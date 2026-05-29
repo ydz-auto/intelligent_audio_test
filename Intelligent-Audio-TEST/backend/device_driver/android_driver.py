@@ -33,11 +33,11 @@ class AndroidDriver(BaseDeviceDriver):
                 unlock_bar_elem = driver(resourcId="com.android.systemui:id/lock_indication")
                 if unlock_bar_elem.exists(timeout=1):
                     return True
-                self._log(level='INFO', content=f"设备{device_id} 已解锁")
+                self._log(level='INFO', content=f"设备{device_id} 已解锁", device_id=device_id)
             except Exception as e:
-                self._log(level='ERROR', content=f"检查锁屏状态失败：{e}")
+                self._log(level='ERROR', content=f"检查锁屏状态失败：{e}", device_id=device_id)
                 return False
-        self._log(level='INFO', content=f"获取设备{device_id}驱动失败")
+        self._log(level='INFO', content=f"获取设备{device_id}驱动失败", device_id=device_id)
         return False
 
     def _get_driver(self, device_id):
@@ -47,7 +47,7 @@ class AndroidDriver(BaseDeviceDriver):
             try:
                 self._drivers[device_id] = u2.connect(device_id)
             except Exception as e:
-                self._log(level='ERROR', content=f"Failed to connect to android device {device_id}: {e}")
+                self._log(level='ERROR', content=f"Failed to connect to android device {device_id}: {e}", device_id=device_id)
                 return None
         return self._drivers[device_id]
 
@@ -92,9 +92,9 @@ class AndroidDriver(BaseDeviceDriver):
         return devices
 
     @check_stop("initialize")
-    def initialize(self, device_id, **kwargs) -> bool:
+    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
         """初始化安卓设备"""
-        self._log(level='INFO', content=f"Initializing Android device {device_id} for {self.app_name}...")
+        self._log(level='INFO', content=f"Initializing Android device {device_id} for {self.app_name}...", device_id=device_id)
         driver = self._get_driver(device_id)
         if driver:
             try:
@@ -109,17 +109,17 @@ class AndroidDriver(BaseDeviceDriver):
                 time.sleep(3)
                 # 启动应用后再次检查弹窗
                 self.close_popups(device_id)
-                self._log(level='INFO', content=f"Android device {device_id} initialized successfully")
+                self._log(level='INFO', content=f"Android device {device_id} initialized successfully", device_id=device_id)
                 return True
             except Exception as e:
-                self._log(level='ERROR', content=f"Failed to start app {self.app_name} on device {device_id}: {e}")
-        self._log(level='ERROR', content=f"Failed to initialize Android device {device_id}: Driver not available")
+                self._log(level='ERROR', content=f"Failed to start app {self.app_name} on device {device_id}: {e}", device_id=device_id)
+        self._log(level='ERROR', content=f"Failed to initialize Android device {device_id}: Driver not available", device_id=device_id)
         return False
 
     @check_stop("unlock")
     def unlock(self, device_id, **kwargs) -> None:
         """唤醒并解锁安卓设备"""
-        self._log(level='INFO', content=f"Android device {device_id} waking up...")
+        self._log(level='INFO', content=f"Android device {device_id} waking up...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
             return False
@@ -127,35 +127,35 @@ class AndroidDriver(BaseDeviceDriver):
             return 
         driver.screen_on()
         time.sleep(1)
-        self._log(level='DEBUG', content=f"Screen turned on for device {device_id}")
+        self._log(level='DEBUG', content=f"Screen turned on for device {device_id}", device_id=device_id)
 
         is_locked = self.is_locked(device_id)
         if not is_locked:
-            self._log(level='DEBUG', content=f"Device {device_id} locked has unlocked")
+            self._log(level='DEBUG', content=f"Device {device_id} locked has unlocked", device_id=device_id)
             return
 
 
         self._unlock(device_id, **kwargs)
         if self._check_stop(device_id, "unlock"):
             return
-        self._log(level='DEBUG', content=f"Device {device_id} unlocked successfully")       
+        self._log(level='DEBUG', content=f"Device {device_id} unlocked successfully", device_id=device_id)       
 
 
 
     def _unlock(self, device_id, **kwargs) -> None:
         """解锁安卓设备"""
-        self._log(level='INFO', content=f"Android device {device_id} unlocking...")
+        self._log(level='INFO', content=f"Android device {device_id} unlocking...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
             return False
         try:
             driver.swipe(0.5, 0.8, 0.5, 0.2)
             time.sleep(1)
-            self._log(level='DEBUG', content=f"Swiped up to unlock device {device_id}")
+            self._log(level='DEBUG', content=f"Swiped up to unlock device {device_id}", device_id=device_id)
 
             if self._check_stop(device_id, "unlock"):
                 return
-            self._log(level='DEBUG', content="Entering password digits...")
+            self._log(level='DEBUG', content="Entering password digits...", device_id=device_id)
             password = self._unlock_password
             coords_cache = {}
 
@@ -165,7 +165,7 @@ class AndroidDriver(BaseDeviceDriver):
                 if digit in coords_cache:
                     center = coords_cache[digit]
                     self._log(level='DEBUG',
-                                content=f"Clicking digit {digit} at cached {center} (position {i + 1})...")
+                                content=f"Clicking digit {digit} at cached {center} (position {i + 1})...", device_id=device_id)
                     driver.click(center[0], center[1])
                 else:
                     btns = driver(text=digit)
@@ -182,10 +182,10 @@ class AndroidDriver(BaseDeviceDriver):
                             center = best_btn.center()
                             coords_cache[digit] = center
                             self._log(level='DEBUG',
-                                        content=f"Clicking digit {digit} at {center} (position {i + 1})...")
+                                        content=f"Clicking digit {digit} at {center} (position {i + 1})...", device_id=device_id)
                             driver.click(center[0], center[1])
                         else:
-                            self._log(level='WARNING', content=f"Digit {digit} exists but no valid button found.")
+                            self._log(level='WARNING', content=f"Digit {digit} exists but no valid button found.", device_id=device_id)
                     else:
                         self._log(level='WARNING', content=f"Digit {digit} not found, using keyevent.")
                         keycode = int(digit) + 7
@@ -195,7 +195,7 @@ class AndroidDriver(BaseDeviceDriver):
 
             if self._check_stop(device_id, "unlock"):
                 return
-            self._log(level='DEBUG', content="Clicking confirm/enter...")
+            self._log(level='DEBUG', content="Clicking confirm/enter...", device_id=device_id)
             confirm_btns = ["确认", "OK", "Done", "Enter"]
             clicked_confirm = False
             for btn_text in confirm_btns:
@@ -203,21 +203,21 @@ class AndroidDriver(BaseDeviceDriver):
                 if btn.exists:
                     btn.click()
                     clicked_confirm = True
-                    self._log(level='DEBUG', content=f"Clicked confirm button: {btn_text}")
+                    self._log(level='DEBUG', content=f"Clicked confirm button: {btn_text}", device_id=device_id)
                     break
 
             if not clicked_confirm:
-                self._log(level='DEBUG', content="No confirm button found, sending keyevent 66 (Enter)")
+                self._log(level='DEBUG', content="No confirm button found, sending keyevent 66 (Enter)", device_id=device_id)
                 subprocess.run(['adb', '-s', device_id, 'shell', 'input', 'keyevent', '66'], check=False)
 
-            self._log(level='INFO', content=f"Android device {device_id} woke up successfully")
+            self._log(level='INFO', content=f"Android device {device_id} woke up successfully", device_id=device_id)
         except Exception as e:
-            self._log(level='ERROR', content=f"Failed to wake up Android device {device_id}: {e}")
+            self._log(level='ERROR', content=f"Failed to wake up Android device {device_id}: {e}", device_id=device_id)
 
     @check_stop("post_process")
-    def post_process(self, device_id, **kwargs) -> bool:
+    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """结束处理"""
-        self._log(level='INFO', content=f"--- Finished post-process for Android {device_id} ---")
+        self._log(level='INFO', content=f"--- Finished post-process for Android {device_id} ---", device_id=device_id)
         return True
 
     @check_stop("close_popups")
@@ -230,7 +230,7 @@ class AndroidDriver(BaseDeviceDriver):
         Returns:
             bool: 是否成功执行
         """
-        self._log(level='INFO', content=f"Checking for popups on Android device {device_id}...")
+        self._log(level='INFO', content=f"Checking for popups on Android device {device_id}...", device_id=device_id)
         driver = self._get_driver(device_id)
         if not driver:
             return False
@@ -263,7 +263,7 @@ class AndroidDriver(BaseDeviceDriver):
                         btn = found_buttons[0]
                         btn_center = btn.center()
                         self._log(level='DEBUG',
-                                  content=f"Found popup button '{btn_text}' at {btn_center}, clicking...")
+                                  content=f"Found popup button '{btn_text}' at {btn_center}, clicking...", device_id=device_id)
                         btn.click()
                         time.sleep(1)
                         # 点击后可能还有其他弹窗，继续检查
@@ -277,7 +277,7 @@ class AndroidDriver(BaseDeviceDriver):
 
                 elements = driver(textContains=keyword)
                 if elements.exists:
-                    self._log(level='DEBUG', content=f"Found popup with keyword '{keyword}', trying to close...")
+                    self._log(level='DEBUG', content=f"Found popup with keyword '{keyword}', trying to close...", device_id=device_id)
                     # 尝试点击弹窗中的关闭按钮
                     for btn_text in close_buttons:
                         btn = driver(text=btn_text)
@@ -286,13 +286,13 @@ class AndroidDriver(BaseDeviceDriver):
                             time.sleep(1)
                             break
 
-            self._log(level='INFO', content=f"Popup check completed for Android device {device_id}")
+            self._log(level='INFO', content=f"Popup check completed for Android device {device_id}", device_id=device_id)
             return True
         except Exception as e:
-            self._log(level='ERROR', content=f"Error closing popups on Android device {device_id}: {e}")
+            self._log(level='ERROR', content=f"Error closing popups on Android device {device_id}: {e}", device_id=device_id)
             return False
 
     @check_stop("get_results")
-    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
         """获取设备输出结果 - 返回原始文本列表"""
         return {'success': True, 'message': 'Success', 'asr': 'asr中文', 'translation': 'translation中文'}

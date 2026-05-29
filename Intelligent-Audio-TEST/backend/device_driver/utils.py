@@ -13,20 +13,20 @@ _task_control_lock = threading.Lock()
 try:
     from hypium import UiDriver, BY as By, MatchPattern
 except Exception as e:
-    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import hypium: {e}")
+    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import hypium: {e}", task_id=None, test_case_id=None)
     UiDriver = None
     By = None
 
 try:
     import uiautomator2 as u2
 except Exception as e:
-    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import uiautomator2: {e}")
+    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import uiautomator2: {e}", task_id=None, test_case_id=None)
     u2 = None
 
 try:
     import wda
 except Exception as e:
-    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import facebook-wda: {e}")
+    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import facebook-wda: {e}", task_id=None, test_case_id=None)
     wda = None
 
 def register_task_events(task_id, stop_event, pause_event=None):
@@ -92,8 +92,11 @@ def check_stop(operation_name: str = "", check_pause: bool = True):
 
             # 检查停止事件
             if stop_event and stop_event.is_set():
+                _task_id = getattr(self, '_task_id', None)
+                _test_case_id = getattr(self, '_test_case_id', None)
                 log_and_emit(level='INFO', module='DeviceDriver', 
-                           content=f"Task stopped during {operation_name} operation")
+                           content=f"Task stopped during {operation_name} operation",
+                           task_id=_task_id, test_case_id=_test_case_id)
                 # 根据函数返回类型返回相应的停止值
                 sig = func.__annotations__.get('return')
                 if sig is bool or sig == 'bool':
@@ -106,14 +109,18 @@ def check_stop(operation_name: str = "", check_pause: bool = True):
 
             # 检查暂停事件
             if check_pause and pause_event and not pause_event.is_set():
+                _task_id = getattr(self, '_task_id', None)
+                _test_case_id = getattr(self, '_test_case_id', None)
                 log_and_emit(level='INFO', module='DeviceDriver', 
-                           content=f"Task paused during {operation_name} operation")
+                           content=f"Task paused during {operation_name} operation",
+                           task_id=_task_id, test_case_id=_test_case_id)
                 while not pause_event.is_set():
                     time.sleep(0.1)
                     # 暂停期间也要检查停止事件
                     if stop_event and stop_event.is_set():
                         log_and_emit(level='INFO', module='DeviceDriver', 
-                                   content=f"Task stopped during {operation_name} operation")
+                                   content=f"Task stopped during {operation_name} operation",
+                                   task_id=_task_id, test_case_id=_test_case_id)
                         sig = func.__annotations__.get('return')
                         if sig is bool or sig == 'bool':
                             return False
@@ -139,3 +146,16 @@ def _get_default_return(func: Callable):
     elif sig is str or sig == 'str':
         return "Stopped"
     return None
+
+
+def log_and_emit_with_test_case(level='INFO', module='DeviceDriver', content='', task_id=None, test_case_id=None, device_id=None, **kwargs):
+    """封装 log_and_emit，支持 test_case_id 参数"""
+    log_and_emit(
+        level=level,
+        module=module,
+        content=content,
+        task_id=task_id,
+        test_case_id=test_case_id,
+        device_id=device_id,
+        **kwargs
+    )

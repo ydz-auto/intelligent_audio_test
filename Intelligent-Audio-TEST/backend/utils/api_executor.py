@@ -256,7 +256,7 @@ class APIExecutor(BaseExecutor):
             # 在会话关闭前，提取需要的属性到本地变量
             tc_rel_id = tc_rel.id
             tc_rel_test_case_id = tc_rel.test_case_id
-            case_id = case.id
+            test_case_id = case.id
             case_name = case.name
             # 提取task.type到本地变量，避免后续会话关闭后访问分离对象
             task_type = task.type if task else 'api'  # 默认API测试
@@ -468,7 +468,7 @@ class APIExecutor(BaseExecutor):
             return True, {
                 'tc_rel_id': tc_rel_id,
                 'task_id': task_id,
-                'case_id': case_id,
+                'test_case_id': test_case_id,
                 'case_name': case_name,
                 'algorithm_type': algorithm_type,
                 'api_configs': processed_api_configs,  # 返回所有API配置列表
@@ -1064,7 +1064,7 @@ class APIExecutor(BaseExecutor):
         
         return result_dict, latency
     
-    def _create_test_result(self, task_id, case_id, api_config_id, success, error_msg, algo_result_dict, latency, final_result_result, algorithm_type='translation'):
+    def _create_test_result(self, task_id, test_case_id, api_config_id, success, error_msg, algo_result_dict, latency, final_result_result, algorithm_type='translation'):
         """
         创建测试结果记录 - 使用字段映射器动态构建算法结果
         """
@@ -1077,8 +1077,9 @@ class APIExecutor(BaseExecutor):
         self._log(
             level='DEBUG',
             category='database',
-            content=f"开始创建测试结果记录: task_id={task_id}, case_id={case_id}, api_config_id={api_config_id}, success={success}",
+            content=f"开始创建测试结果记录: task_id={task_id}, test_case_id={test_case_id}, api_config_id={api_config_id}, success={success}",
             task_id=task_id,
+            test_case_id=test_case_id,
             api_id=api_config_id
         )
         
@@ -1104,7 +1105,7 @@ class APIExecutor(BaseExecutor):
 
         result = TestResult(
             task_id=task_id,
-            test_case_id=case_id,
+            test_case_id=test_case_id,
             api_id=api_config_id,
             algorithm_type=algorithm_type,
             execution_status='completed' if success else 'failed',
@@ -1119,6 +1120,7 @@ class APIExecutor(BaseExecutor):
             category='database',
             content=f"创建TestResult对象: {result.__dict__}",
             task_id=task_id,
+            test_case_id=test_case_id,
             api_id=api_config_id
         )
         
@@ -1126,8 +1128,9 @@ class APIExecutor(BaseExecutor):
         self._log(
             level='DEBUG',
             category='database',
-            content=f"TestResult必填字段检查: task_id={task_id}, test_case_id={case_id}, api_id={api_config_id}, result_data={response_data}",
+            content=f"TestResult必填字段检查: task_id={task_id}, test_case_id={test_case_id}, api_id={api_config_id}, result_data={response_data}",
             task_id=task_id,
+            test_case_id=test_case_id,
             api_id=api_config_id
         )
         
@@ -1137,6 +1140,7 @@ class APIExecutor(BaseExecutor):
             category='database',
             content=f"TestResult对象属性: id={result.id}, execution_status={result.execution_status}, response_time={result.response_time}, result_data={result.result_data}",
             task_id=task_id,
+            test_case_id=test_case_id,
             api_id=api_config_id
         )
         
@@ -1166,7 +1170,7 @@ class APIExecutor(BaseExecutor):
             import json
             params = {
                 'task_id': task_id,
-                'test_case_id': case_id,
+                'test_case_id': test_case_id,
                 'device_id': None,
                 'api_id': api_config_id,
                 'algorithm_type': algorithm_type,
@@ -1183,7 +1187,8 @@ class APIExecutor(BaseExecutor):
                 level='DEBUG',
                 category='database',
                 content=f"执行SQL插入: {insert_sql}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
             
             # 执行插入（使用正确的SQLAlchemy连接方式和参数传递）
@@ -1198,7 +1203,8 @@ class APIExecutor(BaseExecutor):
                     level='DEBUG',
                     category='database',
                     content=f"SQL插入成功，result_id={result_id}",
-                    task_id=task_id
+                    task_id=task_id,
+                    test_case_id=test_case_id
                 )
                 
                 # 验证插入结果
@@ -1211,21 +1217,24 @@ class APIExecutor(BaseExecutor):
                             level='DEBUG',
                             category='database',
                             content=f"验证成功: 测试结果已成功入库，id={saved_result.id}",
-                            task_id=task_id
+                            task_id=task_id,
+                            test_case_id=test_case_id
                         )
                     else:
                         self._log(
                             level='ERROR',
                             category='database',
                             content=f"验证失败: 测试结果未成功入库，id={result_id}",
-                            task_id=task_id
+                            task_id=task_id,
+                            test_case_id=test_case_id
                         )
                 else:
                     self._log(
                         level='ERROR',
                         category='database',
                         content=f"SQL插入失败，未返回result_id",
-                        task_id=task_id
+                        task_id=task_id,
+                        test_case_id=test_case_id
                     )
                     result_id = None
         except Exception as sql_error:
@@ -1235,7 +1244,8 @@ class APIExecutor(BaseExecutor):
                 level='ERROR',
                 category='database',
                 content=f"SQL插入失败: {str(sql_error)}\n{sql_trace}",
-                task_id=task_id
+                task_id=task_id,
+                test_case_id=test_case_id
             )
             result_id = None
             
@@ -1243,7 +1253,7 @@ class APIExecutor(BaseExecutor):
         # 注意：只更新execution_status，evaluation_status和status字段需要在维度评估完成后再更新
         update_session = db.session()
         try:
-            tc_rel = update_session.query(TaskCase).filter_by(task_id=task_id, test_case_id=case_id).first()
+            tc_rel = update_session.query(TaskCase).filter_by(task_id=task_id, test_case_id=test_case_id).first()
             if tc_rel:
                 # 根据success更新execution_status
                 # 注意：这里不更新evaluation_status和status，让评估服务在评估完成后统一更新
@@ -1253,8 +1263,9 @@ class APIExecutor(BaseExecutor):
                 self._log(
                     level='DEBUG',
                     category='database',
-                    content=f"同步更新task_case_relations表的execution_status: task_id={task_id}, test_case_id={case_id}, execution_status={'completed' if success else 'failed'}",
-                    task_id=task_id
+                    content=f"同步更新task_case_relations表的execution_status: task_id={task_id}, test_case_id={test_case_id}, execution_status={'completed' if success else 'failed'}",
+                    task_id=task_id,
+                    test_case_id=test_case_id
                 )
                 
                 # 强制推送进度更新到前端（不包括统计信息，统计信息等评估完成后再更新）
@@ -1274,13 +1285,14 @@ class APIExecutor(BaseExecutor):
         self._log(
             level='DEBUG',
             category='database',
-            content=f"[DEBUG _create_test_result] 返回 result_id={result_id}, type={type(result_id)}, task_id={task_id}, case_id={case_id}",
-            task_id=task_id
+            content=f"[DEBUG _create_test_result] 返回 result_id={result_id}, type={type(result_id)}, task_id={task_id}, test_case_id={test_case_id}",
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         return result_id  # 返回result_id而不是整个result对象，避免分离对象问题
     
-    def _evaluate_test_result(self, task_id, result_id, case_id, case_name, case_config, 
+    def _evaluate_test_result(self, task_id, result_id, test_case_id, case_name, case_config, 
                              algo_result_dict, 
                              algorithm_type='translation', test_type='api'):
         """
@@ -1296,7 +1308,8 @@ class APIExecutor(BaseExecutor):
             level='INFO',
             category='evaluation',
             content=f"开始评估API用例: {case_name}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
 
         self._handle_control(task_id)
@@ -1345,7 +1358,7 @@ class APIExecutor(BaseExecutor):
         
         # 调用评估服务
         evaluation_service.evaluate_case(
-            task_id, result_id, case_id,
+            task_id, result_id, test_case_id,
             algorithm_result,
             algorithm_type=algorithm_type,
             **eval_params
@@ -1355,7 +1368,8 @@ class APIExecutor(BaseExecutor):
             level='INFO',
             category='evaluation',
             content=f"评估API用例已入队: {case_name}",
-            task_id=task_id
+            task_id=task_id,
+            test_case_id=test_case_id
         )
         
         return True
@@ -1438,7 +1452,7 @@ class APIExecutor(BaseExecutor):
                 # 从返回数据中获取ID和必要信息
                 tc_rel_id = data['tc_rel_id']
                 task_id = data['task_id']
-                case_id = data['case_id']
+                test_case_id = data['test_case_id']
                 case_name = data['case_name']
                 algorithm_type = data.get('algorithm_type', 'translation')
                 api_configs = data['api_configs']  # 获取所有API配置
@@ -1453,7 +1467,7 @@ class APIExecutor(BaseExecutor):
                 case_config = {}
                 local_db_session = db.session()
                 try:
-                    case_obj = local_db_session.query(TestCase).get(case_id)
+                    case_obj = local_db_session.query(TestCase).get(test_case_id)
                     if case_obj:
                         case_config = case_obj.config or {}
                 finally:
@@ -1465,7 +1479,7 @@ class APIExecutor(BaseExecutor):
                     # 重新获取所有必要的数据库对象
                     tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
                     task = local_db_session.query(Task).get(task_id)
-                    case = local_db_session.query(TestCase).get(case_id)
+                    case = local_db_session.query(TestCase).get(test_case_id)
                     
                     if not tc_rel or not task or not case:
                         error_msg = "找不到必要的数据库对象"
@@ -1503,12 +1517,12 @@ class APIExecutor(BaseExecutor):
                         return False
                     
                     # 遍历所有API配置，为每个API执行测试
-                    api_results = []  # 收集所有API执行结果
                     api_count = len(api_configs)
                     self._log(
                         level='INFO',
-                        content=f"开始执行 {api_count} 个API的测试用例: {case_name},{case_id}",
-                        task_id=task_id
+                        content=f"开始执行 {api_count} 个API的测试用例: {case_name},{test_case_id}",
+                        task_id=task_id,
+                        test_case_id=test_case_id
                     )
                     
                     # 预先检查并更新 TaskCase 状态为 running（如果还不是的话）
@@ -1612,7 +1626,7 @@ class APIExecutor(BaseExecutor):
                                     )
                                 
                                 # 创建测试结果记录
-                                result_id = self._create_test_result(task_id, case_id, api_config.id, success, error_msg, algo_result_dict, latency, final_result_result, algorithm_type)
+                                result_id = self._create_test_result(task_id, test_case_id, api_config.id, success, error_msg, algo_result_dict, latency, final_result_result, algorithm_type)
                                 
                             finally:
                                 # 删除远程任务，释放资源 (确保在 finally 块中执行，防止资源泄露)
@@ -1650,7 +1664,7 @@ class APIExecutor(BaseExecutor):
                                     self._evaluate_result(
                                         task_id=task_id,
                                         result_id=result_id,
-                                        case_id=case_id,
+                                        test_case_id=test_case_id,
                                         algo_result=algo_result_dict,
                                         case_config=case_config,
                                         algorithm_type=algorithm_type,
@@ -1720,7 +1734,7 @@ class APIExecutor(BaseExecutor):
                                     result_obj[key] = value
                             
                             # 调用 _log_case_result 记录用例结果（包含参考文本）
-                            self._log_case_result(task_id, case_name, result_obj, ref_fields, algorithm_type=algorithm_type)
+                            self._log_case_result(task_id, case_name, result_obj, ref_fields, algorithm_type=algorithm_type, test_case_id=test_case_id)
                         except Exception as e:
                             success = False
                             import traceback

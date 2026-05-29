@@ -76,7 +76,7 @@ class PlaudDriver(AndroidDriver):
         return True
 
     @check_stop("initialize")
-    def initialize(self, device_id, **kwargs) -> bool:
+    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
         """初始化安卓设备"""
         self._log(level='INFO', content=f"Initializing Android device {device_id} for {self.app_name}...")
         driver = self._get_driver(device_id)
@@ -111,7 +111,7 @@ class PlaudDriver(AndroidDriver):
         return False
 
     @check_stop("pre_process")
-    def pre_process(self, device_id, **kwargs) -> bool:
+    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """开始处理：进入前台等准备动作"""
         self._log(level='INFO', content=f"--- Starting pre-process for Android {device_id} ---")
         driver = self._get_driver(device_id)
@@ -135,7 +135,7 @@ class PlaudDriver(AndroidDriver):
         return True
 
     @check_stop("post_process")
-    def post_process(self, device_id, **kwargs) -> bool:
+    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
         """结束处理"""
         self._log(level='INFO', content=f"--- Finished post-process for Android {device_id} ---")
         driver = self._get_driver(device_id)
@@ -161,7 +161,7 @@ class PlaudDriver(AndroidDriver):
         return True
 
     @check_stop("get_results")
-    def get_results(self, device_id, task_id=None, case_id=None, **kwargs) -> dict:
+    def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
         """获取设备输出结果 - 返回原始文本列表"""
         driver = self._get_driver(device_id)
         if not driver:
@@ -241,9 +241,9 @@ class PlaudDriver(AndroidDriver):
         share_device_driver.click(By.text('接收'))
 
         task_id = task_id or kwargs.get('task_id', 'default_task_id')
-        case_id = case_id or kwargs.get('case_id', 'default_case_id')
+        test_case_id = test_case_id or kwargs.get('test_case_id', 'default_case_id')
 
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{case_id}', f'{device_id}')
+        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{test_case_id}', f'{device_id}')
         os.makedirs(local_dir, exist_ok=True)
 
         temp_device_path = '/data/local/tmp/srt'
@@ -270,7 +270,7 @@ class PlaudDriver(AndroidDriver):
         if not srt_files:
             self._log(level='WARNING', content=f"未找到.srt文件")
             return None
-        temp_srt_name = f'{case_id}.srt'
+        temp_srt_name = f'{test_case_id}.srt'
         srt_file_path = os.path.join(local_dir, temp_srt_name)
 
         copy_cmd = ['hdc', '-t', LOG_DEVICE_ID, 'shell', 'sh', '-c',
@@ -397,12 +397,12 @@ class PlaudDriver(AndroidDriver):
 
         return recording_stm_content, recording_rttm_content, recording_asr_content
 
-    def extract_results_from_archive(self, task_id, case_id, device_id, **kwargs):
+    def extract_results_from_archive(self, task_id, test_case_id, device_id, **kwargs):
         """从存档SRT文件提取设备输出结果
 
         Args:
             task_id: 任务ID
-            case_id: 用例ID
+            test_case_id: 用例ID
             device_id: 设备ID
 
         Returns:
@@ -416,13 +416,13 @@ class PlaudDriver(AndroidDriver):
                     'message': str
                 }
         """
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{case_id}', f'{device_id}')
-        srt_file_path = os.path.join(local_dir, f'{case_id}.srt')
+        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{test_case_id}', f'{device_id}')
+        srt_file_path = os.path.join(local_dir, f'{test_case_id}.srt')
 
-        self._log(level='INFO', content=f"从存档提取SRT结果，路径: {srt_file_path}", task_id=task_id, test_case_id=case_id)
+        self._log(level='INFO', content=f"从存档提取SRT结果，路径: {srt_file_path}", task_id=task_id, test_case_id=test_case_id)
 
         if not os.path.exists(srt_file_path):
-            self._log(level='ERROR', content=f"存档SRT文件不存在: {srt_file_path}", task_id=task_id, test_case_id=case_id)
+            self._log(level='ERROR', content=f"存档SRT文件不存在: {srt_file_path}", task_id=task_id, test_case_id=test_case_id)
             return {
                 'success': False,
                 'message': f'存档SRT文件不存在: {srt_file_path}',
@@ -432,7 +432,7 @@ class PlaudDriver(AndroidDriver):
         recording_stm_content, recording_rttm_content, recording_asr_content = self._parse_srt_to_stm_rttm(srt_file_path)
 
         if not recording_stm_content:
-            self._log(level='WARNING', content=f"SRT文件解析结果为空: {srt_file_path}", task_id=task_id, test_case_id=case_id)
+            self._log(level='WARNING', content=f"SRT文件解析结果为空: {srt_file_path}", task_id=task_id, test_case_id=test_case_id)
             return {
                 'success': False,
                 'message': f'SRT文件解析结果为空: {srt_file_path}',
@@ -442,7 +442,7 @@ class PlaudDriver(AndroidDriver):
         recording_stm_path = os.path.join(local_dir, "recording.stm")
         recording_rttm_path = os.path.join(local_dir, "recording.rttm")
 
-        self._log(level='INFO', content=f"成功从存档提取SRT结果，STM行数: {len(recording_stm_content.split(chr(10)))}", task_id=task_id, test_case_id=case_id)
+        self._log(level='INFO', content=f"成功从存档提取SRT结果，STM行数: {len(recording_stm_content.split(chr(10)))}", task_id=task_id, test_case_id=test_case_id)
 
         return [{
             'success': True,

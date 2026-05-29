@@ -59,14 +59,18 @@ class evaluationApiClient:
                             self._log(
                                 level='debug',
                                 category='system',
-                                content=f'加载端点配置: {endpoint_url} | 最大并发数: {max_process}'
+                                content=f'加载端点配置: {endpoint_url} | 最大并发数: {max_process}',
+                                task_id=None,
+                                test_case_id=None
                             )
         except Exception as e:
             stack_trace = traceback.format_exc()
             self._log(
                 level='ERROR',
                 category='system',
-                content=f'加载端点配置失败: {str(e)} 堆栈信息: {stack_trace}'
+                content=f'加载端点配置失败: {str(e)} 堆栈信息: {stack_trace}',
+                task_id=None,
+                test_case_id=None
             )
     
     def init_thread_pool(self):
@@ -92,14 +96,18 @@ class evaluationApiClient:
                     self._log(
                         level='info',
                         category='system',
-                        content=f'初始化线程池，最大工作线程数: {total_concurrent}'
+                        content=f'初始化线程池，最大工作线程数: {total_concurrent}',
+                        task_id=None,
+                        test_case_id=None
                     )
         except Exception as e:
             stack_trace = traceback.format_exc()
             self._log(
                 level='ERROR',
                 category='system',
-                content=f'初始化线程池失败: {str(e)} 堆栈信息: {stack_trace}'
+                content=f'初始化线程池失败: {str(e)} 堆栈信息: {stack_trace}',
+                task_id=None,
+                test_case_id=None
             )
     
     def _get_or_create_semaphore(self, endpoint, max_process):
@@ -120,7 +128,9 @@ class evaluationApiClient:
                 self._log(
                     level='DEBUG',
                     category='system',
-                    content=f'为端点 {endpoint} 创建信号量，最大并发数: {max_process}'
+                    content=f'为端点 {endpoint} 创建信号量，最大并发数: {max_process}',
+                    task_id=None,
+                    test_case_id=None
                 )
             return self.endpoint_semaphores[endpoint]
     
@@ -171,7 +181,9 @@ class evaluationApiClient:
                 self._log(
                     level='WARNING',
                     category='system',
-                    content=f'端点 {endpoint} 信号量释放失败（可能已超过最大值）'
+                    content=f'端点 {endpoint} 信号量释放失败（可能已超过最大值）',
+                    task_id=None,
+                    test_case_id=None
                 )
     
     def select_endpoint(self, endpoints):
@@ -221,7 +233,9 @@ class evaluationApiClient:
                 self._log(
                     level='ERROR',
                     category='execution',
-                    content=error_msg
+                    content=error_msg,
+                    task_id=None,
+                    test_case_id=None
                 )
                 # 将错误信息添加到响应数据中，方便后续处理
                 if isinstance(resp_data, dict):
@@ -234,7 +248,9 @@ class evaluationApiClient:
             self._log(
                 level='ERROR',
                 category='execution',
-                content=f"API请求异常: {error_msg}"
+                content=f"API请求异常: {error_msg}",
+                task_id=None,
+                test_case_id=None
             )
             # 返回异常信息作为响应数据
             resp_data = {'__error__': error_msg}
@@ -267,7 +283,7 @@ class evaluationApiClient:
         """
         等待任务完成，定期查询状态
         """
-        self._log('info', f'开始等待任务完成: task_id={task_id}, max_wait_time={max_wait_time}秒', test_case_id=test_case_id, api_id=api_id)
+        self._log('info', f'开始等待任务完成: task_id={task_id}, max_wait_time={max_wait_time}秒', task_id=None, test_case_id=test_case_id, api_id=api_id)
         
         start_time = time.time()
         poll_count = 0
@@ -282,22 +298,22 @@ class evaluationApiClient:
                 elapsed_time = int(time.time() - start_time)
                 
                 if status == 'completed':
-                    self._log('info', f'任务完成: task_id={task_id}, 耗时={elapsed_time}秒', test_case_id=test_case_id, api_id=api_id)
+                    self._log('info', f'任务完成: task_id={task_id}, 耗时={elapsed_time}秒', task_id=None, test_case_id=test_case_id, api_id=api_id)
                     result_response = self.get_task_result(url, task_id)
                     return result_response
                 elif status == 'failed':
                     error_msg = data.get('error_msg', 'Task failed')
-                    self._log('error', f'任务失败: task_id={task_id}, error={error_msg}', test_case_id=test_case_id, api_id=api_id)
+                    self._log('error', f'任务失败: task_id={task_id}, error={error_msg}', task_id=None, test_case_id=test_case_id, api_id=api_id)
                     return {'__error__': error_msg}
                 else:
-                    self._log('info', f'等待任务: task_id={task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询', test_case_id=test_case_id, api_id=api_id)
+                    self._log('info', f'等待任务: task_id={task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询', task_id=None, test_case_id=test_case_id, api_id=api_id)
             else:
-                self._log('warning', f'查询任务状态失败: task_id={task_id}, response={status_response}', test_case_id=test_case_id, api_id=api_id)
+                self._log('warning', f'查询任务状态失败: task_id={task_id}, response={status_response}', task_id=None, test_case_id=test_case_id, api_id=api_id)
             
             time.sleep(poll_interval)
         
         timeout_msg = f"任务超时: task_id={task_id}, 等待时间超过{max_wait_time}秒"
-        self._log('error', timeout_msg, test_case_id=test_case_id, api_id=api_id)
+        self._log('error', timeout_msg, task_id=None, test_case_id=test_case_id, api_id=api_id)
         return {'__error__': timeout_msg}
     
     def make_api_request_with_fallback(self, endpoints, method, headers, payload, task_id, dim_names, api_url=None, test_case_id=None, api_id=None, dim_info=None):
