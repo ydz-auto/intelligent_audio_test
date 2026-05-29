@@ -249,32 +249,32 @@ class evaluationApiClient:
         create_task_url = f"{url}/api/create_task"
         return self.make_api_request(create_task_url, 'POST', headers, payload, timeout)
     
-    def get_task_status(self, url, task_id, timeout=10):
+    def get_task_status(self, url, eval_task_id, timeout=10):
         """
-        查询任务状态
+        查询评估任务状态
         """
-        status_url = f"{url}/api/get_status/{task_id}"
+        status_url = f"{url}/api/get_status/{eval_task_id}"
         return self.make_api_request(status_url, 'GET', {}, {}, timeout)
     
-    def get_task_result(self, url, task_id, timeout=10):
+    def get_task_result(self, url, eval_task_id, timeout=10):
         """
-        获取任务结果
+        获取评估任务结果
         """
-        result_url = f"{url}/api/get_final_result/{task_id}"
+        result_url = f"{url}/api/get_final_result/{eval_task_id}"
         return self.make_api_request(result_url, 'GET', {}, {}, timeout)
     
-    def wait_for_task_completion(self, url, task_id, max_wait_time=300, poll_interval=5, test_case_id=None, api_id=None, app_task_id=None):
+    def wait_for_task_completion(self, url, eval_task_id, max_wait_time=300, poll_interval=5, test_case_id=None, api_id=None, task_id=None):
         """
-        等待任务完成，定期查询状态
+        等待评估任务完成，定期查询状态
         """
-        self._log('info', f'开始等待任务完成: task_id={task_id}, max_wait_time={max_wait_time}秒', task_id=app_task_id, test_case_id=test_case_id, api_id=api_id)
+        self._log('info', f'开始等待评估任务完成: eval_task_id={eval_task_id}, max_wait_time={max_wait_time}秒', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
         
         start_time = time.time()
         poll_count = 0
         
         while time.time() - start_time < max_wait_time:
             poll_count += 1
-            status_response = self.get_task_status(url, task_id)
+            status_response = self.get_task_status(url, eval_task_id)
             
             if isinstance(status_response, dict) and status_response.get('code') == 0:
                 data = status_response.get('data', {})
@@ -282,22 +282,22 @@ class evaluationApiClient:
                 elapsed_time = int(time.time() - start_time)
                 
                 if status == 'completed':
-                    self._log('info', f'任务完成: task_id={task_id}, 耗时={elapsed_time}秒', task_id=app_task_id, test_case_id=test_case_id, api_id=api_id)
-                    result_response = self.get_task_result(url, task_id)
+                    self._log('info', f'评估任务完成: eval_task_id={eval_task_id}, 耗时={elapsed_time}秒', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                    result_response = self.get_task_result(url, eval_task_id)
                     return result_response
                 elif status == 'failed':
                     error_msg = data.get('error_msg', 'Task failed')
-                    self._log('error', f'任务失败: task_id={task_id}, error={error_msg}', task_id=app_task_id, test_case_id=test_case_id, api_id=api_id)
+                    self._log('error', f'评估任务失败: eval_task_id={eval_task_id}, error={error_msg}', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
                     return {'__error__': error_msg}
                 else:
-                    self._log('info', f'等待任务: task_id={task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询', task_id=app_task_id, test_case_id=test_case_id, api_id=api_id)
+                    self._log('info', f'等待评估任务: eval_task_id={eval_task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
             else:
-                self._log('warning', f'查询任务状态失败: task_id={task_id}, response={status_response}', task_id=app_task_id, test_case_id=test_case_id, api_id=api_id)
+                self._log('warning', f'查询评估任务状态失败: eval_task_id={eval_task_id}, response={status_response}', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
             
             time.sleep(poll_interval)
         
-        timeout_msg = f"任务超时: task_id={task_id}, 等待时间超过{max_wait_time}秒"
-        self._log('error', timeout_msg, task_id=app_task_id, test_case_id=test_case_id, api_id=api_id)
+        timeout_msg = f"评估任务超时: eval_task_id={eval_task_id}, 等待时间超过{max_wait_time}秒"
+        self._log('error', timeout_msg, task_id=task_id, test_case_id=test_case_id, api_id=api_id)
         return {'__error__': timeout_msg}
     
     def make_api_request_with_fallback(self, endpoints, method, headers, payload, task_id, dim_names, api_url=None, test_case_id=None, api_id=None, dim_info=None):
@@ -310,7 +310,7 @@ class evaluationApiClient:
             method: 请求方法
             headers: 请求头
             payload: 请求体
-            task_id: 任务ID
+            task_id: 应用任务ID
             dim_names: 维度名称列表
             api_url: Master节点入口URL（分布式架构）
             test_case_id: 用例ID
@@ -421,12 +421,12 @@ class evaluationApiClient:
                     create_response = self.create_task(selected_url, create_task_payload)
                     
                     if isinstance(create_response, dict) and create_response.get('code') == 0:
-                        api_task_id = create_response.get('data', {}).get('task_id')
-                        if api_task_id:
+                        eval_task_id = create_response.get('data', {}).get('task_id')
+                        if eval_task_id:
                             self._log(
                                 level='INFO',
                                 category='execution',
-                                content=f"成功创建异步任务: {api_task_id}",
+                                content=f"成功创建异步任务: {eval_task_id}",
                                 task_id=task_id,
                                 test_case_id=test_case_id,
                                 api_id=api_id
@@ -435,10 +435,10 @@ class evaluationApiClient:
                             # 2. 等待任务完成
                             result_response = self.wait_for_task_completion(
                                 selected_url, 
-                                api_task_id,
+                                eval_task_id,
                                 test_case_id=test_case_id,
                                 api_id=api_id,
-                                app_task_id=task_id
+                                task_id=task_id
                             )
                             
                             if isinstance(result_response, dict):
@@ -448,7 +448,7 @@ class evaluationApiClient:
                                     self._log(
                                         level='INFO',
                                         category='execution',
-                                        content=f"异步任务 {api_task_id} 完成，结果: {str(resp_data)}",
+                                        content=f"异步任务 {eval_task_id} 完成，结果: {str(resp_data)}",
                                         task_id=task_id,
                                         test_case_id=test_case_id,
                                         api_id=api_id
@@ -590,14 +590,14 @@ class evaluationApiClient:
                                 create_response = self.create_task(fallback_url, create_task_payload)
                                 
                                 if isinstance(create_response, dict) and create_response.get('code') == 0:
-                                    api_task_id = create_response.get('data', {}).get('task_id')
-                                    if api_task_id:
+                                    eval_task_id = create_response.get('data', {}).get('task_id')
+                                    if eval_task_id:
                                         result_response = self.wait_for_task_completion(
                                             fallback_url, 
-                                            api_task_id,
+                                            eval_task_id,
                                             test_case_id=test_case_id,
                                             api_id=api_id,
-                                            app_task_id=task_id
+                                            task_id=task_id
                                         )
                                         
                                         if isinstance(result_response, dict):
