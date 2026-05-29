@@ -182,7 +182,7 @@ class HarmonyDriver(BaseDeviceDriver):
         return devices
 
     @check_stop("initialize")
-    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def initialize(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化鸿蒙设备"""
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...", device_id=device_id)
         driver = self._get_driver(device_id)
@@ -236,13 +236,13 @@ class HarmonyDriver(BaseDeviceDriver):
             return False
 
     @check_stop("pre_process")
-    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def pre_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开始处理：进入前台等准备动作"""
         self._log(level='INFO', content=f"--- Starting pre-process for {device_id} ---", device_id=device_id)
         return True
 
     @check_stop("post_process")
-    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """结束处理：清理或日志记录"""
         self._log(level='INFO', content=f"--- Finished post-process for {device_id} ---", device_id=device_id)
         return True

@@ -412,6 +412,7 @@ class E2EExecutor(BaseExecutor):
                 future = pool.submit(
                     info["driver"].pre_process, 
                     info.get("device_connect_id"),
+                    task_id=task_id,
                     test_case_id=test_case_id,
                     **extra_params
                 )
@@ -431,6 +432,7 @@ class E2EExecutor(BaseExecutor):
                 future = pool.submit(
                     info["driver"].post_process,
                     info.get("device_connect_id"),
+                    task_id=task_id,
                     test_case_id=test_case_id,
                     **extra_params
                 )
@@ -564,7 +566,7 @@ class E2EExecutor(BaseExecutor):
             err = None
             try:
                 if info["driver"]:
-                    ok = info["driver"].initialize(info.get("device_connect_id") or info["device_id"], test_case_id=test_case_id, **extra_params)
+                    ok = info["driver"].initialize(info.get("device_connect_id") or info["device_id"], task_id=task_id, test_case_id=test_case_id, **extra_params)
                     if not ok:
                         err = "Initialize returned False"
                 else:

@@ -76,7 +76,7 @@ class PlaudDriver(AndroidDriver):
         return True
 
     @check_stop("initialize")
-    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def initialize(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化安卓设备"""
         self._log(level='INFO', content=f"Initializing Android device {device_id} for {self.app_name}...")
         driver = self._get_driver(device_id)
@@ -111,7 +111,7 @@ class PlaudDriver(AndroidDriver):
         return False
 
     @check_stop("pre_process")
-    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def pre_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开始处理：进入前台等准备动作"""
         self._log(level='INFO', content=f"--- Starting pre-process for Android {device_id} ---")
         driver = self._get_driver(device_id)
@@ -135,7 +135,7 @@ class PlaudDriver(AndroidDriver):
         return True
 
     @check_stop("post_process")
-    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """结束处理"""
         self._log(level='INFO', content=f"--- Finished post-process for Android {device_id} ---")
         driver = self._get_driver(device_id)

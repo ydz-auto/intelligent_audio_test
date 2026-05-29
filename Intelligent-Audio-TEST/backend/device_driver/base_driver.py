@@ -62,11 +62,12 @@ class BaseDeviceDriver:
         """
         return []
 
-    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def initialize(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化设备
         
         Args:
             device_id: 设备ID
+            task_id: 任务ID
             test_case_id: 测试用例ID
             **kwargs: 其他参数
             
@@ -98,11 +99,12 @@ class BaseDeviceDriver:
         """
         return {}
 
-    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def pre_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """预处理设备
         
         Args:
             device_id: 设备ID
+            task_id: 任务ID
             test_case_id: 测试用例ID
             **kwargs: 其他参数
             
@@ -122,11 +124,12 @@ class BaseDeviceDriver:
         """
         return False
 
-    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """后处理设备
         
         Args:
             device_id: 设备ID
+            task_id: 任务ID
             test_case_id: 测试用例ID
             **kwargs: 其他参数
             

@@ -1,0 +1,2 @@
+音频文件路径	音频文件名	请求开始时间	ASR首字时延(秒)	ASR尾字时延(秒)	翻译首字时延(秒)	翻译尾字时延(秒)	耳口差时延(秒)	TTS尾字时延(秒)	错误信息	
+C:\S2TT_test\ast_python_client\ast_python\test_audio.wav	test_audio.wav	2025-11-06 16:21:58	3.025	20.116	2.909	20.379	3.586	20.576	无	

@@ -92,7 +92,7 @@ class AndroidDriver(BaseDeviceDriver):
         return devices
 
     @check_stop("initialize")
-    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def initialize(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化安卓设备"""
         self._log(level='INFO', content=f"Initializing Android device {device_id} for {self.app_name}...", device_id=device_id)
         driver = self._get_driver(device_id)
@@ -215,7 +215,7 @@ class AndroidDriver(BaseDeviceDriver):
             self._log(level='ERROR', content=f"Failed to wake up Android device {device_id}: {e}", device_id=device_id)
 
     @check_stop("post_process")
-    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """结束处理"""
         self._log(level='INFO', content=f"--- Finished post-process for Android {device_id} ---", device_id=device_id)
         return True

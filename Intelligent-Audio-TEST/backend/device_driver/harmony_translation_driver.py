@@ -10,8 +10,8 @@ from hypium.model import UiParam
 class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
     """鸿蒙 Next 专用驱动示例"""
 
-    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
-        initialize_success = super().initialize(device_id, test_case_id=test_case_id, **kwargs)
+    def initialize(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
+        initialize_success = super().initialize(device_id, task_id=task_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
             return False
         # 2. 尝试通过桌面图标启动 (使用用户提供的 Key)
@@ -61,8 +61,8 @@ class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
 
 
 class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
-    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
-        initialize_success = super().initialize(device_id, test_case_id=test_case_id, **kwargs)
+    def initialize(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
+        initialize_success = super().initialize(device_id, task_id=task_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
             return False
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...", device_id=device_id)
@@ -85,7 +85,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             self._log(level='ERROR', content=f"Failed to get mode for device {device_id}: {e}", device_id=device_id)
             return False
 
-    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def pre_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_id)
         translation_direction = kwargs.get('translation_direction', 'zh2en')
@@ -95,7 +95,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             driver.touch((336, 2624))
         self._log(level='INFO', content=f"成功进行面对面翻译pre_process步骤", device_id=device_id)
 
-    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_id)
         translation_direction = kwargs.get('translation_direction', 'zh2en')
@@ -120,8 +120,8 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
 
 
 class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
-    def initialize(self, device_id, test_case_id=None, **kwargs) -> bool:
-        initialize_success = super().initialize(device_id, test_case_id=test_case_id, **kwargs)
+    def initialize(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
+        initialize_success = super().initialize(device_id, task_id=task_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
             return False
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_id} for...", device_id=device_id)
@@ -144,7 +144,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
             self._log(level='ERROR', content=f"Failed to get mode for device {device_id}: {e}", device_id=device_id)
             return False
 
-    def pre_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def pre_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_id)
         translation_direction = kwargs.get('translation_direction', 'zh2en')
@@ -180,7 +180,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
         self._log(level='INFO', content=f"打开同传失败", device_id=device_id)
         return False
 
-    def post_process(self, device_id, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_id)
         end_btn = driver.find_component(By.text('完成'))
