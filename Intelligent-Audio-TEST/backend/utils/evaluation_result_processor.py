@@ -43,17 +43,13 @@ class EvaluationResultProcessor:
                 self._log(
                     level='DEBUG',
                     category='database',
-                    content=f"标记 TestResult {result_id} 为完成状态，影响行数: {update_count}",
-                    task_id=None,
-                    test_case_id=None
+                    content=f"标记 TestResult {result_id} 为完成状态，影响行数: {update_count}"
                 )
             except Exception as e:
                 self._log(
                     level='ERROR',
                     category='database',
-                    content=f"标记 TestResult 完成状态失败: {str(e)}",
-                    task_id=None,
-                    test_case_id=None
+                    content=f"标记 TestResult 完成状态失败: {str(e)}"
                 )
                 local_db_session.rollback()
             finally:
@@ -568,5 +564,5 @@ class EvaluationResultProcessor:
                 finally:
                     local_db_session.close()
             except Exception as e:
-                self._log(level='ERROR', content=f"检查维度完成状态失败: {str(e)}", task_id=task_id, test_case_id=None)
+                self._log(level='ERROR', content=f"检查维度完成状态失败: {str(e)}", task_id=task_id)
                 return False

@@ -13,20 +13,20 @@ _task_control_lock = threading.Lock()
 try:
     from hypium import UiDriver, BY as By, MatchPattern
 except Exception as e:
-    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import hypium: {e}", task_id=None, test_case_id=None)
+    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import hypium: {e}")
     UiDriver = None
     By = None
 
 try:
     import uiautomator2 as u2
 except Exception as e:
-    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import uiautomator2: {e}", task_id=None, test_case_id=None)
+    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import uiautomator2: {e}")
     u2 = None
 
 try:
     import wda
 except Exception as e:
-    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import facebook-wda: {e}", task_id=None, test_case_id=None)
+    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import facebook-wda: {e}")
     wda = None
 
 def register_task_events(task_id, stop_event, pause_event=None):

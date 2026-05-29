@@ -52,21 +52,6 @@ class APIExecutor(BaseExecutor):
         for task_id in completed:
             self._cleanup_task_lock(task_id)
     
-    def _extend_log(self, task_id, **kwargs):
-        """API 扩展日志字段"""
-        api_config = kwargs.get('api_config')
-        api_id = kwargs.get('api_id')
-        
-        final_api_id = api_id
-        if not final_api_id:
-            if api_config and hasattr(api_config, 'id'):
-                final_api_id = api_config.id
-            elif api_config and isinstance(api_config, dict):
-                final_api_id = api_config.get('id')
-        
-        self.current_api_id = final_api_id
-        return {}
-
     def _get_or_create_semaphore(self, api_id, max_process):
         """
         获取或创建API的信号量
@@ -85,7 +70,6 @@ class APIExecutor(BaseExecutor):
                 self._log(
                     level='DEBUG',
                     content=f"为 API {api_id} 创建信号量，最大并发数: {max_process}",
-                    task_id=None,
                     api_id=api_id
                 )
             return self.api_semaphores[api_id]

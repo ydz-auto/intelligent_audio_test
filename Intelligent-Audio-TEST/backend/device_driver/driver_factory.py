@@ -203,7 +203,7 @@ class DeviceDriverFactory:
             self._task_device_map[task_id] = device_ids
             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
                          content=f"Registered devices for task {task_id}: {device_ids}",
-                         task_id=task_id, test_case_id=None)
+                         task_id=task_id)
 
     def cleanup_devices(self, task_id):
         """清理任务使用的设备驱动连接，并关闭 APP
@@ -217,7 +217,7 @@ class DeviceDriverFactory:
         device_ids = self._task_device_map.pop(task_id)
         log_and_emit(level='INFO', module='DeviceDriverFactory',
                      content=f"Cleaning up devices for task {task_id}: {device_ids}",
-                     task_id=task_id, test_case_id=None)
+                     task_id=task_id)
 
         for device_id in device_ids:
             for driver_key, driver in self._base_drivers.items():
@@ -231,18 +231,18 @@ class DeviceDriverFactory:
                             conn.app_stop(app_name)
                             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
                                          content=f"Stopped Android app {app_name} on device {device_id}",
-                                         task_id=task_id, test_case_id=None)
+                                         task_id=task_id)
                         elif driver_key == 'HarmonyOS':
                             import subprocess
                             subprocess.run(['hdc', '-t', device_id, 'shell', 'aa', 'force-stop', app_name],
                                            check=False, timeout=5)
                             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
                                          content=f"Stopped Harmony app {app_name} on device {device_id}",
-                                         task_id=task_id, test_case_id=None)
+                                         task_id=task_id)
                     except Exception as e:
                         log_and_emit(level='WARNING', module='DeviceDriverFactory',
                                      content=f"Failed to stop app on device {device_id}: {e}",
-                                     task_id=task_id, test_case_id=None)
+                                     task_id=task_id)
 
                     try:
                         if hasattr(conn, 'quit'):
@@ -251,11 +251,11 @@ class DeviceDriverFactory:
                             conn.close()
                         log_and_emit(level='DEBUG', module='DeviceDriverFactory',
                                      content=f"Closed connection for device {device_id} ({driver_key})",
-                                     task_id=task_id, test_case_id=None)
+                                     task_id=task_id)
                     except Exception as e:
                         log_and_emit(level='WARNING', module='DeviceDriverFactory',
                                      content=f"Failed to close device {device_id}: {e}",
-                                     task_id=task_id, test_case_id=None)
+                                     task_id=task_id)
                     finally:
                         if device_id in driver._drivers:
                             del driver._drivers[device_id]
@@ -264,7 +264,7 @@ class DeviceDriverFactory:
 
         log_and_emit(level='INFO', module='DeviceDriverFactory',
                      content=f"Cleanup completed for task {task_id}",
-                     task_id=task_id, test_case_id=None)
+                     task_id=task_id)
 
     def scan_devices(self):
         """扫描所有设备"""

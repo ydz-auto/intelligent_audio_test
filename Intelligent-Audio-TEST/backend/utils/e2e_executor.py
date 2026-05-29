@@ -19,13 +19,6 @@ class E2EExecutor(BaseExecutor):
         self.current_device_id = None
         self._playback_timestamps = {}
         
-    def _extend_log(self, task_id, **kwargs):
-        """E2E 扩展日志字段"""
-        device_id = kwargs.get('device_id')
-        final_device_id = device_id or getattr(self._thread_ctx, 'current_device_id', None) or self.current_device_id
-        self.current_device_id = final_device_id
-        return {}
-
     def execute_e2e_case(self, task_id, tc_rel_id):
         """
         执行E2E测试用例
@@ -34,8 +27,7 @@ class E2EExecutor(BaseExecutor):
         self._log(
             level='DEBUG',
             content=f"E2E用例执行方法开始: task_id={task_id}, tc_rel_id={tc_rel_id}",
-            task_id=task_id,
-            test_case_id=None
+            task_id=task_id
         )
         
         # 验证参数
@@ -44,8 +36,7 @@ class E2EExecutor(BaseExecutor):
             self._log(
                 level='ERROR',
                 content=f"E2E 用例执行失败: {error_msg}",
-                task_id=task_id,
-                test_case_id=None
+                task_id=task_id
             )
             # 如果有tc_rel_id，更新状态为失败
             if tc_rel_id:
@@ -174,10 +165,10 @@ class E2EExecutor(BaseExecutor):
                     info["driver"].set_task_id(task_id)
                     info["driver"].set_test_case_id(test_case_id)
             
-            self._initialize_devices(device_info_list, case_name, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
+            self._initialize_devices(device_info_list, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
             
             self._execute_audio_playback(
-                task_id, case_name, playback_dev, main_audio_config, main_gain=1.0,
+                task_id, playback_dev, main_audio_config, main_gain=1.0,
                 device_index=audio_service.get_device_index(playback_dev.device_unique_id),
                 device_info_list=device_info_list,
                 dry_audios_info=dry_audios_info,
@@ -189,7 +180,7 @@ class E2EExecutor(BaseExecutor):
                 test_case_id=test_case_id
             )
             
-            self._post_process_devices(device_info_list, case_name, task_id, test_case_id=test_case_id)
+            self._post_process_devices(device_info_list, task_id, test_case_id=test_case_id)
             
             time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
             collect_result = self._collect_results(
@@ -345,7 +336,7 @@ class E2EExecutor(BaseExecutor):
         finally:
             local_db_session.close()
     
-    def _execute_audio_playback(self, task_id, case_name, playback_dev, main_audio_config, main_gain, device_index, 
+    def _execute_audio_playback(self, task_id, playback_dev, main_audio_config, main_gain, device_index, 
                                 device_info_list, dry_audios_info, dry_devices, noise_audio_info, noise_devices, case_config, 
                                 test_case_id=None, **kwargs):
         algorithm_type = kwargs.get('algorithm_type', 'translation')
@@ -356,12 +347,12 @@ class E2EExecutor(BaseExecutor):
         devices_not_needing_prompt = [info for info in device_info_list if not info.get("needs_prompt_audio", False)]
         
         if devices_needing_prompt:
-            self._pre_process_devices(devices_needing_prompt, case_name, task_id, "播放提示音前", test_case_id=test_case_id, extra_params=extra_params)
+            self._pre_process_devices(devices_needing_prompt, task_id, test_case_id=test_case_id, extra_params=extra_params)
         
-        self._play_prompt_audio(device_info_list, case_name, task_id, device_index, playback_dev, main_gain)
+        self._play_prompt_audio(device_info_list, task_id, device_index, playback_dev, main_gain)
         
         if devices_not_needing_prompt:
-            self._pre_process_devices(devices_not_needing_prompt, case_name, task_id, "播放提示音后", test_case_id=test_case_id, extra_params=extra_params)
+            self._pre_process_devices(devices_not_needing_prompt, task_id, test_case_id=test_case_id, extra_params=extra_params)
         
         from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
         overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
@@ -406,7 +397,7 @@ class E2EExecutor(BaseExecutor):
                     'overlap_time': overlap_time
                 })
     
-    def _pre_process_devices(self, device_info_list, case_name, task_id, phase, test_case_id=None, **kwargs):
+    def _pre_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
         extra_params = kwargs.get('extra_params', {})
         record_start_time = time.time()
         self._playback_timestamps[task_id] = {
@@ -431,7 +422,7 @@ class E2EExecutor(BaseExecutor):
             except Exception as e:
                 self._log(level='ERROR', content=f"设备预处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
-    def _post_process_devices(self, device_info_list, case_name, task_id, test_case_id=None, **kwargs):
+    def _post_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
         extra_params = kwargs.get('extra_params', {})
         pool = self.execution_engine.device_control_pool
         futures = []
@@ -450,7 +441,7 @@ class E2EExecutor(BaseExecutor):
             except Exception as e:
                 self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
     
-    def _play_prompt_audio(self, device_info_list, case_name, task_id, device_index, playback_dev, main_gain):
+    def _play_prompt_audio(self, device_info_list, task_id, device_index, playback_dev, main_gain):
         prompt_info = next((info for info in device_info_list if info["prompt_audio_path"]), None)
         if prompt_info:
             future = audio_service.play_audio(
@@ -558,7 +549,7 @@ class E2EExecutor(BaseExecutor):
         
         return audio_offsets
     
-    def _initialize_devices(self, device_info_list, case_name, task_id, test_case_id=None, **kwargs):
+    def _initialize_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
         algorithm_type = kwargs.get('algorithm_type', 'translation')
         
         extra_params = self._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)

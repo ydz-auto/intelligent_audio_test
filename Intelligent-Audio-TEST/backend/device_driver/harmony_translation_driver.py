@@ -115,7 +115,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
         trans_text_list = driver.find_all_component(By.id("conv_item_translated_text"))
         if len(trans_text_list) > 0:
             trans_text = trans_text_list[-1].getText()
-        self._log('成功抓取结果：ori_text={ori_text}, trans_text={trans_text}', device_id=device_id)
+        self._log(level='INFO', content=f'成功抓取结果：ori_text={ori_text}, trans_text={trans_text}', device_id=device_id)
         return {'success': True, 'message': 'Success', 'asr': ori_text, 'translation': trans_text}
 
 
@@ -199,7 +199,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
     def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_id)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}", device_id=device_id)
             return {'success': False, 'message': 'False', 'asr': 'asr中文', 'translation': 'translation中文'}
         try:
             driver.touch((974, 271))
@@ -251,5 +251,5 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
                       content=f'成功提取：ori_text:{asr_final_result},translate_text:{transl_final_result}')
             return {'success': True, 'message': 'Success', 'asr': asr_final_result, 'translation': transl_final_result}
         except Exception as e:
-            self._log(level='ERROR', content=f"Failed to get results for 小艺同传 {device_id}，{e}")
+            self._log(level='ERROR', content=f"Failed to get results for 小艺同传 {device_id}，{e}", device_id=device_id)
 
