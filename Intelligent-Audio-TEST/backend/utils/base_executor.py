@@ -140,6 +140,7 @@ class BaseExecutor:
         insert_sql = text("""
             INSERT INTO test_results (task_id, test_case_id, device_id, api_id, algorithm_type, execution_status, response_time, algorithm_result, execution_steps, result_data, error_message, created_at)
             VALUES (:task_id, :test_case_id, :device_id, :api_id, :algorithm_type, :execution_status, :response_time, :algorithm_result, :execution_steps, :result_data, :error_message, :created_at)
+            RETURNING id
         """)
         
         params = {
@@ -158,7 +159,8 @@ class BaseExecutor:
         }
         
         with db.engine.connect() as conn:
-            result_id = conn.execute(insert_sql, params).lastrowid
+            result = conn.execute(insert_sql, params)
+            result_id = result.scalar()
             conn.commit()
         
         return result_id
