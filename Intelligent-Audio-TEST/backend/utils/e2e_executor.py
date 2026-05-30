@@ -185,11 +185,8 @@ class E2EExecutor(BaseExecutor):
             
             time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
             collect_result = self._collect_results(
-                task_id, device_info_list, 
+                task_id, test_case_id, device_info_list, 
                 algorithm_type=algorithm_type,
-                case_name=case_name,
-                test_case_id=test_case_id,
-                task_name=task_name,
                 case_reference_params=case_reference_params
             )
             
@@ -457,7 +454,7 @@ class E2EExecutor(BaseExecutor):
             except Exception as e:
                 self._log(level='ERROR', content=f"提示音播放失败: {e}", task_id=task_id)
     
-    def _collect_results(self, task_id, device_info_list, **kwargs):
+    def _collect_results(self, task_id, test_case_id, device_info_list, **kwargs):
         from backend.utils.device_result_collector import get_device_result_collector
         
         algorithm_type = kwargs.get('algorithm_type', 'translation')
@@ -482,7 +479,7 @@ class E2EExecutor(BaseExecutor):
             self._log(level=level, content=content, task_id=task_id, device_id=device_id)
         
         all_results = collector.collect_raw_results(
-            task_id, device_info_list, extra_params, 
+            task_id, test_case_id, device_info_list, extra_params, 
             log_callback=log_callback, **kwargs
         )
         

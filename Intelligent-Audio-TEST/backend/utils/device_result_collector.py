@@ -14,15 +14,16 @@ class DeviceResultCollector:
     def __init__(self):
         self.field_mapper = get_field_mapper()
 
-    def collect_raw_results(self, task_id, device_info_list, extra_params, log_callback=None, **kwargs):
+    def collect_raw_results(self, task_id, test_case_id, device_info_list, extra_params, log_callback=None, **kwargs):
         """采集原始结果
 
         Args:
             task_id: 任务ID
+            test_case_id: 测试用例ID
             device_info_list: 设备信息列表
             extra_params: 额外参数
             log_callback: 日志回调函数 fn(level, content, task_id, device_id)
-            **kwargs: 额外参数，包含 case_name, test_case_id, task_id, task_name 等
+            **kwargs: 额外参数，包含 case_reference_params 等
 
         Returns:
             list: 原始结果列表
@@ -45,7 +46,7 @@ class DeviceResultCollector:
                     raw_results = info["driver"].get_results(
                         info.get("device_connect_id") or info["device_id"],
                         task_id=task_id,
-                        test_case_id=kwargs.get('test_case_id'),
+                        test_case_id=test_case_id,
                         **merged_params
                     )
 
