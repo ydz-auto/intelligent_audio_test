@@ -164,6 +164,7 @@ class E2EExecutor(BaseExecutor):
                 if info.get("driver"):
                     info["driver"].set_task_id(task_id)
                     info["driver"].set_test_case_id(test_case_id)
+                    info["driver"].set_device_id(info["device_id"])
             
             self._initialize_devices(device_info_list, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
             

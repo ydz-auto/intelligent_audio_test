@@ -139,8 +139,8 @@ def _extract_device_output_from_archive(device, task_id, case_id, device_id):
         if hasattr(driver, 'extract_results_from_archive'):
             result = driver.extract_results_from_archive(
                 task_id=task_id,
-                case_id=case_id,
-                device_id=device_id
+                test_case_id=case_id,
+                device_sn=device_id
             )
             driver_type = device_system.lower()
             return result, driver_type

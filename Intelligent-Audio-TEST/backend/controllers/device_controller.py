@@ -226,7 +226,7 @@ class DeviceController:
             # 使用驱动工厂获取驱动并执行唤醒
             driver = device_driver_factory.get_driver(device.system, keywords=device.keywords)
             if driver:
-                driver.wake_up(device.id)
+                driver.unlock(device.serial_number or device.ip)
             
             wakeup_cmd = "input keyevent KEYCODE_WAKEUP" if device.system == 'Android' else "wake screen"
             

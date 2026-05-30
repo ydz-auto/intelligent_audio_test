@@ -57,7 +57,7 @@ def check_stop(operation_name: str = "", check_pause: bool = True):
     
     用法:
         @check_stop("initialize")
-        def initialize(self, device_id):
+        def initialize(self, device_sn):
             ...
     
     支持的返回值类型:
@@ -147,15 +147,3 @@ def _get_default_return(func: Callable):
         return "Stopped"
     return None
 
-
-def log_and_emit_with_test_case(level='INFO', module='DeviceDriver', content='', task_id=None, test_case_id=None, device_id=None, **kwargs):
-    """封装 log_and_emit，支持 test_case_id 参数"""
-    log_and_emit(
-        level=level,
-        module=module,
-        content=content,
-        task_id=task_id,
-        test_case_id=test_case_id,
-        device_id=device_id,
-        **kwargs
-    )

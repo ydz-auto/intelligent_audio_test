@@ -29,92 +29,92 @@ class PlaudDriver(AndroidDriver):
         self._exclude_list = self._config.get('exclude_list', [])
         self._abnormal_keywords = self._config.get('abnormal_keywords', [])
 
-    def _get_driver(self, device_id):
+    def _get_driver(self, device_sn):
         if not u2:
             return None
-        if device_id not in self._drivers:
+        if device_sn not in self._drivers:
             try:
-                self._drivers[device_id] = u2.connect(device_id)
+                self._drivers[device_sn] = u2.connect(device_sn)
             except Exception as e:
-                self._log(level='ERROR', content=f"Failed to connect to android device {device_id}: {e}")
+                self._log(level='ERROR', content=f"Failed to connect to android device {device_sn}: {e}")
                 return None
-        return self._drivers[device_id]
+        return self._drivers[device_sn]
 
-    def is_locked(self, device_id):
+    def is_locked(self, device_sn):
         """
         判断设备是否锁屏
         """
         try:
             lock_icon_id = "com.android.systemui:id/clock_view_container"
-            driver = self._get_driver(device_id)
+            driver = self._get_driver(device_sn)
             if not driver:
-                self._log(level='WARNING', content=f"无法获取设备{device_id}的驱动，无法检查锁屏状态")
+                self._log(level='WARNING', content=f"无法获取设备{device_sn}的驱动，无法检查锁屏状态")
                 return False
             driver.screen_on()
             flash_ele = driver(resourceId=f'{lock_icon_id}')
 
             if flash_ele.exists:
-                self._log(level='INFO', content=f"设备{device_id}已锁屏")
+                self._log(level='INFO', content=f"设备{device_sn}已锁屏")
                 return True
             return False
         except Exception as e:
-            self._log(level='INFO', content=f"设备{device_id}锁屏检查失败：{e}")
+            self._log(level='INFO', content=f"设备{device_sn}锁屏检查失败：{e}")
             return False
 
     @check_stop("unlock")
-    def unlock(self, device_id, **kwargs) -> None:
+    def unlock(self, device_sn, **kwargs) -> None:
         """唤醒设备"""
-        self._log(level='INFO', content=f"Android device {device_id} waking up and unlocking...")
+        self._log(level='INFO', content=f"Android device {device_sn} waking up and unlocking...")
 
-        if not self.is_locked(device_id):
-            self._log(level='INFO', content=f"设备{device_id}已解锁，无需重复解锁")
+        if not self.is_locked(device_sn):
+            self._log(level='INFO', content=f"设备{device_sn}已解锁，无需重复解锁")
             return
-        if self._check_stop(device_id, "unlock"):
+        if self._check_stop("unlock"):
             return
 
-        self._unlock(device_id, **kwargs)
+        self._unlock(device_sn, **kwargs)
         return True
 
     @check_stop("initialize")
-    def initialize(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
+    def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化安卓设备"""
-        self._log(level='INFO', content=f"Initializing Android device {device_id} for {self.app_name}...")
-        driver = self._get_driver(device_id)
+        self._log(level='INFO', content=f"Initializing Android device {device_sn} for {self.app_name}...", task_id=task_id, test_case_id=test_case_id)
+        driver = self._get_driver(device_sn)
         # 步骤4：清理设备日志
         clean_result = subprocess.run(
             ['hdc', '-t', LOG_DEVICE_ID, 'shell', 'sh', '-c', f"rm -rf '{LOG_DEVICE_PATH}'/*"],
             check=False, capture_output=True, text=True
         )
-        self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}")
+        self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}", task_id=task_id, test_case_id=test_case_id)
 
         if driver:
             try:
-                self.unlock(device_id, **kwargs)
-                if self._check_stop(device_id, "initialize"):
+                self.unlock(device_sn, **kwargs)
+                if self._check_stop("initialize"):
                     return False
                 driver.press("home")
                 # 检测并关闭弹窗
-                self.close_popups(device_id)
-                if self._check_stop(device_id, "initialize"):
+                self.close_popups(device_sn)
+                if self._check_stop("initialize"):
                     return False
 
                 driver.app_stop(self.app_name)
                 driver.app_start(self.app_name, stop=True)
                 time.sleep(3)
                 # 启动应用后再次检查弹窗
-                self.close_popups(device_id)
-                self._log(level='INFO', content=f"Android device {device_id} initialized successfully")
+                self.close_popups(device_sn)
+                self._log(level='INFO', content=f"Android device {device_sn} initialized successfully", task_id=task_id, test_case_id=test_case_id)
                 return True
             except Exception as e:
-                self._log(level='ERROR', content=f"Failed to start app {self.app_name} on device {device_id}: {e}")
-        self._log(level='ERROR', content=f"Failed to initialize Android device {device_id}: Driver not available")
+                self._log(level='ERROR', content=f"Failed to start app {self.app_name} on device {device_sn}: {e}", task_id=task_id, test_case_id=test_case_id)
+        self._log(level='ERROR', content=f"Failed to initialize Android device {device_sn}: Driver not available", task_id=task_id, test_case_id=test_case_id)
         return False
 
     @check_stop("pre_process")
-    def pre_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
+    def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开始处理：进入前台等准备动作"""
-        self._log(level='INFO', content=f"--- Starting pre-process for Android {device_id} ---")
-        driver = self._get_driver(device_id)
+        self._log(level='INFO', content=f"--- Starting pre-process for Android {device_sn} ---", task_id=task_id, test_case_id=test_case_id)
+        driver = self._get_driver(device_sn)
         if not driver:
             return False
 
@@ -127,18 +127,18 @@ class PlaudDriver(AndroidDriver):
                 driver.xpath('//*[@content-desc="开始录音"]').click(timeout=1)
                 time.sleep(0.1)
             except Exception as e:
-                self._log(level='INFO', content=f"Failed to click '开始录音' button: {e}")
+                self._log(level='INFO', content=f"Failed to click '开始录音' button: {e}", task_id=task_id, test_case_id=test_case_id)
 
-        self._log(level='INFO', content=f"开始录音按钮点击成功")
+        self._log(level='INFO', content=f"开始录音按钮点击成功", task_id=task_id, test_case_id=test_case_id)
 
-        self.close_popups(device_id)
+        self.close_popups(device_sn)
         return True
 
     @check_stop("post_process")
-    def post_process(self, device_id, task_id=None, test_case_id=None, **kwargs) -> bool:
+    def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """结束处理"""
-        self._log(level='INFO', content=f"--- Finished post-process for Android {device_id} ---")
-        driver = self._get_driver(device_id)
+        self._log(level='INFO', content=f"--- Finished post-process for Android {device_sn} ---", task_id=task_id, test_case_id=test_case_id)
+        driver = self._get_driver(device_sn)
         if not driver:
             return False
         driver.xpath('//*[@content-desc="结束"]').click()
@@ -161,9 +161,9 @@ class PlaudDriver(AndroidDriver):
         return True
 
     @check_stop("get_results")
-    def get_results(self, device_id, task_id=None, test_case_id=None, **kwargs) -> dict:
+    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
         """获取设备输出结果 - 返回原始文本列表"""
-        driver = self._get_driver(device_id)
+        driver = self._get_driver(device_sn)
         if not driver:
             return False
 
@@ -193,7 +193,7 @@ class PlaudDriver(AndroidDriver):
                 driver.xpath('//*[contains(@content-desc,"来源") and contains(@content-desc,"第 1 个标签，共 2 个")]').click()
         driver.xpath('//*[contains(@text, "内容由 AI 生成，仅供参考")]').wait(timeout=5)
         # 要等很久，所以要解锁
-        self.unlock(device_id, **kwargs)
+        self.unlock(device_sn, **kwargs)
         # 点击导出
         driver.xpath(
             '//android.widget.FrameLayout[1]/android.view.View[1]/android.view.View[1]/android.view.View[1]/android.view.View[1]/android.view.View[1]/android.widget.ImageView[2]').click(
@@ -211,9 +211,9 @@ class PlaudDriver(AndroidDriver):
         #  解锁设备啥的
         from .driver_factory import DeviceDriverFactory
         driver_factory = DeviceDriverFactory()
-        share_device = driver_factory.get_driver("harmonyos", ["harden"], device_id=LOG_DEVICE_ID)
+        share_device = driver_factory.get_driver("harmonyos", ["harden"], device_sn=LOG_DEVICE_ID)
         if not share_device:
-            self._log(level='INFO', content=f"分享日志设备未准备: {LOG_DEVICE_ID}")
+            self._log(level='INFO', content=f"分享日志设备未准备: {LOG_DEVICE_ID}", task_id=task_id, test_case_id=test_case_id)
             return False
         # 鸿蒙自动化框架要加载很久
         share_device.unlock(LOG_DEVICE_ID)
@@ -233,26 +233,26 @@ class PlaudDriver(AndroidDriver):
             element.click(timeout=10)
 
         if not share_device_driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_id}")
+            self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}", task_id=task_id, test_case_id=test_case_id)
             return None
         while not share_device_driver.find_component(By.text("华为分享")) and not share_device_driver.find_component(
                 By.text("接收")):
             time.sleep(1)
         share_device_driver.click(By.text('接收'))
 
-        task_id = task_id or kwargs.get('task_id', 'default_task_id')
-        test_case_id = test_case_id or kwargs.get('test_case_id', 'default_case_id')
+        task_id_path = task_id or kwargs.get('task_id', 'default_task_id')
+        test_case_id_path = test_case_id or kwargs.get('test_case_id', 'default_case_id')
 
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{test_case_id}', f'{device_id}')
+        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id_path}', f'{test_case_id_path}', f'{device_sn}')
         os.makedirs(local_dir, exist_ok=True)
 
         temp_device_path = '/data/local/tmp/srt'
         mkdir_cmd = ['hdc', '-t', LOG_DEVICE_ID, 'shell', 'mkdir', '-p', temp_device_path]
-        self._log(level='INFO', content=f"执行命令: {' '.join(mkdir_cmd)}")
+        self._log(level='INFO', content=f"执行命令: {' '.join(mkdir_cmd)}", task_id=task_id, test_case_id=test_case_id)
         subprocess.run(mkdir_cmd, check=False, capture_output=True, text=True, encoding='utf-8')
         time.sleep(2)
         list_cmd = ['hdc', '-t', LOG_DEVICE_ID, 'shell', 'sh', '-c', f"ls '{LOG_DEVICE_PATH}'"]
-        self._log(level='INFO', content=f"执行命令: {' '.join(list_cmd)}")
+        self._log(level='INFO', content=f"执行命令: {' '.join(list_cmd)}", task_id=task_id, test_case_id=test_case_id)
         list_result = subprocess.run(list_cmd, check=False, capture_output=True, text=True, encoding='utf-8')
         start_time = time.time()
         timeout = 60 * 5
@@ -260,41 +260,41 @@ class PlaudDriver(AndroidDriver):
             time.sleep(2)
             list_result = subprocess.run(list_cmd, check=False, capture_output=True, text=True, encoding='utf-8')
             if list_result.returncode != 0:
-                self._log(level='ERROR', content=f"列出文件失败：{list_result.stderr}")
+                self._log(level='ERROR', content=f"列出文件失败：{list_result.stderr}", task_id=task_id, test_case_id=test_case_id)
                 return None
             if time.time() - start_time > timeout:
-                self._log(level='ERROR', content=f"列出文件超时（{timeout}秒）")
+                self._log(level='ERROR', content=f"列出文件超时（{timeout}秒）", task_id=task_id, test_case_id=test_case_id)
                 return None
 
         srt_files = [f.strip() for f in list_result.stdout.split('\n') if f.strip().endswith('.srt')]
         if not srt_files:
-            self._log(level='WARNING', content=f"未找到.srt文件")
+            self._log(level='WARNING', content=f"未找到.srt文件", task_id=task_id, test_case_id=test_case_id)
             return None
-        temp_srt_name = f'{test_case_id}.srt'
+        temp_srt_name = f'{test_case_id_path}.srt'
         srt_file_path = os.path.join(local_dir, temp_srt_name)
 
         copy_cmd = ['hdc', '-t', LOG_DEVICE_ID, 'shell', 'sh', '-c',
                     f"cd '{LOG_DEVICE_PATH}' && cp *.srt {temp_device_path}"]
-        self._log(level='INFO', content=f"执行命令: {' '.join(copy_cmd)}")
+        self._log(level='INFO', content=f"执行命令: {' '.join(copy_cmd)}", task_id=task_id, test_case_id=test_case_id)
         copy_result = subprocess.run(copy_cmd, check=False, capture_output=True, text=True, encoding='utf-8')
         recv_cmd = ['hdc', '-t', LOG_DEVICE_ID, 'file', 'recv', f'{temp_device_path}/{srt_files[0]}',
                     os.path.join(local_dir, temp_srt_name)]
-        self._log(level='INFO', content=f"执行命令: {' '.join(recv_cmd)}")
+        self._log(level='INFO', content=f"执行命令: {' '.join(recv_cmd)}", task_id=task_id, test_case_id=test_case_id)
         recv_result = subprocess.run(recv_cmd, check=False, capture_output=True, text=True, encoding='utf-8')
         if 'Fail' in recv_result.stdout or recv_result.returncode != 0:
-            self._log(level='ERROR', content=f"日志拉取失败：{recv_result.stderr}")
+            self._log(level='ERROR', content=f"日志拉取失败：{recv_result.stderr}", task_id=task_id, test_case_id=test_case_id)
         else:
-            self._log(level='INFO', content=f"日志拉取成功: {temp_srt_name}")
+            self._log(level='INFO', content=f"日志拉取成功: {temp_srt_name}", task_id=task_id, test_case_id=test_case_id)
 
         rm_temp_cmd = ['hdc', '-t', LOG_DEVICE_ID, 'shell', 'rm', '-rf', temp_device_path]
-        self._log(level='INFO', content=f"执行命令: {' '.join(rm_temp_cmd)}")
+        self._log(level='INFO', content=f"执行命令: {' '.join(rm_temp_cmd)}", task_id=task_id, test_case_id=test_case_id)
         subprocess.run(rm_temp_cmd, check=False, capture_output=True, text=True, encoding='utf-8')
 
         clean_shell_cmd = f"rm -rf '{LOG_DEVICE_PATH}'/*"
         clean_cmd = ['hdc', '-t', LOG_DEVICE_ID, 'shell', 'sh', '-c', clean_shell_cmd]
-        self._log(level='INFO', content=f"执行命令: {' '.join(clean_cmd)}")
+        self._log(level='INFO', content=f"执行命令: {' '.join(clean_cmd)}", task_id=task_id, test_case_id=test_case_id)
         clean_result = subprocess.run(clean_cmd, check=False, capture_output=True, text=True, encoding='utf-8')
-        self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}")
+        self._log(level='INFO', content=f"清理设备日志: {clean_result.stdout}", task_id=task_id, test_case_id=test_case_id)
 
         recording_stm_content, recording_rttm_content, recording_asr_content = self._parse_srt_to_stm_rttm(
             srt_file_path)
@@ -307,7 +307,7 @@ class PlaudDriver(AndroidDriver):
         with open(recording_rttm_path, "w", encoding="utf-8") as f:
             f.write(recording_rttm_content)
 
-        self._log(level='INFO', content=f"STM/RTTM 文件已保存")
+        self._log(level='INFO', content=f"STM/RTTM 文件已保存", task_id=task_id, test_case_id=test_case_id)
 
         return [
             {
@@ -397,13 +397,13 @@ class PlaudDriver(AndroidDriver):
 
         return recording_stm_content, recording_rttm_content, recording_asr_content
 
-    def extract_results_from_archive(self, task_id, test_case_id, device_id, **kwargs):
+    def extract_results_from_archive(self, task_id, test_case_id, device_sn, **kwargs):
         """从存档SRT文件提取设备输出结果
 
         Args:
             task_id: 任务ID
             test_case_id: 用例ID
-            device_id: 设备ID
+            device_sn: 设备序列号
 
         Returns:
             dict: 包含提取结果的字典，格式如下:
@@ -416,7 +416,7 @@ class PlaudDriver(AndroidDriver):
                     'message': str
                 }
         """
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{test_case_id}', f'{device_id}')
+        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{test_case_id}', f'{device_sn}')
         srt_file_path = os.path.join(local_dir, f'{test_case_id}.srt')
 
         self._log(level='INFO', content=f"从存档提取SRT结果，路径: {srt_file_path}", task_id=task_id, test_case_id=test_case_id)

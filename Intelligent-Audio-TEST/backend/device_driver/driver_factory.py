@@ -27,7 +27,7 @@ class DeviceDriverFactory:
         }
 
         self._specialized_drivers = []
-        self._task_device_map = {}  # task_id -> [device_id, ...]
+        self._task_device_map = {}  # task_id -> [device_sn, ...]
 
         # 设置所有基础驱动的模拟模式
         for driver in self._base_drivers.values():
@@ -145,13 +145,13 @@ class DeviceDriverFactory:
                 return driver
         return None
 
-    def get_driver(self, system, keywords=None, device_id=None):
+    def get_driver(self, system, keywords=None, device_sn=None):
         """获取驱动实例
         
         Args:
             system: 系统类型
             keywords: 关键字列表
-            device_id: 设备ID
+            device_sn: 设备序列号
             
         Returns:
             BaseDeviceDriver: 驱动实例
@@ -172,7 +172,7 @@ class DeviceDriverFactory:
                 for kw in keywords_lower:
                     if kw in entry['keywords']:
                         driver = entry['driver']
-                        if device_id and hasattr(driver, 'set_task_id'):
+                        if device_sn and hasattr(driver, 'set_task_id'):
                             # 这里可以设置task_id，需要根据实际情况调整
                             pass
                         return driver
@@ -193,16 +193,16 @@ class DeviceDriverFactory:
             task_id: 任务ID
             device_info_list: 设备信息列表 [{device_id, device_name, driver, ...}, ...]
         """
-        device_ids = []
+        device_sns = []
         for info in device_info_list:
-            device_id = info.get("device_connect_id") or info.get("device_id")
-            if device_id:
-                device_ids.append(device_id)
+            device_sn = info.get("device_connect_id") or info.get("device_id")
+            if device_sn:
+                device_sns.append(device_sn)
 
-        if device_ids:
-            self._task_device_map[task_id] = device_ids
+        if device_sns:
+            self._task_device_map[task_id] = device_sns
             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                         content=f"Registered devices for task {task_id}: {device_ids}",
+                         content=f"Registered devices for task {task_id}: {device_sns}",
                          task_id=task_id)
 
     def cleanup_devices(self, task_id):
@@ -214,15 +214,15 @@ class DeviceDriverFactory:
         if task_id not in self._task_device_map:
             return
 
-        device_ids = self._task_device_map.pop(task_id)
+        device_sns = self._task_device_map.pop(task_id)
         log_and_emit(level='INFO', module='DeviceDriverFactory',
-                     content=f"Cleaning up devices for task {task_id}: {device_ids}",
+                     content=f"Cleaning up devices for task {task_id}: {device_sns}",
                      task_id=task_id)
 
-        for device_id in device_ids:
+        for device_sn in device_sns:
             for driver_key, driver in self._base_drivers.items():
-                if device_id in driver._drivers:
-                    conn = driver._drivers[device_id]
+                if device_sn in driver._drivers:
+                    conn = driver._drivers[device_sn]
 
                     try:
                         app_name = driver.app_name
@@ -230,18 +230,18 @@ class DeviceDriverFactory:
                         if driver_key == 'Android' and hasattr(conn, 'app_stop'):
                             conn.app_stop(app_name)
                             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                                         content=f"Stopped Android app {app_name} on device {device_id}",
+                                         content=f"Stopped Android app {app_name} on device {device_sn}",
                                          task_id=task_id)
                         elif driver_key == 'HarmonyOS':
                             import subprocess
-                            subprocess.run(['hdc', '-t', device_id, 'shell', 'aa', 'force-stop', app_name],
+                            subprocess.run(['hdc', '-t', device_sn, 'shell', 'aa', 'force-stop', app_name],
                                            check=False, timeout=5)
                             log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                                         content=f"Stopped Harmony app {app_name} on device {device_id}",
+                                         content=f"Stopped Harmony app {app_name} on device {device_sn}",
                                          task_id=task_id)
                     except Exception as e:
                         log_and_emit(level='WARNING', module='DeviceDriverFactory',
-                                     content=f"Failed to stop app on device {device_id}: {e}",
+                                     content=f"Failed to stop app on device {device_sn}: {e}",
                                      task_id=task_id)
 
                     try:
@@ -250,15 +250,15 @@ class DeviceDriverFactory:
                         elif hasattr(conn, 'close'):
                             conn.close()
                         log_and_emit(level='DEBUG', module='DeviceDriverFactory',
-                                     content=f"Closed connection for device {device_id} ({driver_key})",
+                                     content=f"Closed connection for device {device_sn} ({driver_key})",
                                      task_id=task_id)
                     except Exception as e:
                         log_and_emit(level='WARNING', module='DeviceDriverFactory',
-                                     content=f"Failed to close device {device_id}: {e}",
+                                     content=f"Failed to close device {device_sn}: {e}",
                                      task_id=task_id)
                     finally:
-                        if device_id in driver._drivers:
-                            del driver._drivers[device_id]
+                        if device_sn in driver._drivers:
+                            del driver._drivers[device_sn]
 
                 driver._current_task_id = None
 
