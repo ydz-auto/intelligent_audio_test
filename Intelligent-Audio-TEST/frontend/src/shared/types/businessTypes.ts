@@ -499,6 +499,7 @@ export interface LogQueryParams extends AdvancedLogFilters {
     page?: number;
     perPage?: number;
     algorithmType?: string;
+    test_case_id?: string;
 }
 
 export interface LogLevelOption {

@@ -593,6 +593,8 @@ class TestCaseController:
             
             if audios_data is not None:
                 need_refresh_reference = True
+            elif merged_config.get('audios') != current_config.get('audios'):
+                need_refresh_reference = True
             
             if algorithm_type is not None and algorithm_type != tc.algorithm_type:
                 need_refresh_reference = True

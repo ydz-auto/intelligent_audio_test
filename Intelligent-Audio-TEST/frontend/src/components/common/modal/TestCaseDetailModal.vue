@@ -106,7 +106,7 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { tasksApi } from '../../../utils/api'
+import { tasksApi, logsApi } from '../../../utils/api'
 import TestCaseReportDetail from '../TestCaseReportDetail.vue'
 
 const props = defineProps({
@@ -136,8 +136,31 @@ const fetchDetail = async () => {
       referenceAsrText: detailData.reference_asr_text,
       referenceTranslationText: detailData.reference_translation_text,
       errorMessage: detailData.error_message,
-      results: resultsData.results || []
+      results: resultsData.results || [],
+      logs: []
     }
+    
+    // 后端 get_case_detail 不包含日志，需要单独获取
+    try {
+      const logsResponse = await logsApi.getAll({
+        taskId: String(props.taskId),
+        test_case_id: String(props.caseId),
+        page: 1,
+        perPage: 200
+      })
+      if (logsResponse && logsResponse.items) {
+        // 后端返回倒序（最新在前），翻转为正序显示
+        detail.value.logs = [...logsResponse.items].reverse().map(log => ({
+          id: log.id,
+          time: log.timestamp ?? log.time ?? log.createdAt,
+          level: log.level || 'INFO',
+          content: log.content
+        }))
+      }
+    } catch (logErr) {
+      console.warn('获取用例日志失败:', logErr)
+    }
+    
     await nextTick()
     scrollToBottom()
   } catch (err) {

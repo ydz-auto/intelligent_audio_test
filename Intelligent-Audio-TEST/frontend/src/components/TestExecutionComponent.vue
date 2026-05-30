@@ -431,27 +431,26 @@ const handleLogScroll = (e) => {
 };
 
 watch(() => props.logs.length, (newCount, oldCount) => {
-  if (newCount > oldCount) {
-    if (shouldAutoScroll.value && logScrollContainer.value) {
-      // 如果原本就在底部，或者是新日志（通常是少量的轮询日志），则滚动到底部
+  if (newCount > oldCount && logScrollContainer.value) {
+    if (shouldAutoScroll.value) {
+      // 用户在底部，自动滚动到最新日志
       nextTick(() => {
         if (logScrollContainer.value) {
           logScrollContainer.value.scrollTop = logScrollContainer.value.scrollHeight;
         }
       });
-    } else if (logScrollContainer.value && !shouldAutoScroll.value) {
-      // 如果加载的是历史日志（通常是分页加载，数量较多），且不在底部，需要保持当前滚动位置
-      // 由于新日志是添加到前面的，我们需要增加 scrollTop 以补偿增加的高度
+    } else {
+      // 用户不在底部（向上滚动查看历史日志）
+      // 保存当前滚动位置，DOM更新后补偿新增内容的高度以保持视图稳定
+      const savedScrollTop = logScrollContainer.value.scrollTop;
       const addedCount = newCount - oldCount;
-      if (addedCount > 10) { // 假设超过10条就是分页加载历史日志
-        const addedHeight = addedCount * logItemHeight;
-        const currentScrollTop = logScrollContainer.value.scrollTop;
-        nextTick(() => {
-          if (logScrollContainer.value) {
-            logScrollContainer.value.scrollTop = currentScrollTop + addedHeight;
-          }
-        });
-      }
+      const addedHeight = addedCount * logItemHeight;
+      
+      nextTick(() => {
+        if (logScrollContainer.value) {
+          logScrollContainer.value.scrollTop = savedScrollTop + addedHeight;
+        }
+      });
     }
   }
   lastLogCount.value = newCount;
