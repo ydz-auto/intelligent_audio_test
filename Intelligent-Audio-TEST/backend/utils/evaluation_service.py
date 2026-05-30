@@ -258,8 +258,6 @@ class EndpointWorker:
 class EvaluationService:
     def __init__(self):
         self.current_test_case_id = None
-        self.current_api_id = None
-        self.current_device_id = None
         
         self._log(
             level='info',

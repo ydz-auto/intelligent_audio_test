@@ -16,7 +16,6 @@ E2E_RESULT_COLLECTION_WAIT_TIME = float(os.environ.get('E2E_RESULT_COLLECTION_WA
 class E2EExecutor(BaseExecutor):
     def __init__(self, execution_engine):
         super().__init__(execution_engine)
-        self.current_device_id = None
         self._playback_timestamps = {}
         
     def execute_e2e_case(self, task_id, tc_rel_id):
@@ -245,7 +244,7 @@ class E2EExecutor(BaseExecutor):
                     dev.needs_prompt_audio, dev.prompt_config, case_config, device_id=dev.id
                 )
                 device_info_list.append({
-                    "device_id": dev.id, "device_connect_id": dev.serial_number or dev.ip,
+                    "device_id": dev.id, "device_sn": dev.serial_number or dev.ip,
                     "device_name": dev.name, "driver": driver,
                     "prompt_audio_path": prompt_path, "prompt_audio_name": prompt_name,
                     "needs_prompt_audio": dev.needs_prompt_audio
@@ -409,7 +408,7 @@ class E2EExecutor(BaseExecutor):
             if info["driver"]:
                 future = pool.submit(
                     info["driver"].pre_process, 
-                    info.get("device_connect_id"),
+                    info["device_sn"],
                     task_id=task_id,
                     test_case_id=test_case_id,
                     **extra_params
@@ -429,7 +428,7 @@ class E2EExecutor(BaseExecutor):
             if info["driver"] and hasattr(info["driver"], "post_process"):
                 future = pool.submit(
                     info["driver"].post_process,
-                    info.get("device_connect_id"),
+                    info["device_sn"],
                     task_id=task_id,
                     test_case_id=test_case_id,
                     **extra_params
@@ -564,7 +563,7 @@ class E2EExecutor(BaseExecutor):
             err = None
             try:
                 if info["driver"]:
-                    ok = info["driver"].initialize(info.get("device_connect_id") or info["device_id"], task_id=task_id, test_case_id=test_case_id, **extra_params)
+                    ok = info["driver"].initialize(info["device_sn"], task_id=task_id, test_case_id=test_case_id, **extra_params)
                     if not ok:
                         err = "Initialize returned False"
                 else:

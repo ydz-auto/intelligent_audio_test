@@ -191,11 +191,11 @@ class DeviceDriverFactory:
         
         Args:
             task_id: 任务ID
-            device_info_list: 设备信息列表 [{device_id, device_name, driver, ...}, ...]
+            device_info_list: 设备信息列表 [{device_id, device_sn, device_name, driver, ...}, ...]
         """
         device_sns = []
         for info in device_info_list:
-            device_sn = info.get("device_connect_id") or info.get("device_id")
+            device_sn = info.get("device_sn")
             if device_sn:
                 device_sns.append(device_sn)
 

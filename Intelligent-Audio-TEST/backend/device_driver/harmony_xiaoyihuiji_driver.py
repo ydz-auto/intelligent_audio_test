@@ -66,7 +66,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         if not driver:
             self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}", task_id=task_id, test_case_id=test_case_id)
             return False
-  L
+            
         try:
             # 步骤4：清理设备日志
             clean_result = subprocess.run(

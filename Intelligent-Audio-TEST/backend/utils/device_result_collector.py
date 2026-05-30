@@ -8,6 +8,7 @@ MAX_ALIGNMENT_OFFSET = 30.0
 MIN_OVERLAP_THRESHOLD = 0.5
 MAX_CANDIDATE_PAIRS = 100
 
+
 class DeviceResultCollector:
     """设备结果采集器基类"""
 
@@ -31,7 +32,9 @@ class DeviceResultCollector:
         playback_time_offsets = extra_params.get('playback_time_offsets', {})
         reference_params = extra_params.get('reference_params')
 
-        log_not_emit('DEBUG', 'device_collector', f'[collect_raw_results] playback_time_offsets={bool(playback_time_offsets)}, reference_params={bool(reference_params)}', category='engine')
+        log_not_emit('DEBUG', 'device_collector',
+                     f'[collect_raw_results] playback_time_offsets={bool(playback_time_offsets)}, reference_params={bool(reference_params)}',
+                     category='engine')
 
         all_results = []
 
@@ -39,30 +42,42 @@ class DeviceResultCollector:
             res = {
                 'device_id': info["device_id"],
                 'device_name': info["device_name"],
+                'device_sn': info["device_sn"]
             }
             try:
                 if info["driver"]:
                     merged_params = {**extra_params, **kwargs}
                     raw_results = info["driver"].get_results(
-                        info.get("device_connect_id") or info["device_id"],
+                        info["device_sn"],
                         task_id=task_id,
                         test_case_id=test_case_id,
                         **merged_params
                     )
 
                     if isinstance(raw_results, list):
-                        log_not_emit('DEBUG', 'device_collector', f'raw_results is list, length={len(raw_results)}', category='engine')
+                        log_not_emit('DEBUG', 'device_collector', f'raw_results is list, length={len(raw_results)}',
+                                     category='engine')
                         import copy
                         for result_idx, result_item in enumerate(raw_results):
-                            log_not_emit('DEBUG', 'device_collector', f'result_item[{result_idx}] id: {id(result_item)}, keys: {list(result_item.keys())[:10]}', category='engine')
-                            log_not_emit('DEBUG', 'device_collector', f'result_item[{result_idx}] str[:200]: {str(result_item)[:200]}', category='engine')
+                            log_not_emit('DEBUG', 'device_collector',
+                                         f'result_item[{result_idx}] id: {id(result_item)}, keys: {list(result_item.keys())[:10]}',
+                                         category='engine')
+                            log_not_emit('DEBUG', 'device_collector',
+                                         f'result_item[{result_idx}] str[:200]: {str(result_item)[:200]}',
+                                         category='engine')
                             item_res = res.copy()
                             copied_item = copy.deepcopy(result_item)
-                            log_not_emit('DEBUG', 'device_collector', f'copied_item[{result_idx}] id: {id(copied_item)}, keys: {list(copied_item.keys())[:10]}', category='engine')
+                            log_not_emit('DEBUG', 'device_collector',
+                                         f'copied_item[{result_idx}] id: {id(copied_item)}, keys: {list(copied_item.keys())[:10]}',
+                                         category='engine')
                             item_res['raw_results'] = copied_item
-                            log_not_emit('DEBUG', 'device_collector', f'item_res[{result_idx}][raw_results] id: {id(item_res["raw_results"])}, keys: {list(item_res["raw_results"].keys())[:10]}', category='engine')
+                            log_not_emit('DEBUG', 'device_collector',
+                                         f'item_res[{result_idx}][raw_results] id: {id(item_res["raw_results"])}, keys: {list(item_res["raw_results"].keys())[:10]}',
+                                         category='engine')
                             item_res['result_type'] = result_item.get('result_type', 'default')
-                            log_not_emit('DEBUG', 'device_collector', f'before append item_res[{result_idx}] id: {id(item_res)}, raw_results id: {id(item_res["raw_results"])}', category='engine')
+                            log_not_emit('DEBUG', 'device_collector',
+                                         f'before append item_res[{result_idx}] id: {id(item_res)}, raw_results id: {id(item_res["raw_results"])}',
+                                         category='engine')
 
                             alignment_result = self._calculate_effective_offset_for_single_result(
                                 result_item, reference_params, playback_time_offsets
@@ -71,7 +86,9 @@ class DeviceResultCollector:
                             item_res['alignment_info'] = alignment_result.get('alignment_info')
 
                             all_results.append(item_res)
-                            log_not_emit('DEBUG', 'device_collector', f'after append all_results[{result_idx}] raw_results id: {id(all_results[-1]["raw_results"])}, keys: {list(all_results[-1]["raw_results"].keys())[:5]}', category='engine')
+                            log_not_emit('DEBUG', 'device_collector',
+                                         f'after append all_results[{result_idx}] raw_results id: {id(all_results[-1]["raw_results"])}, keys: {list(all_results[-1]["raw_results"].keys())[:5]}',
+                                         category='engine')
                         continue
 
                     res['raw_results'] = raw_results or {}
@@ -88,7 +105,9 @@ class DeviceResultCollector:
                     log_callback('ERROR', f"采集结果失败: {str(e)}", task_id, info["device_id"])
             all_results.append(res)
 
-        log_not_emit('DEBUG', 'device_collector', f'FINAL before return: all_results id={id(all_results)}, count={len(all_results)}', category='engine')
+        log_not_emit('DEBUG', 'device_collector',
+                     f'FINAL before return: all_results id={id(all_results)}, count={len(all_results)}',
+                     category='engine')
 
         import copy
         return copy.deepcopy(all_results)
@@ -131,7 +150,8 @@ class DeviceResultCollector:
         }
 
         if not reference_params:
-            log_not_emit('WARNING', 'device_collector', '[_calculate_effective_offset_for_single_result] reference_params is empty', category='engine')
+            log_not_emit('WARNING', 'device_collector',
+                         '[_calculate_effective_offset_for_single_result] reference_params is empty', category='engine')
             return {'adjusted_params': None, 'alignment_info': alignment_info}
 
         device_segments = self._extract_segments_from_result(raw_results)
@@ -141,10 +161,10 @@ class DeviceResultCollector:
         alignment_info['ref_segment_count'] = len(ref_segments)
 
         use_max_overlap = (
-            device_segments and 
-            ref_segments and 
-            len(device_segments) >= 2 and 
-            len(ref_segments) >= 2
+                device_segments and
+                ref_segments and
+                len(device_segments) >= 2 and
+                len(ref_segments) >= 2
         )
 
         if use_max_overlap:
@@ -156,13 +176,22 @@ class DeviceResultCollector:
             alignment_info['offset'] = best_offset
             alignment_info['max_overlap'] = max_overlap
 
-            log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] ===== MAX OVERLAP ALIGNMENT =====', category='engine')
-            log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] 设备片段数: {len(device_segments)}, 参考片段数: {len(ref_segments)}', category='engine')
-            log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] 最优偏移量: {best_offset:.3f}s, 最大重叠时间: {max_overlap:.3f}s', category='engine')
+            log_not_emit('INFO', 'device_collector',
+                         f'[_calculate_effective_offset_for_single_result] ===== MAX OVERLAP ALIGNMENT =====',
+                         category='engine')
+            log_not_emit('INFO', 'device_collector',
+                         f'[_calculate_effective_offset_for_single_result] 设备片段数: {len(device_segments)}, 参考片段数: {len(ref_segments)}',
+                         category='engine')
+            log_not_emit('INFO', 'device_collector',
+                         f'[_calculate_effective_offset_for_single_result] 最优偏移量: {best_offset:.3f}s, 最大重叠时间: {max_overlap:.3f}s',
+                         category='engine')
 
             if max_overlap >= MIN_OVERLAP_THRESHOLD:
-                log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] 使用最大重叠对齐结果', category='engine')
-                log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] =================================', category='engine')
+                log_not_emit('INFO', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] 使用最大重叠对齐结果', category='engine')
+                log_not_emit('INFO', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] =================================',
+                             category='engine')
 
                 if abs(best_offset) < 0.001:
                     alignment_info['method'] = 'max_overlap_no_adjustment'
@@ -171,13 +200,17 @@ class DeviceResultCollector:
                 adjusted = self._apply_single_offset(reference_params, best_offset)
                 return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
             else:
-                log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] 重叠时间 {max_overlap:.3f}s < 阈值 {MIN_OVERLAP_THRESHOLD}s, 回退到首个时间戳对齐', category='engine')
+                log_not_emit('INFO', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] 重叠时间 {max_overlap:.3f}s < 阈值 {MIN_OVERLAP_THRESHOLD}s, 回退到首个时间戳对齐',
+                             category='engine')
 
         device_first_ts = self._get_device_first_timestamp_from_result(raw_results)
         alignment_info['device_first_ts'] = device_first_ts
 
         if device_first_ts is None:
-            log_not_emit('WARNING', 'device_collector', '[_calculate_effective_offset_for_single_result] Cannot get device first timestamp, fallback to playback_time_offsets', category='engine')
+            log_not_emit('WARNING', 'device_collector',
+                         '[_calculate_effective_offset_for_single_result] Cannot get device first timestamp, fallback to playback_time_offsets',
+                         category='engine')
             alignment_info['method'] = 'fallback'
             fallback_result = self._apply_fallback_offset(reference_params, playback_time_offsets)
             return {'adjusted_params': fallback_result, 'alignment_info': alignment_info}
@@ -186,26 +219,41 @@ class DeviceResultCollector:
         alignment_info['ref_first_ts'] = ref_first_ts
 
         if ref_first_ts is None:
-            log_not_emit('WARNING', 'device_collector', '[_calculate_effective_offset_for_single_result] Cannot get reference first timestamp', category='engine')
+            log_not_emit('WARNING', 'device_collector',
+                         '[_calculate_effective_offset_for_single_result] Cannot get reference first timestamp',
+                         category='engine')
             return {'adjusted_params': None, 'alignment_info': alignment_info}
 
         effective_offset = device_first_ts - ref_first_ts
         alignment_info['method'] = 'first_timestamp'
         alignment_info['offset'] = effective_offset
 
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] ===== FIRST TIMESTAMP ALIGNMENT =====', category='engine')
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] 参考首个时间戳 (ref_first_ts): {ref_first_ts:.3f}s', category='engine')
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] 设备首个时间戳 (device_first_ts): {device_first_ts:.3f}s', category='engine')
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] 有效偏移量 (effective_offset): {effective_offset:.3f}s', category='engine')
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] ======================================', category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_for_single_result] ===== FIRST TIMESTAMP ALIGNMENT =====',
+                     category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_for_single_result] 参考首个时间戳 (ref_first_ts): {ref_first_ts:.3f}s',
+                     category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_for_single_result] 设备首个时间戳 (device_first_ts): {device_first_ts:.3f}s',
+                     category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_for_single_result] 有效偏移量 (effective_offset): {effective_offset:.3f}s',
+                     category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_for_single_result] ======================================',
+                     category='engine')
 
         if abs(effective_offset) < 0.001:
-            log_not_emit('INFO', 'device_collector', '[_calculate_effective_offset_for_single_result] effective_offset ~= 0, no adjustment needed', category='engine')
+            log_not_emit('INFO', 'device_collector',
+                         '[_calculate_effective_offset_for_single_result] effective_offset ~= 0, no adjustment needed',
+                         category='engine')
             alignment_info['method'] = 'first_timestamp_no_adjustment'
             return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
 
         adjusted = self._apply_single_offset(reference_params, effective_offset)
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] Adjustment applied', category='engine')
+        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_for_single_result] Adjustment applied',
+                     category='engine')
         return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
 
     def _calculate_effective_offset_and_adjust(self, all_results, reference_params, playback_time_offsets):
@@ -226,35 +274,54 @@ class DeviceResultCollector:
             调整后的参考参数列表
         """
         if not reference_params:
-            log_not_emit('WARNING', 'device_collector', '[_calculate_effective_offset_and_adjust] reference_params is empty', category='engine')
+            log_not_emit('WARNING', 'device_collector',
+                         '[_calculate_effective_offset_and_adjust] reference_params is empty', category='engine')
             return None
 
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_and_adjust] START: reference_params count={len(reference_params)}, all_results count={len(all_results)}', category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_and_adjust] START: reference_params count={len(reference_params)}, all_results count={len(all_results)}',
+                     category='engine')
 
         device_first_timestamp = self._get_device_first_timestamp(all_results)
         if device_first_timestamp is None:
-            log_not_emit('WARNING', 'device_collector', '[_calculate_effective_offset_and_adjust] Cannot get device first timestamp, fallback to playback_time_offsets', category='engine')
+            log_not_emit('WARNING', 'device_collector',
+                         '[_calculate_effective_offset_and_adjust] Cannot get device first timestamp, fallback to playback_time_offsets',
+                         category='engine')
             return self._apply_fallback_offset(reference_params, playback_time_offsets)
 
         ref_first_timestamp = self._get_reference_first_timestamp(reference_params)
         if ref_first_timestamp is None:
-            log_not_emit('WARNING', 'device_collector', '[_calculate_effective_offset_and_adjust] Cannot get reference first timestamp', category='engine')
+            log_not_emit('WARNING', 'device_collector',
+                         '[_calculate_effective_offset_and_adjust] Cannot get reference first timestamp',
+                         category='engine')
             return None
 
         effective_offset = device_first_timestamp - ref_first_timestamp
 
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_and_adjust] ===== OFFSET CALCULATION =====', category='engine')
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_and_adjust] 参考首个时间戳 (ref_first_ts): {ref_first_timestamp:.3f}s', category='engine')
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_and_adjust] 设备首个时间戳 (device_first_ts): {device_first_timestamp:.3f}s', category='engine')
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_and_adjust] 有效偏移量 (effective_offset): {effective_offset:.3f}s', category='engine')
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_and_adjust] ==============================', category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_and_adjust] ===== OFFSET CALCULATION =====', category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_and_adjust] 参考首个时间戳 (ref_first_ts): {ref_first_timestamp:.3f}s',
+                     category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_and_adjust] 设备首个时间戳 (device_first_ts): {device_first_timestamp:.3f}s',
+                     category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_and_adjust] 有效偏移量 (effective_offset): {effective_offset:.3f}s',
+                     category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_and_adjust] ==============================', category='engine')
 
         if abs(effective_offset) < 0.001:
-            log_not_emit('INFO', 'device_collector', '[_calculate_effective_offset_and_adjust] effective_offset ~= 0, no adjustment needed', category='engine')
+            log_not_emit('INFO', 'device_collector',
+                         '[_calculate_effective_offset_and_adjust] effective_offset ~= 0, no adjustment needed',
+                         category='engine')
             return reference_params
 
         adjusted = self._apply_single_offset(reference_params, effective_offset)
-        log_not_emit('INFO', 'device_collector', f'[_calculate_effective_offset_and_adjust] Adjustment applied, returning adjusted params', category='engine')
+        log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_and_adjust] Adjustment applied, returning adjusted params',
+                     category='engine')
         return adjusted
 
     def _get_device_first_timestamp(self, all_results):
@@ -268,32 +335,41 @@ class DeviceResultCollector:
         Returns:
             float: 首个时间戳，如果无法提取则返回 None
         """
-        log_not_emit('DEBUG', 'device_collector', f'[_get_device_first_timestamp] START: all_results count={len(all_results)}', category='engine')
+        log_not_emit('DEBUG', 'device_collector',
+                     f'[_get_device_first_timestamp] START: all_results count={len(all_results)}', category='engine')
 
         for idx, res in enumerate(all_results):
             raw_results = res.get('raw_results', {})
             if not raw_results:
-                log_not_emit('DEBUG', 'device_collector', f'[_get_device_first_timestamp] result[{idx}]: raw_results is empty', category='engine')
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_get_device_first_timestamp] result[{idx}]: raw_results is empty', category='engine')
                 continue
 
             rttm_content = raw_results.get('recording_rttm_content', '')
             stm_content = raw_results.get('recording_stm_content', '')
 
-            log_not_emit('DEBUG', 'device_collector', f'[_get_device_first_timestamp] result[{idx}]: rttm_len={len(rttm_content) if rttm_content else 0}, stm_len={len(stm_content) if stm_content else 0}', category='engine')
+            log_not_emit('DEBUG', 'device_collector',
+                         f'[_get_device_first_timestamp] result[{idx}]: rttm_len={len(rttm_content) if rttm_content else 0}, stm_len={len(stm_content) if stm_content else 0}',
+                         category='engine')
 
             if rttm_content:
                 ts = self._extract_first_timestamp_from_text(rttm_content, 'rttm')
                 if ts is not None:
-                    log_not_emit('INFO', 'device_collector', f'[_get_device_first_timestamp] result[{idx}]: Found device timestamp from RTTM: {ts:.3f}s', category='engine')
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_get_device_first_timestamp] result[{idx}]: Found device timestamp from RTTM: {ts:.3f}s',
+                                 category='engine')
                     return ts
 
             if stm_content:
                 ts = self._extract_first_timestamp_from_text(stm_content, 'stm')
                 if ts is not None:
-                    log_not_emit('INFO', 'device_collector', f'[_get_device_first_timestamp] result[{idx}]: Found device timestamp from STM: {ts:.3f}s', category='engine')
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_get_device_first_timestamp] result[{idx}]: Found device timestamp from STM: {ts:.3f}s',
+                                 category='engine')
                     return ts
 
-        log_not_emit('WARNING', 'device_collector', '[_get_device_first_timestamp] No valid timestamp found in device results', category='engine')
+        log_not_emit('WARNING', 'device_collector',
+                     '[_get_device_first_timestamp] No valid timestamp found in device results', category='engine')
         return None
 
     def _get_device_first_timestamp_from_result(self, extracted_result):
@@ -314,16 +390,20 @@ class DeviceResultCollector:
         if rttm_content:
             ts = self._extract_first_timestamp_from_text(rttm_content, 'rttm')
             if ts is not None:
-                log_not_emit('DEBUG', 'device_collector', f'[_get_device_first_timestamp_from_result] from rttm: {ts:.3f}', category='engine')
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_get_device_first_timestamp_from_result] from rttm: {ts:.3f}', category='engine')
                 return ts
 
         if stm_content:
             ts = self._extract_first_timestamp_from_text(stm_content, 'stm')
             if ts is not None:
-                log_not_emit('DEBUG', 'device_collector', f'[_get_device_first_timestamp_from_result] from stm: {ts:.3f}', category='engine')
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_get_device_first_timestamp_from_result] from stm: {ts:.3f}', category='engine')
                 return ts
 
-        log_not_emit('WARNING', 'device_collector', '[_get_device_first_timestamp_from_result] No valid timestamp found in extracted_result', category='engine')
+        log_not_emit('WARNING', 'device_collector',
+                     '[_get_device_first_timestamp_from_result] No valid timestamp found in extracted_result',
+                     category='engine')
         return None
 
     def _extract_first_timestamp_from_text(self, text_content, format_type):
@@ -718,19 +798,27 @@ class DeviceResultCollector:
         Returns:
             float: 首个时间戳，如果无法提取则返回 None
         """
-        log_not_emit('DEBUG', 'device_collector', f'[_get_reference_first_timestamp] START: reference_params count={len(reference_params)}', category='engine')
+        log_not_emit('DEBUG', 'device_collector',
+                     f'[_get_reference_first_timestamp] START: reference_params count={len(reference_params)}',
+                     category='engine')
 
         for param_idx, param in enumerate(reference_params):
             if not isinstance(param, dict):
-                log_not_emit('DEBUG', 'device_collector', f'[_get_reference_first_timestamp] param[{param_idx}]: not a dict, skip', category='engine')
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_get_reference_first_timestamp] param[{param_idx}]: not a dict, skip',
+                             category='engine')
                 continue
 
-            log_not_emit('DEBUG', 'device_collector', f'[_get_reference_first_timestamp] param[{param_idx}]: keys={list(param.keys())}', category='engine')
+            log_not_emit('DEBUG', 'device_collector',
+                         f'[_get_reference_first_timestamp] param[{param_idx}]: keys={list(param.keys())}',
+                         category='engine')
 
             for test_type in ['api', 'e2e']:
                 value = param.get(test_type)
                 if not value or not isinstance(value, dict):
-                    log_not_emit('DEBUG', 'device_collector', f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: no valid value, skip', category='engine')
+                    log_not_emit('DEBUG', 'device_collector',
+                                 f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: no valid value, skip',
+                                 category='engine')
                     continue
 
                 segments = value.get('segments') or value.get('json', [])
@@ -738,22 +826,31 @@ class DeviceResultCollector:
                     first_seg = segments[0]
                     if isinstance(first_seg, dict) and 'start' in first_seg:
                         ts = float(first_seg['start'])
-                        log_not_emit('INFO', 'device_collector', f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: Found reference timestamp from segments[0]: {ts:.3f}s', category='engine')
+                        log_not_emit('INFO', 'device_collector',
+                                     f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: Found reference timestamp from segments[0]: {ts:.3f}s',
+                                     category='engine')
                         return ts
                     else:
-                        log_not_emit('DEBUG', 'device_collector', f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: first_seg has no start, seg_keys={list(first_seg.keys()) if isinstance(first_seg, dict) else type(first_seg)}', category='engine')
+                        log_not_emit('DEBUG', 'device_collector',
+                                     f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: first_seg has no start, seg_keys={list(first_seg.keys()) if isinstance(first_seg, dict) else type(first_seg)}',
+                                     category='engine')
 
                 text = value.get('text', '')
                 format_type = value.get('format', '')
                 if text and format_type in ['rttm', 'stm']:
                     ts = self._extract_first_timestamp_from_text(text, format_type)
                     if ts is not None:
-                        log_not_emit('INFO', 'device_collector', f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: Found reference timestamp from text ({format_type}): {ts:.3f}s', category='engine')
+                        log_not_emit('INFO', 'device_collector',
+                                     f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: Found reference timestamp from text ({format_type}): {ts:.3f}s',
+                                     category='engine')
                         return ts
                 else:
-                    log_not_emit('DEBUG', 'device_collector', f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: text={len(text) if text else 0}, format={format_type}', category='engine')
+                    log_not_emit('DEBUG', 'device_collector',
+                                 f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: text={len(text) if text else 0}, format={format_type}',
+                                 category='engine')
 
-        log_not_emit('WARNING', 'device_collector', '[_get_reference_first_timestamp] No valid timestamp found in reference params', category='engine')
+        log_not_emit('WARNING', 'device_collector',
+                     '[_get_reference_first_timestamp] No valid timestamp found in reference params', category='engine')
         return None
 
     def _apply_fallback_offset(self, reference_params, playback_time_offsets):
@@ -775,13 +872,14 @@ class DeviceResultCollector:
         else:
             offset_val = playback_time_offsets
 
-        log_not_emit('DEBUG', 'device_collector', f'[_apply_fallback_offset] Using playback_time_offsets: {offset_val}', category='engine')
+        log_not_emit('DEBUG', 'device_collector', f'[_apply_fallback_offset] Using playback_time_offsets: {offset_val}',
+                     category='engine')
 
         if offset_val != 0 and reference_params:
             return self._apply_single_offset(reference_params, offset_val)
 
         return None
-    
+
     def _apply_time_offset_to_reference_params(self, reference_params, offset):
         """根据实际播放时间偏移调整参考参数字段中的时间戳
         
@@ -793,29 +891,40 @@ class DeviceResultCollector:
             调整后的参考参数列表
         """
         if not reference_params:
-            log_not_emit('DEBUG', 'device_collector', '[_apply_time_offset_to_reference_params] reference_params is empty, returning as-is', category='engine')
+            log_not_emit('DEBUG', 'device_collector',
+                         '[_apply_time_offset_to_reference_params] reference_params is empty, returning as-is',
+                         category='engine')
             return reference_params
-        
-        log_not_emit('DEBUG', 'device_collector', f'[_apply_time_offset_to_reference_params] reference_params count={len(reference_params)}, offset type={type(offset).__name__}', category='engine')
-        
+
+        log_not_emit('DEBUG', 'device_collector',
+                     f'[_apply_time_offset_to_reference_params] reference_params count={len(reference_params)}, offset type={type(offset).__name__}',
+                     category='engine')
+
         offset_dict = {}
         if isinstance(offset, dict):
-            log_not_emit('DEBUG', 'device_collector', f'[_apply_time_offset_to_reference_params] offset dict keys={list(offset.keys())}', category='engine')
+            log_not_emit('DEBUG', 'device_collector',
+                         f'[_apply_time_offset_to_reference_params] offset dict keys={list(offset.keys())}',
+                         category='engine')
             for k, v in offset.items():
                 if isinstance(v, dict) and 'offset' in v:
                     play_order = v.get('play_order')
                     if play_order is not None:
                         offset_dict[play_order] = v['offset']
-                        log_not_emit('DEBUG', 'device_collector', f'[_apply_time_offset_to_reference_params] Added offset_dict[{play_order}] = {v["offset"]}', category='engine')
+                        log_not_emit('DEBUG', 'device_collector',
+                                     f'[_apply_time_offset_to_reference_params] Added offset_dict[{play_order}] = {v["offset"]}',
+                                     category='engine')
                 elif isinstance(v, (int, float)):
                     if isinstance(k, str) and '_' in k:
                         offset_dict[int(k.split('_')[-1])] = v if isinstance(v, int) else float(v)
-                        log_not_emit('DEBUG', 'device_collector', f'[_apply_time_offset_to_reference_params] Added offset_dict from str key[{k.split("_")[-1]}] = {v}', category='engine')
+                        log_not_emit('DEBUG', 'device_collector',
+                                     f'[_apply_time_offset_to_reference_params] Added offset_dict from str key[{k.split("_")[-1]}] = {v}',
+                                     category='engine')
                     elif isinstance(k, int):
                         offset_dict[k] = v if isinstance(v, int) else float(v)
-        
-        log_not_emit('DEBUG', 'device_collector', f'[_apply_time_offset_to_reference_params] Final offset_dict={offset_dict}', category='engine')
-        
+
+        log_not_emit('DEBUG', 'device_collector',
+                     f'[_apply_time_offset_to_reference_params] Final offset_dict={offset_dict}', category='engine')
+
         if not offset_dict:
             first_val = list(offset.values())[0] if offset else 0
             if isinstance(first_val, dict):
@@ -823,26 +932,26 @@ class DeviceResultCollector:
             if first_val == 0:
                 return reference_params
             return self._apply_single_offset(reference_params, first_val)
-        
+
         if all(v == 0 for v in offset_dict.values()):
             return reference_params
-        
+
         adjusted_params = []
         for param in reference_params:
             if not isinstance(param, dict):
                 adjusted_params.append(param)
                 continue
-            
+
             new_param = param.copy()
-            
+
             for test_type in ['api', 'e2e']:
                 value = param.get(test_type)
                 if not value:
                     continue
-                
+
                 if isinstance(value, dict):
                     adjusted_value = value.copy()
-                    
+
                     if 'segments' in value:
                         adjusted_segments = []
                         for seg in value['segments']:
@@ -852,7 +961,7 @@ class DeviceResultCollector:
                                 seg_offset = offset_dict[seg_play_order]
                             else:
                                 seg_offset = list(offset_dict.values())[0] if offset_dict else 0
-                            
+
                             if 'start' in new_seg:
                                 new_seg['start'] = new_seg['start'] + seg_offset
                             if 'end' in new_seg:
@@ -860,47 +969,50 @@ class DeviceResultCollector:
                             adjusted_segments.append(new_seg)
                         adjusted_value['segments'] = adjusted_segments
                         adjusted_value['json'] = adjusted_segments
-                    
+
                     if 'text' in value and value.get('format') in ['rttm', 'stm']:
                         adjusted_value['text'] = self._adjust_rttm_stm_text_by_play_order(value['text'], offset_dict)
-                    
+
                     new_param[test_type] = adjusted_value
                 else:
                     new_param[test_type] = value
-            
+
             adjusted_params.append(new_param)
-        
+
         return adjusted_params
-    
+
     def _apply_single_offset(self, reference_params, offset):
         """应用单一偏移量（兼容旧逻辑）"""
         log_not_emit('DEBUG', 'device_collector', f'[_apply_single_offset] START: offset={offset}', category='engine')
-        
+
         if not reference_params:
-            log_not_emit('WARNING', 'device_collector', '[_apply_single_offset] reference_params is empty', category='engine')
+            log_not_emit('WARNING', 'device_collector', '[_apply_single_offset] reference_params is empty',
+                         category='engine')
             return None
-            
+
         if not isinstance(reference_params, list):
-            log_not_emit('WARNING', 'device_collector', f'[_apply_single_offset] reference_params is not a list, type={type(reference_params)}', category='engine')
+            log_not_emit('WARNING', 'device_collector',
+                         f'[_apply_single_offset] reference_params is not a list, type={type(reference_params)}',
+                         category='engine')
             return None
-            
+
         try:
             adjusted_params = []
             for param_idx, param in enumerate(reference_params):
                 if not isinstance(param, dict):
                     adjusted_params.append(param)
                     continue
-                
+
                 new_param = param.copy()
-                
+
                 for test_type in ['api', 'e2e']:
                     value = param.get(test_type)
                     if not value:
                         continue
-                    
+
                     if isinstance(value, dict):
                         adjusted_value = value.copy()
-                        
+
                         if 'json' in value and value['json']:
                             adjusted_segments = []
                             json_data = value['json']
@@ -922,7 +1034,7 @@ class DeviceResultCollector:
                                         adjusted_segments.append(seg)
                             if adjusted_segments:
                                 adjusted_value['json'] = adjusted_segments
-                        
+
                         if 'segments' in value and value['segments']:
                             adjusted_segments = []
                             for seg in value['segments']:
@@ -936,24 +1048,27 @@ class DeviceResultCollector:
                                 else:
                                     adjusted_segments.append(seg)
                             adjusted_value['segments'] = adjusted_segments
-                        
+
                         if 'text' in value and value.get('format') in ['rttm', 'stm']:
                             adjusted_value['text'] = self._adjust_rttm_stm_text(value['text'], offset)
-                        
+
                         new_param[test_type] = adjusted_value
                     else:
                         new_param[test_type] = value
-                
+
                 adjusted_params.append(new_param)
-            
-            log_not_emit('DEBUG', 'device_collector', f'[_apply_single_offset] SUCCESS: adjusted {len(adjusted_params)} params', category='engine')
+
+            log_not_emit('DEBUG', 'device_collector',
+                         f'[_apply_single_offset] SUCCESS: adjusted {len(adjusted_params)} params', category='engine')
             return adjusted_params
-            
+
         except Exception as e:
             import traceback
-            log_not_emit('ERROR', 'device_collector', f'[_apply_single_offset] FAILED: {str(e)}, traceback: {traceback.format_exc()}', category='engine')
+            log_not_emit('ERROR', 'device_collector',
+                         f'[_apply_single_offset] FAILED: {str(e)}, traceback: {traceback.format_exc()}',
+                         category='engine')
             return None
-    
+
     def _adjust_rttm_stm_text(self, text_content, offset):
         """调整 RTTM/STM 文本中的时间戳
         
@@ -966,22 +1081,22 @@ class DeviceResultCollector:
         """
         if not text_content or offset == 0:
             return text_content
-        
+
         lines = text_content.split('\n')
         adjusted_lines = []
-        
+
         for line in lines:
             parts = line.split()
             if not parts:
                 adjusted_lines.append(line)
                 continue
-            
+
             format_type = None
             if parts[0] == 'SPEAKER':
                 format_type = 'rttm'
             elif len(parts) >= 4 and parts[0] != 'SPEAKER' and not line.startswith('SPK-'):
                 format_type = 'stm'
-            
+
             if format_type == 'rttm' and len(parts) >= 5:
                 try:
                     start_time = float(parts[3])
@@ -1003,9 +1118,9 @@ class DeviceResultCollector:
                     adjusted_lines.append(line)
             else:
                 adjusted_lines.append(line)
-        
+
         return '\n'.join(adjusted_lines)
-    
+
     def _adjust_rttm_stm_text_by_play_order(self, text_content, offset_dict):
         """根据 play_order 分别调整 RTTM/STM 文本中的时间戳
         
@@ -1018,17 +1133,17 @@ class DeviceResultCollector:
         """
         if not text_content or not offset_dict:
             return text_content
-        
+
         if all(v == 0 for v in offset_dict.values()):
             return text_content
-        
+
         default_offset = list(offset_dict.values())[0] if offset_dict else 0
-        
+
         sorted_play_orders = sorted(offset_dict.keys())
-        
+
         lines = text_content.split('\n')
         adjusted_lines = []
-        
+
         current_play_order_idx = 0
         play_order_ranges = []
         current_start = 0
@@ -1039,25 +1154,25 @@ class DeviceResultCollector:
                 current_start = next_po
             else:
                 play_order_ranges.append((po, current_start, None))
-        
+
         def get_offset_for_time(start_time):
             for po, range_start, range_end in play_order_ranges:
                 if range_end is None or start_time < range_end:
                     return offset_dict.get(po, default_offset)
             return default_offset
-        
+
         for line in lines:
             parts = line.split()
             if not parts:
                 adjusted_lines.append(line)
                 continue
-            
+
             format_type = None
             if parts[0] == 'SPEAKER':
                 format_type = 'rttm'
             elif len(parts) >= 4 and parts[0] != 'SPEAKER' and not line.startswith('SPK-'):
                 format_type = 'stm'
-            
+
             if format_type == 'rttm' and len(parts) >= 5:
                 try:
                     start_time = float(parts[3])
@@ -1081,9 +1196,9 @@ class DeviceResultCollector:
                     adjusted_lines.append(line)
             else:
                 adjusted_lines.append(line)
-        
+
         return '\n'.join(adjusted_lines)
-    
+
     def convert_results(self, all_results, algorithm_type):
         """转换原始结果为映射后的格式
         
@@ -1094,43 +1209,49 @@ class DeviceResultCollector:
         Returns:
             list: 转换后的结果列表（包含 success 字段）
         """
-        
+
         # 调试：打印原始传入的数据
         print(f"DEBUG convert_results ENTRY: all_results id={id(all_results)}")
         if all_results and len(all_results) > 0:
-            print(f"DEBUG convert_results ENTRY: raw_results keys = {list(all_results[0].get('raw_results', {}).keys())}")
-        
+            print(
+                f"DEBUG convert_results ENTRY: raw_results keys = {list(all_results[0].get('raw_results', {}).keys())}")
+
         # 深拷贝，防止外部修改
         import copy
         all_results = copy.deepcopy(all_results)
-        
+
         print(f"DEBUG convert_results AFTER DEEPCOPY: all_results id={id(all_results)}")
         if all_results and len(all_results) > 0:
-            print(f"DEBUG convert_results AFTER DEEPCOPY: raw_results keys = {list(all_results[0].get('raw_results', {}).keys())}")
-        
+            print(
+                f"DEBUG convert_results AFTER DEEPCOPY: raw_results keys = {list(all_results[0].get('raw_results', {}).keys())}")
+
         for res in all_results:
             raw_results = res.get('raw_results', {})
             result_type = res.get('result_type', 'default')
-            log_not_emit('DEBUG', 'device_collector', f'convert_results: result_type={result_type}, all_results id={id(all_results)}, res id={id(res)}, raw_results id={id(raw_results)}, raw_keys={list(raw_results.keys())[:5]}', category='engine')
-            
+            log_not_emit('DEBUG', 'device_collector',
+                         f'convert_results: result_type={result_type}, all_results id={id(all_results)}, res id={id(res)}, raw_results id={id(raw_results)}, raw_keys={list(raw_results.keys())[:5]}',
+                         category='engine')
+
             # 添加更多调试信息
             from backend.algorithm.field_mapper import get_field_mapper
             fm = get_field_mapper()
             mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
             if isinstance(mapped_fields, list):
-                log_not_emit('DEBUG', 'device_collector', f'mapped_fields: {[f.get("code") for f in mapped_fields]}', category='engine')
+                log_not_emit('DEBUG', 'device_collector', f'mapped_fields: {[f.get("code") for f in mapped_fields]}',
+                             category='engine')
             else:
-                log_not_emit('DEBUG', 'device_collector', f'mapped_fields keys: {list(mapped_fields.keys())}', category='engine')
-            
+                log_not_emit('DEBUG', 'device_collector', f'mapped_fields keys: {list(mapped_fields.keys())}',
+                             category='engine')
+
             mapped_results = self.field_mapper.convert_device_output(algorithm_type, raw_results)
-            
+
             res.update(mapped_results)
-            
+
             has_values = any(mapped_results.values())
             res['success'] = has_values
-        
+
         return all_results
-    
+
     def build_case_result_log(self, algorithm_type, res, ref_fields=None, **kwargs):
         """构建用例结果日志内容
         
@@ -1146,14 +1267,14 @@ class DeviceResultCollector:
         # 确保 ref_fields 不为 None
         if ref_fields is None:
             ref_fields = {}
-        
+
         # 获取算法映射后的设备输出字段键列表
         mapped_output_keys = self.field_mapper.get_mapped_device_output_field_keys(algorithm_type)
-        
+
         # 初始化日志内容，先记录设备名称和执行状态
         log_content = f"设备 {res.get('device_name', 'Unknown')} 执行结果:\n" + \
                       f"  采集状态: {'成功' if res.get('success', False) else '失败'}\n"
-        
+
         for key in mapped_output_keys:
             # 获取结果值，可能是字符串、字典、列表等任意类型
             value = res.get(key)
@@ -1164,21 +1285,21 @@ class DeviceResultCollector:
             else:
                 value = ''
             log_content += f"  {key}: {value}...\n"
-        
+
         # 处理参考字段（如参考文本、参考RTTM等）
         if ref_fields:
             for field_key, field_value in ref_fields.items():
                 if field_value:
                     display_value = str(field_value)[:100]
                     log_content += f"  {field_key}: {display_value}...\n"
-        
+
         # 处理额外配置的查询字段
         extra_fields = self.field_mapper._get_algorithm_extra_config(algorithm_type).get('query_fields', {}).keys()
         for field in extra_fields:
             field_value = kwargs.get(field)
             if field_value:
                 log_content += f"  {field}: {field_value}\n"
-        
+
         return log_content
 
 

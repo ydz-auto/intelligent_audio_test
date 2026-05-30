@@ -107,14 +107,14 @@ def _calculate_adjusted_reference_params(extracted_result, original_reference_pa
         return None
 
 
-def _extract_device_output_from_archive(device, task_id, case_id, device_id):
+def _extract_device_output_from_archive(device, task_id, test_case_id, device_sn):
     """从存档日志中提取设备输出结果
 
     Args:
         device: Device 模型实例
         task_id: 任务ID
-        case_id: 用例ID
-        device_id: 设备ID (字符串)
+        test_case_id: 用例ID
+        device_sn: 设备序列号
 
     Returns:
         list: 提取的算法结果列表，每个元素包含 recording_stm_content, recording_rttm_content 等字段
@@ -126,7 +126,7 @@ def _extract_device_output_from_archive(device, task_id, case_id, device_id):
         device_keywords = device.keywords
 
         logger.info(
-            f"开始从存档提取设备输出: device_system={device_system}, device_keywords={device_keywords}, device_id={device_id}")
+            f"开始从存档提取设备输出: device_system={device_system}, device_keywords={device_keywords}, device_sn={device_sn}")
 
         driver = device_driver_factory.get_driver(device_system, keywords=device_keywords)
         if not driver:
@@ -139,8 +139,8 @@ def _extract_device_output_from_archive(device, task_id, case_id, device_id):
         if hasattr(driver, 'extract_results_from_archive'):
             result = driver.extract_results_from_archive(
                 task_id=task_id,
-                test_case_id=case_id,
-                device_sn=device_id
+                test_case_id=test_case_id,
+                device_sn=device_sn
             )
             driver_type = device_system.lower()
             return result, driver_type
@@ -271,8 +271,8 @@ class DeviceResultReextractor:
                     extracted_results, driver_type = _extract_device_output_from_archive(
                         device=device,
                         task_id=task_id,
-                        case_id=test_case_id,
-                        device_id=device.serial_number
+                        test_case_id=test_case_id,
+                        device_sn=device.serial_number
                     )
 
                     if not isinstance(extracted_results, list):

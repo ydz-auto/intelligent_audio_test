@@ -17,7 +17,6 @@ class BaseExecutor:
         self._thread_ctx = threading.local()
         self.current_test_case_id = None
         self.current_case_field_values = {}
-        self.current_device_id = None
         self.utc_plus_8 = timezone(timedelta(hours=8))
     
     def _handle_control(self, task_id):
