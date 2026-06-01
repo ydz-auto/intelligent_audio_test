@@ -63,6 +63,8 @@
           :referenceParams="detail.referenceParams"
           :algorithmType="detail.algorithmType"
           :results="detail.results"
+          :fieldMapping="detail.fieldMapping"
+          :resultAudios="detail.resultAudios"
         />
       </div>
       
@@ -152,32 +154,19 @@ const hasAnyResultData = computed(() => {
   // 有设备结果
   if (d.devices && d.devices.length > 0) return true
   
-  // 有音频列表
+  // 有音频列表（参考音频）
   if (d.audioList && d.audioList.length > 0) return true
+  
+  // 有结果音频
+  if (d.resultAudios && typeof d.resultAudios === 'object' && Object.keys(d.resultAudios).length > 0) return true
   
   // 有指标数据
   if (d.metricConfigs && d.metricConfigs.length > 0) return true
   
-  // 有时间轴数据 (RTTM/STM)
-  if (d.algorithmResults && typeof d.algorithmResults === 'object') {
-    const keys = Object.keys(d.algorithmResults)
-    const timelineKeywords = ['rttm', 'stm', 'segment', 'timeline']
-    for (const key of keys) {
-      if (timelineKeywords.some(tk => key.toLowerCase().includes(tk))) return true
-      const val = d.algorithmResults[key]
-      if (val && typeof val === 'object') {
-        for (const subKey of Object.keys(val)) {
-          if (timelineKeywords.some(tk => subKey.toLowerCase().includes(tk))) return true
-        }
-      }
-    }
-  }
-  
-  // 有参考文本
-  if (d.referenceParams) {
-    const asr = d.referenceParams['asr_reference_text']
-    const trans = d.referenceParams['translation_reference_text']
-    if (asr?.e2e || asr?.api || trans?.e2e || trans?.api) return true
+  // 有 field_mapping 中的数据
+  if (d.fieldMapping) {
+    if ((d.fieldMapping.result || []).length > 0) return true
+    if ((d.fieldMapping.reference || []).length > 0) return true
   }
   
   return false
@@ -201,13 +190,15 @@ const fetchDetail = async () => {
       referenceTranslationText: detailData.reference_translation_text,
       errorMessage: detailData.error_message,
       results: resultsData.results || [],
-      // 新增：后端现在返回完整的对比展示数据
+      // 后端返回完整的对比展示数据
       audioList: detailData.audio_list || [],
       referenceParams: detailData.reference_params || {},
       algorithmResults: detailData.algorithm_results || {},
       algorithmType: detailData.algorithm_type || '',
       devices: detailData.devices || [],
       metricConfigs: detailData.metric_configs || [],
+      fieldMapping: detailData.field_mapping || { result: [], reference: [] },
+      resultAudios: detailData.result_audios || {},
       logs: []
     }
     

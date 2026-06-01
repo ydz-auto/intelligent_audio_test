@@ -146,6 +146,10 @@ export default {
     results: {
       type: Array,
       default: () => []
+    },
+    fieldMapping: {
+      type: Object,
+      default: () => ({ result: [], reference: [] })
     }
   },
   data() {
@@ -465,22 +469,28 @@ export default {
       const refParams = this.referenceParams || {};
       const selectedResource = this.selectedResource;
       
-      const stmKeys = ['stmRes', 'stm_res', 'stmRef', 'stm_ref', 'stm_hyp', 'stmHyp'];
-      const rttmKeys = ['rttmRes', 'rttm_res', 'rttmRef', 'rttm_ref', 'rttm_hyp', 'rttmHyp'];
+      // 从 fieldMapping 获取动态字段名
+      const getDynamicKeys = (fieldType) => {
+        const fm = this.fieldMapping || {};
+        const fields = (fm[fieldType] || []).filter(
+          f => ['rttm', 'stm', 'json'].includes(f.param_type)
+        );
+        return fields.map(f => f.param_code || f.source_param).filter(Boolean);
+      };
+
+      // 优先使用动态字段，回退到硬编码
+      const resultKeys = getDynamicKeys('result').length > 0
+        ? getDynamicKeys('result')
+        : ['stmRes', 'stm_res', 'stm_hyp', 'stmHyp', 'rttmRes', 'rttm_res', 'rttm_hyp', 'rttmHyp'];
       
-      const processAlgoResult = (resultObj) => {
+      const refKeys = getDynamicKeys('reference').length > 0
+        ? getDynamicKeys('reference')
+        : ['stmRef', 'stm_ref', 'rttmRef', 'rttm_ref'];
+      
+      const processAlgoResult = (resultObj, keys) => {
         if (!resultObj || typeof resultObj !== 'object') return null;
         
-        for (const key of stmKeys) {
-          if (resultObj[key]) {
-            const data = this.parseTimelineData(resultObj[key]);
-            if (Array.isArray(data) && data.length > 0) {
-              return data;
-            }
-          }
-        }
-        
-        for (const key of rttmKeys) {
+        for (const key of keys) {
           if (resultObj[key]) {
             const data = this.parseTimelineData(resultObj[key]);
             if (Array.isArray(data) && data.length > 0) {
@@ -500,7 +510,7 @@ export default {
       if (type === 'result') {
         for (const algoKey of algoKeys) {
           const algoData = algoResults[algoKey];
-          const result = processAlgoResult(algoData);
+          const result = processAlgoResult(algoData, resultKeys);
           if (result) {
             return [...result];
           }
@@ -508,7 +518,7 @@ export default {
       }
       
       if (type === 'reference') {
-        const result = processAlgoResult(refParams);
+        const result = processAlgoResult(refParams, refKeys);
         if (result) {
           return [...result];
         }

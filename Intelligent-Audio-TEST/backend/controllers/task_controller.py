@@ -468,37 +468,63 @@ class TaskController:
                         'name': dim['name']
                     })
         
-        # 9. 构建 timeline_field_mapping（时间轴字段映射，区分结果和参考）
-        timeline_field_mapping = {'result': [], 'reference': []}
+        # 9. 构建完整的 field_mapping（包含 param_type）和 result_audios
+        field_mapping = {'result': [], 'reference': []}
+        result_audios = {}  # {device_name: [{url, filename, param_code}]}
         try:
             from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             if algorithm_type:
-                # 结果字段 (source='api'/'device')
-                output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type)
-                for f in output_fields:
-                    source_param = f.get('source_param', '')
-                    target_param = f.get('target_param') or source_param
-                    if any(kw in source_param.lower() for kw in ['rttm', 'stm', 'segment', 'timeline']):
-                        timeline_field_mapping['result'].append({
-                            'source_param': source_param,
-                            'target_param': target_param,
-                            'label': f.get('dimension_name') or source_param
-                        })
+                field_mapping = AlgorithmResultFieldMapper.get_field_mapping(algorithm_type)
                 
-                # 参考字段 (source='reference')
-                ref_fields = AlgorithmResultFieldMapper.get_reference_output_fields(algorithm_type)
-                for f in ref_fields:
-                    source_param = f.get('source_param', '')
-                    target_param = f.get('target_param') or source_param
-                    if any(kw in source_param.lower() for kw in ['rttm', 'stm', 'segment', 'timeline']):
-                        timeline_field_mapping['reference'].append({
-                            'source_param': source_param,
-                            'target_param': target_param,
-                            'label': f.get('dimension_name') or source_param
-                        })
+                # 提取结果音频（param_type 为 audio_file/audio_stream/audio 的字段）
+                audio_types = {'audio_file', 'audio_stream', 'audio'}
+                result_audio_fields = [
+                    f for f in field_mapping.get('result', [])
+                    if f.get('param_type') in audio_types
+                ]
+                
+                if result_audio_fields:
+                    for i, result in enumerate(results):
+                        pr = processed_results[i]
+                        resource = pr['device_name'] or pr['api_name'] or f'result_{result.id}'
+                        
+                        algo_res = result.algorithm_result or {}
+                        r_data = result.result_data
+                        if isinstance(r_data, str) and r_data.strip():
+                            try:
+                                import json as _json
+                                r_data = _json.loads(r_data)
+                            except Exception:
+                                r_data = {}
+                        if not isinstance(r_data, dict):
+                            r_data = {}
+                        
+                        combined_data = {**algo_res, **r_data}
+                        device_audios = []
+                        
+                        for field in result_audio_fields:
+                            param_code = field.get('param_code') or field.get('source_param')
+                            audio_data = combined_data.get(param_code)
+                            if audio_data:
+                                # 处理不同格式
+                                if isinstance(audio_data, str):
+                                    device_audios.append({
+                                        'url': audio_data,
+                                        'filename': param_code,
+                                        'param_code': param_code
+                                    })
+                                elif isinstance(audio_data, dict):
+                                    device_audios.append({
+                                        'url': audio_data.get('url') or audio_data.get('path', ''),
+                                        'filename': audio_data.get('filename') or audio_data.get('name', param_code),
+                                        'param_code': param_code
+                                    })
+                        
+                        if device_audios:
+                            result_audios[resource] = device_audios
         except Exception as e:
             import logging
-            logging.getLogger(__name__).warning(f"构建 timeline_field_mapping 失败: {e}")
+            logging.getLogger(__name__).warning(f"构建 field_mapping 失败: {e}")
         
         # 构建响应数据
         response_data = {
@@ -520,7 +546,8 @@ class TaskController:
             "algorithm_type": algorithm_type,
             "devices": devices,
             "metric_configs": metric_configs,
-            "timeline_field_mapping": timeline_field_mapping,
+            "field_mapping": field_mapping,
+            "result_audios": result_audios,
         }
         
         return success_response(response_data)

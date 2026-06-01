@@ -214,6 +214,9 @@
                       <option value="audio_stream">音频流</option>
                       <option value="audio_file">音频文件</option>
                       <option value="text_file">文本文件</option>
+                      <option value="rttm">RTTM标注</option>
+                      <option value="stm">STM标注</option>
+                      <option value="json">JSON结构化</option>
                     </select>
                   </td>
                   <td>
