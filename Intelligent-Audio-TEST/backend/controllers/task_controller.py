@@ -399,6 +399,107 @@ class TaskController:
                 "created_at": result.created_at.isoformat()
             })
         
+        # 5. 构建音频列表（含交叠时间轴）
+        try:
+            from backend.controllers.report_controller_task import ReportControllerTask
+            audios_list = ReportControllerTask._build_audios_list(case_info) if case_info else []
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"构建音频列表失败: {e}")
+            audios_list = []
+        
+        # 6. 构建结构化 reference_params
+        try:
+            from backend.controllers.report_controller_task import ReportControllerTask
+            reference_params = ReportControllerTask._get_reference_params(
+                case_info, results, test_type if case_info and case_info.config else 'api'
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"构建 reference_params 失败: {e}")
+            reference_params = {}
+        
+        # 7. 构建 algorithm_results（按资源分组）
+        algorithm_type = case_info.algorithm_type if case_info and hasattr(case_info, 'algorithm_type') else ''
+        algorithm_results = {}
+        try:
+            from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type) if algorithm_type else []
+            
+            for i, result in enumerate(results):
+                pr = processed_results[i]
+                resource = pr['device_name'] or pr['api_name'] or f'result_{result.id}'
+                if not algorithm_results.get(resource):
+                    algorithm_results[resource] = {}
+                
+                algo_res = result.algorithm_result or {}
+                r_data = result.result_data
+                if isinstance(r_data, str) and r_data.strip():
+                    try:
+                        import json as _json
+                        r_data = _json.loads(r_data)
+                    except Exception:
+                        r_data = {}
+                if not isinstance(r_data, dict):
+                    r_data = {}
+                
+                combined_data = {**algo_res, **r_data}
+                for field in output_fields:
+                    param_key = field.get('target_param') or field.get('source_param')
+                    if param_key and combined_data.get(param_key):
+                        algorithm_results[resource][param_key] = combined_data[param_key]
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"构建 algorithm_results 失败: {e}")
+        
+        # 8. 构建 devices 列表和 metric_configs
+        devices = list(set(
+            pr['device_name'] for pr in processed_results if pr.get('device_name')
+        ))
+        
+        metric_configs = []
+        seen_metrics = set()
+        for pr in processed_results:
+            for dim in pr.get('dimensions', []):
+                if dim['name'] and dim['name'] not in seen_metrics:
+                    seen_metrics.add(dim['name'])
+                    metric_configs.append({
+                        'code': dim['name'],
+                        'name': dim['name']
+                    })
+        
+        # 9. 构建 timeline_field_mapping（时间轴字段映射，区分结果和参考）
+        timeline_field_mapping = {'result': [], 'reference': []}
+        try:
+            from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            if algorithm_type:
+                # 结果字段 (source='api'/'device')
+                output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type)
+                for f in output_fields:
+                    source_param = f.get('source_param', '')
+                    target_param = f.get('target_param') or source_param
+                    if any(kw in source_param.lower() for kw in ['rttm', 'stm', 'segment', 'timeline']):
+                        timeline_field_mapping['result'].append({
+                            'source_param': source_param,
+                            'target_param': target_param,
+                            'label': f.get('dimension_name') or source_param
+                        })
+                
+                # 参考字段 (source='reference')
+                ref_fields = AlgorithmResultFieldMapper.get_reference_output_fields(algorithm_type)
+                for f in ref_fields:
+                    source_param = f.get('source_param', '')
+                    target_param = f.get('target_param') or source_param
+                    if any(kw in source_param.lower() for kw in ['rttm', 'stm', 'segment', 'timeline']):
+                        timeline_field_mapping['reference'].append({
+                            'source_param': source_param,
+                            'target_param': target_param,
+                            'label': f.get('dimension_name') or source_param
+                        })
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"构建 timeline_field_mapping 失败: {e}")
+        
         # 构建响应数据
         response_data = {
             "task_id": task_id,
@@ -413,6 +514,13 @@ class TaskController:
             "error_message": tc.error_message,
             "reference_asr_text": reference_asr_text,
             "reference_translation_text": reference_translation_text,
+            "audio_list": audios_list,
+            "reference_params": reference_params,
+            "algorithm_results": algorithm_results,
+            "algorithm_type": algorithm_type,
+            "devices": devices,
+            "metric_configs": metric_configs,
+            "timeline_field_mapping": timeline_field_mapping,
         }
         
         return success_response(response_data)

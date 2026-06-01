@@ -23,12 +23,9 @@
 
     <div class="timeline-content" v-if="hasTimelineData" @wheel.prevent="handleWheelZoom">
       <div class="timeline-track">
-        <div class="track-labels">
-          <div class="track-label">音频</div>
-        </div>
-        <div class="track-container">
+        <div class="track-container" :style="{ height: trackHeight + 'px' }">
           <div
-            v-for="(audio, idx) in audioList"
+            v-for="(audio, idx) in layeredAudioList"
             :key="audio.id || `audio-${idx}`"
             class="audio-segment"
             :class="getAudioClass(audio)"
@@ -115,6 +112,39 @@ const hasTimelineData = computed(() => {
   return props.audioList && props.audioList.length > 0;
 });
 
+// 交叠音频垂直分层：贪心算法，将重叠的音频段分配到不同层（泳道）
+const layeredAudioList = computed(() => {
+  if (!props.audioList || props.audioList.length === 0) return [];
+  
+  const sorted = [...props.audioList].sort((a, b) => 
+    (a.timelineStart || 0) - (b.timelineStart || 0)
+  );
+  
+  const layerEnds = []; // 每层最后一个音频的 timelineEnd
+  
+  sorted.forEach(audio => {
+    const start = audio.timelineStart || 0;
+    let layerIdx = layerEnds.findIndex(end => start >= end);
+    
+    if (layerIdx === -1) {
+      layerIdx = layerEnds.length;
+      layerEnds.push(0);
+    }
+    
+    audio._layer = layerIdx;
+    layerEnds[layerIdx] = audio.timelineEnd || (start + (audio.duration || 1));
+  });
+  
+  return sorted;
+});
+
+const layerCount = computed(() => {
+  if (!layeredAudioList.value.length) return 1;
+  return Math.max(...layeredAudioList.value.map(a => (a._layer || 0) + 1));
+});
+
+const trackHeight = computed(() => 48 * layerCount.value);
+
 const totalDuration = computed(() => {
   if (!props.audioList || props.audioList.length === 0) return 10;
   const maxEnd = Math.max(...props.audioList.map(a => a.timelineEnd || a.duration || 0));
@@ -129,7 +159,8 @@ const timeTicks = computed(() => {
   const duration = effectiveDuration.value;
   const ticks = [];
   const interval = duration <= 10 ? 2 : (duration <= 30 ? 5 : 10);
-  for (let i = 0; i <= duration; i += interval) {
+  // 不包含起点（i > 0）和终点（i < duration），分别由 .scale-start 和 .scale-end 显示
+  for (let i = interval; i < duration; i += interval) {
     ticks.push({
       label: `${i}s`,
       percent: (i / duration) * 100
@@ -150,10 +181,13 @@ const getSegmentStyle = (audio) => {
   const end = audio.timelineEnd || (start + (audio.duration || 1));
   const duration = end - start;
   const maxDur = totalDuration.value / scale.value;
+  const layer = audio._layer || 0;
+  const layerHeight = 48;
 
   return {
     left: `${(start / maxDur) * 100}%`,
-    width: `${Math.max((duration / maxDur) * 100, 5)}%`
+    width: `${Math.max((duration / maxDur) * 100, 5)}%`,
+    top: `${layer * layerHeight + 4}px`
   };
 };
 
@@ -186,16 +220,16 @@ const formatDuration = (seconds) => {
 };
 
 const handleWheelZoom = (event) => {
-  const delta = event.deltaY > 0 ? -0.2 : 0.2;
-  scale.value = Math.max(0.5, Math.min(5, scale.value + delta));
+  const factor = event.deltaY > 0 ? 1 / 1.2 : 1.2;
+  scale.value = Math.max(0.5, Math.min(100, scale.value * factor));
 };
 
 const zoomIn = () => {
-  scale.value = Math.min(5, scale.value + 0.2);
+  scale.value = Math.min(100, scale.value * 1.2);
 };
 
 const zoomOut = () => {
-  scale.value = Math.max(0.5, scale.value - 0.2);
+  scale.value = Math.max(0.5, scale.value / 1.2);
 };
 
 const resetZoom = () => {
@@ -285,28 +319,12 @@ const closeAudioModal = () => {
 
 .timeline-track {
   display: flex;
-  gap: 12px;
-}
-
-.track-labels {
-  width: 60px;
-  flex-shrink: 0;
-}
-
-.track-label {
-  font-size: 12px;
-  font-weight: 500;
-  color: #888;
-  height: 48px;
-  display: flex;
-  align-items: center;
 }
 
 .track-container {
   flex: 1;
   position: relative;
-  height: 48px;
-  background: #f5f5f5;
+  background: #fff;
   border-radius: 6px;
   border: 1px solid #e8e8e8;
   overflow: hidden;
@@ -315,7 +333,6 @@ const closeAudioModal = () => {
 .audio-segment {
   position: absolute;
   height: 40px;
-  top: 4px;
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s;
@@ -389,15 +406,20 @@ const closeAudioModal = () => {
   display: flex;
   align-items: center;
   padding: 8px 0;
-  padding-left: 72px;
   font-size: 12px;
   color: #888;
 }
 
-.scale-start,
-.scale-end {
+.scale-start {
   flex-shrink: 0;
   width: 40px;
+}
+
+.scale-end {
+  flex-shrink: 0;
+  min-width: 55px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .scale-bar {

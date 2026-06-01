@@ -45,45 +45,39 @@
         </div>
       </div>
 
-      <div class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
+      <!-- 执行结果与指标 - 有任何数据时才显示 -->
+      <div v-if="hasAnyResultData" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
         <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
           <i class="fas fa-chart-bar" style="color: var(--primary-color);"></i>
           执行结果与指标
         </h5>
-        
-        <div v-if="!detail.results || detail.results.length === 0" class="no-items-message" style="text-align: center; padding: 30px; color: var(--text-secondary);">
+        <TestCaseReportDetail 
+          :isComparison="true"
+          :devices="detail.devices"
+          :comparisonData="preparedComparisonData"
+          :metricConfigs="detail.metricConfigs"
+          :audioList="detail.audioList"
+          :referenceAsr="extractReferenceText(detail.referenceParams, 'asr_reference_text')"
+          :referenceTrans="extractReferenceText(detail.referenceParams, 'translation_reference_text')"
+          :algorithmResults="detail.algorithmResults"
+          :referenceParams="detail.referenceParams"
+          :algorithmType="detail.algorithmType"
+          :results="detail.results"
+        />
+      </div>
+      
+      <!-- 完全没有执行数据时的提示 -->
+      <div v-else-if="!detail.results || detail.results.length === 0" class="results-section" style="margin-top: 24px; background-color: var(--background-primary); border-radius: var(--border-radius-lg); box-shadow: var(--shadow-sm); padding: 20px; border: 1px solid var(--border-color);">
+        <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+          <i class="fas fa-chart-bar" style="color: var(--primary-color);"></i>
+          执行结果与指标
+        </h5>
+        <div class="no-items-message" style="text-align: center; padding: 30px; color: var(--text-secondary);">
           暂无执行结果
-        </div>
-        
-        <div v-else v-for="result in detail.results" :key="result.id" class="result-card-modern" style="margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); overflow: hidden;">
-          <div class="result-card-header" style="background-color: var(--background-secondary); padding: 10px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color);">
-            <div style="font-weight: 500; font-size: 14px;">
-              <i class="fas fa-mobile-alt" style="margin-right: 6px; color: var(--text-secondary);"></i>
-              {{ result.deviceName || result.deviceId || '' }}
-            </div>
-            <div v-if="result.apiName" style="font-size: 13px; color: var(--text-secondary);">
-              API{{ result.apiName }}
-            </div>
-          </div>
-          
-          <div class="result-card-body" style="padding: 16px;">
-            <TestCaseReportDetail 
-              :dimensions="result.dimensions"
-              :audioPath="result.resultData?.audioPath"
-              :asrResult="result.asrResult"
-              :transResult="result.translationResult"
-              :referenceAsr="result.referenceAsrText || detail.referenceAsrText"
-              :referenceTrans="result.referenceTranslationText || detail.referenceTranslationText"
-              :problemsAndDiagnostics="result.problemsAndDiagnostics || []"
-              :algorithmResults="detail.algorithmResults || {}"
-              :referenceParams="detail.referenceParams || {}"
-              :algorithmType="detail.algorithmType || ''"
-              :results="detail.results || []"
-            />
-          </div>
         </div>
       </div>
 
+      <!-- 执行日志 -->
       <div class="logs-section" style="margin-top: 24px;">
         <h5 style="margin: 0 0 16px 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
           <i class="fas fa-terminal" style="color: var(--primary-color);"></i>
@@ -105,7 +99,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { tasksApi, logsApi } from '../../../utils/api'
 import TestCaseReportDetail from '../TestCaseReportDetail.vue'
 
@@ -118,6 +112,76 @@ const loading = ref(true)
 const error = ref(null)
 const detail = ref(null)
 const logContainer = ref(null)
+
+// 准备对比数据：按设备分组指标和文本
+const preparedComparisonData = computed(() => {
+  if (!detail.value?.results || !detail.value.devices?.length) return {}
+  const data = {}
+  detail.value.devices.forEach(device => {
+    const deviceResult = detail.value.results.find(r => r.deviceName === device)
+    const metricsMap = {}
+    if (deviceResult?.dimensions) {
+      deviceResult.dimensions.forEach(d => {
+        if (d.name) {
+          metricsMap[d.name] = { metric: d.name, value: d.score ?? d.value }
+        }
+      })
+    }
+    data[device] = {
+      metrics: metricsMap,
+      asr: { text: deviceResult?.asrResult || deviceResult?.asr_result || '-' },
+      trans: { text: deviceResult?.translationResult || deviceResult?.translation_result || '-' }
+    }
+  })
+  return data
+})
+
+// 从结构化 referenceParams 提取参考文本
+const extractReferenceText = (refParams, key) => {
+  if (!refParams) return ''
+  const param = refParams[key]
+  if (!param) return ''
+  return param.e2e || param.api || param.value || param.text || ''
+}
+
+// 检查是否有任何结果数据可显示
+const hasAnyResultData = computed(() => {
+  if (!detail.value) return false
+  const d = detail.value
+  
+  // 有设备结果
+  if (d.devices && d.devices.length > 0) return true
+  
+  // 有音频列表
+  if (d.audioList && d.audioList.length > 0) return true
+  
+  // 有指标数据
+  if (d.metricConfigs && d.metricConfigs.length > 0) return true
+  
+  // 有时间轴数据 (RTTM/STM)
+  if (d.algorithmResults && typeof d.algorithmResults === 'object') {
+    const keys = Object.keys(d.algorithmResults)
+    const timelineKeywords = ['rttm', 'stm', 'segment', 'timeline']
+    for (const key of keys) {
+      if (timelineKeywords.some(tk => key.toLowerCase().includes(tk))) return true
+      const val = d.algorithmResults[key]
+      if (val && typeof val === 'object') {
+        for (const subKey of Object.keys(val)) {
+          if (timelineKeywords.some(tk => subKey.toLowerCase().includes(tk))) return true
+        }
+      }
+    }
+  }
+  
+  // 有参考文本
+  if (d.referenceParams) {
+    const asr = d.referenceParams['asr_reference_text']
+    const trans = d.referenceParams['translation_reference_text']
+    if (asr?.e2e || asr?.api || trans?.e2e || trans?.api) return true
+  }
+  
+  return false
+})
 
 const fetchDetail = async () => {
   loading.value = true
@@ -137,6 +201,13 @@ const fetchDetail = async () => {
       referenceTranslationText: detailData.reference_translation_text,
       errorMessage: detailData.error_message,
       results: resultsData.results || [],
+      // 新增：后端现在返回完整的对比展示数据
+      audioList: detailData.audio_list || [],
+      referenceParams: detailData.reference_params || {},
+      algorithmResults: detailData.algorithm_results || {},
+      algorithmType: detailData.algorithm_type || '',
+      devices: detailData.devices || [],
+      metricConfigs: detailData.metric_configs || [],
       logs: []
     }
     
@@ -230,21 +301,6 @@ onMounted(() => {
 .status-tag.inProgress { background-color: var(--warning-light); color: var(--warning-color); }
 .status-tag.pending { background-color: var(--secondary-light); color: var(--secondary-color); }
 
-.score-text-5 { color: var(--success-color); }
-.score-text-4 { color: #73d13d; }
-.score-text-3 { color: var(--warning-color); }
-.score-text-2 { color: #ff7a45; }
-.score-text-1 { color: var(--error-color); }
-.score-text-none { color: var(--text-disabled); }
-
-.score-badge { display: inline-block; }
-.score-badge.score-5 { background-color: var(--success-light); color: var(--success-color); }
-.score-badge.score-4 { background-color: #f6ffed; color: #52c41a; border: 1px solid #b7eb8f; }
-.score-badge.score-3 { background-color: var(--warning-light); color: var(--warning-color); }
-.score-badge.score-2 { background-color: #fff2e8; color: #fa541c; border: 1px solid #ffbb96; }
-.score-badge.score-1 { background-color: var(--error-light); color: var(--error-color); }
-.score-badge.score-0 { background-color: var(--secondary-light); color: var(--secondary-color); }
-
 .log-line.error .log-lvl { background-color: #f85149; color: white; }
 .log-line.warn .log-lvl { background-color: #d29922; color: white; }
 .log-line.info .log-lvl { background-color: #388bfd; color: white; }
@@ -268,10 +324,6 @@ onMounted(() => {
 
 .modern-log-container::-webkit-scrollbar-thumb:hover {
   background: #444;
-}
-
-.modern-audio-player::-webkit-media-controls-panel {
-  background-color: var(--primary-light);
 }
 
 .btn {

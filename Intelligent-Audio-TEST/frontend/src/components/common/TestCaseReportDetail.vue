@@ -1,6 +1,6 @@
 <template>
   <div class="test-case-report-detail">
-    <div class="detail-section">
+    <div v-if="hasMetrics" class="detail-section">
       <h4 class="section-title"><i class="fas fa-chart-bar"></i> 评分指标</h4>
       <div class="metrics-table-wrapper">
         <DataTable
@@ -85,7 +85,7 @@
         @close="closeAudioModal"
       />
 
-    <div class="detail-section">
+    <div v-if="hasTextResults" class="detail-section">
       <h4 class="section-title"><i class="fas fa-play-circle"></i> 执行结果</h4>
       
 
@@ -283,50 +283,49 @@ const getAudioUrl = (audio) => {
 
 const hasAudio = computed(() => props.audioPath || props.audioList.length > 0);
 
+// 是否有评分指标数据
+const hasMetrics = computed(() => {
+  if (props.isComparison) {
+    return allMetricNames.value.length > 0;
+  }
+  return (props.dimensions && props.dimensions.length > 0) || 
+         (props.metrics && props.metrics.length > 0);
+});
+
+// 是否有文本结果（ASR/翻译）
+const hasTextResults = computed(() => {
+  // 检查参考文本
+  if (props.referenceAsr && props.referenceAsr.trim()) return true;
+  if (props.referenceTrans && props.referenceTrans.trim()) return true;
+  
+  if (props.isComparison) {
+    // 检查各设备的 ASR/翻译结果
+    for (const device of props.devices) {
+      const data = props.comparisonData[device];
+      if (data?.asr?.text && data.asr.text !== '-' && data.asr.text.trim()) return true;
+      if (data?.trans?.text && data.trans.text !== '-' && data.trans.text.trim()) return true;
+    }
+  } else {
+    if (props.asrResult && props.asrResult.trim()) return true;
+    if (props.transResult && props.transResult.trim()) return true;
+  }
+  return false;
+});
+
 const audioListWithTimeline = computed(() => {
   const list = props.audioList || [];
   if (list.length === 0) return [];
   
-  const hasTimelineInfo = list.some(a => 
-    a.timelineStart !== undefined || 
-    a.timelineEnd !== undefined ||
-    a.timeline_start !== undefined ||
-    a.timeline_end !== undefined
-  );
-  
-  if (hasTimelineInfo) {
-    return list.map(a => ({
-      ...a,
-      timelineStart: a.timelineStart ?? a.timeline_start ?? 0,
-      timelineEnd: a.timelineEnd ?? a.timeline_end ?? (a.duration || 0),
-      testType: a.testType ?? a.test_type ?? a.audio_type ?? 'api',
-      playOrder: a.playOrder ?? a.play_order,
-      playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
-    }));
-  }
-  
-  const sortedList = [...list].sort((a, b) => {
-    const orderA = a.playOrder ?? a.play_order ?? 999;
-    const orderB = b.playOrder ?? b.play_order ?? 999;
-    return orderA - orderB;
-  });
-  
-  let cumulativeTime = 0;
-  return sortedList.map((a, idx) => {
-    const duration = a.duration || 0;
-    const start = idx === 0 ? 0 : cumulativeTime;
-    const end = start + duration;
-    cumulativeTime = end;
-    
-    return {
-      ...a,
-      timelineStart: start,
-      timelineEnd: end,
-      testType: a.testType ?? a.test_type ?? a.audio_type ?? 'api',
-      playOrder: a.playOrder ?? a.play_order,
-      playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
-    };
-  });
+  // 只做字段归一化，不再自行计算时间轴位置
+  // 后端已根据 overlap_rate/overlap_time 计算好 timelineStart/timelineEnd
+  return list.map(a => ({
+    ...a,
+    timelineStart: a.timelineStart ?? a.timeline_start ?? 0,
+    timelineEnd: a.timelineEnd ?? a.timeline_end ?? ((a.timelineStart ?? a.timeline_start ?? 0) + (a.duration || 0)),
+    testType: a.testType ?? a.test_type ?? a.audio_type ?? 'api',
+    playOrder: a.playOrder ?? a.play_order,
+    playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
+  }));
 });
 
 const hasTimelineData = computed(() => {

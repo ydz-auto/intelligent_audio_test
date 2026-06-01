@@ -31,9 +31,9 @@ class AlgorithmResultFieldMapper:
 
         返回格式:
         [
-            {"source_param": "rttm_res", "field_type": "json", "label": "RTTM结果"},
-            {"source_param": "stm_res", "field_type": "json", "label": "STM结果"},
-            {"source_param": "asr_result", "field_type": "text", "label": "ASR结果"},
+            {"source_param": "rttm_res", "param_type": "rttm", "label": "RTTM结果"},
+            {"source_param": "stm_res", "param_type": "stm", "label": "STM结果"},
+            {"source_param": "asr_result", "param_type": "text", "label": "ASR结果"},
             ...
         ]
 
@@ -47,12 +47,25 @@ class AlgorithmResultFieldMapper:
             return cls._output_field_cache[algorithm_type]
 
         try:
+            from backend.models.algorithm_models import AlgorithmDeviceParam, AlgorithmApiParam
+            
             mappings = ParamMapping.query.filter(
                 ParamMapping.algorithm_type == algorithm_type,
                 ParamMapping.source.in_(['api', 'device']),
                 ParamMapping.source_direction == 'output',
                 ParamMapping.deleted == False
             ).all()
+
+            # 构建 param_code → param_type 映射
+            param_type_map = {}
+            device_params = AlgorithmDeviceParam.query.filter_by(
+                algorithm_type=algorithm_type, direction='output', deleted=False
+            ).all()
+            api_params = AlgorithmApiParam.query.filter_by(
+                algorithm_type=algorithm_type, direction='output', deleted=False
+            ).all()
+            for p in device_params + api_params:
+                param_type_map[p.param_code] = p.param_type
 
             fields = []
             for m in mappings:
@@ -61,7 +74,8 @@ class AlgorithmResultFieldMapper:
                     'target_param': m.target_param,
                     'transform_type': m.transform_type,
                     'dimension_id': m.dimension_id,
-                    'dimension_name': m.dimension.name if m.dimension else None
+                    'dimension_name': m.dimension.name if m.dimension else None,
+                    'param_type': param_type_map.get(m.source_param, 'text')
                 }
                 fields.append(field_info)
 
@@ -85,8 +99,8 @@ class AlgorithmResultFieldMapper:
 
         返回格式:
         [
-            {"source_param": "asr_reference_text", "field_type": "text", "label": "ASR参考文本"},
-            {"source_param": "rttm_ref", "field_type": "json", "label": "RTTM参考"},
+            {"source_param": "asr_reference_text", "param_type": "text", "label": "ASR参考文本"},
+            {"source_param": "rttm_ref", "param_type": "rttm", "label": "RTTM参考"},
             ...
         ]
 
@@ -97,18 +111,29 @@ class AlgorithmResultFieldMapper:
             参考参数字段列表
         """
         try:
+            from backend.models.algorithm_models import AlgorithmReferenceParam
+            
             mappings = ParamMapping.query.filter_by(
                 algorithm_type=algorithm_type,
                 source='reference',
                 deleted=False
             ).all()
 
+            # 构建 code → param_type 映射
+            param_type_map = {}
+            ref_params = AlgorithmReferenceParam.query.filter_by(
+                algorithm_type=algorithm_type, deleted=False
+            ).all()
+            for p in ref_params:
+                param_type_map[p.code] = p.param_type
+
             fields = []
             for m in mappings:
                 field_info = {
                     'source_param': m.source_param,
                     'target_param': m.target_param,
-                    'transform_type': m.transform_type
+                    'transform_type': m.transform_type,
+                    'param_type': param_type_map.get(m.source_param, 'text')
                 }
                 fields.append(field_info)
 
@@ -222,6 +247,61 @@ class AlgorithmResultFieldMapper:
                 timeline_fields.append(field)
 
         return timeline_fields
+
+    @classmethod
+    def get_field_mapping(cls, algorithm_type: str) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        获取完整的字段映射（包含结果和参考字段，含 param_type）
+
+        返回格式:
+        {
+            "result": [
+                {"param_code": "rttm_res", "param_type": "rttm", "label": "RTTM结果"},
+                {"param_code": "asr_result", "param_type": "text", "label": "ASR结果"},
+            ],
+            "reference": [
+                {"param_code": "rttm_ref", "param_type": "rttm", "label": "RTTM参考"},
+                {"param_code": "asr_reference_text", "param_type": "text", "label": "ASR参考文本"},
+            ]
+        }
+
+        Args:
+            algorithm_type: 算法类型
+
+        Returns:
+            完整的字段映射
+        """
+        if not algorithm_type:
+            return {'result': [], 'reference': []}
+
+        # 结果字段
+        output_fields = cls.get_output_fields(algorithm_type)
+        result_fields = []
+        for f in output_fields:
+            param_code = f.get('target_param') or f.get('source_param')
+            result_fields.append({
+                'param_code': param_code,
+                'source_param': f.get('source_param'),
+                'param_type': f.get('param_type', 'text'),
+                'label': f.get('dimension_name') or param_code
+            })
+
+        # 参考字段
+        ref_output_fields = cls.get_reference_output_fields(algorithm_type)
+        reference_fields = []
+        for f in ref_output_fields:
+            param_code = f.get('target_param') or f.get('source_param')
+            reference_fields.append({
+                'param_code': param_code,
+                'source_param': f.get('source_param'),
+                'param_type': f.get('param_type', 'text'),
+                'label': param_code
+            })
+
+        return {
+            'result': result_fields,
+            'reference': reference_fields
+        }
 
     @classmethod
     def clear_cache(cls) -> None:

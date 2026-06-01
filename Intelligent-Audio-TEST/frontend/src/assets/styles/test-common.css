@@ -472,42 +472,6 @@
   font-size: 16px;
 }
 
-.comparison-report-container {
-  margin-top: 32px;
-}
-
-.comparison-header {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 20px;
-  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
-  margin-bottom: 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  align-items: center;
-  text-align: center;
-}
-
-.comparison-header h3 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-  color: #2c3e50;
-  background: linear-gradient(135deg, #FF6A00 0%, #FF8C40 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.comparison-header p {
-  margin: 0;
-  font-size: 15px;
-  color: #7f8c8d;
-  line-height: 1.5;
-  max-width: 600px;
-}
 
 .test-view-common .devices-container {
   display: grid;

@@ -5,6 +5,18 @@
         <i class="fas fa-layer-group"></i>
         <span>时间轴对比</span>
       </div>
+      <div class="zoom-controls">
+        <button @click="zoomOut" class="zoom-btn" title="缩小">
+          <i class="fas fa-search-minus"></i>
+        </button>
+        <span class="zoom-level">{{ scale.toFixed(1) }}x</span>
+        <button @click="zoomIn" class="zoom-btn" title="放大">
+          <i class="fas fa-search-plus"></i>
+        </button>
+        <button @click="resetZoom" class="zoom-btn" title="重置">
+          <i class="fas fa-undo"></i>
+        </button>
+      </div>
       <div class="timeline-controls">
         <select
           v-model="selectedResource"
@@ -36,12 +48,6 @@
             />
             <span>{{ spk }}</span>
           </label>
-        </div>
-        <div class="zoom-controls">
-          <button @click="zoomOut" class="zoom-btn" title="缩小">-</button>
-          <span class="zoom-level">{{ scale.toFixed(1) }}x</span>
-          <button @click="zoomIn" class="zoom-btn" title="放大">+</button>
-          <button @click="resetZoom" class="zoom-btn" title="重置">⟲</button>
         </div>
       </div>
     </div>
@@ -185,7 +191,8 @@ export default {
       const duration = this.effectiveDuration;
       const ticks = [];
       const interval = duration <= 10 ? 2 : (duration <= 30 ? 5 : 10);
-      for (let i = 0; i <= duration; i += interval) {
+      // 不包含起点（i > 0）和终点（i < duration），分别由 .scale-start 和 .scale-end 显示
+      for (let i = interval; i < duration; i += interval) {
         ticks.push({
           label: `${i}s`,
           percent: (i / duration) * 100
@@ -752,16 +759,16 @@ export default {
     },
 
     handleWheelZoom(event) {
-      const delta = event.deltaY > 0 ? -0.2 : 0.2;
-      this.scale = Math.max(0.5, Math.min(5, this.scale + delta));
+      const factor = event.deltaY > 0 ? (1 / 1.2) : 1.2;
+      this.scale = Math.max(0.5, Math.min(100, this.scale * factor));
     },
 
     zoomIn() {
-      this.scale = Math.min(5, this.scale + 0.2);
+      this.scale = Math.min(100, this.scale * 1.2);
     },
 
     zoomOut() {
-      this.scale = Math.max(0.5, this.scale - 0.2);
+      this.scale = Math.max(0.5, this.scale / 1.2);
     },
 
     resetZoom() {
@@ -789,9 +796,11 @@ export default {
 
 .timeline-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  gap: 8px;
 }
 
 .timeline-title {
@@ -805,6 +814,13 @@ export default {
 
 .timeline-title i {
   color: #1890ff;
+}
+
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-basis: 100%;
 }
 
 .resource-select {
@@ -867,6 +883,37 @@ export default {
   cursor: pointer;
   width: 14px;
   height: 14px;
+}
+
+.zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.zoom-btn {
+  padding: 4px 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zoom-btn:hover {
+  border-color: #1890ff;
+  color: #1890ff;
+}
+
+.zoom-level {
+  font-size: 13px;
+  color: #666;
+  min-width: 40px;
+  text-align: center;
 }
 
 .timeline-content {
@@ -1021,10 +1068,16 @@ export default {
   color: #888;
 }
 
-.scale-start,
-.scale-end {
+.scale-start {
   flex-shrink: 0;
   width: 30px;
+}
+
+.scale-end {
+  flex-shrink: 0;
+  min-width: 55px;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .scale-bar {
