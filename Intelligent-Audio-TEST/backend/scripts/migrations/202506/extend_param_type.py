@@ -33,6 +33,13 @@ PARAM_TYPE_RULES = [
 ]
 
 
+# transform_type → param_type 映射（Step 3 使用）
+TRANSFORM_TO_PARAM_TYPE = {
+    'rttm_to_obj': 'rttm',
+    'stm_to_obj': 'stm',
+}
+
+
 def migrate_param_type():
     engine = create_engine(POSTGRES_URI)
     
@@ -89,6 +96,40 @@ def migrate_param_type():
             else:
                 print(f"    共更新 {updated_in_table} 条")
 
+        print(f"\n=== Step 2 完成: 共更新 {total_updated} 条记录 ===")
+
+        # 3. 根据 param_mappings.transform_type 进一步推断
+        print("\n=== Step 3: 根据 param_mappings.transform_type 补充推断 ===")
+
+        step3_updated = 0
+        for transform_type, param_type in TRANSFORM_TO_PARAM_TYPE.items():
+            # 查找 transform_type 匹配的输出映射
+            mappings = conn.execute(text(
+                "SELECT source_param, source FROM param_mappings "
+                "WHERE transform_type = :tt AND source IN ('api', 'device') "
+                "AND source_direction = 'output' AND deleted = false"
+            ), {'tt': transform_type}).fetchall()
+
+            for m in mappings:
+                source_param, source = m[0], m[1]
+                table_name = 'algorithm_device_params' if source == 'device' else 'algorithm_api_params'
+
+                result = conn.execute(text(
+                    f"UPDATE {table_name} SET param_type = :pt "
+                    f"WHERE param_code = :code AND direction = 'output' AND deleted = false "
+                    f"AND param_type = 'text'"
+                ), {'pt': param_type, 'code': source_param})
+
+                if result.rowcount > 0:
+                    print(f"    [{source}] {source_param}: text -> {param_type} (来自 transform_type={transform_type})")
+                    step3_updated += result.rowcount
+
+        if step3_updated == 0:
+            print("    (无需更新)")
+        else:
+            print(f"    共更新 {step3_updated} 条")
+
+        total_updated += step3_updated
         print(f"\n=== 完成: 共更新 {total_updated} 条记录 ===")
         print("提示: 如有未自动识别的字段，请在算法配置页面手动修改 param_type")
 
@@ -105,6 +146,9 @@ if __name__ == '__main__':
     print("2. 根据 param_code 关键词推断 param_type:")
     for keywords, ptype in PARAM_TYPE_RULES:
         print(f"   - 包含 {keywords} -> {ptype}")
+    print("3. 根据 param_mappings.transform_type 补充推断:")
+    for tt, pt in TRANSFORM_TO_PARAM_TYPE.items():
+        print(f"   - {tt} -> {pt}")
     print()
 
     confirm = input("是否继续？(y/N): ").strip().lower()

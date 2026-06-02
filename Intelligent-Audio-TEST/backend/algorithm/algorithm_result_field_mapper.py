@@ -24,6 +24,23 @@ class AlgorithmResultFieldMapper:
 
     _output_field_cache: Dict[str, List[Dict[str, Any]]] = {}
 
+    # transform_type → param_type 映射，用于 param_type_map 未命中时的 fallback
+    _TRANSFORM_TO_PARAM_TYPE = {
+        'rttm_to_obj': 'rttm',
+        'stm_to_obj': 'stm',
+    }
+
+    @staticmethod
+    def _resolve_param_type(param_type_map: Dict[str, str], source_param: str, transform_type: str) -> str:
+        """
+        解析 param_type：优先用 param_type_map，未命中时用 transform_type 推断
+        """
+        if source_param in param_type_map:
+            return param_type_map[source_param]
+        if transform_type in AlgorithmResultFieldMapper._TRANSFORM_TO_PARAM_TYPE:
+            return AlgorithmResultFieldMapper._TRANSFORM_TO_PARAM_TYPE[transform_type]
+        return 'text'
+
     @classmethod
     def get_output_fields(cls, algorithm_type: str) -> List[Dict[str, Any]]:
         """
@@ -75,7 +92,7 @@ class AlgorithmResultFieldMapper:
                     'transform_type': m.transform_type,
                     'dimension_id': m.dimension_id,
                     'dimension_name': m.dimension.name if m.dimension else None,
-                    'param_type': param_type_map.get(m.source_param, 'text')
+                    'param_type': cls._resolve_param_type(param_type_map, m.source_param, m.transform_type or 'none')
                 }
                 fields.append(field_info)
 
@@ -133,7 +150,7 @@ class AlgorithmResultFieldMapper:
                     'source_param': m.source_param,
                     'target_param': m.target_param,
                     'transform_type': m.transform_type,
-                    'param_type': param_type_map.get(m.source_param, 'text')
+                    'param_type': cls._resolve_param_type(param_type_map, m.source_param, m.transform_type or 'none')
                 }
                 fields.append(field_info)
 
