@@ -997,7 +997,7 @@ const normalizeCasesForUi = (caseItems) => {
       const asrMap = toTextMap(c.asr)
       const tranMap = toTextMap(c.translation)
       
-      const algoResults = c.algorithmResults || c.algorithm_results || c.algorithmResults || {}
+      const algoResults = c.algorithmResults || c.algorithm_results || c.algorithmResults || []
       const refParams = c.referenceParams || c.reference_params || c.referenceParams || {}
       
       return {

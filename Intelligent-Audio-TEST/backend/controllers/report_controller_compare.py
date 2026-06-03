@@ -7,12 +7,24 @@ from backend.utils.error_codes import ErrorCode
 from backend.utils.report_utils import ReportUtils
 from backend.utils.report_query_builder import ReportQueryBuilder
 from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
-from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
 from backend.schemas.report import CompareReportsRequest
 from datetime import datetime, timedelta, timezone
 import json
 from backend.controllers.report_controller_base import ReportControllerBase
 from backend.schemas.report import ReportIdData
+
+
+def _infer_param_type(param_key: str) -> str:
+    """根据参数键名推断 param_type"""
+    key_lower = param_key.lower()
+    if 'rttm' in key_lower:
+        return 'rttm'
+    if 'stm' in key_lower:
+        return 'stm'
+    if 'audio' in key_lower:
+        return 'audio'
+    return 'text'
+
 
 class ReportControllerCompare(ReportControllerBase):
     
@@ -167,13 +179,10 @@ class ReportControllerCompare(ReportControllerBase):
                 "results": [],
                 "audios": audios_list,
                 "reference_params": reference_params_dict,
-                "algorithm_results": {},
+                "algorithm_results": [],
                 "algorithm_type": test_case.algorithm_type,
                 "logs": "\n".join([result.error_message for result in case_results if result.error_message])
             }
-
-            algorithm_type = test_case.algorithm_type
-            output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type) if algorithm_type else []
 
             for result in case_results:
                 task = tasks_map.get(result.task_id)
@@ -197,9 +206,6 @@ class ReportControllerCompare(ReportControllerBase):
                 else:
                     result_data = None
 
-                if not case_obj["algorithm_results"].get(resource):
-                    case_obj["algorithm_results"][resource] = {}
-
                 if algo_res or result_data:
                     combined_data = {}
                     if algo_res:
@@ -207,10 +213,17 @@ class ReportControllerCompare(ReportControllerBase):
                     if result_data:
                         combined_data.update(result_data)
 
-                    for field in output_fields:
-                        source_param = field.get('source_param')
-                        if source_param and combined_data.get(source_param):
-                            case_obj["algorithm_results"][resource][source_param] = combined_data.get(source_param)
+                    # 扁平列表格式，与 task_controller.py 一致
+                    for param_key, param_value in combined_data.items():
+                        if param_key and param_value is not None:
+                            param_type = _infer_param_type(param_key)
+                            case_obj["algorithm_results"].append({
+                                'device': resource,
+                                'param_code': param_key,
+                                'param_type': param_type,
+                                'label': param_key,
+                                'value': param_value
+                            })
             
             cases.append(case_obj)
         

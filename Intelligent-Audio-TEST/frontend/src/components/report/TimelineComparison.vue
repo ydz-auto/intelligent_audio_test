@@ -520,9 +520,6 @@ export default {
       return [];
     },
 
-      return [];
-    },
-
     parseTimelineData(data) {
       if (!data) return [];
       

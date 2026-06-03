@@ -368,13 +368,10 @@ const hasMetrics = computed(() => {
          (props.metrics && props.metrics.length > 0);
 });
 
-// 是否有文本结果（ASR/翻译）
+// 是否有文本结果
 const hasTextResults = computed(() => {
-  // 使用 fieldMapping 动态判断
-  if (props.fieldMapping && ((props.fieldMapping.reference || []).length > 0 || (props.fieldMapping.result || []).length > 0)) {
-    if (referenceTextFields.value.length > 0 || resultTextFields.value.length > 0) return true;
-    return false;
-  }
+  // 动态字段（来自 fieldMapping 或 algorithmResults/referenceParams）
+  if (referenceTextFields.value.length > 0 || resultTextFields.value.length > 0) return true;
   // 回退：硬编码检查
   if (props.referenceAsr && props.referenceAsr.trim()) return true;
   if (props.referenceTrans && props.referenceTrans.trim()) return true;
@@ -393,15 +390,29 @@ const hasTextResults = computed(() => {
 
 // 动态参考文本字段
 const referenceTextFields = computed(() => {
+  // 优先使用 fieldMapping
   const refFields = (props.fieldMapping?.reference || [])
     .filter(f => f.param_type === 'text');
-  if (refFields.length === 0) return [];
+  if (refFields.length > 0) {
+    const result = [];
+    for (const field of refFields) {
+      const text = getReferenceTextValue(field.param_code);
+      if (text && text.trim() && text !== '无数据') {
+        result.push({ ...field, text });
+      }
+    }
+    return result;
+  }
 
+  // 回退：从 referenceParams 中提取 text 类型参数
+  const refParams = props.referenceParams || {};
   const result = [];
-  for (const field of refFields) {
-    const text = getReferenceTextValue(field.param_code);
-    if (text && text.trim() && text !== '无数据') {
-      result.push({ ...field, text });
+  for (const [code, data] of Object.entries(refParams)) {
+    if (!data || typeof data !== 'object') continue;
+    if (data.type !== 'text') continue;
+    const text = data.e2e?.text || data.api?.text || data.text || data.value || '';
+    if (typeof text === 'string' && text.trim()) {
+      result.push({ param_code: code, label: code, param_type: 'text', text });
     }
   }
   return result;
@@ -409,13 +420,33 @@ const referenceTextFields = computed(() => {
 
 // 动态结果文本字段
 const resultTextFields = computed(() => {
+  // 优先使用 fieldMapping
   const fields = (props.fieldMapping?.result || [])
     .filter(f => f.param_type === 'text');
-  if (fields.length === 0) return [];
-  return fields.map(f => ({
-    ...f,
-    getValue: (device) => getResultTextValue(device, f.param_code)
-  }));
+  if (fields.length > 0) {
+    return fields.map(f => ({
+      ...f,
+      getValue: (device) => getResultTextValue(device, f.param_code)
+    }));
+  }
+
+  // 回退：从 algorithmResults 数组中提取 text 类型项
+  const algoResults = props.algorithmResults || [];
+  if (!Array.isArray(algoResults)) return [];
+  const textItems = [];
+  const seenCodes = new Set();
+  for (const item of algoResults) {
+    if (item.param_type === 'text' && !seenCodes.has(item.param_code)) {
+      seenCodes.add(item.param_code);
+      textItems.push({
+        param_code: item.param_code,
+        label: item.label || item.param_code,
+        param_type: 'text',
+        getValue: (device) => getResultTextValue(device, item.param_code)
+      });
+    }
+  }
+  return textItems;
 });
 
 // 是否有结果音频

@@ -1197,9 +1197,17 @@ class ReportUtils:
                             normalized_ref_params[code]["json"] = param_info.get('json')
                     new_case['reference_params'] = normalized_ref_params
                 
-                # 处理 algorithm_results 字段（动态保留所有算法结果字段）
+                # 处理 algorithm_results 字段（兼容 dict 和数组格式）
                 algorithm_results = case.get('algorithm_results')
-                if isinstance(algorithm_results, dict) and algorithm_results:
+                if isinstance(algorithm_results, list) and algorithm_results:
+                    # 新格式：扁平列表 [{device, param_code, param_type, label, value}, ...]
+                    normalized_algo_list = []
+                    for item in algorithm_results:
+                        if isinstance(item, dict) and item.get('value') is not None:
+                            normalized_algo_list.append(item)
+                    new_case['algorithm_results'] = normalized_algo_list
+                elif isinstance(algorithm_results, dict) and algorithm_results:
+                    # 旧格式：dict {resource: {param_key: value}}
                     normalized_algo_results = {}
                     for resource, algo_data in algorithm_results.items():
                         if not isinstance(algo_data, dict):
