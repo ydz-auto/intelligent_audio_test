@@ -419,9 +419,9 @@ class TaskController:
             logging.getLogger(__name__).warning(f"构建 reference_params 失败: {e}")
             reference_params = {}
         
-        # 7. 构建 algorithm_results（按资源分组）
+        # 7. 构建 algorithm_results（扁平列表，每项含 device/param_code/param_type/label/value）
         algorithm_type = case_info.algorithm_type if case_info and hasattr(case_info, 'algorithm_type') else ''
-        algorithm_results = {}
+        algorithm_results = []
         try:
             from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type) if algorithm_type else []
@@ -429,8 +429,6 @@ class TaskController:
             for i, result in enumerate(results):
                 pr = processed_results[i]
                 resource = pr['device_name'] or pr['api_name'] or f'result_{result.id}'
-                if not algorithm_results.get(resource):
-                    algorithm_results[resource] = {}
                 
                 algo_res = result.algorithm_result or {}
                 r_data = result.result_data
@@ -447,7 +445,13 @@ class TaskController:
                 for field in output_fields:
                     param_key = field.get('target_param') or field.get('source_param')
                     if param_key and combined_data.get(param_key):
-                        algorithm_results[resource][param_key] = combined_data[param_key]
+                        algorithm_results.append({
+                            'device': resource,
+                            'param_code': param_key,
+                            'param_type': field.get('param_type', 'text'),
+                            'label': field.get('dimension_name') or param_key,
+                            'value': combined_data[param_key]
+                        })
         except Exception as e:
             import logging
             logging.getLogger(__name__).warning(f"构建 algorithm_results 失败: {e}")

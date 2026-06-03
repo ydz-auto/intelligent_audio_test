@@ -58,18 +58,18 @@
           </template>
         </DataTable>
       </div>
-
-      <TimelineComparison
-        v-if="hasTimelineData"
-        :algorithmResults="algorithmResults"
-        :referenceParams="referenceParams"
-        :algorithmType="algorithmType"
-        :results="results"
-        :fieldMapping="fieldMapping"
-      />
-
     </div>
-      <div v-if="hasAudio" class="audio-results-container">
+
+    <TimelineComparison
+      v-if="hasTimelineData"
+      :algorithmResults="algorithmResults"
+      :referenceParams="referenceParams"
+      :algorithmType="algorithmType"
+      :results="results"
+      :fieldMapping="fieldMapping"
+    />
+
+    <div v-if="hasAudio" class="audio-results-container">
         <AudioTimelineVisualization
           :audioList="audioListWithTimeline"
         />
@@ -274,7 +274,7 @@ const props = defineProps({
   referenceAsr: String,
   referenceTrans: String,
   resourceHeaders: { type: Array, default: () => [] },
-  algorithmResults: { type: Object, default: () => ({}) },
+  algorithmResults: { type: Array, default: () => [] },
   referenceParams: { type: Object, default: () => ({}) },
   algorithmType: { type: String, default: '' },
   results: { type: Array, default: () => [] },
@@ -371,9 +371,8 @@ const hasMetrics = computed(() => {
 // 是否有文本结果（ASR/翻译）
 const hasTextResults = computed(() => {
   // 使用 fieldMapping 动态判断
-  if (props.fieldMapping && (props.fieldMapping.reference || []).length > 0) {
-    if (referenceTextFields.value.length > 0) return true;
-    if (resultTextFields.value.length > 0) return true;
+  if (props.fieldMapping && ((props.fieldMapping.reference || []).length > 0 || (props.fieldMapping.result || []).length > 0)) {
+    if (referenceTextFields.value.length > 0 || resultTextFields.value.length > 0) return true;
     return false;
   }
   // 回退：硬编码检查
@@ -452,42 +451,24 @@ const hasTimelineData = computed(() => {
     if (hasResultTimeline || hasRefTimeline) return true;
   }
 
-  // 回退：关键词匹配
+  // 检查 algorithmResults 数组
   const algoResults = props.algorithmResults;
-  if (!algoResults || typeof algoResults !== 'object') return false;
-
-  const timelineKeywords = ['rttm', 'stm', 'segment', 'timeline'];
-  const keys = Object.keys(algoResults);
-  
-  const isFlatStructure = keys.some(k => 
-    timelineKeywords.some(tk => k.toLowerCase().includes(tk))
-  );
-  
-  if (isFlatStructure) {
-    for (const key of keys) {
-      if (timelineKeywords.some(k => key.toLowerCase().includes(k))) {
-        const value = algoResults[key];
-        if (value && (Array.isArray(value) || typeof value === 'object')) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  for (const resource of keys) {
-    const data = algoResults[resource];
-    if (!data || typeof data !== 'object') continue;
-
-    for (const key of Object.keys(data)) {
-      if (timelineKeywords.some(k => key.toLowerCase().includes(k))) {
-        const value = data[key];
-        if (value && (Array.isArray(value) || typeof value === 'object')) {
-          return true;
-        }
-      }
+  if (Array.isArray(algoResults)) {
+    if (algoResults.some(item => ['rttm', 'stm', 'json'].includes(item.param_type))) {
+      return true;
     }
   }
+
+  // 检查 referenceParams 中的时间轴数据
+  const refParams = props.referenceParams;
+  if (refParams && typeof refParams === 'object') {
+    const timelineKeyPattern = /rttm|stm/i;
+    for (const [key, value] of Object.entries(refParams)) {
+      if (timelineKeyPattern.test(key) && value) return true;
+      if (value && typeof value === 'object' && ['rttm', 'stm'].includes(value.type)) return true;
+    }
+  }
+
   return false;
 });
 
@@ -656,27 +637,21 @@ const getReferenceTextValue = (paramCode) => {
   return data.e2e?.text || data.api?.text || data.text || data.value || '';
 };
 
-// 从结果数据中提取文本值
+// 从结果数据中提取文本值（algorithmResults 现在是扁平数组）
 const getResultTextValue = (device, paramCode) => {
-  if (!props.isComparison || device === 'default') {
-    // 从 algorithmResults 中提取
-    const algoRes = props.algorithmResults || {};
-    const flatData = algoRes[paramCode] || algoRes;
-    if (typeof flatData === 'string') return flatData;
-    if (flatData?.text) return flatData.text;
-    return '无数据';
+  const items = props.algorithmResults || [];
+  let item;
+  if (props.isComparison && device !== 'default') {
+    item = items.find(i => i.device === device && i.param_code === paramCode);
+  } else {
+    item = items.find(i => i.param_code === paramCode);
   }
-  // 从 comparisonData 中提取
-  const deviceData = props.comparisonData[device];
-  if (!deviceData) return '无数据';
-  // 尝试从 deviceData 中查找匹配的文本
-  const rawResult = deviceData.rawResult || deviceData.algorithmResult || {};
-  if (rawResult[paramCode]) {
-    const val = rawResult[paramCode];
-    if (typeof val === 'string') return val;
-    return val.text || val.value || JSON.stringify(val);
-  }
-  return '无数据';
+  if (!item || item.value === undefined || item.value === null) return '无数据';
+  const data = item.value;
+  if (typeof data === 'string') return data;
+  if (data.text) return data.text;
+  if (data.value) return data.value;
+  return JSON.stringify(data);
 };
 
 const expandedTexts = ref({});

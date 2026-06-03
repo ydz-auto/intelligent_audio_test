@@ -132,8 +132,8 @@ export default {
   name: 'TimelineComparison',
   props: {
     algorithmResults: {
-      type: Object,
-      default: () => ({})
+      type: Array,
+      default: () => []
     },
     referenceParams: {
       type: Object,
@@ -206,31 +206,20 @@ export default {
     },
 
     resources() {
+      // 优先从 results 获取
       const results = this.results || [];
-      
       if (results.length > 0) {
         return results.map(r => r.resource);
       }
-      
-      const algoResults = this.algorithmResults || {};
-      const keys = Object.keys(algoResults);
-      
-      if (keys.length === 0) {
-        return ['default'];
+
+      // 从 algorithmResults 数组获取唯一设备名
+      const algoResults = this.algorithmResults || [];
+      if (Array.isArray(algoResults) && algoResults.length > 0) {
+        const devices = [...new Set(algoResults.map(i => i.device).filter(Boolean))];
+        return devices.length > 0 ? devices : ['default'];
       }
-      
-      const firstValue = algoResults[keys[0]];
-      if (firstValue && typeof firstValue === 'object') {
-        const nestedKeys = Object.keys(firstValue);
-        const hasTimelineData = nestedKeys.some(k => 
-          ['rttm', 'stm', 'segment', 'timeline'].some(key => k.toLowerCase().includes(key))
-        );
-        if (hasTimelineData) {
-          return keys.length > 1 ? keys : ['default'];
-        }
-      }
-      
-      return keys.length > 1 ? keys : ['default'];
+
+      return ['default'];
     },
     hasTimelineData() {
       const refData = this.cachedReferenceData;
@@ -465,10 +454,10 @@ export default {
     },
 
     getTimelineData(type) {
-      const algoResults = this.algorithmResults || {};
+      const algoResults = this.algorithmResults || [];
       const refParams = this.referenceParams || {};
       const selectedResource = this.selectedResource;
-      
+
       // 从 fieldMapping 获取动态字段名
       const getDynamicKeys = (fieldType) => {
         const fm = this.fieldMapping || {};
@@ -478,51 +467,58 @@ export default {
         return fields.map(f => f.param_code || f.source_param).filter(Boolean);
       };
 
-      // 优先使用动态字段，回退到硬编码
-      const resultKeys = getDynamicKeys('result').length > 0
-        ? getDynamicKeys('result')
-        : ['stmRes', 'stm_res', 'stm_hyp', 'stmHyp', 'rttmRes', 'rttm_res', 'rttm_hyp', 'rttmHyp'];
-      
-      const refKeys = getDynamicKeys('reference').length > 0
-        ? getDynamicKeys('reference')
-        : ['stmRef', 'stm_ref', 'rttmRef', 'rttm_ref'];
-      
-      const processAlgoResult = (resultObj, keys) => {
-        if (!resultObj || typeof resultObj !== 'object') return null;
+      const timelineTypes = ['rttm', 'stm', 'json'];
+
+      if (type === 'result') {
+        // 扁平列表格式：按 device 和 param_type 过滤
+        if (!Array.isArray(algoResults)) return [];
         
-        for (const key of keys) {
-          if (resultObj[key]) {
-            const data = this.parseTimelineData(resultObj[key]);
+        let items = algoResults.filter(
+          i => timelineTypes.includes(i.param_type)
+        );
+        if (selectedResource && selectedResource !== 'default') {
+          items = items.filter(i => i.device === selectedResource);
+        }
+        for (const item of items) {
+          const parsed = this.parseTimelineData(item.value);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return [...parsed];
+          }
+        }
+        return [];
+      }
+
+      if (type === 'reference') {
+        // 从 referenceParams 查找
+        const dynamicRefKeys = getDynamicKeys('reference');
+        const defaultRefKeys = ['stmRef', 'stm_ref', 'rttmRef', 'rttm_ref'];
+        const refKeys = dynamicRefKeys.length > 0 ? dynamicRefKeys : defaultRefKeys;
+
+        for (const key of refKeys) {
+          if (refParams[key]) {
+            const data = this.parseTimelineData(refParams[key]);
             if (Array.isArray(data) && data.length > 0) {
-              return data;
+              return [...data];
             }
           }
         }
-        
-        return null;
-      };
-      
-      let algoKeys = Object.keys(algoResults);
-      if (selectedResource && selectedResource !== 'default' && algoKeys.includes(selectedResource)) {
-        algoKeys = [selectedResource];
-      }
-      
-      if (type === 'result') {
-        for (const algoKey of algoKeys) {
-          const algoData = algoResults[algoKey];
-          const result = processAlgoResult(algoData, resultKeys);
-          if (result) {
-            return [...result];
+
+        // 如果上面的键都没匹配到，遍历所有 referenceParams 键
+        if (dynamicRefKeys.length === 0) {
+          for (const [key, value] of Object.entries(refParams)) {
+            if (defaultRefKeys.includes(key)) continue;
+            if (value && typeof value === 'object') {
+              const data = this.parseTimelineData(value);
+              if (Array.isArray(data) && data.length > 0) {
+                return [...data];
+              }
+            }
           }
         }
       }
-      
-      if (type === 'reference') {
-        const result = processAlgoResult(refParams, refKeys);
-        if (result) {
-          return [...result];
-        }
-      }
+
+      return [];
+    },
 
       return [];
     },

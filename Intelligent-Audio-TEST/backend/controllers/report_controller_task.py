@@ -7,7 +7,6 @@ from backend.utils.report_utils import ReportUtils
 from backend.utils.log_handler import log_and_emit
 from backend.utils.report_query_builder import ReportQueryBuilder
 from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
-from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
 from backend.schemas.report import GenerateTaskReportRequest, ReportDetailData as ReportDetailDataSchema, ReportSummarySimplified
 from datetime import datetime, timedelta, timezone
 from backend.controllers.report_controller_base import ReportControllerBase
@@ -20,6 +19,22 @@ from concurrent.futures import ThreadPoolExecutor
 _report_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='report_gen')
 _generating_tasks = set()
 _generating_lock = threading.Lock()
+
+
+def _infer_param_type(param_key: str) -> str:
+    """
+    根据参数键名推断 param_type
+    用于报告快照生成时，无需依赖 param_mappings 配置
+    """
+    key_lower = param_key.lower()
+    if 'rttm' in key_lower:
+        return 'rttm'
+    if 'stm' in key_lower:
+        return 'stm'
+    if 'audio' in key_lower:
+        return 'audio'
+    return 'text'
+
 
 class ReportControllerTask(ReportControllerBase):
     
@@ -233,13 +248,10 @@ class ReportControllerTask(ReportControllerBase):
                 "results": [],
                 "audios": audios_list,
                 "reference_params": reference_params_dict,
-                "algorithm_results": {},
+                "algorithm_results": [],
                 "algorithm_type": test_case.algorithm_type,
                 "logs": "\n".join([result.error_message for result in case_results if result.error_message])
             }
-            
-            algorithm_type = test_case.algorithm_type
-            output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type) if algorithm_type else []
             
             for result in case_results:
                 resource = ReportControllerBase.get_resource_name(result, task, use_time_prefix=False)
@@ -263,9 +275,6 @@ class ReportControllerTask(ReportControllerBase):
                 else:
                     result_data = None
                 
-                if not case_obj["algorithm_results"].get(resource):
-                    case_obj["algorithm_results"][resource] = {}
-                
                 if algo_res or result_data:
                     combined_data = {}
                     if algo_res:
@@ -273,12 +282,17 @@ class ReportControllerTask(ReportControllerBase):
                     if result_data:
                         combined_data.update(result_data)
                     
-                    for field in output_fields:
-                        source_param = field.get('source_param')
-                        target_param = field.get('target_param')
-                        param_key = target_param or source_param
-                        if param_key and combined_data.get(param_key):
-                            case_obj["algorithm_results"][resource][param_key] = combined_data.get(param_key)
+                    # 扁平列表格式，与 task_controller.py 一致
+                    for param_key, param_value in combined_data.items():
+                        if param_key and param_value is not None:
+                            param_type = _infer_param_type(param_key)
+                            case_obj["algorithm_results"].append({
+                                'device': resource,
+                                'param_code': param_key,
+                                'param_type': param_type,
+                                'label': param_key,
+                                'value': param_value
+                            })
             
             cases.append(case_obj)
         

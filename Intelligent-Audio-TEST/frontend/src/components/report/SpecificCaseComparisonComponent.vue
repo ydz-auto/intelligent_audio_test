@@ -1614,55 +1614,75 @@ const prepareComparisonData = (caseItem) => {
   return data
 }
 
+/**
+ * 从 caseItem 提取 algorithm_results，返回扁平列表格式
+ * 
+ * 新后端格式（report_controller_task.py >= 当前版本）：已经是扁平列表
+ * 旧后端格式（快照数据）：dict {resource: {param_key: value}}
+ * 
+ * 返回值：[{device, param_code, param_type, label, value}, ...]
+ */
 const getAlgorithmResults = (caseItem) => {
-  const result = {};
-  const timelineKeys = ['rttmRes', 'stmRes', 'rttmRef', 'stmRef', 'rttm_res', 'stm_res', 'rttm_ref', 'stm_ref', 'rttm_hyp', 'stm_hyp', 'rttmHyp', 'stmHyp'];
-  const resultKeys = ['rttmRes', 'stmRes', 'rttm_res', 'stm_res', 'rttm_hyp', 'stm_hyp', 'rttmHyp', 'stmHyp'];
-  const refKeys = ['rttmRef', 'stmRef', 'rttm_ref', 'stm_ref'];
+  const algoResults = caseItem.algorithm_results || caseItem.algorithmResults;
   
-  const algoResults = caseItem.algorithm_results || caseItem.algorithmResults || {};
+  // 新格式：已经是扁平列表，直接返回
+  if (Array.isArray(algoResults)) {
+    return algoResults;
+  }
   
-  // algorithmResults: 按资源名称分组存储算法执行结果 (rttmRes/stmRes/rttmHyp/stmHyp)
-  if (Object.keys(algoResults).length > 0) {
+  // 旧格式：dict {resource: {param_key: value}}，转换为扁平列表
+  const result = [];
+  const excludedKeys = new Set([
+    'evaluation_data', 'eval_data', 'raw_response', 'result_type',
+    'error_message', 'status', 'duration', 'adjusted_reference_params',
+    'reference_params', 'config'
+  ]);
+  
+  if (algoResults && typeof algoResults === 'object') {
     for (const [resource, data] of Object.entries(algoResults)) {
       if (data && typeof data === 'object') {
-        result[resource] = {};
-        for (const key of resultKeys) {
-          if (data[key]) {
-            result[resource][key] = data[key];
+        for (const [paramKey, paramValue] of Object.entries(data)) {
+          if (paramValue && !excludedKeys.has(paramKey)) {
+            result.push({
+              device: resource,
+              param_code: paramKey,
+              param_type: _inferParamType(paramKey),
+              label: paramKey,
+              value: paramValue
+            });
           }
         }
       }
     }
   }
-
-  // 从 caseItem 获取直接的时间轴数据
-  for (const key of timelineKeys) {
-    if (caseItem[key]) {
-      if (!result['default']) result['default'] = {};
-      result['default'][key] = caseItem[key];
-    }
-  }
-
-  // 从 reference_params 获取参考数据 (rttmRef/stmRef)，需要处理嵌套结构
-  const refParams = caseItem.referenceParams || caseItem.reference_params || {};
   
-  // referenceParams 结构是 {rttmRef: {e2e: {json: [...]}, api: {json: [...]}}, stmRef: {...}}
-  // 需要提取 e2e 或 api 中的数据
-  for (const key of refKeys) {
-    if (refParams[key]) {
-      const refData = refParams[key];
-      // 检查 e2e 或 api 字段
-      const extractedData = refData.e2e || refData.api || refData;
-      if (extractedData) {
-        if (!result['reference']) result['reference'] = {};
-        result['reference'][key] = extractedData;
-      }
+  // 从 caseItem 获取直接的时间轴数据（兼容更旧的数据结构）
+  const directKeys = ['rttmRes', 'stmRes', 'rttm_res', 'stm_res', 'rttm_hyp', 'stm_hyp', 'rttmHyp', 'stmHyp'];
+  for (const key of directKeys) {
+    if (caseItem[key]) {
+      result.push({
+        device: 'default',
+        param_code: key,
+        param_type: _inferParamType(key),
+        label: key,
+        value: caseItem[key]
+      });
     }
   }
   
   return result;
-}
+};
+
+/**
+ * 根据参数键名推断 param_type
+ */
+const _inferParamType = (paramKey) => {
+  const lower = paramKey.toLowerCase();
+  if (lower.includes('rttm')) return 'rttm';
+  if (lower.includes('stm')) return 'stm';
+  if (lower.includes('audio')) return 'audio';
+  return 'text';
+};
 
 const prepareAudioList = (caseItem) => {
   const taskType = props.reportData?.taskType || 'all' // 'api', 'e2e' or 'all'

@@ -193,7 +193,7 @@ const fetchDetail = async () => {
       // 后端返回完整的对比展示数据
       audioList: detailData.audio_list || [],
       referenceParams: detailData.reference_params || {},
-      algorithmResults: detailData.algorithm_results || {},
+      algorithmResults: detailData.algorithm_results || [],
       algorithmType: detailData.algorithm_type || '',
       devices: detailData.devices || [],
       metricConfigs: detailData.metric_configs || [],
