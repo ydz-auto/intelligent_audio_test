@@ -34,7 +34,7 @@ def _convert_device_output_to_algorithm_result(algorithm_type: str, device_outpu
         return {}
 
 
-def _calculate_adjusted_reference_params(extracted_result, original_reference_params, task_id=None, test_case_id=None, device_id=None, playback_time_offsets=None):
+def _calculate_adjusted_reference_params(extracted_result, original_reference_params, task_id=None, test_case_id=None, device_id=None, playback_time_offsets=None, algorithm_type=None):
     """根据设备提取结果重新计算 adjusted_reference_params
 
     委托给 collector 的完整对齐流程（包含 max_overlap、gap_pattern、first_timestamp 等策略），
@@ -47,6 +47,7 @@ def _calculate_adjusted_reference_params(extracted_result, original_reference_pa
         test_case_id: 用例ID (可选，用于日志)
         device_id: 设备ID (可选，用于日志)
         playback_time_offsets: 系统测量的播放时间偏移 (可选)
+        algorithm_type: 算法类型（可选，用于动态查找设备输出字段名）
 
     Returns:
         dict: {
@@ -72,7 +73,7 @@ def _calculate_adjusted_reference_params(extracted_result, original_reference_pa
 
         # 委托给 collector 的完整对齐流程（包含 max_overlap、gap_pattern、first_timestamp 等策略）
         alignment_result = collector._calculate_effective_offset_for_single_result(
-            extracted_result, original_reference_params, playback_time_offsets or {}
+            extracted_result, original_reference_params, playback_time_offsets or {}, algorithm_type
         )
 
         adjusted_params = alignment_result.get('adjusted_params')
@@ -289,7 +290,8 @@ class DeviceResultReextractor:
                         log_and_emit('INFO', 'reextractor', f"调用 _calculate_adjusted_reference_params: test_case_id={test_case_id}, device_id={device_id}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
                         alignment_result = _calculate_adjusted_reference_params(
                             extracted_result, original_reference_params,
-                            task_id=task_id, test_case_id=test_case_id, device_id=device_id
+                            task_id=task_id, test_case_id=test_case_id, device_id=device_id,
+                            algorithm_type=algorithm_type
                         )
                         log_and_emit('INFO', 'reextractor', f"alignment_result: adjusted_params={type(alignment_result.get('adjusted_params')) if alignment_result else 'None'}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
 

@@ -381,6 +381,24 @@ class FieldMapper:
             return [f.get('code') for f in output_fields]
         return list(output_fields.keys())
 
+    def get_device_output_field_codes_by_type(self, algorithm_type: str, param_type: str) -> List[str]:
+        """根据 param_type 获取设备输出字段代码列表
+
+        从 algorithm_device_params 中查找 direction='output' 且 param_type 匹配的字段。
+
+        Args:
+            algorithm_type: 算法类型
+            param_type: 参数类型（如 'stm', 'rttm', 'text'）
+
+        Returns:
+            list: 匹配的字段代码列表
+        """
+        device_params = self._get_device_params(algorithm_type)
+        return [
+            p.get('code') for p in device_params
+            if p.get('param_type') == param_type and p.get('direction') == 'output'
+        ]
+
     def get_case_input_fields(self, algorithm_type: str) -> Dict[str, Any]:
         """获取用例参数字段"""
         field_defs = self._get_field_definitions(algorithm_type)

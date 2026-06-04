@@ -41,6 +41,7 @@ class DeviceResultCollector:
         """
         playback_time_offsets = extra_params.get('playback_time_offsets', {})
         reference_params = extra_params.get('reference_params')
+        algorithm_type = extra_params.get('algorithm_type') or kwargs.get('algorithm_type')
 
         log_not_emit('DEBUG', 'device_collector',
                      f'[collect_raw_results] playback_time_offsets={bool(playback_time_offsets)}, reference_params={bool(reference_params)}',
@@ -90,7 +91,7 @@ class DeviceResultCollector:
                                          category='engine')
 
                             alignment_result = self._calculate_effective_offset_for_single_result(
-                                result_item, reference_params, playback_time_offsets
+                                result_item, reference_params, playback_time_offsets, algorithm_type
                             )
                             item_res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
                             item_res['alignment_info'] = alignment_result.get('alignment_info')
@@ -105,7 +106,7 @@ class DeviceResultCollector:
                     res['result_type'] = 'default'
 
                     alignment_result = self._calculate_effective_offset_for_single_result(
-                        raw_results, reference_params, playback_time_offsets
+                        raw_results, reference_params, playback_time_offsets, algorithm_type
                     )
                     res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
                     res['alignment_info'] = alignment_result.get('alignment_info')
@@ -122,7 +123,7 @@ class DeviceResultCollector:
         import copy
         return copy.deepcopy(all_results)
 
-    def _calculate_effective_offset_for_single_result(self, raw_results, reference_params, playback_time_offsets):
+    def _calculate_effective_offset_for_single_result(self, raw_results, reference_params, playback_time_offsets, algorithm_type=None):
         """为单个设备结果计算 effective_offset 并调整参考参数
 
         每个设备分别计算 offset，因为不同设备可能有不同的 VAD 处理
@@ -138,6 +139,7 @@ class DeviceResultCollector:
             raw_results: 单个设备的原始结果
             reference_params: 参考参数列表
             playback_time_offsets: 系统测量的播放时间偏移
+            algorithm_type: 算法类型（可选，用于动态查找设备输出字段名）
 
         Returns:
             dict: {
@@ -185,7 +187,7 @@ class DeviceResultCollector:
                          '[_calculate_effective_offset_for_single_result] reference_params is empty', category='engine')
             return {'adjusted_params': None, 'alignment_info': alignment_info}
 
-        device_segments = self._extract_segments_from_result(raw_results)
+        device_segments = self._extract_segments_from_result(raw_results, algorithm_type)
         ref_segments = self._extract_segments_from_reference(reference_params)
 
         alignment_info['device_segment_count'] = len(device_segments)
@@ -332,7 +334,7 @@ class DeviceResultCollector:
                              category='engine')
 
         # ========== 策略3: first_timestamp + 丢句感知 ==========
-        device_first_ts = self._get_device_first_timestamp_from_result(raw_results)
+        device_first_ts = self._get_device_first_timestamp_from_result(raw_results, algorithm_type)
         alignment_info['device_first_ts'] = device_first_ts
 
         if device_first_ts is None:
@@ -524,13 +526,15 @@ class DeviceResultCollector:
                      category='engine')
         return adjusted
 
-    def _get_device_first_timestamp(self, all_results):
+    def _get_device_first_timestamp(self, all_results, algorithm_type=None):
         """从设备结果中提取首个时间戳
 
-        优先从 recording_stm_content 获取（包含文本），其次 recording_rttm_content
+        优先从 STM 获取（包含文本），其次 RTTM。
+        优先使用数据库配置动态查找字段名，失败时后缀扫描兜底。
 
         Args:
             all_results: 设备结果列表
+            algorithm_type: 算法类型（可选，用于动态查找字段名）
 
         Returns:
             float: 首个时间戳，如果无法提取则返回 None
@@ -545,8 +549,7 @@ class DeviceResultCollector:
                              f'[_get_device_first_timestamp] result[{idx}]: raw_results is empty', category='engine')
                 continue
 
-            rttm_content = raw_results.get('recording_rttm_content', '')
-            stm_content = raw_results.get('recording_stm_content', '')
+            stm_content, rttm_content = self._get_stm_rttm_content_from_result(raw_results, algorithm_type)
 
             log_not_emit('DEBUG', 'device_collector',
                          f'[_get_device_first_timestamp] result[{idx}]: rttm_len={len(rttm_content) if rttm_content else 0}, stm_len={len(stm_content) if stm_content else 0}',
@@ -574,11 +577,14 @@ class DeviceResultCollector:
                      '[_get_device_first_timestamp] No valid timestamp found in device results', category='engine')
         return None
 
-    def _get_device_first_timestamp_from_result(self, extracted_result):
+    def _get_device_first_timestamp_from_result(self, extracted_result, algorithm_type=None):
         """从单个设备提取结果中提取首个时间戳
+
+        优先使用数据库配置动态查找字段名，失败时后缀扫描兜底。
 
         Args:
             extracted_result: 设备驱动提取的单个结果
+            algorithm_type: 算法类型（可选，用于动态查找字段名）
 
         Returns:
             float: 首个时间戳，如果无法提取则返回 None
@@ -586,8 +592,7 @@ class DeviceResultCollector:
         if not extracted_result:
             return None
 
-        rttm_content = extracted_result.get('recording_rttm_content', '')
-        stm_content = extracted_result.get('recording_stm_content', '')
+        stm_content, rttm_content = self._get_stm_rttm_content_from_result(extracted_result, algorithm_type)
 
         # 优先使用 STM（包含文本内容）
         if stm_content:
@@ -689,11 +694,60 @@ class DeviceResultCollector:
         segments.sort(key=lambda x: x['start'])
         return segments
 
-    def _extract_segments_from_result(self, raw_results):
+    def _get_stm_rttm_content_from_result(self, result_dict, algorithm_type=None):
+        """从结果字典中提取 STM/RTTM 内容
+
+        优先使用数据库配置（algorithm_device_params 的 param_type）动态查找字段名，
+        失败时按后缀（*_stm_content / *_rttm_content）扫描兜底。
+
+        Args:
+            result_dict: 设备结果字典
+            algorithm_type: 算法类型（可选，用于从数据库配置动态查找字段名）
+
+        Returns:
+            tuple: (stm_content, rttm_content)
+        """
+        if not result_dict:
+            return '', ''
+
+        stm_content = ''
+        rttm_content = ''
+
+        # 策略1: 通过数据库配置动态查找字段名
+        if algorithm_type and self.field_mapper:
+            try:
+                stm_codes = self.field_mapper.get_device_output_field_codes_by_type(algorithm_type, 'stm')
+                rttm_codes = self.field_mapper.get_device_output_field_codes_by_type(algorithm_type, 'rttm')
+                for code in stm_codes:
+                    if result_dict.get(code):
+                        stm_content = result_dict[code]
+                        break
+                for code in rttm_codes:
+                    if result_dict.get(code):
+                        rttm_content = result_dict[code]
+                        break
+            except Exception as e:
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_get_stm_rttm_content] FieldMapper lookup failed: {e}', category='engine')
+
+        # 策略2: 后缀扫描兜底（匹配 *_stm_content / *_rttm_content）
+        if not stm_content or not rttm_content:
+            for key, value in result_dict.items():
+                if not value:
+                    continue
+                if key.endswith('_stm_content') and not stm_content:
+                    stm_content = value
+                elif key.endswith('_rttm_content') and not rttm_content:
+                    rttm_content = value
+
+        return stm_content, rttm_content
+
+    def _extract_segments_from_result(self, raw_results, algorithm_type=None):
         """从设备结果中提取片段列表
 
         Args:
             raw_results: 设备驱动提取的结果
+            algorithm_type: 算法类型（可选，用于动态查找字段名）
 
         Returns:
             list: 片段列表
@@ -701,8 +755,7 @@ class DeviceResultCollector:
         if not raw_results:
             return []
 
-        rttm_content = raw_results.get('recording_rttm_content', '')
-        stm_content = raw_results.get('recording_stm_content', '')
+        stm_content, rttm_content = self._get_stm_rttm_content_from_result(raw_results, algorithm_type)
 
         # 优先使用 STM（包含文本内容，支持内容对齐）
         if stm_content:
@@ -1056,10 +1109,25 @@ class DeviceResultCollector:
 
         final_offset = statistics.median([p[3] for p in filtered_pairs])
 
-        # 置信度 = 平均相似度 × 覆盖率
+        # 置信度 = 平均相似度 × 设备覆盖率 × 偏移量一致性
+        # - 设备覆盖率：设备侧片段是否都被正确匹配了（主要指标）
+        # - 偏移量一致性：匹配对算出的 offset 是否紧密一致（排除误匹配）
+        # - 不使用参考覆盖率，避免设备严重丢句时置信度被不合理压低
         avg_similarity = statistics.mean([p[2] for p in filtered_pairs])
-        coverage = len(filtered_pairs) / max(N, M)
-        confidence = avg_similarity * coverage
+        unique_device_matched = len(set(p[0] for p in filtered_pairs))
+        device_coverage = unique_device_matched / N
+
+        # 偏移量一致性：stdev 越小说明匹配对之间的偏移量越一致
+        if len(filtered_pairs) >= 3:
+            offsets = [p[3] for p in filtered_pairs]
+            offset_stdev = statistics.stdev(offsets)
+            offset_consistency = max(0.0, 1.0 - offset_stdev / CONTENT_OUTLIER_OFFSET_THRESHOLD)
+        else:
+            # 只有 2 对时无法计算 stdev，用差值做简化估计
+            offsets = [p[3] for p in filtered_pairs]
+            offset_consistency = max(0.0, 1.0 - abs(offsets[0] - offsets[1]) / CONTENT_OUTLIER_OFFSET_THRESHOLD)
+
+        confidence = avg_similarity * device_coverage * offset_consistency
 
         details = {
             'matched_pairs': filtered_pairs,
