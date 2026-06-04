@@ -34,14 +34,11 @@ def _convert_device_output_to_algorithm_result(algorithm_type: str, device_outpu
         return {}
 
 
-def _calculate_adjusted_reference_params(extracted_result, original_reference_params, task_id=None, test_case_id=None, device_id=None):
+def _calculate_adjusted_reference_params(extracted_result, original_reference_params, task_id=None, test_case_id=None, device_id=None, playback_time_offsets=None):
     """根据设备提取结果重新计算 adjusted_reference_params
 
-    核心逻辑：
-    1. 从 extracted_result 中提取设备首个时间戳
-    2. 从 original_reference_params 中提取参考首个时间戳
-    3. 计算 effective_offset = 设备首个时间戳 - 参考首个时间戳
-    4. 用 effective_offset 调整 original_reference_params
+    委托给 collector 的完整对齐流程（包含 max_overlap、gap_pattern、first_timestamp 等策略），
+    与首次采集时的对齐逻辑保持一致。
 
     Args:
         extracted_result: 设备驱动提取的结果（包含 recording_rttm_content 或 recording_stm_content）
@@ -49,9 +46,13 @@ def _calculate_adjusted_reference_params(extracted_result, original_reference_pa
         task_id: 任务ID (可选，用于日志)
         test_case_id: 用例ID (可选，用于日志)
         device_id: 设备ID (可选，用于日志)
+        playback_time_offsets: 系统测量的播放时间偏移 (可选)
 
     Returns:
-        调整后的参考参数列表，如果计算失败则返回 None
+        dict: {
+            'adjusted_params': 调整后的参考参数列表（如果计算失败则为 None）,
+            'alignment_info': 对齐信息字典
+        }
     """
     try:
         from backend.utils.device_result_collector import DeviceResultCollector
@@ -62,49 +63,40 @@ def _calculate_adjusted_reference_params(extracted_result, original_reference_pa
 
         if not original_reference_params:
             log_and_emit('WARNING', 'reextractor', "FAIL: original_reference_params is None or empty", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-            return None
+            return {'adjusted_params': None, 'alignment_info': {}}
 
         log_and_emit('INFO', 'reextractor', f"original_reference_params count: {len(original_reference_params)}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
         log_and_emit('DEBUG', 'reextractor', f"original_reference_params[0] keys: {list(original_reference_params[0].keys()) if original_reference_params else 'empty'}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
 
         collector = DeviceResultCollector()
 
-        device_first_ts = collector._get_device_first_timestamp_from_result(extracted_result)
-        if device_first_ts is None:
-            log_and_emit('WARNING', 'reextractor', "FAIL: Cannot get device first timestamp from extracted_result", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-            log_and_emit('DEBUG', 'reextractor', f"extracted_result keys: {list(extracted_result.keys()) if extracted_result else 'None'}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-            rttm = extracted_result.get('recording_rttm_content', '') if extracted_result else ''
-            stm = extracted_result.get('recording_stm_content', '') if extracted_result else ''
-            log_and_emit('DEBUG', 'reextractor', f"rttm length: {len(rttm) if rttm else 0}, stm length: {len(stm) if stm else 0}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-            return None
+        # 委托给 collector 的完整对齐流程（包含 max_overlap、gap_pattern、first_timestamp 等策略）
+        alignment_result = collector._calculate_effective_offset_for_single_result(
+            extracted_result, original_reference_params, playback_time_offsets or {}
+        )
 
-        log_and_emit('INFO', 'reextractor', f"SUCCESS: 设备首个时间戳 (device_first_ts): {device_first_ts:.3f}s", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+        adjusted_params = alignment_result.get('adjusted_params')
+        alignment_info = alignment_result.get('alignment_info', {})
 
-        ref_first_ts = collector._get_reference_first_timestamp(original_reference_params)
-        if ref_first_ts is None:
-            log_and_emit('WARNING', 'reextractor', "FAIL: Cannot get reference first timestamp from original_reference_params", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-            log_and_emit('DEBUG', 'reextractor', f"original_reference_params structure: {original_reference_params}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-            return None
+        # 推送关键结果到前端
+        method = alignment_info.get('method', 'none')
+        offset = alignment_info.get('offset', 0.0)
+        missing = alignment_info.get('missing_segment_detected', False)
+        reliability = alignment_info.get('first_timestamp_reliability', 'high')
 
-        log_and_emit('INFO', 'reextractor', f"SUCCESS: 参考首个时间戳 (ref_first_ts): {ref_first_ts:.3f}s", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-
-        effective_offset = device_first_ts - ref_first_ts
-
-        log_and_emit('INFO', 'reextractor', f"有效偏移量 (effective_offset): {effective_offset:.3f}s", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+        log_and_emit('INFO', 'reextractor', f"对齐方法: {method}, 偏移量: {offset:.3f}s, 丢句检测: {missing}, first_timestamp可靠性: {reliability}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+        log_and_emit('INFO', 'reextractor', f"设备片段数: {alignment_info.get('device_segment_count', 0)}, 参考片段数: {alignment_info.get('ref_segment_count', 0)}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
         log_and_emit('INFO', 'reextractor', "==============================================", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
 
-        if abs(effective_offset) < 0.001:
-            log_and_emit('INFO', 'reextractor', "effective_offset ~= 0, no adjustment needed", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-            return original_reference_params
-
-        adjusted_params = collector._apply_single_offset(original_reference_params, effective_offset)
-        log_and_emit('INFO', 'reextractor', "Adjustment applied successfully", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-        return adjusted_params
+        return {
+            'adjusted_params': adjusted_params,
+            'alignment_info': alignment_info
+        }
 
     except Exception as e:
         import traceback
         logger.error(f"计算 adjusted_reference_params 失败: {str(e)}, traceback: {traceback.format_exc()}")
-        return None
+        return {'adjusted_params': None, 'alignment_info': {}}
 
 
 def _extract_device_output_from_archive(device, task_id, test_case_id, device_sn):
@@ -295,11 +287,15 @@ class DeviceResultReextractor:
                         result_data_to_save = extracted_result.copy()
 
                         log_and_emit('INFO', 'reextractor', f"调用 _calculate_adjusted_reference_params: test_case_id={test_case_id}, device_id={device_id}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-                        computed_adjusted_params = _calculate_adjusted_reference_params(
+                        alignment_result = _calculate_adjusted_reference_params(
                             extracted_result, original_reference_params,
                             task_id=task_id, test_case_id=test_case_id, device_id=device_id
                         )
-                        log_and_emit('INFO', 'reextractor', f"computed_adjusted_params result: {type(computed_adjusted_params)}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+                        log_and_emit('INFO', 'reextractor', f"alignment_result: adjusted_params={type(alignment_result.get('adjusted_params')) if alignment_result else 'None'}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+
+                        computed_adjusted_params = alignment_result.get('adjusted_params') if alignment_result else None
+                        new_alignment_info = alignment_result.get('alignment_info') if alignment_result else None
+
                         if computed_adjusted_params:
                             result_data_to_save['adjusted_reference_params'] = computed_adjusted_params
                             log_and_emit('INFO', 'reextractor',
@@ -310,6 +306,9 @@ class DeviceResultReextractor:
                             log_and_emit('DEBUG', 'reextractor',
                                          f"使用旧的 adjusted_reference_params",
                                          task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+
+                        if new_alignment_info:
+                            result_data_to_save['alignment_info'] = new_alignment_info
 
                         if result_type:
                             result_data_to_save['result_type'] = result_type

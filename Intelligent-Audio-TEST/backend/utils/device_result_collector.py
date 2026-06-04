@@ -7,6 +7,8 @@ from backend.utils.log_handler import log_not_emit
 MAX_ALIGNMENT_OFFSET = 30.0
 MIN_OVERLAP_THRESHOLD = 0.5
 MAX_CANDIDATE_PAIRS = 100
+MIN_GAP_MATCH_TOLERANCE = 0.5    # 间隙匹配容差(秒)
+GAP_PATTERN_MIN_SEGMENTS = 3     # gap_pattern 策略所需最少片段数
 
 
 class DeviceResultCollector:
@@ -119,7 +121,9 @@ class DeviceResultCollector:
 
         采用混合对齐策略：
         1. 优先使用最大重叠对齐（处理丢句/多句场景）
-        2. 如果片段不足或重叠太低，回退到首个时间戳对齐
+        2. 如果 max_overlap 未通过，尝试间隙模式匹配验证
+        3. 回退到首个时间戳对齐（含丢句安全检查）
+        4. 最终兜底使用 playback_time_offsets
 
         Args:
             raw_results: 单个设备的原始结果
@@ -130,13 +134,18 @@ class DeviceResultCollector:
             dict: {
                 'adjusted_params': 调整后的参考参数列表,
                 'alignment_info': {
-                    'method': 'max_overlap' | 'first_timestamp' | 'fallback' | 'none',
+                    'method': 'max_overlap' | 'gap_pattern' | 'first_timestamp' | 'fallback' | 'none',
                     'offset': float,
                     'max_overlap': float (仅max_overlap方法),
                     'device_segment_count': int,
                     'ref_segment_count': int,
                     'device_first_ts': float,
-                    'ref_first_ts': float
+                    'ref_first_ts': float,
+                    'missing_segment_detected': bool,
+                    'missing_segment_detail': str,
+                    'gap_pattern_offset': float|None,
+                    'gap_pattern_match_score': float|None,
+                    'first_timestamp_reliability': str
                 }
             }
         """
@@ -146,7 +155,12 @@ class DeviceResultCollector:
             'device_segment_count': 0,
             'ref_segment_count': 0,
             'device_first_ts': None,
-            'ref_first_ts': None
+            'ref_first_ts': None,
+            'missing_segment_detected': False,
+            'missing_segment_detail': '',
+            'gap_pattern_offset': None,
+            'gap_pattern_match_score': None,
+            'first_timestamp_reliability': 'high'
         }
 
         if not reference_params:
@@ -160,6 +174,12 @@ class DeviceResultCollector:
         alignment_info['device_segment_count'] = len(device_segments)
         alignment_info['ref_segment_count'] = len(ref_segments)
 
+        # ========== 丢句预检测 ==========
+        missing_info = self._detect_missing_segments(device_segments, ref_segments)
+        alignment_info['missing_segment_detected'] = missing_info['detected']
+        alignment_info['missing_segment_detail'] = missing_info['description']
+
+        # ========== 策略1: max_overlap ==========
         use_max_overlap = (
                 device_segments and
                 ref_segments and
@@ -201,9 +221,47 @@ class DeviceResultCollector:
                 return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
             else:
                 log_not_emit('INFO', 'device_collector',
-                             f'[_calculate_effective_offset_for_single_result] 重叠时间 {max_overlap:.3f}s < 阈值 {MIN_OVERLAP_THRESHOLD}s, 回退到首个时间戳对齐',
+                             f'[_calculate_effective_offset_for_single_result] 重叠时间 {max_overlap:.3f}s < 阈值 {MIN_OVERLAP_THRESHOLD}s',
                              category='engine')
 
+        # ========== 策略2: gap_pattern 验证 ==========
+        use_gap_pattern = (
+                device_segments and
+                ref_segments and
+                len(device_segments) >= GAP_PATTERN_MIN_SEGMENTS and
+                len(ref_segments) >= GAP_PATTERN_MIN_SEGMENTS
+        )
+
+        if use_gap_pattern:
+            gap_offset, gap_score = self._validate_offset_by_gap_pattern(
+                device_segments, ref_segments
+            )
+            alignment_info['gap_pattern_offset'] = gap_offset
+            alignment_info['gap_pattern_match_score'] = gap_score
+
+            if gap_offset is not None and gap_score > 0.5:
+                log_not_emit('INFO', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] ===== GAP PATTERN ALIGNMENT =====',
+                             category='engine')
+                log_not_emit('INFO', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] 间隙模式偏移量: {gap_offset:.3f}s, 匹配得分: {gap_score:.3f}',
+                             category='engine')
+
+                alignment_info['method'] = 'gap_pattern'
+                alignment_info['offset'] = gap_offset
+
+                if abs(gap_offset) < 0.001:
+                    alignment_info['method'] = 'gap_pattern_no_adjustment'
+                    return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
+
+                adjusted = self._apply_single_offset(reference_params, gap_offset)
+                return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
+            else:
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] 间隙模式验证未通过: offset={gap_offset}, score={gap_score}',
+                             category='engine')
+
+        # ========== 策略3: first_timestamp + 安全检查 ==========
         device_first_ts = self._get_device_first_timestamp_from_result(raw_results)
         alignment_info['device_first_ts'] = device_first_ts
 
@@ -228,6 +286,14 @@ class DeviceResultCollector:
         alignment_info['method'] = 'first_timestamp'
         alignment_info['offset'] = effective_offset
 
+        # first_timestamp 可靠性评估
+        if missing_info['detected'] and missing_info['confidence'] in ('high', 'medium'):
+            alignment_info['first_timestamp_reliability'] = 'low'
+        elif missing_info['detected']:
+            alignment_info['first_timestamp_reliability'] = 'medium'
+        else:
+            alignment_info['first_timestamp_reliability'] = 'high'
+
         log_not_emit('INFO', 'device_collector',
                      f'[_calculate_effective_offset_for_single_result] ===== FIRST TIMESTAMP ALIGNMENT =====',
                      category='engine')
@@ -241,8 +307,35 @@ class DeviceResultCollector:
                      f'[_calculate_effective_offset_for_single_result] 有效偏移量 (effective_offset): {effective_offset:.3f}s',
                      category='engine')
         log_not_emit('INFO', 'device_collector',
+                     f'[_calculate_effective_offset_for_single_result] 可靠性: {alignment_info["first_timestamp_reliability"]}',
+                     category='engine')
+        log_not_emit('INFO', 'device_collector',
                      f'[_calculate_effective_offset_for_single_result] ======================================',
                      category='engine')
+
+        # 丢句场景下 first_timestamp 的安全检查
+        if alignment_info['first_timestamp_reliability'] == 'low' and device_segments and ref_segments:
+            # 用 offset 平移参考后计算重叠，验证 offset 是否合理
+            adjusted_ref_for_check = [
+                {'start': seg['start'] + effective_offset, 'end': seg['end'] + effective_offset}
+                for seg in ref_segments
+            ]
+            check_overlap = self._compute_total_overlap(device_segments, adjusted_ref_for_check)
+            log_not_emit('INFO', 'device_collector',
+                         f'[_calculate_effective_offset_for_single_result] first_timestamp 安全验证: offset={effective_offset:.3f}s, 重叠={check_overlap:.3f}s',
+                         category='engine')
+
+            if check_overlap < 0.1:
+                log_not_emit('WARNING', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] first_timestamp 验证失败(重叠={check_overlap:.3f}s < 0.1s), '
+                             f'检测到丢句, 该偏移量可能不正确, 尝试使用 playback_time_offsets',
+                             category='engine')
+                alignment_info['method'] = 'fallback'
+                alignment_info['first_timestamp_reliability'] = 'low'
+                fallback_result = self._apply_fallback_offset(reference_params, playback_time_offsets)
+                if fallback_result:
+                    return {'adjusted_params': fallback_result, 'alignment_info': alignment_info}
+                # fallback 也失败，继续使用 first_timestamp（标记低可靠性）
 
         if abs(effective_offset) < 0.001:
             log_not_emit('INFO', 'device_collector',
@@ -560,6 +653,74 @@ class DeviceResultCollector:
 
         return []
 
+    def _detect_missing_segments(self, device_segments, ref_segments):
+        """检测是否存在丢句
+
+        通过比较设备片段数与参考片段数、以及总时长比率来判断
+
+        Args:
+            device_segments: 设备片段列表
+            ref_segments: 参考片段列表
+
+        Returns:
+            dict: {
+                'detected': bool,
+                'confidence': str ('high'/'medium'/'low'/'none'),
+                'count_diff': int,
+                'device_count': int,
+                'ref_count': int,
+                'duration_ratio': float,
+                'description': str
+            }
+        """
+        result = {
+            'detected': False,
+            'confidence': 'none',
+            'count_diff': 0,
+            'device_count': len(device_segments),
+            'ref_count': len(ref_segments),
+            'duration_ratio': 1.0,
+            'description': ''
+        }
+
+        if not device_segments or not ref_segments:
+            result['description'] = '片段列表为空，无法检测丢句'
+            return result
+
+        count_diff = len(ref_segments) - len(device_segments)
+        result['count_diff'] = count_diff
+
+        device_total_dur = sum(seg['end'] - seg['start'] for seg in device_segments)
+        ref_total_dur = sum(seg['end'] - seg['start'] for seg in ref_segments)
+
+        duration_ratio = device_total_dur / ref_total_dur if ref_total_dur > 0 else 1.0
+        result['duration_ratio'] = round(duration_ratio, 3)
+
+        if count_diff <= 0:
+            result['description'] = f'设备片段数({len(device_segments)}) >= 参考片段数({len(ref_segments)})，未检测到丢句'
+            return result
+
+        # count_diff > 0: 设备片段比参考少
+        if duration_ratio < 0.75 and count_diff >= 2:
+            result['detected'] = True
+            result['confidence'] = 'high'
+        elif duration_ratio < 0.9 and count_diff >= 1:
+            result['detected'] = True
+            result['confidence'] = 'medium'
+        else:
+            result['detected'] = True
+            result['confidence'] = 'low'
+
+        result['description'] = (
+            f'设备片段数({len(device_segments)}) < 参考片段数({len(ref_segments)}), '
+            f'差异: {count_diff}, 时长比: {duration_ratio:.2f}, 置信度: {result["confidence"]}'
+        )
+
+        log_not_emit('WARNING', 'device_collector',
+                     f'[_detect_missing_segments] {result["description"]}', category='engine')
+
+        return result
+
     def _compute_total_overlap(self, segs_a, segs_b):
         """计算两组片段的总重叠时间
 
@@ -783,11 +944,85 @@ class DeviceResultCollector:
                 })
 
             overlap = self._compute_total_overlap(device_segments, adjusted_ref)
-            if overlap > max_overlap:
+            if overlap > max_overlap or (overlap == max_overlap and abs(offset) < abs(best_offset)):
                 max_overlap = overlap
                 best_offset = offset
 
         return best_offset, max_overlap
+
+    def _validate_offset_by_gap_pattern(self, device_segments, ref_segments, max_offset=MAX_ALIGNMENT_OFFSET):
+        """基于间隙模式滑动窗口匹配验证/计算偏移量
+
+        利用相邻片段之间的时间间隙作为指纹，通过滑动窗口匹配找到正确的对应位置。
+        即使首句丢失，后续句子之间的间隙模式不变，仍能正确匹配。
+
+        Args:
+            device_segments: 设备片段列表
+            ref_segments: 参考片段列表
+            max_offset: 最大偏移量限制（秒）
+
+        Returns:
+            tuple: (best_offset, match_score) -- 无法确定时返回 (None, 0.0)
+        """
+        if not device_segments or not ref_segments:
+            return None, 0.0
+
+        if len(device_segments) < GAP_PATTERN_MIN_SEGMENTS or len(ref_segments) < GAP_PATTERN_MIN_SEGMENTS:
+            return None, 0.0
+
+        # 计算间隙序列
+        ref_gaps = [ref_segments[i + 1]['start'] - ref_segments[i]['end'] for i in range(len(ref_segments) - 1)]
+        device_gaps = [device_segments[i + 1]['start'] - device_segments[i]['end'] for i in range(len(device_segments) - 1)]
+
+        if len(device_gaps) < 2 or len(ref_gaps) < 2:
+            return None, 0.0
+
+        # 设备间隙比参考间隙多，不适合滑动窗口
+        if len(device_gaps) > len(ref_gaps):
+            return None, 0.0
+
+        # 滑动窗口匹配
+        best_score = -1.0
+        second_best_score = -1.0
+        best_k = 0
+
+        max_k = len(ref_gaps) - len(device_gaps)
+        for k in range(max_k + 1):
+            ref_window = ref_gaps[k:k + len(device_gaps)]
+            score = sum(1.0 / (1.0 + abs(dg - rw)) for dg, rw in zip(device_gaps, ref_window))
+
+            if score > best_score:
+                second_best_score = best_score
+                best_score = score
+                best_k = k
+            elif score > second_best_score:
+                second_best_score = score
+
+        # 归一化得分
+        normalized_score = best_score / len(device_gaps) if len(device_gaps) > 0 else 0.0
+
+        # 唯一性检查：最高分与次高分差距 < 10% 则有歧义
+        if best_score > 0 and second_best_score > 0:
+            if (best_score - second_best_score) / best_score < 0.10:
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_validate_offset_by_gap_pattern] 匹配有歧义: best={best_score:.3f}, second={second_best_score:.3f}',
+                             category='engine')
+                return None, 0.0
+
+        # 计算偏移量
+        offset = device_segments[0]['start'] - ref_segments[best_k]['start']
+
+        if abs(offset) > max_offset:
+            log_not_emit('DEBUG', 'device_collector',
+                         f'[_validate_offset_by_gap_pattern] 偏移量 {offset:.3f}s 超出范围 {max_offset}s',
+                         category='engine')
+            return None, 0.0
+
+        log_not_emit('INFO', 'device_collector',
+                     f'[_validate_offset_by_gap_pattern] 匹配成功: offset={offset:.3f}s, score={normalized_score:.3f}, best_k={best_k}',
+                     category='engine')
+
+        return offset, normalized_score
 
     def _get_reference_first_timestamp(self, reference_params):
         """从参考参数中提取首个时间戳

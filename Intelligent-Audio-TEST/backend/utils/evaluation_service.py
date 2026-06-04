@@ -400,7 +400,7 @@ class EvaluationService:
                     field_value = kwargs.get(field_key)
                     self._log(
                         level='DEBUG',
-                        content=f"[kwargs field_key] field_key={field_key}, field_value={field_value}, field_value_type={type(field_value)}",
+                        content=f"[kwargs field_key] field_key={field_key}, field_value={str(field_value)[:50]}, field_value_type={type(field_value)}",
                         task_id=task_id,
                         test_case_id=test_case_id
                     )
