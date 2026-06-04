@@ -19,6 +19,7 @@ _global_db_handler = None
 LOG_ARCHIVE_THRESHOLD = 300000
 LOG_HOT_DATA_DAYS = 7
 LOG_ARCHIVE_DIR = 'archives'
+CONSOLE_LOG_MAX_LENGTH = 200
 
 def set_socketio(socketio):
     """设置全局 SocketIO 实例"""
@@ -88,7 +89,7 @@ def log_and_emit(level, module, content, category='system', source='backend', ta
     
     if enable_console_log:
         # 统一输出到 stdout 确保可见性
-        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_and_emit - {level_upper} - [{module}] {content}")
+        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_and_emit - {level_upper} - [{module}] {content[:CONSOLE_LOG_MAX_LENGTH]}{'...' if len(content) > CONSOLE_LOG_MAX_LENGTH else ''}")
         sys.stdout.flush()
     
     try:
@@ -467,7 +468,7 @@ class DatabaseLogHandler(logging.Handler):
             
             # # 如果是标准的 logging 调用（不是通过 log_and_emit），也打印到控制台
             if not getattr(record, 'from_log_and_emit', False):
-                self._console_log(record.levelname.upper(), f"[{record.module}] {log_message}")
+                self._console_log(record.levelname.upper(), f"[{record.module}] {log_message[:CONSOLE_LOG_MAX_LENGTH]}{'...' if len(log_message) > CONSOLE_LOG_MAX_LENGTH else ''}")
             
             # 跳过 WebSocket 相关日志
             if 'WebSocket' in log_message or 'socketio' in log_message or 'emitting event' in log_message:

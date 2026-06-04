@@ -361,7 +361,7 @@ class evaluationApiClient:
                 self._log(
                     level='INFO',
                     category='execution',
-                    content=f"调用API端点评估: {selected_url} | 维度: {dim_names} | 有效载荷: {str(payload)[:50]}",
+                    content=f"调用API端点评估: {selected_url} | 维度: {dim_names} | 有效载荷: {str(payload)}",
                     task_id=task_id,
                     test_case_id=test_case_id,
                     api_id=api_id

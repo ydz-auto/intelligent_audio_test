@@ -9,6 +9,7 @@ MIN_OVERLAP_THRESHOLD = 0.5
 MAX_CANDIDATE_PAIRS = 100
 MIN_GAP_MATCH_TOLERANCE = 0.5    # 间隙匹配容差(秒)
 GAP_PATTERN_MIN_SEGMENTS = 3     # gap_pattern 策略所需最少片段数
+MIN_REF_START_TIME = -0.5       # 调整后参考首个片段允许的最小起始时间(秒)
 
 
 class DeviceResultCollector:
@@ -207,18 +208,24 @@ class DeviceResultCollector:
                          category='engine')
 
             if max_overlap >= MIN_OVERLAP_THRESHOLD:
-                log_not_emit('INFO', 'device_collector',
-                             f'[_calculate_effective_offset_for_single_result] 使用最大重叠对齐结果', category='engine')
-                log_not_emit('INFO', 'device_collector',
-                             f'[_calculate_effective_offset_for_single_result] =================================',
-                             category='engine')
+                # 校验偏移量合理性：防止参考时间戳变为负数
+                if not self._validate_offset_reasonable(best_offset, ref_segments):
+                    log_not_emit('WARNING', 'device_collector',
+                                 f'[_calculate_effective_offset_for_single_result] max_overlap 偏移量 {best_offset:.3f}s 不合理(会导致参考负数时间戳), 跳过',
+                                 category='engine')
+                else:
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_calculate_effective_offset_for_single_result] 使用最大重叠对齐结果', category='engine')
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_calculate_effective_offset_for_single_result] =================================',
+                                 category='engine')
 
-                if abs(best_offset) < 0.001:
-                    alignment_info['method'] = 'max_overlap_no_adjustment'
-                    return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
+                    if abs(best_offset) < 0.001:
+                        alignment_info['method'] = 'max_overlap_no_adjustment'
+                        return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
 
-                adjusted = self._apply_single_offset(reference_params, best_offset)
-                return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
+                    adjusted = self._apply_single_offset(reference_params, best_offset)
+                    return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
             else:
                 log_not_emit('INFO', 'device_collector',
                              f'[_calculate_effective_offset_for_single_result] 重叠时间 {max_overlap:.3f}s < 阈值 {MIN_OVERLAP_THRESHOLD}s',
@@ -240,22 +247,28 @@ class DeviceResultCollector:
             alignment_info['gap_pattern_match_score'] = gap_score
 
             if gap_offset is not None and gap_score > 0.5:
-                log_not_emit('INFO', 'device_collector',
-                             f'[_calculate_effective_offset_for_single_result] ===== GAP PATTERN ALIGNMENT =====',
-                             category='engine')
-                log_not_emit('INFO', 'device_collector',
-                             f'[_calculate_effective_offset_for_single_result] 间隙模式偏移量: {gap_offset:.3f}s, 匹配得分: {gap_score:.3f}',
-                             category='engine')
+                # 校验偏移量合理性
+                if not self._validate_offset_reasonable(gap_offset, ref_segments):
+                    log_not_emit('WARNING', 'device_collector',
+                                 f'[_calculate_effective_offset_for_single_result] gap_pattern 偏移量 {gap_offset:.3f}s 不合理, 跳过',
+                                 category='engine')
+                else:
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_calculate_effective_offset_for_single_result] ===== GAP PATTERN ALIGNMENT =====',
+                                 category='engine')
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_calculate_effective_offset_for_single_result] 间隙模式偏移量: {gap_offset:.3f}s, 匹配得分: {gap_score:.3f}',
+                                 category='engine')
 
-                alignment_info['method'] = 'gap_pattern'
-                alignment_info['offset'] = gap_offset
+                    alignment_info['method'] = 'gap_pattern'
+                    alignment_info['offset'] = gap_offset
 
-                if abs(gap_offset) < 0.001:
-                    alignment_info['method'] = 'gap_pattern_no_adjustment'
-                    return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
+                    if abs(gap_offset) < 0.001:
+                        alignment_info['method'] = 'gap_pattern_no_adjustment'
+                        return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
 
-                adjusted = self._apply_single_offset(reference_params, gap_offset)
-                return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
+                    adjusted = self._apply_single_offset(reference_params, gap_offset)
+                    return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
             else:
                 log_not_emit('DEBUG', 'device_collector',
                              f'[_calculate_effective_offset_for_single_result] 间隙模式验证未通过: offset={gap_offset}, score={gap_score}',
@@ -336,6 +349,17 @@ class DeviceResultCollector:
                 if fallback_result:
                     return {'adjusted_params': fallback_result, 'alignment_info': alignment_info}
                 # fallback 也失败，继续使用 first_timestamp（标记低可靠性）
+
+        # first_timestamp 偏移量合理性校验
+        if not self._validate_offset_reasonable(effective_offset, ref_segments):
+            log_not_emit('WARNING', 'device_collector',
+                         f'[_calculate_effective_offset_for_single_result] first_timestamp 偏移量 {effective_offset:.3f}s 不合理'
+                         f'(会导致参考负数时间戳), 尝试使用 playback_time_offsets',
+                         category='engine')
+            alignment_info['method'] = 'fallback'
+            fallback_result = self._apply_fallback_offset(reference_params, playback_time_offsets)
+            if fallback_result:
+                return {'adjusted_params': fallback_result, 'alignment_info': alignment_info}
 
         if abs(effective_offset) < 0.001:
             log_not_emit('INFO', 'device_collector',
@@ -720,6 +744,32 @@ class DeviceResultCollector:
                      f'[_detect_missing_segments] {result["description"]}', category='engine')
 
         return result
+
+    def _validate_offset_reasonable(self, offset, ref_segments):
+        """校验偏移量是否合理：应用后参考首个片段不应出现显著负数时间戳
+
+        Args:
+            offset: 待校验的偏移量
+            ref_segments: 参考片段列表
+
+        Returns:
+            bool: True 表示偏移量合理，False 表示不合理
+        """
+        if not ref_segments:
+            return True
+
+        first_ref_start = min(seg['start'] for seg in ref_segments)
+        adjusted_first_start = first_ref_start + offset
+
+        if adjusted_first_start < MIN_REF_START_TIME:
+            log_not_emit('WARNING', 'device_collector',
+                         f'[_validate_offset_reasonable] 偏移量 {offset:.3f}s 不合理: '
+                         f'参考首个片段 start={first_ref_start:.3f}s, '
+                         f'调整后={adjusted_first_start:.3f}s < {MIN_REF_START_TIME}s',
+                         category='engine')
+            return False
+
+        return True
 
     def _compute_total_overlap(self, segs_a, segs_b):
         """计算两组片段的总重叠时间
