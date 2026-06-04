@@ -1,6 +1,8 @@
 import threading
 import copy
 import json
+import difflib
+import statistics
 from backend.algorithm.field_mapper import get_field_mapper
 from backend.utils.log_handler import log_not_emit
 
@@ -10,6 +12,11 @@ MAX_CANDIDATE_PAIRS = 100
 MIN_GAP_MATCH_TOLERANCE = 0.5    # 间隙匹配容差(秒)
 GAP_PATTERN_MIN_SEGMENTS = 3     # gap_pattern 策略所需最少片段数
 MIN_REF_START_TIME = -0.5       # 调整后参考首个片段允许的最小起始时间(秒)
+MIN_TEXT_SIMILARITY = 0.3                        # SequenceMatcher 最小匹配相似度
+MIN_CONTENT_MATCH_PAIRS = 2                       # 内容对齐所需最少匹配对数
+CONTENT_ALIGNMENT_SKIP_PENALTY = -0.1             # DP 跳段惩罚
+CONTENT_ALIGNMENT_CONFIDENCE_THRESHOLD = 0.5      # 内容对齐最低置信度阈值
+CONTENT_OUTLIER_OFFSET_THRESHOLD = 2.0            # 偏移量离群值过滤阈值(秒)
 
 
 class DeviceResultCollector:
@@ -121,7 +128,8 @@ class DeviceResultCollector:
         每个设备分别计算 offset，因为不同设备可能有不同的 VAD 处理
 
         采用混合对齐策略：
-        1. 优先使用最大重叠对齐（处理丢句/多句场景）
+        0. 优先使用文本内容对齐（DP 序列匹配）
+        1. 最大重叠对齐（处理丢句/多句场景）
         2. 如果 max_overlap 未通过，尝试间隙模式匹配验证
         3. 回退到首个时间戳对齐（含丢句安全检查）
         4. 最终兜底使用 playback_time_offsets
@@ -135,7 +143,7 @@ class DeviceResultCollector:
             dict: {
                 'adjusted_params': 调整后的参考参数列表,
                 'alignment_info': {
-                    'method': 'max_overlap' | 'gap_pattern' | 'first_timestamp' | 'fallback' | 'none',
+                    'method': 'content_alignment' | 'max_overlap' | 'gap_pattern' | 'first_timestamp' | 'fallback' | 'none',
                     'offset': float,
                     'max_overlap': float (仅max_overlap方法),
                     'device_segment_count': int,
@@ -146,7 +154,11 @@ class DeviceResultCollector:
                     'missing_segment_detail': str,
                     'gap_pattern_offset': float|None,
                     'gap_pattern_match_score': float|None,
-                    'first_timestamp_reliability': str
+                    'first_timestamp_reliability': str,
+                    'content_alignment_score': float|None,
+                    'content_matched_pairs': int,
+                    'content_skipped_device': int,
+                    'content_skipped_ref': int
                 }
             }
         """
@@ -161,7 +173,11 @@ class DeviceResultCollector:
             'missing_segment_detail': '',
             'gap_pattern_offset': None,
             'gap_pattern_match_score': None,
-            'first_timestamp_reliability': 'high'
+            'first_timestamp_reliability': 'high',
+            'content_alignment_score': None,
+            'content_matched_pairs': 0,
+            'content_skipped_device': 0,
+            'content_skipped_ref': 0
         }
 
         if not reference_params:
@@ -179,6 +195,47 @@ class DeviceResultCollector:
         missing_info = self._detect_missing_segments(device_segments, ref_segments)
         alignment_info['missing_segment_detected'] = missing_info['detected']
         alignment_info['missing_segment_detail'] = missing_info['description']
+
+        # ========== 策略0: content_alignment (文本内容对齐) ==========
+        content_offset, content_confidence, content_details = self._align_by_content(
+            device_segments, ref_segments
+        )
+
+        alignment_info['content_alignment_score'] = content_confidence
+        alignment_info['content_matched_pairs'] = len(content_details.get('matched_pairs', []))
+        alignment_info['content_skipped_device'] = content_details.get('skipped_device', 0)
+        alignment_info['content_skipped_ref'] = content_details.get('skipped_ref', 0)
+
+        if (content_offset is not None
+                and content_confidence >= CONTENT_ALIGNMENT_CONFIDENCE_THRESHOLD):
+            if not self._validate_offset_reasonable(content_offset, ref_segments):
+                log_not_emit('WARNING', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] content_alignment 偏移量 {content_offset:.3f}s 不合理, 跳过',
+                             category='engine')
+            else:
+                log_not_emit('INFO', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] ===== CONTENT ALIGNMENT =====',
+                             category='engine')
+                log_not_emit('INFO', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] 偏移量: {content_offset:.3f}s, '
+                             f'置信度: {content_confidence:.3f}, 匹配对数: {len(content_details["matched_pairs"])}',
+                             category='engine')
+
+                alignment_info['method'] = 'content_alignment'
+                alignment_info['offset'] = content_offset
+
+                if abs(content_offset) < 0.001:
+                    alignment_info['method'] = 'content_alignment_no_adjustment'
+                    return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
+
+                adjusted = self._apply_single_offset(reference_params, content_offset)
+                return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
+        else:
+            if content_offset is not None:
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] 内容对齐置信度不足: '
+                             f'offset={content_offset}, confidence={content_confidence:.3f}',
+                             category='engine')
 
         # ========== 策略1: max_overlap ==========
         use_max_overlap = (
@@ -274,7 +331,7 @@ class DeviceResultCollector:
                              f'[_calculate_effective_offset_for_single_result] 间隙模式验证未通过: offset={gap_offset}, score={gap_score}',
                              category='engine')
 
-        # ========== 策略3: first_timestamp + 安全检查 ==========
+        # ========== 策略3: first_timestamp + 丢句感知 ==========
         device_first_ts = self._get_device_first_timestamp_from_result(raw_results)
         alignment_info['device_first_ts'] = device_first_ts
 
@@ -294,6 +351,10 @@ class DeviceResultCollector:
                          '[_calculate_effective_offset_for_single_result] Cannot get reference first timestamp',
                          category='engine')
             return {'adjusted_params': None, 'alignment_info': alignment_info}
+
+        # 保存 max_overlap 结果供丢句场景使用（在覆盖 alignment_info 之前）
+        prev_max_overlap_value = alignment_info.get('max_overlap')
+        prev_max_overlap_offset = alignment_info.get('offset') if alignment_info.get('method') == 'max_overlap' else None
 
         effective_offset = device_first_ts - ref_first_ts
         alignment_info['method'] = 'first_timestamp'
@@ -326,29 +387,51 @@ class DeviceResultCollector:
                      f'[_calculate_effective_offset_for_single_result] ======================================',
                      category='engine')
 
-        # 丢句场景下 first_timestamp 的安全检查
-        if alignment_info['first_timestamp_reliability'] == 'low' and device_segments and ref_segments:
-            # 用 offset 平移参考后计算重叠，验证 offset 是否合理
-            adjusted_ref_for_check = [
-                {'start': seg['start'] + effective_offset, 'end': seg['end'] + effective_offset}
-                for seg in ref_segments
-            ]
-            check_overlap = self._compute_total_overlap(device_segments, adjusted_ref_for_check)
-            log_not_emit('INFO', 'device_collector',
-                         f'[_calculate_effective_offset_for_single_result] first_timestamp 安全验证: offset={effective_offset:.3f}s, 重叠={check_overlap:.3f}s',
-                         category='engine')
-
-            if check_overlap < 0.1:
+        # 丢句场景: first_timestamp 不可信，优先使用之前已算出的 max_overlap 结果
+        if missing_info['detected']:
+            # 虽然 max_overlap 未通过 MIN_OVERLAP_THRESHOLD，但在丢句场景下它比 first_timestamp 更可靠
+            if prev_max_overlap_value is not None and prev_max_overlap_value > 0 and prev_max_overlap_offset is not None:
                 log_not_emit('WARNING', 'device_collector',
-                             f'[_calculate_effective_offset_for_single_result] first_timestamp 验证失败(重叠={check_overlap:.3f}s < 0.1s), '
-                             f'检测到丢句, 该偏移量可能不正确, 尝试使用 playback_time_offsets',
+                             f'[_calculate_effective_offset_for_single_result] 检测到丢句, first_timestamp 不可信, '
+                             f'回退使用 max_overlap 结果: offset={prev_max_overlap_offset:.3f}s, overlap={prev_max_overlap_value:.3f}s',
                              category='engine')
-                alignment_info['method'] = 'fallback'
-                alignment_info['first_timestamp_reliability'] = 'low'
-                fallback_result = self._apply_fallback_offset(reference_params, playback_time_offsets)
-                if fallback_result:
-                    return {'adjusted_params': fallback_result, 'alignment_info': alignment_info}
-                # fallback 也失败，继续使用 first_timestamp（标记低可靠性）
+                alignment_info['method'] = 'max_overlap_fallback'
+                alignment_info['offset'] = prev_max_overlap_offset
+
+                if not self._validate_offset_reasonable(prev_max_overlap_offset, ref_segments):
+                    log_not_emit('WARNING', 'device_collector',
+                                 f'[_calculate_effective_offset_for_single_result] max_overlap fallback 偏移量 {prev_max_overlap_offset:.3f}s 也不合理',
+                                 category='engine')
+                else:
+                    if abs(prev_max_overlap_offset) < 0.001:
+                        return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
+                    adjusted = self._apply_single_offset(reference_params, prev_max_overlap_offset)
+                    return {'adjusted_params': adjusted, 'alignment_info': alignment_info}
+
+            # 无可用 max_overlap 结果，对 first_timestamp 做重叠验证
+            if device_segments and ref_segments:
+                adjusted_ref_for_check = [
+                    {'start': seg['start'] + effective_offset, 'end': seg['end'] + effective_offset}
+                    for seg in ref_segments
+                ]
+                check_overlap = self._compute_total_overlap(device_segments, adjusted_ref_for_check)
+                total_device_dur = sum(s['end'] - s['start'] for s in device_segments)
+                overlap_ratio = check_overlap / total_device_dur if total_device_dur > 0 else 0
+
+                log_not_emit('INFO', 'device_collector',
+                             f'[_calculate_effective_offset_for_single_result] 丢句场景 first_timestamp 验证: '
+                             f'offset={effective_offset:.3f}s, 重叠={check_overlap:.3f}s, 重叠率={overlap_ratio:.2f}',
+                             category='engine')
+
+                if overlap_ratio < 0.5:
+                    log_not_emit('WARNING', 'device_collector',
+                                 f'[_calculate_effective_offset_for_single_result] first_timestamp 验证失败(重叠率={overlap_ratio:.2f} < 0.5), '
+                                 f'检测到丢句, 该偏移量不可信, 尝试使用 playback_time_offsets',
+                                 category='engine')
+                    alignment_info['method'] = 'fallback'
+                    fallback_result = self._apply_fallback_offset(reference_params, playback_time_offsets)
+                    if fallback_result:
+                        return {'adjusted_params': fallback_result, 'alignment_info': alignment_info}
 
         # first_timestamp 偏移量合理性校验
         if not self._validate_offset_reasonable(effective_offset, ref_segments):
@@ -444,7 +527,7 @@ class DeviceResultCollector:
     def _get_device_first_timestamp(self, all_results):
         """从设备结果中提取首个时间戳
 
-        优先从 recording_rttm_content 获取，其次 recording_stm_content
+        优先从 recording_stm_content 获取（包含文本），其次 recording_rttm_content
 
         Args:
             all_results: 设备结果列表
@@ -469,19 +552,21 @@ class DeviceResultCollector:
                          f'[_get_device_first_timestamp] result[{idx}]: rttm_len={len(rttm_content) if rttm_content else 0}, stm_len={len(stm_content) if stm_content else 0}',
                          category='engine')
 
-            if rttm_content:
-                ts = self._extract_first_timestamp_from_text(rttm_content, 'rttm')
-                if ts is not None:
-                    log_not_emit('INFO', 'device_collector',
-                                 f'[_get_device_first_timestamp] result[{idx}]: Found device timestamp from RTTM: {ts:.3f}s',
-                                 category='engine')
-                    return ts
-
+            # 优先使用 STM（包含文本内容）
             if stm_content:
                 ts = self._extract_first_timestamp_from_text(stm_content, 'stm')
                 if ts is not None:
                     log_not_emit('INFO', 'device_collector',
                                  f'[_get_device_first_timestamp] result[{idx}]: Found device timestamp from STM: {ts:.3f}s',
+                                 category='engine')
+                    return ts
+
+            # 回退到 RTTM
+            if rttm_content:
+                ts = self._extract_first_timestamp_from_text(rttm_content, 'rttm')
+                if ts is not None:
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_get_device_first_timestamp] result[{idx}]: Found device timestamp from RTTM: {ts:.3f}s',
                                  category='engine')
                     return ts
 
@@ -504,18 +589,20 @@ class DeviceResultCollector:
         rttm_content = extracted_result.get('recording_rttm_content', '')
         stm_content = extracted_result.get('recording_stm_content', '')
 
-        if rttm_content:
-            ts = self._extract_first_timestamp_from_text(rttm_content, 'rttm')
-            if ts is not None:
-                log_not_emit('DEBUG', 'device_collector',
-                             f'[_get_device_first_timestamp_from_result] from rttm: {ts:.3f}', category='engine')
-                return ts
-
+        # 优先使用 STM（包含文本内容）
         if stm_content:
             ts = self._extract_first_timestamp_from_text(stm_content, 'stm')
             if ts is not None:
                 log_not_emit('DEBUG', 'device_collector',
                              f'[_get_device_first_timestamp_from_result] from stm: {ts:.3f}', category='engine')
+                return ts
+
+        # 回退到 RTTM
+        if rttm_content:
+            ts = self._extract_first_timestamp_from_text(rttm_content, 'rttm')
+            if ts is not None:
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_get_device_first_timestamp_from_result] from rttm: {ts:.3f}', category='engine')
                 return ts
 
         log_not_emit('WARNING', 'device_collector',
@@ -545,8 +632,8 @@ class DeviceResultCollector:
             try:
                 if format_type == 'rttm' and parts[0] == 'SPEAKER' and len(parts) >= 4:
                     return float(parts[3])
-                elif format_type == 'stm' and len(parts) >= 3 and parts[0] != 'SPEAKER' and not line.startswith('SPK-'):
-                    return float(parts[2])
+                elif format_type == 'stm' and len(parts) >= 4 and parts[0] != 'SPEAKER' and not line.startswith('SPK-'):
+                    return float(parts[3])
             except (ValueError, IndexError):
                 continue
 
@@ -617,13 +704,15 @@ class DeviceResultCollector:
         rttm_content = raw_results.get('recording_rttm_content', '')
         stm_content = raw_results.get('recording_stm_content', '')
 
-        if rttm_content:
-            segments = self._extract_segments_from_text(rttm_content, 'rttm')
+        # 优先使用 STM（包含文本内容，支持内容对齐）
+        if stm_content:
+            segments = self._extract_segments_from_text(stm_content, 'stm')
             if segments:
                 return segments
 
-        if stm_content:
-            segments = self._extract_segments_from_text(stm_content, 'stm')
+        # 回退到 RTTM（无文本内容）
+        if rttm_content:
+            segments = self._extract_segments_from_text(rttm_content, 'rttm')
             if segments:
                 return segments
 
@@ -791,7 +880,7 @@ class DeviceResultCollector:
         return total
 
     def _compute_text_similarity(self, text_a, text_b):
-        """计算两个文本的相似度（简单词重叠率）
+        """计算两个文本的相似度（SequenceMatcher 字符级序列匹配）
 
         Args:
             text_a: 文本A
@@ -803,16 +892,13 @@ class DeviceResultCollector:
         if not text_a or not text_b:
             return 0.0
 
-        words_a = set(text_a.lower().split())
-        words_b = set(text_b.lower().split())
+        text_a = text_a.strip().lower()
+        text_b = text_b.strip().lower()
 
-        if not words_a or not words_b:
+        if len(text_a) < 3 or len(text_b) < 3:
             return 0.0
 
-        intersection = words_a & words_b
-        union = words_a | words_b
-
-        return len(intersection) / len(union) if union else 0.0
+        return difflib.SequenceMatcher(None, text_a, text_b).ratio()
 
     def _find_candidate_pairs_by_text(self, device_segments, ref_segments, min_similarity=0.3):
         """基于文本相似度找到候选匹配对
@@ -843,6 +929,145 @@ class DeviceResultCollector:
 
         candidates.sort(key=lambda x: x[2], reverse=True)
         return candidates[:MAX_CANDIDATE_PAIRS]
+
+    def _align_by_content(self, device_segments, ref_segments):
+        """基于文本内容的动态规划对齐
+
+        使用 SequenceMatcher 构建 N×M 相似度矩阵，通过 DP 找到最优的
+        设备-参考片段配对路径，从匹配对的时间差中计算鲁棒的偏移量。
+
+        Args:
+            device_segments: 设备片段列表 (each has 'start', 'end', 'text')
+            ref_segments: 参考片段列表 (each has 'start', 'end', 'text')
+
+        Returns:
+            tuple: (offset, confidence, details_dict)
+                - offset: float or None (None if alignment failed)
+                - confidence: float (0.0-1.0)
+                - details_dict: {
+                    'matched_pairs': [(dev_idx, ref_idx, similarity, offset)],
+                    'skipped_device': int,
+                    'skipped_ref': int,
+                  }
+        """
+        empty_details = {'matched_pairs': [], 'skipped_device': 0, 'skipped_ref': 0}
+
+        if not device_segments or not ref_segments:
+            return None, 0.0, empty_details
+
+        # 提取文本
+        d_texts = [seg.get('text', '').strip() for seg in device_segments]
+        r_texts = [seg.get('text', '').strip() for seg in ref_segments]
+
+        # 如果任一侧全部无文本，跳过内容对齐
+        if not any(d_texts) or not any(r_texts):
+            return None, 0.0, empty_details
+
+        N = len(device_segments)
+        M = len(ref_segments)
+
+        # 构建 N×M 相似度矩阵
+        sim = [[0.0] * M for _ in range(N)]
+        for i in range(N):
+            if not d_texts[i]:
+                continue
+            for j in range(M):
+                if not r_texts[j]:
+                    continue
+                sim[i][j] = self._compute_text_similarity(d_texts[i], r_texts[j])
+
+        # DP 对齐表
+        dp = [[0.0] * (M + 1) for _ in range(N + 1)]
+        traceback = [[''] * (M + 1) for _ in range(N + 1)]
+
+        for i in range(1, N + 1):
+            for j in range(1, M + 1):
+                # match: 只有相似度达阈值才允许配对
+                match_score = float('-inf')
+                if sim[i - 1][j - 1] >= MIN_TEXT_SIMILARITY:
+                    # 时间惩罚：防止时间差距过大的荒谬配对
+                    time_penalty = max(
+                        -0.01 * abs(device_segments[i - 1]['start'] - ref_segments[j - 1]['start']),
+                        -0.5
+                    )
+                    match_score = dp[i - 1][j - 1] + sim[i - 1][j - 1] + time_penalty
+
+                skip_ref_score = dp[i][j - 1] + CONTENT_ALIGNMENT_SKIP_PENALTY
+                skip_dev_score = dp[i - 1][j] + CONTENT_ALIGNMENT_SKIP_PENALTY
+
+                best = max(match_score, skip_ref_score, skip_dev_score)
+                dp[i][j] = best
+
+                if best == match_score:
+                    traceback[i][j] = 'match'
+                elif best == skip_ref_score:
+                    traceback[i][j] = 'skip_ref'
+                else:
+                    traceback[i][j] = 'skip_device'
+
+        # 回溯恢复对齐路径
+        matched_pairs = []
+        skipped_device = 0
+        skipped_ref = 0
+        i, j = N, M
+        while i > 0 and j > 0:
+            action = traceback[i][j]
+            if action == 'match':
+                dev_idx = i - 1
+                ref_idx = j - 1
+                pair_offset = device_segments[dev_idx]['start'] - ref_segments[ref_idx]['start']
+                matched_pairs.append((dev_idx, ref_idx, sim[dev_idx][ref_idx], pair_offset))
+                i -= 1
+                j -= 1
+            elif action == 'skip_ref':
+                skipped_ref += 1
+                j -= 1
+            elif action == 'skip_device':
+                skipped_device += 1
+                i -= 1
+            else:
+                break
+        # 处理剩余的 i 或 j
+        while i > 0:
+            skipped_device += 1
+            i -= 1
+        while j > 0:
+            skipped_ref += 1
+            j -= 1
+
+        matched_pairs.reverse()
+
+        if len(matched_pairs) < MIN_CONTENT_MATCH_PAIRS:
+            details = {'matched_pairs': matched_pairs, 'skipped_device': skipped_device, 'skipped_ref': skipped_ref}
+            return None, 0.0, details
+
+        # 计算偏移量：中位数 + 离群值过滤
+        offsets = [p[3] for p in matched_pairs]
+        median_offset = statistics.median(offsets)
+
+        filtered_pairs = [
+            p for p in matched_pairs
+            if abs(p[3] - median_offset) <= CONTENT_OUTLIER_OFFSET_THRESHOLD
+        ]
+
+        if len(filtered_pairs) < MIN_CONTENT_MATCH_PAIRS:
+            details = {'matched_pairs': matched_pairs, 'skipped_device': skipped_device, 'skipped_ref': skipped_ref}
+            return None, 0.0, details
+
+        final_offset = statistics.median([p[3] for p in filtered_pairs])
+
+        # 置信度 = 平均相似度 × 覆盖率
+        avg_similarity = statistics.mean([p[2] for p in filtered_pairs])
+        coverage = len(filtered_pairs) / max(N, M)
+        confidence = avg_similarity * coverage
+
+        details = {
+            'matched_pairs': filtered_pairs,
+            'skipped_device': skipped_device,
+            'skipped_ref': skipped_ref,
+        }
+
+        return final_offset, confidence, details
 
     def _sample_segments_by_duration(self, segments, max_count=20):
         """按时长优先采样片段
