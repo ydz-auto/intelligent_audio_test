@@ -33,14 +33,11 @@ export interface TestCase {
   groupName?: string;
   group_id?: string | number;
   groupId?: string | number;
-  type?: string | string[];
-  testType?: string | string[];
+  type?: string;
+  testType?: string;
   config?: {
     audios?: AudioConfig[];
-    dimensions?: {
-      api: DimensionConfig[];
-      e2e: DimensionConfig[];
-    };
+    dimensions?: DimensionConfig[];
     backgroundNoise?: BackgroundNoiseConfig;
   };
 }
@@ -69,8 +66,7 @@ export interface ImportPreviewData {
   total: number;
   items: ImportPreviewItem[];
   audioConfigsCount: number;
-  apiDimensionsCount: number;
-  e2eDimensionsCount: number;
+  dimensionsCount: number;
   tagsCount: number;
   groupsCount: number;
   sheetNames: string[];
@@ -117,10 +113,7 @@ export interface TestCaseFormData {
   reference_params?: Array<{ fieldCode: string; fieldValue: any }>;
   config: {
     audios: AudioConfig[];
-    dimensions: {
-      api: DimensionConfig[];
-      e2e: DimensionConfig[];
-    };
+    dimensions: DimensionConfig[];
     backgroundNoise: BackgroundNoiseConfig;
   };
   _originalGroup?: string;

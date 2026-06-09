@@ -182,7 +182,7 @@ export function useAudioImport() {
     customGroupName: '',
     translationDirectionId: '',
     inheritTags: true,
-    dimensions: { api: [], e2e: [] },
+    dimensions: [],
     noiseAudioId: null,
     noiseSpl: 60.0,
     algorithmType: '',
@@ -904,7 +904,11 @@ export function useAudioImport() {
           if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
           if (options?.translationDirectionId !== undefined) uploadOptions.translationDirectionId = options.translationDirectionId;
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
-          if (options?.dimensions !== undefined) uploadOptions.dimensions = options.dimensions;
+          uploadOptions.dimensions = [
+            ...(options?.apiDimensions || []),
+            ...(options?.e2eDimensions || []),
+            ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
+          ];
           if (options?.noiseAudioId !== undefined) uploadOptions.noiseAudioId = options.noiseAudioId;
           if (options?.noiseSpl !== undefined) uploadOptions.noiseSpl = options.noiseSpl;
           if (options?.algorithmType !== undefined) uploadOptions.algorithmType = options.algorithmType;
@@ -1892,7 +1896,11 @@ export function useAudioImport() {
           if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
           if (options?.translationDirectionId !== undefined) uploadOptions.translationDirectionId = options.translationDirectionId;
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
-          if (options?.dimensions !== undefined) uploadOptions.dimensions = options.dimensions;
+          uploadOptions.dimensions = [
+            ...(options?.apiDimensions || []),
+            ...(options?.e2eDimensions || []),
+            ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
+          ];
           if (options?.noiseAudioId !== undefined) uploadOptions.noiseAudioId = options.noiseAudioId;
           if (options?.noiseSpl !== undefined) uploadOptions.noiseSpl = options.noiseSpl;
           if (options?.algorithmType !== undefined) uploadOptions.algorithmType = options.algorithmType;

@@ -102,7 +102,8 @@ class E2EExecutor(BaseExecutor):
             local_db_session = db.session()
             try:
                 audios = case_config.get('audios', [])
-                e2e_audios = [audio for audio in audios if audio.get('test_type') == 'e2e' and audio.get('audio_id')]
+                # 新双记录架构：E2E 记录已是单类型，直接使用所有音频
+                e2e_audios = [audio for audio in audios if audio.get('audio_id')]
                 if not e2e_audios:
                     error_msg = "未配置有效的 E2E 测试音频"
                     self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)

@@ -702,11 +702,9 @@ const normalizeAudioFields = (caseItem, taskType) => {
   if (!caseItem || typeof caseItem !== 'object') return caseItem
   const normalized = { ...caseItem }
 
-  // 统一使用新的 audios 字段（优先）- 支持后端返回的格式
   if (normalized.audios && Array.isArray(normalized.audios) && normalized.audios.length > 0) {
     normalized.audioList = normalized.audios.map((audio, idx) => {
       let typeLabel = '测试音频'
-      // 支持 testType / audioType 或 audio_type / test_type
       const audioType = audio.testType ?? audio.audioType ?? audio.test_type ?? audio.audio_type ?? 'api'
       if (audioType === 'api') {
         typeLabel = 'API测试音频'
@@ -732,67 +730,6 @@ const normalizeAudioFields = (caseItem, taskType) => {
         deviceName: audio.playbackDeviceName ?? audio.deviceName ?? audio.device_name
       }
     })
-  } else {
-    // 兼容旧字段逻辑 - 从旧字段构建 audioList，保留向后兼容
-    normalized.apiAudio = normalized.apiAudio ?? normalized.api_audio ?? null
-    normalized.e2eAudio = normalized.e2eAudio ?? normalized.e2e_audio ?? null
-    normalized.e2eAudios = normalized.e2eAudios ?? normalized.e2e_audios ?? []
-
-    const list = []
-    
-    // 如果任务类型是 api，添加 api 音频
-    if ((taskType === 'api' || taskType === 'all') && normalized.apiAudio) {
-      list.push({ 
-        id: normalized.apiAudio.id,
-        path: normalized.apiAudio.url || normalized.apiAudio.path, 
-        label: 'API测试音频',
-        type: 'api'
-      })
-    }
-
-    // 如果任务类型是 e2e，添加 e2e 音频
-    if (taskType === 'e2e' || taskType === 'all') {
-      if (normalized.e2eAudios && normalized.e2eAudios.length > 0) {
-        normalized.e2eAudios.forEach((audio, idx) => {
-          list.push({ 
-            id: audio.id,
-            path: audio.url || audio.path, 
-            label: `E2E测试音频 ${idx + 1}`,
-            type: 'e2e'
-          })
-        })
-      } else if (normalized.e2eAudio) {
-        list.push({ 
-          id: normalized.e2eAudio.id,
-          path: normalized.e2eAudio.url || normalized.e2eAudio.path, 
-          label: 'E2E测试音频',
-          type: 'e2e'
-        })
-      }
-    }
-    
-    // 只有在没有旧字段数据时才使用 fallback audio 字段
-    if (list.length === 0 && normalized.audio) {
-      if (typeof normalized.audio === 'string') {
-        list.push({
-          path: normalized.audio,
-          label: '测试音频',
-          type: taskType === 'e2e' ? 'e2e' : 'api'
-        })
-      } else if (typeof normalized.audio === 'object') {
-        list.push({
-          id: normalized.audio.id,
-          path: normalized.audio.url || normalized.audio.path,
-          label: normalized.audio.filename || '测试音频',
-          type: taskType === 'e2e' ? 'e2e' : 'api'
-        })
-      }
-    }
-    
-    // 如果有音频数据，设置 audioList
-    if (list.length > 0) {
-      normalized.audioList = list
-    }
   }
 
   return normalized
@@ -852,40 +789,16 @@ const extractCasesFromReportData = (reportData) => {
       // 初始化或获取caseItem
       let caseItem = casesMap.get(testCaseId);
       if (!caseItem) {
-        const taskType = props.reportData?.taskType || 'all'
-        const asrRefLegacy = result.asr?.referenceText ?? result.asr?.reference_text ?? ''
-        const asrRefApi = result.asr?.referenceTextApi ?? result.asr?.reference_text_api ?? ''
-        const asrRefE2e = result.asr?.referenceTextE2e ?? result.asr?.reference_text_e2e ?? ''
-        const asrRef =
-          asrRefLegacy ||
-          (taskType === 'api'
-            ? asrRefApi
-            : taskType === 'e2e'
-              ? asrRefE2e
-              : (asrRefApi || asrRefE2e || ''))
-
-        const tranRefLegacy = result.translation?.referenceText ?? result.translation?.reference_text ?? ''
-        const tranRefApi = result.translation?.referenceTextApi ?? result.translation?.reference_text_api ?? ''
-        const tranRefE2e = result.translation?.referenceTextE2e ?? result.translation?.reference_text_e2e ?? ''
-        const tranRef =
-          tranRefLegacy ||
-          (taskType === 'api'
-            ? tranRefApi
-            : taskType === 'e2e'
-              ? tranRefE2e
-              : (tranRefApi || tranRefE2e || ''))
+        const asrRef = result.asr?.referenceText ?? result.asr?.reference_text ?? ''
+        const tranRef = result.translation?.referenceText ?? result.translation?.reference_text ?? ''
 
         caseItem = {
           id: testCaseId, 
           name: testCaseName, 
           category: result.testCaseGroup?.name ?? result.test_case_group?.name ?? result.testCaseType ?? result.test_case_type ?? '其他', 
           description: result.description || '', 
-          tags: processTags(result.testCaseTags ?? result.test_case_tags ?? []), 
-          audio: result.audio || null, 
-          apiAudio: result.apiAudio ?? result.api_audio ?? null, 
-          e2eAudio: result.e2eAudio ?? result.e2e_audio ?? null, 
-          e2eAudios: result.e2eAudios ?? result.e2e_audios ?? [], 
-          audios: result.audios ?? result.audios ?? [],
+          tags: processTags(result.testCaseTags ?? result.test_case_tags ?? []),
+          audios: result.audios ?? [],
           asr: {
             referenceText: asrRef,
             results: {}
@@ -901,26 +814,9 @@ const extractCasesFromReportData = (reportData) => {
         casesMap.set(testCaseId, caseItem);
       }
       
-      // 更新音频信息（如果之前没有提取到，则从当前结果中补充）
-      if (!caseItem.audio && result.audio) {
-        caseItem.audio = result.audio;
-      }
-      const apiAudio = result.apiAudio ?? result.api_audio;
-      if (!caseItem.apiAudio && apiAudio) {
-        caseItem.apiAudio = apiAudio;
-      }
-      const e2eAudio = result.e2eAudio ?? result.e2e_audio;
-      if (!caseItem.e2eAudio && e2eAudio) {
-        caseItem.e2eAudio = e2eAudio;
-      }
-      const e2eAudios = result.e2eAudios ?? result.e2e_audios;
-      if ((!caseItem.e2eAudios || caseItem.e2eAudios.length === 0) && Array.isArray(e2eAudios) && e2eAudios.length > 0) {
-        caseItem.e2eAudios = e2eAudios;
-      }
-      // 更新统一的audios字段
-      const audios = result.audios ?? result.audios;
-      if ((!caseItem.audios || caseItem.audios.length === 0) && Array.isArray(audios) && audios.length > 0) {
-        caseItem.audios = audios;
+      // 更新audios字段
+      if ((!caseItem.audios || caseItem.audios.length === 0) && Array.isArray(result.audios) && result.audios.length > 0) {
+        caseItem.audios = result.audios;
       }
       
       // 更新ASR结果
@@ -1686,71 +1582,20 @@ const _inferParamType = (paramKey) => {
 
 const prepareAudioList = (caseItem) => {
   const taskType = props.reportData?.taskType || 'all' // 'api', 'e2e' or 'all'
-  
-  // 优先使用新的统一 audioList 字段
-  if (caseItem.audioList && Array.isArray(caseItem.audioList) && caseItem.audioList.length > 0) {
-    return caseItem.audioList.filter(audio => {
-      if (taskType === 'api') {
-        return audio.type === 'api'
-      } else if (taskType === 'e2e') {
-        return audio.type === 'e2e' || audio.type === 'noise'
-      } else {
-        return true // all: 显示所有
-      }
-    })
-  }
-  
-  // 兼容旧字段逻辑
-  const list = []
 
-  // 如果任务类型是 api，只显示 api 音频
-  if ((taskType === 'api' || taskType === 'all') && caseItem.apiAudio) {
-    list.push({ 
-      id: caseItem.apiAudio.id,
-      path: caseItem.apiAudio.url || caseItem.apiAudio.path, 
-      label: 'API测试音频',
-      type: 'api'
-    })
+  if (!caseItem.audioList || !Array.isArray(caseItem.audioList) || caseItem.audioList.length === 0) {
+    return []
   }
 
-  // 如果任务类型是 e2e，只显示 e2e 音频
-  if (taskType === 'e2e' || taskType === 'all') {
-    if (caseItem.e2eAudios && caseItem.e2eAudios.length > 0) {
-      caseItem.e2eAudios.forEach((audio, idx) => {
-        list.push({ 
-          id: audio.id,
-          path: audio.url || audio.path, 
-          label: `E2E测试音频 ${idx + 1}`,
-          type: 'e2e'
-        })
-      })
-    } else if (caseItem.e2eAudio) {
-      list.push({ 
-        id: caseItem.e2eAudio.id,
-        path: caseItem.e2eAudio.url || caseItem.e2eAudio.path, 
-        label: 'E2E测试音频',
-        type: 'e2e'
-      })
+  return caseItem.audioList.filter(audio => {
+    if (taskType === 'api') {
+      return audio.type === 'api'
+    } else if (taskType === 'e2e') {
+      return audio.type === 'e2e' || audio.type === 'noise'
+    } else {
+      return true // all: 显示所有
     }
-  }
-  if (list.length === 0 && caseItem.audio) {
-    const audio = caseItem.audio
-    if (typeof audio === 'string') {
-      list.push({
-        path: audio,
-        label: '测试音频',
-        type: taskType === 'e2e' ? 'e2e' : 'api'
-      })
-    } else if (typeof audio === 'object') {
-      list.push({
-        id: audio.id,
-        path: audio.url || audio.path,
-        label: audio.filename || '测试音频',
-        type: taskType === 'e2e' ? 'e2e' : 'api'
-      })
-    }
-  }
-  return list
+  })
 }
 
 const formatTime = (timestamp) => {

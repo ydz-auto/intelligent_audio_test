@@ -492,8 +492,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
           const config = { ...tc.config };
           if (config.audios) {
             config.audios = config.audios.map((audio: any) => {
-              if (audio.test_type === 'e2e') {
-                return { ...audio, playback_device_id: playbackDevices.deviceId };
+              const audioType = (audio.testType || audio.test_type || '').toLowerCase();
+              if (audioType === 'e2e') {
+                return { ...audio, testType: 'e2e', playbackDeviceId: playbackDevices.deviceId };
               }
               return audio;
             });
@@ -519,8 +520,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
           const config = { ...tc.config };
           if (config.audios) {
             config.audios = config.audios.map((audio: any) => {
-              if (audio.test_type === 'e2e') {
-                return { ...audio, spl: spl.value };
+              const audioType = (audio.testType || audio.test_type || '').toLowerCase();
+              if (audioType === 'e2e') {
+                return { ...audio, testType: 'e2e', spl: spl.value };
               }
               return audio;
             });
@@ -577,10 +579,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
         const tc = testCases.value.find(t => t.id === id);
         if (tc && tc.config) {
           const config = { ...tc.config };
-          if (!config.dimensions) {
-            config.dimensions = {};
-          }
-          config.dimensions[testType] = dimensions;
+          config.dimensions = dimensions;
           tc.config = config;
         }
       });
@@ -600,10 +599,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
         const tc = testCases.value.find(t => t.id === id);
         if (tc) {
           const config = tc.config ? { ...tc.config } : {};
-          config.background_noise = {
-            audio_id: audioId,
+          config.backgroundNoise = {
+            audioId: audioId,
             spl: spl,
-            device_ids: deviceIds
+            deviceIds: deviceIds
           };
           tc.config = config;
         }

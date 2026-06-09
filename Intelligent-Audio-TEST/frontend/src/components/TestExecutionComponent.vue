@@ -279,7 +279,7 @@
               暂无日志
             </div>
             <div v-for="log in visibleLogs" :key="log.id" class="log-item" :class="log.type" style="margin-bottom: 0; display: flex; gap: 12px; height: 28px; align-items: center; white-space: nowrap;">
-              <span class="log-time" style="color: var(--text-secondary); min-width: 120px; font-size: 12px;">{{ formatLogTime(log.time) }}</span>
+              <span class="log-time" style="color: var(--text-secondary); min-width: 150px; font-size: 12px;">{{ formatLogTime(log.time) }}</span>
               <span class="log-content" style="overflow: hidden; text-overflow: ellipsis;">{{ log.content }}</span>
             </div>
           </div>
@@ -352,7 +352,13 @@ const formatLogTime = (timeStr) => {
   try {
     const date = new Date(timeStr);
     if (!isNaN(date.getTime())) {
-      return date.toLocaleTimeString();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      const ms = String(date.getMilliseconds()).padStart(3, '0');
+      return `${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
     }
   } catch (e) {
     console.error('Failed to format log time:', e);

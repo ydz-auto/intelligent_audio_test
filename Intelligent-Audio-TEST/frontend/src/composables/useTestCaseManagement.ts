@@ -90,15 +90,18 @@ export function useTestCaseManagement() {
       // 应用类型过滤
       if (testTypeFilter.value !== 'all') {
         filtered = filtered.filter(testCase => {
-          const type = testCase.type || testCase.config?.type;
+          const type = (testCase.testType || testCase.test_type || testCase.type || testCase.config?.type || '').toLowerCase();
           if (type === testTypeFilter.value) return true;
           
           // 兼容短名称
           if (testTypeFilter.value === 'e2e' && type === 'e2e_test') return true;
           if (testTypeFilter.value === 'api' && type === 'api_test') return true;
           
-          if (testCase.config?.dryAudios && testTypeFilter.value === 'e2e') return true;
-          if (testCase.config?.apiAudio && testTypeFilter.value === 'api') return true;
+          // 回退：检查 audios 数组中的 testType
+          const audios = testCase.config?.audios || [];
+          if (testTypeFilter.value === 'e2e') return audios.some((a: any) => (a.testType || a.test_type) === 'e2e');
+          if (testTypeFilter.value === 'api') return audios.some((a: any) => (a.testType || a.test_type) === 'api');
+          
           return false;
         });
       }

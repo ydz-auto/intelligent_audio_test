@@ -210,20 +210,20 @@ class CaseParameterExtractor:
                 if adjusted_reference_params:
                     for ref_param in adjusted_reference_params:
                         if ref_param.get('code') == source_param:
-                            e2e_data = ref_param.get('e2e')
-                            if e2e_data:
-                                if isinstance(e2e_data, dict):
-                                    text = e2e_data.get('text', '')
-                                    json_data = e2e_data.get('json', e2e_data.get('segments', []))
+                            ref_value = ref_param.get('value')
+                            if ref_value:
+                                if isinstance(ref_value, dict):
+                                    text = ref_value.get('text', '')
+                                    json_data = ref_value.get('json', ref_value.get('segments', []))
                                     if text or json_data:
                                         value = {
                                             'text': text,
                                             'json': json_data
                                         }
                                         log_not_emit('DEBUG', 'case_parameter_extractor', f'[get_evaluation_params] from adjusted_reference: source_param={source_param}, text_len={len(text) if text else 0}, json_count={len(json_data) if isinstance(json_data, list) else 0}', category='algorithm')
-                                elif isinstance(e2e_data, str):
+                                elif isinstance(ref_value, str):
                                     value = {
-                                        'text': e2e_data,
+                                        'text': ref_value,
                                         'json': []
                                     }
                             break

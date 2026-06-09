@@ -1506,21 +1506,21 @@ class AudioController:
             if existing:
                 test_case_name = f"测试用例_{audio.name}_{datetime.now(timezone(timedelta(hours=8))).strftime('%H%M%S')}"
             
-            # 构建多类型的音频配置 - 新结构：每个音频都需要 spl 字段
-            audios = []
-            for i, test_type in enumerate(test_types):
-                audio_config = {
-                    "audio_id": audio_id,
-                    "test_type": test_type,
-                    "spl": spl if spl else 65.0,  # 新结构：每个音频都需要 spl
-                    "play_order": i
-                }
-                
-                # E2E测试需要额外的播放设备配置
-                if test_type == 'e2e':
-                    audio_config["playback_device_id"] = effective_playback_device_id
-                
-                audios.append(audio_config)
+            # 确定记录类型（取第一个）
+            primary_test_type = test_types[0] if test_types else 'api'
+            
+            # 构建音频配置 - 双记录架构：不再在每个音频上标记 test_type
+            audio_config = {
+                "audio_id": audio_id,
+                "spl": spl if spl else 65.0,
+                "play_order": 0
+            }
+            
+            # E2E测试需要额外的播放设备配置
+            if primary_test_type == 'e2e':
+                audio_config["playback_device_id"] = effective_playback_device_id
+            
+            audios = [audio_config]
             
             # 构建噪声配置 - 新结构
             background_noise = None
@@ -1541,33 +1541,17 @@ class AudioController:
             if background_noise:
                 config["background_noise"] = background_noise
             
-            # 添加评估维度配置（按类型分开）
+            # 添加评估维度配置 - 双记录架构：扁平数组
             if dimensions_data:
-                # 统一处理：将可能的嵌套结构展平
                 if isinstance(dimensions_data, dict):
                     if 'dimensions' in dimensions_data:
-                        dimensions_data = dimensions_data.get('dimensions')
-                    
-                    # 最终验证：确保包含 api 或 e2e 键
-                    if 'api' in dimensions_data or 'e2e' in dimensions_data:
-                        config["dimensions"] = dimensions_data
+                        config["dimensions"] = dimensions_data.get('dimensions')
                     else:
-                        # 兜底：检查是否有其他格式
-                        all_keys = list(dimensions_data.keys())
-                        
-                        # 如果维度数据是嵌套的，尝试提取
-                        if 'dimensions' in all_keys:
-                            inner = dimensions_data.get('dimensions')
-                            if isinstance(inner, dict) and ('api' in inner or 'e2e' in inner):
-                                config["dimensions"] = inner
-                            else:
-                                config["dimensions"] = inner
-                        else:
-                            config["dimensions"] = dimensions_data
+                        config["dimensions"] = []
                 elif isinstance(dimensions_data, list):
-                    config["dimensions"] = {tt: dimensions_data.copy() for tt in test_types}
-                else:
                     config["dimensions"] = dimensions_data
+                else:
+                    config["dimensions"] = []
             
             # 创建测试用例
             tc_id = str(uuid.uuid4())
@@ -1577,6 +1561,7 @@ class AudioController:
                 name=test_case_name,
                 description=f"自动从音频 '{audio.name}' 创建的测试用例",
                 group_id=group.id,
+                test_type=primary_test_type,
                 algorithm_type=algorithm_type,
                 algorithm_params=algorithm_params if algorithm_params else [],
                 config=config
@@ -1931,14 +1916,16 @@ class AudioController:
                 
                 # 获取任务类型参数，默认为 'api'
                 task_type = request.args.get('task_type', 'api')
+                tc_test_type = test_case.test_type or 'api'
                 
-                # 查找指定测试类型的音频
-                target_audio_config = next((config for config in audios_config if config.get('test_type') == task_type), None)
-                if target_audio_config:
-                    target_audio_id = target_audio_config.get('audio_id')
-                    if target_audio_id:
-                        # 使用目标音频ID重新查询音频
-                        audio = db.session.get(Audio, target_audio_id)
+                # 记录的 test_type 匹配则取第一个有效音频
+                if tc_test_type == task_type:
+                    target_audio_config = next((c for c in audios_config if c.get('audio_id')), None)
+                    if target_audio_config:
+                        target_audio_id = target_audio_config.get('audio_id')
+                        if target_audio_id:
+                            # 使用目标音频ID重新查询音频
+                            audio = db.session.get(Audio, target_audio_id)
         
         # 检查最终音频是否存在
         if not audio or audio.deleted:

@@ -85,6 +85,12 @@
           <i class="fas fa-terminal" style="color: var(--primary-color);"></i>
           执行日志
         </h5>
+        <div class="log-toolbar">
+          <button v-if="hasMoreLogs" @click="loadMoreLogs" :disabled="logLoadingMore" class="btn-load-more-logs">
+            {{ logLoadingMore ? '加载中...' : '↓ 加载更多日志' }}
+          </button>
+          <span v-if="logTotal > 0" class="log-count">显示 {{ detail.logs.length }} / 共 {{ logTotal }} 条</span>
+        </div>
         <div class="modern-log-container" ref="logContainer" style="background-color: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; font-family: 'Consolas', 'Monaco', monospace; font-size: 13px; max-height: 400px; overflow-y: auto; line-height: 1.6; border: 1px solid #333;">
           <div v-if="!detail.logs || detail.logs.length === 0" class="no-logs" style="text-align: center; color: #666; padding: 20px;">
             暂无日志信息
@@ -115,6 +121,13 @@ const error = ref(null)
 const detail = ref(null)
 const logContainer = ref(null)
 
+// 日志分页状态
+const logPage = ref(1)
+const logTotal = ref(0)
+const logPages = ref(0)
+const logLoadingMore = ref(false)
+const logPerPage = 100
+
 // 准备对比数据：按设备分组指标和文本
 const preparedComparisonData = computed(() => {
   if (!detail.value?.results || !detail.value.devices?.length) return {}
@@ -143,7 +156,7 @@ const extractReferenceText = (refParams, key) => {
   if (!refParams) return ''
   const param = refParams[key]
   if (!param) return ''
-  return param.e2e || param.api || param.value || param.text || ''
+  return param.text || param.value || ''
 }
 
 // 检查是否有任何结果数据可显示
@@ -169,7 +182,18 @@ const hasAnyResultData = computed(() => {
     if ((d.fieldMapping.reference || []).length > 0) return true
   }
   
+  // 有 algorithmResults 数据
+  if (Array.isArray(d.algorithmResults) && d.algorithmResults.length > 0) return true
+  
+  // 有 referenceParams 数据
+  if (d.referenceParams && typeof d.referenceParams === 'object' && Object.keys(d.referenceParams).length > 0) return true
+  
   return false
+})
+
+// 是否还有更多日志可加载
+const hasMoreLogs = computed(() => {
+  return detail.value?.logs && detail.value.logs.length < logTotal.value
 })
 
 const fetchDetail = async () => {
@@ -204,20 +228,44 @@ const fetchDetail = async () => {
     
     // 后端 get_case_detail 不包含日志，需要单独获取
     try {
-      const logsResponse = await logsApi.getAll({
+      // 先获取第1页来拿到总页数
+      const firstPageResponse = await logsApi.getAll({
         taskId: String(props.taskId),
         test_case_id: String(props.caseId),
         page: 1,
-        perPage: 200
+        perPage: logPerPage
       })
-      if (logsResponse && logsResponse.items) {
-        // 后端返回倒序（最新在前），翻转为正序显示
-        detail.value.logs = [...logsResponse.items].reverse().map(log => ({
+      
+      if (firstPageResponse && firstPageResponse.items) {
+        const total = firstPageResponse.total || 0
+        const pages = firstPageResponse.pages || 1
+        logTotal.value = total
+        logPages.value = pages
+
+        const mapLog = (items) => items.map(log => ({
           id: log.id,
           time: log.timestamp ?? log.time ?? log.createdAt,
           level: log.level || 'INFO',
           content: log.content
         }))
+
+        if (pages <= 1) {
+          // 只有1页：后端返回DESC（最新在前），reverse为正序
+          detail.value.logs = mapLog([...firstPageResponse.items].reverse())
+          logPage.value = 1
+        } else {
+          // 多页：从最后一页（最旧的日志）开始加载，按时间正序显示
+          const lastPageResponse = await logsApi.getAll({
+            taskId: String(props.taskId),
+            test_case_id: String(props.caseId),
+            page: pages,
+            perPage: logPerPage
+          })
+          if (lastPageResponse?.items) {
+            detail.value.logs = mapLog([...lastPageResponse.items].reverse())
+            logPage.value = pages  // 记录当前已加载到第几页
+          }
+        }
       }
     } catch (logErr) {
       console.warn('获取用例日志失败:', logErr)
@@ -236,16 +284,54 @@ const fetchDetail = async () => {
 const formatTime = (timeStr) => {
   if (!timeStr) return ''
   const date = new Date(timeStr)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
   const hours = String(date.getHours()).padStart(2, '0')
   const minutes = String(date.getMinutes()).padStart(2, '0')
   const seconds = String(date.getSeconds()).padStart(2, '0')
   const ms = String(date.getMilliseconds()).padStart(3, '0')
-  return `${hours}:${minutes}:${seconds}.${ms}`
+  return `${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`
 }
 
 const scrollToBottom = () => {
   if (logContainer.value) {
     logContainer.value.scrollTop = logContainer.value.scrollHeight
+  }
+}
+
+// 加载更多日志（从最旧页向前翻，加载更新的日志，追加到列表后面）
+const loadMoreLogs = async () => {
+  if (logLoadingMore.value || !hasMoreLogs.value) return
+  logLoadingMore.value = true
+  // 从最后一页向前翻（page - 1 = 更新的日志）
+  const prevPage = logPage.value - 1
+  if (prevPage < 1) return
+
+  try {
+    const response = await logsApi.getAll({
+      taskId: String(props.taskId),
+      test_case_id: String(props.caseId),
+      page: prevPage,
+      perPage: logPerPage
+    })
+    if (response?.items) {
+      // 后端返回DESC，reverse为正序后追加到列表末尾（更新的日志在后面）
+      const newerLogs = [...response.items].reverse().map(log => ({
+        id: log.id,
+        time: log.timestamp ?? log.time ?? log.createdAt,
+        level: log.level || 'INFO',
+        content: log.content
+      }))
+      detail.value.logs = [...detail.value.logs, ...newerLogs]
+      logPage.value = prevPage
+    }
+    // 新日志追加在后面，滚动到底部
+    await nextTick()
+    scrollToBottom()
+  } catch (err) {
+    console.warn('加载更多日志失败:', err)
+  } finally {
+    logLoadingMore.value = false
   }
 }
 
@@ -334,5 +420,33 @@ onMounted(() => {
 
 .btn-primary:hover {
   background-color: #2563eb;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 4px 0;
+}
+
+.btn-load-more-logs {
+  padding: 4px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--background-secondary);
+  color: var(--primary-color);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-load-more-logs:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.log-count {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 </style>

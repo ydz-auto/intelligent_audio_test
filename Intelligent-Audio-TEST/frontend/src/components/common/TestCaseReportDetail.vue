@@ -60,58 +60,26 @@
       </div>
     </div>
 
-    <TimelineComparison
-      v-if="hasTimelineData"
-      :algorithmResults="algorithmResults"
-      :referenceParams="referenceParams"
-      :algorithmType="algorithmType"
-      :results="results"
-      :fieldMapping="fieldMapping"
+    <AudioPlayerModal
+      v-if="showAudioModal && currentPlayingAudio"
+      :visible="showAudioModal"
+      :audioId="currentPlayingAudio.id"
+      :audioTitle="currentPlayingAudio.label || '音频播放'"
+      :audioType="currentPlayingAudio.type || 'api'"
+      :spl="currentPlayingAudio.spl"
+      :offset="currentPlayingAudio.offset"
+      @close="closeAudioModal"
     />
 
-    <div v-if="hasAudio" class="audio-results-container">
-        <AudioTimelineVisualization
-          :audioList="audioListWithTimeline"
-        />
-      </div>
-
-      <AudioPlayerModal
-        v-if="showAudioModal && currentPlayingAudio"
-        :visible="showAudioModal"
-        :audioId="currentPlayingAudio.id"
-        :audioTitle="currentPlayingAudio.label || '音频播放'"
-        :audioType="currentPlayingAudio.type || 'api'"
-        :spl="currentPlayingAudio.spl"
-        :offset="currentPlayingAudio.offset"
-        @close="closeAudioModal"
-      />
-
-      <!-- 结果音频 -->
-      <div v-if="hasResultAudioData" class="detail-section">
-        <h4 class="section-title"><i class="fas fa-volume-up"></i> 结果音频</h4>
-        <div class="result-audio-container">
-          <div v-for="(audios, device) in resultAudios" :key="device" class="result-audio-group">
-            <div class="result-audio-title">{{ getDeviceName(device) }}</div>
-            <div class="result-audio-list">
-              <div v-for="(audio, idx) in audios" :key="idx" class="result-audio-item">
-                <span class="result-audio-label">{{ audio.filename || audio.param_code || '音频' + (idx + 1) }}</span>
-                <a v-if="audio.url" :href="audio.url" target="_blank" class="result-audio-link">
-                  <i class="fas fa-external-link-alt"></i> 播放
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    <div v-if="hasTextResults" class="detail-section">
+    <!-- 统一执行结果卡片 -->
+    <div v-if="hasExecutionResults" class="detail-section">
       <h4 class="section-title"><i class="fas fa-play-circle"></i> 执行结果</h4>
 
-      <div class="text-comparison-container">
-        <!-- 动态模式：使用 fieldMapping -->
-        <template v-if="referenceTextFields.length > 0 || resultTextFields.length > 0">
-          <!-- 参考文本字段 -->
-          <div v-if="referenceTextFields.length > 0" class="text-comparison-grid reference-row">
+      <div class="execution-results-container">
+        <!-- 参考文本字段 -->
+        <div v-if="referenceTextFields.length > 0" class="result-subsection">
+          <div class="subsection-label">参考数据</div>
+          <div class="text-comparison-grid reference-row">
             <div class="text-group" v-for="field in referenceTextFields" :key="'ref_' + field.param_code">
               <div class="text-item">
                 <div class="result-label">{{ field.label || field.param_code }}</div>
@@ -126,8 +94,11 @@
               </div>
             </div>
           </div>
+        </div>
 
-          <!-- 结果文本字段 -->
+        <!-- 结果文本字段 -->
+        <div v-if="resultTextFields.length > 0" class="result-subsection">
+          <div v-if="referenceTextFields.length > 0" class="subsection-label">结果数据</div>
           <div v-if="!isComparison" class="device-result-row">
             <div class="text-comparison-grid">
               <div class="text-item" v-for="field in resultTextFields" :key="'res_' + field.param_code">
@@ -159,91 +130,45 @@
               </div>
             </div>
           </div>
-        </template>
+        </div>
 
-        <!-- 回退模式：硬编码 ASR/翻译 -->
-        <template v-else>
-          <div class="text-comparison-grid reference-row">
-            <div class="text-group">
-              <div class="text-item">
-                <div class="result-label">参考ASR文本</div>
-                <div class="text-card reference">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts['refAsr'] }">
-                    <div class="text-content">{{ referenceAsr || '无数据' }}</div>
-                    <div v-if="(referenceAsr || '').length > 100" class="expand-toggle" @click="toggleText('refAsr')">
-                      {{ expandedTexts['refAsr'] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="text-group">
-              <div class="text-item">
-                <div class="result-label">参考翻译文本</div>
-                <div class="text-card reference">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts['refTrans'] }">
-                    <div class="text-content">{{ referenceTrans || '无数据' }}</div>
-                    <div v-if="(referenceTrans || '').length > 100" class="expand-toggle" @click="toggleText('refTrans')">
-                      {{ expandedTexts['refTrans'] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+        <!-- 时间轴对比 -->
+        <div v-if="hasTimelineData" class="result-subsection">
+          <div class="subsection-label">时间轴对比</div>
+          <TimelineComparison
+            :algorithmResults="algorithmResults"
+            :referenceParams="referenceParams"
+            :algorithmType="algorithmType"
+            :results="results"
+            :fieldMapping="fieldMapping"
+          />
+        </div>
 
-          <div v-if="!isComparison" class="device-result-row">
-            <div class="text-comparison-grid">
-              <div class="text-item">
-                <div class="result-label">ASR结果</div>
-                <div class="text-card">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts['default_asr'] }">
-                    <div class="text-content">{{ getAsrResult('default') }}</div>
-                    <div v-if="(getAsrResult('default')).length > 100" class="expand-toggle" @click="toggleText('default_asr')">
-                      {{ expandedTexts['default_asr'] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="text-item">
-                <div class="result-label">翻译结果</div>
-                <div class="text-card">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts['default_trans'] }">
-                    <div class="text-content">{{ getTransResult('default') }}</div>
-                    <div v-if="(getTransResult('default')).length > 100" class="expand-toggle" @click="toggleText('default_trans')">
-                      {{ expandedTexts['default_trans'] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div v-else v-for="device in devices" :key="device" class="device-result-row">
-            <div class="device-row-title">{{ getDeviceName(device) }}</div>
-            <div class="text-comparison-grid">
-              <div class="text-item">
-                <div class="text-card">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts[device + '_asr'] }">
-                    <div class="text-content">{{ getAsrResult(device) }}</div>
-                    <div v-if="(getAsrResult(device)).length > 100" class="expand-toggle" @click="toggleText(device + '_asr')">
-                      {{ expandedTexts[device + '_asr'] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <div class="text-item">
-                <div class="text-card">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts[device + '_trans'] }">
-                    <div class="text-content">{{ getTransResult(device) }}</div>
-                    <div v-if="(getTransResult(device)).length > 100" class="expand-toggle" @click="toggleText(device + '_trans')">
-                      {{ expandedTexts[device + '_trans'] ? '收起' : '展开' }}
-                    </div>
-                  </div>
+        <!-- 音频时间轴 -->
+        <div v-if="hasAudio" class="result-subsection">
+          <div class="subsection-label">音频时间轴</div>
+          <AudioTimelineVisualization
+            :audioList="audioListWithTimeline"
+          />
+        </div>
+
+        <!-- 结果音频 -->
+        <div v-if="hasResultAudioData" class="result-subsection">
+          <div class="subsection-label">结果音频</div>
+          <div class="result-audio-container">
+            <div v-for="(audios, device) in resultAudios" :key="device" class="result-audio-group">
+              <div class="result-audio-title">{{ getDeviceName(device) }}</div>
+              <div class="result-audio-list">
+                <div v-for="(audio, idx) in audios" :key="idx" class="result-audio-item">
+                  <span class="result-audio-label">{{ audio.filename || audio.param_code || '音频' + (idx + 1) }}</span>
+                  <a v-if="audio.url" :href="audio.url" target="_blank" class="result-audio-link">
+                    <i class="fas fa-external-link-alt"></i> 播放
+                  </a>
                 </div>
               </div>
             </div>
           </div>
-        </template>
+        </div>
       </div>
     </div>
   </div>
@@ -368,23 +293,16 @@ const hasMetrics = computed(() => {
          (props.metrics && props.metrics.length > 0);
 });
 
-// 是否有文本结果
-const hasTextResults = computed(() => {
-  // 动态字段（来自 fieldMapping 或 algorithmResults/referenceParams）
+// 是否有任何执行结果数据（文本、时间轴、音频、结果音频）
+const hasExecutionResults = computed(() => {
+  // 动态文本字段（来自 fieldMapping 或 algorithmResults/referenceParams）
   if (referenceTextFields.value.length > 0 || resultTextFields.value.length > 0) return true;
-  // 回退：硬编码检查
-  if (props.referenceAsr && props.referenceAsr.trim()) return true;
-  if (props.referenceTrans && props.referenceTrans.trim()) return true;
-  if (props.isComparison) {
-    for (const device of props.devices) {
-      const data = props.comparisonData[device];
-      if (data?.asr?.text && data.asr.text !== '-' && data.asr.text.trim()) return true;
-      if (data?.trans?.text && data.trans.text !== '-' && data.trans.text.trim()) return true;
-    }
-  } else {
-    if (props.asrResult && props.asrResult.trim()) return true;
-    if (props.transResult && props.transResult.trim()) return true;
-  }
+  // 时间轴数据
+  if (hasTimelineData.value) return true;
+  // 音频数据
+  if (hasAudio.value) return true;
+  // 结果音频
+  if (hasResultAudioData.value) return true;
   return false;
 });
 
@@ -410,7 +328,7 @@ const referenceTextFields = computed(() => {
   for (const [code, data] of Object.entries(refParams)) {
     if (!data || typeof data !== 'object') continue;
     if (data.type !== 'text') continue;
-    const text = data.e2e?.text || data.api?.text || data.text || data.value || '';
+    const text = data.text || data.value || '';
     if (typeof text === 'string' && text.trim()) {
       result.push({ param_code: code, label: code, param_type: 'text', text });
     }
@@ -649,23 +567,13 @@ const singleTableData = computed(() => {
   })
 })
 
-const getAsrResult = (device) => {
-  if (!props.isComparison || device === 'default') return props.asrResult || '无数据';
-  return props.comparisonData[device]?.asr?.text || '无数据';
-};
-
-const getTransResult = (device) => {
-  if (!props.isComparison || device === 'default') return props.transResult || '无数据';
-  return props.comparisonData[device]?.trans?.text || '无数据';
-};
-
 // 从 referenceParams 中提取参考文本值
 const getReferenceTextValue = (paramCode) => {
   const refParams = props.referenceParams || {};
   const data = refParams[paramCode];
   if (!data) return '';
   if (typeof data === 'string') return data;
-  return data.e2e?.text || data.api?.text || data.text || data.value || '';
+  return data.text || data.value || '';
 };
 
 // 从结果数据中提取文本值（algorithmResults 现在是扁平数组）
@@ -881,8 +789,28 @@ const closeAudioModal = () => {
 .audio-results-container {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 12px;
+}
+
+.execution-results-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.result-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.subsection-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary-color);
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--border-color);
+  margin-bottom: 4px;
 }
 
 .audio-result-item {

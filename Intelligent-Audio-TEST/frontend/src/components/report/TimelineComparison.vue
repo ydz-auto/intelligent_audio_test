@@ -576,9 +576,7 @@ export default {
         }
         
         // STM text
-        const stmText = data.stm_res?.text || data.stmRef?.text || data.stm?.text || 
-                        data.stm_res?.e2e?.text || data.stmRef?.e2e?.text || data.stm?.e2e?.text ||
-                        data.stm_res?.api?.text || data.stmRef?.api?.text || data.stm?.api?.text;
+        const stmText = data.stm_res?.text || data.stmRef?.text || data.stm?.text;
         if (stmText && typeof stmText === 'string') {
           const stmResult = this.parseStmText(stmText);
           if (stmResult.length > 0) {
@@ -600,9 +598,7 @@ export default {
           }
         }
         
-        const rttmText = data.rttm_res?.text || data.rttmRef?.text || data.rttm?.text ||
-                        data.rttm_res?.e2e?.text || data.rttmRef?.e2e?.text || data.rttm?.e2e?.text ||
-                        data.rttm_res?.api?.text || data.rttmRef?.api?.text || data.rttm?.api?.text;
+        const rttmText = data.rttm_res?.text || data.rttmRef?.text || data.rttm?.text;
         if (rttmText && typeof rttmText === 'string') {
           const rttmResult = this.parseRttmText(rttmText);
           if (rttmResult.length > 0) {
@@ -627,16 +623,6 @@ export default {
           const rttmResult = this.parseRttmText(data.text);
           if (rttmResult.length > 0) return rttmResult;
           return this.parseStmText(data.text);
-        }
-        if (data.e2e && data.e2e.text && typeof data.e2e.text === 'string') {
-          const rttmResult = this.parseRttmText(data.e2e.text);
-          if (rttmResult.length > 0) return rttmResult;
-          return this.parseStmText(data.e2e.text);
-        }
-        if (data.api && data.api.text && typeof data.api.text === 'string') {
-          const rttmResult = this.parseRttmText(data.api.text);
-          if (rttmResult.length > 0) return rttmResult;
-          return this.parseStmText(data.api.text);
         }
       }
       

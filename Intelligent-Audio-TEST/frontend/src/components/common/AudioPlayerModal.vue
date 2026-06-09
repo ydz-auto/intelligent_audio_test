@@ -81,6 +81,10 @@ interface Props {
   isTestCasePreview?: boolean;
   modalId?: string;
   playbackMode?: string;
+  spl?: number | null;
+  offset?: number | null;
+  playbackDevices?: any[];
+  selectedPlaybackDevices?: any[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -91,7 +95,11 @@ const props = withDefaults(defineProps<Props>(), {
   selectedDevices: () => [],
   isTestCasePreview: false,
   modalId: '',
-  playbackMode: 'frontend'
+  playbackMode: 'frontend',
+  spl: null,
+  offset: null,
+  playbackDevices: () => [],
+  selectedPlaybackDevices: () => []
 });
 
 const emit = defineEmits(['close', 'play', 'pause', 'stop', 'confirm', 'cancel', 'save']);

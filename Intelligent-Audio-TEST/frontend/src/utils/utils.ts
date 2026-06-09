@@ -142,54 +142,19 @@ export function normalizeTestCaseConfig(config: Record<string, any>) {
   }));
 
   const rawDimensions = rawConfig.dimensions;
-  const normalizedDimensions =
-    Array.isArray(rawDimensions)
-      ? { api: rawDimensions, e2e: rawDimensions }
-      : {
-          api: rawDimensions?.api ?? rawDimensions?.api_dimensions ?? rawConfig.apiEvaluationDimensions ?? [],
-          e2e: rawDimensions?.e2e ?? rawDimensions?.e2e_dimensions ?? rawConfig.e2eEvaluationDimensions ?? []
-        };
+  const normalizedDimensions = Array.isArray(rawDimensions)
+    ? rawDimensions
+    : (rawDimensions?.dimensions ?? []);
 
-  const baseConfig: NonNullable<TestCaseFormData['config']> = {
+  return {
     backgroundNoise: {
-      audioId: rawBackgroundNoise?.audioId ?? rawConfig?.noiseAudio ?? null,
-      spl: rawBackgroundNoise?.spl ?? rawConfig?.noiseAudioSpl ?? null,
-      deviceIds: rawBackgroundNoise?.deviceIds ?? rawConfig?.noiseAudioDeviceIds ?? []
+      audioId: rawBackgroundNoise?.audioId ?? null,
+      spl: rawBackgroundNoise?.spl ?? null,
+      deviceIds: rawBackgroundNoise?.deviceIds ?? []
     },
     audios: normalizedAudios,
-    dimensions: {
-      api: normalizedDimensions.api || [],
-      e2e: normalizedDimensions.e2e || []
-    }
+    dimensions: normalizedDimensions || []
   };
-
-  if (baseConfig.audios.length === 0) {
-    if (rawConfig?.apiAudio) {
-      baseConfig.audios.push({ 
-        audioId: rawConfig.apiAudio, 
-        testType: 'api', 
-        spl: null, 
-        playbackDeviceId: null, 
-        playOrder: 1 
-      });
-    }
-    if (rawConfig?.dryAudios && Array.isArray(rawConfig.dryAudios)) {
-      rawConfig.dryAudios.forEach((dryAudio: {file: string; spl: number | null; device: string | null}) => {
-        baseConfig.audios.push({ 
-          audioId: dryAudio.file, 
-          testType: 'e2e', 
-          spl: dryAudio.spl, 
-          playbackDeviceId: dryAudio.device, 
-          playOrder: baseConfig.audios.length + 1 
-        });
-      });
-    }
-  }
-
-  const apiAudios = baseConfig.audios.filter((a: any) => a.testType === 'api');
-  const dryAudios = baseConfig.audios.filter((a: any) => a.testType === 'e2e');
-
-  return {...baseConfig, apiAudios, dryAudios};
 }
 
 export function convertToSnakeCase<T extends Record<string, any>>(data: T): Record<string, any> {
@@ -225,8 +190,6 @@ export function convertTestCaseFormData(formData: TestCaseFormData): Record<stri
   
   if (convertedData.config) {
     convertedData.config = normalizeTestCaseConfig(convertedData.config);
-    delete convertedData.config.apiAudios;
-    delete convertedData.config.dryAudios;
   }
 
   if (convertedData.algorithmParams && typeof convertedData.algorithmParams === 'object' && !Array.isArray(convertedData.algorithmParams)) {

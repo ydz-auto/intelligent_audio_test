@@ -318,6 +318,7 @@ class ReportControllerTask(ReportControllerBase):
             device_list = PlaybackDevice.query.filter(PlaybackDevice.id.in_(list(device_ids))).all()
             devices = {d.id: d.name for d in device_list}
         
+        tc_test_type = test_case.test_type or 'api'
         for audio_cfg in test_audios:
             audio_id = audio_cfg.get('audio_id')
             if audio_id:
@@ -327,7 +328,7 @@ class ReportControllerTask(ReportControllerBase):
                     if dev_id == '':
                         dev_id = None
                     audio_item = {
-                        "testType": audio_cfg.get('test_type'),
+                        "testType": tc_test_type,
                         "id": audio.id,
                         "filename": audio.original_filename or audio.name,
                         "duration": audio.duration,
@@ -415,7 +416,7 @@ class ReportControllerTask(ReportControllerBase):
         else:
             config_for_ref = test_case.config
         
-        return ReferenceParamsGenerator.get_reference_params_for_report(config_for_ref, test_type)
+        return ReferenceParamsGenerator.get_reference_params_for_report(config_for_ref)
 
     @staticmethod
     def _build_resources_list(devices, apis, task, device_result_types, api_result_types):

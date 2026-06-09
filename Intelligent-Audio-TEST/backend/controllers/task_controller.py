@@ -296,8 +296,8 @@ class TaskController:
                 task = db.session.get(Task, task_id)
                 test_type = task.type if task else 'api'
                 case_config = config
-                asr_ref = ReferenceParamsGenerator.get_reference_text(case_config, 'asr_reference_text', test_type)
-                preset_trans = ReferenceParamsGenerator.get_reference_text(case_config, 'translation_reference_text', test_type)
+                asr_ref = ReferenceParamsGenerator.get_reference_text(case_config, 'asr_reference_text')
+                preset_trans = ReferenceParamsGenerator.get_reference_text(case_config, 'translation_reference_text')
                 
                 # 获取音频对象，用于默认值
                 audio = None
@@ -595,8 +595,8 @@ class TaskController:
                 
                 task = db.session.get(Task, task_id)
                 test_type = task.type if task else 'api'
-                asr_ref = ReferenceParamsGenerator.get_reference_text(config, 'asr_reference_text', test_type)
-                preset_trans = ReferenceParamsGenerator.get_reference_text(config, 'translation_reference_text', test_type)
+                asr_ref = ReferenceParamsGenerator.get_reference_text(config, 'asr_reference_text')
+                preset_trans = ReferenceParamsGenerator.get_reference_text(config, 'translation_reference_text')
                 
                 if audio_id and not asr_ref:
                     from backend.models.models import Audio

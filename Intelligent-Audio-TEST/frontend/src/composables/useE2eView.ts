@@ -374,7 +374,6 @@ export function useE2eView() {
     editingTestCase.value = testCase
     
     const normalized = normalizeTestCaseConfig(testCase.config || {})
-    const { apiAudios, dryAudios, ...configRest } = normalized
     
     formData.value = {
       id: testCase.id,
@@ -384,7 +383,7 @@ export function useE2eView() {
       description: testCase.description || '',
       tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
-      config: configRest as TestCaseFormData['config'],
+      config: normalized as TestCaseFormData['config'],
       translationDirectionId: testCase.translationDirectionId,
       algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
       algorithmParams: normalizeAlgorithmParams((testCase as any).algorithmParams || (testCase as any).algorithm_params || []),

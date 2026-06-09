@@ -1,0 +1,4 @@
+Flask==3.0.0
+numpy>=1.26.0
+pyannote.metrics>=3.0.0
+meeteval>=0.4.0

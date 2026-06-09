@@ -143,6 +143,8 @@ class TestCase(db.Model):
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
     _algorithm_params = Column('algorithm_params', JSON, comment='算法参数配置 (JSON格式)，根据算法类型动态配置')
     _reference_params = Column('reference_params', JSON, comment='参考参数配置 (JSON格式)，存储参考文本/音频/文件等参考数据')
+    test_type = Column(String(10), nullable=False, default='api', index=True, comment='测试类型 (api/e2e)')
+    related_case_id = Column(String(50), nullable=True, comment='关联的对应类型用例ID (API用例关联E2E用例，反之亦然)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')

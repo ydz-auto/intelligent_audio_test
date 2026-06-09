@@ -9,11 +9,6 @@ export interface SelectedDimension {
   threshold?: number
 }
 
-export interface DimensionsConfig {
-  api: SelectedDimension[]
-  e2e: SelectedDimension[]
-}
-
 export interface TestTypeOption {
   label: string
   value: 'api' | 'e2e'
@@ -112,40 +107,23 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     )
   })
 
-  const apiSelectedDimensions = computed(() => {
-    return (dimensions: DimensionsConfig | undefined) =>
-      dimensions?.api || []
-  })
-
-  const e2eSelectedDimensions = computed(() => {
-    return (dimensions: DimensionsConfig | undefined) =>
-      dimensions?.e2e || []
-  })
-
-  const apiDimensionCount = computed(() => {
-    return (dimensions: DimensionsConfig | undefined) =>
-      (dimensions?.api || []).length
-  })
-
-  const e2eDimensionCount = computed(() => {
-    return (dimensions: DimensionsConfig | undefined) =>
-      (dimensions?.e2e || []).length
-  })
-
-  const isApiDimensionSelected = (dimension: any, dimensions: DimensionsConfig | undefined) => {
-    const id = dimension?.id
-    return (dimensions?.api || []).some((d: any) => d?.id === id)
+  const dimensionCount = (dimensions: SelectedDimension[] | undefined) => {
+    return (dimensions || []).length
   }
 
-  const isE2eDimensionSelected = (dimension: any, dimensions: DimensionsConfig | undefined) => {
+  const isDimensionSelected = (dimension: any, dimensions: SelectedDimension[] | undefined) => {
     const id = dimension?.id
-    return (dimensions?.e2e || []).some((d: any) => d?.id === id)
+    return (dimensions || []).some((d: any) => d?.id === id)
   }
 
-  const toggleApiDimensionSelection = (dimension: any, dimensions: DimensionsConfig | undefined, setDimensions: (dims: DimensionsConfig) => void) => {
-    if (!dimension || !dimensions) return
-    const list = [...(dimensions.api || [])]
-    
+  const toggleDimensionSelection = (
+    dimension: any,
+    dimensions: SelectedDimension[] | undefined,
+    setDimensions: (dims: SelectedDimension[]) => void
+  ) => {
+    if (!dimension) return
+    const list = [...(dimensions || [])]
+
     const existingIndex = list.findIndex(d => d?.id === dimension.id)
     if (existingIndex >= 0) {
       list.splice(existingIndex, 1)
@@ -157,33 +135,8 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
         threshold: 80
       })
     }
-    
-    setDimensions({
-      ...dimensions,
-      api: list
-    })
-  }
 
-  const toggleE2eDimensionSelection = (dimension: any, dimensions: DimensionsConfig | undefined, setDimensions: (dims: DimensionsConfig) => void) => {
-    if (!dimension || !dimensions) return
-    const list = [...(dimensions.e2e || [])]
-    
-    const existingIndex = list.findIndex(d => d?.id === dimension.id)
-    if (existingIndex >= 0) {
-      list.splice(existingIndex, 1)
-    } else {
-      list.push({
-        id: dimension.id,
-        name: dimension.name,
-        weight: 50,
-        threshold: 80
-      })
-    }
-    
-    setDimensions({
-      ...dimensions,
-      e2e: list
-    })
+    setDimensions(list)
   }
 
   const ensureDimensionsLoaded = async () => {
@@ -219,14 +172,9 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     testTypeOptions,
     filteredDimensions,
     e2eFilteredDimensions,
-    apiSelectedDimensions,
-    e2eSelectedDimensions,
-    apiDimensionCount,
-    e2eDimensionCount,
-    isApiDimensionSelected,
-    isE2eDimensionSelected,
-    toggleApiDimensionSelection,
-    toggleE2eDimensionSelection,
+    dimensionCount,
+    isDimensionSelected,
+    toggleDimensionSelection,
     ensureDimensionsLoaded,
     defaultSpl
   }
@@ -235,7 +183,8 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
 export function createDefaultUploadConfig() {
   return {
     testTypes: ['api'] as ('api' | 'e2e')[],
-    dimensions: { api: [], e2e: [] } as DimensionsConfig,
+    apiDimensions: [] as SelectedDimension[],
+    e2eDimensions: [] as SelectedDimension[],
     spl: 65.0,
     noiseSpl: 60.0,
     noiseAudioId: null as string | number | null,

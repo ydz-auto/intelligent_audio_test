@@ -56,7 +56,7 @@ const localLogs = ref<Log[]>([]);
 // 日志分页状态
 const logPagination = ref({
   page: 1,
-  perPage: 20,
+  perPage: 100,
   total: 0,
   hasMore: true,
   loadingMore: false
@@ -99,23 +99,42 @@ const {
   }
 });
 
+function getLogTimestamp(log: any): number {
+  const timeStr = log.timestamp ?? log.time ?? log.createdAt;
+  return timeStr ? new Date(timeStr).getTime() || 0 : 0;
+}
+
+function formatLogTime(timeStr: string): string {
+  if (!timeStr) return '';
+  const date = new Date(timeStr);
+  if (isNaN(date.getTime())) return String(timeStr);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  return `${month}-${day} ${hours}:${minutes}:${seconds}.${ms}`;
+}
+
 const logs = computed(() => {
-  // 后端返回的是倒序（最新在前），前端显示需要正序（最新在后）
-  return [...localLogs.value].reverse().map((log) => ({
+  // localLogs 按时间升序存储（最老在前，最新在后），直接映射即可
+  return localLogs.value.map((log) => ({
     id: log.id,
-    time: log.timestamp ?? log.time ?? log.createdAt,
+    time: formatLogTime(log.timestamp ?? log.time ?? log.createdAt),
     level: log.level || 'info',
     content: log.content,
     type: log.level || 'info'
   }));
 });
 
-async function loadLogsWithRetry(page = 1, perPage = 100, maxRetries = 3, delayMs = 1000, appendToFront = false) {
+// 加载指定页的历史日志（更高页码 = 更老的日志），去重后 prepend 到 localLogs 头部
+async function loadOlderLogs(page: number, perPage = 100, maxRetries = 3, delayMs = 1000): Promise<boolean> {
   let lastError = null;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`[TaskDetailModal] 尝试加载日志 (${attempt}/${maxRetries}), 页: ${page}, 每页: ${perPage}, 追加到前面: ${appendToFront}`);
+      console.log(`[TaskDetailModal] 尝试加载历史日志 (${attempt}/${maxRetries}), 页: ${page}`);
       
       const response = await logsApi.getAll({ 
         taskId: String(props.taskId),
@@ -124,23 +143,27 @@ async function loadLogsWithRetry(page = 1, perPage = 100, maxRetries = 3, delayM
       });
       
       if (response && response.items) {
-        if (page === 1) {
-          localLogs.value = response.items;
-        } else if (appendToFront) {
-          localLogs.value = [...response.items, ...localLogs.value];
-        } else {
-          localLogs.value = [...localLogs.value, ...response.items];
+        // 后端返回 DESC（最新在前），反转为 ASC（最老在前）
+        const olderLogs = [...response.items].reverse();
+        
+        // 去重：排除已存在的日志
+        const existingIds = new Set(localLogs.value.map((l: Log) => l.id));
+        const newItems = olderLogs.filter((item: Log) => !existingIds.has(item.id));
+        
+        if (newItems.length > 0) {
+          // 更老的日志插入到数组头部
+          localLogs.value = [...newItems, ...localLogs.value];
         }
         
         logPagination.value.total = response.total || 0;
         logPagination.value.hasMore = localLogs.value.length < logPagination.value.total;
-        console.log(`[TaskDetailModal] 成功加载 ${response.items.length} 条日志, 总计: ${localLogs.value.length}/${logPagination.value.total}`);
+        console.log(`[TaskDetailModal] 成功加载 ${newItems.length} 条历史日志, 总计: ${localLogs.value.length}/${logPagination.value.total}`);
         return true;
       }
       return true;
     } catch (logErr) {
       lastError = logErr;
-      console.error(`[TaskDetailModal] 加载日志失败 (${attempt}/${maxRetries}):`, logErr);
+      console.error(`[TaskDetailModal] 加载历史日志失败 (${attempt}/${maxRetries}):`, logErr);
       
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, delayMs * attempt));
@@ -148,7 +171,7 @@ async function loadLogsWithRetry(page = 1, perPage = 100, maxRetries = 3, delayM
     }
   }
   
-  console.error(`[TaskDetailModal] 多次重试后仍无法加载日志:`, lastError);
+  console.error(`[TaskDetailModal] 多次重试后仍无法加载历史日志:`, lastError);
   return false;
 }
 
@@ -171,13 +194,14 @@ async function startLogPolling() {
       if (response && response.items && response.items.length > 0) {
         const existingLogIds = new Set(localLogs.value.map(log => log.id));
         const newLogs = response.items.filter(
-          (newLog) => !existingLogIds.has(newLog.id)
+          (newLog: Log) => !existingLogIds.has(newLog.id)
         );
         
         if (newLogs.length > 0) {
-          // 将新日志添加到开头
-          localLogs.value = [...newLogs, ...localLogs.value];
-          console.log(`[TaskDetailModal] 轮询获取 ${newLogs.length} 条新日志`);
+          // 新日志按时间升序追加到尾部（localLogs 为 ASC 顺序）
+          const sortedNew = [...newLogs].sort((a: Log, b: Log) => getLogTimestamp(a) - getLogTimestamp(b));
+          localLogs.value = [...localLogs.value, ...sortedNew];
+          console.log(`[TaskDetailModal] 轮询获取 ${newLogs.length} 条新日志, 总计: ${localLogs.value.length}`);
         }
       }
     } catch (err) {
@@ -290,10 +314,23 @@ async function fetchTaskDetails() {
       progressPercentage.value = Math.round((completedTests.value / totalTestCases.value) * 100);
     }
     
-    // 重置分页状态并加载第一页日志
+    // 重置分页状态并加载最新日志（page 1 = 最新）
     logPagination.value.page = 1;
     logPagination.value.hasMore = true;
-    await loadLogsWithRetry(1, logPagination.value.perPage);
+    
+    const firstResponse = await logsApi.getAll({
+      taskId: String(props.taskId),
+      page: 1,
+      perPage: logPagination.value.perPage
+    });
+    
+    if (firstResponse && firstResponse.items) {
+      // 后端返回 DESC（最新在前），反转为 ASC（最老在前，最新在后）
+      localLogs.value = [...firstResponse.items].reverse();
+      logPagination.value.total = firstResponse.total || 0;
+      logPagination.value.hasMore = localLogs.value.length < logPagination.value.total;
+      console.log(`[TaskDetailModal] 初始加载 ${localLogs.value.length}/${logPagination.value.total} 条最新日志`);
+    }
     
     if (String(taskData.status) === 'running' || String(taskData.status) === 'starting') {
       startLogPolling();
@@ -345,17 +382,17 @@ async function stopTest() {
   }
 }
 
-// 加载更多日志
+// 加载更多日志（向上滚动加载更老的历史日志：page+1 = 更老的数据）
 async function loadMoreLogs() {
   if (logPagination.value.loadingMore || !logPagination.value.hasMore) {
     return;
   }
   
-  logPagination.value.loadingMore = true;
   const nextPage = logPagination.value.page + 1;
+  logPagination.value.loadingMore = true;
   
   try {
-    const success = await loadLogsWithRetry(nextPage, logPagination.value.perPage, 3, 1000, true);
+    const success = await loadOlderLogs(nextPage, logPagination.value.perPage);
     if (success) {
       logPagination.value.page = nextPage;
     }

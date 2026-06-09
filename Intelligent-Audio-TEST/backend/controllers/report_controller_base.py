@@ -100,20 +100,23 @@ class ReportControllerBase:
             return []
             
         results = []
+        tc_test_type = test_case.test_type or 'api'
+        
+        # 如果指定了类型且不匹配记录类型，直接返回空
+        if test_type is not None and test_type != tc_test_type:
+            return results
         
         for audio_cfg in test_audios:
-            # 如果指定了类型，则匹配类型；否则返回所有
-            if test_type is None or audio_cfg.get('test_type') == test_type:
-                audio_id = audio_cfg.get('audio_id')
-                if audio_id:
-                    audio = db.session.get(Audio, audio_id)
-                    if audio:
-                        results.append({
-                            "id": audio.id,
-                            "filename": audio.original_filename or audio.name,
-                            "duration": audio.duration,
-                            "url": f"/api/v1/audios/{audio.id}/stream",
-                            "test_type": audio_cfg.get('test_type')
+            audio_id = audio_cfg.get('audio_id')
+            if audio_id:
+                audio = db.session.get(Audio, audio_id)
+                if audio:
+                    results.append({
+                        "id": audio.id,
+                        "filename": audio.original_filename or audio.name,
+                        "duration": audio.duration,
+                        "url": f"/api/v1/audios/{audio.id}/stream",
+                        "test_type": tc_test_type
                         })
         return results
 

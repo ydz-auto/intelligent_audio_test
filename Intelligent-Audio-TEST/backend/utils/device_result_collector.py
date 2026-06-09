@@ -791,31 +791,30 @@ class DeviceResultCollector:
             if param_type not in ['rttm', 'stm']:
                 continue
 
-            for test_type in ['api', 'e2e']:
-                value = param.get(test_type)
-                if not value or not isinstance(value, dict):
-                    continue
+            value = param.get('value')
+            if not value or not isinstance(value, dict):
+                continue
 
-                segments = value.get('segments') or value.get('json', [])
-                if segments and isinstance(segments, list):
-                    valid_segments = []
-                    for seg in segments:
-                        if isinstance(seg, dict) and 'start' in seg and 'end' in seg:
-                            valid_segments.append({
-                                'start': float(seg['start']),
-                                'end': float(seg['end']),
-                                'speaker': seg.get('speaker', ''),
-                                'text': seg.get('text', '')
-                            })
-                    if valid_segments:
-                        valid_segments.sort(key=lambda x: x['start'])
-                        return valid_segments
+            segments = value.get('segments') or value.get('json', [])
+            if segments and isinstance(segments, list):
+                valid_segments = []
+                for seg in segments:
+                    if isinstance(seg, dict) and 'start' in seg and 'end' in seg:
+                        valid_segments.append({
+                            'start': float(seg['start']),
+                            'end': float(seg['end']),
+                            'speaker': seg.get('speaker', ''),
+                            'text': seg.get('text', '')
+                        })
+                if valid_segments:
+                    valid_segments.sort(key=lambda x: x['start'])
+                    return valid_segments
 
-                text = value.get('text', '')
-                if text and param_type in ['rttm', 'stm']:
-                    segments = self._extract_segments_from_text(text, param_type)
-                    if segments:
-                        return segments
+            text = value.get('text', '')
+            if text and param_type in ['rttm', 'stm']:
+                segments = self._extract_segments_from_text(text, param_type)
+                if segments:
+                    return segments
 
         return []
 
@@ -1391,41 +1390,40 @@ class DeviceResultCollector:
                          f'[_get_reference_first_timestamp] param[{param_idx}]: keys={list(param.keys())}',
                          category='engine')
 
-            for test_type in ['api', 'e2e']:
-                value = param.get(test_type)
-                if not value or not isinstance(value, dict):
-                    log_not_emit('DEBUG', 'device_collector',
-                                 f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: no valid value, skip',
+            value = param.get('value')
+            if not value or not isinstance(value, dict):
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_get_reference_first_timestamp] param[{param_idx}]: no valid value, skip',
+                             category='engine')
+                continue
+
+            segments = value.get('segments') or value.get('json', [])
+            if segments and isinstance(segments, list) and len(segments) > 0:
+                first_seg = segments[0]
+                if isinstance(first_seg, dict) and 'start' in first_seg:
+                    ts = float(first_seg['start'])
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_get_reference_first_timestamp] param[{param_idx}]: Found reference timestamp from segments[0]: {ts:.3f}s',
                                  category='engine')
-                    continue
-
-                segments = value.get('segments') or value.get('json', [])
-                if segments and isinstance(segments, list) and len(segments) > 0:
-                    first_seg = segments[0]
-                    if isinstance(first_seg, dict) and 'start' in first_seg:
-                        ts = float(first_seg['start'])
-                        log_not_emit('INFO', 'device_collector',
-                                     f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: Found reference timestamp from segments[0]: {ts:.3f}s',
-                                     category='engine')
-                        return ts
-                    else:
-                        log_not_emit('DEBUG', 'device_collector',
-                                     f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: first_seg has no start, seg_keys={list(first_seg.keys()) if isinstance(first_seg, dict) else type(first_seg)}',
-                                     category='engine')
-
-                text = value.get('text', '')
-                format_type = value.get('format', '')
-                if text and format_type in ['rttm', 'stm']:
-                    ts = self._extract_first_timestamp_from_text(text, format_type)
-                    if ts is not None:
-                        log_not_emit('INFO', 'device_collector',
-                                     f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: Found reference timestamp from text ({format_type}): {ts:.3f}s',
-                                     category='engine')
-                        return ts
+                    return ts
                 else:
                     log_not_emit('DEBUG', 'device_collector',
-                                 f'[_get_reference_first_timestamp] param[{param_idx}] {test_type}: text={len(text) if text else 0}, format={format_type}',
+                                 f'[_get_reference_first_timestamp] param[{param_idx}]: first_seg has no start, seg_keys={list(first_seg.keys()) if isinstance(first_seg, dict) else type(first_seg)}',
                                  category='engine')
+
+            text = value.get('text', '')
+            format_type = value.get('format', '')
+            if text and format_type in ['rttm', 'stm']:
+                ts = self._extract_first_timestamp_from_text(text, format_type)
+                if ts is not None:
+                    log_not_emit('INFO', 'device_collector',
+                                 f'[_get_reference_first_timestamp] param[{param_idx}]: Found reference timestamp from text ({format_type}): {ts:.3f}s',
+                                 category='engine')
+                    return ts
+            else:
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_get_reference_first_timestamp] param[{param_idx}]: text={len(text) if text else 0}, format={format_type}',
+                             category='engine')
 
         log_not_emit('WARNING', 'device_collector',
                      '[_get_reference_first_timestamp] No valid timestamp found in reference params', category='engine')
@@ -1522,11 +1520,8 @@ class DeviceResultCollector:
 
             new_param = param.copy()
 
-            for test_type in ['api', 'e2e']:
-                value = param.get(test_type)
-                if not value:
-                    continue
-
+            value = param.get('value')
+            if value:
                 if isinstance(value, dict):
                     adjusted_value = value.copy()
 
@@ -1551,9 +1546,9 @@ class DeviceResultCollector:
                     if 'text' in value and value.get('format') in ['rttm', 'stm']:
                         adjusted_value['text'] = self._adjust_rttm_stm_text_by_play_order(value['text'], offset_dict)
 
-                    new_param[test_type] = adjusted_value
+                    new_param['value'] = adjusted_value
                 else:
-                    new_param[test_type] = value
+                    new_param['value'] = value
 
             adjusted_params.append(new_param)
 
@@ -1583,11 +1578,8 @@ class DeviceResultCollector:
 
                 new_param = param.copy()
 
-                for test_type in ['api', 'e2e']:
-                    value = param.get(test_type)
-                    if not value:
-                        continue
-
+                value = param.get('value')
+                if value:
                     if isinstance(value, dict):
                         adjusted_value = value.copy()
 
@@ -1630,9 +1622,9 @@ class DeviceResultCollector:
                         if 'text' in value and value.get('format') in ['rttm', 'stm']:
                             adjusted_value['text'] = self._adjust_rttm_stm_text(value['text'], offset)
 
-                        new_param[test_type] = adjusted_value
+                        new_param['value'] = adjusted_value
                     else:
-                        new_param[test_type] = value
+                        new_param['value'] = value
 
                 adjusted_params.append(new_param)
 

@@ -25,7 +25,6 @@ def test_export_xlsx_contains_all_sheets_and_audio_configs():
             result_type=1,
             weight=60,
             rule={"type": "direct"},
-            required_inputs=[],
             api_endpoints=[],
         )
 
@@ -37,20 +36,21 @@ def test_export_xlsx_contains_all_sheets_and_audio_configs():
             name="测试用例A",
             description="用例描述A",
             group_id=group.id,
+            test_type="api",
             config={
-                "test_type": "api",
                 "audios": [
                     {
                         "audio_id": audio.id,
-                        "test_type": "api",
                         "spl": 65,
                         "playback_device_id": None,
                         "play_order": 1,
                     }
                 ],
-                "dimensions": {"api": [dim.id], "e2e": []},
-                "asr_reference_text": "ASR参考文本",
-                "translation_reference_text": "翻译参考文本",
+                "dimensions": [dim.id],
+                "reference_params": [
+                    {"code": "asr_reference_text", "type": "text", "value": "ASR参考文本"},
+                    {"code": "translation_reference_text", "type": "text", "value": "翻译参考文本"},
+                ],
             },
         )
         tc.tags.append(tag)
@@ -69,8 +69,7 @@ def test_export_xlsx_contains_all_sheets_and_audio_configs():
     expected_sheets = {
         "TestCases",
         "AudioConfigs",
-        "APIDimensions",
-        "E2EDimensions",
+        "Dimensions",
         "Tags",
         "Groups",
         "CaseTags",
@@ -89,11 +88,11 @@ def test_export_xlsx_contains_all_sheets_and_audio_configs():
     assert audio_df.loc[0, "AUDIO_ID"] == 1
     assert audio_df.loc[0, "AUDIO_NAME"] == "测试音频.wav"
 
-    api_dim_df = pd.read_excel(excel, sheet_name="APIDimensions")
-    assert len(api_dim_df) == 1
-    assert api_dim_df.loc[0, "CASE_ID"] == "tc-1"
-    assert api_dim_df.loc[0, "DIMENSION_ID"] == 1
-    assert api_dim_df.loc[0, "DIMENSION_NAME"] == "BLEU"
+    dim_df = pd.read_excel(excel, sheet_name="Dimensions")
+    assert len(dim_df) == 1
+    assert dim_df.loc[0, "CASE_ID"] == "tc-1"
+    assert dim_df.loc[0, "DIMENSION_ID"] == 1
+    assert dim_df.loc[0, "DIMENSION_NAME"] == "BLEU"
 
     tags_df = pd.read_excel(excel, sheet_name="Tags")
     assert len(tags_df) == 1
@@ -135,12 +134,11 @@ def test_export_json_contains_audios():
             name="测试用例A",
             description="用例描述A",
             group_id=group.id,
+            test_type="api",
             config={
-                "test_type": "api",
                 "audios": [
                     {
                         "audio_id": audio.id,
-                        "test_type": "api",
                         "spl": 65,
                         "playback_device_id": None,
                         "play_order": 1,
@@ -188,12 +186,11 @@ def test_export_json_tolerates_empty_playback_device_id_string():
             name="测试用例A",
             description="用例描述A",
             group_id=group.id,
+            test_type="api",
             config={
-                "test_type": "api",
                 "audios": [
                     {
                         "audio_id": audio.id,
-                        "test_type": "api",
                         "spl": 65,
                         "playback_device_id": "",
                         "play_order": 1,
@@ -240,12 +237,11 @@ def test_get_one_tolerates_empty_playback_device_id_string():
             name="测试用例A",
             description="用例描述A",
             group_id=group.id,
+            test_type="api",
             config={
-                "test_type": "api",
                 "audios": [
                     {
                         "audio_id": audio.id,
-                        "test_type": "api",
                         "spl": 65,
                         "playback_device_id": "",
                         "play_order": 1,
@@ -294,7 +290,6 @@ def test_exported_xlsx_can_be_imported_back():
             result_type=1,
             weight=60,
             rule={"type": "direct"},
-            required_inputs=[],
             api_endpoints=[],
         )
         db.session.add_all([group, tag, audio, noise_audio, dim])
@@ -305,18 +300,17 @@ def test_exported_xlsx_can_be_imported_back():
             name="测试用例A",
             description="用例描述A",
             group_id=group.id,
+            test_type="api",
             config={
-                "test_type": "api",
                 "audios": [
                     {
                         "audio_id": audio.id,
-                        "test_type": "api",
                         "spl": 65,
                         "playback_device_id": None,
                         "play_order": 1,
                     }
                 ],
-                "dimensions": {"api": [dim.id], "e2e": []},
+                "dimensions": [dim.id],
                 "background_noise": {"audio_id": noise_audio.id, "spl": 50},
             },
         )
@@ -351,7 +345,7 @@ def test_exported_xlsx_can_be_imported_back():
         assert tc is not None
         assert tc.group_id == "group-1"
         assert tc.config["audios"][0]["audio_id"] == 1
-        assert tc.config["dimensions"]["api"] == [1]
+        assert tc.config["dimensions"] == [1]
         assert tc.config["background_noise"]["audio_id"] == 2
         assert tc.tags[0].name == "标签A"
 
@@ -379,9 +373,9 @@ def test_import_update_restores_deleted_testcase():
             name="测试用例A",
             description="用例描述A",
             group_id=group.id,
+            test_type="api",
             config={
-                "test_type": "api",
-                "audios": [{"audio_id": audio.id, "test_type": "api", "spl": 65, "play_order": 1}],
+                "audios": [{"audio_id": audio.id, "spl": 65, "play_order": 1}],
             },
             deleted=False,
         )

@@ -109,9 +109,8 @@
             <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedCategories[group] }"></i>
             <h4 class="category-title">{{ group }}</h4>
             <span class="category-count">{{ filteredTestCases[group]?.length || 0 }}</span>
-            <span v-if="getGroupDurationStats(group).apiDuration > 0 || getGroupDurationStats(group).e2eDuration > 0" class="group-duration-tags">
-              <span v-if="getGroupDurationStats(group).apiDuration > 0" class="duration-tag duration-api">{{ formatGroupDuration(getGroupDurationStats(group).apiDuration) }}</span>
-              <span v-if="getGroupDurationStats(group).e2eDuration > 0" class="duration-tag duration-e2e">{{ formatGroupDuration(getGroupDurationStats(group).e2eDuration) }}</span>
+            <span v-if="getGroupDurationStats(group).totalDuration > 0" class="group-duration-tags">
+              <span class="duration-tag">{{ formatGroupDuration(getGroupDurationStats(group).totalDuration) }}</span>
             </span>
           </div>
           <TestCaseGroupActions 
@@ -397,12 +396,15 @@ onUnmounted(() => {
 
 const checkTestCaseConfig = (testCase: TestCase) => {
   const normalizedConfig = normalizeTestCaseConfig(testCase.config || {});
-  const hasAPIConfig = normalizedConfig.apiAudios.length > 0;
-  const hasE2eConfig = normalizedConfig.dryAudios.length > 0;
+  const audios = normalizedConfig.audios || [];
+  const apiAudios = audios.filter((a: any) => a.testType === 'api');
+  const e2eAudios = audios.filter((a: any) => a.testType === 'e2e');
   
-  // 获取API和E2E配置中的实际音频ID
-  const apiAudioId = hasAPIConfig ? normalizedConfig.apiAudios[0].audioId : null;
-  const e2eAudioIds = hasE2eConfig ? normalizedConfig.dryAudios.map((a: any) => a.audioId) : [];
+  const hasAPIConfig = apiAudios.length > 0;
+  const hasE2eConfig = e2eAudios.length > 0;
+  
+  const apiAudioId = hasAPIConfig ? apiAudios[0].audioId : null;
+  const e2eAudioIds = hasE2eConfig ? e2eAudios.map((a: any) => a.audioId) : [];
   
   console.log('检查测试用例配置:', { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds });
   return { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds };
@@ -506,8 +508,9 @@ const filteredTestCases = computed(() => {
         }
         
         const normalizedConfig = normalizeTestCaseConfig(config);
-        if (testType === 'api') return normalizedConfig.apiAudios.length > 0;
-        if (testType === 'e2e') return normalizedConfig.dryAudios.length > 0;
+        const audios = normalizedConfig.audios || [];
+        if (testType === 'api') return audios.some((a: any) => a.testType === 'api');
+        if (testType === 'e2e') return audios.some((a: any) => a.testType === 'e2e');
         return false;
       });
     }
@@ -573,16 +576,12 @@ const groupSelectionStates = computed(() => {
 const getGroupDurationStats = (group: string) => {
   const cases = filteredTestCases.value[group] || [];
   let totalDuration = 0;
-  let apiDuration = 0;
-  let e2eDuration = 0;
 
   cases.forEach((tc: TestCase) => {
     if (tc.totalDuration) totalDuration += tc.totalDuration;
-    if (tc.apiDuration) apiDuration += tc.apiDuration;
-    if (tc.e2eDuration) e2eDuration += tc.e2eDuration;
   });
 
-  return { totalDuration, apiDuration, e2eDuration };
+  return { totalDuration };
 };
 
 const formatGroupDuration = (seconds: number): string => {
@@ -1219,9 +1218,7 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   switch (actionEvent.action.id) {
     case 'preview': {
       const config = testCase.config || {};
-      const hasAudioConfig = (config.audios && config.audios.length > 0) || 
-                             config.apiAudio || config.dryAudio || 
-                             (config.dryAudios && config.dryAudios[0]?.file);
+      const hasAudioConfig = config.audios && config.audios.length > 0;
       
       if (hasAudioConfig) {
         try {

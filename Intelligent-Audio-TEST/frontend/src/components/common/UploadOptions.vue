@@ -24,10 +24,8 @@ interface Props {
     noiseAudioName?: string
     noiseSpl?: number
     inheritTags?: boolean
-    dimensions?: {
-      api: Array<{ id: string | number; name: string }>
-      e2e: Array<{ id: string | number; name: string }>
-    }
+    apiDimensions?: Array<{ id: string | number; name: string }>
+    e2eDimensions?: Array<{ id: string | number; name: string }>
     promptDeviceId?: string | number
     algorithmType?: string
     algorithmRelations?: AlgorithmRelationItem[]
@@ -100,7 +98,8 @@ watch(() => uploadConfig.value.audioType, (newType) => {
       testTypes: ['api'],
       algorithmType: '',
       algorithmParams: [],
-      dimensions: { api: [], e2e: [] },
+      apiDimensions: [],
+      e2eDimensions: [],
       translationDirectionId: ''
     }
   }
@@ -114,12 +113,9 @@ const {
   testTypeOptions,
   filteredDimensions,
   e2eFilteredDimensions,
-  apiDimensionCount,
-  e2eDimensionCount,
-  isApiDimensionSelected,
-  isE2eDimensionSelected,
-  toggleApiDimensionSelection,
-  toggleE2eDimensionSelection,
+  dimensionCount,
+  isDimensionSelected,
+  toggleDimensionSelection,
   ensureDimensionsLoaded,
   dimensionsLoading,
   dimensionsError,
@@ -131,24 +127,29 @@ const {
   audioTypeOptions: props.audioTypeOptions.length > 0 ? props.audioTypeOptions : undefined
 })
 
-const hasApiDimensions = computed(() => (uploadConfig.value.dimensions?.api || []).length > 0)
-const hasE2eDimensions = computed(() => (uploadConfig.value.dimensions?.e2e || []).length > 0)
+const hasApiDimensions = computed(() => (uploadConfig.value.apiDimensions || []).length > 0)
+const hasE2eDimensions = computed(() => (uploadConfig.value.e2eDimensions || []).length > 0)
 
-const setDimensions = (dimensions: typeof uploadConfig.value.dimensions) => {
+const setApiDimensions = (dimensions: Array<{ id: string | number; name: string }>) => {
   uploadConfig.value = {
     ...uploadConfig.value,
-    dimensions
+    apiDimensions: dimensions
+  }
+}
+
+const setE2eDimensions = (dimensions: Array<{ id: string | number; name: string }>) => {
+  uploadConfig.value = {
+    ...uploadConfig.value,
+    e2eDimensions: dimensions
   }
 }
 
 const toggleApiDimension = (dim: any) => {
-  if (!uploadConfig.value.dimensions) return
-  toggleApiDimensionSelection(dim, uploadConfig.value.dimensions, setDimensions)
+  toggleDimensionSelection(dim, uploadConfig.value.apiDimensions, setApiDimensions)
 }
 
 const toggleE2eDimension = (dim: any) => {
-  if (!uploadConfig.value.dimensions) return
-  toggleE2eDimensionSelection(dim, uploadConfig.value.dimensions, setDimensions)
+  toggleDimensionSelection(dim, uploadConfig.value.e2eDimensions, setE2eDimensions)
 }
 
 const showTestCaseConfig = computed(() => uploadConfig.value.createTestCase)
@@ -185,19 +186,17 @@ const handleAlgorithmRelationsChange = (relations: AlgorithmRelationItem[]) => {
 const handleDimensionsChange = (dimensions: any[], dimensionIds: number[]) => {
   associatedDimensionIds.value = dimensionIds
   updateDimensionFilter(dimensionIds)
-  if (dimensionIds.length > 0 && uploadConfig.value.dimensions) {
-    const filteredApi = (uploadConfig.value.dimensions.api || []).filter(
+  if (dimensionIds.length > 0) {
+    const filteredApi = (uploadConfig.value.apiDimensions || []).filter(
       (d: any) => dimensionIds.includes(Number(d.id))
     )
-    const filteredE2e = (uploadConfig.value.dimensions.e2e || []).filter(
+    const filteredE2e = (uploadConfig.value.e2eDimensions || []).filter(
       (d: any) => dimensionIds.includes(Number(d.id))
     )
     uploadConfig.value = {
       ...uploadConfig.value,
-      dimensions: {
-        api: filteredApi,
-        e2e: filteredE2e
-      }
+      apiDimensions: filteredApi,
+      e2eDimensions: filteredE2e
     }
   }
 }
@@ -396,7 +395,7 @@ const clearNoiseAudio = () => {
                 @click.stop
               >
               <div class="dimension-summary" :class="{ 'has-error': !hasApiDimensions }">
-                已选 {{ apiDimensionCount(uploadConfig.dimensions) }} 项
+                已选 {{ dimensionCount(uploadConfig.apiDimensions) }} 项
               </div>
             </div>
             <div class="tag-filter" v-if="!dimensionsLoading">
@@ -404,7 +403,7 @@ const clearNoiseAudio = () => {
                   v-for="dim in filteredDimensions"
                   :key="dim.id"
                   class="tag-filter-item"
-                  :class="{ 'active': isApiDimensionSelected(dim, uploadConfig.dimensions) }"
+                  :class="{ 'active': isDimensionSelected(dim, uploadConfig.apiDimensions) }"
                   @click.stop.prevent="toggleApiDimension(dim)"
                 >
                   {{ dim.name }}
@@ -502,7 +501,7 @@ const clearNoiseAudio = () => {
                 @click.stop
               >
               <div class="dimension-summary" :class="{ 'has-error': !hasE2eDimensions }">
-                已选 {{ e2eDimensionCount(uploadConfig.dimensions) }} 项
+                已选 {{ dimensionCount(uploadConfig.e2eDimensions) }} 项
               </div>
             </div>
             <div class="tag-filter" v-if="!dimensionsLoading">
@@ -510,7 +509,7 @@ const clearNoiseAudio = () => {
                   v-for="dim in e2eFilteredDimensions"
                   :key="dim.id"
                   class="tag-filter-item"
-                  :class="{ 'active': isE2eDimensionSelected(dim, uploadConfig.dimensions) }"
+                  :class="{ 'active': isDimensionSelected(dim, uploadConfig.e2eDimensions) }"
                   @click.stop.prevent="toggleE2eDimension(dim)"
                 >
                   {{ dim.name }}

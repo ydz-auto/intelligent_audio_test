@@ -359,59 +359,24 @@
         <i class="fas fa-filter"></i> 已根据算法类型「{{ localFormData.algorithmType }}」过滤可用维度
       </p>
 
-      <div v-if="hasAPIAudio" class="dimension-sub-section">
-        <h5>API测试评测维度</h5>
+      <div class="dimension-sub-section">
+        <h5>评测维度</h5>
         <div class="dimension-cloud">
           <div
             v-for="dim in filteredAvailableDimensions"
             :key="dim.id"
             class="dimension-chip"
-            :class="{ 'selected': isDimensionSelected(dim.name, 'api') }"
-            @click="toggleDimensionSelection(dim, 'api')"
+            :class="{ 'selected': isDimensionSelected(dim.name) }"
+            @click="toggleDimensionSelection(dim)"
           >
             {{ dim.name }}
           </div>
         </div>
-        <div class="selected-dimensions" v-if="localFormData.config.dimensions.api.length > 0">
-          <div v-for="(dimension, index) in localFormData.config.dimensions.api" :key="index" class="selected-dimension-card">
+        <div class="selected-dimensions" v-if="localFormData.config.dimensions.length > 0">
+          <div v-for="(dimension, index) in localFormData.config.dimensions" :key="index" class="selected-dimension-card">
             <div class="dimension-card-header">
               <span class="dimension-name">{{ dimension.name }}</span>
-              <button type="button" class="btn btn-icon btn-xs btn-outline-danger" @click="removeAPIDimension(index)">
-                <i class="fas fa-times"></i>
-              </button>
-            </div>
-            <div class="dimension-card-body">
-              <div class="dimension-field">
-                <label>权重</label>
-                <input type="number" v-model.number="dimension.weight" class="form-control" min="0" max="100">
-              </div>
-              <div class="dimension-field">
-                <label>阈值</label>
-                <input type="number" v-model.number="dimension.threshold" class="form-control" min="0" max="100">
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="hasE2eAudio" class="dimension-sub-section">
-        <h5>端到端测试评测维度</h5>
-        <div class="dimension-cloud">
-          <div
-            v-for="dim in filteredAvailableDimensions"
-            :key="dim.id"
-            class="dimension-chip"
-            :class="{ 'selected': isDimensionSelected(dim.name, 'e2e') }"
-            @click="toggleDimensionSelection(dim, 'e2e')"
-          >
-            {{ dim.name }}
-          </div>
-        </div>
-        <div class="selected-dimensions" v-if="localFormData.config.dimensions.e2e.length > 0">
-          <div v-for="(dimension, index) in localFormData.config.dimensions.e2e" :key="index" class="selected-dimension-card">
-            <div class="dimension-card-header">
-              <span class="dimension-name">{{ dimension.name }}</span>
-              <button type="button" class="btn btn-icon btn-xs btn-outline-danger" @click="removeE2EDimension(index)">
+              <button type="button" class="btn btn-icon btn-xs btn-outline-danger" @click="removeDimension(index)">
                 <i class="fas fa-times"></i>
               </button>
             </div>
@@ -489,7 +454,7 @@ function createInitialFormData(): TestCaseFormData {
     algorithmType: '',
     config: {
       audios: [{ audioId: '', testType: 'api', playbackDeviceId: '', spl: 65, playOrder: 0 }],
-      dimensions: { api: [], e2e: [] },
+      dimensions: [],
       backgroundNoise: { audioId: '', deviceIds: [], spl: 0 }
     }
   };
@@ -591,7 +556,7 @@ function initFormData() {
     referenceParams: normalizeParams(raw.referenceParams || raw.reference_params || {}),
     config: raw.config || {
       audios: [{ audioId: '', testType: 'api', playbackDeviceId: '', spl: 65, playOrder: 0 }],
-      dimensions: { api: [], e2e: [] },
+      dimensions: [],
       backgroundNoise: { audioId: '', deviceIds: [], spl: 0 }
     }
   };
@@ -737,20 +702,16 @@ function assignDeviceByTags(audios: AudioConfig[]) {
   audioConfig?.assignDeviceByTags?.(audios);
 }
 
-function isDimensionSelected(dimensionName: string, dimensionType: 'api' | 'e2e'): boolean {
-  return dimensionConfig?.isDimensionSelected?.(dimensionName, dimensionType, localFormData.value.config.dimensions) || false;
+function isDimensionSelected(dimensionName: string): boolean {
+  return dimensionConfig?.isDimensionSelected?.(dimensionName, localFormData.value.config.dimensions) || false;
 }
 
-function toggleDimensionSelection(dimension: any, dimensionType: 'api' | 'e2e') {
-  dimensionConfig?.toggleDimensionSelection?.(dimension, dimensionType, localFormData.value.config.dimensions);
+function toggleDimensionSelection(dimension: any) {
+  dimensionConfig?.toggleDimensionSelection?.(dimension, localFormData.value.config.dimensions);
 }
 
-function removeAPIDimension(index: number) {
-  dimensionConfig?.removeAPIDimension?.(index, localFormData.value.config.dimensions);
-}
-
-function removeE2EDimension(index: number) {
-  dimensionConfig?.removeE2EDimension?.(index, localFormData.value.config.dimensions);
+function removeDimension(index: number) {
+  dimensionConfig?.removeDimension?.(index, localFormData.value.config.dimensions);
 }
 
 watch(() => props.formData, () => {
@@ -771,13 +732,8 @@ function syncConfigFromParent() {
   if (parentConfig.backgroundNoise) {
     Object.assign(localFormData.value.config.backgroundNoise, parentConfig.backgroundNoise);
   }
-  if (parentConfig.dimensions) {
-    if (parentConfig.dimensions.api) {
-      localFormData.value.config.dimensions.api = parentConfig.dimensions.api;
-    }
-    if (parentConfig.dimensions.e2e) {
-      localFormData.value.config.dimensions.e2e = parentConfig.dimensions.e2e;
-    }
+  if (parentConfig.dimensions && Array.isArray(parentConfig.dimensions)) {
+    localFormData.value.config.dimensions = parentConfig.dimensions;
   }
   nextTick(() => {
     isSyncingFromParent = false;

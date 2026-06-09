@@ -222,23 +222,17 @@ class EvaluationResultProcessor:
                     # 2. 获取该用例目前已生成的所有测试结果
                     all_results = local_db_session.query(TestResult).filter_by(task_id=task_id, test_case_id=test_case_id).all()
                     
-                    # 3. 获取用例配置中预期的评估维度总数（根据test_type筛选对应类型的维度）
+                    # 3. 获取用例配置中预期的评估维度总数
                     test_case = local_db_session.query(TestCase).get(test_case_id)
                     expected_dim_count = 0
                     if test_case and test_case.config:
                         dim_config = test_case.config.get('dimensions', {})
                         all_dim_ids = []
                         
-                        # 根据test_type筛选对应类型的维度
-                        # 如果test_type为None或为空，则使用所有类型的维度（向后兼容）
-                        target_types = [test_type] if test_type else ['api', 'e2e']
-                        
-                        for dim_type in target_types:
-                            dim_list = dim_config.get(dim_type, [])
-                            for item in dim_list:
-                                dim_id = item.get('id') if isinstance(item, dict) else item
-                                if dim_id:
-                                    all_dim_ids.append(dim_id)
+                        for item in dim_config:
+                            dim_id = item.get('id') if isinstance(item, dict) else item
+                            if dim_id:
+                                all_dim_ids.append(dim_id)
                         
                         # 仅统计数据库中启用且存在的维度
                         if all_dim_ids:

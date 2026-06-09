@@ -436,7 +436,7 @@ class EvaluationService:
                 local_db_session.close()
         
         dimension_ids = []
-        dim_list = dimensions_config.get(test_type, [])
+        dim_list = dimensions_config
         for item in dim_list:
             if isinstance(item, dict):
                 dimension_id = item.get('id')

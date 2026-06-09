@@ -321,15 +321,10 @@ class APIExecutor(BaseExecutor):
             
             # 使用已在会话关闭前提取的task_type变量，避免访问分离对象
             
-            # 根据任务类型筛选对应测试类型的音频，并确保audio_id不为空
-            if task_type == 'api':
-                # API测试，仅筛选test_type为api的音频
-                target_audios = [audio for audio in audios if audio.get('test_type') == 'api' and audio.get('audio_id')]
-                expected_test_type = 'API'
-            else:
-                # E2E测试，仅筛选test_type为e2e的音频
-                target_audios = [audio for audio in audios if audio.get('test_type') == 'e2e' and audio.get('audio_id')]
-                expected_test_type = 'E2E'
+            # 新双记录架构：记录已是单类型，直接使用所有音频
+            # 不再按 test_type 过滤音频
+            target_audios = [audio for audio in audios if audio.get('audio_id')]
+            expected_test_type = 'API' if task_type == 'api' else 'E2E'
             
             # 检查是否配置了对应类型的音频
             if not target_audios:

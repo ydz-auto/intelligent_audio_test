@@ -1,0 +1,1832 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>用例编辑模态窗 - 设计草图 v4</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ========== 系统 CSS 变量（来自 variables.css）========== */
+:root {
+  --primary-color: #FF6A00;
+  --primary-light: rgba(255, 106, 0, 0.1);
+  --primary-dark: #E65C00;
+  --primary-gradient: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+  --secondary-color: #1976d2;
+  --secondary-light: #e3f2fd;
+  --secondary-dark: #0958D9;
+  --success-color: #52C41A;
+  --success-light: rgba(82, 196, 26, 0.1);
+  --warning-color: #FFA940;
+  --warning-light: rgba(255, 169, 64, 0.1);
+  --error-color: #F5222D;
+  --error-light: rgba(245, 34, 45, 0.1);
+  --danger-color: #F5222D;
+  --danger-light: rgba(245, 34, 45, 0.1);
+  --text-primary: #333333;
+  --text-secondary: #777777;
+  --text-light: #999999;
+  --text-disabled: #CCCCCC;
+  --gray-color: #737373;
+  --gray-light-color: #F0F0F0;
+  --border-color: #E5E7EB;
+  --white-color: #FFFFFF;
+  --background-primary: #FFFFFF;
+  --background-secondary: #F5F5F5;
+  --background-tertiary: #F0F0F0;
+  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-xxl: 24px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+  --border-radius-xl: 16px;
+  --border-radius-full: 9999px;
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s ease;
+  --card-border: 1px solid var(--gray-light-color);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-family);
+  background: #f0f2f5;
+  color: var(--text-primary);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* ========== 模态窗遮罩 ========== */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+}
+
+/* ========== 模态窗主体（edit-window 模式）========== */
+.modal {
+  position: relative;
+  width: 1200px;
+  max-height: 92vh;
+  background: var(--background-primary);
+  border-radius: var(--border-radius-xl);
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 10;
+}
+
+/* ========== 模态窗头部 ========== */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-lg);
+  border-bottom: var(--card-border);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.modal-title .title-icon {
+  width: 32px; height: 32px;
+  background: var(--primary-light);
+  border-radius: var(--border-radius-md);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--primary-color);
+  font-size: 14px;
+}
+
+.header-actions { display: flex; gap: var(--spacing-sm); align-items: center; }
+
+.header-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+}
+
+.header-badge.api { background: #dbeafe; color: #1d4ed8; }
+.header-badge.e2e { background: #d1fae5; color: #059669; }
+
+/* ========== 按钮 ========== */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  font-family: var(--font-family);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+
+.btn:hover { transform: translateY(-1px); }
+
+.btn-primary {
+  background: var(--primary-gradient);
+  color: var(--white-color);
+  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.3);
+}
+.btn-primary:hover { box-shadow: 0 4px 12px rgba(255, 106, 0, 0.4); }
+
+.btn-secondary {
+  background: var(--background-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+.btn-secondary:hover { border-color: var(--primary-color); color: var(--primary-color); }
+
+.btn-sm {
+  padding: 4px 12px;
+  font-size: var(--font-size-xs);
+  min-height: 28px;
+}
+
+.btn-outline-primary {
+  background: transparent;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+}
+.btn-outline-primary:hover { background: var(--primary-light); }
+
+.btn-outline-danger {
+  background: transparent;
+  color: var(--danger-color);
+  border: 1px solid var(--error-light);
+}
+.btn-outline-danger:hover { background: var(--error-light); }
+
+.btn-outline-info {
+  background: transparent;
+  color: var(--secondary-color);
+  border: 1px solid var(--secondary-light);
+}
+.btn-outline-info:hover { background: var(--secondary-light); }
+
+.btn-outline-success {
+  background: transparent;
+  color: var(--success-color);
+  border: 1px solid var(--success-light);
+}
+.btn-outline-success:hover { background: var(--success-light); }
+
+.btn-text {
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+}
+.btn-text:hover { color: var(--primary-color); background: var(--primary-light); transform: none; }
+
+.btn-icon-only {
+  width: 32px; height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--background-primary);
+  color: var(--text-secondary);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: var(--font-size-sm);
+}
+.btn-icon-only:hover { border-color: var(--primary-color); color: var(--primary-color); transform: translateY(-1px); }
+.btn-icon-only.danger { color: var(--danger-color); border-color: var(--error-light); }
+.btn-icon-only.danger:hover { background: var(--error-light); }
+
+/* ========== 模态窗主体布局 ========== */
+.modal-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ========== 左侧：轮次导航 ========== */
+.round-nav {
+  width: 200px;
+  background: var(--background-secondary);
+  border-right: var(--card-border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.round-nav-header {
+  padding: 14px 16px;
+  border-bottom: var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.round-nav-title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-light);
+}
+
+.round-nav-count {
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  background: var(--background-tertiary);
+  padding: 2px 8px;
+  border-radius: var(--border-radius-full);
+}
+
+.round-nav-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-sm);
+}
+
+.round-nav-list::-webkit-scrollbar { width: 4px; }
+.round-nav-list::-webkit-scrollbar-track { background: transparent; }
+.round-nav-list::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+.round-nav-item {
+  padding: 8px 12px;
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+}
+
+.round-nav-item:hover { background: var(--background-tertiary); }
+.round-nav-item.active {
+  background: var(--primary-light);
+  border-color: rgba(255, 106, 0, 0.2);
+}
+
+.round-nav-item .num {
+  width: 22px; height: 22px;
+  background: var(--background-tertiary);
+  border-radius: var(--border-radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+  color: var(--text-light);
+  font-weight: var(--font-weight-semibold);
+  flex-shrink: 0;
+}
+
+.round-nav-item.active .num {
+  background: var(--primary-color);
+  color: var(--white-color);
+}
+
+.round-nav-item .meta {
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.round-nav-item.active .meta { color: var(--text-secondary); }
+
+.round-nav-footer {
+  padding: 12px;
+  border-top: var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.nav-footer-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  font-family: var(--font-family);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all var(--transition-fast);
+}
+
+.nav-footer-btn:hover { border-color: var(--primary-color); color: var(--primary-color); }
+.nav-footer-btn i { font-size: 11px; }
+
+/* ========== 中间区域 ========== */
+.round-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+/* 步骤目录 */
+.step-toc {
+  width: 150px;
+  padding: var(--spacing-md) 0;
+  border-right: var(--card-border);
+  flex-shrink: 0;
+  overflow-y: auto;
+  background: var(--background-primary);
+}
+
+.step-toc-title {
+  padding: 0 var(--spacing-md) 10px;
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-light);
+}
+
+.step-toc-item {
+  padding: 8px var(--spacing-md);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all var(--transition-fast);
+}
+
+.step-toc-item:hover { color: var(--text-primary); background: var(--background-secondary); }
+.step-toc-item.active {
+  color: var(--primary-color);
+  border-left-color: var(--primary-color);
+  background: var(--primary-light);
+  font-weight: var(--font-weight-medium);
+}
+
+.step-toc-item .step-num {
+  width: 18px; height: 18px;
+  background: var(--background-tertiary);
+  border-radius: var(--border-radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+  color: var(--text-light);
+  font-weight: var(--font-weight-semibold);
+  flex-shrink: 0;
+}
+
+.step-toc-item.active .step-num {
+  background: var(--primary-color);
+  color: var(--white-color);
+}
+
+.step-toc-item .step-icon {
+  font-size: 11px;
+  width: 16px;
+  text-align: center;
+}
+
+/* ========== 主内容区 ========== */
+.content-area {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+  background: var(--background-primary);
+}
+
+.content-area::-webkit-scrollbar { width: 6px; }
+.content-area::-webkit-scrollbar-track { background: var(--background-secondary); border-radius: 3px; }
+.content-area::-webkit-scrollbar-thumb { background: var(--gray-color); border-radius: 3px; }
+
+/* 轮次头部 */
+.round-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px var(--spacing-lg);
+  background: var(--background-secondary);
+  border-bottom: var(--card-border);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.round-head-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.round-head-num {
+  width: 32px; height: 32px;
+  background: var(--primary-gradient);
+  border-radius: var(--border-radius-md);
+  display: flex; align-items: center; justify-content: center;
+  font-size: var(--font-size-sm);
+  color: var(--white-color);
+  font-weight: var(--font-weight-bold);
+  box-shadow: 0 2px 8px rgba(255, 106, 0, 0.3);
+}
+
+.round-head-label {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.round-head-meta {
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  display: flex;
+  gap: var(--spacing-md);
+  margin-top: 2px;
+}
+
+.round-head-meta i { margin-right: 4px; font-size: 11px; }
+
+.round-head-actions { display: flex; gap: var(--spacing-sm); align-items: center; }
+
+.round-pager {
+  display: flex;
+  align-items: center;
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  overflow: hidden;
+}
+
+.pager-btn {
+  width: 30px; height: 30px;
+  background: transparent;
+  border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-family: var(--font-family);
+}
+.pager-btn:hover { background: var(--background-secondary); color: var(--text-primary); }
+
+.pager-input {
+  width: 48px;
+  padding: 0 6px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  text-align: center;
+  height: 30px;
+  outline: none;
+  font-family: var(--font-family);
+  font-weight: var(--font-weight-medium);
+}
+.pager-input:focus { background: var(--primary-light); }
+
+.pager-info {
+  padding: 0 10px;
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+}
+
+/* ========== 步骤区块（form-section 风格）========== */
+.step {
+  margin: var(--spacing-md) var(--spacing-lg);
+  padding: var(--spacing-lg);
+  background: var(--background-secondary);
+  border-radius: var(--border-radius-lg);
+  border: 1px solid var(--border-color);
+}
+
+.step:last-child { margin-bottom: var(--spacing-lg); }
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--spacing-md);
+}
+
+.step-header-icon {
+  width: 28px; height: 28px;
+  background: var(--primary-light);
+  border-radius: var(--border-radius-md);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--primary-color);
+  font-size: var(--font-size-xs);
+}
+
+.step-header-title {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.step-header-badge {
+  padding: 2px 10px;
+  border-radius: var(--border-radius-full);
+  font-size: 11px;
+  font-weight: var(--font-weight-medium);
+}
+
+.badge-orange { background: var(--primary-light); color: var(--primary-color); border: 1px solid rgba(255,106,0,0.2); }
+.badge-blue { background: var(--secondary-light); color: var(--secondary-color); border: 1px solid rgba(25,118,210,0.2); }
+.badge-green { background: var(--success-light); color: var(--success-color); border: 1px solid rgba(82,196,26,0.2); }
+.badge-gray { background: var(--background-tertiary); color: var(--text-light); border: 1px solid var(--border-color); }
+
+.step-header .spacer { margin-left: auto; }
+
+.step-header .count-label {
+  font-size: var(--font-size-xs);
+  color: var(--primary-color);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ========== 表单基础 ========== */
+.form-row {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.form-row:last-child { margin-bottom: 0; }
+
+.form-group {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group.full-width { flex-basis: 100%; }
+
+.form-group label {
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.form-group label .required { color: var(--danger-color); }
+
+.form-control {
+  width: 100%;
+  height: 40px;
+  padding: 0 var(--spacing-md);
+  border: 1px solid var(--gray-light-color);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: var(--background-primary);
+  transition: all var(--transition-normal);
+  outline: none;
+  font-family: var(--font-family);
+}
+
+.form-control:hover { border-color: var(--primary-color); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.form-control:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px var(--primary-light); }
+.form-control::placeholder { color: var(--text-disabled); }
+
+.form-control-sm {
+  height: 36px;
+  font-size: var(--font-size-xs);
+  padding: 0 var(--spacing-sm);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 80px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  resize: vertical;
+}
+
+select.form-control {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='%236B7280'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--spacing-md) center;
+  background-size: 16px;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+.help-text {
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  margin-top: 2px;
+}
+
+/* 算法类型选择器 */
+.algo-selector {
+  display: flex;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.algo-card {
+  padding: 8px 16px;
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+}
+
+.algo-card:hover { border-color: var(--primary-color); color: var(--text-primary); transform: translateY(-1px); }
+.algo-card.active {
+  border-color: var(--primary-color);
+  background: var(--primary-light);
+  color: var(--primary-color);
+  font-weight: var(--font-weight-semibold);
+  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.15);
+}
+
+.algo-card i { font-size: var(--font-size-sm); }
+
+/* ========== 参数行 ========== */
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+}
+
+.param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.param-item label {
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.param-control {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.param-slider {
+  flex: 1;
+  height: 6px;
+  background: var(--gray-light-color);
+  border-radius: 3px;
+  position: relative;
+  cursor: pointer;
+}
+
+.param-slider-fill {
+  height: 100%;
+  background: var(--primary-gradient);
+  border-radius: 3px;
+}
+
+.param-slider-thumb {
+  width: 16px; height: 16px;
+  background: var(--white-color);
+  border: 2px solid var(--primary-color);
+  border-radius: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 1px 4px rgba(255,106,0,0.3);
+  cursor: grab;
+}
+
+.param-value {
+  font-size: var(--font-size-xs);
+  color: var(--primary-color);
+  font-weight: var(--font-weight-semibold);
+  min-width: 40px;
+  text-align: right;
+}
+
+.param-display {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.param-display i { color: var(--text-light); font-size: var(--font-size-xs); }
+
+/* 开关 */
+.param-switch {
+  width: 40px; height: 22px;
+  background: var(--border-color);
+  border-radius: 11px;
+  position: relative;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.param-switch.on { background: var(--primary-color); }
+
+.param-switch .knob {
+  width: 18px; height: 18px;
+  background: var(--white-color);
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.param-switch.on .knob { left: 20px; }
+
+.param-switch-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  margin-left: 4px;
+}
+
+/* ========== 音频表格（卡片列表风格）========== */
+.audio-table-wrapper {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.audio-table-header {
+  display: grid;
+  grid-template-columns: 32px 1fr 140px 80px 60px 40px;
+  padding: 10px var(--spacing-md);
+  background: var(--background-secondary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-light);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.audio-table-row {
+  display: grid;
+  grid-template-columns: 32px 1fr 140px 80px 60px 40px;
+  padding: 8px var(--spacing-md);
+  border-bottom: 1px solid var(--gray-light-color);
+  font-size: var(--font-size-xs);
+  align-items: center;
+  transition: background var(--transition-fast);
+}
+
+.audio-table-row:last-child { border-bottom: none; }
+.audio-table-row:hover { background: var(--background-secondary); }
+
+.audio-table-row .checkbox {
+  width: 16px; height: 16px;
+  border: 2px solid var(--gray-light-color);
+  border-radius: var(--border-radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex; align-items: center; justify-content: center;
+}
+
+.audio-table-row .checkbox:hover { border-color: var(--primary-color); }
+
+.audio-table-row .filename {
+  color: var(--primary-color);
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audio-table-row .cell-meta { color: var(--text-light); }
+
+.audio-table-row .edit-btn {
+  background: none; border: none;
+  color: var(--text-light);
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  padding: 4px;
+  border-radius: var(--border-radius-sm);
+  transition: all var(--transition-fast);
+}
+.audio-table-row .edit-btn:hover { color: var(--primary-color); background: var(--primary-light); }
+
+.audio-table-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px var(--spacing-md);
+  background: var(--background-secondary);
+  border-top: 1px solid var(--border-color);
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+}
+
+.batch-actions { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
+
+.audio-pagination { display: flex; align-items: center; gap: 4px; }
+
+.page-dot {
+  width: 24px; height: 24px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--background-primary);
+  color: var(--text-light);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all var(--transition-fast);
+  font-family: var(--font-family);
+}
+.page-dot:hover { border-color: var(--primary-color); color: var(--primary-color); }
+.page-dot.active { background: var(--primary-color); color: var(--white-color); border-color: var(--primary-color); }
+
+/* ========== 评估维度 chips ========== */
+.dim-grid { display: flex; gap: var(--spacing-sm); flex-wrap: wrap; }
+
+.dim-chip {
+  padding: 8px 16px;
+  border-radius: var(--border-radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid var(--border-color);
+  background: var(--background-primary);
+  color: var(--text-secondary);
+  display: flex; align-items: center; gap: 6px;
+}
+
+.dim-chip:hover { border-color: var(--primary-color); color: var(--primary-color); transform: translateY(-2px); box-shadow: var(--shadow-sm); }
+
+.dim-chip.active {
+  background: var(--primary-color);
+  color: var(--white-color);
+  border-color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(255,106,0,0.3);
+}
+
+.dim-chip.active:hover {
+  background: var(--primary-dark);
+}
+
+.dim-chip i { font-size: 11px; }
+
+/* ========== 参考参数（只读）========== */
+.ref-info {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  margin-bottom: var(--spacing-sm);
+}
+
+.ref-info i { color: var(--text-disabled); }
+
+.ref-content {
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: var(--spacing-md);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.ref-content::-webkit-scrollbar { width: 4px; }
+.ref-content::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 2px; }
+
+.ref-content code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: var(--font-size-xs);
+  line-height: 1.7;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
+/* ========== 模态窗底部 ========== */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border-top: var(--card-border);
+  flex-shrink: 0;
+  background: var(--background-primary);
+  position: sticky;
+  bottom: 0;
+  z-index: 100;
+}
+
+.footer-info {
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.footer-info .separator { color: var(--border-color); }
+
+.footer-actions { display: flex; gap: var(--spacing-sm); }
+
+/* ========== DynamicForm 风格参数区 ========== */
+.dynamic-form-section {
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-lg);
+  overflow: hidden;
+}
+
+.dynamic-form-group-header {
+  padding: 10px var(--spacing-md);
+  background: #F9FAFB;
+  border-bottom: 1px solid var(--border-color);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dynamic-form-group-header i { color: var(--primary-color); font-size: 11px; }
+
+.dynamic-form-body {
+  padding: var(--spacing-md);
+}
+
+/* ========== 标注/注释标签 ========== */
+.code-annotation {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--border-radius-sm);
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.code-annotation.orange { background: var(--primary-light); color: var(--primary-color); }
+.code-annotation.blue { background: var(--secondary-light); color: var(--secondary-color); }
+.code-annotation.green { background: var(--success-light); color: var(--success-color); }
+.code-annotation.gray { background: var(--background-tertiary); color: var(--text-light); }
+
+/* ========== 提示文本 ========== */
+.hint-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 8px var(--spacing-md);
+  background: var(--primary-light);
+  border-radius: var(--border-radius-md);
+  font-size: var(--font-size-xs);
+  color: var(--primary-dark);
+  margin-bottom: var(--spacing-md);
+}
+
+.hint-bar i { font-size: 12px; color: var(--primary-color); }
+
+/* ========== 噪声配置子区域 ========== */
+.sub-section {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  border-top: 1px solid var(--gray-light-color);
+}
+
+.sub-section-title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--spacing-md);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sub-section-title i { color: var(--primary-color); font-size: var(--font-size-xs); }
+
+/* ========== 分隔线 ========== */
+.divider {
+  height: 1px;
+  background: var(--gray-light-color);
+  margin: var(--spacing-md) 0;
+}
+
+/* ========== 内联信息块 ========== */
+.info-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-light);
+  padding: 4px 0;
+}
+
+.info-inline i { font-size: 11px; width: 14px; text-align: center; }
+
+/* ========== 响应式 ========== */
+@media (max-width: 1280px) {
+  .modal { width: 95vw; }
+}
+</style>
+</head>
+<body>
+
+<div class="modal-overlay"></div>
+
+<div class="modal">
+  <!-- ======== Header ======== -->
+  <div class="modal-header">
+    <div class="modal-title">
+      <div class="title-icon"><i class="fas fa-edit"></i></div>
+      编辑测试用例
+      <span class="header-badge e2e"><i class="fas fa-microchip"></i> E2E</span>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-secondary" onclick="handleCancel()">取消</button>
+      <button class="btn btn-primary" onclick="handleSave()">
+        <i class="fas fa-check"></i> 保存
+      </button>
+    </div>
+  </div>
+
+  <div class="modal-body">
+    <!-- ======== 左侧：轮次导航 ======== -->
+    <div class="round-nav">
+      <div class="round-nav-header">
+        <div class="round-nav-title">轮次列表</div>
+        <span class="round-nav-count" id="roundCount">3 轮</span>
+      </div>
+      <div class="round-nav-list" id="roundNavList">
+        <div class="round-nav-item active" data-round="1">
+          <span class="num">1</span>
+          <span class="meta">今天天气怎么样</span>
+        </div>
+        <div class="round-nav-item" data-round="2">
+          <span class="num">2</span>
+          <span class="meta">明天会下雨吗</span>
+        </div>
+        <div class="round-nav-item" data-round="3">
+          <span class="num">3</span>
+          <span class="meta">帮我设个闹钟</span>
+        </div>
+      </div>
+      <div class="round-nav-footer">
+        <button class="nav-footer-btn" onclick="addRound()">
+          <i class="fas fa-plus"></i> 添加轮次
+        </button>
+        <button class="nav-footer-btn" onclick="copyRound()">
+          <i class="fas fa-copy"></i> 复制当前轮次
+        </button>
+      </div>
+    </div>
+
+    <!-- ======== 中间：步骤目录 + 内容 ======== -->
+    <div class="round-content">
+      <!-- 步骤目录 -->
+      <div class="step-toc" id="stepToc">
+        <div class="step-toc-title">本轮步骤</div>
+        <!-- E2E 模式的步骤 -->
+        <div class="step-toc-item active" data-step="algo" onclick="scrollToStep('algo')">
+          <span class="step-num">1</span>
+          <span class="step-icon"><i class="fas fa-sliders-h"></i></span>
+          <span>算法参数</span>
+        </div>
+        <div class="step-toc-item" data-step="audio" onclick="scrollToStep('audio')">
+          <span class="step-num">2</span>
+          <span class="step-icon"><i class="fas fa-music"></i></span>
+          <span>音频列表</span>
+        </div>
+        <div class="step-toc-item" data-step="noise" onclick="scrollToStep('noise')">
+          <span class="step-num">3</span>
+          <span class="step-icon"><i class="fas fa-volume-up"></i></span>
+          <span>噪声 & 干扰</span>
+        </div>
+        <div class="step-toc-item" data-step="eval" onclick="scrollToStep('eval')">
+          <span class="step-num">4</span>
+          <span class="step-icon"><i class="fas fa-chart-bar"></i></span>
+          <span>评估维度</span>
+        </div>
+        <div class="step-toc-item" data-step="ref" onclick="scrollToStep('ref')">
+          <span class="step-num">5</span>
+          <span class="step-icon"><i class="fas fa-file-alt"></i></span>
+          <span>参考参数</span>
+        </div>
+      </div>
+
+      <!-- 主内容 -->
+      <div class="content-area" id="contentArea">
+        <!-- 轮次头部 -->
+        <div class="round-head">
+          <div class="round-head-info">
+            <div class="round-head-num" id="roundHeadNum">1</div>
+            <div>
+              <div class="round-head-label">第 <span id="roundLabel">1</span> 轮</div>
+              <div class="round-head-meta">
+                <span><i class="fas fa-music"></i> <span id="audioCount">1</span> 条音频</span>
+                <span><i class="fas fa-volume-up"></i> cafe_noise</span>
+                <span><i class="fas fa-ruler-horizontal"></i> 50cm</span>
+                <span><i class="fas fa-chart-line"></i> WER + BLEU + LLM</span>
+              </div>
+            </div>
+          </div>
+          <div class="round-head-actions">
+            <div class="round-pager">
+              <button class="pager-btn" onclick="pagerPrev()"><i class="fas fa-chevron-left"></i></button>
+              <input class="pager-input" id="pagerInput" value="1" onchange="pagerJump(this.value)" />
+              <span class="pager-info">/ <span id="pagerTotal">3</span></span>
+              <button class="pager-btn" onclick="pagerNext()"><i class="fas fa-chevron-right"></i></button>
+            </div>
+            <button class="btn-icon-only" title="复制轮次" onclick="copyRound()"><i class="fas fa-copy"></i></button>
+            <button class="btn-icon-only danger" title="删除轮次" onclick="deleteRound()"><i class="fas fa-trash-alt"></i></button>
+          </div>
+        </div>
+
+        <!-- ============ 步骤 1: 算法参数 ============ -->
+        <div class="step" id="step-algo">
+          <div class="step-header">
+            <div class="step-header-icon"><i class="fas fa-sliders-h"></i></div>
+            <div class="step-header-title">算法参数</div>
+            <span class="code-annotation orange">algorithmParams</span>
+            <span class="code-annotation gray">表驱动 · [{field_code, field_value}]</span>
+          </div>
+
+          <!-- 算法 & 测试类型选择 -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>算法类型</label>
+              <div class="algo-selector">
+                <div class="algo-card" onclick="selectAlgo(this, 'translate')">
+                  <i class="fas fa-language"></i> 翻译
+                </div>
+                <div class="algo-card active" onclick="selectAlgo(this, 'voice_llm')">
+                  <i class="fas fa-robot"></i> 语音交互
+                </div>
+                <div class="algo-card" onclick="selectAlgo(this, 'asr')">
+                  <i class="fas fa-microphone"></i> ASR
+                </div>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>测试类型 <span class="required">*</span></label>
+              <div class="algo-selector">
+                <div class="algo-card" onclick="selectTestType(this, 'api')">
+                  <i class="fas fa-cloud"></i> API
+                </div>
+                <div class="algo-card active" onclick="selectTestType(this, 'e2e')">
+                  <i class="fas fa-microchip"></i> E2E
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DynamicForm 参数区（表驱动渲染） -->
+          <div class="dynamic-form-section">
+            <div class="dynamic-form-group-header">
+              <i class="fas fa-cogs"></i>
+              E2E 算法参数 (scope = e2e + common)
+              <span class="code-annotation gray" style="margin-left:auto;">case_algorithm_params</span>
+            </div>
+            <div class="dynamic-form-body">
+              <div class="param-grid">
+                <div class="param-item">
+                  <label><i class="fas fa-user-friends" style="color:var(--text-light);font-size:11px;margin-right:4px;"></i>干扰人</label>
+                  <div class="param-display">
+                    <i class="fas fa-file-audio"></i>
+                    someone_talking.wav
+                    <span style="margin-left:auto;font-size:11px;color:var(--text-light);">60 dB</span>
+                  </div>
+                </div>
+                <div class="param-item">
+                  <label><i class="fas fa-layer-group" style="color:var(--text-light);font-size:11px;margin-right:4px;"></i>重叠率</label>
+                  <div class="param-control">
+                    <div class="param-slider">
+                      <div class="param-slider-fill" style="width:0%"></div>
+                      <div class="param-slider-thumb" style="left:0%"></div>
+                    </div>
+                    <span class="param-value">0%</span>
+                  </div>
+                </div>
+                <div class="param-item">
+                  <label><i class="fas fa-ruler-horizontal" style="color:var(--text-light);font-size:11px;margin-right:4px;"></i>导轨距离</label>
+                  <div class="param-control">
+                    <div class="param-slider">
+                      <div class="param-slider-fill" style="width:50%"></div>
+                      <div class="param-slider-thumb" style="left:50%"></div>
+                    </div>
+                    <span class="param-value">50 cm</span>
+                  </div>
+                </div>
+                <div class="param-item">
+                  <label><i class="fas fa-volume-up" style="color:var(--text-light);font-size:11px;margin-right:4px;"></i>设备音量</label>
+                  <div class="param-control">
+                    <div class="param-slider">
+                      <div class="param-slider-fill" style="width:70%"></div>
+                      <div class="param-slider-thumb" style="left:70%"></div>
+                    </div>
+                    <span class="param-value">70</span>
+                  </div>
+                </div>
+                <div class="param-item">
+                  <label><i class="fas fa-fingerprint" style="color:var(--text-light);font-size:11px;margin-right:4px;"></i>声纹注册</label>
+                  <div class="param-control" style="padding:4px 0;">
+                    <div class="param-switch" onclick="toggleSwitch(this)">
+                      <div class="knob"></div>
+                    </div>
+                    <span class="param-switch-label">未开启</span>
+                  </div>
+                </div>
+                <div class="param-item">
+                  <label><i class="fas fa-globe" style="color:var(--text-light);font-size:11px;margin-right:4px;"></i>源语言</label>
+                  <select class="form-control form-control-sm">
+                    <option value="zh" selected>中文 (zh)</option>
+                    <option value="en">English (en)</option>
+                    <option value="ja">日本語 (ja)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- API 模式特有参数（默认隐藏，切换到 API 时显示） -->
+              <div id="apiOnlyParams" style="display:none;margin-top:var(--spacing-md);padding-top:var(--spacing-md);border-top:1px solid var(--gray-light-color);">
+                <div class="param-grid">
+                  <div class="param-item">
+                    <label><i class="fas fa-keyboard" style="color:var(--text-light);font-size:11px;margin-right:4px;"></i>输入文本 (inputText)</label>
+                    <input class="form-control form-control-sm" placeholder="输入测试文本..." value="你好，我想了解一下天气" />
+                  </div>
+                  <div class="param-item">
+                    <label><i class="fas fa-file-audio" style="color:var(--text-light);font-size:11px;margin-right:4px;"></i>输入音频 (inputAudio)</label>
+                    <div class="param-display">
+                      <i class="fas fa-minus-circle" style="color:var(--text-disabled);"></i>
+                      <span style="color:var(--text-light);">未设置</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ 步骤 2: 音频列表 ============ -->
+        <div class="step" id="step-audio">
+          <div class="step-header">
+            <div class="step-header-icon"><i class="fas fa-music"></i></div>
+            <div class="step-header-title">音频列表</div>
+            <span class="code-annotation blue">round.audios</span>
+            <span class="spacer"></span>
+            <span class="count-label"><i class="fas fa-list-ol" style="margin-right:4px;"></i>共 <span id="audioTotalLabel">1</span> 条</span>
+          </div>
+
+          <div class="hint-bar" id="e2eAudioHint">
+            <i class="fas fa-info-circle"></i>
+            E2E 模式：音频通过播放设备物理播放，需配置播放设备和声压级
+          </div>
+
+          <div class="audio-table-wrapper">
+            <div class="audio-table-header">
+              <div></div>
+              <div>文件名</div>
+              <div>播放设备</div>
+              <div>声压级</div>
+              <div>顺序</div>
+              <div></div>
+            </div>
+            <div id="audioTableBody">
+              <div class="audio-table-row">
+                <div><div class="checkbox"></div></div>
+                <div class="filename">round1.wav</div>
+                <div class="cell-meta">RME 802 [Ch1-2]</div>
+                <div class="cell-meta">65 dB</div>
+                <div class="cell-meta">1</div>
+                <div><button class="edit-btn"><i class="fas fa-pen"></i></button></div>
+              </div>
+            </div>
+            <div class="audio-table-footer">
+              <div class="batch-actions">
+                <button class="btn btn-sm btn-outline-primary" onclick="addAudio()">
+                  <i class="fas fa-plus"></i> 添加
+                </button>
+                <button class="btn btn-sm btn-outline-info">
+                  <i class="fas fa-desktop"></i> 批量设设备
+                </button>
+                <button class="btn btn-sm btn-outline-success">
+                  <i class="fas fa-volume-up"></i> 批量设声压
+                </button>
+                <button class="btn btn-sm btn-outline-info">
+                  <i class="fas fa-random"></i> 交叉分配
+                </button>
+                <button class="btn btn-sm btn-outline-danger">
+                  <i class="fas fa-trash-alt"></i> 删除选中
+                </button>
+              </div>
+              <div class="audio-pagination">
+                <span>1 / 1</span>
+                <button class="page-dot active">1</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ 步骤 3: 背景噪声 ============ -->
+        <div class="step" id="step-noise">
+          <div class="step-header">
+            <div class="step-header-icon"><i class="fas fa-volume-up"></i></div>
+            <div class="step-header-title">噪声 & 干扰</div>
+            <span class="code-annotation blue">round.backgroundNoise</span>
+            <span class="spacer"></span>
+            <button class="btn btn-sm btn-outline-danger" id="clearNoiseBtn">
+              <i class="fas fa-trash"></i> 清除配置
+            </button>
+          </div>
+
+          <!-- 背景噪声 -->
+          <div class="sub-section-title"><i class="fas fa-broadcast-tower"></i> 背景噪声</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>噪声音频</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input class="form-control" value="cafe_noise.wav" readonly style="flex:1;cursor:pointer;" />
+                <button class="btn btn-sm btn-primary"><i class="fas fa-search"></i> 选择</button>
+                <button class="btn btn-sm btn-secondary"><i class="fas fa-play"></i> 试听</button>
+              </div>
+            </div>
+            <div class="form-group" style="max-width:140px;">
+              <label>声压级 (dB)</label>
+              <input class="form-control" type="number" value="50" min="0" max="120" />
+            </div>
+            <div class="form-group">
+              <label>播放设备</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <input class="form-control" value="Genelec 8030 (dev_007)" readonly style="flex:1;cursor:pointer;" />
+                <button class="btn btn-sm btn-primary"><i class="fas fa-search"></i> 选择</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="max-width:200px;">
+              <label>循环播放</label>
+              <div style="display:flex;align-items:center;gap:8px;padding-top:4px;">
+                <div class="param-switch on" onclick="toggleSwitch(this)">
+                  <div class="knob"></div>
+                </div>
+                <span class="param-switch-label">开启</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 干扰人 -->
+          <div class="sub-section">
+            <div class="sub-section-title"><i class="fas fa-user-friends"></i> 干扰人 (来自 algorithmParams)</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>干扰音频</label>
+                <div class="param-display">
+                  <i class="fas fa-file-audio"></i>
+                  someone_talking.wav
+                  <span class="code-annotation gray" style="margin-left:4px;">interf_010</span>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>播放设备</label>
+                <div class="param-display">
+                  <i class="fas fa-desktop"></i>
+                  Genelec 8020 (dev_009)
+                </div>
+              </div>
+              <div class="form-group" style="max-width:120px;">
+                <label>声压级 (dB)</label>
+                <div class="param-display">60 dB</div>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="max-width:150px;">
+                <label>延迟 (ms)</label>
+                <input class="form-control form-control-sm" type="number" value="1000" min="0" />
+              </div>
+              <div class="form-group" style="max-width:200px;">
+                <label>循环播放</label>
+                <div style="display:flex;align-items:center;gap:8px;padding-top:4px;">
+                  <div class="param-switch on" onclick="toggleSwitch(this)">
+                    <div class="knob"></div>
+                  </div>
+                  <span class="param-switch-label">开启</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ 步骤 4: 评估维度 ============ -->
+        <div class="step" id="step-eval">
+          <div class="step-header">
+            <div class="step-header-icon"><i class="fas fa-chart-bar"></i></div>
+            <div class="step-header-title">评估维度</div>
+            <span class="code-annotation green">round.evaluation</span>
+          </div>
+
+          <div class="hint-bar">
+            <i class="fas fa-filter"></i>
+            已根据算法类型「voice_llm」过滤可用维度
+          </div>
+
+          <div class="dim-grid">
+            <div class="dim-chip active" onclick="toggleDim(this)">
+              <i class="fas fa-check"></i> WER
+            </div>
+            <div class="dim-chip active" onclick="toggleDim(this)">
+              <i class="fas fa-check"></i> BLEU
+            </div>
+            <div class="dim-chip active" onclick="toggleDim(this)">
+              <i class="fas fa-check"></i> 回答质量评估
+            </div>
+            <div class="dim-chip" onclick="toggleDim(this)">
+              <i class="fas fa-plus"></i> SER
+            </div>
+            <div class="dim-chip" onclick="toggleDim(this)">
+              <i class="fas fa-plus"></i> 情感分析
+            </div>
+          </div>
+
+          <!-- 已选维度详情 -->
+          <div style="margin-top:var(--spacing-md);">
+            <div class="sub-section-title"><i class="fas fa-cog"></i> 已选维度参数</div>
+            <div style="display:flex;gap:var(--spacing-md);flex-wrap:wrap;">
+              <!-- WER -->
+              <div style="flex:1;min-width:180px;background:var(--background-primary);border:1px solid var(--border-color);border-radius:var(--border-radius-lg);overflow:hidden;">
+                <div style="padding:8px 12px;background:var(--background-secondary);border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-size:13px;font-weight:600;color:var(--text-primary);">WER</span>
+                  <button class="btn-icon-only" style="width:24px;height:24px;font-size:11px;color:var(--danger-color);border-color:var(--error-light);"><i class="fas fa-times"></i></button>
+                </div>
+                <div style="padding:12px;">
+                  <div style="margin-bottom:8px;">
+                    <label style="font-size:11px;color:var(--text-light);font-weight:500;">权重</label>
+                    <input class="form-control form-control-sm" type="number" value="50" min="0" max="100" />
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:var(--text-light);font-weight:500;">大小写敏感</label>
+                    <div style="display:flex;align-items:center;gap:6px;padding-top:4px;">
+                      <div class="param-switch" onclick="toggleSwitch(this)"><div class="knob"></div></div>
+                      <span class="param-switch-label">否</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- BLEU -->
+              <div style="flex:1;min-width:180px;background:var(--background-primary);border:1px solid var(--border-color);border-radius:var(--border-radius-lg);overflow:hidden;">
+                <div style="padding:8px 12px;background:var(--background-secondary);border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-size:13px;font-weight:600;color:var(--text-primary);">BLEU</span>
+                  <button class="btn-icon-only" style="width:24px;height:24px;font-size:11px;color:var(--danger-color);border-color:var(--error-light);"><i class="fas fa-times"></i></button>
+                </div>
+                <div style="padding:12px;">
+                  <div>
+                    <label style="font-size:11px;color:var(--text-light);font-weight:500;">权重</label>
+                    <input class="form-control form-control-sm" type="number" value="30" min="0" max="100" />
+                  </div>
+                </div>
+              </div>
+              <!-- LLM Judge -->
+              <div style="flex:1;min-width:200px;background:var(--background-primary);border:1px solid var(--border-color);border-radius:var(--border-radius-lg);overflow:hidden;">
+                <div style="padding:8px 12px;background:var(--background-secondary);border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-size:13px;font-weight:600;color:var(--text-primary);">回答质量评估</span>
+                  <button class="btn-icon-only" style="width:24px;height:24px;font-size:11px;color:var(--danger-color);border-color:var(--error-light);"><i class="fas fa-times"></i></button>
+                </div>
+                <div style="padding:12px;">
+                  <div style="margin-bottom:8px;">
+                    <label style="font-size:11px;color:var(--text-light);font-weight:500;">权重</label>
+                    <input class="form-control form-control-sm" type="number" value="20" min="0" max="100" />
+                  </div>
+                  <div style="margin-bottom:8px;">
+                    <label style="font-size:11px;color:var(--text-light);font-weight:500;">模型</label>
+                    <select class="form-control form-control-sm">
+                      <option selected>gpt-4</option>
+                      <option>gpt-4o</option>
+                      <option>gpt-3.5-turbo</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size:11px;color:var(--text-light);font-weight:500;">Prompt 模板</label>
+                    <select class="form-control form-control-sm">
+                      <option selected>default</option>
+                      <option>strict</option>
+                      <option>lenient</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ============ 步骤 5: 参考参数 ============ -->
+        <div class="step" id="step-ref">
+          <div class="step-header">
+            <div class="step-header-icon"><i class="fas fa-file-alt"></i></div>
+            <div class="step-header-title">参考参数</div>
+            <span class="code-annotation gray">referenceParamsPath · 自动生成 · 只读</span>
+          </div>
+          <div class="ref-info">
+            <i class="fas fa-folder-open"></i>
+            <span>/references/case_101_round_1.json</span>
+            <span class="code-annotation gray">自动生成</span>
+          </div>
+          <div class="ref-content">
+<code>{
+  "reference_text": "今天天气怎么样啊",
+  "expected_response": "今天北京天气晴朗，气温28度，适合户外活动。",
+  "asr_reference_rttm": "SPEAKER_00 1 0.0 3.2 ..."
+}</code>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== Footer ======== -->
+  <div class="modal-footer">
+    <div class="footer-info">
+      <span>voice_llm</span>
+      <span class="separator">|</span>
+      <span>E2E</span>
+      <span class="separator">|</span>
+      <span><span id="footerRoundCount">3</span> 轮</span>
+      <span class="separator">|</span>
+      <span>当前: 第 <span id="footerCurrentRound">1</span> 轮</span>
+    </div>
+    <div class="footer-actions">
+      <button class="btn btn-secondary" onclick="handleCancel()">取消</button>
+      <button class="btn btn-primary" onclick="handleSave()">
+        <i class="fas fa-check"></i> 保存用例
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== 交互逻辑 ==========
+
+// 轮次数据
+const rounds = [
+  { num: 1, label: '今天天气怎么样', audioCount: 1 },
+  { num: 2, label: '明天会下雨吗', audioCount: 1 },
+  { num: 3, label: '帮我设个闹钟', audioCount: 1 },
+];
+
+let currentRound = 1;
+let currentTestType = 'e2e';
+
+// 轮次导航点击
+document.getElementById('roundNavList').addEventListener('click', (e) => {
+  const item = e.target.closest('.round-nav-item');
+  if (!item) return;
+  const round = parseInt(item.dataset.round);
+  switchRound(round);
+});
+
+function switchRound(round) {
+  currentRound = round;
+  // 更新导航高亮
+  document.querySelectorAll('.round-nav-item').forEach(el => {
+    el.classList.toggle('active', parseInt(el.dataset.round) === round);
+  });
+  // 更新头部
+  document.getElementById('roundHeadNum').textContent = round;
+  document.getElementById('roundLabel').textContent = round;
+  document.getElementById('pagerInput').value = round;
+  document.getElementById('footerCurrentRound').textContent = round;
+  // 更新滚动位置
+  document.getElementById('contentArea').scrollTop = 0;
+}
+
+// 翻页
+function pagerPrev() {
+  if (currentRound > 1) switchRound(currentRound - 1);
+}
+
+function pagerNext() {
+  if (currentRound < rounds.length) switchRound(currentRound + 1);
+}
+
+function pagerJump(val) {
+  const num = parseInt(val);
+  if (num >= 1 && num <= rounds.length) switchRound(num);
+  else document.getElementById('pagerInput').value = currentRound;
+}
+
+// 测试类型切换
+function switchTestType(type) {
+  currentTestType = type;
+
+  // 更新 badge
+  const badge = document.querySelector('.header-badge');
+  badge.className = 'header-badge ' + type;
+  badge.innerHTML = type === 'api'
+    ? '<i class="fas fa-cloud"></i> API'
+    : '<i class="fas fa-microchip"></i> E2E';
+
+  // 显示/隐藏 E2E 专属步骤
+  const noiseStep = document.querySelector('[data-step="noise"]');
+  const e2eHint = document.getElementById('e2eAudioHint');
+  const apiParams = document.getElementById('apiOnlyParams');
+
+  if (type === 'api') {
+    noiseStep.style.display = 'none';
+    e2eHint.style.display = 'none';
+    apiParams.style.display = 'block';
+    // 简化音频表格列
+    document.querySelectorAll('.audio-table-header, .audio-table-row').forEach(row => {
+      row.style.gridTemplateColumns = '32px 1fr 60px 40px';
+    });
+  } else {
+    noiseStep.style.display = '';
+    e2eHint.style.display = '';
+    apiParams.style.display = 'none';
+    document.querySelectorAll('.audio-table-header, .audio-table-row').forEach(row => {
+      row.style.gridTemplateColumns = '32px 1fr 140px 80px 60px 40px';
+    });
+  }
+
+  // 更新 footer
+  document.querySelectorAll('.footer-info span:not(.separator)').forEach((span, i) => {
+    if (i === 1) span.textContent = type.toUpperCase();
+  });
+}
+
+// 算法类型选择
+function selectAlgo(el, type) {
+  el.parentElement.querySelectorAll('.algo-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// 测试类型选择（步骤内）
+function selectTestType(el, type) {
+  el.parentElement.querySelectorAll('.algo-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  // 同步头部切换
+  switchTestType(type);
+}
+
+// 开关切换
+function toggleSwitch(el) {
+  el.classList.toggle('on');
+  const label = el.nextElementSibling;
+  if (label && label.classList.contains('param-switch-label')) {
+    label.textContent = el.classList.contains('on') ? '开启' : '未开启';
+  }
+  // 特殊处理：循环播放
+  if (el.closest('.step') && el.closest('.form-group')?.querySelector('label')?.textContent?.includes('循环')) {
+    if (label) label.textContent = el.classList.contains('on') ? '开启' : '关闭';
+  }
+}
+
+// 评估维度切换
+function toggleDim(el) {
+  el.classList.toggle('active');
+  const icon = el.querySelector('i');
+  if (el.classList.contains('active')) {
+    icon.className = 'fas fa-check';
+  } else {
+    icon.className = 'fas fa-plus';
+  }
+}
+
+// 步骤目录点击滚动
+function scrollToStep(stepId) {
+  const el = document.getElementById('step-' + stepId);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  document.querySelectorAll('.step-toc-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.step === stepId);
+  });
+}
+
+// 滚动监听：自动高亮步骤目录
+document.getElementById('contentArea').addEventListener('scroll', function() {
+  const steps = ['algo', 'audio', 'noise', 'eval', 'ref'];
+  let activeStep = steps[0];
+  for (const step of steps) {
+    const el = document.getElementById('step-' + step);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const containerRect = this.getBoundingClientRect();
+      if (rect.top - containerRect.top <= 80) {
+        activeStep = step;
+      }
+    }
+  }
+  document.querySelectorAll('.step-toc-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.step === activeStep);
+  });
+});
+
+// 添加轮次
+function addRound() {
+  const newNum = rounds.length + 1;
+  rounds.push({ num: newNum, label: '新轮次', audioCount: 0 });
+  renderRoundNav();
+  switchRound(newNum);
+  updateCounts();
+}
+
+// 复制轮次
+function copyRound() {
+  const newNum = rounds.length + 1;
+  const src = rounds[currentRound - 1];
+  rounds.push({ num: newNum, label: src.label + ' (副本)', audioCount: src.audioCount });
+  renderRoundNav();
+  updateCounts();
+}
+
+// 删除轮次
+function deleteRound() {
+  if (rounds.length <= 1) return;
+  rounds.splice(currentRound - 1, 1);
+  rounds.forEach((r, i) => r.num = i + 1);
+  if (currentRound > rounds.length) currentRound = rounds.length;
+  renderRoundNav();
+  switchRound(currentRound);
+  updateCounts();
+}
+
+// 渲染轮次导航
+function renderRoundNav() {
+  const list = document.getElementById('roundNavList');
+  list.innerHTML = rounds.map(r => `
+    <div class="round-nav-item ${r.num === currentRound ? 'active' : ''}" data-round="${r.num}">
+      <span class="num">${r.num}</span>
+      <span class="meta">${r.label}</span>
+    </div>
+  `).join('');
+}
+
+// 更新计数
+function updateCounts() {
+  document.getElementById('roundCount').textContent = rounds.length + ' 轮';
+  document.getElementById('pagerTotal').textContent = rounds.length;
+  document.getElementById('footerRoundCount').textContent = rounds.length;
+}
+
+// 保存/取消
+function handleSave() {
+  alert('保存用例配置 (demo)');
+}
+
+function handleCancel() {
+  alert('取消编辑 (demo)');
+}
+
+// 添加音频
+function addAudio() {
+  alert('打开音频选择器 (demo)');
+}
+</script>
+
+</body>
+</html>

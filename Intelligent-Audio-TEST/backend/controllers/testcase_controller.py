@@ -144,6 +144,10 @@ class TestCaseController:
         if algorithm_type:
             query = query.filter(TestCase.algorithm_type == algorithm_type)
 
+        # 按 test_type 列过滤（新双记录架构）
+        if test_type and test_type in ['api', 'e2e']:
+            query = query.filter(TestCase.test_type == test_type)
+
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         test_cases = pagination.items
 
@@ -165,22 +169,17 @@ class TestCaseController:
         for tc in test_cases:
             config = tc.config or {}
             audios = config.get('audios', [])
-            test_types = list(set([audio.get('test_type') for audio in audios if audio.get('test_type') is not None]))
+            # 直接使用 test_type 列，不再从音频配置推导
+            tc_test_type = tc.test_type or 'api'
 
-            api_duration = 0.0
-            e2e_duration = 0.0
+            # 计算时长：根据记录的 test_type 分配
+            total_duration = 0.0
             for audio_item in audios:
                 audio_id = audio_item.get('audio_id')
-                test_type_val = audio_item.get('test_type')
                 if audio_id:
                     audio = audio_map.get(audio_id)
                     if audio and audio.duration:
-                        duration_val = float(audio.duration)
-                        if test_type_val == 'api':
-                            api_duration += duration_val
-                        elif test_type_val == 'e2e':
-                            e2e_duration += duration_val
-            total_duration = api_duration + e2e_duration
+                        total_duration += float(audio.duration)
 
             data.append(
                 TestCaseListItem(
@@ -189,17 +188,16 @@ class TestCaseController:
                     description=tc.description,
                     group_id=tc.group_id,
                     group_name=tc.group.name if tc.group else None,
-                    type=test_types,
+                    type=tc_test_type,
+                    related_case_id=tc.related_case_id,
                     tags=[tag.name for tag in tc.tags],
-                    config=tc.config if tc.config else {},
+                    config=tc.config.copy() if tc.config else {},
                     algorithm_type=tc.algorithm_type,
                     algorithm_params=AlgorithmParamItem.convert_params(tc.algorithm_params),
                     reference_params=ReferenceParamItem.convert_params(tc.reference_params),
                     created_at=tc.created_at.isoformat() if tc.created_at else None,
                     updated_at=tc.updated_at.isoformat() if tc.updated_at else None,
                     total_duration=round(total_duration, 2) if total_duration > 0 else None,
-                    api_duration=round(api_duration, 2) if api_duration > 0 else None,
-                    e2e_duration=round(e2e_duration, 2) if e2e_duration > 0 else None,
                 )
             )
 
@@ -221,6 +219,7 @@ class TestCaseController:
             return error_response("未找到测试用例", 404)
 
         config = tc.config or {}
+        tc_test_type = tc.test_type or 'api'
         
         # 从config中提取音频配置
         audios = []
@@ -231,7 +230,7 @@ class TestCaseController:
                     id=i,
                     audio_id=audio_item.get('audio_id'),
                     audio_name=audio.name if audio else None,
-                    test_type=audio_item.get('test_type'),
+                    test_type=tc_test_type,  # 使用记录的 test_type
                     spl=audio_item.get('spl'),
                     playback_device_id=TestCaseController._normalize_optional_int(audio_item.get('playback_device_id')),
                     play_order=audio_item.get('play_order'),
@@ -240,31 +239,16 @@ class TestCaseController:
 
         # 从config中提取评测维度配置
         dimensions = []
-        # 支持两种格式：数组（旧格式兼容）和按类型划分的对象（新格式）
-        dim_config = config.get('dimensions', {})
+        dim_config = config.get('dimensions', [])
         dimension_ids = []
 
-        if isinstance(dim_config, list):
-            # 旧格式：直接是维度ID数组
-            dimension_ids = []
-            for item in dim_config:
-                if isinstance(item, dict):
-                    dim_id = item.get('id')
-                    if dim_id:
-                        dimension_ids.append(dim_id)
-                else:
-                    dimension_ids.append(item)
-        elif isinstance(dim_config, dict):
-            # 新格式：按类型划分的对象
-            # 合并所有类型的维度ID
-            for dim_list in dim_config.values():
-                for item in dim_list:
-                    if isinstance(item, dict):
-                        dim_id = item.get('id')
-                        if dim_id:
-                            dimension_ids.append(dim_id)
-                    else:
-                        dimension_ids.append(item)
+        for item in dim_config:
+            if isinstance(item, dict):
+                dim_id = item.get('id')
+                if dim_id:
+                    dimension_ids.append(dim_id)
+            else:
+                dimension_ids.append(item)
 
         # 去重
         unique_dimension_ids = list(set(dimension_ids))
@@ -273,24 +257,15 @@ class TestCaseController:
             if dim:
                 dimensions.append(TestCaseDimensionBrief(id=dim.id, name=dim.name, type=dim.type))
 
-        # 确定测试用例类型：从config.audios中获取所有唯一的test_type值
+        # 计算时长
         audio_configs = config.get('audios', [])
-        test_types = list(set([audio.get('test_type') for audio in audio_configs if audio.get('test_type') is not None]))
-
-        api_duration = 0.0
-        e2e_duration = 0.0
+        total_duration = 0.0
         for audio_item in audio_configs:
             audio_id = audio_item.get('audio_id')
-            test_type_val = audio_item.get('test_type')
             if audio_id:
                 audio = db.session.get(Audio, audio_id)
                 if audio and audio.duration:
-                    duration_val = float(audio.duration)
-                    if test_type_val == 'api':
-                        api_duration += duration_val
-                    elif test_type_val == 'e2e':
-                        e2e_duration += duration_val
-        total_duration = api_duration + e2e_duration
+                    total_duration += float(audio.duration)
 
         return success_response(
             TestCaseDetailData(
@@ -300,8 +275,9 @@ class TestCaseController:
                 group_id=tc.group_id,
                 group_name=tc.group.name if tc.group else None,
                 group={"id": tc.group.id, "name": tc.group.name} if tc.group else None,
-                type=test_types,
-                config=config if config else {},
+                type=tc_test_type,
+                related_case_id=tc.related_case_id,
+                config=config,
                 algorithm_type=tc.algorithm_type,
                 algorithm_params=AlgorithmParamItem.convert_params(tc.algorithm_params),
                 reference_params=ReferenceParamItem.convert_params(tc.reference_params),
@@ -311,8 +287,6 @@ class TestCaseController:
                 created_at=tc.created_at.isoformat() if tc.created_at else None,
                 updated_at=tc.updated_at.isoformat() if tc.updated_at else None,
                 total_duration=round(total_duration, 2) if total_duration > 0 else None,
-                api_duration=round(api_duration, 2) if api_duration > 0 else None,
-                e2e_duration=round(e2e_duration, 2) if e2e_duration > 0 else None,
             )
         )
 
@@ -345,7 +319,10 @@ class TestCaseController:
         if not raw_data or not data.name or group_id is None:
             return error_response("缺少必要字段: name, group_id 或 group")
 
-
+        # 获取 test_type（新双记录架构）
+        test_type_val = data.test_type or 'api'
+        if test_type_val not in ['api', 'e2e']:
+            return error_response(f"test_type 无效: {test_type_val}，必须为 api 或 e2e")
 
         # 数据验证: 校验 config 中的结构
         config = data.config or {}
@@ -369,29 +346,25 @@ class TestCaseController:
         # 处理音频配置 (支持从data直接传入的audios字段)
         audios_data = data.audios
         if audios_data:
-            # 校验音频配置
+            # 校验音频配置（根据记录的 test_type 决定校验规则）
             for i, audio_item in enumerate(audios_data):
                 aid = audio_item.audio_id
-                ttype = audio_item.test_type
                 spl = audio_item.spl
                 porder = audio_item.play_order
                 pdid = TestCaseController._normalize_optional_int(audio_item.playback_device_id)
 
-                if aid is None or ttype is None or spl is None or porder is None:
-                    return error_response(f"第 {i+1} 个音频配置缺少必要字段: audio_id, test_type, spl, play_order")
+                if aid is None or spl is None or porder is None:
+                    return error_response(f"第 {i+1} 个音频配置缺少必要字段: audio_id, spl, play_order")
                 
-                if ttype == 'e2e' and not pdid:
-                    return error_response(f"第 {i+1} 个音频配置为 e2e 类型，必须指定 playback_device_id")
-                
-                if ttype not in ['api', 'e2e']:
-                    return error_response(f"第 {i+1} 个音频配置 test_type 无效: {ttype}")
+                # E2E 记录：所有音频必须有 playback_device_id
+                if test_type_val == 'e2e' and not pdid:
+                    return error_response(f"第 {i+1} 个音频配置为 E2E 类型用例，必须指定 playback_device_id")
             
-            # 将音频配置转换为标准格式并存储到config中
+            # 将音频配置转换为标准格式并存储到config中（不存储 test_type）
             standard_audios = []
             for audio_item in audios_data:
                 standard_audios.append({
                     'audio_id': audio_item.audio_id,
-                    'test_type': audio_item.test_type,
                     'spl': audio_item.spl,
                     'playback_device_id': TestCaseController._normalize_optional_int(audio_item.playback_device_id),
                     'play_order': audio_item.play_order
@@ -401,16 +374,7 @@ class TestCaseController:
         # 处理评测维度配置 (支持从data直接传入的dimensions字段)
         dimensions_data = data.dimensions
         if dimensions_data:
-            # 支持两种格式：数组和按类型划分的对象
-            if isinstance(dimensions_data, list):
-                # 旧格式：直接是维度ID数组，转换为新格式
-                merged_config['dimensions'] = {
-                    'api': dimensions_data,
-                    'e2e': dimensions_data
-                }
-            elif isinstance(dimensions_data, dict):
-                # 新格式：按类型划分的对象
-                merged_config['dimensions'] = dimensions_data
+            merged_config['dimensions'] = dimensions_data
         
         # 标签存储在 test_case_tags 关联表中，不再写入 config
 
@@ -428,7 +392,9 @@ class TestCaseController:
                 config=merged_config,
                 algorithm_type=algorithm_type,
                 algorithm_params=algorithm_params,
-                reference_params=reference_params
+                reference_params=reference_params,
+                test_type=test_type_val,
+                related_case_id=data.related_case_id
             )
             db.session.add(new_tc)
 
@@ -474,6 +440,7 @@ class TestCaseController:
             return error_response("未找到测试用例", 404)
 
         current_config = tc.config or {}
+        tc_test_type = tc.test_type or 'api'  # 使用记录的 test_type
         
         try:
             # 先处理分组信息，确保使用正确的分组ID进行后续操作
@@ -530,26 +497,25 @@ class TestCaseController:
             # 处理音频配置 (支持从data直接传入的audios字段)
             audios_data = data.audios
             if audios_data is not None:
-                # 验证音频数据
+                # 验证音频数据（根据记录的 test_type 决定校验规则）
                 for i, audio_item in enumerate(audios_data):
                     aid = audio_item.audio_id
-                    ttype = audio_item.test_type
                     spl = audio_item.spl
                     porder = audio_item.play_order
                     pdid = TestCaseController._normalize_optional_int(audio_item.playback_device_id)
 
-                    if aid is None or ttype is None or spl is None or porder is None:
-                        return error_response(f"第 {i+1} 个音频配置缺少必要字段: audio_id, test_type, spl, play_order")
+                    if aid is None or spl is None or porder is None:
+                        return error_response(f"第 {i+1} 个音频配置缺少必要字段: audio_id, spl, play_order")
                     
-                    if ttype == 'e2e' and not pdid:
-                        return error_response(f"第 {i+1} 个音频配置为 e2e 类型，必须指定 playback_device_id")
+                    # E2E 记录：所有音频必须有 playback_device_id
+                    if tc_test_type == 'e2e' and not pdid:
+                        return error_response(f"第 {i+1} 个音频配置为 E2E 类型用例，必须指定 playback_device_id")
                 
-                # 将音频配置转换为标准格式并存储到config中
+                # 将音频配置转换为标准格式并存储到config中（不存储 test_type）
                 standard_audios = []
                 for audio_item in audios_data:
                     standard_audios.append({
                         'audio_id': audio_item.audio_id,
-                        'test_type': audio_item.test_type,
                         'spl': audio_item.spl,
                         'playback_device_id': TestCaseController._normalize_optional_int(audio_item.playback_device_id),
                         'play_order': audio_item.play_order
@@ -559,16 +525,7 @@ class TestCaseController:
             # 处理评测维度配置 (支持从data直接传入的dimensions字段)
             dimensions_data = data.dimensions
             if dimensions_data is not None:
-                # 支持两种格式：数组和按类型划分的对象
-                if isinstance(dimensions_data, list):
-                    # 旧格式：直接是维度ID数组，转换为新格式
-                    merged_config['dimensions'] = {
-                        'api': dimensions_data,
-                        'e2e': dimensions_data
-                    }
-                elif isinstance(dimensions_data, dict):
-                    # 新格式：按类型划分的对象
-                    merged_config['dimensions'] = dimensions_data
+                merged_config['dimensions'] = dimensions_data
             
             # 标签存储在 test_case_tags 关联表中，不再写入 config
             
@@ -660,7 +617,9 @@ class TestCaseController:
                 config=tc.config.copy() if tc.config else {},
                 algorithm_type=tc.algorithm_type,
                 algorithm_params=tc.algorithm_params,
-                reference_params=tc.reference_params
+                reference_params=tc.reference_params,
+                test_type=tc.test_type or 'api',
+                related_case_id=None  # 复制时不继承关联
             )
             db.session.add(new_tc)
 
@@ -708,11 +667,9 @@ class TestCaseController:
         if not audios_config:
             return error_response("用例未配置任何音频资源，无法预览")
 
-        # 根据preview_type过滤需要预览的音频
-        if preview_type:
-            preview_audios = [audio for audio in audios_config if audio.get('test_type') == preview_type]
-        else:
-            preview_audios = audios_config
+        # 新双记录架构：记录已是单类型，直接使用所有音频
+        # preview_type 保留用于向后兼容，但优先使用记录的 test_type
+        preview_audios = audios_config
         
         if not preview_audios:
             return error_response("用例未配置有效的音频资源")
@@ -912,7 +869,9 @@ class TestCaseController:
                             config=tc.config.copy() if tc.config else {},
                             algorithm_type=tc.algorithm_type,
                             algorithm_params=tc.algorithm_params,
-                            reference_params=tc.reference_params
+                            reference_params=tc.reference_params,
+                            test_type=tc.test_type or 'api',
+                            related_case_id=None
                         )
                         db.session.add(new_tc)
                         for tag in tc.tags:
@@ -934,7 +893,9 @@ class TestCaseController:
                             config=tc.config.copy() if tc.config else {},
                             algorithm_type=tc.algorithm_type,
                             algorithm_params=tc.algorithm_params,
-                            reference_params=tc.reference_params
+                            reference_params=tc.reference_params,
+                            test_type=tc.test_type or 'api',
+                            related_case_id=None
                         )
                         db.session.add(new_tc)
                         
@@ -977,7 +938,9 @@ class TestCaseController:
                         config=tc.config.copy() if tc.config else {},
                         algorithm_type=tc.algorithm_type,
                         algorithm_params=tc.algorithm_params,
-                        reference_params=tc.reference_params
+                        reference_params=tc.reference_params,
+                        test_type=tc.test_type or 'api',
+                        related_case_id=None
                     )
                     db.session.add(new_tc)
                     for tag in tc.tags:
@@ -1011,18 +974,18 @@ class TestCaseController:
                 
                 updated_count = 0
                 for tc in test_cases:
+                    # 新双记录架构：只有 E2E 记录需要更新播放设备
+                    if (tc.test_type or 'api') != 'e2e':
+                        continue
                     logger.debug(f"[update_playback_devices] 处理用例 {tc.id}, config: {tc.config}")
                     if tc.config:
                         config = tc.config.copy()
                         if 'audios' in config:
                             for idx, audio_config in enumerate(config['audios']):
-                                logger.debug(f"[update_playback_devices] 检查用例 {tc.id} audio[{idx}]: {audio_config}, test_type='{audio_config.get('test_type')}', type={type(audio_config.get('test_type'))}")
-                                if 'test_type' in audio_config and audio_config['test_type'] == 'e2e':
-                                    device_id = playback_devices.get('deviceId') or playback_devices.get('device_id')
-                                    logger.debug(f"[update_playback_devices] 匹配e2e, device_id from param: {device_id}, type: {type(device_id)}")
-                                    if device_id is not None:
-                                        audio_config['playback_device_id'] = device_id
-                                        logger.info(f"[update_playback_devices] 更新用例 {tc.id} audio[{idx}] 的 playback_device_id 为 {device_id}")
+                                device_id = playback_devices.get('deviceId') or playback_devices.get('device_id')
+                                logger.debug(f"[update_playback_devices] 更新用例 {tc.id} audio[{idx}] 的 playback_device_id 为 {device_id}")
+                                if device_id is not None:
+                                    audio_config['playback_device_id'] = device_id
                         tc.config = config
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
@@ -1048,15 +1011,17 @@ class TestCaseController:
                 
                 updated_count = 0
                 for tc in test_cases:
+                    # 新双记录架构：只有 E2E 记录需要更新声压
+                    if (tc.test_type or 'api') != 'e2e':
+                        continue
                     logger.debug(f"[update_spl] 处理用例 {tc.id}, config: {tc.config}")
                     if tc.config:
                         config = tc.config.copy()
                         if 'audios' in config:
                             for audio_config in config['audios']:
-                                if 'test_type' in audio_config and audio_config['test_type'] == 'e2e':
-                                    if spl_data.get('value') is not None:
-                                        audio_config['spl'] = spl_data['value']
-                                        logger.debug(f"[update_spl] 更新用例 {tc.id} 的 spl 为 {spl_data['value']}")
+                                if spl_data.get('value') is not None:
+                                    audio_config['spl'] = spl_data['value']
+                                    logger.debug(f"[update_spl] 更新用例 {tc.id} 的 spl 为 {spl_data['value']}")
                         tc.config = config
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
@@ -1070,8 +1035,7 @@ class TestCaseController:
                 import logging
                 logger = logging.getLogger(__name__)
                 dimensions_data = req_data.dimensions
-                test_type = req_data.test_type or 'api'
-                logger.info(f"[update_dimensions] 开始处理, ids: {ids}, test_type: {test_type}, dimensions: {dimensions_data}")
+                logger.info(f"[update_dimensions] 开始处理, ids: {ids}, dimensions: {dimensions_data}")
 
                 if dimensions_data is None:
                     logger.error("[update_dimensions] 缺少 dimensions 参数")
@@ -1084,9 +1048,8 @@ class TestCaseController:
                 for tc in test_cases:
                     if tc.config:
                         config = tc.config.copy()
-                        if 'dimensions' not in config:
-                            config['dimensions'] = {}
 
+                        # 新双记录架构：直接存储扁平维度数组
                         new_dim_list = []
                         for dim in dimensions_data:
                             dim_id = dim.get('id')
@@ -1101,7 +1064,7 @@ class TestCaseController:
                             })
                             logger.debug(f"[update_dimensions] 用例 {tc.id} 设置维度 {dim_id}")
 
-                        config['dimensions'][test_type] = new_dim_list
+                        config['dimensions'] = new_dim_list
                         tc.config = config
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
@@ -1127,6 +1090,9 @@ class TestCaseController:
 
                 updated_count = 0
                 for tc in test_cases:
+                    # 新双记录架构：噪声配置只适用于 E2E 记录
+                    if (tc.test_type or 'api') != 'e2e':
+                        continue
                     logger.info(f"[update_noise] 处理用例 {tc.id}, 当前 config: {tc.config}")
                     if tc.config is None:
                         config = {}
@@ -1393,7 +1359,7 @@ class TestCaseController:
                     audios.append({
                         "audio_id": audio_id,
                         "audio_name": audio_name,
-                        "test_type": audio_item.get('test_type'),
+                        "test_type": getattr(tc, 'test_type', 'api') or 'api',
                         "spl": audio_item.get('spl'),
                         "playback_device_id": device_id,
                         "playback_device_name": device_name,
@@ -1401,11 +1367,7 @@ class TestCaseController:
                     })
                 
                 # 获取评分维度名称
-                dimensions_data = config.get('dimensions', {})
-                api_dimension_names = []
-                e2e_dimension_names = []
-                api_dimension_ids = []
-                e2e_dimension_ids = []
+                dimensions_data = config.get('dimensions', [])
                 
                 def get_dim_names(dim_list):
                     names = []
@@ -1440,18 +1402,8 @@ class TestCaseController:
                             continue
                     return ids
 
-                if isinstance(dimensions_data, dict):
-                    api_dimension_ids = get_dim_ids(dimensions_data.get('api', []))
-                    e2e_dimension_ids = get_dim_ids(dimensions_data.get('e2e', []))
-                    api_dimension_names = get_dim_names(dimensions_data.get('api', []))
-                    e2e_dimension_names = get_dim_names(dimensions_data.get('e2e', []))
-                elif isinstance(dimensions_data, list):
-                    names = get_dim_names(dimensions_data)
-                    api_dimension_names = names
-                    e2e_dimension_names = names
-                    ids = get_dim_ids(dimensions_data)
-                    api_dimension_ids = ids
-                    e2e_dimension_ids = ids
+                dimension_names = get_dim_names(dimensions_data)
+                dimension_ids = get_dim_ids(dimensions_data)
                 
                 # 格式化音频详细信息列
                 audio_details = []
@@ -1459,11 +1411,10 @@ class TestCaseController:
                 sorted_audios = sorted(audios, key=lambda x: x.get('play_order', 0))
                 for i, audio_item in enumerate(sorted_audios):
                     order = i + 1 # 导出时序号从1开始
-                    a_type = audio_item.get('test_type', 'api').upper()
                     a_name = audio_item.get('audio_name', '未知音频')
                     a_spl = audio_item.get('spl', '-')
                     a_device = audio_item.get('playback_device_name', '-')
-                    audio_details.append(f"[{order}] {a_type}:{a_name}({a_spl}dB, 设备:{a_device})")
+                    audio_details.append(f"[{order}] {a_name}({a_spl}dB, 设备:{a_device})")
                 
                 # 获取背景噪声名称及SPL
                 noise_config = config.get('background_noise', {})
@@ -1486,12 +1437,11 @@ class TestCaseController:
                     "description": tc.description,
                     "group": tc.group.name if tc.group else None,
                     "group_id": tc.group_id,
+                    "test_type": tc.test_type,
                     "tags": tags,
                     "tag_items": tag_items,
-                    "api_dimensions": api_dimension_names,
-                    "e2e_dimensions": e2e_dimension_names,
-                    "api_dimension_ids": api_dimension_ids,
-                    "e2e_dimension_ids": e2e_dimension_ids,
+                    "dimensions": dimension_names,
+                    "dimension_ids": dimension_ids,
                     "playback_devices": list(playback_device_names),
                     "audios": audios,
                     "audio_details": " ; ".join(audio_details),
@@ -1519,32 +1469,26 @@ class TestCaseController:
             elif format_type in ['csv', 'xlsx']:
                 flattened_data = []
                 audio_configs = []
-                api_dimensions = []
-                e2e_dimensions = []
+                dimensions_data_list = []
                 groups = []
                 case_tags = []
                 
                 for item in export_data:
                     config_data = item.get('config', {})
-                    test_type = config_data.get('test_type') or ""
-                    asr_ref_text_api = ReferenceParamsGenerator.get_reference_text(config_data, 'asr_reference_text', 'api')
-                    tran_ref_text_api = ReferenceParamsGenerator.get_reference_text(config_data, 'translation_reference_text', 'api')
-                    asr_ref_text_e2e = ReferenceParamsGenerator.get_reference_text(config_data, 'asr_reference_text', 'e2e')
-                    tran_ref_text_e2e = ReferenceParamsGenerator.get_reference_text(config_data, 'translation_reference_text', 'e2e')
+                    asr_ref_text = ReferenceParamsGenerator.get_reference_text(config_data, 'asr_reference_text')
+                    tran_ref_text = ReferenceParamsGenerator.get_reference_text(config_data, 'translation_reference_text')
                     flat_item = {
                         "ID": item['id'],
                         "NAME": item['name'],
                         "DESCRIPTION": item['description'],
                         "GROUP_NAME": item['group'],
                         "GROUP_ID": item.get('group_id') or "",
-                        "TEST_TYPE": test_type,
+                        "TEST_TYPE": item.get('test_type') or "",
                         "NOISE_AUDIO_NAME": item['noise_name'],
                         "NOISE_AUDIO_ID": item.get('noise_audio_id') or "",
                         "NOISE_SPL": item['noise_spl'],
-                        "ASR_REFERENCE_TEXT_API": asr_ref_text_api,
-                        "TRANSLATION_REFERENCE_TEXT_API": tran_ref_text_api,
-                        "ASR_REFERENCE_TEXT_E2E": asr_ref_text_e2e,
-                        "TRANSLATION_REFERENCE_TEXT_E2E": tran_ref_text_e2e,
+                        "ASR_REFERENCE_TEXT": asr_ref_text,
+                        "TRANSLATION_REFERENCE_TEXT": tran_ref_text,
                         "TAGS": ", ".join(item['tags']) if item['tags'] else "",
                         "REMARKS": ""
                     }
@@ -1556,36 +1500,19 @@ class TestCaseController:
                             "CASE_NAME": item['name'],
                             "AUDIO_ID": audio.get('audio_id') or "",
                             "AUDIO_NAME": audio.get('audio_name', ''),
-                            "TEST_TYPE": audio.get('test_type', 'api'),
                             "SPL": audio.get('spl', ''),
                             "PLAYBACK_DEVICE_ID": audio.get('playback_device_id') or "",
                             "PLAYBACK_DEVICE_NAME": audio.get('playback_device_name', ''),
                             "PLAY_ORDER": audio.get('play_order', 0)
                         })
                     
-                    for dim_id in item.get('api_dimension_ids', []) or []:
+                    for dim_id in item.get('dimension_ids', []) or []:
                         dim_obj = db.session.get(Dimension, dim_id)
                         dim_name = dim_obj.name if dim_obj else str(dim_id)
                         dim_display_name = dim_name
                         weight = dim_obj.weight if dim_obj else 50
                         threshold = 80
-                        api_dimensions.append({
-                            "CASE_ID": item['id'],
-                            "CASE_NAME": item['name'],
-                            "DIMENSION_ID": dim_id,
-                            "DIMENSION_NAME": dim_name,
-                            "DIMENSION_DISPLAY_NAME": dim_display_name,
-                            "WEIGHT": weight,
-                            "THRESHOLD": threshold
-                        })
-                    
-                    for dim_id in item.get('e2e_dimension_ids', []) or []:
-                        dim_obj = db.session.get(Dimension, dim_id)
-                        dim_name = dim_obj.name if dim_obj else str(dim_id)
-                        dim_display_name = dim_name
-                        weight = dim_obj.weight if dim_obj else 50
-                        threshold = 80
-                        e2e_dimensions.append({
+                        dimensions_data_list.append({
                             "CASE_ID": item['id'],
                             "CASE_NAME": item['name'],
                             "DIMENSION_ID": dim_id,
@@ -1627,12 +1554,10 @@ class TestCaseController:
                             'ID', 'NAME', 'DESCRIPTION', 'GROUP_NAME', 'GROUP_ID',
                             'TRANSLATION_DIRECTION', 'TEST_TYPE', 'NOISE_AUDIO_NAME', 'NOISE_AUDIO_ID',
                             'NOISE_SPL', 'ASR_REFERENCE_TEXT', 'TRANSLATION_REFERENCE_TEXT',
-                            'ASR_REFERENCE_TEXT_API', 'TRANSLATION_REFERENCE_TEXT_API',
-                            'ASR_REFERENCE_TEXT_E2E', 'TRANSLATION_REFERENCE_TEXT_E2E',
                             'TAGS', 'REMARKS'
                         ]
                         audio_configs_columns = [
-                            'CASE_ID', 'CASE_NAME', 'AUDIO_ID', 'AUDIO_NAME', 'TEST_TYPE', 'SPL',
+                            'CASE_ID', 'CASE_NAME', 'AUDIO_ID', 'AUDIO_NAME', 'SPL',
                             'PLAYBACK_DEVICE_ID', 'PLAYBACK_DEVICE_NAME', 'PLAY_ORDER'
                         ]
                         dimensions_columns = [
@@ -1656,19 +1581,12 @@ class TestCaseController:
                             audio_df = audio_df.reindex(columns=audio_configs_columns)
                         audio_df.to_excel(writer, sheet_name='AudioConfigs', index=False)
                         
-                        api_df = pd.DataFrame(api_dimensions)
-                        if api_df.empty:
-                            api_df = pd.DataFrame(columns=dimensions_columns)
+                        dims_df = pd.DataFrame(dimensions_data_list)
+                        if dims_df.empty:
+                            dims_df = pd.DataFrame(columns=dimensions_columns)
                         else:
-                            api_df = api_df.reindex(columns=dimensions_columns)
-                        api_df.to_excel(writer, sheet_name='APIDimensions', index=False)
-                        
-                        e2e_df = pd.DataFrame(e2e_dimensions)
-                        if e2e_df.empty:
-                            e2e_df = pd.DataFrame(columns=dimensions_columns)
-                        else:
-                            e2e_df = e2e_df.reindex(columns=dimensions_columns)
-                        e2e_df.to_excel(writer, sheet_name='E2EDimensions', index=False)
+                            dims_df = dims_df.reindex(columns=dimensions_columns)
+                        dims_df.to_excel(writer, sheet_name='Dimensions', index=False)
                         
                         tag_names = set()
                         for item in export_data:
@@ -1824,13 +1742,11 @@ class TestCaseController:
                     if 'TestCases' in sheet_names:
                         test_cases_data = []
                         audio_configs = {}
-                        api_dimensions = {}
-                        e2e_dimensions = {}
+                        dimensions_by_case = {}
                         
                         testcases_df = pd.read_excel(xl, sheet_name='TestCases')
                         audio_df = pd.read_excel(xl, sheet_name='AudioConfigs') if 'AudioConfigs' in sheet_names else None
-                        api_df = pd.read_excel(xl, sheet_name='APIDimensions') if 'APIDimensions' in sheet_names else None
-                        e2e_df = pd.read_excel(xl, sheet_name='E2EDimensions') if 'E2EDimensions' in sheet_names else None
+                        dims_df = pd.read_excel(xl, sheet_name='Dimensions') if 'Dimensions' in sheet_names else None
                         case_tags_df = pd.read_excel(xl, sheet_name='CaseTags') if 'CaseTags' in sheet_names else None
 
                         case_tags_by_id = {}
@@ -1874,7 +1790,7 @@ class TestCaseController:
                                 'tags': [t.strip() for t in str(row.get('TAGS', '')).split(',') if t.strip()] if pd.notna(row.get('TAGS')) else [],
                                 'remarks': str(row.get('REMARKS', '')) if pd.notna(row.get('REMARKS')) else '',
                                 'audios': [],
-                                'dimensions': {'api': [], 'e2e': []},
+                                'dimensions': [],
                                 'config': {},
                                 'tag_links': []
                             }
@@ -1919,48 +1835,26 @@ class TestCaseController:
                                     case_item['audios'].append({
                                         'audio_id': audio_id,
                                         'audio_name': str(audio_row.get('AUDIO_NAME', '')) if pd.notna(audio_row.get('AUDIO_NAME')) else '',
-                                        'test_type': str(audio_row.get('TEST_TYPE', 'api')) if pd.notna(audio_row.get('TEST_TYPE')) else 'api',
                                         'spl': audio_row.get('SPL', 60) if pd.notna(audio_row.get('SPL')) else 60,
                                         'playback_device_id': playback_device_id,
                                         'playback_device_name': str(audio_row.get('PLAYBACK_DEVICE_NAME', '')) if pd.notna(audio_row.get('PLAYBACK_DEVICE_NAME')) else '',
                                         'play_order': audio_row.get('PLAY_ORDER', 0) if pd.notna(audio_row.get('PLAY_ORDER')) else 0
                                     })
                             
-                            if api_df is not None and not api_df.empty:
-                                if 'CASE_ID' in api_df.columns and case_item['id']:
-                                    case_api_dims = api_df[api_df['CASE_ID'].astype(str).str.strip() == case_item['id']]
+                            if dims_df is not None and not dims_df.empty:
+                                if 'CASE_ID' in dims_df.columns and case_item['id']:
+                                    case_dims = dims_df[dims_df['CASE_ID'].astype(str).str.strip() == case_item['id']]
                                 else:
-                                    case_api_dims = api_df[api_df['CASE_NAME'] == case_item['name']]
+                                    case_dims = dims_df[dims_df['CASE_NAME'] == case_item['name']]
 
-                                for _, dim_row in case_api_dims.iterrows():
+                                for _, dim_row in case_dims.iterrows():
                                     dim_id_val = dim_row.get('DIMENSION_ID')
                                     dim_id = None
                                     try:
                                         dim_id = int(str(dim_id_val).strip()) if pd.notna(dim_id_val) and str(dim_id_val).strip() else None
                                     except Exception:
                                         dim_id = None
-                                    case_item['dimensions']['api'].append({
-                                        'id': dim_id,
-                                        'name': str(dim_row.get('DIMENSION_NAME', '')) if pd.notna(dim_row.get('DIMENSION_NAME')) else '',
-                                        'display_name': str(dim_row.get('DIMENSION_DISPLAY_NAME', '')) if pd.notna(dim_row.get('DIMENSION_DISPLAY_NAME')) else '',
-                                        'weight': dim_row.get('WEIGHT', 50) if pd.notna(dim_row.get('WEIGHT')) else 50,
-                                        'threshold': dim_row.get('THRESHOLD', 80) if pd.notna(dim_row.get('THRESHOLD')) else 80
-                                    })
-                            
-                            if e2e_df is not None and not e2e_df.empty:
-                                if 'CASE_ID' in e2e_df.columns and case_item['id']:
-                                    case_e2e_dims = e2e_df[e2e_df['CASE_ID'].astype(str).str.strip() == case_item['id']]
-                                else:
-                                    case_e2e_dims = e2e_df[e2e_df['CASE_NAME'] == case_item['name']]
-
-                                for _, dim_row in case_e2e_dims.iterrows():
-                                    dim_id_val = dim_row.get('DIMENSION_ID')
-                                    dim_id = None
-                                    try:
-                                        dim_id = int(str(dim_id_val).strip()) if pd.notna(dim_id_val) and str(dim_id_val).strip() else None
-                                    except Exception:
-                                        dim_id = None
-                                    case_item['dimensions']['e2e'].append({
+                                    case_item['dimensions'].append({
                                         'id': dim_id,
                                         'name': str(dim_row.get('DIMENSION_NAME', '')) if pd.notna(dim_row.get('DIMENSION_NAME')) else '',
                                         'display_name': str(dim_row.get('DIMENSION_DISPLAY_NAME', '')) if pd.notna(dim_row.get('DIMENSION_DISPLAY_NAME')) else '',
@@ -2039,61 +1933,25 @@ class TestCaseController:
                         if bg_noise_cfg:
                             merged_config['background_noise'] = bg_noise_cfg
                     
-                    # (保留原有的旧格式兼容代码...)
-                    # 处理旧格式的音频数据
+                    # 处理音频数据
                     if 'audios' in case_data and case_data['audios']:
                         audios_data = case_data['audios']
                         standard_audios = []
                         for audio_item in audios_data:
                             standard_audios.append({
                                 'audio_id': audio_item.get('audio_id'),
-                                'test_type': audio_item.get('test_type'),
                                 'spl': audio_item.get('spl'),
                                 'playback_device_id': TestCaseController._normalize_optional_int(audio_item.get('playback_device_id')),
                                 'play_order': audio_item.get('play_order', 1)
                             })
                         merged_config['audios'] = standard_audios
                     
-                    # 处理旧格式的维度数据
+                    # 处理维度数据（扁平数组格式）
                     if 'dimensions' in case_data and case_data['dimensions']:
                         dimensions_data = case_data['dimensions']
                         if isinstance(dimensions_data, list):
                             dimension_ids = [d.get('id') if isinstance(d, dict) else d for d in dimensions_data]
-                            merged_config['dimensions'] = {'api': dimension_ids, 'e2e': dimension_ids}
-                        elif isinstance(dimensions_data, dict):
-                            api_ids = []
-                            e2e_ids = []
-                            has_any_id = False
-                            for dim_item in dimensions_data.get('api', []) if isinstance(dimensions_data.get('api', []), list) else []:
-                                if isinstance(dim_item, dict):
-                                    d_id = dim_item.get('id') or dim_item.get('dimension_id') or dim_item.get('dimensionId')
-                                else:
-                                    d_id = dim_item
-                                if d_id is None:
-                                    continue
-                                try:
-                                    api_ids.append(int(d_id))
-                                    has_any_id = True
-                                except Exception:
-                                    continue
-
-                            for dim_item in dimensions_data.get('e2e', []) if isinstance(dimensions_data.get('e2e', []), list) else []:
-                                if isinstance(dim_item, dict):
-                                    d_id = dim_item.get('id') or dim_item.get('dimension_id') or dim_item.get('dimensionId')
-                                else:
-                                    d_id = dim_item
-                                if d_id is None:
-                                    continue
-                                try:
-                                    e2e_ids.append(int(d_id))
-                                    has_any_id = True
-                                except Exception:
-                                    continue
-
-                            if has_any_id:
-                                merged_config['dimensions'] = {'api': api_ids, 'e2e': e2e_ids}
-                            else:
-                                merged_config['dimensions'] = dimensions_data
+                            merged_config['dimensions'] = dimension_ids
 
                     # 4. 执行创建或更新
                     if existing_tc:
@@ -2103,6 +1961,7 @@ class TestCaseController:
                         existing_tc.name = case_data['name']
                         existing_tc.description = case_data.get('description')
                         existing_tc.group_id = group.id
+                        existing_tc.test_type = case_data.get('test_type', 'api')
                         existing_tc.config = merged_config
                         
                         # 清除并重新添加标签
@@ -2117,6 +1976,7 @@ class TestCaseController:
                             name=case_data['name'],
                             description=case_data.get('description'),
                             group_id=group.id,
+                            test_type=case_data.get('test_type', 'api'),
                             config=merged_config
                         )
                         db.session.add(current_tc)
@@ -2179,38 +2039,30 @@ class TestCaseController:
                     'ID', 'NAME', 'DESCRIPTION', 'GROUP_NAME', 'GROUP_ID',
                     'TRANSLATION_DIRECTION', 'TEST_TYPE', 'NOISE_AUDIO_NAME', 'NOISE_AUDIO_ID',
                     'NOISE_SPL', 'ASR_REFERENCE_TEXT', 'TRANSLATION_REFERENCE_TEXT',
-                    'ASR_REFERENCE_TEXT_API', 'TRANSLATION_REFERENCE_TEXT_API',
-                    'ASR_REFERENCE_TEXT_E2E', 'TRANSLATION_REFERENCE_TEXT_E2E',
                     'TAGS', 'REMARKS'
                 ])
                 testcases_df.loc[0] = [
                     '', '示例用例名称', '用例详细描述', '示例分组', '',
                     '中文->英文', 'api', '', '', '', 'ASR参考文本', '翻译参考文本',
-                    '自动生成', '自动生成', '自动生成', '自动生成',
                     '标签1,标签2', '备注信息'
                 ]
                 testcases_df.to_excel(writer, sheet_name='TestCases', index=False)
                 
                 audio_configs_df = pd.DataFrame(columns=[
-                    'CASE_ID', 'CASE_NAME', 'AUDIO_ID', 'AUDIO_NAME', 'TEST_TYPE', 'SPL',
+                    'CASE_ID', 'CASE_NAME', 'AUDIO_ID', 'AUDIO_NAME', 'SPL',
                     'PLAYBACK_DEVICE_ID', 'PLAYBACK_DEVICE_NAME', 'PLAY_ORDER'
                 ])
-                audio_configs_df.loc[0] = ['', '示例用例名称', '', '示例音频.wav', 'api', 65, '', '', 1]
-                audio_configs_df.loc[1] = ['', '示例用例名称', '', '示例音频2.wav', 'e2e', 70, '', '扬声器', 2]
+                audio_configs_df.loc[0] = ['', '示例用例名称', '', '示例音频.wav', 65, '', '', 1]
+                audio_configs_df.loc[1] = ['', '示例用例名称', '', '示例音频2.wav', 70, '', '扬声器', 2]
                 audio_configs_df.to_excel(writer, sheet_name='AudioConfigs', index=False)
                 
-                api_dims_df = pd.DataFrame(columns=[
+                dims_df = pd.DataFrame(columns=[
                     'CASE_ID', 'CASE_NAME', 'DIMENSION_ID', 'DIMENSION_NAME', 'DIMENSION_DISPLAY_NAME', 'WEIGHT', 'THRESHOLD'
                 ])
-                api_dims_df.loc[0] = ['', '示例用例名称', '', 'BLEU', 'BLEU分数', 60, 85]
-                api_dims_df.loc[1] = ['', '示例用例名称', '', 'METEOR', 'METEOR分数', 40, 75]
-                api_dims_df.to_excel(writer, sheet_name='APIDimensions', index=False)
-                
-                e2e_dims_df = pd.DataFrame(columns=[
-                    'CASE_ID', 'CASE_NAME', 'DIMENSION_ID', 'DIMENSION_NAME', 'DIMENSION_DISPLAY_NAME', 'WEIGHT', 'THRESHOLD'
-                ])
-                e2e_dims_df.loc[0] = ['', '示例用例名称', '', 'WER', '字错误率', 70, 90]
-                e2e_dims_df.to_excel(writer, sheet_name='E2EDimensions', index=False)
+                dims_df.loc[0] = ['', '示例用例名称', '', 'BLEU', 'BLEU分数', 60, 85]
+                dims_df.loc[1] = ['', '示例用例名称', '', 'METEOR', 'METEOR分数', 40, 75]
+                dims_df.loc[2] = ['', '示例用例名称', '', 'WER', '字错误率', 70, 90]
+                dims_df.to_excel(writer, sheet_name='Dimensions', index=False)
                 
                 tags_df = pd.DataFrame(columns=[
                     'TAG_ID', 'TAG_NAME', 'TAG_DESCRIPTION', 'TAG_COLOR'
@@ -2255,8 +2107,7 @@ class TestCaseController:
                 'totalRows': 0,
                 'testCases': [],
                 'audioConfigs': [],
-                'apiDimensions': [],
-                'e2eDimensions': [],
+                'dimensions': [],
                 'tags': [],
                 'groups': [],
                 'errors': []
@@ -2277,15 +2128,10 @@ class TestCaseController:
                     df = df.astype(object).where(pd.notna(df), None)
                     preview_result['audioConfigs'] = df.to_dict('records')
                 
-                if 'APIDimensions' in sheet_names:
-                    df = pd.read_excel(xl, sheet_name='APIDimensions')
+                if 'Dimensions' in sheet_names:
+                    df = pd.read_excel(xl, sheet_name='Dimensions')
                     df = df.astype(object).where(pd.notna(df), None)
-                    preview_result['apiDimensions'] = df.to_dict('records')
-                
-                if 'E2EDimensions' in sheet_names:
-                    df = pd.read_excel(xl, sheet_name='E2EDimensions')
-                    df = df.astype(object).where(pd.notna(df), None)
-                    preview_result['e2eDimensions'] = df.to_dict('records')
+                    preview_result['dimensions'] = df.to_dict('records')
                 
                 if 'Tags' in sheet_names:
                     df = pd.read_excel(xl, sheet_name='Tags')

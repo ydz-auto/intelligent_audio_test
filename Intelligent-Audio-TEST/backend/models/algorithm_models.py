@@ -372,6 +372,7 @@ class CaseAlgorithmParam(db.Model):
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
+    scope = Column(String(10), nullable=False, default='common', comment='参数适用范围 (common/api/e2e)')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
@@ -397,7 +398,8 @@ class CaseAlgorithmParam(db.Model):
             'options_label_field': self.options_label_field,
             'help_text': self.help_text,
             'ui_order': self.ui_order,
-            'hidden': self.hidden
+            'hidden': self.hidden,
+            'scope': self.scope
         }
 
     def _parse_json(self, json_str):

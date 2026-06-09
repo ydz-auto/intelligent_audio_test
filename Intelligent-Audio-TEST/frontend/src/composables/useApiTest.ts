@@ -34,17 +34,13 @@ export function useApiTest() {
   const isApiTestCase = (caseItem: TestCase): boolean => {
     if (caseItem.deleted) return false;
     
-    if (caseItem.config?.type) {
-      const configType = String(caseItem.config.type).toLowerCase();
-      return configType === 'api' || configType === 'api_test';
-    }
+    // 优先检查记录级 testType 字段
+    const recordType = (caseItem.testType || caseItem.test_type || caseItem.type || '').toLowerCase();
+    if (recordType === 'api' || recordType === 'api_test') return true;
     
-    if (caseItem.type) {
-      const itemType = String(caseItem.type).toLowerCase();
-      return itemType === 'api' || itemType === 'api_test';
-    }
-    
-    return !!caseItem.config?.apiAudio;
+    // 回退：检查 config.audios 中是否有 api 类型的音频
+    const audios = caseItem.config?.audios || [];
+    return audios.some((a: any) => (a.testType || a.test_type) === 'api');
   };
 
   const apiTestCases = computed(() => {

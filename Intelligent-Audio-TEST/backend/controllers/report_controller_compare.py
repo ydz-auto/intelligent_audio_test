@@ -231,8 +231,7 @@ class ReportControllerCompare(ReportControllerBase):
 
     @staticmethod
     def _build_reference_params(case_results, config):
-        adjusted_reference_params_api = None
-        adjusted_reference_params_e2e = None
+        adjusted_reference_params = None
         
         for result in case_results:
             result_data = result.result_data
@@ -247,31 +246,24 @@ class ReportControllerCompare(ReportControllerBase):
                 if result_data and isinstance(result_data, dict):
                     adjusted_ref = result_data.get('adjusted_reference_params')
                     if adjusted_ref:
-                        test_type = 'e2e' if result.device_id else 'api'
-                        if test_type == 'e2e':
-                            adjusted_reference_params_e2e = adjusted_ref
-                        else:
-                            adjusted_reference_params_api = adjusted_ref
+                        adjusted_reference_params = adjusted_ref
 
-        config_api = {'reference_params': adjusted_reference_params_api} if adjusted_reference_params_api else config
-        config_e2e = {'reference_params': adjusted_reference_params_e2e} if adjusted_reference_params_e2e else config
+        # 双记录架构：使用 adjusted params 覆盖 config 中的 reference_params
+        effective_config = config
+        if adjusted_reference_params:
+            effective_config = {'reference_params': adjusted_reference_params}
 
-        reference_params_api = ReferenceParamsGenerator.get_reference_params_for_report(config_api, 'api')
-        reference_params_e2e = ReferenceParamsGenerator.get_reference_params_for_report(config_e2e, 'e2e')
+        reference_params = ReferenceParamsGenerator.get_reference_params_for_report(effective_config)
         
         reference_params_dict = {}
-        all_codes = set(reference_params_api.keys()) | set(reference_params_e2e.keys())
-        for code in all_codes:
-            param_api = reference_params_api.get(code, {})
-            param_e2e = reference_params_e2e.get(code, {})
+        for code, param_info in reference_params.items():
             reference_params_dict[code] = {
                 "code": code,
-                "type": param_api.get('type') or param_e2e.get('type', 'text'),
-                "api": param_api.get('value') or param_api.get('api'),
-                "e2e": param_e2e.get('value') or param_e2e.get('e2e'),
-                "segments": param_e2e.get('segments', []) or param_api.get('segments', []),
-                "text": param_e2e.get('text') or param_api.get('text', ''),
-                "json": param_e2e.get('json') or param_api.get('json', ''),
+                "type": param_info.get('type', 'text'),
+                "value": param_info.get('value'),
+                "segments": param_info.get('segments', []),
+                "text": param_info.get('text', ''),
+                "json": param_info.get('json', ''),
             }
         
         return reference_params_dict
@@ -293,45 +285,25 @@ class ReportControllerCompare(ReportControllerBase):
             device_list = Device.query.filter(Device.id.in_(list(device_ids))).all()
             devices = {d.id: d.name for d in device_list}
 
-        if report_task_type in ("api", "all"):
-            for cfg in audios_config:
-                if cfg.get('test_type') == 'api':
-                    audio_id = cfg.get('audio_id')
-                    if audio_id:
-                        audio = db.session.get(Audio, audio_id)
-                        if audio:
-                            dev_id = cfg.get('device_id')
-                            audios_list.append({
-                                "audio_type": "api",
-                                "id": audio.id,
-                                "filename": audio.original_filename or audio.name,
-                                "duration": audio.duration,
-                                "url": f"/api/v1/audios/{audio.id}/stream",
-                                "spl": cfg.get('spl'),
-                                "play_order": cfg.get('play_order'),
-                                "device_id": dev_id,
-                                "device_name": devices.get(dev_id) if dev_id else None
-                            })
-
-        if report_task_type in ("e2e", "all"):
-            for cfg in audios_config:
-                if cfg.get('test_type') == 'e2e':
-                    audio_id = cfg.get('audio_id')
-                    if audio_id:
-                        audio = db.session.get(Audio, audio_id)
-                        if audio:
-                            dev_id = cfg.get('device_id')
-                            audios_list.append({
-                                "audio_type": "e2e",
-                                "id": audio.id,
-                                "filename": audio.original_filename or audio.name,
-                                "duration": audio.duration,
-                                "url": f"/api/v1/audios/{audio.id}/stream",
-                                "spl": cfg.get('spl'),
-                                "play_order": cfg.get('play_order'),
-                                "device_id": dev_id,
-                                "device_name": devices.get(dev_id) if dev_id else None
-                            })
+        # 双记录架构：所有音频属于记录的 test_type
+        record_test_type = test_case.test_type or 'api'
+        for cfg in audios_config:
+            audio_id = cfg.get('audio_id')
+            if audio_id:
+                audio = db.session.get(Audio, audio_id)
+                if audio:
+                    dev_id = cfg.get('device_id')
+                    audios_list.append({
+                        "audio_type": record_test_type,
+                        "id": audio.id,
+                        "filename": audio.original_filename or audio.name,
+                        "duration": audio.duration,
+                        "url": f"/api/v1/audios/{audio.id}/stream",
+                        "spl": cfg.get('spl'),
+                        "play_order": cfg.get('play_order'),
+                        "device_id": dev_id,
+                        "device_name": devices.get(dev_id) if dev_id else None
+                    })
 
         background_noise = config.get('background_noise', {})
         if background_noise.get('audio_id'):

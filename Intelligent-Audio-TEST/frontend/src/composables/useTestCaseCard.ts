@@ -40,7 +40,7 @@ export function useTestCaseCard() {
       backgroundNoise: {
         audioId: null,
         spl: null,
-        deviceId: null
+        deviceIds: []
       },
       audios: [
         {
@@ -51,10 +51,7 @@ export function useTestCaseCard() {
           playOrder: 0
         }
       ],
-      dimensions: {
-        api: [],
-        e2e: []
-      }
+      dimensions: []
     }
   };
 
@@ -99,7 +96,6 @@ export function useTestCaseCard() {
     editingTestCase.value = testCase;
     
     const normalized = normalizeTestCaseConfig(testCase.config || {});
-    const { apiAudios, dryAudios, ...config } = normalized;
     
     formData.value = {
       id: testCase.id,
@@ -109,7 +105,7 @@ export function useTestCaseCard() {
       description: testCase.description || '',
       tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
-      config: config as TestCaseFormData['config'],
+      config: normalized as TestCaseFormData['config'],
       translationDirectionId: testCase.translationDirectionId,
       algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
       algorithmParams: normalizeAlgorithmParams((testCase as any).algorithmParams || (testCase as any).algorithm_params || []),
@@ -221,10 +217,8 @@ export function useTestCaseCard() {
 
   const handlePreviewAction = async (testCase: TestCase) => {
     const hasAudioConfig = testCase.config?.audios && testCase.config.audios.length > 0;
-    const config: any = testCase.config || {};
-    const hasOldAudioConfig = config.apiAudio || config.dryAudio || (config.dryAudios && config.dryAudios[0]?.file);
     
-    if (hasAudioConfig || hasOldAudioConfig) {
+    if (hasAudioConfig) {
       try {
         const playbackDevicesRes = await playbackApi.getAll();
         const playbackDevices = playbackDevicesRes.items || [];

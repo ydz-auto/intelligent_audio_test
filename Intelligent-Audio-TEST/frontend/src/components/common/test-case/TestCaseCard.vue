@@ -49,9 +49,8 @@
             <div v-if="testCase.lastEditTime || testCase.createdAt || testCase.updatedAt" style="margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">
               <span class="meta-label">最后编辑时间:</span> {{ testCase.lastEditTime || testCase.updatedAt || testCase.createdAt || '未知' }}
             </div>
-            <div v-if="testCase.apiDuration || testCase.e2eDuration" class="case-duration-info">
-              <span v-if="testCase.apiDuration" class="duration-tag duration-api">{{ formatDuration(testCase.apiDuration) }}</span>
-              <span v-if="testCase.e2eDuration" class="duration-tag duration-e2e">{{ formatDuration(testCase.e2eDuration) }}</span>
+            <div v-if="testCase.totalDuration" class="case-duration-info">
+              <span class="duration-tag">{{ formatDuration(testCase.totalDuration) }}</span>
             </div>
             <div class="case-tags-container" v-if="testCase.tags && testCase.tags.length > 0">
               <template v-if="!isTagsExpanded">
@@ -104,61 +103,20 @@
           </h5>
         </div>
         <div class="case-config" v-if="isConfigExpanded">
-          <!-- API测试配置 -->
-          <div class="config-section" v-if="Array.isArray(testCase.type) ? testCase.type.includes('api') : testCase.type === 'api'">
-            <h5 class="config-title">API测试配置</h5>
+          <div class="config-section">
+            <h5 class="config-title">{{ testCase.testType === 'e2e' || testCase.type === 'e2e' ? 'E2E测试配置' : 'API测试配置' }}</h5>
             <div class="config-details">
               <div class="config-row">
                 <span class="config-label">音频:</span>
-                <span>{{ testCase.config?.apiAudio || '未配置' }}</span>
+                <span>{{ testCase.config?.audios?.length || 0 }} 个</span>
               </div>
-              <!-- 显示API评测维度 -->
+              <div class="config-row" v-if="testCase.config?.backgroundNoise">
+                <span class="config-label">噪声:</span>
+                <span>已配置</span>
+              </div>
               <div class="config-row">
                 <span class="config-label">评测维度:</span>
-                <span>{{ testCase.config?.dimensions?.api?.length || 0 }} 个</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- E2E测试配置 -->
-          <div class="config-section" v-if="Array.isArray(testCase.type) ? testCase.type.includes('e2e') : testCase.type === 'e2e'">
-            <h5 class="config-title">端到端测试配置</h5>
-            <div class="audio-configs">
-              <div class="audio-config-section">
-                <h5 class="config-section-title">干声配置</h5>
-                <div class="config-details">
-                  <div class="config-row">
-                    <span class="config-label">干声数量:</span>
-                    <span>{{ testCase.config?.dryAudios?.length || 0 }} 个</span>
-                  </div>
-                </div>
-              </div>
-              <div class="audio-config-section">
-                <h5 class="config-section-title">噪声配置</h5>
-                <div class="config-details">
-                  <div class="config-row">
-                    <span class="config-label">噪声文件:</span>
-                    <span>{{ testCase.config?.noiseAudio ? '已配置' : '未配置' }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div class="config-details">
-              <!-- 显示E2E评测维度 -->
-              <div class="config-row">
-                <span class="config-label">评测维度:</span>
-                <span>{{ testCase.config?.dimensions?.e2e?.length || 0 }} 个</span>
-              </div>
-            </div>
-          </div>
-          
-          <!-- 基础配置 -->
-          <div class="config-section" v-if="(!testCase.type || (Array.isArray(testCase.type) && testCase.type.length === 0))">
-            <h5 class="config-title">基础配置</h5>
-            <div class="config-details">
-              <div class="config-row">
-                <span class="config-label">配置状态:</span>
-                <span>未配置详细测试类型</span>
+                <span>{{ testCase.config?.dimensions?.length || 0 }} 个</span>
               </div>
             </div>
           </div>
@@ -399,14 +357,7 @@ const handleResize = () => {
   font-size: 12px;
   font-weight: 500;
   color: white;
-}
-
-.duration-api {
-  background-color: #1677FF;
-}
-
-.duration-e2e {
-  background-color: #FF6A00;
+  background-color: #722ed1;
 }
 </style>
 

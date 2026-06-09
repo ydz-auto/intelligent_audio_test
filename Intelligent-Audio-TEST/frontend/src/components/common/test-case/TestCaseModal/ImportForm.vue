@@ -40,8 +40,7 @@
       <div class="preview-stats">
         <span class="stat-item">用例数量：{{ previewData.total }} 条</span>
         <span class="stat-item" v-if="previewData.audioConfigsCount > 0">音频配置：{{ previewData.audioConfigsCount }} 条</span>
-        <span class="stat-item" v-if="previewData.apiDimensionsCount > 0">API维度：{{ previewData.apiDimensionsCount }} 条</span>
-        <span class="stat-item" v-if="previewData.e2eDimensionsCount > 0">E2E维度：{{ previewData.e2eDimensionsCount }} 条</span>
+        <span class="stat-item" v-if="previewData.dimensionsCount > 0">评测维度：{{ previewData.dimensionsCount }} 条</span>
         <span class="stat-item" v-if="previewData.tagsCount > 0">标签：{{ previewData.tagsCount }} 个</span>
       </div>
       <div class="preview-table-container mt-3">
@@ -177,8 +176,7 @@ async function updatePreview() {
     }
 
     const audioConfigs = data.audioConfigs || data.audio_configs || [];
-    const apiDimensions = data.apiDimensions || data.api_dimensions || [];
-    const e2eDimensions = data.e2eDimensions || data.e2e_dimensions || [];
+    const dimensions = data.dimensions || data.Dimensions || [];
 
     previewData.value = {
       total: data.totalRows || data.total_rows || testCases.length,
@@ -189,8 +187,7 @@ async function updatePreview() {
         operation: (tc.ID || tc.id) ? 'update' as const : 'insert' as const
       })),
       audioConfigsCount: audioConfigs.length,
-      apiDimensionsCount: apiDimensions.length,
-      e2eDimensionsCount: e2eDimensions.length,
+      dimensionsCount: dimensions.length,
       tagsCount: (data.tags || []).length,
       groupsCount: (data.groups || []).length,
       sheetNames: Object.keys(data).filter(key =>

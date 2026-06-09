@@ -1185,8 +1185,7 @@ class ReportUtils:
                         normalized_ref_params[code] = {
                             "code": param_info.get('code', code),
                             "type": param_info.get('type', 'text'),
-                            "api": param_info.get('api'),
-                            "e2e": param_info.get('e2e'),
+                            "value": param_info.get('value'),
                         }
                         # 如果有结构化数据（segments, text, json），也保留
                         if param_info.get('segments'):

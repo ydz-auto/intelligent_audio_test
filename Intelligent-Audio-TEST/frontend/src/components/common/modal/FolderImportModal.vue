@@ -216,12 +216,9 @@ const {
   groupNameTypeOptions,
   filteredDimensions,
   e2eFilteredDimensions,
-  apiDimensionCount,
-  e2eDimensionCount,
-  isApiDimensionSelected,
-  isE2eDimensionSelected,
-  toggleApiDimensionSelection,
-  toggleE2eDimensionSelection,
+  dimensionCount,
+  isDimensionSelected,
+  toggleDimensionSelection,
   ensureDimensionsLoaded,
   defaultSpl
 } = useTestCaseConfig({

@@ -127,8 +127,7 @@ export interface SelectedEvaluationDimension {
 }
 
 export interface EvaluationDimensionsConfig {
-    api: SelectedEvaluationDimension[];
-    e2e: SelectedEvaluationDimension[];
+    dimensions: SelectedEvaluationDimension[];
 }
 
 export interface Tag {
@@ -143,6 +142,7 @@ export interface TestCase {
     name: string;
     description?: string;
     type?: string;
+    testType?: string;
     config?: Record<string, any>;
     groupId?: string | number;
     groupName?: string;
@@ -155,8 +155,6 @@ export interface TestCase {
     updatedAt?: string;
     deleted?: boolean;
     totalDuration?: number;
-    apiDuration?: number;
-    e2eDuration?: number;
 }
 
 export interface APIConfig {

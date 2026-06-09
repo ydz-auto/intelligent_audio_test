@@ -157,9 +157,6 @@ class TestingConfig(Config):
     SOCKETIO_DEBUG = True
     SQLALCHEMY_ENGINE_OPTIONS = {
         "poolclass": StaticPool,
-        "connect_args": {
-            "check_same_thread": False
-        }
     }
 
 config = {
