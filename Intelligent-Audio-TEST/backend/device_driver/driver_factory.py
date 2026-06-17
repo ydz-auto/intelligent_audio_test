@@ -6,6 +6,7 @@ from .harmony_translation_driver import (
     XiaoyiSimultaneousInterpretationDriver
 )
 from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
+from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
 from .utils import log_and_emit
 
 
@@ -90,6 +91,13 @@ class DeviceDriverFactory:
             ['harden', 'huiji', '慧记'],
             'HarmonyOS',
             '鸿蒙harden小艺慧记专用驱动'
+        )
+
+        self.register_specialized_driver(
+            HarmonyHardenXiaoyi_Input_MethodDriver(),
+            ['Pura70', 'xiaoyi_input_method', '小艺输入法'],
+            'HarmonyOS',
+            '鸿蒙小艺输入法专用驱动'
         )
 
     def register_specialized_driver(self, driver, keywords, system=None, name=None):
