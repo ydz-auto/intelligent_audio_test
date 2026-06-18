@@ -1,3 +1,5 @@
+import type { TestCaseConfig } from '../../components/common/test-case/TestCaseModal/types';
+
 export type TaskType = 'api' | 'e2e' | 'playback' | 'evaluation' | 'report' | 'task' | 'execution' | 'comparison' | 'performance' | 'stress' | 'audio_import';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused' | 'stopped' | 'queued' | 'skipped';
 
@@ -143,14 +145,14 @@ export interface TestCase {
     description?: string;
     type?: string;
     testType?: string;
-    config?: Record<string, any>;
+    test_type?: 'api' | 'e2e';
+    related_case_id?: string | number | null;
+    config?: TestCaseConfig;
     groupId?: string | number;
     groupName?: string;
     tags?: string[] | { id: number; name: string }[];
     translationDirectionId?: string | number | null;
     algorithmType?: string;
-    algorithmParams?: Record<string, any>;
-    referenceParams?: Record<string, any>;
     createdAt?: string;
     updatedAt?: string;
     deleted?: boolean;
@@ -198,6 +200,13 @@ export interface AlgorithmAssociation {
     weight: number;
 }
 
+export interface LlmJudgeConfig {
+    model?: string;
+    promptTemplate?: string;
+    maxTokens?: number;
+    temperature?: number;
+}
+
 export interface Dimension {
     id: number | string;
     name: string;
@@ -225,6 +234,7 @@ export interface Dimension {
     createdAt?: string;
     updatedAt?: string;
     scoreUnit?: string;
+    llmJudgeConfig?: LlmJudgeConfig;
 }
 
 export interface EvaluationCategory {

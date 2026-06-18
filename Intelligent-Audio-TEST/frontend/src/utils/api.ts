@@ -93,6 +93,7 @@ export interface FormField {
   hidden: boolean;
   uiOrder: number;
   uiGroup: string;
+  scope?: string;
 }
 
 import { API_CONFIG } from './config';
@@ -1266,8 +1267,11 @@ export const algorithmApi = {
     return request<{ params: Array<{ id: number; code: string; name: string; label: string; field_type: string; required: boolean; default_value: any }> }>('GET', `/algorithm/dimension-params/${dimensionId}`);
   },
 
-  async getCaseParams(params: Record<string, any> = {}, options: RequestOptions = {}) {
-    return request<{ data: any[]; total: number }>('GET', '/algorithm/case-params', null, { ...options, params });
+  async getCaseParams(algorithmType: string, scope?: string, options: RequestOptions = {}) {
+    const params: Record<string, any> = {};
+    if (algorithmType) params.algorithm_type = algorithmType;
+    if (scope) params.scope = scope;
+    return request<{ parameters: any[]; total: number }>('GET', '/algorithm/case-params', null, { ...options, params });
   },
 
   async getCaseParam(paramId: number) {

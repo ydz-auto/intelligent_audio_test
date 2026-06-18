@@ -8,7 +8,7 @@
 
 ## 背景
 
-`ConcurrencyManager` 管理每种任务类型的并发限制。当前 `_stats` 字典硬编码了 `wer` 和 `ser` 两种类型，新增的 `bleu`、`llm_judge` 以及已有的 `der`、`cpwer`、`tcpwer`、`stm_wer` 不在其中。对这些类型调用 `can_start()` 会因 `stats.get(task_type)` 返回 `None` 而返回 `False`。
+`ConcurrencyManager` 管理每种任务类型的并发限制。当前 `_stats` 字典硬编码了 `wer` 和 `ser` 两种类型，新增的 `llm_judge` 以及已有的 `der`、`cpwer`、`tcpwer`、`stm_wer` 不在其中。对这些类型调用 `can_start()` 会因 `stats.get(task_type)` 返回 `None` 而返回 `False`。
 
 ---
 
@@ -39,7 +39,7 @@ class ConcurrencyManager:
             # 所有已知的任务类型
             all_types = [
                 'wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer',
-                'bleu', 'llm_judge',
+                'llm_judge',
             ]
 
             for task_type in all_types:
@@ -129,7 +129,6 @@ class Config:
         'cpwer': 2,
         'tcpwer': 2,
         'stm_wer': 2,
-        'bleu': 4,          # BLEU 计算快，可更高并发
         'llm_judge': 2,     # LLM API 调用慢，限制并发
     }
     DEFAULT_MAX_CONCURRENCY = 2
@@ -142,7 +141,6 @@ class Config:
 | `wer` | 2 | CPU 密集型（Levenshtein） |
 | `ser` | 1 | CPU 密集型 |
 | `der` | 1 | pyannote 内存占用大 |
-| `bleu` | 4 | 纯计算，轻量 |
 | `llm_judge` | 2 | 外部 API 调用，受 rate limit |
 | `cpwer` | 2 | meeteval 计算 |
 
@@ -161,4 +159,4 @@ class Config:
 | 依赖文档 | 说明 |
 |---------|------|
 | `01_create_task新任务类型` | 新类型任务入口 |
-| `07_health动态类型` | 健康检查展示 |
+| `06_health动态类型` | 健康检查展示 |

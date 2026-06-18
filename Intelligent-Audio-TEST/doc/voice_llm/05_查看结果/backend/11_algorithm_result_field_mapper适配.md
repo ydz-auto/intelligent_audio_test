@@ -67,7 +67,7 @@ def get_output_fields(self, algorithm_type, test_type=None):
                 },
                 'aggregated': {
                     'type': 'json',
-                    'description': '多轮聚合指标 (avg_wer, avg_bleu, avg_llm_judge, avg_latency, interruption_count)',
+                    'description': '多轮聚合指标 (avg_wer, avg_llm_judge, avg_latency, interruption_count)',
                     'required': False
                 }
             }

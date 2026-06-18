@@ -23,6 +23,7 @@
 注意：此脚本可重复执行（幂等），不会重复拆分已迁移的记录
 """
 
+import os
 import sys
 import json
 import uuid
@@ -30,7 +31,10 @@ from datetime import datetime, timezone
 
 from sqlalchemy import create_engine, text
 
-POSTGRES_URI = 'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
+POSTGRES_URI = os.environ.get(
+    'DATABASE_URI',
+    'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
+)
 
 
 def _exec_ddl(conn, sql, success_msg, skip_msg):
@@ -213,17 +217,12 @@ def migrate_data(conn):
         e2e_config = config.copy()
         e2e_config['audios'] = _split_audios(audios, 'e2e')
         e2e_config['dimensions'] = _split_dimensions(dimensions, 'e2e')
-        for audio in e2e_config.get('audios', []):
-            audio.pop('test_type', None)
 
         # --- 构建 API 配置（新记录，仅基础配置，移除 E2E 专属项） ---
         api_id = str(uuid.uuid4())
         api_config = config.copy()
         api_config['audios'] = _split_audios(audios, 'api')
         api_config['dimensions'] = _split_dimensions(dimensions, 'api')
-        for audio in api_config.get('audios', []):
-            audio.pop('test_type', None)
-        # 移除 E2E 专属配置项
         for e2e_key in ['background_noise']:
             api_config.pop(e2e_key, None)
 
@@ -293,6 +292,18 @@ def migrate_data(conn):
                     tag_sp.commit()
                 except Exception:
                     tag_sp.rollback()
+
+            # 检查并更新引用原 ID 的外键记录
+            fk_tables = [
+                ('task_case_relations', 'test_case_id'),
+                ('test_results', 'test_case_id'),
+            ]
+            for tbl, col in fk_tables:
+                ref_count = conn.execute(text(
+                    f"SELECT COUNT(*) FROM {tbl} WHERE {col} = :id"
+                ), {'id': tc_id}).scalar()
+                if ref_count > 0:
+                    print(f"    [WARN] {tbl} 中有 {ref_count} 条记录引用原 ID，将保留指向 E2E 记录")
 
             sp.commit()
             split_count += 1

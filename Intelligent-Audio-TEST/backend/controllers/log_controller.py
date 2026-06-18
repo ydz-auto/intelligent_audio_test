@@ -5,7 +5,7 @@ import glob
 from flask import request, send_file
 from backend.models.models import Log
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
+from backend.utils.web.response import success_response, error_response
 from backend.schemas.log import LogItem, LogListData, LogRefreshData, LogRefreshRequest, LogMarkRequest, LogClearRequest, LogExportRequest, LogArchiveRequest, LogArchiveStatus, LogArchiveResult
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import func, or_
@@ -343,7 +343,7 @@ class LogController:
     @staticmethod
     def log_and_emit(level, module, content, category='system', source='backend', task_id=None, device_id=None, api_id=None, test_case_id=None, **kwargs):
         try:
-            from backend.utils.log_handler import log_and_emit as handler_log_and_emit
+            from backend.utils.web.log_handler import log_and_emit as handler_log_and_emit
             handler_log_and_emit(level, module, content, category, source, task_id, device_id, api_id, test_case_id, **kwargs)
         except Exception as e:
             import sys

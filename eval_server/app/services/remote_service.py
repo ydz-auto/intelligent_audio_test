@@ -91,6 +91,8 @@ class RemoteService:
                 payload.update(task_params)
             
             timeout = selected_endpoint_config.get('max_timeout', 30)
+            if task_type == 'llm_judge':
+                timeout = max(timeout, 180)
             
             response = requests.post(
                 f"{selected_endpoint.rstrip('/')}/api/create_task",
@@ -158,19 +160,21 @@ class RemoteService:
 
     def _poll_task_status(self, endpoint_url: str, task_id: str, task_type: str):
         """轮询任务状态，完成后释放并发并同步结果"""
+        poll_interval = 5 if task_type == 'llm_judge' else 2
+        max_attempts = 60 if task_type == 'llm_judge' else 30
+
         try:
             status_url = f"{endpoint_url.rstrip('/')}/api/get_status/{task_id}"
             result_url = f"{endpoint_url.rstrip('/')}/api/get_final_result/{task_id}"
             
-            while True:
-                time.sleep(2)  # 每2秒轮询一次
+            for _attempt in range(max_attempts):
+                time.sleep(poll_interval)
                 try:
                     resp = requests.get(status_url, timeout=5)
                     if resp.status_code == 200:
                         data = resp.json()
                         status = data.get('data', {}).get('status')
                         if status in ['completed', 'failed']:
-                            # 如果成功，获取最终结果并更新本地
                             if status == 'completed':
                                 try:
                                     res_resp = requests.get(result_url, timeout=5)
@@ -194,8 +198,12 @@ class RemoteService:
                         TaskModel.update_task_status(task_id, 'failed', error_msg="任务在远程端点不存在")
                         break
                 except Exception as e:
-                    # 轮询失败暂不退出，除非重试次数过多
                     print(f"Polling error for {task_id}: {e}")
+            else:
+                TaskModel.update_task_status(
+                    task_id, 'failed',
+                    error_msg=f"Remote task timeout after {max_attempts * poll_interval}s"
+                )
                     
         finally:
             self._decrement_concurrency(endpoint_url, task_type)

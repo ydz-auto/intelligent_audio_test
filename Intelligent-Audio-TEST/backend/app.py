@@ -52,8 +52,8 @@ app = None
 def create_app(config_name='default'):
     global app
     app = Flask(__name__)
-    from backend.utils.naming_middleware import NamingAliasMiddleware
-    from backend.utils.naming_request import NamingRequest
+    from backend.utils.web.naming_middleware import NamingAliasMiddleware
+    from backend.utils.web.naming_request import NamingRequest
     app.request_class = NamingRequest
     app.wsgi_app = NamingAliasMiddleware(app.wsgi_app)
     # 加载指定环境配置 (development/production)
@@ -111,7 +111,7 @@ def create_app(config_name='default'):
         app.logger.addHandler(handler)
     
     # 添加自定义数据库日志处理器
-    from backend.utils.log_handler import DatabaseLogHandler, get_db_handler, set_flask_app as set_log_flask_app
+    from backend.utils.web.log_handler import DatabaseLogHandler, get_db_handler, set_flask_app as set_log_flask_app
     set_log_flask_app(app)
     db_handler = get_db_handler()
     db_handler.setFormatter(formatter)
@@ -164,7 +164,7 @@ def create_app(config_name='default'):
     )
     
     # 设置日志处理器的 SocketIO 实例
-    from backend.utils.log_handler import set_socketio as set_log_socketio
+    from backend.utils.web.log_handler import set_socketio as set_log_socketio
     set_log_socketio(socketio)
     
     # 配置静态文件服务
@@ -248,8 +248,8 @@ def create_app(config_name='default'):
             db.session.rollback()
 
         # 启动任务调度器
-        from backend.utils.execution_engine import execution_engine
-        from backend.utils.config_manager import config_manager
+        from backend.services.execution.execution_engine import execution_engine
+        from backend.utils.common.config_manager import config_manager
         config_manager.set_flask_config(app.config)
         execution_engine.set_scheduler_app(app)
         execution_engine._init_scheduler()
@@ -305,7 +305,7 @@ def create_app(config_name='default'):
     # 健康检查路由
     @app.route('/health')
     def health():
-        from backend.utils.response import success_response
+        from backend.utils.web.response import success_response
         return success_response(data={'status': 'ok'})
 
     @app.before_request
@@ -316,7 +316,7 @@ def create_app(config_name='default'):
         import json
         import time
         from flask import request
-        from backend.utils.log_handler import log_and_emit
+        from backend.utils.web.log_handler import log_and_emit
         from datetime import datetime, timezone, timedelta
         
         request._start_time = time.time()
@@ -356,7 +356,7 @@ def create_app(config_name='default'):
         import json
         import time
         from flask import request
-        from backend.utils.log_handler import log_and_emit
+        from backend.utils.web.log_handler import log_and_emit
         
         elapsed_ms = None
         if hasattr(request, '_start_time'):

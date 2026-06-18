@@ -91,319 +91,56 @@
       @algorithm-type-change="handleAlgorithmTypeChange"
     />
 
-    <div class="form-section audio-config-section">
-      <div class="section-header">
-        <h4><i class="fas fa-music"></i> 音频配置</h4>
-        <div class="section-actions" v-if="localFormData.config.audios && localFormData.config.audios.length > 0">
-          <div class="action-group">
-            <span class="action-group-label">排序</span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @click="sortByFileName('asc')" title="按文件名正序">
-              <i class="fas fa-sort-alpha-up"></i>
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @click="sortByFileName('desc')" title="按文件名倒序">
-              <i class="fas fa-sort-alpha-down"></i>
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @click="shuffleAudioConfigs" title="随机排序">
-              <i class="fas fa-random"></i>
-            </button>
-          </div>
-          <div class="action-group" v-if="getUniqueTagsFromConfigs(localFormData.config.audios).length > 1">
-            <span class="action-group-label">标签操作</span>
-            <button type="button" class="btn btn-sm btn-outline-info" @click="toggleTagSelector">
-              <i class="fas fa-exchange-alt"></i> 标签交叉排列
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-info" @click="toggleTagDeviceSelector(localFormData.config.audios)">
-              <i class="fas fa-tags"></i> 标签设备分配
-            </button>
-          </div>
-          <div class="action-group" v-if="hasE2eAudio">
-            <span class="action-group-label">批量操作</span>
-            <button type="button" class="btn btn-sm btn-outline-warning" @click="$emit('openBatchDeviceModal')">
-              <i class="fas fa-desktop"></i> 设置设备
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-primary" @click="$emit('openCrossDeviceModal')">
-              <i class="fas fa-random"></i> 设备交叉
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-success" @click="$emit('openBatchSplModal')">
-              <i class="fas fa-volume-up"></i> 设置声压
-            </button>
-          </div>
-          <div class="action-group">
-            <button type="button" class="btn btn-sm btn-outline-danger" @click="clearAllAudioConfigs">
-              <i class="fas fa-trash-alt"></i> 清空
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div class="tag-selector-panel" v-if="showTagSelector && getUniqueTagsFromConfigs(localFormData.config.audios).length > 1">
-        <div class="tag-selector-list">
-          <span
-            v-for="tag in getUniqueTagsFromConfigs(localFormData.config.audios)"
-            :key="tag"
-            class="tag-checkbox-item"
-            :class="{ selected: selectedTagsForInterleave.includes(tag) }"
-            @click="toggleTagSelection(tag)"
+    <!-- ===== test_type 切换器 ===== -->
+    <div class="form-section test-type-section">
+      <div class="test-type-switcher-row">
+        <label class="test-type-label">测试类型</label>
+        <div class="test-type-switcher">
+          <button
+            type="button"
+            class="test-type-btn"
+            :class="{ active: localFormData.test_type === 'api' }"
+            @click="switchTestType('api')"
           >
-            {{ tag }}
-          </span>
-        </div>
-        <div class="tag-interleave-preview" v-if="selectedTagsForInterleave.length >= 2">
-          <div class="preview-title">交叉顺序预览：</div>
-          <div class="interleave-order-preview">
-            <span v-for="(tag, index) in selectedTagsForInterleave" :key="index" class="interleave-tag">
-              {{ tag }}
-              <span v-if="index < selectedTagsForInterleave.length - 1" class="interleave-arrow">→</span>
-            </span>
-          </div>
-        </div>
-        <div class="tag-selector-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="interleaveByTags(localFormData.config.audios)" :disabled="selectedTagsForInterleave.length < 2">
-            <i class="fas fa-check"></i> 确定
+            <i class="fas fa-cloud"></i> API
           </button>
-          <button type="button" class="btn btn-sm btn-secondary" @click="toggleTagSelector">
-            <i class="fas fa-times"></i> 取消
-          </button>
-        </div>
-      </div>
-
-      <div class="tag-selector-panel" v-if="showTagDeviceSelector && getUniqueTagsFromConfigs(localFormData.config.audios).length > 0">
-        <div class="tag-device-mapping-list">
-          <div v-for="tag in getUniqueTagsFromConfigs(localFormData.config.audios)" :key="tag" class="tag-device-mapping-row">
-            <span class="tag-name">{{ tag }}</span>
-            <span class="arrow">→</span>
-            <select :value="getDeviceForTag(tag)" @change="updateTagDeviceMapping(tag, ($event.target as HTMLSelectElement).value)" class="form-control form-control-sm device-select">
-              <option value="">-- 选择设备 --</option>
-              <option v-for="device in playbackDevices" :key="device.id" :value="device.id">
-                {{ device.name }} (通道 {{ device.channelIndex }})
-              </option>
-            </select>
-            <span class="audio-count">({{ getTagAudioCount(tag, localFormData.config.audios) }}个音频)</span>
-          </div>
-        </div>
-        <div class="tag-device-preview" v-if="hasValidTagDeviceMapping">
-          <div class="preview-title">分配预览：</div>
-          <div v-for="[tag, deviceId] in getTagDeviceMapping" :key="tag" class="preview-item">
-            • {{ tag }} → {{ getDeviceName(deviceId) }}
-          </div>
-        </div>
-        <div class="tag-selector-actions">
-          <button type="button" class="btn btn-sm btn-primary" @click="assignDeviceByTags(localFormData.config.audios)" :disabled="!hasValidTagDeviceMapping">
-            <i class="fas fa-check"></i> 确定
-          </button>
-          <button type="button" class="btn btn-sm btn-secondary" @click="toggleTagDeviceSelector(localFormData.config.audios)">
-            <i class="fas fa-times"></i> 取消
-          </button>
-        </div>
-      </div>
-
-      <div v-if="!localFormData.config.audios || localFormData.config.audios.length === 0" class="empty-state">
-        <i class="fas fa-music"></i>
-        <p>暂无音频配置</p>
-        <button type="button" class="btn btn-primary" @click="addAudioConfig">
-          <i class="fas fa-plus"></i> 添加音频配置
-        </button>
-      </div>
-
-      <div v-else class="audio-config-list">
-        <div
-          v-for="(audioConfig, index) in localFormData.config.audios"
-          :key="`audio-${audioConfig.audioId}-${index}`"
-          class="audio-config-card"
-          :class="{ 'is-dragging': draggedAudioIndex === index, 'drag-over': dragOverAudioIndex === index }"
-          draggable="true"
-          @dragstart="handleAudioDragStart(index, $event)"
-          @dragend="handleAudioDragEnd"
-          @dragover="handleAudioDragOver(index, $event)"
-          @drop="handleAudioDrop(index, $event)"
-        >
-          <div class="audio-card-header">
-            <div class="audio-card-header-left">
-              <span class="drag-handle" title="拖动调整顺序">
-                <i class="fas fa-grip-vertical"></i>
-              </span>
-              <span class="audio-index">音频 {{ index + 1 }}</span>
-              <span class="audio-name" v-if="audioConfig.audioId" :title="getAudioName(audioConfig.audioId)">
-                {{ getAudioName(audioConfig.audioId) }}
-              </span>
-            </div>
-            <div class="audio-card-actions">
-              <button type="button" class="btn btn-icon btn-outline-secondary" @click="copyAudioConfig(index)" title="复制">
-                <i class="fas fa-copy"></i>
-              </button>
-              <button type="button" class="btn btn-icon btn-outline-danger" @click="removeAudioConfig(index)" title="删除">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
-          </div>
-          <div class="audio-card-body">
-            <div class="audio-field audio-field-full">
-              <label>音频文件 <span class="required">*</span></label>
-              <div class="audio-selector" @click="$emit('openAudioModal', 'dry', index)">
-                <div class="selected-info" v-if="audioConfig.audioId">
-                  {{ getAudioName(audioConfig.audioId) }}
-                </div>
-                <div class="placeholder" v-else>未选择音频</div>
-              </div>
-              <div class="audio-actions">
-                <button type="button" class="btn btn-sm btn-primary" @click.stop="$emit('openAudioModal', 'dry', index)">
-                  <i class="fas fa-search"></i> 选择
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-secondary" @click.stop="$emit('previewAudio', audioConfig.audioId, 'dry')" :disabled="!audioConfig.audioId">
-                  <i class="fas fa-play"></i> 试听
-                </button>
-              </div>
-              <div class="audio-tags" v-if="audioConfig.audioId && getNormalizedTags(getAudioTags(audioConfig.audioId)).length > 0">
-                <span class="audio-tags-label">标签：</span>
-                <div class="audio-tags-list">
-                  <span v-for="tag in getNormalizedTags(getAudioTags(audioConfig.audioId))" :key="tag" class="audio-tag">
-                    {{ tag }}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div class="audio-field-row">
-              <div class="audio-field">
-                <label>测试类型 <span class="required">*</span></label>
-                <select v-model="audioConfig.testType" class="form-control">
-                  <option value="api">API测试</option>
-                  <option value="e2e">端到端测试</option>
-                </select>
-              </div>
-              <div class="audio-field audio-field-sm">
-                <label>播放顺序</label>
-                <input type="number" v-model.number="audioConfig.playOrder" class="form-control" min="0">
-              </div>
-            </div>
-            <template v-if="audioConfig.testType === 'e2e'">
-              <div class="audio-field-row">
-                <div class="audio-field">
-                  <label>播放设备 <span class="required">*</span></label>
-                  <div class="audio-selector" @click="$emit('openDeviceModal', index)">
-                    <div class="selected-info" v-if="audioConfig.playbackDeviceId">
-                      {{ getDeviceName(audioConfig.playbackDeviceId) }}
-                    </div>
-                    <div class="placeholder" v-else>未选择设备</div>
-                  </div>
-                  <button type="button" class="btn btn-sm btn-primary mt-1" @click.stop="$emit('openDeviceModal', index)">
-                    <i class="fas fa-search"></i> 选择设备
-                  </button>
-                </div>
-                <div class="audio-field audio-field-sm">
-                  <label>声压级 (dB) <span class="required">*</span></label>
-                  <input type="number" v-model.number="audioConfig.spl" class="form-control" min="0" max="120">
-                </div>
-              </div>
-            </template>
-          </div>
-        </div>
-      </div>
-
-      <button type="button" class="btn btn-outline-primary add-audio-btn" @click="addAudioConfig" v-if="localFormData.config.audios && localFormData.config.audios.length > 0">
-        <i class="fas fa-plus"></i> 添加音频配置
-      </button>
-    </div>
-
-    <div class="form-section noise-config-section" v-if="hasE2eAudio">
-      <div class="section-header">
-        <h4><i class="fas fa-volume-up"></i> 端到端测试配置</h4>
-        <button type="button" class="btn btn-sm btn-outline-danger" @click="clearNoiseConfig" v-if="localFormData.config.backgroundNoise.audioId || (localFormData.config.backgroundNoise.deviceIds && localFormData.config.backgroundNoise.deviceIds.length > 0)">
-          <i class="fas fa-trash"></i> 删除噪声配置
-        </button>
-      </div>
-      <div class="noise-config-body">
-        <h5>噪声配置</h5>
-        <div class="form-row">
-          <div class="form-group">
-            <label>噪声文件</label>
-            <div class="audio-selector" @click="$emit('openAudioModal', 'noise')">
-              <div class="selected-info" v-if="localFormData.config.backgroundNoise.audioId">
-                {{ getAudioName(localFormData.config.backgroundNoise.audioId) }}
-              </div>
-              <div class="placeholder" v-else>无</div>
-            </div>
-            <div class="audio-actions">
-              <button type="button" class="btn btn-sm btn-primary" @click="$emit('openAudioModal', 'noise')">
-                <i class="fas fa-search"></i> 选择
-              </button>
-              <button v-if="localFormData.config.backgroundNoise.audioId" type="button" class="btn btn-sm btn-outline-secondary" @click="$emit('previewAudio', localFormData.config.backgroundNoise.audioId, 'noise')">
-                <i class="fas fa-play"></i> 试听
-              </button>
-            </div>
-          </div>
-          <div class="form-group form-group-sm">
-            <label>噪声声压级 (dB)</label>
-            <input type="number" v-model.number="localFormData.config.backgroundNoise.spl" class="form-control" min="0" max="120">
-          </div>
-          <div class="form-group">
-            <label>播放设备</label>
-            <div class="audio-selector" @click="$emit('openNoiseDeviceModal')">
-              <div class="selected-info" v-if="localFormData.config.backgroundNoise.deviceIds && localFormData.config.backgroundNoise.deviceIds.length > 0">
-                {{ getNoiseDeviceNames() }}
-              </div>
-              <div class="placeholder" v-else>未选择设备</div>
-            </div>
-            <button type="button" class="btn btn-sm btn-primary mt-1" @click="$emit('openNoiseDeviceModal')">
-              <i class="fas fa-search"></i> 选择设备
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="form-section dimension-config-section">
-      <div class="section-header">
-        <h4><i class="fas fa-chart-bar"></i> 评测维度配置</h4>
-      </div>
-      <p v-if="localFormData.algorithmType && associatedDimensions.length > 0" class="dimension-filter-hint">
-        <i class="fas fa-filter"></i> 已根据算法类型「{{ localFormData.algorithmType }}」过滤可用维度
-      </p>
-
-      <div class="dimension-sub-section">
-        <h5>评测维度</h5>
-        <div class="dimension-cloud">
-          <div
-            v-for="dim in filteredAvailableDimensions"
-            :key="dim.id"
-            class="dimension-chip"
-            :class="{ 'selected': isDimensionSelected(dim.name) }"
-            @click="toggleDimensionSelection(dim)"
+          <button
+            type="button"
+            class="test-type-btn"
+            :class="{ active: localFormData.test_type === 'e2e' }"
+            @click="switchTestType('e2e')"
           >
-            {{ dim.name }}
-          </div>
-        </div>
-        <div class="selected-dimensions" v-if="localFormData.config.dimensions.length > 0">
-          <div v-for="(dimension, index) in localFormData.config.dimensions" :key="index" class="selected-dimension-card">
-            <div class="dimension-card-header">
-              <span class="dimension-name">{{ dimension.name }}</span>
-              <button type="button" class="btn btn-icon btn-xs btn-outline-danger" @click="removeDimension(index)">
-                <i class="fas fa-times"></i>
-              </button>
-            </div>
-            <div class="dimension-card-body">
-              <div class="dimension-field">
-                <label>权重</label>
-                <input type="number" v-model.number="dimension.weight" class="form-control" min="0" max="100">
-              </div>
-              <div class="dimension-field">
-                <label>阈值</label>
-                <input type="number" v-model.number="dimension.threshold" class="form-control" min="0" max="100">
-              </div>
-            </div>
-          </div>
+            <i class="fas fa-microchip"></i> E2E
+          </button>
         </div>
       </div>
     </div>
+
+    <!-- ===== 轮次配置编辑器（替换旧的音频/噪声/维度三大区块） ===== -->
+    <div class="form-section round-editor-section">
+      <RoundConfigEditor
+        v-model="localFormData.config.rounds"
+        :test-type="localFormData.test_type || 'api'"
+        :case-algorithm-params="caseAlgorithmParams"
+        :api-input-params="apiInputParams"
+        :algorithm-type="localFormData.algorithmType"
+        @update:model-value="handleRoundsUpdate"
+        @open-audio-select="handleAudioSelectRequest"
+      />
+    </div>
+
+      <!-- RoundConfigEditor 已替换旧的音频/噪声/维度配置区块 -->
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, inject, nextTick } from 'vue';
 import AlgorithmSelector from '../../AlgorithmSelector.vue';
+import RoundConfigEditor from './RoundConfigEditor.vue';
 import { useAlgorithmConfig } from '../../../../composables/useAlgorithmConfig';
 import { useAlgorithmLabels } from '../../../../composables/useAlgorithmLabels';
 import { tagsApi } from '../../../../utils/api';
-import type { TestCaseFormData, Dimension, AudioConfig, PlaybackDevice } from './types';
+import type { TestCaseFormData, RoundConfigItem, PlaybackDevice } from './types';
 
 const props = defineProps<{
   formData: Partial<TestCaseFormData>;
@@ -427,10 +164,7 @@ const { getAlgorithmOptions } = useAlgorithmConfig();
 const { algorithmOptions: fallbackOptions, loadAlgorithms } = useAlgorithmLabels();
 
 const injectedAudioConfig = inject<any>('audioConfig');
-const injectedDimensionConfig = inject<any>('dimensionConfig');
-
 const audioConfig = props.audioConfig || injectedAudioConfig;
-const dimensionConfig = props.dimensionConfig || injectedDimensionConfig;
 
 const localFormData = ref<TestCaseFormData>(createInitialFormData());
 const tagsInput = ref('');
@@ -452,21 +186,51 @@ function createInitialFormData(): TestCaseFormData {
     group: '',
     tags: [],
     algorithmType: '',
+    test_type: 'api',
     config: {
-      audios: [{ audioId: '', testType: 'api', playbackDeviceId: '', spl: 65, playOrder: 0 }],
+      rounds: [{ roundNumber: 1, audios: [] }],
       dimensions: [],
-      backgroundNoise: { audioId: '', deviceIds: [], spl: 0 }
     }
   };
 }
 
-const hasAPIAudio = computed(() => {
-  return localFormData.value.config.audios.some(audio => audio.testType === 'api');
-});
+// ---- test_type 切换 ----
+function switchTestType(type: 'api' | 'e2e') {
+  localFormData.value.test_type = type;
+  emitFormData();
+}
 
-const hasE2eAudio = computed(() => {
-  return localFormData.value.config.audios.some(audio => audio.testType === 'e2e');
-});
+// ---- 轮次更新回调 ----
+function handleRoundsUpdate(rounds: RoundConfigItem[]) {
+  localFormData.value.config.rounds = rounds;
+  emitFormData();
+}
+
+// ---- 音频选择请求 ----
+function handleAudioSelectRequest(callback: (audioId: string, audioName?: string) => void) {
+  // 转发到父级处理（打开音频选择弹窗）
+  emit('openAudioModal', 'dry');
+  // 父级选择完成后调用 callback
+  pendingAudioCallback.value = callback;
+}
+
+const pendingAudioCallback = ref<((audioId: string, audioName?: string) => void) | null>(null);
+
+// ---- 算法参数定义（从 AlgorithmSelector 获取） ----
+const caseAlgorithmParams = ref<any[]>([]);
+const apiInputParams = ref<any[]>([]);
+
+function handleAlgorithmParamsChange(params: any) {
+  algorithmParams.value = params || {};
+  // 如果返回了 case_algorithm_params，保存到 ref
+  if (params?.caseAlgorithmParams) {
+    caseAlgorithmParams.value = params.caseAlgorithmParams;
+  }
+  if (params?.apiInputParams) {
+    apiInputParams.value = params.apiInputParams;
+  }
+  emitFormData();
+}
 
 const filteredAvailableTags = computed(() => {
     let tags = availableTags.value;
@@ -491,15 +255,7 @@ const playbackDevices = computed<PlaybackDevice[]>(() => {
   return audioConfig?.playbackDevices?.value || [];
 });
 
-const draggedAudioIndex = computed(() => audioConfig?.draggedAudioIndex?.value);
-const dragOverAudioIndex = computed(() => audioConfig?.dragOverAudioIndex?.value);
-const showTagSelector = computed(() => audioConfig?.showTagSelector?.value);
-const selectedTagsForInterleave = computed(() => audioConfig?.selectedTagsForInterleave?.value);
-const showTagDeviceSelector = computed(() => audioConfig?.showTagDeviceSelector?.value);
-const hasValidTagDeviceMapping = computed(() => audioConfig?.hasValidTagDeviceMapping?.value);
-const getTagDeviceMapping = computed(() => audioConfig?.getTagDeviceMapping?.value);
-const filteredAvailableDimensions = computed(() => dimensionConfig?.filteredAvailableDimensions?.value || []);
-const associatedDimensions = computed(() => dimensionConfig?.associatedDimensions?.value || []);
+// ---- 旧版音频相关 computed 已迁移到 RoundConfigEditor ----
 
 async function loadAlgorithmOptions() {
   try {
@@ -528,21 +284,6 @@ async function loadAvailableTags() {
   }
 }
 
-function normalizeParams(params: any): Record<string, any> {
-  if (!params || typeof params !== 'object') return {};
-  if (Array.isArray(params)) {
-    return params.reduce((acc: Record<string, any>, item: any) => {
-      const code = item.fieldCode || item.field_code;
-      const value = item.fieldValue || item.field_value;
-      if (code) {
-        acc[code] = value;
-      }
-      return acc;
-    }, {});
-  }
-  return params;
-}
-
 function initFormData() {
   const raw = props.formData || {};
   localFormData.value = {
@@ -552,18 +293,21 @@ function initFormData() {
     group: raw.group || raw.groupName || raw.group_name || '',
     tags: raw.tags || [],
     algorithmType: raw.algorithmType || raw.algorithm_type || '',
-    algorithmParams: normalizeParams(raw.algorithmParams || raw.algorithm_params || {}),
-    referenceParams: normalizeParams(raw.referenceParams || raw.reference_params || {}),
-    config: raw.config || {
-      audios: [{ audioId: '', testType: 'api', playbackDeviceId: '', spl: 65, playOrder: 0 }],
+    test_type: raw.test_type || 'api',
+    config: raw.config?.rounds ? raw.config : {
+      rounds: [{ roundNumber: 1, audios: [] }],
       dimensions: [],
-      backgroundNoise: { audioId: '', deviceIds: [], spl: 0 }
     }
   };
-  if (localFormData.value.algorithmType && dimensionConfig) {
-    dimensionConfig.updateAssociatedDimensions(localFormData.value.algorithmType);
-  }
-  algorithmParams.value = localFormData.value.algorithmParams;
+  const firstRound = localFormData.value.config?.rounds?.[0];
+  const roundAlgoParams = firstRound?.algorithmParams || [];
+  algorithmParams.value = Array.isArray(roundAlgoParams)
+    ? roundAlgoParams.reduce((acc: Record<string, any>, p: any) => { if (p.field_code) acc[p.field_code] = p.field_value; return acc; }, {})
+    : roundAlgoParams || {};
+}
+
+function emitFormData() {
+  emit('update', { ...localFormData.value });
 }
 
 function addTags() {
@@ -592,127 +336,11 @@ function autoGenerateName() {
   }
 }
 
-function handleAlgorithmParamsChange(params: Record<string, any>) {
-  algorithmParams.value = params;
-}
-
 function handleAlgorithmTypeChange() {
-  if (localFormData.value.algorithmType && dimensionConfig) {
-    dimensionConfig.updateAssociatedDimensions(localFormData.value.algorithmType);
-  }
+  // test_type 切换时，RoundConfigEditor 会根据 scope 过滤
 }
 
-function getAudioName(audioId: string | number): string {
-  return audioConfig?.getAudioName?.(audioId) || '未知音频';
-}
-
-function getAudioTags(audioId: string | number): string {
-  return audioConfig?.getAudioTags?.(audioId) || '';
-}
-
-function getNormalizedTags(tagsStr: string): string[] {
-  return audioConfig?.getNormalizedTags?.(tagsStr) || [];
-}
-
-function getDeviceName(deviceId: string | number): string {
-  return audioConfig?.getDeviceName?.(deviceId) || '未知设备';
-}
-
-function getNoiseDeviceNames(): string {
-  return audioConfig?.getNoiseDeviceNames?.(localFormData.value.config.backgroundNoise) || '';
-}
-
-function handleAudioDragStart(index: number, event: DragEvent) {
-  audioConfig?.handleAudioDragStart?.(index, event);
-}
-
-function handleAudioDragEnd() {
-  audioConfig?.handleAudioDragEnd?.();
-}
-
-function handleAudioDragOver(index: number, event: DragEvent) {
-  audioConfig?.handleAudioDragOver?.(index, event);
-}
-
-function handleAudioDrop(index: number, event: DragEvent) {
-  audioConfig?.handleAudioDrop?.(index, localFormData.value.config.audios);
-}
-
-function clearNoiseConfig() {
-  audioConfig?.clearNoiseConfig?.(localFormData.value.config.backgroundNoise);
-}
-
-function getUniqueTagsFromConfigs() {
-  return audioConfig?.getUniqueTagsFromConfigs?.(localFormData.value.config.audios) || [];
-}
-
-function sortByFileName(order: 'asc' | 'desc') {
-  audioConfig?.sortByFileName?.(localFormData.value.config.audios, order);
-}
-
-function shuffleAudioConfigs() {
-  audioConfig?.shuffleAudioConfigs?.(localFormData.value.config.audios);
-}
-
-function clearAllAudioConfigs() {
-  audioConfig?.clearAllAudioConfigs?.(localFormData.value.config.audios);
-}
-
-function addAudioConfig() {
-  audioConfig?.addAudioConfig?.(localFormData.value.config.audios);
-}
-
-function removeAudioConfig(index: number) {
-  audioConfig?.removeAudioConfig?.(index, localFormData.value.config.audios);
-}
-
-function copyAudioConfig(index: number) {
-  audioConfig?.copyAudioConfig?.(index, localFormData.value.config.audios);
-}
-
-function toggleTagSelector() {
-  audioConfig?.toggleTagSelector?.();
-}
-
-function toggleTagSelection(tag: string) {
-  audioConfig?.toggleTagSelection?.(tag);
-}
-
-function interleaveByTags(audios: AudioConfig[]) {
-  audioConfig?.interleaveByTags?.(audios);
-}
-
-function toggleTagDeviceSelector(audios: AudioConfig[]) {
-  audioConfig?.toggleTagDeviceSelector?.(audios);
-}
-
-function getDeviceForTag(tag: string): string {
-  return audioConfig?.getDeviceForTag?.(tag) || '';
-}
-
-function updateTagDeviceMapping(tag: string, deviceId: string) {
-  audioConfig?.updateTagDeviceMapping?.(tag, deviceId);
-}
-
-function getTagAudioCount(tag: string, audios: AudioConfig[]): number {
-  return audioConfig?.getTagAudioCount?.(tag, audios) || 0;
-}
-
-function assignDeviceByTags(audios: AudioConfig[]) {
-  audioConfig?.assignDeviceByTags?.(audios);
-}
-
-function isDimensionSelected(dimensionName: string): boolean {
-  return dimensionConfig?.isDimensionSelected?.(dimensionName, localFormData.value.config.dimensions) || false;
-}
-
-function toggleDimensionSelection(dimension: any) {
-  dimensionConfig?.toggleDimensionSelection?.(dimension, localFormData.value.config.dimensions);
-}
-
-function removeDimension(index: number) {
-  dimensionConfig?.removeDimension?.(index, localFormData.value.config.dimensions);
-}
+// ---- 旧版音频/噪声/维度函数已迁移到 RoundConfigEditor ----
 
 watch(() => props.formData, () => {
   isSyncingFromParent = true;
@@ -726,11 +354,8 @@ function syncConfigFromParent() {
   if (!props.formData?.config) return;
   isSyncingFromParent = true;
   const parentConfig = props.formData.config;
-  if (parentConfig.audios && Array.isArray(parentConfig.audios)) {
-    localFormData.value.config.audios = parentConfig.audios;
-  }
-  if (parentConfig.backgroundNoise) {
-    Object.assign(localFormData.value.config.backgroundNoise, parentConfig.backgroundNoise);
+  if (parentConfig.rounds && Array.isArray(parentConfig.rounds)) {
+    localFormData.value.config.rounds = parentConfig.rounds;
   }
   if (parentConfig.dimensions && Array.isArray(parentConfig.dimensions)) {
     localFormData.value.config.dimensions = parentConfig.dimensions;
@@ -756,12 +381,6 @@ onMounted(async () => {
   await loadAlgorithms();
   await loadAlgorithmOptions();
   await loadAvailableTags();
-  if (audioConfig?.loadResources) {
-    await audioConfig.loadResources();
-  }
-  if (dimensionConfig?.loadDimensions) {
-    await dimensionConfig.loadDimensions();
-  }
   initFormData();
 });
 </script>
@@ -779,45 +398,20 @@ onMounted(async () => {
   border: 1px solid var(--border-color);
 }
 
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.section-header h4 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.section-header h4 i {
-  color: var(--primary-color);
-}
-
-.section-actions {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.action-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.action-group-label {
-  font-size: 12px;
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
   color: var(--text-secondary);
-  margin-right: 4px;
+}
+
+.empty-state i {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state p {
+  margin-bottom: 16px;
 }
 
 .form-row {
@@ -1024,477 +618,61 @@ onMounted(async () => {
   cursor: default;
 }
 
-.tag-selector-panel {
-  background: white;
-  border: 2px solid var(--primary-color);
-  border-radius: var(--border-radius-lg);
-  padding: 16px;
-  margin-bottom: 16px;
+/* ===== test-type-switcher ===== */
+.test-type-section {
+  padding: 14px 20px !important;
 }
 
-.tag-selector-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.tag-checkbox-item {
-  padding: 6px 14px;
-  background: var(--secondary-light);
-  border-radius: var(--border-radius-full);
-  cursor: pointer;
-  font-size: 13px;
-  transition: all 0.2s ease;
-}
-
-.tag-checkbox-item:hover {
-  background: var(--secondary-color);
-  color: white;
-}
-
-.tag-checkbox-item.selected {
-  background: var(--primary-color);
-  color: white;
-}
-
-.tag-interleave-preview {
-  margin-bottom: 12px;
-  padding: 12px;
-  background: var(--background-secondary);
-  border-radius: var(--border-radius-md);
-}
-
-.preview-title {
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-bottom: 8px;
-}
-
-.interleave-order-preview {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.interleave-tag {
-  padding: 4px 10px;
-  background: var(--primary-color);
-  color: white;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.interleave-arrow {
-  color: var(--text-secondary);
-  font-weight: bold;
-}
-
-.tag-selector-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.tag-device-mapping-list {
-  margin-bottom: 12px;
-}
-
-.tag-device-mapping-row {
+.test-type-switcher-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-color);
+  gap: 16px;
 }
 
-.tag-device-mapping-row:last-child {
-  border-bottom: none;
-}
-
-.tag-name {
-  font-weight: 500;
-  min-width: 80px;
-}
-
-.arrow {
-  color: var(--text-secondary);
-}
-
-.device-select {
-  flex: 1;
-  max-width: 250px;
-}
-
-.audio-count {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.tag-device-preview {
-  margin-bottom: 12px;
-  padding: 12px;
-  background: var(--background-secondary);
-  border-radius: var(--border-radius-md);
-}
-
-.preview-item {
-  font-size: 13px;
-  margin-bottom: 4px;
-  color: var(--text-primary);
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: var(--text-secondary);
-}
-
-.empty-state i {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state p {
-  margin-bottom: 16px;
-}
-
-.audio-config-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.audio-config-card {
-  background: white;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-lg);
-  overflow: hidden;
-  transition: all 0.2s ease;
-}
-
-.audio-config-card:hover {
-  box-shadow: var(--shadow-sm);
-}
-
-.audio-config-card.is-dragging {
-  opacity: 0.5;
-  border-style: dashed;
-}
-
-.audio-config-card.drag-over {
-  border-color: var(--primary-color);
-  border-width: 2px;
-}
-
-.audio-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
-  background: var(--background-secondary);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.audio-card-header-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.drag-handle {
-  cursor: grab;
-  color: var(--text-secondary);
-  padding: 4px;
-}
-
-.drag-handle:hover {
-  color: var(--primary-color);
-}
-
-.audio-index {
+.test-type-label {
+  font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 13px;
 }
 
-.audio-name {
-  font-size: 12px;
-  color: var(--text-secondary);
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.audio-card-actions {
+.test-type-switcher {
   display: flex;
-  gap: 6px;
-}
-
-.btn-icon {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--border-radius-md);
-}
-
-.audio-card-body {
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.audio-field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.audio-field-full {
-  width: 100%;
-}
-
-.audio-field-row {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.audio-field-row .audio-field {
-  flex: 1;
-  min-width: 150px;
-}
-
-.audio-field-sm {
-  max-width: 120px;
-}
-
-.audio-field label {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
-
-.audio-selector {
-  padding: 10px 12px;
   border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
-  background: white;
-  cursor: pointer;
-  min-height: 40px;
-  transition: all 0.2s ease;
-}
-
-.audio-selector:hover {
-  border-color: var(--primary-color);
-}
-
-.selected-info {
+  border-radius: 8px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.test-type-btn {
+  padding: 8px 20px;
   font-size: 13px;
-  color: var(--text-primary);
-}
-
-.placeholder {
-  color: var(--text-light);
-  font-size: 13px;
-}
-
-.audio-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.audio-tags {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px;
-  background: white;
-  border-radius: var(--border-radius-sm);
-}
-
-.audio-tags-label {
-  font-size: 11px;
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.audio-tags-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.audio-tag {
-  padding: 2px 8px;
-  font-size: 11px;
-  background: var(--primary-light);
-  color: var(--primary-color);
-  border-radius: var(--border-radius-full);
-}
-
-.add-audio-btn {
-  margin-top: 12px;
-}
-
-.noise-config-body {
-  background: white;
-  border-radius: var(--border-radius-md);
-  padding: 16px;
-}
-
-.noise-config-body h5 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
   font-weight: 500;
-  color: var(--text-primary);
-}
-
-.dimension-config-section {
-  background: white;
-}
-
-.dimension-filter-hint {
+  border: none;
+  background: var(--background-primary);
+  color: var(--text-secondary);
+  cursor: pointer;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 14px;
-  background: var(--info-light);
-  color: var(--info-color);
-  border-radius: var(--border-radius-md);
-  font-size: 13px;
-  margin-bottom: 16px;
-}
-
-.dimension-sub-section {
-  margin-bottom: 20px;
-  padding: 16px;
-  background: var(--background-secondary);
-  border-radius: var(--border-radius-md);
-}
-
-.dimension-sub-section:last-child {
-  margin-bottom: 0;
-}
-
-.dimension-sub-section h5 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.dimension-cloud {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-
-.dimension-chip {
-  padding: 8px 16px;
-  background: var(--secondary-light);
-  color: var(--secondary-color);
-  border-radius: var(--border-radius-full);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid transparent;
   transition: all 0.2s ease;
 }
 
-.dimension-chip:hover {
-  background: rgba(22, 119, 255, 0.15);
-  border-color: var(--primary-color);
-  transform: translateY(-1px);
+.test-type-btn:hover {
+  background: var(--background-secondary);
 }
 
-.dimension-chip.selected {
-  background: var(--secondary-color);
+.test-type-btn.active {
+  background: var(--primary-color);
   color: white;
-  border-color: var(--secondary-color);
 }
 
-.selected-dimensions {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
+.test-type-btn + .test-type-btn {
+  border-left: 1px solid var(--border-color);
 }
 
-.selected-dimension-card {
-  background: white;
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius-md);
-  overflow: hidden;
-}
-
-.dimension-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px;
-  background: var(--background-secondary);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.dimension-name {
-  font-weight: 500;
-  font-size: 13px;
-  color: var(--text-primary);
-}
-
-.btn-xs {
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  font-size: 10px;
-}
-
-.dimension-card-body {
-  padding: 12px 14px;
-  display: flex;
-  gap: 16px;
-}
-
-.dimension-field {
-  flex: 1;
-}
-
-.dimension-field label {
-  display: block;
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-bottom: 4px;
-}
-
-.dimension-field .form-control {
-  height: 36px;
-  font-size: 13px;
-}
-
-@media (max-width: 768px) {
-  .audio-card-body {
-    grid-template-columns: 1fr;
-  }
-  
-  .section-actions {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .selected-dimensions {
-    grid-template-columns: 1fr;
-  }
+/* ===== round-editor-section ===== */
+.round-editor-section {
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
 }
 </style>

@@ -2,11 +2,12 @@ from flask import request
 from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, \
     TaskDevice, TaskAPI, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
-from backend.utils.error_codes import ErrorCode
-from backend.utils.report_utils import ReportUtils
-from backend.utils.report_query_builder import ReportQueryBuilder
-from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
+from backend.utils.web.response import success_response, error_response
+from backend.utils.web.error_codes import ErrorCode
+from backend.utils.report.report_utils import ReportUtils
+from backend.utils.report.report_query_builder import ReportQueryBuilder
+from backend.utils.common.result_data_store import load_full_result_data
+from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
 from backend.schemas.report import CompareReportsRequest
 from datetime import datetime, timedelta, timezone
 import json
@@ -196,14 +197,8 @@ class ReportControllerCompare(ReportControllerBase):
                 })
 
                 algo_res = result.algorithm_result
-                result_data = result.result_data
-
-                if result_data and isinstance(result_data, str) and result_data.strip():
-                    try:
-                        result_data = json.loads(result_data)
-                    except Exception:
-                        result_data = None
-                else:
+                result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+                if not isinstance(result_data, dict):
                     result_data = None
 
                 if algo_res or result_data:
@@ -234,19 +229,11 @@ class ReportControllerCompare(ReportControllerBase):
         adjusted_reference_params = None
         
         for result in case_results:
-            result_data = result.result_data
-            if result_data:
-                if isinstance(result_data, str) and result_data.strip():
-                    try:
-                        result_data = json.loads(result_data)
-                    except json.JSONDecodeError:
-                        result_data = None
-                elif not isinstance(result_data, dict):
-                    result_data = None
-                if result_data and isinstance(result_data, dict):
-                    adjusted_ref = result_data.get('adjusted_reference_params')
-                    if adjusted_ref:
-                        adjusted_reference_params = adjusted_ref
+            result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+            if result_data and isinstance(result_data, dict):
+                adjusted_ref = result_data.get('adjusted_reference_params')
+                if adjusted_ref:
+                    adjusted_reference_params = adjusted_ref
 
         # 双记录架构：使用 adjusted params 覆盖 config 中的 reference_params
         effective_config = config
@@ -271,88 +258,118 @@ class ReportControllerCompare(ReportControllerBase):
     @staticmethod
     def _build_audios_list_compare(test_case, report_task_type):
         config = test_case.config or {}
-        audios_config = config.get('audios', [])
+        rounds = config.get('rounds', [])
+        if not rounds:
+            return []
+        
         audios_list = []
         
-        device_ids = set()
-        for audio_cfg in audios_config:
-            dev_id = audio_cfg.get('device_id')
-            if dev_id:
-                device_ids.add(dev_id)
+        # 收集所有轮的设备 ID
+        all_device_ids = set()
+        for round_item in rounds:
+            if not isinstance(round_item, dict):
+                continue
+            for cfg in round_item.get('audios', []):
+                dev_id = cfg.get('device_id')
+                if dev_id:
+                    all_device_ids.add(dev_id)
         
         devices = {}
-        if device_ids:
-            device_list = Device.query.filter(Device.id.in_(list(device_ids))).all()
+        if all_device_ids:
+            device_list = Device.query.filter(Device.id.in_(list(all_device_ids))).all()
             devices = {d.id: d.name for d in device_list}
-
+        
         # 双记录架构：所有音频属于记录的 test_type
         record_test_type = test_case.test_type or 'api'
-        for cfg in audios_config:
-            audio_id = cfg.get('audio_id')
-            if audio_id:
-                audio = db.session.get(Audio, audio_id)
-                if audio:
-                    dev_id = cfg.get('device_id')
-                    audios_list.append({
-                        "audio_type": record_test_type,
-                        "id": audio.id,
-                        "filename": audio.original_filename or audio.name,
-                        "duration": audio.duration,
-                        "url": f"/api/v1/audios/{audio.id}/stream",
-                        "spl": cfg.get('spl'),
-                        "play_order": cfg.get('play_order'),
-                        "device_id": dev_id,
-                        "device_name": devices.get(dev_id) if dev_id else None
+        
+        # 按轮次收集音频
+        per_round_dry = []
+        noise_audios = []
+        for round_item in rounds:
+            if not isinstance(round_item, dict):
+                continue
+            round_number = round_item.get('roundNumber', 1)
+            round_dry = []
+            
+            for cfg in round_item.get('audios', []):
+                audio_id = cfg.get('audio_id')
+                if audio_id:
+                    audio = db.session.get(Audio, audio_id)
+                    if audio:
+                        dev_id = cfg.get('device_id')
+                        round_dry.append({
+                            "audio_type": record_test_type,
+                            "id": audio.id,
+                            "filename": audio.original_filename or audio.name,
+                            "duration": audio.duration,
+                            "url": f"/api/v1/audios/{audio.id}/stream",
+                            "spl": cfg.get('spl'),
+                            "play_order": cfg.get('play_order'),
+                            "device_id": dev_id,
+                            "device_name": devices.get(dev_id) if dev_id else None,
+                            "roundNumber": round_number,
+                        })
+            
+            # 噪声
+            background_noise = round_item.get('backgroundNoise') or {}
+            if background_noise.get('audio_id'):
+                noise_audio = db.session.get(Audio, background_noise['audio_id'])
+                if noise_audio:
+                    noise_audios.append({
+                        "audio_type": "noise",
+                        "id": noise_audio.id,
+                        "filename": noise_audio.name,
+                        "duration": noise_audio.duration,
+                        "url": f"/api/v1/audios/{noise_audio.id}/stream",
+                        "noise_spl": background_noise.get('spl'),
+                        "roundNumber": round_number,
                     })
-
-        background_noise = config.get('background_noise', {})
-        if background_noise.get('audio_id'):
-            noise_audio = db.session.get(Audio, background_noise['audio_id'])
-            if noise_audio:
-                audios_list.append({
-                    "audio_type": "noise",
-                    "id": noise_audio.id,
-                    "filename": noise_audio.name,
-                    "duration": noise_audio.duration,
-                    "url": f"/api/v1/audios/{noise_audio.id}/stream",
-                    "noise_spl": background_noise.get('spl')
-                })
-
-        audios_list.sort(key=lambda x: (x.get('play_order') is None, x.get('play_order') or 999))
-        
-        dry_audios = [a for a in audios_list if a.get('audio_type') != 'noise']
-        noise_audios = [a for a in audios_list if a.get('audio_type') == 'noise']
-        
-        from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
-        overlap_time = CaseParameterExtractor.get_overlap_time(config) if config else 0
-        overlap_rate = CaseParameterExtractor.get_overlap_rate(config) if config else 0
-        
-        timeline_start = 0
-        prev_end_time = 0
-        
-        for audio_item in dry_audios:
-            duration = audio_item.get('duration') or 0
             
-            if audio_item == dry_audios[0]:
-                timeline_start = 0
-            else:
-                if overlap_time and overlap_time > 0:
-                    timeline_start = prev_end_time - overlap_time
-                    if timeline_start < 0:
-                        timeline_start = 0
-                elif overlap_rate is not None and overlap_rate > 0:
-                    timeline_start = prev_end_time * (1 - overlap_rate)
+            audios_list.extend(round_dry)
+            per_round_dry.append(round_dry)
+        
+        # 每轮内部排序
+        for round_dry in per_round_dry:
+            round_dry.sort(key=lambda x: (x.get('play_order') is None, x.get('play_order') or 999))
+        
+        # 获取 overlap 参数（取首轮配置）
+        first_round = rounds[0] if rounds else {}
+        overlap_config = {
+            'algorithm_params': first_round.get('algorithmParams', {}) if isinstance(first_round, dict) else {}
+        }
+        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
+        overlap_time = CaseParameterExtractor.get_overlap_time(overlap_config) if overlap_config else 0
+        overlap_rate = CaseParameterExtractor.get_overlap_rate(overlap_config) if overlap_config else 0
+        
+        # 按轮次计算 timeline
+        global_offset = 0
+        for round_dry in per_round_dry:
+            prev_end_time = 0
+            for i, audio_item in enumerate(round_dry):
+                duration = audio_item.get('duration') or 0
+                if i == 0:
+                    timeline_start = global_offset
                 else:
-                    timeline_start = prev_end_time
-            
-            audio_item['timelineStart'] = round(timeline_start, 3)
-            audio_item['timelineEnd'] = round(timeline_start + duration, 3)
-            prev_end_time = timeline_start + duration
+                    if overlap_time and overlap_time > 0:
+                        timeline_start = prev_end_time - overlap_time
+                        if timeline_start < global_offset:
+                            timeline_start = global_offset
+                    elif overlap_rate is not None and overlap_rate > 0:
+                        elapsed = prev_end_time - global_offset
+                        timeline_start = global_offset + elapsed * (1 - overlap_rate)
+                    else:
+                        timeline_start = prev_end_time
+                
+                audio_item['timelineStart'] = round(timeline_start, 3)
+                audio_item['timelineEnd'] = round(timeline_start + duration, 3)
+                prev_end_time = timeline_start + duration
+            global_offset = prev_end_time
         
         for noise_item in noise_audios:
             noise_item['timelineStart'] = 0
             noise_item['timelineEnd'] = round(noise_item.get('duration') or 0, 3)
         
+        audios_list.extend(noise_audios)
         return audios_list
 
     @staticmethod

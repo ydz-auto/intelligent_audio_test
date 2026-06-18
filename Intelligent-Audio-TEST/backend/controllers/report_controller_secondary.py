@@ -6,11 +6,11 @@ from backend.models.models import (
     ReportStatus, ReportType, TaskStatus
 )
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
-from backend.utils.error_codes import ErrorCode
-from backend.utils.report_utils import ReportUtils
-from backend.utils.log_handler import log_and_emit
-from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
+from backend.utils.web.response import success_response, error_response
+from backend.utils.web.error_codes import ErrorCode
+from backend.utils.report.report_utils import ReportUtils
+from backend.utils.web.log_handler import log_and_emit
+from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
 from backend.schemas.report import SecondaryCompareRequest
 from backend.schemas.common import IdData
 from backend.controllers.report_controller_base import ReportControllerBase
@@ -384,7 +384,7 @@ class ReportControllerSecondary(ReportControllerBase):
                 test_cases, _ = ReportControllerTask._get_task_test_cases(task_ids)
                 case_categories_list, case_tags_list = [], []
                 if test_cases:
-                    from backend.utils.report_query_builder import ReportQueryBuilder
+                    from backend.utils.report.report_query_builder import ReportQueryBuilder
                     case_categories_list, case_tags_list = ReportQueryBuilder.extract_case_categories_and_tags(test_cases)
 
                 if not case_categories_list:

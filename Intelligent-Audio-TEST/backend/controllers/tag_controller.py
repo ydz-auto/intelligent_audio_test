@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from backend.models.models import Tag, TagCategory
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
+from backend.utils.web.response import success_response, error_response
 from backend.schemas.testcase import (
     TagCategoryItem,
     TagCategoryListData,

@@ -196,7 +196,7 @@
                   <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
                   暂无关联用例
                 </div>
-                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: 8px; background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: 8px; background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
                     <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
@@ -207,6 +207,16 @@
                         testCase.status === 'calculating' ? '计算指标中' : 
                         testCase.status === 'queued' ? '排队中' : '等待中' 
                       }} ({{ testCase.duration || '' }})
+                    </div>
+                    <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+                      <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
+                        第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
+                      </span>
+                      <div style="flex: 1; height: 3px; background: var(--border-color, #e5e7eb); border-radius: 2px; overflow: hidden; min-width: 40px;">
+                        <div style="height: 100%; background: var(--primary-color, #1677FF); border-radius: 2px; transition: width 0.3s ease;"
+                             :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div class="progress-actions" style="display: flex; align-items: center; gap: 8px;">

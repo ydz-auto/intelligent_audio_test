@@ -97,8 +97,14 @@ export function useTestCaseManagement() {
           if (testTypeFilter.value === 'e2e' && type === 'e2e_test') return true;
           if (testTypeFilter.value === 'api' && type === 'api_test') return true;
           
-          // 回退：检查 audios 数组中的 testType
-          const audios = testCase.config?.audios || [];
+          // 回退：检查 rounds 或 audios 数组
+          const config: any = testCase.config || {};
+          const rounds = config.rounds || [];
+          if (Array.isArray(rounds) && rounds.length > 0) {
+            const hasAudios = rounds.some((r: any) => Array.isArray(r.audios) && r.audios.length > 0);
+            if (hasAudios) return true;
+          }
+          const audios = config.audios || [];
           if (testTypeFilter.value === 'e2e') return audios.some((a: any) => (a.testType || a.test_type) === 'e2e');
           if (testTypeFilter.value === 'api') return audios.some((a: any) => (a.testType || a.test_type) === 'api');
           

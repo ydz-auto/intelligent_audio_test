@@ -1,7 +1,7 @@
 from flask import request
 from backend.models.models import TestCaseGroup, TestCase
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
+from backend.utils.web.response import success_response, error_response
 from backend.schemas.group import GroupItem, GroupListData, GroupCreateRequest, GroupUpdateRequest, GroupMoveCasesRequest
 from sqlalchemy import func
 import uuid

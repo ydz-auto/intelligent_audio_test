@@ -29,7 +29,6 @@
             },
             "round_evaluation": {
                 "wer": 0.02,
-                "bleu": 0.95,
                 "llm_judge": 4.9
             }
         },
@@ -42,7 +41,6 @@
             "response_metrics": {},
             "round_evaluation": {
                 "wer": 0.03,
-                "bleu": 0.93,
                 "llm_judge": 4.7
             }
         },
@@ -56,7 +54,6 @@
             "response_metrics": {},
             "round_evaluation": {
                 "wer": 0.04,
-                "bleu": 0.90,
                 "llm_judge": 4.5
             }
         }

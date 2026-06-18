@@ -1,6 +1,20 @@
 export { ErrorCode } from './errorCode';
 export type { APIResponse, PaginatedData } from './errorCode';
 
+// rounds-as-top-level 架构核心类型 re-export
+export type {
+  AlgorithmParamItem,
+  AudioConfig,
+  DimensionConfig,
+  BackgroundNoiseConfig,
+  RoundEvaluationConfig,
+  VoiceprintConfig,
+  InterfererConfigItem,
+  InterruptionConfig,
+  RoundConfigItem,
+  TestCaseConfig,
+} from '../../components/common/test-case/TestCaseModal/types';
+
 export interface PaginatedResponse<T> {
     items: T[];
     total: number;
@@ -126,15 +140,15 @@ export interface TestCaseFormData {
     name: string;
     description?: string;
     type?: string;
-    config?: Record<string, any>;
+    test_type?: 'api' | 'e2e';
+    related_case_id?: string | number | null;
+    config?: import('../../components/common/test-case/TestCaseModal/types').TestCaseConfig;
     groupId?: string | number;
     group?: string;
     tags?: string[];
     tagsInput?: string;
     translationDirectionId?: string | number | null;
     algorithmType?: string;
-    algorithmParams?: Record<string, any>;
-    referenceParams?: Record<string, any>;
 }
 
 export interface GroupFormData {

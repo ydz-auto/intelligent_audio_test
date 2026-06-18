@@ -490,7 +490,20 @@ export const useTestCaseStore = defineStore('testCase', () => {
         const tc = testCases.value.find(t => t.id === id);
         if (tc && tc.config) {
           const config = { ...tc.config };
-          if (config.audios) {
+          // Rounds-based format
+          if (config.rounds && Array.isArray(config.rounds)) {
+            config.rounds = config.rounds.map((round: any) => ({
+              ...round,
+              audios: Array.isArray(round.audios)
+                ? round.audios.map((audio: any) => ({
+                    ...audio,
+                    playbackDeviceId: playbackDevices.deviceId
+                  }))
+                : round.audios
+            }));
+          }
+          // Legacy flat format fallback
+          else if (config.audios) {
             config.audios = config.audios.map((audio: any) => {
               const audioType = (audio.testType || audio.test_type || '').toLowerCase();
               if (audioType === 'e2e') {
@@ -518,7 +531,14 @@ export const useTestCaseStore = defineStore('testCase', () => {
         const tc = testCases.value.find(t => t.id === id);
         if (tc && tc.config) {
           const config = { ...tc.config };
-          if (config.audios) {
+          if (config.rounds && Array.isArray(config.rounds)) {
+            config.rounds = config.rounds.map((round: any) => ({
+              ...round,
+              audios: Array.isArray(round.audios)
+                ? round.audios.map((audio: any) => ({ ...audio, spl: spl.value }))
+                : round.audios
+            }));
+          } else if (config.audios) {
             config.audios = config.audios.map((audio: any) => {
               const audioType = (audio.testType || audio.test_type || '').toLowerCase();
               if (audioType === 'e2e') {
@@ -579,7 +599,17 @@ export const useTestCaseStore = defineStore('testCase', () => {
         const tc = testCases.value.find(t => t.id === id);
         if (tc && tc.config) {
           const config = { ...tc.config };
+          // Both rounds and legacy formats store dimensions at top level
           config.dimensions = dimensions;
+          // For rounds format, also update evaluation within each round
+          if (config.rounds && Array.isArray(config.rounds)) {
+            config.rounds = config.rounds.map((round: any) => ({
+              ...round,
+              evaluation: round.evaluation
+                ? { ...round.evaluation, dimensions: dimensions }
+                : { dimensions: dimensions }
+            }));
+          }
           tc.config = config;
         }
       });
@@ -599,11 +629,22 @@ export const useTestCaseStore = defineStore('testCase', () => {
         const tc = testCases.value.find(t => t.id === id);
         if (tc) {
           const config = tc.config ? { ...tc.config } : {};
-          config.backgroundNoise = {
+          const noiseConfig = {
             audioId: audioId,
             spl: spl,
-            deviceIds: deviceIds
+            deviceIds: deviceIds,
+            loop: false,
           };
+          // Rounds-based format: update backgroundNoise in each round
+          if (config.rounds && Array.isArray(config.rounds)) {
+            config.rounds = config.rounds.map((round: any) => ({
+              ...round,
+              backgroundNoise: noiseConfig
+            }));
+          } else {
+            // Legacy flat format
+            config.backgroundNoise = { audioId: audioId, spl: spl, deviceIds: deviceIds };
+          }
           tc.config = config;
         }
       });

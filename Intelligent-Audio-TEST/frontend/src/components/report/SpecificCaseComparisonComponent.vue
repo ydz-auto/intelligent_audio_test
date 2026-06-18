@@ -254,6 +254,7 @@
                   :class="getOverallStatus(caseItem)"
                 ></span>
                 <div class="case-name">{{ caseItem.name }}</div>
+                <span v-if="isMultiRoundCase(caseItem)" class="multi-round-badge">多轮</span>
                 <span class="case-category">{{ caseItem.category || '未分类' }}</span>
                 <span v-if="caseItem.id" class="case-id-badge" @click.stop="copyToClipboard(caseItem.id)" title="点击复制ID">
                   <i class="fas fa-copy"></i> 用例ID: {{ caseItem.id }}
@@ -402,6 +403,7 @@ import TestCaseReportDetail from '../common/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/PaginationComponent.vue'
 import { reportsApi } from '../../utils/api'
 import { API_CONFIG } from '../../utils/config'
+import { reportService } from '../../services/reportService'
 import { useNotification } from '../../composables/useNotification'
 import '../../assets/styles/components/report-filter-card.css'
 
@@ -1082,6 +1084,51 @@ function toTextMap(objWithResults) {
   return result
 }
 
+const normalizeMetricValue = (algorithmResult, metricName, dimensions) => {
+  if (algorithmResult && typeof algorithmResult === 'object' && 'rounds' in algorithmResult && Array.isArray(algorithmResult.rounds)) {
+    const value = reportService.getMetricValue(algorithmResult, metricName, dimensions)
+    if (value !== null && value !== undefined) return value
+    return '—'
+  }
+  if (dimensions && Array.isArray(dimensions)) {
+    const dim = dimensions.find(d => (d.dimension_name || d.name) === metricName)
+    if (dim && dim.value !== undefined && dim.value !== null) return dim.value
+  }
+  return '—'
+}
+
+const isMultiRoundCase = (caseItem) => {
+  if (caseItem.isMultiRound || caseItem.is_multi_round) return true
+  const algorithmResult = caseItem.algorithmResult || caseItem.algorithm_result
+  if (algorithmResult && typeof algorithmResult === 'object') {
+    return reportService.parseMultiRoundResult(algorithmResult).isMultiRound
+  }
+  const algoResults = caseItem.algorithm_results || caseItem.algorithmResults
+  if (Array.isArray(algoResults)) {
+    return algoResults.some(r => {
+      if (!r || typeof r !== 'object') return false
+      const val = r.value
+      return val && typeof val === 'object' && 'rounds' in val && Array.isArray(val.rounds)
+    })
+  }
+  return false
+}
+
+const getCaseAlgorithmResult = (caseItem) => {
+  const algorithmResult = caseItem.algorithmResult || caseItem.algorithm_result
+  if (algorithmResult && typeof algorithmResult === 'object' && 'rounds' in algorithmResult) return algorithmResult
+  const algoResults = caseItem.algorithm_results || caseItem.algorithmResults
+  if (Array.isArray(algoResults)) {
+    const multiRoundItem = algoResults.find(r => {
+      if (!r || typeof r !== 'object') return false
+      const val = r.value
+      return val && typeof val === 'object' && 'rounds' in val && Array.isArray(val.rounds)
+    })
+    if (multiRoundItem) return multiRoundItem.value
+  }
+  return null
+}
+
 // Computed
 const allDevices = computed(() => {
   // 从所有可能的cases数据源中获取设备和API名称
@@ -1483,28 +1530,36 @@ const downloadCaseLogZip = async (caseItem) => {
 // 为 TestCaseReportDetail 准备数据
 const prepareComparisonData = (caseItem) => {
   const data = {}
-  const metricsMap = toMetricsMap(caseItem)  // 扁平格式: {WER: 63.0, wer_zh: 0.0}
+  const metricsMap = toMetricsMap(caseItem)
   const asrMap = toTextMap(caseItem.asr)
   const tranMap = toTextMap(caseItem.translation)
-  
-  // 判断 metrics 是否是扁平格式（不在设备分组内）
+  const algorithmResult = getCaseAlgorithmResult(caseItem)
+  const dimensions = caseItem.dimensions || caseItem.dimensionScores || caseItem.dimension_scores
+  const multiRound = isMultiRoundCase(caseItem)
+
   const isFlatFormat = !Object.keys(metricsMap).some(k => allDevices.value.includes(k))
-  
+
   allDevices.value.forEach(device => {
+    let deviceMetrics
     if (isFlatFormat) {
-      // 扁平格式：所有设备共享相同的指标数据
-      data[device] = {
-        metrics: metricsMap,  // 使用完整的指标对象
-        asr: { text: asrMap?.[device]?.text || '-' },
-        trans: { text: tranMap?.[device]?.text || '-' }
-      }
+      deviceMetrics = { ...metricsMap }
     } else {
-      // 按设备分组的格式
-      data[device] = {
-        metrics: metricsMap[device] || {},
-        asr: { text: asrMap?.[device]?.text || '-' },
-        trans: { text: tranMap?.[device]?.text || '-' }
-      }
+      deviceMetrics = { ...(metricsMap[device] || {}) }
+    }
+
+    if (multiRound && algorithmResult) {
+      actualAllMetrics.value.forEach(metric => {
+        const normalizedValue = normalizeMetricValue(algorithmResult, metric.name, dimensions)
+        if (normalizedValue !== '—') {
+          deviceMetrics[metric.name] = normalizedValue
+        }
+      })
+    }
+
+    data[device] = {
+      metrics: deviceMetrics,
+      asr: { text: asrMap?.[device]?.text || '-' },
+      trans: { text: tranMap?.[device]?.text || '-' }
     }
   })
   return data
@@ -1878,6 +1933,18 @@ const applyFilters = () => {
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
+}
+
+.multi-round-badge {
+  padding: 1px 8px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  line-height: 18px;
 }
 
 .case-id-badge {

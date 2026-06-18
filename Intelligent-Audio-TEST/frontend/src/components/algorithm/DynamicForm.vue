@@ -282,6 +282,7 @@ interface FieldSchema {
   hidden?: boolean
   uiOrder?: number
   uiGroup?: string
+  scope?: string
 }
 
 interface FormGroup {
@@ -306,6 +307,7 @@ interface Props {
   showGroupHeader?: boolean
   defaultExpandedGroups?: string[]
   labelWidth?: string
+  scope?: 'api' | 'e2e'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -313,7 +315,8 @@ const props = withDefaults(defineProps<Props>(), {
   disabled: false,
   showGroupHeader: true,
   defaultExpandedGroups: () => ['basic'],
-  labelWidth: '120px'
+  labelWidth: '120px',
+  scope: undefined
 })
 
 const emit = defineEmits<{
@@ -326,6 +329,11 @@ const emit = defineEmits<{
 const formData = ref<Record<string, any>>({})
 const errors = ref<Record<string, string>>({})
 const expandedGroups = ref<Set<string>>(new Set(props.defaultExpandedGroups))
+
+const filterByScope = (fields: FieldSchema[]): FieldSchema[] => {
+  if (!props.scope) return fields
+  return fields.filter(f => !f.scope || f.scope === 'common' || f.scope === props.scope)
+}
 
 const visibleGroups = computed(() => {
   if (!props.schema?.groups) return []
@@ -341,7 +349,8 @@ const visibleFields = computed(() => {
 
 const getVisibleFields = (fields: FieldSchema[]) => {
   if (!fields) return []
-  return fields.filter(f => !f.hidden)
+  const scopeFiltered = filterByScope(fields)
+  return scopeFiltered.filter(f => !f.hidden)
 }
 
 const isGroupExpanded = (groupName: string) => {
@@ -356,11 +365,18 @@ const toggleGroup = (groupName: string) => {
   }
 }
 
+const getAllSchemaFieldCodes = (): Set<string> => {
+  return new Set(
+    (props.schema?.fields ?? []).map(f => f.fieldCode)
+  )
+}
+
 const initFormData = () => {
   const values: Record<string, any> = {}
   
   if (props.schema?.fields) {
-    for (const field of props.schema.fields) {
+    const scopeFields = filterByScope(props.schema.fields)
+    for (const field of scopeFields) {
       if (props.initialValues && props.initialValues.hasOwnProperty(field.fieldCode)) {
         values[field.fieldCode] = props.initialValues[field.fieldCode]
       } else if (field.defaultValue !== undefined) {
@@ -371,9 +387,11 @@ const initFormData = () => {
     }
   }
   
+  // 仅保留不属于 schema 定义的外部键（防止 scope 过滤掉的字段泄露到提交数据中）
   if (props.initialValues) {
+    const allSchemaFieldCodes = getAllSchemaFieldCodes()
     for (const key of Object.keys(props.initialValues)) {
-      if (!values.hasOwnProperty(key)) {
+      if (!values.hasOwnProperty(key) && !allSchemaFieldCodes.has(key)) {
         values[key] = props.initialValues[key]
       }
     }
@@ -455,7 +473,8 @@ const validate = async (): Promise<boolean> => {
   const newErrors: Record<string, string> = {}
   
   if (props.schema?.fields) {
-    for (const field of props.schema.fields) {
+    const scopeFields = filterByScope(props.schema.fields)
+    for (const field of scopeFields) {
       const error = validateFieldInternal(field)
       if (error) {
         newErrors[field.fieldCode] = error
@@ -498,8 +517,15 @@ watch(() => props.schema, () => {
 
 watch(() => props.initialValues, (newValues) => {
   if (newValues && Object.keys(newValues).length > 0) {
+    const allSchemaFieldCodes = getAllSchemaFieldCodes()
+    const scopeFieldCodes = new Set(
+      filterByScope(props.schema?.fields ?? []).map(f => f.fieldCode)
+    )
     for (const [key, value] of Object.entries(newValues)) {
-      formData.value[key] = value
+      // 仅更新当前 scope 可见的 schema 字段，或不属于 schema 的外部键
+      if (scopeFieldCodes.has(key) || !allSchemaFieldCodes.has(key)) {
+        formData.value[key] = value
+      }
     }
   }
 }, { deep: true })

@@ -3,12 +3,18 @@ import socketService from '../utils/socket'
 import { transformTestCaseStatus } from '../utils/statusUtils'
 import type { Log } from '../shared/types'
 
+interface RoundProgress {
+  current: number;
+  total: number;
+}
+
 interface AssociatedCase {
   id: string | number;
   status: string;
   executionStatus: string;
   evaluationStatus: string;
   duration?: string;
+  roundProgress?: RoundProgress;
 }
 
 interface APIResource {
@@ -176,7 +182,13 @@ export function useTaskProgress(options: TaskProgressOptions) {
             status: transformed.status,
             executionStatus: transformed.executionStatus,
             evaluationStatus: transformed.evaluationStatus,
-            duration: testCaseProgress.duration ? testCaseProgress.duration.toString() : updatedCases[index].duration
+            duration: testCaseProgress.duration ? testCaseProgress.duration.toString() : updatedCases[index].duration,
+            roundProgress: testCaseProgress.roundProgress
+              ? {
+                  current: testCaseProgress.roundProgress.current,
+                  total: testCaseProgress.roundProgress.total,
+                }
+              : updatedCases[index].roundProgress
           }
           associatedCases.value = updatedCases
         }

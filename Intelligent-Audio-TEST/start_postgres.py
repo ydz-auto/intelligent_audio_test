@@ -71,13 +71,12 @@ def start_postgres():
         print(f"PostgreSQL is already running on port {PGSQL_PORT}")
         return True
 
-    if not is_postgres_running():
-        pid_file = os.path.join(PGSQL_DATA, "postmaster.pid")
-        if os.path.exists(pid_file):
-            print("Found stale postmaster.pid, cleaning up...")
-            if not cleanup_stale_pid():
-                print("PID file references a live process, force killing...")
-                force_kill()
+    pid_file = os.path.join(PGSQL_DATA, "postmaster.pid")
+    if os.path.exists(pid_file):
+        print("Found stale postmaster.pid, cleaning up...")
+        if not cleanup_stale_pid():
+            print("PID file references a live process, force killing...")
+            force_kill()
 
     pg_ctl = os.path.join(PGSQL_BIN, "pg_ctl.exe")
     log_file = os.path.join(PGSQL_DATA, "pg_startup.log")
@@ -85,22 +84,12 @@ def start_postgres():
     print(f"Starting PostgreSQL from {PGSQL_DATA} ...")
 
     try:
-        result = subprocess.run(
-            [pg_ctl, "start", "-D", PGSQL_DATA, "-l", log_file, "-w"],
-            capture_output=True,
-            text=True,
-            timeout=60
+        subprocess.Popen(
+            [pg_ctl, "start", "-D", PGSQL_DATA, "-l", log_file],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP
         )
-
-        if result.returncode != 0:
-            print(f"pg_ctl start failed (rc={result.returncode}): {result.stderr.strip()}")
-            if os.path.exists(log_file):
-                with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                    tail = f.readlines()[-20:]
-                print("--- Last 20 lines of pg_startup.log ---")
-                for line in tail:
-                    print(line.rstrip())
-            return False
 
         for i in range(30):
             if is_postgres_running():
@@ -109,9 +98,6 @@ def start_postgres():
             time.sleep(1)
 
         print("PostgreSQL failed to start within 30 seconds. Check log file:", log_file)
-        return False
-    except subprocess.TimeoutExpired:
-        print("pg_ctl start timed out")
         if os.path.exists(log_file):
             with open(log_file, "r", encoding="utf-8", errors="replace") as f:
                 tail = f.readlines()[-20:]

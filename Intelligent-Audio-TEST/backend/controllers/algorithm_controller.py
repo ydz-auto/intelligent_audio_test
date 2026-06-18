@@ -15,8 +15,8 @@ from ..models.algorithm_models import (
     Language, AlgorithmReferenceParam
 )
 from ..models.database import db
-from backend.algorithm.algorithm_config_loader import AlgorithmConfigLoader
-from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
+from backend.utils.algorithm.algorithm_config_loader import AlgorithmConfigLoader
+from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
 from ..utils.response import success_response, error_response
 from ..models.models import TranslationDirection, Dimension
 from ..schemas.algorithm import (
@@ -400,6 +400,7 @@ def _update_params(algo_type: str, params: List[Dict], param_type: str):
 
 def _update_case_params(algo_type: str, params: List[Dict]):
     """更新用例专属参数"""
+    valid_scopes = {'common', 'api', 'e2e'}
     existing_params = CaseAlgorithmParam.query.filter_by(algorithm_type=algo_type, deleted=False).all()
     existing_ids = {p.id for p in existing_params}
     submitted_ids = set()
@@ -412,10 +413,14 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                 submitted_ids.add(param_id)
                 for field in ['param_name', 'label', 'param_type', 'required', 
                               'default_value', 'options_source', 'options_field', 'options_label_field',
-                              'help_text', 'ui_order', 'hidden']:
-                    if field in param_data:
+                              'help_text', 'ui_order', 'hidden', 'scope']:
+                    if field in param_data and param_data[field] is not None:
+                        if field == 'scope' and param_data[field] not in valid_scopes:
+                            continue
                         setattr(param, field, param_data[field])
         else:
+            raw_scope = param_data.get('scope', 'common')
+            scope_value = raw_scope if raw_scope in valid_scopes else 'common'
             param = CaseAlgorithmParam(
                 algorithm_type=algo_type,
                 param_code=param_data.get('param_code'),
@@ -429,7 +434,8 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                 options_label_field=param_data.get('options_label_field'),
                 help_text=param_data.get('help_text'),
                 ui_order=param_data.get('ui_order', 0),
-                hidden=param_data.get('hidden', False)
+                hidden=param_data.get('hidden', False),
+                scope=scope_value
             )
             db.session.add(param)
 
@@ -786,13 +792,25 @@ def update_mapping(mapping_id: int):
 def list_case_params():
     """获取用例专属参数列表"""
     algorithm_type = request.args.get('algorithm_type')
+    scope = request.args.get('scope')
+    
+    # scope 值校验
+    valid_scopes = ('common', 'api', 'e2e')
+    if scope and scope not in valid_scopes:
+        return error_response(f"Invalid scope: '{scope}'. Must be one of {valid_scopes}", 400)
+    
+    query = CaseAlgorithmParam.query.filter_by(deleted=False)
     
     if algorithm_type:
-        params = CaseAlgorithmParam.query.filter_by(
-            algorithm_type=algorithm_type, deleted=False
-        ).order_by(CaseAlgorithmParam.ui_order).all()
-    else:
-        params = CaseAlgorithmParam.query.filter_by(deleted=False).all()
+        query = query.filter_by(algorithm_type=algorithm_type)
+    
+    if scope:
+        query = query.filter(
+            (CaseAlgorithmParam.scope == 'common') |
+            (CaseAlgorithmParam.scope == scope)
+        )
+    
+    params = query.order_by(CaseAlgorithmParam.ui_order).all()
     
     return success_response({
         'parameters': [p.to_dict() for p in params],
@@ -828,7 +846,8 @@ def create_case_param():
         options_label_field=req.options_label_field,
         help_text=req.help_text,
         ui_order=req.ui_order or 0,
-        hidden=req.hidden or False
+        hidden=req.hidden or False,
+        scope=req.scope or 'common'
     )
     db.session.add(param)
     db.session.commit()
@@ -850,7 +869,7 @@ def update_case_param(param_id: int):
     updatable_fields = [
         'param_name', 'label', 'param_type', 'required', 'default_value',
         'options_source', 'options_field', 'options_label_field',
-        'help_text', 'ui_order', 'hidden'
+        'help_text', 'ui_order', 'hidden', 'scope'
     ]
     for field in updatable_fields:
         value = getattr(req, field, None)
@@ -1038,7 +1057,8 @@ def get_form_schema(algo_type: str):
             'helpText': param.help_text,
             'hidden': param.hidden,
             'uiOrder': param.ui_order,
-            'uiGroup': 'basic'
+            'uiGroup': 'basic',
+            'scope': param.scope or 'common'
         }
         
         if param.options_source:

@@ -60,6 +60,74 @@
       </div>
     </div>
 
+    <div v-if="isMultiRound" class="detail-section">
+      <h4 class="section-title"><i class="fas fa-layer-group"></i> 多轮对话结果 ({{ multiRoundData.totalRounds }} 轮)</h4>
+      <div v-if="aggregatedMetrics" class="multi-round-aggregated">
+        <div class="aggregated-card" v-if="aggregatedMetrics.avg_wer != null">
+          <span class="aggregated-label">平均 WER</span>
+          <span class="aggregated-value">{{ formatAggregatedValue(aggregatedMetrics.avg_wer) }}</span>
+        </div>
+        <div class="aggregated-card" v-if="aggregatedMetrics.avg_llm_judge != null">
+          <span class="aggregated-label">平均 LLM 评分</span>
+          <span class="aggregated-value">{{ formatAggregatedValue(aggregatedMetrics.avg_llm_judge) }}</span>
+        </div>
+        <div class="aggregated-card" v-if="aggregatedMetrics.avg_latency != null">
+          <span class="aggregated-label">平均延迟</span>
+          <span class="aggregated-value">{{ formatAggregatedValue(aggregatedMetrics.avg_latency) }}s</span>
+        </div>
+        <div class="aggregated-card" v-if="aggregatedMetrics.interruption_count != null">
+          <span class="aggregated-label">打断次数</span>
+          <span class="aggregated-value">{{ aggregatedMetrics.interruption_count || 0 }}</span>
+        </div>
+      </div>
+      <div class="round-list">
+        <div v-for="(round, idx) in multiRoundData.rounds" :key="idx" class="round-item" :class="{ expanded: expandedRounds[idx] }">
+          <div class="round-header" @click="toggleRound(idx)">
+            <span class="round-number">第 {{ idx + 1 }} 轮</span>
+            <span v-if="round.latency != null" class="round-latency">延迟: {{ formatAggregatedValue(round.latency) }}s</span>
+            <span v-if="round.interruption?.detected" class="round-interruption-badge">打断</span>
+            <span class="expand-icon">{{ expandedRounds[idx] ? '▼' : '▶' }}</span>
+          </div>
+          <div v-if="expandedRounds[idx]" class="round-detail">
+            <div class="round-field" v-if="round.input?.audio_name">
+              <span class="round-field-label">输入音频</span>
+              <span class="round-field-value">{{ round.input.audio_name }}</span>
+            </div>
+            <div class="round-field" v-if="round.output?.asr_text">
+              <span class="round-field-label">ASR 输出</span>
+              <span class="round-field-value">{{ round.output.asr_text }}</span>
+            </div>
+            <div class="round-field" v-if="getReferenceTextForRound(idx)">
+              <span class="round-field-label">参考文本</span>
+              <span class="round-field-value">{{ getReferenceTextForRound(idx) }}</span>
+            </div>
+            <div class="round-field" v-if="round.latency != null">
+              <span class="round-field-label">延迟</span>
+              <span class="round-field-value">{{ formatAggregatedValue(round.latency) }}s</span>
+            </div>
+            <div class="round-field" v-if="round.interruption?.detected">
+              <span class="round-field-label">打断</span>
+              <span class="round-field-value">
+                {{ round.interruption.timestamp != null ? formatAggregatedValue(round.interruption.timestamp) + 's' : '检测到打断' }}
+              </span>
+            </div>
+            <div class="round-field" v-if="hasRoundEvaluation(round)">
+              <span class="round-field-label">维度评分</span>
+              <div class="round-eval-badges">
+                <span v-for="(score, dim) in roundEvalData(round)" :key="dim" class="eval-badge">
+                  {{ metricLabel(dim) }}: {{ formatAggregatedValue(score) }}
+                </span>
+              </div>
+            </div>
+            <div class="round-field" v-if="round.evaluation?.llm_judge">
+              <span class="round-field-label">LLM 评语</span>
+              <span class="round-field-value">{{ extractLlmReasoning(round.evaluation) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <AudioPlayerModal
       v-if="showAudioModal && currentPlayingAudio"
       :visible="showAudioModal"
@@ -181,6 +249,7 @@ import DataTable from './DataTable.vue';
 import TimelineComparison from '../report/TimelineComparison.vue';
 import AudioPlayerModal from './AudioPlayerModal.vue';
 import AudioTimelineVisualization from './AudioTimelineVisualization.vue';
+import reportService from '../../services/reportService';
 
 const apiBaseUrl = API_CONFIG.baseUrl;
 
@@ -206,6 +275,98 @@ const props = defineProps({
   fieldMapping: { type: Object, default: () => ({ result: [], reference: [] }) },
   resultAudios: { type: Object, default: () => ({}) },
 });
+
+const multiRoundAlgorithmResult = computed(() => {
+  const algoResults = props.algorithmResults || [];
+  if (algoResults.length === 0) return null;
+  const first = algoResults[0];
+  if (first && reportService.parseMultiRoundResult(first).isMultiRound) return first;
+  for (const item of algoResults) {
+    if (item?.value && typeof item.value === 'object' && reportService.parseMultiRoundResult(item.value).isMultiRound) return item.value;
+  }
+  return null;
+});
+
+const isMultiRound = computed(() => multiRoundAlgorithmResult.value !== null);
+
+const multiRoundData = computed(() => {
+  if (!multiRoundAlgorithmResult.value) return { isMultiRound: false, rounds: [], aggregated: null, totalRounds: 0 };
+  return reportService.parseMultiRoundResult(multiRoundAlgorithmResult.value);
+});
+
+const aggregatedMetrics = computed(() => {
+  if (!multiRoundData.value.isMultiRound) return null;
+  if (multiRoundData.value.aggregated) return multiRoundData.value.aggregated;
+  const rounds = multiRoundData.value.rounds;
+  if (!rounds || rounds.length === 0) return null;
+  const evals = rounds.map(r => r.evaluation || r.round_evaluation).filter(Boolean);
+  const result = {};
+  if (evals.length > 0) {
+    const werSum = evals.reduce((s, e) => s + (e.wer || 0), 0);
+    result.avg_wer = werSum / evals.length;
+    const llmSum = evals.reduce((s, e) => s + (e.llm_judge || 0), 0);
+    if (llmSum > 0) result.avg_llm_judge = llmSum / evals.length;
+  }
+  const latencySum = rounds.reduce((s, r) => s + (r.latency || 0), 0);
+  result.avg_latency = latencySum / rounds.length;
+  const interruptionCount = rounds.filter(r => r.interruption?.detected).length;
+  if (interruptionCount > 0) result.interruption_count = interruptionCount;
+  return result;
+});
+
+const expandedRounds = ref({});
+
+const toggleRound = (idx) => {
+  expandedRounds.value[idx] = !expandedRounds.value[idx];
+};
+
+const metricLabel = (key) => {
+  const labels = {
+    avg_wer: '平均 WER',
+    avg_latency: '平均延迟',
+    avg_llm_judge: '平均 LLM 评分',
+    interruption_count: '打断次数',
+    total_latency: '总延迟',
+    wer: 'WER',
+    llm_judge: 'LLM 评分',
+    latency: '延迟',
+  };
+  return labels[key] || key;
+};
+
+const roundEvalData = (round) => {
+  return round.evaluation || round.round_evaluation || null;
+};
+
+const hasRoundEvaluation = (round) => {
+  const evalData = roundEvalData(round);
+  return evalData && typeof evalData === 'object' && Object.keys(evalData).length > 0;
+};
+
+const formatAggregatedValue = (value) => {
+  if (value === null || value === undefined) return '—';
+  const num = Number(value);
+  if (isNaN(num)) return String(value);
+  return num.toFixed(2);
+};
+
+const getReferenceTextForRound = (idx) => {
+  const fields = referenceTextFields.value;
+  if (fields.length > 0) return fields[0].text;
+  return '';
+};
+
+const extractLlmReasoning = (evaluation) => {
+  if (!evaluation) return '';
+  if (evaluation.reasoning) return evaluation.reasoning;
+  if (evaluation.raw_response) {
+    try {
+      const parsed = typeof evaluation.raw_response === 'string' ? JSON.parse(evaluation.raw_response) : evaluation.raw_response;
+      return parsed.reasoning || parsed.analysis || '';
+    } catch (_e) { return ''; }
+  }
+  return '';
+};
 
 const displayMetrics = computed(() => {
   if (props.dimensions && props.dimensions.length > 0) {
@@ -1065,5 +1226,136 @@ const closeAudioModal = () => {
   .text-comparison-grid {
     grid-template-columns: 1fr;
   }
+  .multi-round-aggregated {
+    flex-direction: column;
+  }
+}
+
+.multi-round-aggregated {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.aggregated-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--background-secondary);
+  border-radius: 6px;
+  min-width: 120px;
+}
+
+.aggregated-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.aggregated-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.round-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.round-item {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.round-item.expanded {
+  border-color: var(--primary-color);
+}
+
+.round-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: var(--background-secondary);
+  transition: background 0.2s;
+}
+
+.round-header:hover {
+  background: #e8edf3;
+}
+
+.round-number {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.round-latency {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.round-interruption-badge {
+  font-size: 11px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #fff1f0;
+  color: #f5222d;
+  font-weight: 500;
+}
+
+.expand-icon {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.round-detail {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.round-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.round-field-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.round-field-value {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.round-eval-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.eval-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  background: #f0f5ff;
+  color: #1677ff;
+  font-weight: 500;
 }
 </style>

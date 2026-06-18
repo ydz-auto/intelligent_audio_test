@@ -107,12 +107,12 @@
             <h5 class="config-title">{{ testCase.testType === 'e2e' || testCase.type === 'e2e' ? 'E2E测试配置' : 'API测试配置' }}</h5>
             <div class="config-details">
               <div class="config-row">
-                <span class="config-label">音频:</span>
-                <span>{{ testCase.config?.audios?.length || 0 }} 个</span>
+                <span class="config-label">轮次:</span>
+                <span>{{ testCase.config?.rounds?.length || 0 }} 个</span>
               </div>
-              <div class="config-row" v-if="testCase.config?.backgroundNoise">
-                <span class="config-label">噪声:</span>
-                <span>已配置</span>
+              <div class="config-row">
+                <span class="config-label">音频:</span>
+                <span>{{ getAudioCount(testCase.config) }} 个</span>
               </div>
               <div class="config-row">
                 <span class="config-label">评测维度:</span>
@@ -179,6 +179,18 @@ const formatDuration = (seconds) => {
   const hours = Math.floor(minutes / 60);
   const remainingMinutes = minutes % 60;
   return `${hours}h ${remainingMinutes}m`;
+};
+
+const getAudioCount = (config) => {
+  if (!config) return 0;
+  // Rounds format
+  if (config.rounds && Array.isArray(config.rounds)) {
+    return config.rounds.reduce((total, round) => {
+      return total + (Array.isArray(round.audios) ? round.audios.length : 0);
+    }, 0);
+  }
+  // Legacy flat format
+  return config.audios?.length || 0;
 };
 
 const getAlgorithmTypeText = (type) => {

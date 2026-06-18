@@ -9,8 +9,8 @@ from sqlalchemy import func, desc
 from backend.models.database import db
 from backend.models.models import TestCase, Task, Device, TestCaseGroup, StatsCache
 from backend.schemas.home import HomeStatsDetails, HomeStatsRefreshRequest
-from backend.utils.response import success_response, error_response
-from backend.utils.stats_cache import refresh_stats_cache
+from backend.utils.web.response import success_response, error_response
+from backend.utils.report.stats_cache import refresh_stats_cache
 
 home_bp = Blueprint('home', __name__)
 

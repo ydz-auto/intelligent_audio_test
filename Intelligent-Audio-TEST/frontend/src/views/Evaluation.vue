@@ -122,9 +122,14 @@
                         <span class="weight-value">{{ dimension.weight }}</span>
                       </div>
                     </td>
-                    <td class="dimension-api-status-col"><span class="api-status" :class="dimension.apiStatus">
+                    <td class="dimension-api-status-col">
+                      <span v-if="isLlmJudge(dimension)" class="api-status llm-judge">
+                        <i class="fas fa-robot"></i> LLM Judge
+                      </span>
+                      <span v-else class="api-status" :class="dimension.apiStatus">
                         <i class="fas fa-circle" :class="dimension.apiStatus === 'online' ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.apiStatus === 'online' ? '在线' : '离线' }}
-                      </span></td>
+                      </span>
+                    </td>
                     <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
                     <td class="dimension-actions-col">
                       <div class="action-buttons">
@@ -251,6 +256,11 @@ const {
 onMounted(() => {
   initEvaluation();
 });
+
+// 判断是否为 LLM Judge 维度
+const isLlmJudge = (dimension) => {
+  return dimension.resultType === 'llm_judge';
+};
 
 // 添加 onBeforeUnmount 钩子来清理组件
 onBeforeUnmount(() => {
@@ -537,5 +547,23 @@ select.form-input.filter-select:focus {
 
 .text-muted {
   color: var(--text-light);
+}
+
+/* LLM Judge 维度标签样式 */
+.api-status.llm-judge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 16px;
+  border: none;
+}
+
+.api-status.llm-judge i {
+  font-size: 11px;
 }
 </style>

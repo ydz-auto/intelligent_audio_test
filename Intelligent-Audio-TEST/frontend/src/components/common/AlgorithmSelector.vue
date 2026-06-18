@@ -137,6 +137,8 @@ const algorithmConfig = useAlgorithmConfig()
 const getAlgorithmOptions = algorithmConfig.getAlgorithmOptions
 const getFormSchema = algorithmConfig.getFormSchema
 const getAssociatedDimensions = algorithmConfig.getAssociatedDimensions
+const getCaseAlgorithmParams = algorithmConfig.getCaseAlgorithmParams
+const caseAlgorithmParamsDef = ref<any[]>([])
 
 interface AlgorithmGroup {
   name: string
@@ -310,6 +312,7 @@ async function loadAlgorithmOptions() {
 async function loadAlgorithmFormSchema(algorithmType: string) {
   if (!algorithmType) {
     algorithmFormSchema.value = null
+    caseAlgorithmParamsDef.value = []
     if (Object.keys(algorithmParams.value).length === 0) {
       algorithmParams.value = {}
     }
@@ -320,8 +323,12 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
   const savedParams = { ...algorithmParams.value }
 
   try {
-    const schema = await getFormSchema(algorithmType)
+    const [schema, caseParamsDef] = await Promise.all([
+      getFormSchema(algorithmType),
+      getCaseAlgorithmParams(algorithmType)
+    ])
     algorithmFormSchema.value = schema
+    caseAlgorithmParamsDef.value = caseParamsDef
     
     const newParams: Record<string, any> = {}
     
@@ -343,9 +350,14 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
     }
     
     algorithmParams.value = newParams
+    emit('paramsChange', {
+      ...algorithmParams.value,
+      caseAlgorithmParams: caseAlgorithmParamsDef.value
+    })
   } catch (error) {
     console.error('加载算法表单Schema失败:', error)
     algorithmFormSchema.value = null
+    caseAlgorithmParamsDef.value = []
   }
 
   try {
@@ -365,7 +377,10 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
 
 function onFieldChange(field: string, value: any) {
   algorithmParams.value[field] = value
-  emit('paramsChange', algorithmParams.value)
+  emit('paramsChange', {
+    ...algorithmParams.value,
+    caseAlgorithmParams: caseAlgorithmParamsDef.value
+  })
 }
 
 watch(() => props.modelValue, (newValue) => {

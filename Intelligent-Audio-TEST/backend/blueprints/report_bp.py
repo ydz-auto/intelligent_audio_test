@@ -1,6 +1,6 @@
 from flask import Blueprint
 from backend.controllers.report_controller import ReportController
-from backend.utils.log_handler import log_and_emit
+from backend.utils.web.log_handler import log_and_emit
 
 report_bp = Blueprint('reports', __name__)
 

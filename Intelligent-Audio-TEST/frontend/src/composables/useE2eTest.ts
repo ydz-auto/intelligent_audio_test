@@ -36,8 +36,23 @@ export function useE2eTest() {
   const modalManager = useModal();
 
   const isE2eTestCase = (caseItem: TestCase): boolean => {
-    // 只过滤已删除的用例，显示所有非删除的用例
-    return !caseItem.deleted;
+    if (caseItem.deleted) return false;
+    // 优先使用 test_type 字段（voice_llm 新架构）
+    const testType = ((caseItem as any).testType || (caseItem as any).test_type || '').toLowerCase();
+    if (testType) return testType === 'e2e' || testType === 'e2e_test';
+    // 向后兼容：config 级别检查
+    const config = (caseItem.config || {}) as any;
+    const configType = (config.type || '').toLowerCase();
+    if (configType === 'e2e' || configType === 'e2e_test') return true;
+    // 向后兼容：audios 级别检查（支持 rounds 格式）
+    const rounds = config.rounds || [];
+    if (Array.isArray(rounds) && rounds.length > 0) {
+      // rounds 格式：检查是否有任何 round 包含音频
+      return rounds.some((r: any) => Array.isArray(r.audios) && r.audios.length > 0);
+    }
+    // 旧 flat 格式
+    const audios = config.audios || [];
+    return audios.some((a: any) => (a.testType || a.test_type) === 'e2e');
   };
 
   const e2eTestCases = computed(() => {

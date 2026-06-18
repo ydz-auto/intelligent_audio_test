@@ -8,7 +8,7 @@
 
 ## 背景
 
-`evaluation_api_client.py` 负责构建发送到 `eval_server` 的 HTTP 请求体。现有请求体格式针对 WER/SER/DER 等标准评估类型设计，需要扩展以支持 `bleu` 和 `llm_judge` 两种新类型，以及多轮对话的数据结构。
+`evaluation_api_client.py` 负责构建发送到 `eval_server` 的 HTTP 请求体。现有请求体格式针对 WER/SER/DER 等标准评估类型设计，需要扩展以支持 `llm_judge` 新类型，以及多轮对话的数据结构。
 
 ---
 
@@ -50,31 +50,13 @@ def build_payload(self, task_type, algorithm_result, ref_texts, dim_data, **kwar
         return self._build_wer_payload(output_text, ref_text, dim_data)
     elif task_type == 'ser':
         return self._build_ser_payload(output_text, ref_text, dim_data)
-    elif task_type == 'bleu':
-        return self._build_bleu_payload(output_text, ref_text, dim_data)
     elif task_type == 'llm_judge':
         return self._build_llm_judge_payload(output_text, ref_text, dim_data)
     else:
         return self._build_generic_payload(task_type, output_text, ref_text, dim_data)
 ```
 
-### 3. BLEU payload
-
-```python
-def _build_bleu_payload(self, output_text, ref_text, dim_data):
-    return {
-        'task_type': 'bleu',
-        'task_params': {
-            'hypothesis': output_text,
-            'reference': ref_text,
-            'source_lang': dim_data.get('source_lang', 'zh'),
-            'target_lang': dim_data.get('target_lang', 'en'),
-            'normalize': True,
-        }
-    }
-```
-
-### 4. LLM Judge payload
+### 3. LLM Judge payload
 
 ```python
 def _build_llm_judge_payload(self, output_text, ref_text, dim_data):
@@ -94,7 +76,7 @@ def _build_llm_judge_payload(self, output_text, ref_text, dim_data):
     }
 ```
 
-### 5. 通用 fallback payload
+### 4. 通用 fallback payload
 
 ```python
 def _build_generic_payload(self, task_type, output_text, ref_text, dim_data):
@@ -109,13 +91,12 @@ def _build_generic_payload(self, task_type, output_text, ref_text, dim_data):
     }
 ```
 
-### 6. 请求体结构对比
+### 5. 请求体结构对比
 
 | 类型 | task_type | task_params 关键字段 |
 |------|-----------|-------------------|
 | WER | `wer` | `asr_ref`, `asr_result`, `source_lang`, `target_lang` |
 | SER | `ser` | `asr_ref`, `asr_result`, `source_lang`, `target_lang` |
-| BLEU | `bleu` | `hypothesis`, `reference`, `source_lang`, `target_lang` |
 | LLM Judge | `llm_judge` | `hypothesis`, `reference`, `model`, `prompt_template`, `max_tokens`, `temperature` |
 | DER | `der` | `rttm_ref`, `stm_ref`, `rttm_res`, `stm_res` |
 

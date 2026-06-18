@@ -69,5 +69,17 @@ def preview_import():
 
 @testcase_bp.route('/refresh_task/<task_id>', methods=['GET'])
 def get_refresh_task_status(task_id):
-    from backend.utils.reference_refresh_task import get_reference_refresh_task_status
+    from backend.utils.common.reference_refresh_task import get_reference_refresh_task_status
     return get_reference_refresh_task_status(task_id)
+
+
+# ---- reference_params 文件读写 API ----
+
+@testcase_bp.route('/<tc_id>/rounds/<int:round_number>/ref-params', methods=['GET'])
+def get_ref_params(tc_id, round_number):
+    return TestCaseController.get_ref_params(tc_id, round_number)
+
+@testcase_bp.route('/<tc_id>/rounds/<int:round_number>/ref-params', methods=['PUT'])
+def update_ref_params(tc_id, round_number):
+    return TestCaseController.update_ref_params(tc_id, round_number)
+

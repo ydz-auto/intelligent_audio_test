@@ -2,7 +2,7 @@ import threading
 import time
 from datetime import datetime
 from ..models.task import TaskModel
-from .wer_calculator import calculate_wer, calculate_ser, calculate_cpwer, calculate_tcpwer, calculate_stm_wer
+from .wer_calculator import calculate_wer, calculate_ser, calculate_cpwer, calculate_tcpwer, calculate_stm_wer, calculate_multi_round_wer
 from ..config import config
 from ..utils.concurrency import ConcurrencyManager
 from ..utils.decorators import limit_task_concurrency
@@ -27,6 +27,13 @@ class TaskService:
             return calculator(task_params)
         
         if task_type == 'wer':
+            if 'rounds' in task_params:
+                return calculate_multi_round_wer(
+                    rounds=task_params['rounds'],
+                    source_lang=task_params.get('source_lang'),
+                    target_lang=task_params.get('target_lang'),
+                    normalize=normalize,
+                )
             return calculate_wer(
                 task_params.get('asr_ref'),
                 task_params.get('asr_result'),
@@ -85,6 +92,19 @@ class TaskService:
                 task_params.get('collar', 0.5),
                 task_params.get('skip_overlap', False),
                 normalize=normalize
+            )
+        elif task_type == 'llm_judge':
+            from .llm_judge_calculator import evaluate_with_llm
+            return evaluate_with_llm(
+                hypothesis=task_params.get('hypothesis', ''),
+                reference=task_params.get('reference', ''),
+                model=task_params.get('model', 'gpt-4'),
+                prompt_template=task_params.get('prompt_template', ''),
+                max_tokens=task_params.get('max_tokens', 1024),
+                temperature=task_params.get('temperature', 0.1),
+                scoring_criteria=task_params.get('scoring_criteria'),
+                source_lang=task_params.get('source_lang', 'zh'),
+                target_lang=task_params.get('target_lang', 'en'),
             )
         else:
             raise ValueError(f"Unknown task type: {task_type}")

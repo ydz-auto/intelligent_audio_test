@@ -122,6 +122,50 @@ export interface FormField {
 export function normalizeTestCaseConfig(config: Record<string, any>) {
   const rawConfig = config || {};
 
+  // ---- rounds-based format (new architecture) ----
+  if (rawConfig.rounds && Array.isArray(rawConfig.rounds)) {
+    const normalizedRounds = rawConfig.rounds.map((round: any) => ({
+      roundNumber: round.roundNumber ?? round.round_number ?? 1,
+      audios: Array.isArray(round.audios)
+        ? round.audios.map((audio: any) => ({
+            audioId: audio?.audioId ?? audio?.audio_id ?? '',
+            playbackDeviceId: audio?.playbackDeviceId ?? audio?.playback_device_id ?? '',
+            spl: audio?.spl ?? 65,
+            playOrder: audio?.playOrder ?? audio?.play_order ?? 0,
+          }))
+        : [],
+      backgroundNoise: round.backgroundNoise ?? round.background_noise
+        ? {
+            audioId: (round.backgroundNoise ?? round.background_noise)?.audioId
+              ?? (round.backgroundNoise ?? round.background_noise)?.audio_id ?? null,
+            spl: (round.backgroundNoise ?? round.background_noise)?.spl ?? null,
+            deviceIds: (round.backgroundNoise ?? round.background_noise)?.deviceIds
+              ?? (round.backgroundNoise ?? round.background_noise)?.device_ids ?? [],
+            loop: (round.backgroundNoise ?? round.background_noise)?.loop ?? false,
+          }
+        : undefined,
+      evaluation: round.evaluation ?? undefined,
+      algorithmParams: Array.isArray(round.algorithmParams ?? round.algorithm_params)
+        ? (round.algorithmParams ?? round.algorithm_params).map((p: any) => ({
+            field_code: p.field_code ?? p.fieldCode ?? '',
+            field_value: p.field_value ?? p.fieldValue ?? null,
+          }))
+        : [],
+      referenceParamsPath: round.referenceParamsPath ?? round.reference_params_path ?? '',
+    }));
+
+    const rawDimensions = rawConfig.dimensions;
+    const normalizedDimensions = Array.isArray(rawDimensions)
+      ? rawDimensions
+      : (rawDimensions?.dimensions ?? []);
+
+    return {
+      rounds: normalizedRounds,
+      dimensions: normalizedDimensions || [],
+    };
+  }
+
+  // ---- legacy flat format fallback (audios + backgroundNoise) ----
   const rawBackgroundNoise =
     rawConfig.backgroundNoise ??
     (rawConfig.background_noise
@@ -135,11 +179,38 @@ export function normalizeTestCaseConfig(config: Record<string, any>) {
   const rawAudios: any[] = Array.isArray(rawConfig.audios) ? rawConfig.audios : [];
   const normalizedAudios = rawAudios.map((audio) => ({
     audioId: audio?.audioId ?? audio?.audio_id ?? '',
-    testType: audio?.testType ?? audio?.test_type ?? 'api',
-    spl: audio?.spl ?? null,
     playbackDeviceId: audio?.playbackDeviceId ?? audio?.playback_device_id ?? null,
-    playOrder: audio?.playOrder ?? audio?.play_order ?? 0
+    spl: audio?.spl ?? 65,
+    playOrder: audio?.playOrder ?? audio?.play_order ?? 0,
   }));
+
+  // Convert legacy flat audios into rounds grouped by testType
+  const apiAudios = normalizedAudios.filter((a: any) => (a.testType ?? a.test_type ?? 'api') === 'api');
+  const e2eAudios = normalizedAudios.filter((a: any) => (a.testType ?? a.test_type) === 'e2e');
+  const legacyRounds: any[] = [];
+  if (apiAudios.length > 0) {
+    legacyRounds.push({
+      roundNumber: 1,
+      audios: apiAudios.map((a, i) => ({ ...a, playOrder: i })),
+    });
+  }
+  if (e2eAudios.length > 0) {
+    legacyRounds.push({
+      roundNumber: legacyRounds.length + 1,
+      audios: e2eAudios.map((a, i) => ({ ...a, playOrder: i })),
+      backgroundNoise: rawBackgroundNoise
+        ? {
+            audioId: rawBackgroundNoise.audioId ?? null,
+            spl: rawBackgroundNoise.spl ?? null,
+            deviceIds: rawBackgroundNoise.deviceIds ?? [],
+            loop: false,
+          }
+        : undefined,
+    });
+  }
+  if (legacyRounds.length === 0) {
+    legacyRounds.push({ roundNumber: 1, audios: [] });
+  }
 
   const rawDimensions = rawConfig.dimensions;
   const normalizedDimensions = Array.isArray(rawDimensions)
@@ -147,13 +218,8 @@ export function normalizeTestCaseConfig(config: Record<string, any>) {
     : (rawDimensions?.dimensions ?? []);
 
   return {
-    backgroundNoise: {
-      audioId: rawBackgroundNoise?.audioId ?? null,
-      spl: rawBackgroundNoise?.spl ?? null,
-      deviceIds: rawBackgroundNoise?.deviceIds ?? []
-    },
-    audios: normalizedAudios,
-    dimensions: normalizedDimensions || []
+    rounds: legacyRounds,
+    dimensions: normalizedDimensions || [],
   };
 }
 

@@ -132,7 +132,7 @@ sequenceDiagram
         Base->>ES: evaluate_case(round_number=0)
         ES->>ES: _extract_round_eval_data(round=0)
         ES->>EW: submit task_data
-        EW->>EvalServer: POST /api/create_task (bleu)
+        EW->>EvalServer: POST /api/create_task (llm_judge)
     end
 
     Note over ES,EW: 所有轮次评估异步完成后

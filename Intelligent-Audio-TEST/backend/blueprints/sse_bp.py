@@ -76,4 +76,37 @@ def format_sse(data, event=None, event_id=None):
         messages.append(f"id: {event_id}")
     if event:
         messages.append(f"event: {event}")
-    if isinstance(data
+    if isinstance(data, (dict, list)):
+        messages.append(f"data: {json.dumps(data, ensure_ascii=False)}")
+    else:
+        messages.append(f"data: {data}")
+    messages.append("")
+    return "\n".join(messages)
+
+
+@sse_bp.route('/events', methods=['GET'])
+def stream_events():
+    """SSE 事件流端点"""
+    def generate():
+        # 发送缓存中的历史事件
+        recent = event_cache.get_recent_events()
+        for event in recent:
+            yield format_sse(event['data'], event['type'], event['id'])
+
+        # 保持连接并推送新事件
+        last_id = event_cache.cache[-1]['id'] if event_cache.cache else 0
+        while True:
+            time.sleep(1)
+            new_events = event_cache.get_recent_events(since_id=last_id)
+            for event in new_events:
+                yield format_sse(event['data'], event['type'], event['id'])
+                last_id = event['id']
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+        }
+    )

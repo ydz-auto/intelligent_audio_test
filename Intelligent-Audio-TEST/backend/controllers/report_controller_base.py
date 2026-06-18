@@ -1,9 +1,10 @@
 from flask import request, send_file, current_app
 from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, ReportComparisonMatrix, Task, Audio
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
-from backend.utils.report_utils import ReportUtils
-from backend.utils.query_utils import escape_like_pattern, sanitize_keyword, normalize_sort_field, normalize_sort_order
+from backend.utils.web.response import success_response, error_response
+from backend.utils.report.report_utils import ReportUtils
+from backend.utils.common.query_utils import escape_like_path, sanitize_keyword, normalize_sort_field, normalize_sort_order
+from backend.utils.common.result_data_store import load_full_result_data
 from backend.schemas.report import ReportDetailData, ReportListData, ReportListItem, ReportListItemSummary, ReportSummarySimplified, ReportListQuery, ReportCaseListQuery, ReportSearchCasesRequest
 from datetime import datetime
 from sqlalchemy.orm import joinedload, load_only
@@ -517,7 +518,7 @@ class ReportControllerBase:
 
     @staticmethod
     def download_case_logs(report_id, case_id):
-        from backend.utils.log_handler import log_and_emit
+        from backend.utils.web.log_handler import log_and_emit
         from backend.models.models import TestResult, TaskMergeRelation
         from flask import Response, stream_with_context
 
@@ -583,8 +584,9 @@ class ReportControllerBase:
                                     arcname = os.path.join(f"task_{search_task_id}", arcname)
                                 zf.write(file_path, arcname)
 
-                if test_result and test_result.result_data and 'adjusted_reference_params' in test_result.result_data:
-                    adjusted_params = test_result.result_data['adjusted_reference_params']
+                full_data = load_full_result_data(test_result.result_data, getattr(test_result, 'result_data_path', None)) if test_result else {}
+                if test_result and full_data and 'adjusted_reference_params' in full_data:
+                    adjusted_params = full_data['adjusted_reference_params']
                     if adjusted_params:
                         params_json = json.dumps(adjusted_params, ensure_ascii=False, indent=2)
                         zf.writestr("adjusted_reference_params.json", params_json)

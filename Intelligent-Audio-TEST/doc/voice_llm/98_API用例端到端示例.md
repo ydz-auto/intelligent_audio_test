@@ -11,10 +11,10 @@
 ## 测试场景
 
 - **被测目标**：某云端语音交互 API（voice_llm），提供对话能力
-- **测试目标**：4 轮多轮对话（含追问、上下文依赖、多模态输入），评估 ASR 识别准确率、翻译质量和语义评分
+- **测试目标**：4 轮多轮对话（含追问、上下文依赖、多模态输入），评估 ASR 识别准确率和语义评分
 - **会话模式**：`full`（完整上下文），超时 60s/轮
 - **输入方式**：3 轮纯文本 + 1 轮**文本+音频共存**（多模态输入）
-- **评估维度**：WER（词错误率）、BLEU（翻译质量）、LLM Judge（语义评分）
+- **评估维度**：WER（词错误率）、LLM Judge（语义评分）
 - **三服务协作**：主后端 → api_adapter_service (8000) → 被测厂商 API (9000)
 
 ---
@@ -45,14 +45,14 @@ CaseForm (test_type = 'api')
 │   │   ├── audios: [] (纯文本输入，无音频)
 │   │   ├── algorithmParams:
 │   │   │   └── inputText: "你好，我想了解一下天气"
-│   │   ├── evaluation: WER + BLEU + LLM Judge
+│   │   ├── evaluation: WER + LLM Judge
 │   │   └── referenceParamsPath: /references/round1_ref.json
 │   │
 │   ├── 第 2 轮 (round_2)
 │   │   ├── audios: []
 │   │   ├── algorithmParams:
 │   │   │   └── inputText: "那明天呢？"
-│   │   ├── evaluation: WER + BLEU + LLM Judge
+│   │   ├── evaluation: WER + LLM Judge
 │   │   └── referenceParamsPath: /references/round2_ref.json
 │   │
 │   ├── 第 3 轮 (round_3)
@@ -60,18 +60,18 @@ CaseForm (test_type = 'api')
 │   │   ├── algorithmParams:
 │   │   │   ├── inputText: "请听这段录音"
 │   │   │   └── inputAudio: "audio_303"
-│   │   ├── evaluation: WER + BLEU + LLM Judge
+│   │   ├── evaluation: WER + LLM Judge
 │   │   └── referenceParamsPath: /references/round3_ref.json
 │   │
 │   └── 第 4 轮 (round_4)
 │       ├── audios: []
 │       ├── algorithmParams:
 │       │   └── inputText: "帮我设个提醒，明天出门带伞"
-│       ├── evaluation: WER + BLEU + LLM Judge
+│       ├── evaluation: WER + LLM Judge
 │       └── referenceParamsPath: /references/round4_ref.json
 │
 └── 整体评估维度
-    └── WER (dim_1, weight=50), BLEU (dim_5, weight=30), LLM Judge (dim_8, weight=20)
+    └── WER (dim_1, weight=50), LLM Judge (dim_8, weight=50)
 ```
 
 > **每轮结构**：`audios`（音频列表）+ `algorithmParams`（算法参数，`[{field_code, field_value}]` 格式）+ `evaluation` + `referenceParamsPath`。
@@ -143,7 +143,6 @@ config JSON（参数驱动版）：
         "enabled": true,
         "dimensions": [
           { "dimension_id": 1, "dimension_name": "WER", "params": { "case_sensitive": false } },
-          { "dimension_id": 5, "dimension_name": "BLEU", "params": {} },
           { "dimension_id": 8, "dimension_name": "回答质量评估", "resultType": "llm_judge",
             "params": { "model": "gpt-4", "promptTemplate": "default" } }
         ]
@@ -160,7 +159,6 @@ config JSON（参数驱动版）：
         "enabled": true,
         "dimensions": [
           { "dimension_id": 1, "dimension_name": "WER", "params": { "case_sensitive": false } },
-          { "dimension_id": 5, "dimension_name": "BLEU", "params": {} },
           { "dimension_id": 8, "dimension_name": "回答质量评估", "resultType": "llm_judge",
             "params": { "model": "gpt-4", "promptTemplate": "default" } }
         ]
@@ -179,7 +177,6 @@ config JSON（参数驱动版）：
         "enabled": true,
         "dimensions": [
           { "dimension_id": 1, "dimension_name": "WER", "params": { "case_sensitive": false } },
-          { "dimension_id": 5, "dimension_name": "BLEU", "params": {} },
           { "dimension_id": 8, "dimension_name": "回答质量评估", "resultType": "llm_judge",
             "params": { "model": "gpt-4", "promptTemplate": "default" } }
         ]
@@ -197,7 +194,6 @@ config JSON（参数驱动版）：
         "enabled": true,
         "dimensions": [
           { "dimension_id": 1, "dimension_name": "WER", "params": { "case_sensitive": false } },
-          { "dimension_id": 5, "dimension_name": "BLEU", "params": {} },
           { "dimension_id": 8, "dimension_name": "回答质量评估", "resultType": "llm_judge",
             "params": { "model": "gpt-4", "promptTemplate": "default" } }
         ]
@@ -210,7 +206,6 @@ config JSON（参数驱动版）：
   ],
   "dimensions": [
     { "dimension_id": 1, "dimension_name": "WER", "params": { "case_sensitive": false } },
-    { "dimension_id": 5, "dimension_name": "BLEU", "params": {} },
     { "dimension_id": 8, "dimension_name": "回答质量评估", "resultType": "llm_judge",
       "params": { "model": "gpt-4", "promptTemplate": "default" } }
   ]
@@ -396,9 +391,8 @@ Step 5 — 单轮评估 (evaluation.enabled=true)
     hypothesis = "今天北京天气晴朗，气温28°C，适合户外活动。"
     reference  = 从 round.referenceParamsPath 加载 → "今天北京天气晴朗，气温28度，适合户外活动"
 
-  → 分发 3 个维度:
+  → 分发 2 个维度:
     WER  → eval_server: WER = 0.02 (1 处差异: "28°C" vs "28度")
-    BLEU → eval_server: BLEU = 0.95
     LLM Judge → eval_server → GPT-4:
       {
         "scores": { "accuracy": 4.8, "fluency": 5.0, "relevance": 5.0 },
@@ -406,7 +400,7 @@ Step 5 — 单轮评估 (evaluation.enabled=true)
         "reasoning": "输出准确完整，表达自然流畅"
       }
 
-  → 写入 3 条 TestResultDimension (round_number=0)
+  → 写入 2 条 TestResultDimension (round_number=0)
 ```
 
 #### 第 2 轮 (round=2, 纯文本, 追问)
@@ -459,7 +453,7 @@ Step 5 — 单轮评估
   hypothesis = "明天北京多云转晴，气温25°C，午后可能有短时阵雨。"
   reference  = "明天北京多云转晴，气温25度，午后可能有短时阵雨"
 
-  WER = 0.03, BLEU = 0.93
+  WER = 0.03
   LLM Judge: overall_score = 4.7, "准确回答了追问，上下文理解正确"
 ```
 
@@ -517,7 +511,7 @@ Step 3 — 结果
 
 Step 5 — 单轮评估
 
-  WER = 0.04, BLEU = 0.90
+  WER = 0.04
   LLM Judge: 4.5, "ASR 识别准确，回答完整"
 ```
 
@@ -557,7 +551,7 @@ Step 3 — 结果
 
 Step 5 — 单轮评估
 
-  WER = 0.0 (完全匹配), BLEU = 0.97
+  WER = 0.0 (完全匹配)
   LLM Judge: 5.0, "指令执行准确，回复简洁明了"
 ```
 
@@ -665,7 +659,7 @@ session.destroy()
       "output": "今天北京天气晴朗，气温28°C，适合户外活动。",
       "latency": 1.23,
       "response_metrics": { "first_token_latency": 0.3, "tokens_per_second": 25 },
-      "round_evaluation": { "wer": 0.02, "bleu": 0.95, "llm_judge": 4.9 }
+      "round_evaluation": { "wer": 0.02, "llm_judge": 4.9 }
     },
     {
       "roundNumber": 2,
@@ -673,7 +667,7 @@ session.destroy()
       "output": "明天北京多云转晴，气温25°C，午后可能有短时阵雨。",
       "latency": 1.87,
       "response_metrics": {},
-      "round_evaluation": { "wer": 0.03, "bleu": 0.93, "llm_judge": 4.7 }
+      "round_evaluation": { "wer": 0.03, "llm_judge": 4.7 }
     },
     {
       "roundNumber": 3,
@@ -682,7 +676,7 @@ session.destroy()
       "output_audio_path": null,
       "latency": 2.45,
       "response_metrics": {},
-      "round_evaluation": { "wer": 0.04, "bleu": 0.90, "llm_judge": 4.5 }
+      "round_evaluation": { "wer": 0.04, "llm_judge": 4.5 }
     },
     {
       "roundNumber": 4,
@@ -690,7 +684,7 @@ session.destroy()
       "output": "好的，已为您设置提醒：明天出门请带伞。",
       "latency": 1.05,
       "response_metrics": { "first_token_latency": 0.2 },
-      "round_evaluation": { "wer": 0.00, "bleu": 0.97, "llm_judge": 5.0 }
+      "round_evaluation": { "wer": 0.00, "llm_judge": 5.0 }
     }
   ]
 }
@@ -700,7 +694,7 @@ session.destroy()
 
 ### 6.2 TestResultDimension 记录
 
-每轮评估产生 3 条维度记录（WER/BLEU/LLM Judge），4 轮共 12 条 + 3 条整体评估：
+每轮评估产生 2 条维度记录（WER/LLM Judge），4 轮共 8 条 + 2 条整体评估：
 
 ```
 TestResultDimension 表:
@@ -708,20 +702,15 @@ TestResultDimension 表:
 │ id  │ dimension_name│ round_number │ score │ 说明                             │
 ├─────┼──────────────┼──────────────┼───────┼──────────────────────────────────┤
 │ 601 │ WER          │ 0            │ 98.0  │ 第1轮: WER=0.02                  │
-│ 602 │ BLEU         │ 0            │ 0.95  │ 第1轮                            │
-│ 603 │ 回答质量评估  │ 0            │ 4.9   │ 第1轮 LLM Judge                  │
-│ 604 │ WER          │ 1            │ 97.0  │ 第2轮: WER=0.03                  │
-│ 605 │ BLEU         │ 1            │ 0.93  │ 第2轮                            │
-│ 606 │ 回答质量评估  │ 1            │ 4.7   │ 第2轮                            │
-│ 607 │ WER          │ 2            │ 96.0  │ 第3轮(文本+音频): WER=0.04       │
-│ 608 │ BLEU         │ 2            │ 0.90  │ 第3轮                            │
-│ 609 │ 回答质量评估  │ 2            │ 4.5   │ 第3轮                            │
-│ 610 │ WER          │ 3            │ 100.0 │ 第4轮: WER=0.00                  │
-│ 611 │ BLEU         │ 3            │ 0.97  │ 第4轮                            │
-│ 612 │ 回答质量评估  │ 3            │ 5.0   │ 第4轮                            │
-│ 613 │ WER          │ NULL         │ 97.75 │ 整体评估: (98+97+96+100)/4        │
-│ 614 │ BLEU         │ NULL         │ 0.938 │ 整体: (0.95+0.93+0.90+0.97)/4    │
-│ 615 │ 回答质量评估  │ NULL         │ 4.78  │ 整体: (4.9+4.7+4.5+5.0)/4       │
+│ 602 │ 回答质量评估  │ 0            │ 4.9   │ 第1轮 LLM Judge                  │
+│ 603 │ WER          │ 1            │ 97.0  │ 第2轮: WER=0.03                  │
+│ 604 │ 回答质量评估  │ 1            │ 4.7   │ 第2轮                            │
+│ 605 │ WER          │ 2            │ 96.0  │ 第3轮(文本+音频): WER=0.04       │
+│ 606 │ 回答质量评估  │ 2            │ 4.5   │ 第3轮                            │
+│ 607 │ WER          │ 3            │ 100.0 │ 第4轮: WER=0.00                  │
+│ 608 │ 回答质量评估  │ 3            │ 5.0   │ 第4轮                            │
+│ 609 │ WER          │ NULL         │ 97.75 │ 整体评估: (98+97+96+100)/4        │
+│ 610 │ 回答质量评估  │ NULL         │ 4.78  │ 整体: (4.9+4.7+4.5+5.0)/4       │
 └─────┴──────────────┴──────────────┴───────┴──────────────────────────────────┘
 ```
 
@@ -738,7 +727,7 @@ TestResultDimension 表:
 │  会话 ID: a1b2c3d4-...    上下文模式: full    会话超时: 60s           │
 │                                                                      │
 │  ┌─ 聚合指标概览 ──────────────────────────────────────────────────┐ │
-│  │  平均 WER: 0.0225   平均 BLEU: 0.938   平均 LLM 评分: 4.78     │ │
+│  │  平均 WER: 0.0225   平均 LLM 评分: 4.78                       │ │
 │  │  总延迟: 6.60s      总轮次: 4                                  │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 │                                                                      │
@@ -748,36 +737,36 @@ TestResultDimension 表:
 │  │    输入: 你好，我想了解一下天气                                  │ │
 │  │    输出: 今天北京天气晴朗，气温28°C，适合户外活动。              │ │
 │  │    参考: 今天北京天气晴朗，气温28度，适合户外活动                │ │
-│  │    WER: 0.02    BLEU: 0.95    LLM Judge: 4.9                    │ │
+│  │    WER: 0.02    LLM Judge: 4.9                                │ │
 │  │    LLM 评语: 输出准确完整，表达自然流畅                          │ │
 │  │    首 token: 0.3s   生成速度: 25 tok/s                           │ │
 │  │                                                                  │ │
 │  │  ▼ 第 2 轮 [文本·追问]  延迟: 1.87s                           │ │
 │  │    输入: 那明天呢？                                              │ │
 │  │    输出: 明天北京多云转晴，气温25°C，午后可能有短时阵雨。        │ │
-│  │    WER: 0.03    BLEU: 0.93    LLM Judge: 4.7                    │ │
+│  │    WER: 0.03    LLM Judge: 4.7                                │ │
 │  │    LLM 评语: 准确回答了追问，上下文理解正确                      │ │
 │  │                                                                  │ │
 │  │  ▼ 第 3 轮 [文本+音频]  延迟: 2.45s                            │ │
 │  │    输入文本: 请听这段录音 (algorithmParams)                     │ │
 │  │    输入音频: query3.wav (audios 用例默认参数)                   │ │
 │  │    输出: 后天北京晴间多云，气温26到30度，适合出行。              │ │
-│  │    WER: 0.04    BLEU: 0.90    LLM Judge: 4.5                    │ │
+│  │    WER: 0.04    LLM Judge: 4.5                                │ │
 │  │    LLM 评语: ASR 识别准确，回答完整                              │ │
 │  │                                                                  │ │
 │  │  ▼ 第 4 轮 [文本·指令]  延迟: 1.05s                            │ │
 │  │    输入: 帮我设个提醒，明天出门带伞                              │ │
 │  │    输出: 好的，已为您设置提醒：明天出门请带伞。                  │ │
-│  │    WER: 0.00    BLEU: 0.97    LLM Judge: 5.0                    │ │
+│  │    WER: 0.00    LLM Judge: 5.0                                │ │
 │  │    LLM 评语: 指令执行准确，回复简洁明了                          │ │
 │  │    首 token: 0.2s                                                │ │
 │  │                                                                  │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 │                                                                      │
 │  ┌─ 整体维度评分 (TestResultDimension, round_number=NULL) ─────────┐ │
-│  │  WER: 97.75 (weight=50)   BLEU: 0.938 (weight=30)              │ │
-│  │  LLM Judge: 4.78 (weight=20)                                    │ │
-│  │  加权总分: 97.75×0.5 + 93.8×0.3 + 47.8×0.2 = 86.58            │ │
+│  │  WER: 97.75 (weight=50)                                      │ │
+│  │  LLM Judge: 4.78 (weight=50)                                   │ │
+│  │  加权总分: 97.75×0.5 + 47.8×0.5 = 72.78                        │ │
 │  └──────────────────────────────────────────────────────────────────┘ │
 │                                                                      │
 │  [对比视图]  [导出 Excel]  [重新评估]                                │
@@ -789,12 +778,12 @@ TestResultDimension 表:
 ```
 ┌─ 特定用例对比 ───────────────────────────────────────────────────────┐
 │                                                                      │
-│  用例名称                类型  WER     BLEU    LLM    总延迟  轮数   │
-│  ─────────────────────  ────  ──────  ──────  ─────  ──────  ────  │
-│  语音助手-中文场景       api   0.023   0.938   4.78   6.60s   4     │
-│  语音助手-英文场景       api   0.035   0.910   4.50   7.20s   4     │
-│  语音助手-中英混合       api   0.058   0.870   4.10   8.10s   3     │
-│  智能音箱多轮-有噪       e2e   0.067   0.883   4.30   5.50s   3     │
+│  用例名称                类型  WER     LLM    总延迟  轮数         │
+│  ─────────────────────  ────  ──────  ─────  ──────  ────         │
+│  语音助手-中文场景       api   0.023   4.78   6.60s   4           │
+│  语音助手-英文场景       api   0.035   4.50   7.20s   4           │
+│  语音助手-中英混合       api   0.058   4.10   8.10s   3           │
+│  智能音箱多轮-有噪       e2e   0.067   4.30   5.50s   3           │
 │                                                                      │
 │  * API 用例使用 total_latency，E2E 用例使用 avg_latency              │
 │  * 多轮结果统一从 algorithm_result.aggregated 提取                   │
@@ -874,7 +863,6 @@ ExecutionEngine 调度 → APIExecutor.execute_api_case()
   │    └─ 单轮评估 (evaluation.enabled=true)
   │         → evaluation_service.evaluate_case(round_number=N)
   │           ├─ WER  → eval_server (wer_calculator)
-  │           ├─ BLEU → eval_server (bleu_calculator)
   │           └─ LLM Judge → eval_server (llm_judge_calculator → GPT-4)
   │         → 回调写入 TestResultDimension (round_number=N)
   │

@@ -119,7 +119,6 @@ def _compute_and_store_api_aggregated(result, algorithm_result):
     if evals:
         aggregated = {
             'avg_wer': sum(e.get('wer', 0) for e in evals) / len(evals),
-            'avg_bleu': sum(e.get('bleu', 0) for e in evals) / len(evals),
             'avg_llm_judge': sum(e.get('llm_judge', 0) for e in evals) / len(evals),
             'avg_latency': sum(r.get('latency', 0) for r in rounds) / len(rounds),
         }

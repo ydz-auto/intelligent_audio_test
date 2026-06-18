@@ -8,13 +8,13 @@
 FieldMapper 是单例类，负责：
 - 提供设备/API/评估的字段定义查询
 - 字段类型转换和数据格式转换
-- 构建 API 请求数据
+- 构建 API 请求数据（单轮流程）
 
 核心方法：
 - `get_device_params(algorithm_type)` — 获取设备参数定义
 - `get_api_params(algorithm_type)` — 获取 API 参数定义
 - `get_param_mappings(algorithm_type, source)` — 获取参数映射
-- `build_create_task_data(algorithm_type, ...)` — 构建 create_task 请求体
+- `build_create_task_data(algorithm_type, ...)` — 构建 create_task 请求体（**仅用于单轮流程**）
 
 ## 改造方案（参数驱动，去除硬编码分支）
 
@@ -55,43 +55,65 @@ FieldMapper **不应**为 voice_llm 添加硬编码分支（如 `if algorithm_ty
 | `response_latency` | 响应延迟 | number | 本轮响应耗时(ms) |
 | `session_status` | 会话状态 | json | 会话状态信息 |
 
-### build_create_task_data（动态映射，无硬编码分支）
+### build_create_task_data（单轮流程使用）
+
+`build_create_task_data` **仅用于单轮流程**的 `_create_task` 阶段。多轮流程不使用此方法。
 
 ```python
-def build_create_task_data(self, algorithm_type, device_results, api_config, 
-                            case_params=None, reference_params=None):
-    """
-    构建 create_task 请求数据。
-    
-    通用逻辑：从 param_mappings 表加载映射规则，动态构建请求体。
-    不为 voice_llm 添加特殊分支。
-    """
-    # 加载本算法的 API 输入字段定义
-    api_input_params = self.get_api_params(algorithm_type, direction='input')
-    
-    # 加载参数映射（case → api, reference → api 等）
-    mappings = self.get_param_mappings(algorithm_type, source='case')
-    
-    # 动态构建请求体
-    task_data = {
-        'algorithm_type': algorithm_type,
-        'input': {},
-        'config': api_config,
+def build_create_task_data(
+    self,
+    algorithm_type: str,
+    audio_path: str = None,
+    vendor: str = None,
+    max_process: int = None,
+    max_timeout: int = None,
+    endpoints: List[Dict] = None,
+    case_config: Optional[Dict[str, Any]] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """构建API创建任务的请求数据（单轮流程）"""
+    api_input_fields = self.get_api_input_fields(algorithm_type)
+
+    task_data = {}
+    case_params = case_config.get('algorithm_params', {}) if case_config else {}
+    param_sources = {**case_params, **kwargs}
+
+    explicit_params = {
+        'audio_path': audio_path,
+        'audio_url': audio_path,
+        'vendor': vendor,
+        'max_process': max_process,
+        'max_timeout': max_timeout,
+        'endpoints': endpoints
     }
-    
-    # 根据 param_mappings 将 case_params 中的值映射到 input 字段
-    for mapping in mappings:
-        source_value = self._resolve_source(
-            mapping.source, mapping.source_param,
-            case_params=case_params,
-            reference_params=reference_params,
-            device_results=device_results
-        )
-        if source_value is not None:
-            task_data['input'][mapping.target_param] = source_value
-    
+    for k, v in explicit_params.items():
+        if v is not None:
+            param_sources[k] = v
+
+    for field_code, field_def in api_input_fields.items():
+        transform = field_def.get('transform', 'none')
+        value = param_sources.get(field_code)
+        if value is not None:
+            transform_func = self._transforms.get(transform, lambda x: x)
+            task_data[field_code] = transform_func(value)
+
     return task_data
 ```
+
+### 多轮流程不使用 field_mapper 的原因
+
+多轮流程（`_send_round_request`）采用**模板驱动**方式，不使用 `build_create_task_data`：
+
+| 对比项 | 单轮流程 | 多轮流程 |
+|--------|----------|----------|
+| 请求构建 | `field_mapper.build_create_task_data()` | `_build_round_context()` + `APIDriver.render_request_parts()` |
+| 数据来源 | `case_config.algorithm_params` 字典 | `SessionContext` + `algorithmParams` 数组 |
+| session_id | 不涉及 | `SessionContext` 动态生成 |
+| context_history | 不涉及 | `SessionContext.get_context()` 动态生成 |
+| round_number | 不涉及 | 循环变量 |
+| 请求格式 | 由 `api_input_fields` 决定 | 由 API 表 `body_template` + `headers` 决定 |
+
+详细设计见 [14_轮次请求构建.md](../../04_执行测试/backend/14_轮次请求构建.md)。
 
 ### case_params 与 algorithmParams 的关系
 
@@ -107,49 +129,41 @@ def get_param_value(params_list, field_code):
     return None
 ```
 
-执行器中构建 `case_params` 传给 FieldMapper：
-
-```python
-# 执行器中
-round_config = config['rounds'][i]
-algorithm_params = round_config.get('algorithmParams', [])
-
-# 构建 case_params（从数组格式中提取值）
-case_params = {
-    'input_text': get_param_value(algorithm_params, 'inputText'),
-    'input_audio': get_param_value(algorithm_params, 'inputAudio'),
-    'round_number': round_config.get('roundNumber', i + 1),
-    'session_id': session_context.session_id if session_context else None,
-    'context_history': session_context.get_history() if session_context else [],
-}
-
-# backgroundNoise 从 round 级别读取（不在 algorithmParams 中）
-background_noise = round_config.get('backgroundNoise')
-```
-
 > **backgroundNoise 在 round 级别**：`backgroundNoise` 不属于 `algorithmParams` 数组，而是直接存储在 round 配置中（带 `loop` 属性），通过 `round_config.get('backgroundNoise')` 读取。
 
-### get_case_fields（废弃）
+### get_case_fields（保留，不废弃）
 
-旧设计中的 `get_case_fields` 方法为 voice_llm 硬编码返回字段列表，**应废弃**。
-改用动态加载 `case_algorithm_params` 表：
+`get_case_fields` 方法保留用于单轮流程的字段查询。多轮流程通过 `_build_round_context` 独立处理上下文构建。
 
 ```python
-# 旧设计（废弃）
-def get_case_fields(self, algorithm_type):
-    if algorithm_type == 'voice_llm':
-        return { 'rounds': ..., 'voiceprintRegistration': ... }
-    return {}
+def get_case_fields(self, algorithm_type: str) -> Dict[str, str]:
+    """获取算法需要的case表字段（单轮流程使用）"""
+    case_fields = {}
+    device_params = self._get_device_params(algorithm_type)
+    api_params = self._get_api_params(algorithm_type)
+    params = device_params + api_params
 
-# 新设计（动态加载）
-def get_case_param_definitions(self, algorithm_type):
-    """获取用例参数定义（来自 case_algorithm_params 表）"""
-    return CaseAlgorithmParam.query.filter_by(
-        algorithm_type=algorithm_type, deleted=False
-    ).order_by(CaseAlgorithmParam.ui_order).all()
+    for param in params:
+        param_code = param.get('code', '')
+        param_type = param.get('param_type', '')
+        source = param.get('source', '')
+        if source == 'case_table' or param_type in ['direction', 'language']:
+            case_fields[param_code] = param_code
+
+    mappings = self._get_param_mappings(algorithm_type)
+    for comp_type, comp_mappings in mappings.items():
+        for mapping in comp_mappings:
+            source_param = mapping.get('source_param', '')
+            target_key = mapping.get('target_key', source_param)
+            source = mapping.get('source', '')
+            if source == 'case_table':
+                case_fields[target_key] = source_param
+
+    return case_fields
 ```
 
 ## 相关文档
 - [07_voice_llm算法参数种子数据.md](07_voice_llm算法参数种子数据.md) — 参数定义
-- [09_case_parameter_extractor适配.md](09_case_parameter_extractor适配.md) — 参数提取
+- [09_case_parameter_extractor适配.md](../../02_选用例/backend/09_case_parameter_extractor适配.md) — 参数提取
+- [14_轮次请求构建.md](../../04_执行测试/backend/14_轮次请求构建.md) — 多轮请求构建（模板驱动）
 - [11_algorithm_result_field_mapper适配.md](../../05_查看结果/backend/11_algorithm_result_field_mapper适配.md) — 结果映射

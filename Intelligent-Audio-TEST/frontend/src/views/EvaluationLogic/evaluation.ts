@@ -172,7 +172,13 @@ export function useEvaluation() {
       { key: 'asr_result', label: 'ASR识别结果', source: 'api', required: true, description: 'ASR算法识别出的文本' },
       { key: 'asr_ref', label: '参考文本', source: 'device', required: true, description: '标准参考文本' }
     ],
-    associatedAlgorithms: []
+    associatedAlgorithms: [],
+    llmJudgeConfig: {
+      model: '',
+      promptTemplate: '',
+      maxTokens: 1024,
+      temperature: 0.7
+    }
   };
 
   const newDimension = ref<Partial<EvaluationDimension>>({ 
@@ -207,7 +213,13 @@ export function useEvaluation() {
       { key: 'asr_result', label: 'ASR识别结果', source: 'api', required: true, description: 'ASR算法识别出的文本' },
       { key: 'asr_ref', label: '参考文本', source: 'device', required: true, description: '标准参考文本' }
     ],
-    associatedAlgorithms: []
+    associatedAlgorithms: [],
+    llmJudgeConfig: {
+      model: '',
+      promptTemplate: '',
+      maxTokens: 1024,
+      temperature: 0.7
+    }
   } as any);
 
   const apiSettings = ref<ExtendedAPISettings>({
@@ -300,8 +312,18 @@ export function useEvaluation() {
     { key: 'resultType', label: '结果类型', type: 'select', required: true, options: [
       { value: 1, label: '数值 (1)' },
       { value: 2, label: '布尔 (2)' },
-      { value: 3, label: '文本 (3)' }
+      { value: 3, label: '文本 (3)' },
+      { value: 'llm_judge', label: 'LLM Judge' }
     ], group: '结果配置' },
+    { key: 'llmJudgeConfig', label: 'LLM Judge 配置', type: 'object', required: false, group: '结果配置',
+      conditional: { field: 'resultType', value: 'llm_judge' },
+      fields: [
+        { key: 'model', label: '模型', type: 'text', required: true, placeholder: '如: gpt-4, qwen-max' },
+        { key: 'promptTemplate', label: 'Prompt 模板', type: 'textarea', required: true, placeholder: '输入评估 prompt 模板，可使用 {{asr_result}} {{asr_ref}} 等变量' },
+        { key: 'maxTokens', label: '最大 Token 数', type: 'number', required: false, min: 1, max: 8192, default: 1024 },
+        { key: 'temperature', label: 'Temperature', type: 'number', required: false, min: 0, max: 2, step: 0.1, default: 0.7 }
+      ]
+    },
     { key: 'resultMin', label: '结果最小值', type: 'number', required: true, group: '结果配置' },
     { key: 'resultMax', label: '结果最大值', type: 'number', required: true, group: '结果配置' },
     { key: 'decimalPlaces', label: '小数位数', type: 'number', required: true, min: 0, max: 4, group: '结果配置' },
@@ -412,6 +434,22 @@ export function useEvaluation() {
       const dimensionType = dimension.dimensionType || 'main';
       const parentDimensionId = dimension.parentDimensionId || (dimension as any).parent_dimension_id || '';
 
+      // 处理 llmJudgeConfig
+      const rawLlmJudgeConfig = dimension.llmJudgeConfig || (dimension as any).llm_judge_config;
+      const llmJudgeConfig = rawLlmJudgeConfig
+        ? {
+            model: rawLlmJudgeConfig.model || '',
+            promptTemplate: rawLlmJudgeConfig.promptTemplate || rawLlmJudgeConfig.prompt_template || '',
+            maxTokens: rawLlmJudgeConfig.maxTokens || rawLlmJudgeConfig.max_tokens || 1024,
+            temperature: rawLlmJudgeConfig.temperature ?? 0.7
+          }
+        : {
+            model: '',
+            promptTemplate: '',
+            maxTokens: 1024,
+            temperature: 0.7
+          };
+
       const editingData = {...dimension, categoryId: dimension.categoryId || (dimension as any).category_id, apiEndpoints, apiUrl,
         apiSettings: apiSettingsObj,
         rule: ruleObj,
@@ -420,7 +458,8 @@ export function useEvaluation() {
         status: String(dimension.status).toLowerCase() === 'true',
         dimensionType: dimensionType,
         parentDimensionId: parentDimensionId,
-        taskTypeCode: dimension.taskTypeCode || (dimension as any).task_type_code || ''};
+        taskTypeCode: dimension.taskTypeCode || (dimension as any).task_type_code || '',
+        llmJudgeConfig: llmJudgeConfig};
         
         modalManager.open(MODAL_TYPES.CRUD_FORM, {
         mode: 'edit',
@@ -663,6 +702,21 @@ export function useEvaluation() {
         }
       } else {
         dimensionData.associatedAlgorithms = [];
+      }
+
+      // 处理 llmJudgeConfig
+      if (dimensionData.llmJudgeConfig !== undefined) {
+        if (typeof dimensionData.llmJudgeConfig === 'object' && dimensionData.llmJudgeConfig !== null) {
+          // 确保包含必要的字段
+          dimensionData.llmJudgeConfig = {
+            model: dimensionData.llmJudgeConfig.model || '',
+            promptTemplate: dimensionData.llmJudgeConfig.promptTemplate || '',
+            maxTokens: dimensionData.llmJudgeConfig.maxTokens || 1024,
+            temperature: dimensionData.llmJudgeConfig.temperature ?? 0.7
+          };
+        } else {
+          delete dimensionData.llmJudgeConfig;
+        }
       }
 
       console.log('[Evaluation] Validating required fields');
@@ -1049,7 +1103,13 @@ export function useEvaluation() {
       rule: { ...dimensionTemplate.rule }, 
       requiredInputs: [...dimensionTemplate.requiredInputs], 
       apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60}],
-      associatedAlgorithms: []
+      associatedAlgorithms: [],
+      llmJudgeConfig: {
+        model: '',
+        promptTemplate: '',
+        maxTokens: 1024,
+        temperature: 0.7
+      }
     };
 
     console.log('[Evaluation] openAddModal formData:', JSON.stringify(formData, null, 2));

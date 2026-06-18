@@ -99,14 +99,13 @@ doc/voice_llm/
 │   │   ├── 30_execution_engine多轮进度.md               # 任务调度支持多轮进度
 │   │   ├── 31_event_manager多轮进度推送.md              # WebSocket 推送"第 N/M 轮"
 │   │   └── 32_device_result_collector多轮采集.md        # 每轮单独采集 + 对齐
-│   ├── eval_server/                                   # -- 评估微服务（7个）--
-│   │   ├── 01_create_task新任务类型.md                  # 支持 bleu/llm_judge
-│   │   ├── 02_BLEU计算器.md                            # bleu_calculator.py 新增
-│   │   ├── 03_LLM_Judge计算器.md                       # llm_judge_calculator.py 新增
-│   │   ├── 04_ConcurrencyManager动态类型.md             # _stats 动态初始化
-│   │   ├── 05_多轮WER聚合.md                           # 多轮对话 WER 计算 + 聚合
-│   │   ├── 06_remote_service适配.md                     # 新类型端点匹配 + 参数转发
-│   │   └── 07_health动态类型.md                         # 健康检查动态返回类型
+│   ├── eval_server/                                   # -- 评估微服务（6个）--
+│   │   ├── 01_create_task新任务类型.md                  # 支持 llm_judge
+│   │   ├── 02_LLM_Judge计算器.md                       # llm_judge_calculator.py 新增
+│   │   ├── 03_ConcurrencyManager动态类型.md             # _stats 动态初始化
+│   │   ├── 04_多轮WER聚合.md                           # 多轮对话 WER 计算 + 聚合
+│   │   ├── 05_remote_service适配.md                     # 新类型端点匹配 + 参数转发
+│   │   └── 06_health动态类型.md                         # 健康检查动态返回类型
 │   ├── api_adapter/                                   # -- API适配微服务（6个）--
 │   │   ├── 01_voice_llm_HTTP适配器.md                   # 新增 http_adapter.py
 │   │   ├── 02_会话状态管理.md                           # session_id + context 存储
@@ -210,17 +209,16 @@ doc/voice_llm/
 | 24 | 02_选用例 | `02_选用例/frontend/24_AlgorithmConfigPage_voice_llm.md` | 算法配置管理 voice_llm 注册 |
 | 25 | 02_选用例 | `02_选用例/frontend/25_Evaluation页面_llm_judge维度.md` | 评估维度管理 llm_judge 类型 |
 
-### eval_server 文档（7个，编号 01-07）
+### eval_server 文档（6个，编号 01-06）
 
 | 编号 | 所属步骤 | 路径 | 功能说明 |
-|------|---------|------|---------|
-| 01 | 04_执行测试 | `04_执行测试/eval_server/01_create_task新任务类型.md` | 支持 bleu/llm_judge |
-| 02 | 04_执行测试 | `04_执行测试/eval_server/02_BLEU计算器.md` | bleu_calculator.py 新增 |
-| 03 | 04_执行测试 | `04_执行测试/eval_server/03_LLM_Judge计算器.md` | llm_judge_calculator.py 新增 |
-| 04 | 04_执行测试 | `04_执行测试/eval_server/04_ConcurrencyManager动态类型.md` | _stats 动态初始化 |
-| 05 | 04_执行测试 | `04_执行测试/eval_server/05_多轮WER聚合.md` | 多轮对话 WER 计算 + 聚合 |
-| 06 | 04_执行测试 | `04_执行测试/eval_server/06_remote_service适配.md` | 新类型端点匹配 + 参数转发 |
-| 07 | 04_执行测试 | `04_执行测试/eval_server/07_health动态类型.md` | 健康检查动态返回类型 |
+|------|---------|------|--------|
+| 01 | 04_执行测试 | `04_执行测试/eval_server/01_create_task新任务类型.md` | 支持 llm_judge |
+| 02 | 04_执行测试 | `04_执行测试/eval_server/02_LLM_Judge计算器.md` | llm_judge_calculator.py 新增 |
+| 03 | 04_执行测试 | `04_执行测试/eval_server/03_ConcurrencyManager动态类型.md` | _stats 动态初始化 |
+| 04 | 04_执行测试 | `04_执行测试/eval_server/04_多轮WER聚合.md` | 多轮对话 WER 计算 + 聚合 |
+| 05 | 04_执行测试 | `04_执行测试/eval_server/05_remote_service适配.md` | 新类型端点匹配 + 参数转发 |
+| 06 | 04_执行测试 | `04_执行测试/eval_server/06_health动态类型.md` | 健康检查动态返回类型 |
 
 ### api_adapter 文档（6个，编号 01-06）
 
@@ -386,13 +384,12 @@ doc/voice_llm/
 | 后端 | `04_执行测试/backend/26_evaluation_api_client适配` | 多轮对话数据结构请求体 |
 | 后端 | `04_执行测试/backend/27_evaluation_result_processor多轮聚合` | 多轮评估结果处理 |
 | 后端 | `04_执行测试/backend/28_base_executor评估入队适配` | _evaluate_result round_number |
-| eval_server | `04_执行测试/eval_server/01_create_task新任务类型` | 支持 bleu/llm_judge |
-| eval_server | `04_执行测试/eval_server/02_BLEU计算器` | bleu_calculator.py 新增 |
-| eval_server | `04_执行测试/eval_server/03_LLM_Judge计算器` | llm_judge_calculator.py 新增 |
-| eval_server | `04_执行测试/eval_server/04_ConcurrencyManager动态类型` | _stats 动态初始化 |
-| eval_server | `04_执行测试/eval_server/05_多轮WER聚合` | 多轮对话 WER 计算 + 聚合 |
-| eval_server | `04_执行测试/eval_server/06_remote_service适配` | 新类型端点匹配 + 参数转发 |
-| eval_server | `04_执行测试/eval_server/07_health动态类型` | 健康检查动态返回类型 |
+| eval_server | `04_执行测试/eval_server/01_create_task新任务类型` | 支持 llm_judge |
+| eval_server | `04_执行测试/eval_server/02_LLM_Judge计算器` | llm_judge_calculator.py 新增 |
+| eval_server | `04_执行测试/eval_server/03_ConcurrencyManager动态类型` | _stats 动态初始化 |
+| eval_server | `04_执行测试/eval_server/04_多轮WER聚合` | 多轮对话 WER 计算 + 聚合 |
+| eval_server | `04_执行测试/eval_server/05_remote_service适配` | 新类型端点匹配 + 参数转发 |
+| eval_server | `04_执行测试/eval_server/06_health动态类型` | 健康检查动态返回类型 |
 
 #### 4.4 基础设施（进度推送 + 结果采集）
 
@@ -477,7 +474,6 @@ graph TD
         V25 --> V28[28_评估入队]
         V24 --> ES01[eval_create_task]
         V26 --> ES01
-        ES01 --> ES02[eval_BLEU]
         ES01 --> ES03[eval_LLM_Judge]
         ES01 --> ES05[eval_多轮WER]
         A14 --> AD01[adapter_HTTP适配器]
@@ -514,14 +510,13 @@ graph TD
 | InterfererConfig | 干扰人配置，作为 DynamicForm 子编辑器数据结构，值存储在 algorithmParams 中 |
 | RoundEvaluationConfig | 单轮评估配置，控制每轮是否独立评估 |
 | LLM Judge | 基于大语言模型的评估维度，由 eval_server 调用外部 LLM API 评分 |
-| BLEU | 机器翻译评估指标，用于评估语音识别文本与参考文本的相似度 |
 | WER | Word Error Rate，词错误率，语音识别核心评估指标 |
 | 导轨控制 | 通过设备驱动框架控制导轨移动，自动调整被测设备与麦克风的物理距离 |
 | 被测设备音量控制 | 通过设备驱动（ADB/HDC）设置被测设备的系统音量级别 |
 | 全双工打断 | 被测设备在播放语音时能够检测并响应外部语音输入（打断当前播放） |
 | backgroundNoise | E2E 轮次顶层的背景噪声配置，含 audioId/deviceIds/spl/loop 属性，loop 控制循环播放 |
 | 统一音频模型 | 干声/噪声/干扰人统一为 `{file, device_index, channel, gain, delay, is_noise}` 格式，play_overlap→play_multi 按设备分组混音；is_noise=True 循环播放且不计入完成判定 |
-| eval_server | 评估微服务（Flask, port 5001），执行 WER/BLEU/LLM Judge 等评估任务 |
+| eval_server | 评估微服务（Flask, port 5001），执行 WER/LLM Judge 等评估任务 |
 | api_adapter_service | API适配微服务（Flask, port 8000），适配不同厂商的 API 协议 |
 
 ---

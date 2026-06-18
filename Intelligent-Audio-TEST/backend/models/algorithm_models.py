@@ -373,6 +373,10 @@ class CaseAlgorithmParam(db.Model):
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
     scope = Column(String(10), nullable=False, default='common', comment='参数适用范围 (common/api/e2e)')
+    min_value = Column(Float, nullable=True, comment='最小值 (slider/number)')
+    max_value = Column(Float, nullable=True, comment='最大值 (slider/number)')
+    step = Column(Float, nullable=True, comment='步长 (slider/number)')
+    unit = Column(String(20), nullable=True, comment='单位显示 (如 cm, dB, s)')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
@@ -399,7 +403,11 @@ class CaseAlgorithmParam(db.Model):
             'help_text': self.help_text,
             'ui_order': self.ui_order,
             'hidden': self.hidden,
-            'scope': self.scope
+            'scope': self.scope,
+            'min': self.min_value,
+            'max': self.max_value,
+            'step': self.step,
+            'unit': self.unit
         }
 
     def _parse_json(self, json_str):

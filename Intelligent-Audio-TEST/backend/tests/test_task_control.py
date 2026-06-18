@@ -13,7 +13,7 @@ def test_control_stop_updates_taskcase_statuses():
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import Task, TaskCase, TestCase, TestCaseGroup
-    from backend.utils.execution_engine import execution_engine
+    from backend.services.execution.execution_engine import execution_engine
 
     app = create_app("testing")
 
@@ -46,7 +46,7 @@ def test_control_pause_on_queued_removes_from_queue_and_pauses():
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import Task
-    from backend.utils.execution_engine import execution_engine
+    from backend.services.execution.execution_engine import execution_engine
 
     app = create_app("testing")
 
@@ -75,7 +75,7 @@ def test_control_resume_without_worker_requeues_task():
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import API, Task, TaskAPI
-    from backend.utils.execution_engine import execution_engine
+    from backend.services.execution.execution_engine import execution_engine
 
     app = create_app("testing")
 

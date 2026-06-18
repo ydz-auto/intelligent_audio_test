@@ -8,7 +8,7 @@
 
 ## 背景
 
-`RemoteService` 负责将评估任务分发到远程 worker 端点。当前端点选择逻辑基于 `capabilities` 中的 `task_type` 匹配和并发限制。新增的 `bleu` 和 `llm_judge` 类型需要端点支持，且 `llm_judge` 的超时和并发策略与标准类型不同。
+`RemoteService` 负责将评估任务分发到远程 worker 端点。当前端点选择逻辑基于 `capabilities` 中的 `task_type` 匹配和并发限制。新增的 `llm_judge` 类型需要端点支持，且 `llm_judge` 的超时和并发策略与标准类型不同。
 
 ---
 
@@ -145,10 +145,9 @@ def _poll_task_status(self, endpoint_url, task_id, task_type):
   "capabilities": {
     "wer": {"max_process": 2},
     "ser": {"max_process": 1},
-    "bleu": {"max_process": 4},
     "llm_judge": {"max_process": 2}
   },
-  "task_types": ["wer", "ser", "bleu", "llm_judge"]
+  "task_types": ["wer", "ser", "llm_judge"]
 }
 ```
 

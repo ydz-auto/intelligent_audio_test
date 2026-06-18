@@ -24,72 +24,20 @@ export const algorithmApi = {
 };
 ```
 
-### 返回参数组装为 [{field_code, field_value}] 格式
+### 格式转换职责
 
-后端返回的 `CaseAlgorithmParam` 列表定义了表单有哪些字段。前端 DynamicForm 收集用户填写值后，
-需将参数组装为 `[{field_code, field_value}]` 数组格式提交给后端：
+`[{field_code, field_value}]` 数组格式的转换**不在 api.ts 中处理**，而是由 RoundConfigEditor 组件在提交时完成。
 
-```typescript
-// 用户填写完成后，将表单值组装为 algorithmParams 数组格式
-function buildAlgorithmParams(formValues: Record<string, any>): Array<{field_code: string; field_value: any}> {
-  return Object.entries(formValues)
-    .filter(([_, value]) => value !== null && value !== undefined)
-    .map(([paramCode, value]) => ({
-      field_code: paramCode,
-      field_value: value,
-    }));
-}
-```
-
-### API 单记录 / E2E 双记录提交结构差异
-
-- **API 测试用例（单记录）**：提交时 `rounds[i].algorithmParams` 只包含一条记录的参数数组
-  ```json
-  {
-    "rounds": [
-      {
-        "algorithmParams": [
-          {"field_code": "inputText", "field_value": "你好"},
-          {"field_code": "inputAudio", "field_value": "audio_001"}
-        ]
-      }
-    ]
-  }
-  ```
-
-- **E2E 测试用例（双记录）**：提交时包含主记录和参考记录，每条记录各有独立的 `algorithmParams` 数组
-  ```json
-  {
-    "rounds": [
-      {
-        "mainRecord": {
-          "algorithmParams": [
-            {"field_code": "railDistance", "field_value": 50},
-            {"field_code": "volumeLevel", "field_value": 80}
-          ]
-        },
-        "referenceRecord": {
-          "algorithmParams": [
-            {"field_code": "railDistance", "field_value": 50}
-          ]
-        }
-      }
-    ]
-  }
-  ```
+DynamicForm 输出扁平字典 `Record<string, any>`，RoundConfigEditor 负责将其转换为数组格式后存入 `rounds[].algorithmParams`。
 
 ### testcasesApi 扩展
 ```typescript
 export const testcasesApi = {
   // ... 现有方法 ...
   
-  // 新增：按 test_type 过滤
-  getAll: (filters?: { algorithmType?: string; testType?: string; groupId?: string }) => {
-    const params = new URLSearchParams();
-    if (filters?.algorithmType) params.append('algorithm_type', filters.algorithmType);
-    if (filters?.testType) params.append('test_type', filters.testType);
-    if (filters?.groupId) params.append('group_id', filters.groupId);
-    return api.get(`/testcases?${params.toString()}`);
+  // 支持按 test_type 过滤（通过通用 params 传递）
+  getAll: (params: Record<string, any>) => {
+    return api.get('/testcases', { params });
   },
 };
 ```
@@ -99,7 +47,7 @@ export const testcasesApi = {
 export const evaluationApi = {
   // ... 现有方法 ...
   
-  // 新增：支持 llm_judge 维度
+  // 支持 llm_judge 维度
   createDimension: (data: DimensionData) => {
     return api.post('/evaluation/dimensions', data);
   },

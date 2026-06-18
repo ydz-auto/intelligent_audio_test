@@ -975,6 +975,36 @@ select.form-control {
 
 .footer-actions { display: flex; gap: var(--spacing-sm); }
 
+/* ========== 测试类型切换标签 ========== */
+.test-type-switcher {
+  display: flex;
+  gap: 2px;
+  background: var(--background-tertiary);
+  border-radius: var(--border-radius-md);
+  padding: 2px;
+}
+
+.test-type-btn {
+  padding: 6px 16px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: var(--font-family);
+}
+
+.test-type-btn:hover { color: var(--text-primary); }
+.test-type-btn.active {
+  background: var(--background-primary);
+  color: var(--primary-color);
+  box-shadow: var(--shadow-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
 /* ========== DynamicForm 风格参数区 ========== */
 .dynamic-form-section {
   background: var(--background-primary);
@@ -1090,6 +1120,14 @@ select.form-control {
       <span class="header-badge e2e"><i class="fas fa-microchip"></i> E2E</span>
     </div>
     <div class="header-actions">
+      <div class="test-type-switcher">
+        <button class="test-type-btn" onclick="switchTestType('api')">
+          <i class="fas fa-cloud"></i> API
+        </button>
+        <button class="test-type-btn active" onclick="switchTestType('e2e')">
+          <i class="fas fa-microchip"></i> E2E
+        </button>
+      </div>
       <button class="btn btn-secondary" onclick="handleCancel()">取消</button>
       <button class="btn btn-primary" onclick="handleSave()">
         <i class="fas fa-check"></i> 保存
@@ -1173,7 +1211,7 @@ select.form-control {
                 <span><i class="fas fa-music"></i> <span id="audioCount">1</span> 条音频</span>
                 <span><i class="fas fa-volume-up"></i> cafe_noise</span>
                 <span><i class="fas fa-ruler-horizontal"></i> 50cm</span>
-                <span><i class="fas fa-chart-line"></i> WER + BLEU + LLM</span>
+                <span><i class="fas fa-chart-line"></i> WER + LLM</span>
               </div>
             </div>
           </div>
@@ -1198,7 +1236,7 @@ select.form-control {
             <span class="code-annotation gray">表驱动 · [{field_code, field_value}]</span>
           </div>
 
-          <!-- 算法 & 测试类型选择 -->
+          <!-- 算法类型选择 -->
           <div class="form-row">
             <div class="form-group">
               <label>算法类型</label>
@@ -1211,17 +1249,6 @@ select.form-control {
                 </div>
                 <div class="algo-card" onclick="selectAlgo(this, 'asr')">
                   <i class="fas fa-microphone"></i> ASR
-                </div>
-              </div>
-            </div>
-            <div class="form-group">
-              <label>测试类型 <span class="required">*</span></label>
-              <div class="algo-selector">
-                <div class="algo-card" onclick="selectTestType(this, 'api')">
-                  <i class="fas fa-cloud"></i> API
-                </div>
-                <div class="algo-card active" onclick="selectTestType(this, 'e2e')">
-                  <i class="fas fa-microchip"></i> E2E
                 </div>
               </div>
             </div>
@@ -1480,9 +1507,6 @@ select.form-control {
               <i class="fas fa-check"></i> WER
             </div>
             <div class="dim-chip active" onclick="toggleDim(this)">
-              <i class="fas fa-check"></i> BLEU
-            </div>
-            <div class="dim-chip active" onclick="toggleDim(this)">
               <i class="fas fa-check"></i> 回答质量评估
             </div>
             <div class="dim-chip" onclick="toggleDim(this)">
@@ -1514,19 +1538,6 @@ select.form-control {
                       <div class="param-switch" onclick="toggleSwitch(this)"><div class="knob"></div></div>
                       <span class="param-switch-label">否</span>
                     </div>
-                  </div>
-                </div>
-              </div>
-              <!-- BLEU -->
-              <div style="flex:1;min-width:180px;background:var(--background-primary);border:1px solid var(--border-color);border-radius:var(--border-radius-lg);overflow:hidden;">
-                <div style="padding:8px 12px;background:var(--background-secondary);border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;">
-                  <span style="font-size:13px;font-weight:600;color:var(--text-primary);">BLEU</span>
-                  <button class="btn-icon-only" style="width:24px;height:24px;font-size:11px;color:var(--danger-color);border-color:var(--error-light);"><i class="fas fa-times"></i></button>
-                </div>
-                <div style="padding:12px;">
-                  <div>
-                    <label style="font-size:11px;color:var(--text-light);font-weight:500;">权重</label>
-                    <input class="form-control form-control-sm" type="number" value="30" min="0" max="100" />
                   </div>
                 </div>
               </div>
@@ -1662,6 +1673,12 @@ function pagerJump(val) {
 // 测试类型切换
 function switchTestType(type) {
   currentTestType = type;
+  document.querySelectorAll('.test-type-btn').forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.textContent.trim().toLowerCase().includes(type)) {
+      btn.classList.add('active');
+    }
+  });
 
   // 更新 badge
   const badge = document.querySelector('.header-badge');
@@ -1702,14 +1719,6 @@ function switchTestType(type) {
 function selectAlgo(el, type) {
   el.parentElement.querySelectorAll('.algo-card').forEach(c => c.classList.remove('active'));
   el.classList.add('active');
-}
-
-// 测试类型选择（步骤内）
-function selectTestType(el, type) {
-  el.parentElement.querySelectorAll('.algo-card').forEach(c => c.classList.remove('active'));
-  el.classList.add('active');
-  // 同步头部切换
-  switchTestType(type);
 }
 
 // 开关切换

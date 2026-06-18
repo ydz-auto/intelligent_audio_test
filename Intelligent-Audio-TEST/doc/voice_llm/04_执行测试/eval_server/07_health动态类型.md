@@ -59,13 +59,12 @@ def health():
   "role": "master",
   "supported_task_types": [
     "wer", "ser", "der", "cpwer", "tcpwer", "stm_wer",
-    "bleu", "llm_judge"
+    "llm_judge"
   ],
   "concurrency": {
     "wer": {"current": 1, "max": 2, "available": 1},
     "ser": {"current": 0, "max": 1, "available": 1},
     "der": {"current": 0, "max": 1, "available": 1},
-    "bleu": {"current": 2, "max": 4, "available": 2},
     "llm_judge": {"current": 1, "max": 2, "available": 1}
   }
 }

@@ -106,6 +106,10 @@
           </div>
         </template>
 
+        <div v-if="voiceLlmHint" class="info-alert">
+          <i class="fas fa-info-circle"></i> {{ voiceLlmHint }}
+        </div>
+
         <ResourceSelectionGrid
           :items="algorithmFilteredDevices"
           :selected-ids="selectedDeviceIdsList"
@@ -321,6 +325,9 @@ const {
   
   filteredDevices,
   algorithmFilteredDevices,
+  isVoiceLLM,
+  voiceLlmHint,
+  concurrencyHint,
   selectedDeviceIdsList,
   deviceDisplayFields,
   analysisContent,

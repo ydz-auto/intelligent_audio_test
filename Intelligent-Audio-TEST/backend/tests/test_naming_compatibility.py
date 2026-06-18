@@ -2,7 +2,7 @@ def test_request_accepts_camel_and_response_returns_camel():
     from flask import request
 
     from backend.app import create_app
-    from backend.utils.response import success_response
+    from backend.utils.web.response import success_response
 
     app = create_app("testing")
 
@@ -39,7 +39,7 @@ def test_request_snake_keys_keep_e2e_tokens():
     from flask import request
 
     from backend.app import create_app
-    from backend.utils.response import success_response
+    from backend.utils.web.response import success_response
 
     app = create_app("testing")
 

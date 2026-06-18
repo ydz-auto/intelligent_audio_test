@@ -1,12 +1,13 @@
 from flask import request
 from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, ReportStatus, ReportType, TaskStatus
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
-from backend.utils.error_codes import ErrorCode
-from backend.utils.report_utils import ReportUtils
-from backend.utils.log_handler import log_and_emit
-from backend.utils.report_query_builder import ReportQueryBuilder
-from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
+from backend.utils.web.response import success_response, error_response
+from backend.utils.web.error_codes import ErrorCode
+from backend.utils.report.report_utils import ReportUtils
+from backend.utils.web.log_handler import log_and_emit
+from backend.utils.report.report_query_builder import ReportQueryBuilder
+from backend.utils.common.result_data_store import load_full_result_data
+from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
 from backend.schemas.report import GenerateTaskReportRequest, ReportDetailData as ReportDetailDataSchema, ReportSummarySimplified
 from datetime import datetime, timedelta, timezone
 from backend.controllers.report_controller_base import ReportControllerBase
@@ -143,7 +144,8 @@ class ReportControllerTask(ReportControllerBase):
             
             for result in device_results:
                 if result.device_id and result.result_data:
-                    result_type = ReportControllerTask._extract_result_type(result.result_data)
+                    full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+                    result_type = ReportControllerTask._extract_result_type(full_data)
                     device_result_types[result.device_id] = result_type
         
         if api_ids:
@@ -154,7 +156,8 @@ class ReportControllerTask(ReportControllerBase):
             
             for result in api_results:
                 if result.api_id and result.result_data:
-                    result_type = ReportControllerTask._extract_result_type(result.result_data)
+                    full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+                    result_type = ReportControllerTask._extract_result_type(full_data)
                     api_result_types[result.api_id] = result_type
         
         return device_result_types, api_result_types
@@ -198,22 +201,13 @@ class ReportControllerTask(ReportControllerBase):
                     result.id, all_dimensions, dim_results_map=dim_results_map
                 )
                 
-                result_data = result.result_data
-                if result_data:
-                    if isinstance(result_data, str) and result_data.strip():
-                        try:
-                            result_data = json.loads(result_data)
-                        except json.JSONDecodeError:
-                            result_data = None
-                    else:
-                        result_data = None
-                    
-                    if isinstance(result_data, dict):
-                        eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
-                        if isinstance(eval_data, dict):
-                            for dim_name, dim_value in eval_data.items():
-                                if dim_name not in dim_values or dim_values.get(dim_name) is None:
-                                    dim_values[dim_name] = dim_value
+                result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+                if result_data and isinstance(result_data, dict):
+                    eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
+                    if isinstance(eval_data, dict):
+                        for dim_name, dim_value in eval_data.items():
+                            if dim_name not in dim_values or dim_values.get(dim_name) is None:
+                                dim_values[dim_name] = dim_value
                 
                 resource_metrics = []
                 for dim_name, dim_value in dim_values.items():
@@ -262,17 +256,8 @@ class ReportControllerTask(ReportControllerBase):
                 })
                 
                 algo_res = result.algorithm_result
-                result_data = result.result_data
-                
-                if result_data:
-                    if isinstance(result_data, str) and result_data.strip():
-                        try:
-                            result_data = json.loads(result_data)
-                        except json.JSONDecodeError:
-                            result_data = None
-                    else:
-                        result_data = None
-                else:
+                result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+                if not isinstance(result_data, dict):
                     result_data = None
                 
                 if algo_res or result_data:
@@ -301,115 +286,143 @@ class ReportControllerTask(ReportControllerBase):
     @staticmethod
     def _build_audios_list(test_case):
         audios_list = []
-        if not test_case.config or 'audios' not in test_case.config:
+        if not test_case.config:
             return audios_list
-            
-        test_audios = test_case.config.get('audios', [])
         
-        device_ids = set()
-        for audio_cfg in test_audios:
-            dev_id = audio_cfg.get('playback_device_id')
-            if dev_id and dev_id != '':
-                device_ids.add(dev_id)
+        config = test_case.config
+        rounds = config.get('rounds', [])
+        if not rounds:
+            return audios_list
+        
+        # 收集所有轮的设备 ID
+        all_device_ids = set()
+        for round_item in rounds:
+            if not isinstance(round_item, dict):
+                continue
+            for audio_cfg in round_item.get('audios', []):
+                dev_id = audio_cfg.get('playback_device_id')
+                if dev_id and dev_id != '':
+                    all_device_ids.add(dev_id)
+            bg_noise = round_item.get('backgroundNoise') or {}
+            noise_dev = bg_noise.get('playback_device_id')
+            if noise_dev and noise_dev != '':
+                all_device_ids.add(noise_dev)
         
         devices = {}
-        if device_ids:
+        if all_device_ids:
             from backend.models.models import PlaybackDevice
-            device_list = PlaybackDevice.query.filter(PlaybackDevice.id.in_(list(device_ids))).all()
+            device_list = PlaybackDevice.query.filter(PlaybackDevice.id.in_(list(all_device_ids))).all()
             devices = {d.id: d.name for d in device_list}
         
         tc_test_type = test_case.test_type or 'api'
-        for audio_cfg in test_audios:
-            audio_id = audio_cfg.get('audio_id')
-            if audio_id:
-                audio = db.session.get(Audio, audio_id)
-                if audio:
-                    dev_id = audio_cfg.get('playback_device_id')
-                    if dev_id == '':
-                        dev_id = None
-                    audio_item = {
-                        "testType": tc_test_type,
-                        "id": audio.id,
-                        "filename": audio.original_filename or audio.name,
-                        "duration": audio.duration,
-                        "url": f"/api/audios/play/{audio.id}",
-                        "spl": audio_cfg.get('spl'),
-                        "playOrder": audio_cfg.get('play_order'),
-                        "playbackDeviceId": dev_id,
-                        "playbackDeviceName": devices.get(dev_id) if dev_id else None,
-                        "label": audio_cfg.get('label'),
-                    }
-                    audios_list.append(audio_item)
         
-        background_noise = test_case.config.get('background_noise', {})
-        if background_noise.get('audio_id'):
-            noise_audio = db.session.get(Audio, background_noise['audio_id'])
-            if noise_audio:
-                audios_list.append({
-                    "testType": "noise",
-                    "id": noise_audio.id,
-                    "filename": noise_audio.name,
-                    "duration": noise_audio.duration,
-                    "url": f"/api/audios/play/{noise_audio.id}",
-                    "spl": background_noise.get('spl'),
-                    "playOrder": None,
-                    "playbackDeviceId": None,
-                    "playbackDeviceName": None,
-                    "label": None,
-                })
-        
-        audios_list.sort(key=lambda x: (x.get('playOrder') is None, x.get('playOrder') or 999))
-        
-        dry_audios = [a for a in audios_list if a.get('testType') != 'noise']
-        noise_audios = [a for a in audios_list if a.get('testType') == 'noise']
-        
-        from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
-        overlap_time = CaseParameterExtractor.get_overlap_time(test_case.config) if test_case.config else 0
-        overlap_rate = CaseParameterExtractor.get_overlap_rate(test_case.config) if test_case.config else 0
-        
-        timeline_start = 0
-        prev_end_time = 0
-        
-        for audio_item in dry_audios:
-            duration = audio_item.get('duration') or 0
+        # 按轮次收集音频，每个 audio 带 roundNumber
+        per_round_dry = []
+        noise_audios = []
+        for round_item in rounds:
+            if not isinstance(round_item, dict):
+                continue
+            round_number = round_item.get('roundNumber', 1)
+            round_dry = []
             
-            if audio_item == dry_audios[0]:
-                timeline_start = 0
-            else:
-                if overlap_time and overlap_time > 0:
-                    timeline_start = prev_end_time - overlap_time
-                    if timeline_start < 0:
-                        timeline_start = 0
-                elif overlap_rate is not None and overlap_rate > 0:
-                    timeline_start = prev_end_time * (1 - overlap_rate)
+            for audio_cfg in round_item.get('audios', []):
+                audio_id = audio_cfg.get('audio_id')
+                if audio_id:
+                    audio = db.session.get(Audio, audio_id)
+                    if audio:
+                        dev_id = audio_cfg.get('playback_device_id')
+                        if dev_id == '':
+                            dev_id = None
+                        audio_item = {
+                            "testType": tc_test_type,
+                            "id": audio.id,
+                            "filename": audio.original_filename or audio.name,
+                            "duration": audio.duration,
+                            "url": f"/api/audios/play/{audio.id}",
+                            "spl": audio_cfg.get('spl'),
+                            "playOrder": audio_cfg.get('play_order'),
+                            "playbackDeviceId": dev_id,
+                            "playbackDeviceName": devices.get(dev_id) if dev_id else None,
+                            "label": audio_cfg.get('label'),
+                            "roundNumber": round_number,
+                        }
+                        audios_list.append(audio_item)
+                        round_dry.append(audio_item)
+            
+            # 噪声
+            background_noise = round_item.get('backgroundNoise') or {}
+            if background_noise.get('audio_id'):
+                noise_audio = db.session.get(Audio, background_noise['audio_id'])
+                if noise_audio:
+                    noise_audios.append({
+                        "testType": "noise",
+                        "id": noise_audio.id,
+                        "filename": noise_audio.name,
+                        "duration": noise_audio.duration,
+                        "url": f"/api/audios/play/{noise_audio.id}",
+                        "spl": background_noise.get('spl'),
+                        "playOrder": None,
+                        "playbackDeviceId": None,
+                        "playbackDeviceName": None,
+                        "label": None,
+                        "roundNumber": round_number,
+                    })
+            
+            per_round_dry.append(round_dry)
+        
+        # 每轮内部排序
+        for round_dry in per_round_dry:
+            round_dry.sort(key=lambda x: (x.get('playOrder') is None, x.get('playOrder') or 999))
+        
+        # 获取 overlap 参数（取首轮配置）
+        first_round = rounds[0] if rounds else {}
+        overlap_config = {
+            'algorithm_params': first_round.get('algorithmParams', {}) if isinstance(first_round, dict) else {}
+        }
+        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
+        overlap_time = CaseParameterExtractor.get_overlap_time(overlap_config) if overlap_config else 0
+        overlap_rate = CaseParameterExtractor.get_overlap_rate(overlap_config) if overlap_config else 0
+        
+        # 按轮次计算 timeline
+        global_offset = 0
+        for round_dry in per_round_dry:
+            prev_end_time = 0
+            for i, audio_item in enumerate(round_dry):
+                duration = audio_item.get('duration') or 0
+                if i == 0:
+                    timeline_start = global_offset
                 else:
-                    timeline_start = prev_end_time
-            
-            audio_item['timelineStart'] = round(timeline_start, 3)
-            audio_item['timelineEnd'] = round(timeline_start + duration, 3)
-            prev_end_time = timeline_start + duration
+                    if overlap_time and overlap_time > 0:
+                        timeline_start = prev_end_time - overlap_time
+                        if timeline_start < global_offset:
+                            timeline_start = global_offset
+                    elif overlap_rate is not None and overlap_rate > 0:
+                        elapsed = prev_end_time - global_offset
+                        timeline_start = global_offset + elapsed * (1 - overlap_rate)
+                    else:
+                        timeline_start = prev_end_time
+                
+                audio_item['timelineStart'] = round(timeline_start, 3)
+                audio_item['timelineEnd'] = round(timeline_start + duration, 3)
+                prev_end_time = timeline_start + duration
+            global_offset = prev_end_time
         
         for noise_item in noise_audios:
             noise_item['timelineStart'] = 0
             noise_item['timelineEnd'] = round(noise_item.get('duration') or 0, 3)
         
+        audios_list.extend(noise_audios)
         return audios_list
 
     @staticmethod
     def _get_reference_params(test_case, case_results, test_type):
         adjusted_reference_params = None
         for result in case_results:
-            result_data = result.result_data
-            if result_data:
-                if isinstance(result_data, str) and result_data.strip():
-                    try:
-                        result_data = json.loads(result_data)
-                    except json.JSONDecodeError:
-                        result_data = None
-                if isinstance(result_data, dict):
-                    adjusted_reference_params = result_data.get('adjusted_reference_params')
-                    if adjusted_reference_params:
-                        break
+            result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+            if result_data and isinstance(result_data, dict):
+                adjusted_reference_params = result_data.get('adjusted_reference_params')
+                if adjusted_reference_params:
+                    break
         
         if adjusted_reference_params:
             config_for_ref = {'reference_params': adjusted_reference_params}

@@ -8,7 +8,7 @@
 
 ## 背景
 
-eval_server 的 `POST /api/create_task` 端点目前支持 6 种任务类型：`wer`、`ser`、`der`、`cpwer`、`tcpwer`、`stm_wer`。voice_llm 改造需要新增 `bleu` 和 `llm_judge` 两种类型。
+eval_server 的 `POST /api/create_task` 端点目前支持 6 种任务类型：`wer`、`ser`、`der`、`cpwer`、`tcpwer`、`stm_wer`。voice_llm 改造需要新增 `llm_judge` 类型。
 
 ---
 
@@ -20,7 +20,6 @@ eval_server 的 `POST /api/create_task` 端点目前支持 6 种任务类型：`
 # api.py 顶部常量
 SUPPORTED_TASK_TYPES = [
     'wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer',
-    'bleu',        # 新增
     'llm_judge',   # 新增
 ]
 ```
@@ -48,9 +47,6 @@ def create_task():
         required = ['ref_stm', 'hyp_stm']
     elif task_type == 'der':
         required = ['rttm_ref', 'stm_ref', 'rttm_res', 'stm_res']
-    elif task_type == 'bleu':
-        # BLEU: hypothesis + reference
-        required = ['hypothesis', 'reference']
     elif task_type == 'llm_judge':
         # LLM Judge: hypothesis + reference + model + prompt_template
         required = ['hypothesis', 'reference', 'model', 'prompt_template']
@@ -65,25 +61,7 @@ def create_task():
     # ... 后续逻辑 ...
 ```
 
-### 3. BLEU 任务创建
-
-```python
-elif task_type == 'bleu':
-    # 本地计算（BLEU 计算量较小）
-    if can_start_locally():
-        task_id = str(uuid.uuid4())
-        thread = threading.Thread(
-            target=process_local_task,
-            args=(task_id, task_type, task_params),
-            daemon=True
-        )
-        thread.start()
-
-        TaskModel.update_task_status(task_id, status='processing')
-        return success_response({'task_id': task_id})
-```
-
-### 4. LLM Judge 任务创建
+### 3. LLM Judge 任务创建
 
 ```python
 elif task_type == 'llm_judge':
@@ -108,7 +86,7 @@ elif task_type == 'llm_judge':
         return success_response({'task_id': task_id})
 ```
 
-### 5. 本地任务处理
+### 4. 本地任务处理
 
 ```python
 def process_local_task(task_id, task_type, task_params):
@@ -120,13 +98,12 @@ def process_local_task(task_id, task_type, task_params):
         TaskModel.update_task_status(task_id, status='failed', error_msg=str(e))
 ```
 
-### 6. 任务类型字段要求汇总
+### 5. 任务类型字段要求汇总
 
 | 类型 | 必填字段 | 可选字段 |
-|------|---------|---------|
+|------|---------|--------|
 | `wer` | `asr_ref`, `asr_result` | `source_lang`, `target_lang`, `normalize` |
 | `ser` | `asr_ref`, `asr_result` | `source_lang`, `target_lang`, `normalize` |
-| `bleu` | `hypothesis`, `reference` | `source_lang`, `target_lang`, `normalize` |
 | `llm_judge` | `hypothesis`, `reference`, `model`, `prompt_template` | `max_tokens`, `temperature`, `scoring_criteria` |
 | `der` | `rttm_ref`, `stm_ref`, `rttm_res`, `stm_res` | `collar`, `skip_overlap` |
 
@@ -145,6 +122,5 @@ def process_local_task(task_id, task_type, task_params):
 
 | 依赖文档 | 说明 |
 |---------|------|
-| `02_BLEU计算器` | bleu 类型计算实现 |
-| `03_LLM_Judge计算器` | llm_judge 类型计算实现 |
+| `02_LLM_Judge计算器` | llm_judge 类型计算实现 |
 | `26_evaluation_api_client适配` (主后端) | 请求发送方 |

@@ -7,7 +7,7 @@ def test_stop_task_audio_by_pattern_handles_non_string_task_ids(monkeypatch):
 
     monkeypatch.setattr(pyaudio, "PyAudio", lambda: DummyPyAudio())
 
-    from backend.utils.audio_engine import audio_service
+    from backend.services.audio.audio_engine import audio_service
 
     audio_service.active_players = {
         123: {"dry": {"thread": None, "stop_event": threading.Event()}},

@@ -29,7 +29,6 @@ def aggregate_round_results(
     Returns:
         {
             "avg_wer": 0.05,
-            "avg_bleu": 0.91,
             "avg_llm_judge": 4.2,
             "avg_latency": 1.83,
             "interruption_count": 1,
@@ -153,7 +152,6 @@ def _check_all_round_dimensions_completed(self, result_id):
 | 维度类型 | 聚合方式 | 说明 |
 |---------|---------|------|
 | WER | 算术平均 | 多轮 WER 取平均 |
-| BLEU | 算术平均 | 多轮 BLEU 取平均 |
 | LLM Judge | 算术平均 | 多轮 LLM 评分取平均 |
 | SER | 加权平均 | 按句子数加权 |
 | DER | 加权平均 | 按时长加权 |

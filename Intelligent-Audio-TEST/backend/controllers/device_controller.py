@@ -2,8 +2,8 @@ from flask import request, current_app
 from backend.models.models import Device, DeviceTag, TaskDevice
 from backend.models.database import db
 from backend.controllers.log_controller import LogController
-from backend.utils.response import success_response, error_response
-from backend.device_driver import device_driver_factory
+from backend.utils.web.response import success_response, error_response
+from backend.utils.device_driver import device_driver_factory
 from backend.schemas.common import IdData
 from backend.schemas.device import (
     DeviceHealthItem,
@@ -338,7 +338,7 @@ class DeviceController:
             db.session.add(new_device)
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             # 创建设备后立即检查设备是否在线
@@ -412,7 +412,7 @@ class DeviceController:
             device.updated_at = datetime.now(timezone(timedelta(hours=8)))
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(None, "设备已删除 (逻辑删除)")
@@ -449,7 +449,7 @@ class DeviceController:
             is_online = False
             try:
                 driver = device_driver_factory.get_driver(device.system)
-                from backend.utils.log_handler import log_and_emit
+                from backend.utils.web.log_handler import log_and_emit
                 if driver:
                     log_and_emit('DEBUG', 'DeviceHealthCheck', f'开始扫描 {device.system} 设备 {device.name} (ID: {device.id})', device_id=device.id, push_to_websocket=False)
                     

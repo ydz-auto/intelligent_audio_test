@@ -1,0 +1,63 @@
+# api_adapter_service configuration
+# Environment variables: ${VAR:default}
+
+server:
+  host: "0.0.0.0"
+  port: 8000
+  dev_mode: false
+  workers: 2
+  max_concurrency: 100
+  task_concurrency:
+    zh2en: 20
+    en2zh: 20
+    default: 10
+    dialog: 10
+
+audio:
+  frame_duration_ms: 80
+  sample_rate: 16000
+  channels: 1
+  bit_depth: 16
+  frame_send_interval_ms: 10
+
+websocket:
+  reconnect_max: 5
+  result_recv_timeout: 30
+  connect_timeout: 10
+  no_heartbeat: true
+
+vendor:
+  volc_ast:
+    protocol: websocket
+    ws_url: "${VOLC_WS_URL:}"
+    headers:
+      Authorization: "Bearer ${VOLC_API_KEY:}"
+    timeout: 30
+
+  mock:
+    protocol: mock
+    ws_url: "mock://localhost"
+    timeout: 5
+
+  voice_llm:
+    protocol: http
+    base_url: "${VOICE_LLM_API_BASE:http://localhost:9000}"
+    headers:
+      Authorization: "Bearer ${VOICE_LLM_API_KEY:}"
+      Content-Type: "application/json"
+    timeout: 60
+    result_parser:
+      asr_text_path: "result.asr_text"
+      trans_text_path: "result.trans_text"
+      session_id_path: "session_id"
+    session:
+      context_mode: "full"
+      max_history_rounds: 10
+      session_timeout: 120
+    concurrency:
+      max_concurrent_sessions: 5
+
+result:
+  max_frame_count: 100000
+  task_expire_minutes: 60
+  default_page_size: 1000

@@ -348,6 +348,17 @@ export function useAlgorithmConfig() {
     return algorithms.value.filter(a => a.group_id === groupId)
   }
 
+  async function getCaseAlgorithmParams(algorithmType: string): Promise<any[]> {
+    if (!algorithmType) return []
+    try {
+      const result = await algorithmApi.getCaseParams(algorithmType)
+      return result?.parameters || []
+    } catch (error) {
+      console.error('获取用例参数定义失败:', error)
+      return []
+    }
+  }
+
   function clearFormSchemaCache() {
     formSchemas.value.clear()
   }
@@ -363,6 +374,7 @@ export function useAlgorithmConfig() {
     getFormSchema,
     getParamOptions,
     getAssociatedDimensions,
+    getCaseAlgorithmParams,
     createAlgorithm,
     updateAlgorithm,
     deleteAlgorithm,

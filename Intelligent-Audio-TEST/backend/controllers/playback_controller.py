@@ -2,9 +2,9 @@ from flask import request, current_app
 from backend.models.models import PlaybackDevice
 from backend.models.database import db
 from backend.controllers.log_controller import LogController
-from backend.utils.response import success_response, error_response
-from backend.utils.audio_engine import AudioService
-from backend.utils.task_utils import has_running_e2e_tasks
+from backend.utils.web.response import success_response, error_response
+from backend.services.audio.audio_engine import AudioService
+from backend.utils.common.task_utils import has_running_e2e_tasks
 from backend.schemas.common import IdData, StatusData
 from backend.schemas.playback import PlaybackDeviceItem, PlaybackDeviceListData, PlaybackScanItem, PlaybackStatusItem, PlaybackTestData
 from backend.schemas.playback import PlaybackCreateSchema, PlaybackUpdateSchema, PlaybackTestSchema, PlaybackAssociateSplSchema
@@ -351,7 +351,7 @@ class PlaybackController:
             gain = 1.0
             if spl and device.current_spl_mapping_id:
                 try:
-                    from backend.utils.spl_service import spl_service
+                    from backend.services.audio.spl_service import spl_service
                     gain = spl_service.spl_to_gain(device.current_spl_mapping_id, spl)
                 except Exception:
                     pass

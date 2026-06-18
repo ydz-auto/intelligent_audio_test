@@ -1,9 +1,10 @@
 from flask import request, current_app
 from backend.models.models import Task, Tag, TaskCase, TaskDevice, TaskAPI, TestCase, TestResult, TestResultDimension, Log, Dimension
 from backend.models.database import db
-from backend.utils.response import success_response, error_response, convert_keys_to_camel
-from backend.utils.error_codes import ErrorCode
-from backend.utils.execution_engine import execution_engine
+from backend.utils.web.response import success_response, error_response, convert_keys_to_camel
+from backend.utils.web.error_codes import ErrorCode
+from backend.services.execution.execution_engine import execution_engine
+from backend.utils.common.result_data_store import load_full_result_data
 from backend.schemas.common import IdData, TaskStatusData
 from backend.schemas.task import (
     TaskApiBrief,
@@ -27,7 +28,7 @@ from backend.schemas.task import (
 )
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import and_, or_
-from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
+from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
 
 class TaskController:
     @staticmethod
@@ -380,6 +381,7 @@ class TaskController:
                 "error_message": dim.error_message
             })
             
+            full_result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
             processed_results.append({
                 "id": result.id,
                 "device_id": result.device_id,
@@ -393,7 +395,7 @@ class TaskController:
                 "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
                 "reference_asr_text": reference_asr_text,
                 "reference_translation_text": reference_translation_text,
-                "result_data": result.result_data,
+                "result_data": full_result_data,
                 "error_message": result.error_message,
                 "dimensions": dim_data,
                 "created_at": result.created_at.isoformat()
@@ -423,7 +425,7 @@ class TaskController:
         algorithm_type = case_info.algorithm_type if case_info and hasattr(case_info, 'algorithm_type') else ''
         algorithm_results = []
         try:
-            from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            from backend.utils.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type) if algorithm_type else []
             
             for i, result in enumerate(results):
@@ -431,13 +433,7 @@ class TaskController:
                 resource = pr['device_name'] or pr['api_name'] or f'result_{result.id}'
                 
                 algo_res = result.algorithm_result or {}
-                r_data = result.result_data
-                if isinstance(r_data, str) and r_data.strip():
-                    try:
-                        import json as _json
-                        r_data = _json.loads(r_data)
-                    except Exception:
-                        r_data = {}
+                r_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
                 if not isinstance(r_data, dict):
                     r_data = {}
                 
@@ -476,7 +472,7 @@ class TaskController:
         field_mapping = {'result': [], 'reference': []}
         result_audios = {}  # {device_name: [{url, filename, param_code}]}
         try:
-            from backend.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            from backend.utils.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             if algorithm_type:
                 field_mapping = AlgorithmResultFieldMapper.get_field_mapping(algorithm_type)
                 
@@ -493,13 +489,7 @@ class TaskController:
                         resource = pr['device_name'] or pr['api_name'] or f'result_{result.id}'
                         
                         algo_res = result.algorithm_result or {}
-                        r_data = result.result_data
-                        if isinstance(r_data, str) and r_data.strip():
-                            try:
-                                import json as _json
-                                r_data = _json.loads(r_data)
-                            except Exception:
-                                r_data = {}
+                        r_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
                         if not isinstance(r_data, dict):
                             r_data = {}
                         
@@ -678,7 +668,7 @@ class TaskController:
                 "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
                 "reference_asr_text": reference_asr_text,
                 "reference_translation_text": reference_translation_text,
-                "result_data": result.result_data,
+                "result_data": load_full_result_data(result.result_data, getattr(result, 'result_data_path', None)),
                 "error_message": result.error_message,
                 "dimensions": dim_data,
                 "created_at": result.created_at.isoformat()
@@ -779,7 +769,7 @@ class TaskController:
 
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(IdData(id=new_task.id), "任务创建成功", http_code=201)
@@ -1287,7 +1277,7 @@ class TaskController:
     @staticmethod
     def rextract(task_id):
         from pydantic import BaseModel, Field
-        from backend.utils.device_result_reextractor import get_device_result_reextractor
+        from backend.services.device.device_result_reextractor import get_device_result_reextractor
 
         class TaskReextractInput(BaseModel):
             task_id: int = Field(..., validation_alias='task_id')
@@ -1362,7 +1352,7 @@ class TaskController:
             app = current_app._get_current_object()
             
             if task.status in ['running', 'paused']:
-                from backend.utils.execution_engine import execution_engine as ee
+                from backend.services.execution.execution_engine import execution_engine as ee
                 stop_future = ee.api_task_pool.submit(
                     execution_engine.control_task,
                     app, task_id, 'stop'
@@ -1379,7 +1369,7 @@ class TaskController:
             task.deleted = True
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(None, "任务已删除")

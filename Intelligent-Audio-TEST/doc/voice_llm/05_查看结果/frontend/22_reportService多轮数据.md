@@ -65,7 +65,6 @@ function computeAggregatedFromRounds(rounds: any[], evalKey: string): Record<str
   if (evals.length === 0) return {};
   return {
     avg_wer: evals.reduce((s, e) => s + (e.wer || 0), 0) / evals.length,
-    avg_bleu: evals.reduce((s, e) => s + (e.bleu || 0), 0) / evals.length,
     avg_llm_judge: evals.reduce((s, e) => s + (e.llm_judge || 0), 0) / evals.length,
     avg_latency: rounds.reduce((s, r) => s + (r.latency || 0), 0) / rounds.length,
   };

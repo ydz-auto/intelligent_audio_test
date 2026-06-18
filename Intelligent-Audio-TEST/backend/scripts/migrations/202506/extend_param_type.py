@@ -20,10 +20,14 @@
 注意：此脚本可重复执行，不会造成数据丢失
 """
 
+import os
 import sys
 from sqlalchemy import create_engine, text
 
-POSTGRES_URI = 'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
+POSTGRES_URI = os.environ.get(
+    'DATABASE_URI',
+    'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
+)
 
 # param_code 关键词 → param_type 映射规则（按优先级排列）
 PARAM_TYPE_RULES = [
@@ -40,7 +44,7 @@ TRANSFORM_TO_PARAM_TYPE = {
 }
 
 
-def migrate_param_type():
+def migrate_param_type(dry_run=False):
     engine = create_engine(POSTGRES_URI)
     
     with engine.begin() as conn:
@@ -55,7 +59,7 @@ def migrate_param_type():
                 print(f"  + {table_name}.param_type -> VARCHAR(30)")
             except Exception as e:
                 msg = str(e).lower()
-                if 'already' in msg or 'cannot' in msg or 'type' in msg:
+                if 'already' in msg or 'cannot' in msg or 'cannot drop' in msg or 'is already' in msg:
                     print(f"  - {table_name}.param_type 已是 VARCHAR(30) 或更大")
                 else:
                     print(f"  ! {table_name}: {e}")
@@ -83,10 +87,11 @@ def migrate_param_type():
                 code_lower = param_code.lower()
                 for keywords, target_type in PARAM_TYPE_RULES:
                     if any(kw in code_lower for kw in keywords):
-                        conn.execute(text(
-                            f"UPDATE {table_name} SET param_type = :t WHERE id = :id"
-                        ), {'t': target_type, 'id': row_id})
-                        print(f"    [{param_code}] text -> {target_type}")
+                        if not dry_run:
+                            conn.execute(text(
+                                f"UPDATE {table_name} SET param_type = :t WHERE id = :id"
+                            ), {'t': target_type, 'id': row_id})
+                        print(f"    {'[DRY-RUN] ' if dry_run else ''}[{param_code}] text -> {target_type}")
                         updated_in_table += 1
                         total_updated += 1
                         break
@@ -114,15 +119,26 @@ def migrate_param_type():
                 source_param, source = m[0], m[1]
                 table_name = 'algorithm_device_params' if source == 'device' else 'algorithm_api_params'
 
-                result = conn.execute(text(
-                    f"UPDATE {table_name} SET param_type = :pt "
-                    f"WHERE param_code = :code AND direction = 'output' AND deleted = false "
-                    f"AND param_type = 'text'"
-                ), {'pt': param_type, 'code': source_param})
+                if dry_run:
+                    check = conn.execute(text(
+                        f"SELECT COUNT(*) FROM {table_name} "
+                        f"WHERE param_code = :code AND direction = 'output' AND deleted = false "
+                        f"AND param_type = 'text'"
+                    ), {'code': source_param})
+                    cnt = check.scalar()
+                    if cnt > 0:
+                        print(f"    [DRY-RUN] [{source}] {source_param}: text -> {param_type} (来自 transform_type={transform_type})")
+                        step3_updated += cnt
+                else:
+                    result = conn.execute(text(
+                        f"UPDATE {table_name} SET param_type = :pt "
+                        f"WHERE param_code = :code AND direction = 'output' AND deleted = false "
+                        f"AND param_type = 'text'"
+                    ), {'pt': param_type, 'code': source_param})
 
-                if result.rowcount > 0:
-                    print(f"    [{source}] {source_param}: text -> {param_type} (来自 transform_type={transform_type})")
-                    step3_updated += result.rowcount
+                    if result.rowcount > 0:
+                        print(f"    [{source}] {source_param}: text -> {param_type} (来自 transform_type={transform_type})")
+                        step3_updated += result.rowcount
 
         if step3_updated == 0:
             print("    (无需更新)")
@@ -135,8 +151,10 @@ def migrate_param_type():
 
 
 if __name__ == '__main__':
+    dry_run = '--dry-run' in sys.argv
+
     print("=" * 60)
-    print("扩展 device_params/api_params 的 param_type 字段")
+    print(f"{'[DRY-RUN] ' if dry_run else ''}扩展 device_params/api_params 的 param_type 字段")
     print("=" * 60)
     print()
     print(f"数据库: {POSTGRES_URI[:POSTGRES_URI.rindex('@')]}@localhost/...")
@@ -151,13 +169,14 @@ if __name__ == '__main__':
         print(f"   - {tt} -> {pt}")
     print()
 
-    confirm = input("是否继续？(y/N): ").strip().lower()
-    if confirm != 'y':
-        print("已取消")
-        sys.exit(0)
+    if not dry_run:
+        confirm = input("是否继续？(y/N): ").strip().lower()
+        if confirm != 'y':
+            print("已取消")
+            sys.exit(0)
 
     try:
-        migrate_param_type()
+        migrate_param_type(dry_run=dry_run)
     except Exception as e:
         print(f"\n迁移失败: {e}")
         sys.exit(1)

@@ -9,8 +9,8 @@ from backend.models.models import Dimension, Category, Task, TaskCase, TestResul
 from backend.models.algorithm_models import EvaluationDimensionParam, AlgorithmDimensionRelation
 from backend.models.database import db
 from sqlalchemy import and_
-from backend.utils.response import success_response, error_response
-from backend.utils.log_handler import log_and_emit
+from backend.utils.web.response import success_response, error_response
+from backend.utils.web.log_handler import log_and_emit
 from backend.schemas.common import IdData
 from backend.schemas.evaluation import (
     CategoryCreateInput,
@@ -375,7 +375,7 @@ class EvaluationController:
 
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(IdData(id=new_dim.id), "评分维度创建成功", http_code=201)
@@ -526,7 +526,7 @@ class EvaluationController:
 
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(None, "评分维度更新成功")
@@ -578,7 +578,7 @@ class EvaluationController:
             dim.updated_at = datetime.now(timezone(timedelta(hours=8)))
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(None, "评分维度已删除")
@@ -754,7 +754,7 @@ class EvaluationController:
 
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(None, f"批量操作 {action} 执行成功")
@@ -944,7 +944,7 @@ class EvaluationController:
         if task.status not in ['completed', 'failed', 'stopped', 'paused', 'skipped']:
             return error_response("只有已完成/失败/停止/暂停/跳过的任务才能重新评估")
 
-        from backend.utils.reevaluation_executor import ReevaluationExecutor
+        from backend.services.execution.reevaluation_executor import ReevaluationExecutor
         executor = ReevaluationExecutor.get_instance()
         success, message = executor.submit(
             task_id=task_id,

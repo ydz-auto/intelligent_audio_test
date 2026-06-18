@@ -569,3 +569,21 @@
 .category-toggle.rotate-180 {
   transform: rotate(180deg) !important;
 }
+
+/* voice_llm 信息提示样式 */
+.info-alert {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm, 8px);
+  padding: var(--spacing-sm, 8px) var(--spacing-md, 16px);
+  background: var(--primary-light, #e6f7ff);
+  border: 1px solid var(--primary-color, #1890ff);
+  border-radius: var(--border-radius-md, 6px);
+  color: var(--primary-color, #1890ff);
+  font-size: var(--font-size-sm, 13px);
+  margin-bottom: var(--spacing-md, 16px);
+}
+
+.info-alert i {
+  font-size: 16px;
+}

@@ -12,178 +12,152 @@
 
 1. **配置驱动**：根据 `config.rounds[]` 每轮的字段决定执行哪些能力
 2. **每轮自包含**：每轮从自身 `round.algorithmParams` 读取全部配置参数
-3. **algorithmParams 读取**：`CaseParameterExtractor.convert_params_to_dict(round.algorithmParams)` 转为 dict 后按 field_code 读取
+3. **algorithmParams 读取**：`_normalize_algorithm_params(round.algorithmParams)` 转为 dict 后按 field_code 读取
 4. **referenceParams 从文件读取**：`round.referenceParamsPath` → 读取文件
-5. **轮末恢复**：每轮设置的设备环境在该轮结束时恢复
+5. **循环外一次性准备**：设备获取、初始化、声纹注册在循环外完成，避免每轮重复
+6. **轮末恢复**：每轮设置的设备环境（音量、导轨）在该轮结束时恢复
 
 ### 改造后执行流程
 
 ```mermaid
 graph TD
-    A[验证参数 + 加载数据] --> B[获取设备驱动]
-    B --> C["for round in config.rounds:"]
-    
-    C --> D{"algorithmParams<br/>railDistance?"}
-    D -->|有| D1[move_rail]
-    D -->|无| E
+    A["验证参数 + 加载数据"] --> B["获取设备信息（循环外）"]
+    B --> C["初始化设备（循环外）"]
+    C --> D{"voiceprintEnabled?"}
+    D -->|是| D1["声纹注册（循环外）"]
+    D -->|否| E
     D1 --> E
-    
-    E{"algorithmParams<br/>volumeLevel?"}
-    E -->|有| E1[set_volume]
-    E -->|无| F
-    E1 --> F
-    
-    F{"algorithmParams<br/>voiceprintEnabled?"}
-    F -->|是| F1["Step 0: register_voiceprint"]
-    F -->|否| G
+
+    E["for round in config.rounds:"]
+
+    E --> F{"algorithmParams.railDistance?"}
+    F -->|有| F1["move_rail"]
+    F -->|无| G
     F1 --> G
-    
-    G{round.audios?}
-    G -->|有| G1[play_prompt]
-    G -->|无| H
-    G1 --> H
-    
-    H[pre_process]
-    H --> I[干声+噪声+干扰人 → play_multi]
-    I --> J[waitTime + 打断检测]
-    J --> K[收集结果]
-    K --> L{evaluation.enabled?}
-    L -->|是| L1["读取 referenceParamsPath 文件 + 单轮评估"]
-    L -->|否| M
-    L1 --> M
-    M[停止音频 + 恢复音量/导轨]
-    M --> C
-    
-    C -->|完成| Q[post_process + 存储 + 整体评估]
+
+    G["构建干扰人配置"]
+
+    G --> H{"algorithmParams.volumeLevel?"}
+    H -->|有| H1["保存原始音量 + set_volume"]
+    H -->|无| I
+    H1 --> I
+
+    I["播放音频（内部调用 pre_process）<br/>干声+噪声+干扰人统一混音"]
+    I --> J["post_process"]
+    J --> K["恢复音量"]
+    K --> L["等待 + 打断检测"]
+    L --> M["收集本轮结果"]
+    M --> N["标记 round_number"]
+    N --> O{"railDistance?"}
+    O -->|有| O1["reset_rail"]
+    O -->|无| P
+    O1 --> P
+    P --> E
+
+    E -->|完成| Q["汇总多轮结果 + 整体评估"]
+
+    style B fill:#bbdefb,stroke:#1976d2
+    style C fill:#bbdefb,stroke:#1976d2
+    style D1 fill:#bbdefb,stroke:#1976d2
 ```
+
+> 蓝色框 = 循环外一次性步骤，其余 = 循环内每轮步骤
 
 ### 代码结构
 
 ```python
 class E2EExecutor:
-    def execute_e2e_case(self, app, task_id, tc_rel_id):
-        config = test_case.config  # { rounds: [...] }
-        rounds = config.get('rounds', [])
-        device_info_list = self._get_device_drivers(task_id)
+    def _execute_e2e_with_rounds(self, task_id, tc_rel_id, data):
+        case_config = data['case_config']
+        rounds = case_config.get('rounds', [])
 
-        # Step 0: 声纹注册（循环前预设置，从第1轮 algorithmParams 读取）
-        if rounds:
-            first_algo_params = CaseParameterExtractor.convert_params_to_dict(
-                rounds[0].get('algorithmParams', [])
-            )
-            voiceprint_enabled = first_algo_params.get('voiceprintEnabled', 'false')
-            if str(voiceprint_enabled).lower() == 'true':
-                self._register_voiceprint(task_id, first_algo_params, device_info_list)
+        # ── 循环外：一次性设备准备 ──
+        device_info_list = self._get_device_info(task_id, case_config)
+        device_driver_factory.register_task_devices(task_id, device_info_list)
+        self._initialize_devices(device_info_list, task_id, ...)
 
-        try:
-            result = self._execute_rounds(task_id, rounds, device_info_list)
-        finally:
-            self._final_cleanup(device_info_list)
+        # 声纹注册（循环前一次性执行）
+        voiceprint_config = case_config.get('voiceprint_config', {})
+        if voiceprint_config.get('enabled'):
+            self._register_voiceprint(task_id, case_config, device_info_list)
 
-        self._store_and_evaluate(task_id, result, config)
+        # ── 多轮循环 ──
+        all_round_results = []
 
-    def _execute_rounds(self, task_id, rounds, device_info_list):
-        round_results = []
+        for round_idx, round_config in enumerate(rounds):
+            # 1. 准备本轮音频配置
+            round_case_config = case_config.copy()
+            round_case_config['audios'] = round_config.get('audios', [])
+            playback_info = prepare_audio_playback_info(...)
 
-        for i, round_config in enumerate(rounds):
-            self._emit_progress(f"第 {i + 1}/{len(rounds)} 轮")
-            saved_state = {}
-
-            # 从 algorithmParams 读取本轮参数
-            algo_params = CaseParameterExtractor.convert_params_to_dict(
+            # 2. 提取本轮算法参数
+            round_algo_params = _normalize_algorithm_params(
                 round_config.get('algorithmParams', [])
             )
 
-            # 1. 导轨（algorithmParams.railDistance）
-            rail_distance = algo_params.get('railDistance')
-            if rail_distance is not None:
-                self._initialize_rail(task_id, device_info_list, float(rail_distance))
-                saved_state['rail'] = True
+            # 3. 导轨控制
+            rail_distance = round_algo_params.get('railDistance')
+            if rail_distance:
+                rail_controller = RailController()
+                rail_controller.move_rail(float(rail_distance))
 
-            # 2. 音量（algorithmParams.volumeLevel）
-            volume_level = algo_params.get('volumeLevel')
-            if volume_level is not None:
-                saved_state['volumes'] = self._set_device_volumes(
-                    task_id, device_info_list, int(volume_level)
-                )
+            # 4. 构建干扰人配置
+            interferer_configs = self._build_interferer_configs(...)
 
-            # 3. 声纹注册已在 Step 0 完成（循环前预设置）
+            # 5. 音量设置（pre_process 前）
+            volume_level = round_algo_params.get('volumeLevel')
+            original_volumes = {}
+            if volume_level:
+                for info in device_info_list:
+                    original_volumes[device_sn] = driver.get_volume(device_sn)
+                    driver.set_volume(device_sn, int(volume_level))
 
-            # 4. Prompt（从 round.audios 读取）
-            audios = round_config.get('audios', [])
-            if audios:
-                self._play_prompt_audio(task_id, audios, device_info_list)
+            # 6. 播放音频（内部调用 pre_process）
+            self._execute_audio_playback(...)
 
-            # 5. 预处理
-            self._pre_process(task_id, device_info_list)
+            # 7. post_process
+            self._post_process_devices(device_info_list, task_id, ...)
 
-            # 6. 混音播放（干扰人从 algorithmParams.interferers 读取）
-            interferers_json = algo_params.get('interferers')
-            interferers = json.loads(interferers_json) if interferers_json else []
-            all_audio = (
-                self._build_noise_configs(round_config.get('backgroundNoise'), device_info_list) +
-                self._build_interferer_configs(task_id, interferers, device_info_list) +
-                self._build_round_audio_configs(round_config, device_info_list)
-            )
-            audio_service.play_multi(task_id=task_id, audio_configs=all_audio)
+            # 8. 恢复音量（post_process 后）
+            for device_sn, original_vol in original_volumes.items():
+                driver.set_volume(device_sn, original_vol)
 
-            # 7. 等待 + 打断（algorithmParams.interruptionEnabled）
-            wait_time = round_config.get('waitTime', 5)
-            interruption_enabled = algo_params.get('interruptionEnabled', 'false')
-            if str(interruption_enabled).lower() == 'true':
-                sensitivity = float(algo_params.get('interruptionSensitivity', '0.5'))
-                interruption_result = self._detect_interruption(
-                    task_id, sensitivity, wait_time, device_info_list
-                )
-            else:
-                time.sleep(wait_time)
+            # 9. 等待 + 打断检测
+            interruption_events = self._wait_and_detect_interruption(...)
 
-            # 8. 收集结果
-            round_result = self._collect_round_results(task_id, i, round_config, device_info_list)
-            round_results.append(round_result)
+            # 10. 收集本轮结果
+            round_results = self._collect_results(...)
+            for r in round_results:
+                r['round_number'] = round_idx
+            all_round_results.extend(round_results)
 
-            # 9. 停止音频
-            audio_service.stop_task_audio(task_id)
+            # 11. 导轨复位
+            if rail_controller:
+                rail_controller.reset_rail()
 
-            # 10. 单轮评估（从文件读取 referenceParams）
-            eval_config = round_config.get('evaluation', {})
-            if eval_config and eval_config.get('enabled'):
-                ref_params = self._load_reference_params(round_config)
-                self._evaluate_round_result(
-                    task_id=task_id,
-                    round_result=round_result,
-                    round_number=i,
-                    eval_dimensions=eval_config.get('dimensions', []),
-                    reference_params=ref_params,
-                )
-
-            # 11. 恢复
-            if 'volumes' in saved_state:
-                self._restore_volumes(device_info_list, saved_state['volumes'])
-            if saved_state.get('rail'):
-                self._reset_rail(task_id, device_info_list)
-
-        return {'rounds': round_results, 'round_count': len(round_results)}
-
-    def _load_reference_params(self, round_config):
-        """从文件读取参考文本"""
-        path = round_config.get('referenceParamsPath')
-        if path and os.path.exists(path):
-            with open(path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        return {}
+        # ── 循环后：汇总 + 评估 ──
+        self._process_results(task_id, ..., all_round_results, ...)
 ```
 
 ### 与现有流程对比
 
 | 步骤 | 现有 | 改造后 |
 |------|------|--------|
+| 设备获取/初始化 | 循环内每轮重复 | **循环外一次性** |
+| 声纹注册 | 循环内首轮（flag 控制） | **循环外一次性** |
 | 主循环 | 无 | for round in rounds（每轮自包含） |
-| 导轨/音量/声纹/Prompt | 无 | 每轮从 round.algorithmParams 读取 |
+| 音量设置 | 独立 `_apply_round_device_settings` | 内联到 pre_process 前 |
+| 音量恢复 | 独立 `_restore_round_device_settings` + finally | 内联到 post_process 后 |
+| 导轨控制 | 独立方法 + saved_state | 内联到循环内 + 循环末复位 |
 | 参考字段 | TestCase.reference_params 列 | 从 round.referenceParamsPath 文件读取 |
-| 评估 | 整体评估 | 每轮评估 + 整体评估 |
-| 恢复 | 无 | 每轮末恢复 |
-| 声纹注册 | 无 | Step 0 循环前预设置 |
+| 评估 | 整体评估 | 循环后按 round_number 分组评估 + 整体评估 |
+
+### 已删除的方法
+
+| 方法 | 原因 |
+|------|------|
+| `_apply_round_device_settings()` | 音量/导轨逻辑已内联到循环中 |
+| `_restore_round_device_settings()` | 音量恢复紧跟 post_process，导轨复位在循环末尾 |
 
 ## 引用关系
 

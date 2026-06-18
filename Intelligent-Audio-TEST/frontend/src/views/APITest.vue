@@ -59,6 +59,9 @@
         next-label="下一步"
         @next="nextStep"
       >
+        <div v-if="stepHints?.caseSelection" class="info-alert">
+          <i class="fas fa-info-circle"></i> {{ stepHints.caseSelection }}
+        </div>
         <TestCaseListContainer 
           :test-case-groups="testCaseGroups"
           :tags="tags"
@@ -399,7 +402,11 @@ const {
   
   // 常量/列定义
   deviceAPIColumns: deviceApiColumns,
-  caseExecutionColumns
+  caseExecutionColumns,
+  
+  // voice_llm 适配
+  isVoiceLLM,
+  stepHints
 } = useApiTest()
 
 // 处理开始任务按钮点击

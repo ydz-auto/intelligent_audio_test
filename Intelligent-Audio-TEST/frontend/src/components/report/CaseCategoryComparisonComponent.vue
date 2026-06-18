@@ -275,6 +275,7 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import ChartComponent from './ChartComponent.vue'
 import DataTable from '../common/DataTable.vue'
 import { reportsApi } from '../../utils/api'
+import { reportService } from '../../services/reportService'
 import '../../assets/styles/components/report-filter-card.css'
 
 
@@ -426,6 +427,19 @@ const formatMetricForDisplay = (metricName, value) => {
   return String(num)
 }
 
+const normalizeMetricValue = (algorithmResult, metricName, dimensions) => {
+  if (algorithmResult && typeof algorithmResult === 'object' && 'rounds' in algorithmResult && Array.isArray(algorithmResult.rounds)) {
+    const value = reportService.getMetricValue(algorithmResult, metricName, dimensions)
+    if (value !== null && value !== undefined) return value
+    return null
+  }
+  if (dimensions && Array.isArray(dimensions)) {
+    const dim = dimensions.find(d => (d.dimension_name || d.name) === metricName)
+    if (dim && dim.value !== undefined && dim.value !== null) return dim.value
+  }
+  return null
+}
+
 // 同时使用设备和API作为资源，API任务可能没有设备，设备任务可能没有API
 // 使用??替代||，并检查数组长度，确保空数组不会被当作有效值
 const getValidResources = (data) => {
@@ -534,6 +548,9 @@ const extractInitialMetricData = (reportData) => {
     cases.forEach(caseItem => {
       const category = caseItem.category || 'Uncategorized';
       const caseMetrics = caseItem.metrics || {};
+      const algorithmResult = caseItem.algorithmResult || caseItem.algorithm_result
+      const dimensions = caseItem.dimensions || caseItem.dimensionScores || caseItem.dimension_scores
+      const multiRound = algorithmResult && typeof algorithmResult === 'object' && reportService.parseMultiRoundResult(algorithmResult).isMultiRound
 
       if (!accumulator[category]) accumulator[category] = {};
       
@@ -548,7 +565,11 @@ const extractInitialMetricData = (reportData) => {
             if (!accumulator[category][resourceKey][dim]) {
               accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] };
             }
-            const val = m.value;
+            let val = m.value;
+            if (multiRound) {
+              const normalizedVal = normalizeMetricValue(algorithmResult, dim, dimensions)
+              if (normalizedVal !== null) val = normalizedVal
+            }
             if (val !== null && val !== undefined) {
               accumulator[category][resourceKey][dim].sum += Number(val);
               accumulator[category][resourceKey][dim].count += 1;
@@ -565,7 +586,11 @@ const extractInitialMetricData = (reportData) => {
             if (!accumulator[category][resourceKey][dim]) {
               accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] };
             }
-            const val = metrics[dim];
+            let val = metrics[dim];
+            if (multiRound) {
+              const normalizedVal = normalizeMetricValue(algorithmResult, dim, dimensions)
+              if (normalizedVal !== null) val = normalizedVal
+            }
             if (val !== null && val !== undefined) {
                accumulator[category][resourceKey][dim].sum += Number(val);
                accumulator[category][resourceKey][dim].count += 1;
@@ -971,6 +996,9 @@ const computeMetricDataFromCases = (cases) => {
     }
 
     const caseMetrics = caseItem.metrics || {}
+    const algorithmResult = caseItem.algorithmResult || caseItem.algorithm_result
+    const dimensions = caseItem.dimensions || caseItem.dimensionScores || caseItem.dimension_scores
+    const multiRound = algorithmResult && typeof algorithmResult === 'object' && reportService.parseMultiRoundResult(algorithmResult).isMultiRound
     if (!accumulator[category]) accumulator[category] = {}
 
     if (Array.isArray(caseMetrics)) {
@@ -984,7 +1012,11 @@ const computeMetricDataFromCases = (cases) => {
           if (!accumulator[category][resourceKey][dim]) {
             accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] }
           }
-          const val = m.value
+          let val = m.value
+          if (multiRound) {
+            const normalizedVal = normalizeMetricValue(algorithmResult, dim, dimensions)
+            if (normalizedVal !== null) val = normalizedVal
+          }
           if (val !== null && val !== undefined) {
             accumulator[category][resourceKey][dim].sum += Number(val)
             accumulator[category][resourceKey][dim].count += 1
@@ -1000,7 +1032,11 @@ const computeMetricDataFromCases = (cases) => {
           if (!accumulator[category][resourceKey][dim]) {
             accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] }
           }
-          const val = metrics[dim]
+          let val = metrics[dim]
+          if (multiRound) {
+            const normalizedVal = normalizeMetricValue(algorithmResult, dim, dimensions)
+            if (normalizedVal !== null) val = normalizedVal
+          }
           if (val !== null && val !== undefined) {
             accumulator[category][resourceKey][dim].sum += Number(val)
             accumulator[category][resourceKey][dim].count += 1

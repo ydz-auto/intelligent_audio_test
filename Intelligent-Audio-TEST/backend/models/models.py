@@ -141,8 +141,6 @@ class TestCase(db.Model):
     config = Column(JSON, nullable=False, comment='用例详细配置信息 (JSON格式)，包含音频配置和评测维度配置')
     group_id = Column(String(50), ForeignKey('test_case_groups.id'), comment='所属分组ID')
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
-    _algorithm_params = Column('algorithm_params', JSON, comment='算法参数配置 (JSON格式)，根据算法类型动态配置')
-    _reference_params = Column('reference_params', JSON, comment='参考参数配置 (JSON格式)，存储参考文本/音频/文件等参考数据')
     test_type = Column(String(10), nullable=False, default='api', index=True, comment='测试类型 (api/e2e)')
     related_case_id = Column(String(50), nullable=True, comment='关联的对应类型用例ID (API用例关联E2E用例，反之亦然)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
@@ -150,28 +148,6 @@ class TestCase(db.Model):
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
 
     tags = relationship('Tag', secondary='test_case_tags', backref='test_cases')
-
-    @property
-    def algorithm_params(self):
-        return self._algorithm_params
-
-    @algorithm_params.setter
-    def algorithm_params(self, value):
-        if value is None or value == '' or value == 'null':
-            self._algorithm_params = None
-        else:
-            self._algorithm_params = value
-
-    @property
-    def reference_params(self):
-        return self._reference_params
-
-    @reference_params.setter
-    def reference_params(self, value):
-        if value is None or value == '' or value == 'null':
-            self._reference_params = None
-        else:
-            self._reference_params = value
 
 class TestCaseTag(db.Model):
     """
@@ -543,7 +519,8 @@ class TestResult(db.Model):
     response_time = Column(Integer, comment='API 响应时间 (ms)')
     algorithm_result = Column(JSON, comment='算法执行结果 (JSON，不同算法类型结构不同)')
     execution_steps = Column(JSON, default=list, comment='执行步骤详细日志 (JSON)')
-    result_data = Column(JSON, nullable=False, comment='原始测试结果数据 (JSON)')
+    result_data = Column(JSON, nullable=True, comment='轻量结果元数据 (JSON)，大字段存 result_data_path 文件')
+    result_data_path = Column(String(500), nullable=True, comment='结果数据文件路径 (大字段存文件，DB仅存轻量元数据)')
     error_message = Column(Text, comment='错误信息描述')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='生成时间')
 
@@ -554,10 +531,14 @@ class TestResultDimension(db.Model):
     支持多种算法类型 (translation, asr, tts, speaker_recognition 等)。
     """
     __tablename__ = 'test_result_dimensions'
+    __table_args__ = (
+        Index('idx_trd_round', 'test_result_id', 'round_number'),
+    )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
     test_result_id = Column(BigInteger, ForeignKey('test_results.id'), comment='关联测试结果ID')
     dimension_id = Column(BigInteger, ForeignKey('dimensions.id'), comment='关联评估维度ID')
     algorithm_type = Column(String(50), comment='算法类型 (如: translation, asr, tts, speaker_recognition)')
+    round_number = Column(Integer, nullable=True, default=None, comment='轮次编号 (NULL=整体评估, 0-indexed)')
     dimension_value = Column(Float, comment='维度计算出的原始值 (如 BLEU 分数)')
     score = Column(Float, comment='维度最终得分')
     status = Column(String(20), nullable=True, comment='维度评估结果状态 (passed/failed)')

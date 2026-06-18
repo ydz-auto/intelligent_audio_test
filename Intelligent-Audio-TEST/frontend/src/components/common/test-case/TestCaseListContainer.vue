@@ -396,15 +396,25 @@ onUnmounted(() => {
 
 const checkTestCaseConfig = (testCase: TestCase) => {
   const normalizedConfig = normalizeTestCaseConfig(testCase.config || {});
-  const audios = normalizedConfig.audios || [];
-  const apiAudios = audios.filter((a: any) => a.testType === 'api');
-  const e2eAudios = audios.filter((a: any) => a.testType === 'e2e');
+  // Rounds-based format: collect all audios from all rounds
+  const rounds = normalizedConfig.rounds || [];
+  const allAudios: any[] = [];
+  rounds.forEach((round: any) => {
+    if (Array.isArray(round.audios)) {
+      allAudios.push(...round.audios);
+    }
+  });
+
+  // In dual-record architecture, test_type is at the record level
+  const recordTestType = (testCase as any).test_type || (testCase as any).testType || 'api';
+  const isApi = recordTestType === 'api';
+  const isE2e = recordTestType === 'e2e';
+
+  const hasAPIConfig = isApi && allAudios.length > 0;
+  const hasE2eConfig = isE2e && allAudios.length > 0;
   
-  const hasAPIConfig = apiAudios.length > 0;
-  const hasE2eConfig = e2eAudios.length > 0;
-  
-  const apiAudioId = hasAPIConfig ? apiAudios[0].audioId : null;
-  const e2eAudioIds = hasE2eConfig ? e2eAudios.map((a: any) => a.audioId) : [];
+  const apiAudioId = hasAPIConfig ? allAudios[0]?.audioId : null;
+  const e2eAudioIds = hasE2eConfig ? allAudios.map((a: any) => a.audioId) : [];
   
   console.log('检查测试用例配置:', { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds });
   return { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds };
@@ -508,10 +518,16 @@ const filteredTestCases = computed(() => {
         }
         
         const normalizedConfig = normalizeTestCaseConfig(config);
-        const audios = normalizedConfig.audios || [];
-        if (testType === 'api') return audios.some((a: any) => a.testType === 'api');
-        if (testType === 'e2e') return audios.some((a: any) => a.testType === 'e2e');
-        return false;
+        const rounds = normalizedConfig.rounds || [];
+        const hasAudios = rounds.some((r: any) => Array.isArray(r.audios) && r.audios.length > 0);
+        // In dual-record architecture, test_type is at record level
+        const recordTestType = (testCase as any).test_type || (testCase as any).testType || '';
+        if (recordTestType) {
+          if (testType === 'api') return recordTestType === 'api';
+          if (testType === 'e2e') return recordTestType === 'e2e';
+        }
+        // Fallback: if has audios, assume matches current filter
+        return hasAudios;
       });
     }
     

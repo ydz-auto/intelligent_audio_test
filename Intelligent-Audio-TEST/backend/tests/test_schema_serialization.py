@@ -1,6 +1,6 @@
 def test_success_response_serializes_pydantic_models_with_camel_case():
     from backend.app import create_app
-    from backend.utils.response import success_response
+    from backend.utils.web.response import success_response
     from backend.schemas.group import GroupItem, GroupListData
 
     app = create_app("testing")

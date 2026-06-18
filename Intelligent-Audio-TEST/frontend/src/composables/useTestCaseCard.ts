@@ -13,18 +13,6 @@ import type {
   TestCaseAction 
 } from '../shared/types';
 
-function normalizeAlgorithmParams(params: any[]): Record<string, any> {
-  if (!Array.isArray(params)) return {};
-  return params.reduce((acc: Record<string, any>, item: any) => {
-    const code = item.fieldCode || item.field_code;
-    const value = item.fieldValue || item.field_value;
-    if (code) {
-      acc[code] = value;
-    }
-    return acc;
-  }, {});
-}
-
 export function useTestCaseCard() {
   const editingTestCase = ref<TestCase | null>(null);
   const editingGroup = ref<string | null>(null);
@@ -107,9 +95,7 @@ export function useTestCaseCard() {
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
       config: normalized as TestCaseFormData['config'],
       translationDirectionId: testCase.translationDirectionId,
-      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
-      algorithmParams: normalizeAlgorithmParams((testCase as any).algorithmParams || (testCase as any).algorithm_params || []),
-      referenceParams: normalizeAlgorithmParams((testCase as any).referenceParams || (testCase as any).reference_params || [])
+      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || ''
     };
     
     try {
@@ -216,7 +202,9 @@ export function useTestCaseCard() {
   };
 
   const handlePreviewAction = async (testCase: TestCase) => {
-    const hasAudioConfig = testCase.config?.audios && testCase.config.audios.length > 0;
+    const cfg: any = testCase.config || {};
+    const hasAudioConfig = (cfg.rounds && Array.isArray(cfg.rounds) && cfg.rounds.some((r: any) => r.audios?.length > 0))
+      || (cfg.audios && cfg.audios.length > 0);
     
     if (hasAudioConfig) {
       try {

@@ -8,8 +8,8 @@ from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
 from backend.models.models import Audio, Tag, AudioAnnotation, TranslationDirection, AudioTag, TestCase, TestCaseGroup, PlaybackDevice, UploadTask, UploadFile, UploadChunk, PromptAudioRelation
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
-from backend.utils.task_utils import has_running_e2e_tasks
+from backend.utils.web.response import success_response, error_response
+from backend.utils.common.task_utils import has_running_e2e_tasks
 from backend.schemas.audio import (
     AudioIdsData,
     AudioItem,
@@ -791,7 +791,7 @@ class AudioController:
             })
         except Exception as e:
             import traceback
-            from backend.utils.log_handler import log_and_emit
+            from backend.utils.web.log_handler import log_and_emit
             log_and_emit(
                 level='error',
                 module='audio_controller',
@@ -907,7 +907,7 @@ class AudioController:
         except Exception as e:
             db.session.rollback()
             import traceback
-            from backend.utils.log_handler import log_and_emit
+            from backend.utils.web.log_handler import log_and_emit
             log_and_emit(
                 level='error',
                 module='audio_controller',
@@ -1021,7 +1021,7 @@ class AudioController:
             }, "分片上传成功")
         except Exception as e:
             import traceback
-            from backend.utils.log_handler import log_and_emit
+            from backend.utils.web.log_handler import log_and_emit
             log_and_emit(
                 level='error',
                 module='audio_controller',
@@ -1388,7 +1388,7 @@ class AudioController:
         except Exception as e:
             db.session.rollback()
             import traceback
-            from backend.utils.log_handler import log_and_emit
+            from backend.utils.web.log_handler import log_and_emit
             log_and_emit(
                 level='error',
                 module='audio_controller',
@@ -1563,7 +1563,6 @@ class AudioController:
                 group_id=group.id,
                 test_type=primary_test_type,
                 algorithm_type=algorithm_type,
-                algorithm_params=algorithm_params if algorithm_params else [],
                 config=config
             )
             db.session.add(new_tc)
@@ -1575,7 +1574,7 @@ class AudioController:
                     new_tc.tags.append(tag)
             
             # 刷新用例参考文本/音频/... - 新结构：自动生成参考参数
-            from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
+            from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
             ReferenceParamsGenerator.apply_to_config(new_tc)
             
             # 不在这里 commit，交给调用者统一提交
@@ -1640,7 +1639,7 @@ class AudioController:
                 
                 db.session.commit()
 
-                from backend.utils.stats_cache import refresh_stats_cache
+                from backend.utils.report.stats_cache import refresh_stats_cache
                 refresh_stats_cache()
             
             return success_response({"id": new_audio.id, "name": new_audio.name}, "URL 导入成功", http_code=201)
@@ -2084,7 +2083,7 @@ class AudioController:
         
         # 无论是否提供设备ID，都使用后端硬件播放
         try:
-            from backend.utils.audio_engine import audio_service
+            from backend.services.audio.audio_engine import audio_service
             from backend.models.models import PlaybackDevice, SPLMapping
             
             # 设备信息
@@ -2133,7 +2132,7 @@ class AudioController:
                 
                 # 计算音量/增益
                 if spl and getattr(device, 'current_spl_mapping_id', None):
-                    from backend.utils.spl_service import spl_service
+                    from backend.services.audio.spl_service import spl_service
                     gain = spl_service.spl_to_gain(device.current_spl_mapping_id, spl)
                 
                 # 获取物理设备索引
@@ -2189,7 +2188,7 @@ class AudioController:
     @staticmethod
     def stop_preview(audio_id):
         try:
-            from backend.utils.audio_engine import audio_service
+            from backend.services.audio.audio_engine import audio_service
             
             # 解析实际的音频ID（与preview方法相同的逻辑）
             actual_audio_id = audio_id
@@ -2305,7 +2304,7 @@ class AudioController:
             db.session.delete(audio)
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(None, "音频文件已删除")

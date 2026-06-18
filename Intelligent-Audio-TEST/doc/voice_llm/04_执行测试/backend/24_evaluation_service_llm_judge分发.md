@@ -90,7 +90,7 @@ def _handle_llm_judge_dimension(self, task_id, result_id, test_case_id,
 graph TD
     A[evaluate_case] --> B[遍历维度]
     B --> C{dimension_type?}
-    C -->|standard / wer / bleu| D[按 endpoint 分组]
+    C -->|standard / wer| D[按 endpoint 分组]
     D --> E[EndpointWorker 批量处理]
     C -->|llm_judge| F[_handle_llm_judge_dimension]
     F --> G[独立提交到 worker]

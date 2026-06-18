@@ -6,7 +6,7 @@ def test_task_progress_used_time_is_string_when_not_started(monkeypatch):
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import Task, TaskCase, TestCase, TestCaseGroup
-    from backend.utils.event_manager import EventManager
+    from backend.utils.common.event_manager import EventManager
 
     app = create_app("testing")
 
@@ -16,7 +16,7 @@ def test_task_progress_used_time_is_string_when_not_started(monkeypatch):
         emitted["event"] = event
         emitted["data"] = data
 
-    monkeypatch.setattr("backend.utils.event_manager.socketio.emit", fake_emit)
+    monkeypatch.setattr("backend.utils.common.event_manager.socketio.emit", fake_emit)
 
     with app.app_context():
         try:
@@ -45,7 +45,7 @@ def test_task_progress_expected_times_are_emitted_after_first_completion(monkeyp
     from backend.app import create_app
     from backend.models.database import db
     from backend.models.models import Task, TaskCase, TestCase, TestCaseGroup
-    from backend.utils.event_manager import EventManager
+    from backend.utils.common.event_manager import EventManager
 
     app = create_app("testing")
 
@@ -55,7 +55,7 @@ def test_task_progress_expected_times_are_emitted_after_first_completion(monkeyp
         emitted["event"] = event
         emitted["data"] = data
 
-    monkeypatch.setattr("backend.utils.event_manager.socketio.emit", fake_emit)
+    monkeypatch.setattr("backend.utils.common.event_manager.socketio.emit", fake_emit)
 
     with app.app_context():
         try:

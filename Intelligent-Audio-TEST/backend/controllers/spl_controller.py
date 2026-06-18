@@ -1,9 +1,9 @@
 from flask import request,current_app
 from backend.models.models import SPLMapping, PlaybackDevice, Audio, CalibrationHistory
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
-from backend.utils.error_codes import ErrorCode
-from backend.utils.task_utils import has_running_e2e_tasks
+from backend.utils.web.response import success_response, error_response
+from backend.utils.web.error_codes import ErrorCode
+from backend.utils.common.task_utils import has_running_e2e_tasks
 from backend.schemas.common import IdData
 from backend.schemas.spl import (
     PlayTestToneData,
@@ -406,7 +406,7 @@ class SPLController:
         # 1. 环境准备 (略)
         # 2. 模拟自动扫描流程
         try:
-            from backend.utils.log_handler import log_and_emit
+            from backend.utils.web.log_handler import log_and_emit
             
             log_and_emit('info', 'SPL_CALIBRATION', f'开始校准映射: {mapping.id} - {mapping.name}', category='spl', task_id=None, device_id=mapping.device_id)
             
@@ -441,7 +441,7 @@ class SPLController:
         except Exception as e:
             db.session.rollback()
             try:
-                from backend.utils.log_handler import log_and_emit
+                from backend.utils.web.log_handler import log_and_emit
                 log_and_emit('error', 'SPL_CALIBRATION', f'校准失败: {str(e)}', category='spl', task_id=None, device_id=mapping.device_id)
             except:
                 pass
@@ -513,7 +513,7 @@ class SPLController:
             unique_id = None
         
         try:
-            from backend.utils.audio_engine import audio_service
+            from backend.services.audio.audio_engine import audio_service
             from backend.models.models import PlaybackDevice
             import wave
             import os
@@ -620,7 +620,7 @@ class SPLController:
             if unique_id == "":
                 unique_id = None
             
-            from backend.utils.audio_engine import audio_service
+            from backend.services.audio.audio_engine import audio_service
             
             if unique_id:
                 device_index = audio_service.get_device_index(unique_id)

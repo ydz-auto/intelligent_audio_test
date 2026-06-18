@@ -242,7 +242,6 @@
                   <th>参数代码</th>
                   <th>参数名称</th>
                   <th>类型</th>
-                  <th>组件</th>
                   <th>选项来源</th>
                   <th>必填</th>
                   <th>默认值</th>
@@ -251,37 +250,28 @@
               </thead>
               <tbody>
                 <tr v-if="formState.case_params.length === 0">
-                  <td colspan="8" class="empty-row">暂无用例参数</td>
+                  <td colspan="7" class="empty-row">暂无用例参数</td>
                 </tr>
                 <tr v-else v-for="(param, index) in formState.case_params" :key="param.id || param.tempId || index">
                   <td>
-                    <input type="text" class="form-input form-input-sm param-code-input" v-model="param.param_code" @blur="handleCaseParamBlur(param, index)">
+                    <input type="text" list="case-param-code-presets" class="form-input form-input-sm param-code-input" v-model="param.param_code" @change="handleParamCodeSelect(param, index)" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.param_name" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
                     <select class="form-input form-input-sm" v-model="param.param_type" @change="handleCaseParamTypeChange(param, index)">
-                      <option value="select">下拉框</option>
                       <option value="text">文本</option>
                       <option value="number">数字</option>
-                      <option value="boolean">开关</option>
                       <option value="textarea">多行文本</option>
+                      <option value="select">下拉框</option>
+                      <option value="boolean">布尔</option>
+                      <option value="switch">开关</option>
+                      <option value="slider">滑块</option>
+                      <option value="audio_select">音频选择</option>
+                      <option value="device_select">设备选择</option>
+                      <option value="interferer_list">干扰人列表</option>
                       <option value="reference">参考参数</option>
-                    </select>
-                  </td>
-                  <td>
-                    <select 
-                      class="form-input form-input-sm" 
-                      v-model="param.component"
-                      :disabled="param.param_type !== 'select'"
-                      @change="handleCaseParamBlur(param, index)"
-                    >
-                      <option value="select">Select</option>
-                      <option value="input">Input</option>
-                      <option value="input-number">InputNumber</option>
-                      <option value="switch">Switch</option>
-                      <option value="textarea">Textarea</option>
                     </select>
                   </td>
                   <td>
@@ -313,6 +303,9 @@
               </tbody>
             </table>
           </div>
+          <datalist id="case-param-code-presets">
+            <option v-for="(preset, code) in PARAM_CODE_PRESETS" :key="code" :value="code">{{ preset.param_name }} ({{ preset.param_type }})</option>
+          </datalist>
         </div>
 
         <!-- 参考参数配置 -->
@@ -518,6 +511,26 @@ import MappingEditor from './MappingEditor.vue'
 import { useModalControl, MODAL_TYPES } from '../../composables/useModal'
 import { useDimensions } from '../../composables/useDimensions'
 import { algorithmApi, evaluationApi } from '../../utils/api'
+
+const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string; default_value?: string; help_text?: string; min_value?: number; max_value?: number; step?: number; unit?: string}> = {
+  'overlap_rate': { param_name: '交叠率', param_type: 'slider', default_value: '0', help_text: '音频交叠比例(0~1)', min_value: 0, max_value: 1, step: 0.05 },
+  'overlap_time': { param_name: '交叠时间(秒)', param_type: 'number', default_value: '0', help_text: '音频交叠时间（秒），优先级高于交叠率', min_value: 0, max_value: 30, step: 0.5, unit: 's' },
+  'railDistance': { param_name: '导轨距离(cm)', param_type: 'slider', help_text: '导轨距离，本轮结束后自动复位', min_value: 10, max_value: 200, step: 5, unit: 'cm' },
+  'volumeLevel': { param_name: '被测设备音量', param_type: 'slider', help_text: '被测设备音量(0-100)', min_value: 0, max_value: 100, step: 1 },
+  'voiceprintEnabled': { param_name: '声纹注册', param_type: 'switch', default_value: 'false', help_text: '是否在本轮播放声纹注册音频' },
+  'voiceprintAudioId': { param_name: '声纹注册音频', param_type: 'audio_select', help_text: '声纹注册音频文件' },
+  'voiceprintPlaybackDeviceId': { param_name: '声纹播放设备', param_type: 'device_select', help_text: '声纹注册音频播放设备' },
+  'voiceprintSpl': { param_name: '声纹播放声压级', param_type: 'number', default_value: '70.0', help_text: '声纹注册音频播放声压级', min_value: 20, max_value: 100, step: 1, unit: 'dB' },
+  'voiceprintWaitTime': { param_name: '声纹等待时间(秒)', param_type: 'number', default_value: '5.0', help_text: '声纹注册后等待时间', min_value: 0, max_value: 60, step: 1, unit: 's' },
+  'interruptionEnabled': { param_name: '打断检测', param_type: 'switch', default_value: 'false', help_text: '是否启用全双工打断检测' },
+  'interruptionSensitivity': { param_name: '打断灵敏度', param_type: 'slider', default_value: '0.5', help_text: '打断检测灵敏度(0~1)', min_value: 0, max_value: 1, step: 0.1 },
+  'interferers': { param_name: '干扰人列表', param_type: 'interferer_list', default_value: '[]', help_text: '干扰人配置列表' },
+  'promptAudioId': { param_name: 'Prompt 音频', param_type: 'audio_select', help_text: '在干声播放之前播放的引导音频' },
+  'inputText': { param_name: '输入文本', param_type: 'text', help_text: '发送给 API 的文本内容' },
+  'inputAudio': { param_name: '输入音频', param_type: 'audio_select', help_text: '发送给 API 的音频文件' },
+  'asr_ref': { param_name: 'ASR参考文本', param_type: 'text', help_text: 'ASR识别参考文本' },
+  'tran_ref': { param_name: '翻译参考文本', param_type: 'text', help_text: '翻译参考文本' },
+}
 
 interface AlgorithmGroup {
   id: number
@@ -1128,7 +1141,12 @@ function getDefaultComponent(paramType: string): string {
     'boolean': 'switch',
     'select': 'select',
     'textarea': 'textarea',
-    'slider': 'slider'
+    'slider': 'slider',
+    'switch': 'switch',
+    'audio_select': 'audio-select',
+    'device_select': 'device-select',
+    'interferer_list': 'interferer-list',
+    'reference': 'reference'
   }
   return typeComponentMap[paramType] || 'input'
 }
@@ -1155,6 +1173,21 @@ async function handleParamBlur(param: any, index: number, paramType: string) {
   saveTimeout = setTimeout(async () => {
     await autoSaveParams(param, paramType)
   }, 1500)
+}
+
+function handleParamCodeSelect(param: any, index: number) {
+  const preset = PARAM_CODE_PRESETS[param.param_code]
+  if (preset && !param.param_name) {
+    param.param_name = preset.param_name
+    param.param_type = preset.param_type
+    if (preset.default_value !== undefined) param.default_value = preset.default_value
+    if (preset.help_text) param.help_text = preset.help_text
+    if (preset.min_value !== undefined) param.min_value = preset.min_value
+    if (preset.max_value !== undefined) param.max_value = preset.max_value
+    if (preset.step !== undefined) param.step = preset.step
+    if (preset.unit) param.unit = preset.unit
+  }
+  handleCaseParamBlur(param, index)
 }
 
 async function handleCaseParamBlur(param: any, index: number) {

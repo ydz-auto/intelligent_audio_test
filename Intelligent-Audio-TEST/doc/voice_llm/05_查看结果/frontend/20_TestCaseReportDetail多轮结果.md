@@ -206,7 +206,6 @@ function computeAggregatedFromRounds(rounds: any[], evalKey: string): Record<str
 
   return {
     avg_wer: evals.reduce((s, e) => s + (e.wer || 0), 0) / evals.length,
-    avg_bleu: evals.reduce((s, e) => s + (e.bleu || 0), 0) / evals.length,
     avg_llm_judge: evals.reduce((s, e) => s + (e.llm_judge || 0), 0) / evals.length,
     avg_latency: rounds.reduce((s, r) => s + (r.latency || 0), 0) / rounds.length,
   };
@@ -268,7 +267,6 @@ function getAlgoParam(roundConfig: any, fieldCode: string): string | null {
 function metricLabel(key: string): string {
   const labels: Record<string, string> = {
     avg_wer: '平均 WER',
-    avg_bleu: '平均 BLEU',
     avg_latency: '平均延迟',
     avg_llm_judge: '平均 LLM 评分',
     interruption_count: '打断次数',
@@ -283,7 +281,7 @@ function metricLabel(key: string): string {
 ```
 ┌─ 多轮对话结果 (3 轮) ─────────────────────────────────────────────┐
 │                                                                     │
-│  平均 WER: 0.05  平均 BLEU: 0.91  平均延迟: 1.80s  打断次数: 1     │
+│  平均 WER: 0.05  平均延迟: 1.80s  打断次数: 1                       │
 │                                                                     │
 │  ▼ 第 1 轮  延迟: 2.10s                                            │
 │    本轮配置: 噪声:noise_005(50dB)  导轨:50cm  音量:70%              │
@@ -291,7 +289,7 @@ function metricLabel(key: string): string {
 │    输出: 今天天气怎么样                                              │
 │    设备原始数据: [...]                                               │
 │    参考: 今天天气怎么样啊  (来自 /references/round1_ref.json)         │
-│    WER: 0.03  BLEU: 0.92  LLM Judge: 4.5                            │
+│    WER: 0.03  LLM Judge: 4.5                                       │
 │                                                                     │
 │  ▶ 第 2 轮  延迟: 1.50s  打断: 1.80s                               │
 │  ▶ 第 3 轮  延迟: 1.80s                                            │

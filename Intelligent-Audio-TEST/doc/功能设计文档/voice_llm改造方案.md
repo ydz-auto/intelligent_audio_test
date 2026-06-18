@@ -29,7 +29,7 @@
 |------|-------------|------|
 | 多轮交互 | API + E2E | N轮问答对话，每轮发送输入、获取响应 |
 | 全双工交互 | E2E | 播放过程中可被中断（打断检测） |
-| 评测维度 | API + E2E | WER/BLEU + LLM Judge（外部微服务） |
+| 评测维度 | API + E2E | WER + LLM Judge（外部微服务） |
 | 会话管理 | API | session_id + context_history 维护对话上下文 |
 | 声纹注册 | E2E | 通过指定音箱播放注册音频完成声纹录入 |
 | 干扰人播放 | E2E | 通过指定音箱播放干扰音频 |
@@ -39,7 +39,7 @@
 ### 1.3 架构原则
 
 - **主后端是纯编排器**：只负责任务调度、状态管理、结果存储
-- **评估计算外置**：所有评估（WER/BLEU/LLM Judge）由外部评估微服务完成，主后端通过异步任务协议（create_task → poll get_status → get_final_result）与之通信
+- **评估计算外置**：所有评估（WER/LLM Judge）由外部评估微服务完成，主后端通过异步任务协议（create_task → poll get_status → get_final_result）与之通信
 - **双记录架构**：每个逻辑测试用例拆分为两条独立数据库记录（test_type='api' 和 test_type='e2e'），通过 related_case_id 关联
 
 ---
@@ -886,7 +886,7 @@ LLM Judge 作为一种新的评估维度，其计算**完全在外部评估微�
 |------|------|
 | `POST /api/create_task` | 接收评估任务，包含多轮对话历史、参考文本、评估维度 |
 | `GET /api/get_status/{task_id}` | 查询评估进度 |
-| `GET /api/get_final_result/{task_id}` | 获取评估结果（WER/BLEU/LLM Judge 分数） |
+| `GET /api/get_final_result/{task_id}` | 获取评估结果（WER/LLM Judge 分数） |
 
 LLM Judge 评估请求示例：
 
@@ -894,7 +894,7 @@ LLM Judge 评估请求示例：
 {
   "task_type": "evaluation",
   "algorithm_type": "voice_llm",
-  "dimensions": ["WER", "BLEU", "LLM_Judge"],
+  "dimensions": ["WER", "LLM_Judge"],
   "rounds": [
     { "input": "今天天气怎么样", "output": "今天晴朗", "reference": "今天天气晴朗" },
     { "input": "明天呢", "output": "明天多云", "reference": "明天多云转晴" }

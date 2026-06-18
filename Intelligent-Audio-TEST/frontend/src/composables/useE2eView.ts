@@ -14,18 +14,6 @@ import { useTestReport } from './useTestReport'
 import { useTestCaseStore } from '../store/testCaseStore'
 import { type Report, type Log, type TestCase, type TestCaseFormData } from '../shared/types'
 
-function normalizeAlgorithmParams(params: any[]): Record<string, any> {
-  if (!Array.isArray(params)) return {}
-  return params.reduce((acc: Record<string, any>, item: any) => {
-    const code = item.fieldCode || item.field_code
-    const value = item.fieldValue || item.field_value
-    if (code) {
-      acc[code] = value
-    }
-    return acc
-  }, {})
-}
-
 export function normalizeSelectedCaseIds(ids: (string | number)[]) {
   const normalizedIds = ids.filter((id): id is string | number => {
     if (id === null || id === undefined) return false
@@ -385,9 +373,7 @@ export function useE2eView() {
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
       config: normalized as TestCaseFormData['config'],
       translationDirectionId: testCase.translationDirectionId,
-      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
-      algorithmParams: normalizeAlgorithmParams((testCase as any).algorithmParams || (testCase as any).algorithm_params || []),
-      referenceParams: normalizeAlgorithmParams((testCase as any).referenceParams || (testCase as any).reference_params || [])
+      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || ''
     }
     
     try {
@@ -445,6 +431,18 @@ export function useE2eView() {
       }
       return supportedAlgorithms.includes(selectedAlgorithmType.value)
     })
+  })
+
+  const isVoiceLLM = computed(() => selectedAlgorithmType.value === 'voice_llm')
+
+  const voiceLlmHint = computed(() => {
+    if (!isVoiceLLM.value) return null
+    return 'voice_llm 测试可能需要设备支持：音量控制、导轨控制、打断检测。请确认设备能力后再选择。'
+  })
+
+  const concurrencyHint = computed(() => {
+    if (!isVoiceLLM.value) return null
+    return 'voice_llm 多轮对话测试建议并发数为 2（默认 4），以获得更稳定的结果。'
   })
 
   const searchDevices = () => {
@@ -627,6 +625,9 @@ export function useE2eView() {
     editingGroup,
     filteredDevices,
     algorithmFilteredDevices,
+    isVoiceLLM,
+    voiceLlmHint,
+    concurrencyHint,
     selectedDeviceIdsList,
     deviceDisplayFields,
     analysisContent,

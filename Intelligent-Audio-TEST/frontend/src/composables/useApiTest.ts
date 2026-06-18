@@ -38,8 +38,15 @@ export function useApiTest() {
     const recordType = (caseItem.testType || caseItem.test_type || caseItem.type || '').toLowerCase();
     if (recordType === 'api' || recordType === 'api_test') return true;
     
-    // 回退：检查 config.audios 中是否有 api 类型的音频
-    const audios = caseItem.config?.audios || [];
+    // 回退：检查 config 中是否有音频（支持 rounds 格式）
+    const config: any = caseItem.config || {};
+    const rounds = config.rounds || [];
+    if (Array.isArray(rounds) && rounds.length > 0) {
+      // rounds 格式：检查是否有任何 round 包含音频
+      return rounds.some((r: any) => Array.isArray(r.audios) && r.audios.length > 0);
+    }
+    // 旧 flat 格式
+    const audios = config.audios || [];
     return audios.some((a: any) => (a.testType || a.test_type) === 'api');
   };
 

@@ -246,6 +246,15 @@ export function useApiTest() {
     return allFilteredAPIs.value.slice(start, end);
   })
 
+  const isVoiceLLM = computed(() => selectedAlgorithmType.value === 'voice_llm')
+
+  const stepHints = computed(() => {
+    if (!isVoiceLLM.value) return {}
+    return {
+      caseSelection: 'voice_llm 用例支持多轮对话，每个用例可配置多个轮次的输入文本/音频'
+    }
+  })
+
   // 更新总数
   watch(allFilteredAPIs, (newVal) => {
     apiTotalItems.value = newVal.length;
@@ -731,6 +740,8 @@ export function useApiTest() {
     algorithmModalVisible,
     algorithmModalMode,
     algorithmEditData,
-    editingAlgorithm
+    editingAlgorithm,
+    isVoiceLLM,
+    stepHints
   }
 }

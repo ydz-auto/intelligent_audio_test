@@ -484,16 +484,32 @@ watch(() => props.visible, (newVal) => {
 
 function extractConfiguredAudioIds(formData: any): (string | number)[] {
   const ids: (string | number)[] = [];
-  if (formData?.config?.audios && Array.isArray(formData.config.audios)) {
-    formData.config.audios.forEach((audio: any) => {
-      if (audio.audioId) {
-        ids.push(audio.audioId);
+  const config = formData?.config;
+  if (!config) return ids;
+
+  // Rounds-based format (new architecture)
+  if (config.rounds && Array.isArray(config.rounds)) {
+    config.rounds.forEach((round: any) => {
+      if (Array.isArray(round.audios)) {
+        round.audios.forEach((audio: any) => {
+          if (audio.audioId) ids.push(audio.audioId);
+        });
       }
+      const noiseId = round.backgroundNoise?.audioId ?? round.backgroundNoise?.audio_id;
+      if (noiseId) ids.push(noiseId);
     });
   }
-  if (formData?.config?.backgroundNoise?.audioId) {
-    ids.push(formData.config.backgroundNoise.audioId);
+
+  // Legacy flat format fallback
+  if (config.audios && Array.isArray(config.audios)) {
+    config.audios.forEach((audio: any) => {
+      if (audio.audioId) ids.push(audio.audioId);
+    });
   }
+  if (config.backgroundNoise?.audioId) {
+    ids.push(config.backgroundNoise.audioId);
+  }
+
   return ids;
 }
 
