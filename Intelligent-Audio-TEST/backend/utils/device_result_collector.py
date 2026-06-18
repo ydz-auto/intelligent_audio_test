@@ -90,11 +90,12 @@ class DeviceResultCollector:
                                          f'before append item_res[{result_idx}] id: {id(item_res)}, raw_results id: {id(item_res["raw_results"])}',
                                          category='engine')
 
-                            alignment_result = self._calculate_effective_offset_for_single_result(
-                                result_item, reference_params, playback_time_offsets, algorithm_type
-                            )
-                            item_res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
-                            item_res['alignment_info'] = alignment_result.get('alignment_info')
+                            if self._needs_alignment(reference_params, algorithm_type):
+                                alignment_result = self._calculate_effective_offset_for_single_result(
+                                    result_item, reference_params, playback_time_offsets, algorithm_type
+                                )
+                                item_res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
+                                item_res['alignment_info'] = alignment_result.get('alignment_info')
 
                             all_results.append(item_res)
                             log_not_emit('DEBUG', 'device_collector',
@@ -105,11 +106,12 @@ class DeviceResultCollector:
                     res['raw_results'] = raw_results or {}
                     res['result_type'] = 'default'
 
-                    alignment_result = self._calculate_effective_offset_for_single_result(
-                        raw_results, reference_params, playback_time_offsets, algorithm_type
-                    )
-                    res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
-                    res['alignment_info'] = alignment_result.get('alignment_info')
+                    if self._needs_alignment(reference_params, algorithm_type):
+                        alignment_result = self._calculate_effective_offset_for_single_result(
+                            raw_results, reference_params, playback_time_offsets, algorithm_type
+                        )
+                        res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
+                        res['alignment_info'] = alignment_result.get('alignment_info')
 
             except Exception as e:
                 if log_callback:
@@ -122,6 +124,41 @@ class DeviceResultCollector:
 
         import copy
         return copy.deepcopy(all_results)
+
+    def _needs_alignment(self, reference_params, algorithm_type=None):
+        """判断当前算法是否需要执行时间对齐
+
+        根据算法配置检查设备输出和参考参数中是否包含 STM/RTTM 时间线段数据。
+        只有当算法配置了 STM/RTTM 类型的输出字段，且参考参数中包含对应类型时，
+        才有必要执行对齐计算。
+
+        Args:
+            reference_params: 参考参数列表
+            algorithm_type: 算法类型
+
+        Returns:
+            bool: 是否需要执行对齐
+        """
+        has_ref_timeline = False
+        if reference_params:
+            for param in reference_params:
+                if isinstance(param, dict) and param.get('type') in ('rttm', 'stm'):
+                    has_ref_timeline = True
+                    break
+
+        if not has_ref_timeline:
+            return False
+
+        if algorithm_type and self.field_mapper:
+            try:
+                stm_codes = self.field_mapper.get_device_output_field_codes_by_type(algorithm_type, 'stm')
+                rttm_codes = self.field_mapper.get_device_output_field_codes_by_type(algorithm_type, 'rttm')
+                if stm_codes or rttm_codes:
+                    return True
+            except Exception:
+                pass
+
+        return has_ref_timeline
 
     def _calculate_effective_offset_for_single_result(self, raw_results, reference_params, playback_time_offsets, algorithm_type=None):
         """为单个设备结果计算 effective_offset 并调整参考参数

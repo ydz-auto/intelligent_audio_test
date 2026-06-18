@@ -71,7 +71,12 @@ def _calculate_adjusted_reference_params(extracted_result, original_reference_pa
 
         collector = DeviceResultCollector()
 
-        # 委托给 collector 的完整对齐流程（包含 max_overlap、gap_pattern、first_timestamp 等策略）
+        if not collector._needs_alignment(original_reference_params, algorithm_type):
+            log_and_emit('INFO', 'reextractor',
+                         f"算法 {algorithm_type} 无 STM/RTTM 时间线段配置，跳过对齐计算",
+                         task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+            return {'adjusted_params': None, 'alignment_info': {'method': 'none', 'offset': 0.0}}
+
         alignment_result = collector._calculate_effective_offset_for_single_result(
             extracted_result, original_reference_params, playback_time_offsets or {}, algorithm_type
         )
