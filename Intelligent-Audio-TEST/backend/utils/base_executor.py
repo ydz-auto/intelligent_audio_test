@@ -306,8 +306,7 @@ class BaseExecutor:
         all_eval_items = []
         
         for res in all_results:
-            raw_results = res.get('raw_results', {})
-            success = raw_results.get('success', False)
+            success = res.get('success', False)
             
             result_type = res.get('result_type', 'default')
             

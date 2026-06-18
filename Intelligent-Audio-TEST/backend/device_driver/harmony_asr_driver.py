@@ -125,8 +125,8 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
             if element:
                 text_content = element.getText()
                 self._log(level='INFO', content=f"控件文本内容: {text_content}")
-                return {"text": text_content}
+                return [{"success": True, "message": "Success", "text": text_content}]
             else:
                 self._log(level='WARNING', content=f"未找到控件 content_area_NoteEditorManager")
-                return {"text": ""}
-        return {"text": ""}
+                return [{"success": False, "message": "未找到控件 content_area_NoteEditorManager", "text": ""}]
+        return [{"success": False, "message": "无法获取设备驱动", "text": ""}]
