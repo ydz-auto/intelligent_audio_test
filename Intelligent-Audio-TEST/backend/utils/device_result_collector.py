@@ -96,6 +96,8 @@ class DeviceResultCollector:
                                 )
                                 item_res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
                                 item_res['alignment_info'] = alignment_result.get('alignment_info')
+                            else:
+                                item_res['adjusted_reference_params'] = reference_params
 
                             all_results.append(item_res)
                             log_not_emit('DEBUG', 'device_collector',
@@ -112,6 +114,8 @@ class DeviceResultCollector:
                         )
                         res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
                         res['alignment_info'] = alignment_result.get('alignment_info')
+                    else:
+                        res['adjusted_reference_params'] = reference_params
 
             except Exception as e:
                 if log_callback:
