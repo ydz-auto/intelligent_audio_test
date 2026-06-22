@@ -72,21 +72,43 @@ def find_pids_by_port(port):
         print(f"Error finding PIDs by port {port}: {e}")
     return pids
 
+def stop_postgres_services():
+    print("Trying to stop PostgreSQL Windows services...")
+    result = subprocess.run(
+        ["sc", "query", "type=", "service", "state=", "all"],
+        capture_output=True, text=True
+    )
+    services = []
+    for line in result.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("SERVICE_NAME:") and "postgres" in line.lower():
+            svc_name = line.split(":", 1)[1].strip()
+            services.append(svc_name)
+    for svc in services:
+        print(f"Stopping service: {svc}")
+        subprocess.run(["net", "stop", svc], capture_output=True, text=True)
+    if not services:
+        print("No PostgreSQL Windows services found")
+
 def force_kill():
-    print("Force killing postgres processes...")
-    subprocess.run(["taskkill", "/F", "/IM", "postgres.exe"],
-                   capture_output=True, text=True)
-    subprocess.run(["taskkill", "/F", "/IM", "pg_ctl.exe"],
-                   capture_output=True, text=True)
-    for port in PGSQL_PORTS:
-        pids = find_pids_by_port(port)
-        for pid in pids:
-            if pid == 0:
-                continue
-            print(f"Killing PID {pid} listening on port {port}")
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)],
-                           capture_output=True, text=True)
-    time.sleep(2)
+    stop_postgres_services()
+    for attempt in range(3):
+        print(f"Force killing postgres processes (attempt {attempt + 1}/3)...")
+        subprocess.run(["taskkill", "/F", "/T", "/IM", "postgres.exe"],
+                       capture_output=True, text=True)
+        subprocess.run(["taskkill", "/F", "/T", "/IM", "pg_ctl.exe"],
+                       capture_output=True, text=True)
+        for port in PGSQL_PORTS:
+            pids = find_pids_by_port(port)
+            for pid in pids:
+                if pid == 0:
+                    continue
+                print(f"Killing PID {pid} listening on port {port}")
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                               capture_output=True, text=True)
+        time.sleep(3)
+        if not is_postgres_running():
+            break
     pid_file = os.path.join(PGSQL_DATA, "postmaster.pid")
     if os.path.exists(pid_file):
         try:
