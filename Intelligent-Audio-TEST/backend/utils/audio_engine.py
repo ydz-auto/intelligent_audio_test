@@ -445,19 +445,23 @@ def get_audio_configs_for_offset(audio_timelines, global_offset, playback_device
         device_obj = device_info.get('device_obj')
         log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] device_id={playback_dev_id}, device_obj={device_obj}, current_spl_mapping_id={device_obj.current_spl_mapping_id if device_obj else 'N/A'}", category='audio')
         
+        _audio_id = audio_config.get('audio_id')
+        _play_order = audio_config.get('play_order', 0)
+        _raw_spl = audio_config.get('spl')
+        
         if device_obj and device_obj.current_spl_mapping_id:
             try:
                 from backend.utils.spl_service import spl_service
                 target_spl = audio_config.get('spl', 65.0)
                 gain = spl_service.spl_to_gain(device_obj.current_spl_mapping_id, target_spl, app=app)
                 gain_db = 20 * np.log10(gain) if gain > 0 else -999
-                log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] mapping_id={device_obj.current_spl_mapping_id}, target_spl={target_spl}, SPL gain={gain:.4f} ({gain_db:.2f} dB)", category='audio')
+                log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] audio_id={_audio_id}, play_order={_play_order}, raw_spl={_raw_spl}, target_spl={target_spl}, mapping_id={device_obj.current_spl_mapping_id}, SPL gain={gain:.4f} ({gain_db:.2f} dB)", category='audio')
             except Exception as e:
-                log_and_emit('ERROR', 'audio_engine', f"[get_audio_configs_for_offset] SPL mapping failed: mapping_id={device_obj.current_spl_mapping_id}, error={e}", category='audio')
+                log_and_emit('ERROR', 'audio_engine', f"[get_audio_configs_for_offset] SPL mapping failed: audio_id={_audio_id}, play_order={_play_order}, mapping_id={device_obj.current_spl_mapping_id}, error={e}", category='audio')
                 gain = device_info.get('gain', 1.0)
         else:
             gain = device_info.get('gain', 1.0)
-            log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] No SPL mapping, using default gain={gain}", category='audio')
+            log_and_emit('DEBUG', 'audio_engine', f"[get_audio_configs_for_offset] No SPL mapping: audio_id={_audio_id}, play_order={_play_order}, raw_spl={_raw_spl}, default gain={gain}", category='audio')
         
         audio_to_play.append({
             'file': file_path,
@@ -888,6 +892,7 @@ class PyAudioDriver(AudioDriver):
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] ENTRY: device={device_index}, configs={len(audio_configs)}, caller={caller_info}", category='audio')
         
         audio_files = []
+        audio_file_paths = []
         audio_channels = []
         audio_gains = []
         audio_file_channels = []
@@ -901,8 +906,6 @@ class PyAudioDriver(AudioDriver):
             gain = config.get('gain', 1.0)
             is_noise = config.get('is_noise', False)
             delay = config.get('delay', 0)
-
-            audio_delays.append(delay)
 
             if not os.path.exists(file_path):
                 log_and_emit('ERROR', 'audio_engine', f"File not found: {file_path}", category='audio')
@@ -922,11 +925,13 @@ class PyAudioDriver(AudioDriver):
                     except Exception as e:
                         log_and_emit('WARNING', 'audio_engine', f"Failed to set position {audio_offset}s for {file_path}: {e}", category='audio')
                 audio_files.append(wf)
+                audio_file_paths.append(file_path)
                 audio_channels.append(channel)
                 audio_gains.append(gain)
                 audio_file_channels.append(wf.getnchannels())
                 audio_file_rates.append(wf.getframerate())
                 audio_is_noise.append(is_noise)
+                audio_delays.append(delay)
                 log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Opened audio file: {file_path}, channel={channel}, delay={delay}, is_noise={is_noise}, rate={wf.getframerate()}", category='audio')
             except Exception as e:
                 log_and_emit('ERROR', 'audio_engine', f"Failed to open audio file {file_path}: {e}", category='audio')
@@ -942,9 +947,16 @@ class PyAudioDriver(AudioDriver):
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Audio file info: channels={file_channels}, rate={original_rate}", category='audio')
 
         audio_gain_compensations = []
-        for config in audio_configs:
-            gain_compensation = self.calculate_gain_compensation(config['file'])
+        for file_path in audio_file_paths:
+            gain_compensation = self.calculate_gain_compensation(file_path)
             audio_gain_compensations.append(gain_compensation)
+
+        for _i in range(len(audio_files)):
+            _spl_gain = audio_gains[_i] if _i < len(audio_gains) else 'N/A'
+            _comp = audio_gain_compensations[_i] if _i < len(audio_gain_compensations) else 'N/A'
+            _final = (_spl_gain * self.GLOBAL_SAFE_GAIN * _comp) if isinstance(_spl_gain, (int, float)) and isinstance(_comp, (int, float)) else 'N/A'
+            _fname = os.path.basename(audio_file_paths[_i]) if _i < len(audio_file_paths) else 'N/A'
+            log_and_emit('DEBUG', 'audio_engine', f"[play_multi] gain_chain[{_i}]: file={_fname}, spl_gain={_spl_gain}, compensation={_comp:.4f}, final={_final:.4f}", category='audio')
 
         dev_info = self.pa.get_device_info_by_index(device_index)
         max_channels = int(dev_info.get('maxOutputChannels', 2))

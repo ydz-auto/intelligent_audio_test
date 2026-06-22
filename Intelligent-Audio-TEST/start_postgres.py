@@ -160,41 +160,32 @@ def start_postgres():
     print(f"Starting PostgreSQL from {PGSQL_DATA} ...")
 
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             [pg_ctl, "start", "-D", PGSQL_DATA, "-l", log_file],
-            capture_output=True,
-            text=True,
-            timeout=15
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
         )
 
-        if result.returncode != 0:
-            print(f"pg_ctl start failed (rc={result.returncode}): {result.stderr.strip()}")
-            if os.path.exists(log_file):
-                with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                    tail = f.readlines()[-20:]
-                print("--- Last 20 lines of pg_startup.log ---")
-                for line in tail:
-                    print(line.rstrip())
-            return False
-
-        print("pg_ctl start returned, waiting for connections...")
+        print("pg_ctl start launched, waiting for connections...")
         for i in range(30):
             if is_postgres_running():
                 print(f"PostgreSQL started successfully on port {PGSQL_PORTS}")
                 return True
+            if proc.poll() is not None and proc.returncode != 0:
+                stderr = proc.stderr.read() if proc.stderr else ""
+                print(f"pg_ctl start failed (rc={proc.returncode}): {stderr.strip()}")
+                if os.path.exists(log_file):
+                    with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                        tail = f.readlines()[-20:]
+                    print("--- Last 20 lines of pg_startup.log ---")
+                    for line in tail:
+                        print(line.rstrip())
+                return False
             time.sleep(1)
 
-        print("PostgreSQL process started but not accepting connections within 30 seconds.")
+        print("PostgreSQL not accepting connections within 30 seconds.")
         print("Check log file:", log_file)
-        return False
-    except subprocess.TimeoutExpired:
-        print("pg_ctl start timed out (15s)")
-        if os.path.exists(log_file):
-            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-                tail = f.readlines()[-20:]
-            print("--- Last 20 lines of pg_startup.log ---")
-            for line in tail:
-                print(line.rstrip())
         return False
     except Exception as e:
         print(f"Failed to start PostgreSQL: {e}")

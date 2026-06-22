@@ -312,7 +312,7 @@ class HarmonyDriver(BaseDeviceDriver):
                             time.sleep(0.5)
                             continue
                 except Exception as e:
-                    self._log(level='DEBUG', content=f"Error checking button '{btn_text}' on HarmonyOS: {e}")
+                    self._log(level='DEBUG', content=f"No existing button '{btn_text}' on HarmonyOS: {e}")
                     continue
 
             popup_keywords = self._popup_keywords or []
