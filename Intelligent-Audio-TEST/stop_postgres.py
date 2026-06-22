@@ -1,10 +1,26 @@
 import subprocess
 import os
+import sys
 import time
+import ctypes
 
 PGSQL_BIN = r"C:\S2TT\environment\pgsql\bin"
 PGSQL_DATA = r"C:\S2TT\environment\pgsql\data"
 PGSQL_PORTS = [5432, 5423]
+
+def is_admin():
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except Exception:
+        return False
+
+def check_admin():
+    if not is_admin():
+        print("WARNING: Not running as Administrator!")
+        print("taskkill / net stop may fail without admin privileges.")
+        print("Please run this script as Administrator.")
+        return False
+    return True
 
 def is_postgres_running():
     for port in PGSQL_PORTS:
@@ -86,7 +102,11 @@ def stop_postgres_services():
             services.append(svc_name)
     for svc in services:
         print(f"Stopping service: {svc}")
-        subprocess.run(["net", "stop", svc], capture_output=True, text=True)
+        r = subprocess.run(["net", "stop", svc], capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"  Failed to stop service {svc}: {r.stderr.strip() or r.stdout.strip()}")
+            if not is_admin():
+                print(f"  -> This requires Administrator privileges!")
     if not services:
         print("No PostgreSQL Windows services found")
 
@@ -94,18 +114,23 @@ def force_kill():
     stop_postgres_services()
     for attempt in range(3):
         print(f"Force killing postgres processes (attempt {attempt + 1}/3)...")
-        subprocess.run(["taskkill", "/F", "/T", "/IM", "postgres.exe"],
-                       capture_output=True, text=True)
-        subprocess.run(["taskkill", "/F", "/T", "/IM", "pg_ctl.exe"],
-                       capture_output=True, text=True)
+        for img in ["postgres.exe", "pg_ctl.exe"]:
+            r = subprocess.run(["taskkill", "/F", "/T", "/IM", img],
+                               capture_output=True, text=True)
+            if r.returncode != 0 and "not found" not in r.stderr.lower() and "没有" not in r.stderr:
+                print(f"  taskkill {img} failed: {r.stderr.strip()}")
         for port in PGSQL_PORTS:
             pids = find_pids_by_port(port)
             for pid in pids:
                 if pid == 0:
                     continue
                 print(f"Killing PID {pid} listening on port {port}")
-                subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
-                               capture_output=True, text=True)
+                r = subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)],
+                                   capture_output=True, text=True)
+                if r.returncode != 0:
+                    print(f"  taskkill PID {pid} failed: {r.stderr.strip()}")
+                    if not is_admin():
+                        print(f"  -> This requires Administrator privileges!")
         time.sleep(3)
         if not is_postgres_running():
             break
@@ -159,4 +184,5 @@ def stop_postgres():
         return False
 
 if __name__ == "__main__":
+    check_admin()
     stop_postgres()
