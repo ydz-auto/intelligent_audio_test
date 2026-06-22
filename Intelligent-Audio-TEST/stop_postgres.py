@@ -4,18 +4,21 @@ import time
 
 PGSQL_BIN = r"C:\S2TT\environment\pgsql\bin"
 PGSQL_DATA = r"C:\S2TT\environment\pgsql\data"
-PGSQL_PORT = 5432
+PGSQL_PORTS = [5432, 5423]
 
 def is_postgres_running():
-    try:
-        result = subprocess.run(
-            [os.path.join(PGSQL_BIN, "pg_isready.exe"), "-p", str(PGSQL_PORT)],
-            capture_output=True,
-            text=True
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
+    for port in PGSQL_PORTS:
+        try:
+            result = subprocess.run(
+                [os.path.join(PGSQL_BIN, "pg_isready.exe"), "-p", str(port)],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                return True
+        except Exception:
+            continue
+    return False
 
 def cleanup_stale_pid():
     pid_file = os.path.join(PGSQL_DATA, "postmaster.pid")
@@ -50,12 +53,39 @@ def cleanup_stale_pid():
             print(f"Failed to remove postmaster.pid: {e2}")
             return False
 
+def find_pids_by_port(port):
+    pids = set()
+    try:
+        result = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True, text=True
+        )
+        for line in result.stdout.splitlines():
+            if f":{port}" in line and "LISTENING" in line:
+                parts = line.split()
+                if parts:
+                    try:
+                        pids.add(int(parts[-1]))
+                    except ValueError:
+                        continue
+    except Exception as e:
+        print(f"Error finding PIDs by port {port}: {e}")
+    return pids
+
 def force_kill():
     print("Force killing postgres processes...")
     subprocess.run(["taskkill", "/F", "/IM", "postgres.exe"],
                    capture_output=True, text=True)
     subprocess.run(["taskkill", "/F", "/IM", "pg_ctl.exe"],
                    capture_output=True, text=True)
+    for port in PGSQL_PORTS:
+        pids = find_pids_by_port(port)
+        for pid in pids:
+            if pid == 0:
+                continue
+            print(f"Killing PID {pid} listening on port {port}")
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)],
+                           capture_output=True, text=True)
     time.sleep(2)
     pid_file = os.path.join(PGSQL_DATA, "postmaster.pid")
     if os.path.exists(pid_file):
@@ -66,52 +96,45 @@ def force_kill():
             print(f"Failed to remove postmaster.pid: {e}")
 
 def stop_postgres():
-    if not is_postgres_running():
-        print("PostgreSQL is not accepting connections")
-        if cleanup_stale_pid():
-            print("Cleaned up stale PID file, PostgreSQL is now fully stopped")
-        else:
-            print("PID file references a live process, attempting force kill...")
-            force_kill()
+    pg_ctl = os.path.join(PGSQL_BIN, "pg_ctl.exe")
+    pid_file = os.path.join(PGSQL_DATA, "postmaster.pid")
+    has_pid_file = os.path.exists(pid_file)
+
+    if not has_pid_file and not is_postgres_running():
+        print("PostgreSQL is not running (no PID file, no connections)")
         return True
 
-    pg_ctl = os.path.join(PGSQL_BIN, "pg_ctl.exe")
-
-    print("Stopping PostgreSQL ...")
-    try:
-        result = subprocess.run(
-            [pg_ctl, "stop", "-D", PGSQL_DATA, "-m", "fast", "-w"],
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        if result.returncode == 0:
-            print("PostgreSQL stopped successfully")
-            return True
-        else:
-            print(f"pg_ctl stop failed (rc={result.returncode}): {result.stderr.strip()}")
-            print("Attempting force kill...")
-            force_kill()
-            if not is_postgres_running():
-                print("PostgreSQL stopped after force kill")
+    if has_pid_file:
+        print("Stopping PostgreSQL via pg_ctl ...")
+        try:
+            result = subprocess.run(
+                [pg_ctl, "stop", "-D", PGSQL_DATA, "-m", "fast", "-w"],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0:
+                print("PostgreSQL stopped successfully")
                 return True
             else:
-                print("PostgreSQL still running after force kill")
-                return False
-    except subprocess.TimeoutExpired:
-        print("pg_ctl stop timed out, force killing...")
-        force_kill()
-        if not is_postgres_running():
-            print("PostgreSQL stopped after force kill")
-            return True
-        else:
-            print("PostgreSQL still running after force kill")
-            return False
-    except Exception as e:
-        print(f"Failed to stop PostgreSQL: {e}")
-        print("Attempting force kill...")
-        force_kill()
-        return not is_postgres_running()
+                print(f"pg_ctl stop failed (rc={result.returncode}): {result.stderr.strip()}")
+                if not is_postgres_running():
+                    print("PostgreSQL is not accepting connections after pg_ctl failure")
+                    cleanup_stale_pid()
+                    return True
+        except subprocess.TimeoutExpired:
+            print("pg_ctl stop timed out")
+        except Exception as e:
+            print(f"pg_ctl stop error: {e}")
+
+    print("Attempting force kill...")
+    force_kill()
+    if not is_postgres_running():
+        print("PostgreSQL stopped after force kill")
+        return True
+    else:
+        print("PostgreSQL still running after force kill")
+        return False
 
 if __name__ == "__main__":
     stop_postgres()
