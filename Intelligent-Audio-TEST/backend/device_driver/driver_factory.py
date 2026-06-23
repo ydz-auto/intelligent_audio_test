@@ -1,12 +1,14 @@
 from .android_driver import AndroidDriver
 from .android_plaud import PlaudDriver
-from .android_doubao_voice_conversion_driver import DouBaoAndroidTranslationDriver
+from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .harmony_driver import HarmonyDriver
 from .harmony_translation_driver import (
     XiaoyiFace2FaceDriver,
     XiaoyiSimultaneousInterpretationDriver
 )
 from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
+from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
+from .harmony_xiaoyichat import Xiaoyilivechat
 from .utils import log_and_emit
 
 
@@ -92,12 +94,25 @@ class DeviceDriverFactory:
             'HarmonyOS',
             '鸿蒙harden小艺慧记专用驱动'
         )
+        self.register_specialized_driver(
+            HarmonyHardenXiaoyi_Input_MethodDriver(),
+            ['Pura80', 'xiaoyi_input_method', '小艺输入法'],
+            'HarmonyOS',
+            '鸿蒙小艺输入法专用驱动'
+        )
 
         self.register_specialized_driver(
-            DouBaoAndroidTranslationDriver(),
-            ['doubao', '豆包', 'nova'],
+            Xiaoyilivechat(),
+            ['xiaoyi_chat', '小艺聊天', 'livechat'],
+            'HarmonyOS',
+            '小艺聊天专用驱动'
+        )
+
+        self.register_specialized_driver(
+            DouBaoAndroidAsrDriver(),
+            ['doubao_asr', '豆包asr', 'doubao'],
             'Android',
-            '安卓豆包翻译专用驱动'
+            '安卓豆包ASR专用驱动'
         )
 
     def register_specialized_driver(self, driver, keywords, system=None, name=None):
