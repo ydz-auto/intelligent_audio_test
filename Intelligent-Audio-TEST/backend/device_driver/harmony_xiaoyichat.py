@@ -58,7 +58,9 @@ class Xiaoyilivechat(HarmonyDriver):
             if delete_button:
                 delete_button.click()
                 time.sleep(1)
-    def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+        return True
+
+    def pre_proc   ess(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         # 开启通话聊天
         driver = self._get_driver(device_sn)
         driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type(
@@ -77,6 +79,7 @@ class Xiaoyilivechat(HarmonyDriver):
         self._log(level='INFO', content=f"启动录屏: {self._record_file_name}", task_id=task_id,
                   test_case_id=test_case_id)
         driver.wait(2)
+        return True
 
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
