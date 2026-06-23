@@ -97,17 +97,19 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception as e:
             self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
         driver.wait(5)
-        texts = driver.find_all_components(By.type("Text"))
-        text = [t.getText() for t in texts]
-        self._question_text = text[3]
-        self._answer_text = text[5]
+        self.question_text = driver.find_all_components(By.xpath(
+            '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Row/Text'))[
+            0].getText()
+        self.answer_text = driver.find_all_components(By.xpath(
+            '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Column/Column/Stack/Stack/Stack/Row/Column/__Common__/Column/List/ListItem/Stack/__Common__/Stack/Text'))[
+            0].getText()
 
         return True
 
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
         record_file_name = getattr(self, '_record_file_name', 'record.mp4')
-        question_text = getattr(self, '_question_text', None)
-        answer_text = getattr(self, '_answer_text', None)
+        question_text = getattr(self, 'question_text', None)
+        answer_text = getattr(self, 'answer_text', None)
         try:
             query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
             lines = query.stdout.strip().split('\n')
