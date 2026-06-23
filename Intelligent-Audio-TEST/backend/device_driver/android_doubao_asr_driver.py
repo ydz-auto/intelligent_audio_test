@@ -1,8 +1,34 @@
 import re
+import subprocess
 import time
 from .android_driver import AndroidDriver
 from .utils import check_stop
 
+
+def is_locked(self, device_sn):
+    """
+    判断设备是否锁屏
+    """
+    driver = self._drivers.get(device_sn)
+    if driver:
+        try:
+            driver.screen_on()
+            time.sleep(0.5)
+            result = subprocess.run(
+                ['adb', '-s', device_sn, 'shell', 'dumpsys', 'window'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                if 'mDreamingLockscreen=true' in result.stdout or 'isStatusBarKeyguard=true' in result.stdout:
+                    self._log(level='INFO', content=f"设备{device_sn} 处于锁屏状态")
+                    return True
+            self._log(level='INFO', content=f"设备{device_sn} 已解锁")
+            return False
+        except Exception as e:
+            self._log(level='ERROR', content=f"检查锁屏状态失败：{e}")
+            return False
+    self._log(level='INFO', content=f"获取设备{device_sn}驱动失败")
+    return False
 
 class DouBaoAndroidAsrDriver(AndroidDriver):
 
