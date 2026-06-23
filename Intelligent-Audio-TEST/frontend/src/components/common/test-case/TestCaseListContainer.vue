@@ -94,7 +94,7 @@
       </div>
     </div>
     
-    <div class="single-column-layout" ref="listContainerRef" @scroll="handleScroll">
+    <div class="single-column-layout" ref="listContainerRef">
       <div 
         v-for="group in paginatedGroups" 
         :key="group" 
@@ -429,6 +429,7 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeyDown);
+  setupScrollListener();
   await Promise.all([
     loadPlaybackDevices(),
     loadAlgorithmOptions()
@@ -437,6 +438,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeyDown);
+  teardownScrollListener();
 });
 
 const availableGroups = computed(() => {
@@ -751,11 +753,37 @@ const loadMoreGroups = () => {
   }, 300);
 };
 
-const handleScroll = (event: Event) => {
-  const target = event.target as HTMLElement;
-  const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-  if (scrollBottom < 100 && hasMoreGroups.value && !isLoadingMore.value) {
+let scrollAncestor: HTMLElement | null = null;
+
+const handleScroll = () => {
+  if (!listContainerRef.value || !hasMoreGroups.value || isLoadingMore.value) return;
+  const rect = listContainerRef.value.getBoundingClientRect();
+  const viewportHeight = window.innerHeight;
+  if (rect.bottom - viewportHeight < 150) {
     loadMoreGroups();
+  }
+};
+
+const setupScrollListener = () => {
+  let el: HTMLElement | null = listContainerRef.value;
+  while (el) {
+    const style = getComputedStyle(el);
+    const overflowY = style.overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll') {
+      scrollAncestor = el;
+      break;
+    }
+    el = el.parentElement;
+  }
+  if (scrollAncestor) {
+    scrollAncestor.addEventListener('scroll', handleScroll, { passive: true });
+  }
+};
+
+const teardownScrollListener = () => {
+  if (scrollAncestor) {
+    scrollAncestor.removeEventListener('scroll', handleScroll);
+    scrollAncestor = null;
   }
 };
 

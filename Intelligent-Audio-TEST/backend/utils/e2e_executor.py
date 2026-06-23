@@ -505,9 +505,11 @@ class E2EExecutor(BaseExecutor):
         if adjusted_ref_params:
             result_to_return = (all_results, adjusted_ref_params)
         
+        _first = result_to_return[0] if result_to_return else None
+        _first_device = _first[0] if isinstance(_first, list) else _first
         self._log(
             level='DEBUG',
-            content=f"[e2e_executor] returning: result_to_return id={id(result_to_return)}, raw_keys[0]={list(result_to_return[0][0].get('raw_results', {}).keys())[:10] if result_to_return else 'empty'}",
+            content=f"[e2e_executor] returning: result_to_return id={id(result_to_return)}, raw_keys[0]={list(_first_device.get('raw_results', {}).keys())[:10] if _first_device else 'empty'}",
             task_id=task_id
         )
         

@@ -163,7 +163,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: calc(100vh - 280px);
+  max-height: 400px;
   overflow-y: auto;
   padding-right: 8px;
   scroll-behavior: smooth;

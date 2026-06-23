@@ -246,14 +246,30 @@ class FieldMapper:
         for m in eval_mappings:
             target_param = m.get('target_param')
             source = m.get('source', 'api')
+            source_param = m.get('source_param', target_param)
+
+            param_type = 'text'
+            if source in ('device', 'api'):
+                params = device_params if source == 'device' else api_params
+                for p in params:
+                    if p.get('code') == source_param:
+                        param_type = p.get('param_type', 'text')
+                        break
+            elif source in ('reference', 'adjusted_reference'):
+                ref_params = self._loader.get_reference_params(algorithm_type)
+                for p in ref_params:
+                    if p.get('code') == source_param:
+                        param_type = p.get('type', 'text')
+                        break
+
             original_fields['evaluation']['input'][target_param] = {
                 'code': target_param,
                 'name': m.get('dimension_name', target_param),
-                'type': 'text',
+                'type': param_type,
                 'source': source,
                 'required': True,
                 'transform': m.get('transform_type', 'none'),
-                'param_type': 'text',
+                'param_type': param_type,
                 'dimension_id': m.get('dimension_id'),
                 'component_type': 'evaluation'
             }

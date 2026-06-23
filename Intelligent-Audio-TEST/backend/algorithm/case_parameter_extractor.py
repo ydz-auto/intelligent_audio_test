@@ -145,6 +145,52 @@ class CaseParameterExtractor:
         return result
 
     @classmethod
+    def _normalize_reference_params(cls, reference_params, test_type: str = 'api') -> List[Dict]:
+        if not reference_params:
+            return []
+
+        if isinstance(reference_params, list):
+            result = []
+            for item in reference_params:
+                if isinstance(item, dict):
+                    result.append(cls._normalize_single_ref_param(item, test_type))
+            return result
+
+        if isinstance(reference_params, dict):
+            if 'params' in reference_params and isinstance(reference_params['params'], list):
+                return cls._normalize_reference_params(reference_params['params'], test_type)
+
+            known_keys = {'default', 'api', 'e2e'}
+            for key in known_keys:
+                if key in reference_params and isinstance(reference_params[key], list):
+                    return cls._normalize_reference_params(reference_params[key], test_type)
+
+            result = []
+            for code, item in reference_params.items():
+                if isinstance(item, dict):
+                    if 'code' not in item:
+                        item = {**item, 'code': code}
+                    result.append(cls._normalize_single_ref_param(item, test_type))
+            return result
+
+        return []
+
+    @classmethod
+    def _normalize_single_ref_param(cls, param: Dict, test_type: str = 'api') -> Dict:
+        if 'value' in param and param['value'] is not None:
+            return param
+
+        test_type_value = param.get(test_type)
+        if test_type_value is not None:
+            return {**param, 'value': test_type_value}
+
+        for fallback_key in ['api', 'e2e']:
+            if fallback_key in param and param[fallback_key] is not None:
+                return {**param, 'value': param[fallback_key]}
+
+        return param
+
+    @classmethod
     def _build_evaluation_params(
         cls,
         algorithm_type: str,
@@ -166,7 +212,14 @@ class CaseParameterExtractor:
         """
         eval_params = {}
         case_params = case_config.get('algorithm_params', {})
-        reference_params = case_config.get('reference_params', [])
+        raw_reference_params = case_config.get('reference_params', [])
+        reference_params = cls._normalize_reference_params(raw_reference_params, test_type)
+        
+        log_not_emit('DEBUG', 'case_parameter_extractor',
+            f'[_build_evaluation_params] reference_params normalized: raw_type={type(raw_reference_params).__name__}, '
+            f'raw_len={len(raw_reference_params) if isinstance(raw_reference_params, (list, dict)) else "N/A"}, '
+            f'normalized_count={len(reference_params)}, codes={[p.get("code") for p in reference_params]}',
+            category='algorithm')
         
         if algorithm_result is None:
             algorithm_result = {}
@@ -185,7 +238,7 @@ class CaseParameterExtractor:
             if source == 'case':
                 value = case_params.get(source_param)
             elif source == 'reference':
-                if isinstance(reference_params, list):
+                if reference_params:
                     ref_type = None
                     loader = cls._get_loader()
                     for ref_def in loader.get_reference_params(algorithm_type):

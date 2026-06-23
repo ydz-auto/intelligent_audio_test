@@ -661,7 +661,7 @@ class evaluationApiClient:
         
         Args:
             field_value: 字段值
-            field_type: 字段类型 (text, audio, file, reference, score, number等)
+            field_type: 字段类型 (text, audio, audio_file, text_file, path, file, reference, score, number等)
             
         Returns:
             处理后的字段值
@@ -671,23 +671,27 @@ class evaluationApiClient:
             actual_type = field_value.get('field_type', field_type)
             return self._process_field_by_type(actual_value, actual_type)
         
-        if field_type in ('audio', 'file'):
-            if not field_value:
-                return None
-            if isinstance(field_value, str):
-                if field_value.startswith('data:') or ',' in field_value[:50]:
-                    return field_value
-                import os
-                if os.path.isfile(field_value):
-                    import base64
-                    try:
-                        with open(field_value, 'rb') as f:
-                            return 'data:audio/wav;base64,' + base64.b64encode(f.read()).decode()
-                    except Exception:
-                        return field_value
-                return field_value
+        if not field_value or not isinstance(field_value, str):
             return field_value
-        
+
+        if field_value.startswith('data:') or ',' in field_value[:50]:
+            return field_value
+
+        import os
+        if not os.path.isfile(field_value):
+            return field_value
+
+        try:
+            if field_type in ('audio', 'audio_file', 'file'):
+                import base64
+                with open(field_value, 'rb') as f:
+                    return 'data:audio/wav;base64,' + base64.b64encode(f.read()).decode()
+            elif field_type in ('text_file', 'path'):
+                with open(field_value, 'r', encoding='utf-8') as f:
+                    return f.read()
+        except Exception:
+            pass
+
         return field_value
     
     def build_payload(self, body_template, context, task_id=None, test_case_id=None, algorithm_type=None):
