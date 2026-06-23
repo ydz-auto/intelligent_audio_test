@@ -25,15 +25,18 @@ class AndroidDriver(BaseDeviceDriver):
         driver = self._drivers.get(device_sn)
         if driver:
             try:
-                driver.sceen_on()
+                driver.screen_on()
                 time.sleep(0.5)
-                flashlight_elem = driver(resourcId="com.android.systemui:id/flashlight_imageview")
-                if flashlight_elem.exists(timeout=1):
-                    return True
-                unlock_bar_elem = driver(resourcId="com.android.systemui:id/lock_indication")
-                if unlock_bar_elem.exists(timeout=1):
-                    return True
+                result = subprocess.run(
+                    ['adb', '-s', device_sn, 'shell', 'dumpsys', 'window'],
+                    capture_output=True, text=True, timeout=5
+                )
+                if result.returncode == 0:
+                    if 'mDreamingLockscreen=true' in result.stdout or 'isStatusBarKeyguard=true' in result.stdout:
+                        self._log(level='INFO', content=f"设备{device_sn} 处于锁屏状态")
+                        return True
                 self._log(level='INFO', content=f"设备{device_sn} 已解锁")
+                return False
             except Exception as e:
                 self._log(level='ERROR', content=f"检查锁屏状态失败：{e}")
                 return False
@@ -291,6 +294,55 @@ class AndroidDriver(BaseDeviceDriver):
         except Exception as e:
             self._log(level='ERROR', content=f"Error closing popups on Android device {device_sn}: {e}")
             return False
+
+    def set_volume(self, device_sn, level: int) -> bool:
+        """设置 Android 设备系统音量
+        
+        Args:
+            device_sn: 设备序列号
+            level: 音量级别(0-100)
+            
+        Returns:
+            bool: 是否设置成功
+        """
+        try:
+            level = max(0, min(100, level))
+            device_level = round(level * 15 / 100)
+            subprocess.run(
+                ['adb', '-s', device_sn, 'shell', 'media', 'volume', '--set', str(device_level)],
+                check=False, capture_output=True, timeout=10
+            )
+            self._log(level='INFO', content=f"Android 设备 {device_sn} 音量已设为 {level} (设备值: {device_level})")
+            return True
+        except Exception as e:
+            self._log(level='WARNING', content=f"Android 设备 {device_sn} 音量设置失败: {e}")
+            return False
+
+    def get_volume(self, device_sn) -> int:
+        """获取 Android 设备系统音量
+        
+        Args:
+            device_sn: 设备序列号
+            
+        Returns:
+            int: 当前音量(0-100)，不支持或失败返回 -1
+        """
+        try:
+            result = subprocess.run(
+                ['adb', '-s', device_sn, 'shell', 'media', 'volume', '--show'],
+                capture_output=True, text=True, timeout=10
+            )
+            if result.returncode == 0:
+                match = re.search(r'Current volume is (\d+) out of (\d+)', result.stdout)
+                if match:
+                    current = int(match.group(1))
+                    maximum = int(match.group(2))
+                    if maximum > 0:
+                        return round(current * 100 / maximum)
+            return -1
+        except Exception as e:
+            self._log(level='WARNING', content=f"Android 设备 {device_sn} 音量获取失败: {e}")
+            return -1
 
     @check_stop("get_results")
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:

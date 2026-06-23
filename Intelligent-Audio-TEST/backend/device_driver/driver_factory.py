@@ -1,5 +1,6 @@
 from .android_driver import AndroidDriver
 from .android_plaud import PlaudDriver
+from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .harmony_driver import HarmonyDriver
 from .harmony_translation_driver import (
     XiaoyiFace2FaceDriver,
@@ -93,10 +94,9 @@ class DeviceDriverFactory:
             'HarmonyOS',
             '鸿蒙harden小艺慧记专用驱动'
         )
-
         self.register_specialized_driver(
             HarmonyHardenXiaoyi_Input_MethodDriver(),
-            ['Pura70', 'xiaoyi_input_method', '小艺输入法'],
+            ['Pura80', 'xiaoyi_input_method', '小艺输入法'],
             'HarmonyOS',
             '鸿蒙小艺输入法专用驱动'
         )
@@ -106,6 +106,13 @@ class DeviceDriverFactory:
             ['xiaoyi_chat', '小艺聊天', 'livechat'],
             'HarmonyOS',
             '小艺聊天专用驱动'
+        )
+
+        self.register_specialized_driver(
+            DouBaoAndroidAsrDriver(),
+            ['doubao_asr', '豆包asr', 'doubao'],
+            'Android',
+            '安卓豆包ASR专用驱动'
         )
 
     def register_specialized_driver(self, driver, keywords, system=None, name=None):
