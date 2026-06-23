@@ -59,10 +59,8 @@ class Xiaoyilivechat(HarmonyDriver):
                 delete_button.click()
                 time.sleep(1)
         return True
-
-    def pre_proc   ess(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         # 开启通话聊天
-        driver = self._get_driver(device_sn)
+
         driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type(
             'SymbolGlyph'))
         driver.wait(2)
@@ -72,6 +70,8 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception:
             self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
             return False
+    def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+        driver = self._get_driver(device_sn)
         # 开启录屏
         self._record_file_name = f"{test_case_id}.mp4"
         self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY,
@@ -84,29 +84,30 @@ class Xiaoyilivechat(HarmonyDriver):
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
         # 停止录屏
-        self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY)
-        self._log(level='INFO', content="停止录屏", task_id=task_id, test_case_id=test_case_id)
-        time.sleep(5)
-        # 通话挂断
-        try:
-            hangup_btn = driver.find_component(
-                By.isAfter(By.key('live.tool_bar.hangup_button')).isBefore(By.key('GuideText')).type('SymbolGlyph'))
-            if hangup_btn:
-                hangup_btn.click()
-        except Exception as e:
-            self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
-        driver.wait(5)
-        texts = driver.find_all_components(By.type("Text"))
-        text=[t.getText() for t in texts]
-        self._question_text=text[3]
-        self._answer_text=text[5]
-        print(text)
-        print(text[3])
-        print(text[5])
-        # for text in texts:
-        #     s = str(text)
-        #     print(s.split("##")[1].split("#U")[0] if "##" in s else s.split("#")[0][3].split("#U")[0])
-        return True
+        if driver.find_component(By.text('正在听…')):
+            self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY)
+            self._log(level='INFO', content="停止录屏", task_id=task_id, test_case_id=test_case_id)
+            time.sleep(5)
+            # 通话挂断
+            try:
+                hangup_btn = driver.find_component(
+                    By.isAfter(By.key('live.tool_bar.hangup_button')).isBefore(By.key('GuideText')).type('SymbolGlyph'))
+                if hangup_btn:
+                    hangup_btn.click()
+            except Exception as e:
+                self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
+            driver.wait(5)
+            texts = driver.find_all_components(By.type("Text"))
+            text=[t.getText() for t in texts]
+            self._question_text=text[3]
+            self._answer_text=text[5]
+            # print(text)
+            # print(text[3])
+            # print(text[5])
+            # for text in texts:
+            #     s = str(text)
+            #     print(s.split("##")[1].split("#U")[0] if "##" in s else s.split("#")[0][3].split("#U")[0])
+            return True
 
 
 
