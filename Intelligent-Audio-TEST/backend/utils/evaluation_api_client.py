@@ -714,6 +714,8 @@ class evaluationApiClient:
                 processed_context[k] = v
             elif isinstance(v, dict) and 'field_type' in v:
                 processed_context[k] = self._process_field_by_type(v, v.get('field_type', 'text'))
+            elif isinstance(v, dict) and 'text' in v:
+                processed_context[k] = v.get('text', '')
             else:
                 processed_context[k] = v
         

@@ -124,7 +124,7 @@
             <button type="button" class="btn btn-sm btn-outline-primary" @click="$emit('openCrossDeviceModal')">
               <i class="fas fa-random"></i> 设备交叉
             </button>
-            <button type="button" class="btn btn-sm btn-outline-success" @click="$emit('openBatchSplModal')">
+            <button type="button" class="btn btn-sm btn-outline-success" @click="() => { console.log('[DEBUG] 设置声压 button clicked, emitting openBatchSplModal'); $emit('openBatchSplModal'); }">
               <i class="fas fa-volume-up"></i> 设置声压
             </button>
           </div>

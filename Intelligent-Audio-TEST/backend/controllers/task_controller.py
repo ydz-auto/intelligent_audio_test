@@ -732,9 +732,18 @@ class TaskController:
 
         try:
             case_ids = req.case_ids or []
+            group_ids = req.group_ids or []
             device_ids = req.device_ids or []
             api_ids = req.api_ids or []
             tags = req.tags or []
+
+            if group_ids:
+                from backend.models.models import TestCase as TCModel
+                group_case_ids = [str(tc.id) for tc in TCModel.query.filter(
+                    TCModel.group_id.in_(group_ids),
+                    TCModel.deleted == False
+                ).all()]
+                case_ids = list(set(case_ids + group_case_ids))
 
             new_task = Task(
                 name=req.name,

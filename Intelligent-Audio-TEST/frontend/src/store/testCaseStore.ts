@@ -148,21 +148,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       isLoading.value = true;
       error.value = null;
       
-      const page = params.page || 1;
-      const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
-      
-      const [groupsResponse, testCasesResponse] = await Promise.all([
-        testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType }),
-        testcasesApi.getAll({ 
-          page, 
-          perPage,
-          keyword: params.keyword,
-          tag: params.tag,
-          group_id: params.groupId,
-          algorithm_type: params.algorithmType,
-          include_deleted: params.includeDeleted || false
-        })
-      ]);
+      const groupsResponse = await testcasesApi.getGroups({ page: 1, perPage: 50, algorithm_type: params.algorithmType });
       
       let groupsData: any[] = [];
       
@@ -177,26 +163,26 @@ export const useTestCaseStore = defineStore('testCase', () => {
         return map;
       }, {} as Record<string, TestCaseGroup>);
       
-      let testCasesData: TestCase[] = [];
+      testCases.value = [];
+      loadedGroupCases.value = {};
+      groupPagination.value = {};
+      groupLoadingStates.value = {};
       
-      if (testCasesResponse) {
-        testCasesData = Array.isArray(testCasesResponse.items) ? testCasesResponse.items : [];
-      }
-
+      const groups: Record<string, TestCase[]> = {};
+      Object.values(fullGroupsMap.value).forEach(group => {
+        const groupName = group.name || `未命名分组-${group.id}`;
+        groups[groupName] = [];
+      });
+      allGroups.value = Object.keys(groups);
+      testCaseGroups.value = groups;
+      
       paginationInfo.value = {
-        page: testCasesResponse?.page || 1,
-        pages: testCasesResponse?.pages || 1,
-        perPage: testCasesResponse?.perPage || perPage,
-        total: typeof testCasesResponse?.total === 'number' ? testCasesResponse.total : testCasesData.length
+        page: 1,
+        pages: 1,
+        perPage: DEFAULT_FETCH_PAGE_SIZE,
+        total: 0
       };
       
-      testCases.value = testCasesData.map(tc => ({
-        ...tc,
-        type: tc.type || 'api',
-        deleted: tc.deleted || false
-      }));
-      
-      organizeTestCasesByGroup();
       extractTags();
     } catch (err: any) {
       console.error('获取测试用例失败:', err);

@@ -73,6 +73,7 @@
           @open-import-modal="openImportTestCaseModal"
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
+          @update-selected-groups="updateSelectedGroups"
         />
       </TestStepContainer>
 
@@ -294,6 +295,7 @@ const {
   apiFilter,
   selectedAPIIds,
   selectedTestCaseIds,
+  selectedGroupIds,
   activeTab,
   taskName,
   concurrentTasks,
@@ -369,6 +371,7 @@ const {
   prevStep,
   goToStep,
   updateSelectedCases,
+  updateSelectedGroups,
   toggleAPISelection,
   openAPIEditModal: openApiEditModal,
   deleteAPI: deleteApi,

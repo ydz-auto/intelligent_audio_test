@@ -82,6 +82,7 @@ watch(() => props.modelValue, (newVal) => {
 }, { immediate: true });
 
 watch(() => props.visible, (newVal) => {
+  console.log('[DEBUG] BatchSplModal visible changed to:', newVal, 'modelValue:', props.modelValue);
   if (newVal) {
     localSplValue.value = props.modelValue;
   }
@@ -118,7 +119,7 @@ function handleConfirm() {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 10001;
+  z-index: 14001;
 }
 
 .modal-container {

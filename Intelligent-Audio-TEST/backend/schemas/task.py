@@ -153,6 +153,7 @@ class TaskCreateRequest(APIModel):
     config: Optional[Dict[str, Any]] = Field(None, alias='config', validation_alias='config')
     created_by: Optional[str] = Field(None, alias='createdBy', validation_alias='createdBy')
     case_ids: Optional[List[str]] = Field(None, alias='caseIds', validation_alias='caseIds')
+    group_ids: Optional[List[str]] = Field(None, alias='groupIds', validation_alias='groupIds')
     device_ids: Optional[List[int]] = Field(None, alias='deviceIds', validation_alias='deviceIds')
     api_ids: Optional[List[int]] = Field(None, alias='apiIds', validation_alias='apiIds')
     tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')

@@ -289,10 +289,12 @@ const emit = defineEmits<{
   (e: 'openImportModal'): void;
   (e: 'openExportModal'): void;
   (e: 'updateSelectedCases', selectedCases: (string | number)[]): void;
+  (e: 'updateSelectedGroups', groupIds: (string | number)[]): void;
 }>();
 
 const expandedCategories = ref<Record<string, boolean>>({});
 const selectedCases = ref<(string | number)[]>([]);
+const selectedGroupIds = ref<(string | number)[]>([]);
 const searchQuery = ref('');
 const debouncedSearchQuery = useDebounce(searchQuery, 300);
 const testTypeFilter = ref('all');
@@ -346,6 +348,10 @@ async function loadAlgorithmOptions() {
 
 watch(selectedCases, (newValue) => {
   emit('updateSelectedCases', newValue);
+}, { deep: true });
+
+watch(selectedGroupIds, (newValue) => {
+  emit('updateSelectedGroups', newValue);
 }, { deep: true });
 
 watch(() => props.algorithmTypeFilter, (newValue, oldValue) => {
@@ -675,36 +681,40 @@ const toggleCategory = async (group: string) => {
   
   if (!wasExpanded) {
     const store = useTestCaseStore();
-    const groupInfo = store.groupsList.find(g => g.name === group);
+    const groupInfo = Object.values(store.fullGroupsMap).find(g => g.name === group);
     if (groupInfo && (!store.loadedGroupCases[groupInfo.id] || store.loadedGroupCases[groupInfo.id].length === 0)) {
       await store.fetchCasesByGroup(groupInfo.id);
     }
   }
 };
 
+const findGroupInfo = (groupName: string) => {
+  const store = useTestCaseStore();
+  return Object.values(store.fullGroupsMap).find(g => g.name === groupName);
+};
+
 const isGroupLoading = (groupName: string) => {
   const store = useTestCaseStore();
-  const groupInfo = store.groupsList.find(g => g.name === groupName);
+  const groupInfo = findGroupInfo(groupName);
   if (!groupInfo) return false;
   return store.isGroupLoading(groupInfo.id);
 };
 
 const hasMoreGroupCases = (groupName: string) => {
   const store = useTestCaseStore();
-  const groupInfo = store.groupsList.find(g => g.name === groupName);
+  const groupInfo = findGroupInfo(groupName);
   if (!groupInfo) return false;
   return store.hasMoreGroupCases(groupInfo.id);
 };
 
 const getGroupTotalCount = (groupName: string) => {
-  const store = useTestCaseStore();
-  const groupInfo = store.groupsList.find(g => g.name === groupName);
-  return groupInfo?.testCaseCount || 0;
+  const groupInfo = findGroupInfo(groupName) as any;
+  return groupInfo?.testCaseCount || groupInfo?.test_case_count || 0;
 };
 
 const loadMoreCases = async (groupName: string) => {
   const store = useTestCaseStore();
-  const groupInfo = store.groupsList.find(g => g.name === groupName);
+  const groupInfo = findGroupInfo(groupName);
   if (groupInfo) {
     await store.loadMoreGroupCases(groupInfo.id);
   }
@@ -714,14 +724,36 @@ const toggleTestCaseSelection = (caseId: string | number) => {
   const index = selectedCases.value.indexOf(caseId);
   if (index > -1) {
     selectedCases.value.splice(index, 1);
+    const allCases = Object.values(filteredTestCases.value).flat();
+    const deselectedCase = allCases.find((tc: TestCase) => tc.id === caseId);
+    if (deselectedCase) {
+      const groupId = deselectedCase.groupId;
+      if (groupId) {
+        const gIdx = selectedGroupIds.value.indexOf(groupId);
+        if (gIdx > -1) {
+          selectedGroupIds.value.splice(gIdx, 1);
+        }
+      }
+    }
   } else {
     selectedCases.value.push(caseId);
   }
 };
 
-const toggleGroupSelection = (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
+const toggleGroupSelection = async (group: string) => {
   const allSelected = groupSelectionStates.value[group];
+  const groupInfo = findGroupInfo(group);
+  
+  if (!allSelected) {
+    const store = useTestCaseStore();
+    if (groupInfo) {
+      while (store.hasMoreGroupCases(groupInfo.id)) {
+        await store.loadMoreGroupCases(groupInfo.id);
+      }
+    }
+  }
+  
+  const groupCases = filteredTestCases.value[group] || [];
   
   groupCases.forEach((testCase: TestCase) => {
     const index = selectedCases.value.indexOf(testCase.id);
@@ -731,6 +763,15 @@ const toggleGroupSelection = (group: string) => {
       if (index === -1) selectedCases.value.push(testCase.id);
     }
   });
+
+  if (groupInfo) {
+    const gIdx = selectedGroupIds.value.indexOf(groupInfo.id);
+    if (allSelected) {
+      if (gIdx > -1) selectedGroupIds.value.splice(gIdx, 1);
+    } else {
+      if (gIdx === -1) selectedGroupIds.value.push(groupInfo.id);
+    }
+  }
 };
 
 const resetFilters = () => {

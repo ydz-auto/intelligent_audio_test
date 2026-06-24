@@ -197,6 +197,11 @@ class DatabaseLogHandler(logging.Handler):
                     Log, db, SessionLocal = self._init_db_components(Log, db, SessionLocal)
                     if Log and SessionLocal and self.flask_app:
                         self._process_batch(batch, Log, SessionLocal)
+                    
+                    for data in batch:
+                        if data.get('push_to_websocket') and data.get('id'):
+                            self._emit_websocket(data)
+                    
                     batch = []
                     last_flush = current_time
                     
@@ -204,10 +209,6 @@ class DatabaseLogHandler(logging.Handler):
                         if Log and SessionLocal:
                             self._check_and_archive(Log, SessionLocal)
                         self._last_archive_check = current_time
-                
-                for data in batch:
-                    if data.get('push_to_websocket'):
-                        self._emit_websocket(data)
                         
             except Exception as e:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - CRITICAL ERROR - {str(e)}")
@@ -270,6 +271,7 @@ class DatabaseLogHandler(logging.Handler):
         with self.flask_app.app_context():
             session = SessionLocal()
             try:
+                log_entries = []
                 for data in batch:
                     log_entry = Log(
                         time=data['time'],
@@ -286,7 +288,10 @@ class DatabaseLogHandler(logging.Handler):
                         algorithm_type=data.get('algorithm_type')
                     )
                     session.add(log_entry)
+                    log_entries.append(log_entry)
                 session.commit()
+                for data, log_entry in zip(batch, log_entries):
+                    data['id'] = log_entry.id
                 if self.enable_console_log:
                     print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DEBUG - Batch saved {len(batch)} logs.")
             except Exception as e:
@@ -307,6 +312,7 @@ class DatabaseLogHandler(logging.Handler):
                 utc_plus_8 = timezone(timedelta(hours=8))
                 log_time = datetime.now(utc_plus_8).strftime('%Y-%m-%d %H:%M:%S')
                 log_payload = {
+                    "id": data.get('id'),
                     "time": log_time,
                     "level": data['level'],
                     "module": data['module'],

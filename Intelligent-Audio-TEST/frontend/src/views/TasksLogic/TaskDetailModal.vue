@@ -87,7 +87,8 @@ const {
   elapsedTime,
   estimatedTime,
   expectedCompleteTime,
-  associatedCases
+  associatedCases,
+  logs: wsLogs
 } = useTaskProgress({
   testType: taskType.value,
   currentTaskId: computed(() => props.taskId as string | number | null),
@@ -402,6 +403,25 @@ async function loadMoreLogs() {
     logPagination.value.loadingMore = false;
   }
 }
+
+watch(wsLogs, (newWsLogs) => {
+  if (!newWsLogs || newWsLogs.length === 0) return;
+  const existingIds = new Set(localLogs.value.map((l: Log) => l.id));
+  const newItems = newWsLogs.filter((log: Log) => log.id && !existingIds.has(log.id));
+  if (newItems.length > 0) {
+    const mapped = newItems.map((log: Log) => ({
+      id: log.id,
+      taskId: log.taskId,
+      level: log.level || 'info',
+      content: log.content,
+      time: log.time,
+      timestamp: log.timestamp,
+      createdAt: log.createdAt
+    }));
+    const sorted = mapped.sort((a: Log, b: Log) => getLogTimestamp(a) - getLogTimestamp(b));
+    localLogs.value = [...localLogs.value, ...sorted];
+  }
+}, { deep: true });
 
 watch(() => task.value?.status, (newStatus) => {
   if (String(newStatus) === 'running' || String(newStatus) === 'starting') {

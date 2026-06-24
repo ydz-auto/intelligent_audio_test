@@ -57,6 +57,8 @@
       @close="audioConfig.showAudioModal.value = false"
       @select="handleAudioSelect"
       @select-multiple="handleMultipleAudioSelect"
+      @upload-request="handleUploadRequest"
+      @folder-import-request="handleFolderImportRequest"
     />
 
     <AudioPreviewModal
@@ -130,7 +132,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue';
 import { testcasesApi } from '../../../../utils/api';
 import { useNotification } from '../../../../composables/useNotification';
 import AudioSelectModal from '../../AudioSelectModal.vue';
@@ -143,6 +145,8 @@ import ImportForm from './ImportForm.vue';
 import ExportForm from './ExportForm.vue';
 import { useAudioConfig } from './useAudioConfig';
 import { useDimensionConfig } from './useDimensionConfig';
+import { getModalManager } from '../../../../utils/modalManager';
+import { MODAL_TYPES } from '../../../../shared/types';
 import type { TestCaseFormData, GroupFormData, ExportFormData, AudioItem } from './types';
 
 const props = defineProps({
@@ -159,6 +163,7 @@ const notification = useNotification();
 
 const audioConfig = useAudioConfig();
 const dimensionConfig = useDimensionConfig();
+const modalManager = getModalManager();
 
 provide('audioConfig', audioConfig);
 provide('dimensionConfig', dimensionConfig);
@@ -267,9 +272,12 @@ function openBatchDeviceModal() {
 }
 
 function openBatchSplModal() {
+  console.log('[DEBUG] openBatchSplModal called');
   const e2eAudios = caseFormData.value.config?.audios?.filter(a => a.testType === 'e2e') || [];
+  console.log('[DEBUG] e2eAudios count:', e2eAudios.length);
   audioConfig.batchSplValue.value = e2eAudios.length > 0 ? e2eAudios[0].spl : 65;
   audioConfig.showBatchSplModal.value = true;
+  console.log('[DEBUG] showBatchSplModal set to:', audioConfig.showBatchSplModal.value);
 }
 
 function openCrossDeviceModal() {
@@ -277,6 +285,39 @@ function openCrossDeviceModal() {
   const deviceIds = [...new Set(e2eAudios.map(a => a.playbackDeviceId).filter(Boolean))];
   audioConfig.crossDeviceInitialSelectedDevices.value = deviceIds;
   audioConfig.showCrossDeviceModal.value = true;
+}
+
+async function handleUploadRequest() {
+  audioConfig.showAudioModal.value = false;
+  await nextTick();
+  try {
+    await modalManager.open(MODAL_TYPES.AUDIO_IMPORT, {
+      title: '上传音频',
+      multiple: true,
+      acceptedFileTypes: 'audio/*',
+      supportedFormats: ['wav', 'mp3', 'm4a', 'flac', 'aac', 'ogg']
+    });
+    audioConfig.loadResources();
+  } catch (err) {
+    console.error('上传音频失败:', err);
+  } finally {
+    audioConfig.showAudioModal.value = true;
+  }
+}
+
+async function handleFolderImportRequest() {
+  audioConfig.showAudioModal.value = false;
+  await nextTick();
+  try {
+    await modalManager.open(MODAL_TYPES.FOLDER_IMPORT, {
+      title: '批量从文件夹导入'
+    });
+    audioConfig.loadResources();
+  } catch (err) {
+    console.error('文件夹导入失败:', err);
+  } finally {
+    audioConfig.showAudioModal.value = true;
+  }
 }
 
 function handleAudioSelect(audio: AudioItem) {

@@ -72,6 +72,7 @@
           @open-import-modal="openImportTestCaseModal"
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
+          @update-selected-groups="updateSelectedGroups"
         />
       </TestStepContainer>
 
@@ -285,6 +286,7 @@ const {
   // 基础状态
   currentStep,
   selectedTestCaseIds,
+  selectedGroupIds,
   taskName,
   activeTab,
   associatedDevices,
@@ -351,6 +353,7 @@ const {
   openImportTestCaseModal,
   openExportTestCaseModal,
   updateSelectedCases,
+  updateSelectedGroups,
   addDevice,
   scanDevices,
   searchDevices,

@@ -95,6 +95,7 @@ export function useE2eView() {
   const concurrentTasks = ref(4)
   const reportTables = ref([])
   const selectedTestCaseIds = ref<(string | number)[]>([])
+  const selectedGroupIds = ref<(string | number)[]>([])
   const taskName = ref('')
   const taskStartTime = ref<Date | null>(null)
   const taskElapsedTimeDisplay = ref('00:00:00')
@@ -320,6 +321,7 @@ export function useE2eView() {
         type: 'e2e',
         deviceIds: selectedDeviceIds,
         caseIds: selectedCaseIds,
+        groupIds: selectedGroupIds.value,
         config: { parallel: true, concurrentTasks: concurrentTasks.value }
       }
 
@@ -528,6 +530,10 @@ export function useE2eView() {
     console.log('Selected cases updated:', selectedTestCaseIds.value)
   }
 
+  const updateSelectedGroups = (groupIds: (string | number)[]) => {
+    selectedGroupIds.value = groupIds
+  }
+
   const saveReport = async () => {
     try {
       const reportId = report.value?.id
@@ -594,6 +600,7 @@ export function useE2eView() {
   return {
     currentStep,
     selectedTestCaseIds,
+    selectedGroupIds,
     taskName,
     activeTab,
     associatedDevices,
@@ -646,6 +653,7 @@ export function useE2eView() {
     openExportTestCaseModal,
     handleSaveModal,
     updateSelectedCases,
+    updateSelectedGroups,
     addDevice,
     scanDevices,
     searchDevices,

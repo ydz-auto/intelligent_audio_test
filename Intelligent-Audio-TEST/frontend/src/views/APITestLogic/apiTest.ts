@@ -110,6 +110,7 @@ export function useApiTest() {
   const apiFilter = ref('all')
   const selectedAPIIds = ref<(string | number)[]>([])
   const selectedTestCaseIds = ref<(string | number)[]>([])
+  const selectedGroupIds = ref<(string | number)[]>([])
   const activeTab = ref('cases')
   const taskName = ref('API测试任务')
   const concurrentTasks = ref(5)
@@ -285,6 +286,10 @@ export function useApiTest() {
     console.log('useAPITest: 更新选中的测试用例:', selectedTestCaseIds.value)
   }
 
+  const updateSelectedGroups = (groupIds: (string | number)[]) => {
+    selectedGroupIds.value = groupIds
+  }
+
   const openAPIEditModal = (apiData: APIConfig | null = null) => {
     console.log('openAPIEditModal called with apiData:', apiData)
     if (apiData && apiData.id) {
@@ -410,6 +415,7 @@ export function useApiTest() {
           description: '通过API测试任务', 
           type: 'api', 
           caseIds: selectedTestCaseIds.value, 
+          groupIds: selectedGroupIds.value,
           apiIds: selectedAPIIds.value, 
           tags: [] 
         }
@@ -634,6 +640,7 @@ export function useApiTest() {
     apiFilter,
     selectedAPIIds,
     selectedTestCaseIds,
+    selectedGroupIds,
     activeTab,
     taskName,
     concurrentTasks,
@@ -685,6 +692,7 @@ export function useApiTest() {
     prevStep,
     goToStep,
     updateSelectedCases,
+    updateSelectedGroups,
     toggleAPISelection,
     openAPIEditModal,
     deleteAPI,
