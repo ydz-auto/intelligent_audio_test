@@ -35,6 +35,8 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     def __init__(self):
         super().__init__()
         self.app_name = "com.larus.nova"
+        self._pre_user_msgs = {}
+        self._pre_msg_count = {}
 
     @check_stop("initialize")
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
@@ -61,6 +63,10 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
         driver = self._get_driver(device_sn)
         if not driver:
             return False
+        pre_msgs = self._collect_user_messages(driver)
+        self._pre_user_msgs[device_sn] = set(m['text'] for m in pre_msgs)
+        self._pre_msg_count[device_sn] = len(pre_msgs)
+        self._log(level='DEBUG', content=f"pre_process 快照已有用户消息数: {len(pre_msgs)}", task_id=task_id, test_case_id=test_case_id)
         btn = driver.xpath(r'//*[@resource-id="com.larus.nova:id/speak_normal"]')
         if btn.exists:
             x, y = btn.center()
@@ -79,6 +85,40 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
             driver.touch.up(x, y)
         return True
 
+    def _scroll_to_bottom(self, driver):
+        """滚动到消息列表底部，确保最新消息可见"""
+        try:
+            msg_list = driver.xpath(r'//*[@resource-id="com.larus.nova:id/message_list_parent"]')
+            if msg_list.exists:
+                msg_list.scroll.toEnd()
+                time.sleep(0.5)
+        except Exception:
+            pass
+
+    def _collect_user_messages(self, driver):
+        """收集消息列表中所有用户右侧消息，返回 [{'text': str, 'top': int}, ...]"""
+        user_msgs = []
+        try:
+            width, height = driver.window_size()
+            half_width = width / 2
+            msg_list_xpath = r'//*[@resource-id="com.larus.nova:id/message_list_parent"]//android.widget.TextView'
+            all_text_elems = driver.xpath(msg_list_xpath).all()
+            for elem in all_text_elems:
+                try:
+                    text = elem.text
+                    if not text or len(text.strip()) == 0:
+                        continue
+                    bounds = elem.info.get('bounds', {})
+                    left = bounds.get('left', 0)
+                    top = bounds.get('top', 0)
+                    if left > half_width:
+                        user_msgs.append({'text': text.strip(), 'top': top})
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return user_msgs
+
     @check_stop("get_results")
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
         self._log(level='DEBUG', content=f'Getting results from android device: {device_sn}', task_id=task_id, test_case_id=test_case_id)
@@ -87,44 +127,61 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
             self._log(level='ERROR', content=f"Driver not available for device: {device_sn}", task_id=task_id, test_case_id=test_case_id)
             return {'success': False, 'message': 'Driver not available', 'asr': '', 'translation': ''}
 
+        pre_count = self._pre_msg_count.pop(device_sn, 0)
+        pre_texts = self._pre_user_msgs.pop(device_sn, set())
+
         try:
-            width, height = driver.window_size()
-            half_width = width / 2
-
-            msg_list_xpath = r'//*[@resource-id="com.larus.nova:id/message_list_parent"]//android.widget.TextView'
-            all_text_elems = driver.xpath(msg_list_xpath).all()
-            self._log(level='DEBUG', content=f"消息列表内TextView总数: {len(all_text_elems)}", task_id=task_id, test_case_id=test_case_id)
-
+            max_retries = 5
+            retry_interval = 0.5
             user_msg_list = []
-            for elem in all_text_elems:
-                try:
-                    text = elem.text
-                    if not text or len(text.strip()) == 0:
-                        continue
+            latest_user_text = ''
+            prev_candidate = None
+            stable_hits = 0
 
-                    bounds = elem.info.get('bounds', {})
-                    left = bounds.get('left', 0)
-                    top = bounds.get('top', 0)
+            for attempt in range(max_retries):
+                if self._check_stop("get_results"):
+                    return {'success': False, 'message': 'Stopped', 'asr': '', 'translation': ''}
 
-                    if left > half_width:
-                        user_msg_list.append({
-                            'text': text.strip(),
-                            'top': top
-                        })
-                except Exception as inner_e:
-                    self._log(level='DEBUG', content=f"单条文本元素解析跳过: {inner_e}", task_id=task_id, test_case_id=test_case_id)
-                    continue
+                self._scroll_to_bottom(driver)
+                user_msg_list = self._collect_user_messages(driver)
 
-            self._log(level='DEBUG', content=f"识别到用户右侧消息数量: {len(user_msg_list)}", task_id=task_id, test_case_id=test_case_id)
+                count_changed = len(user_msg_list) > pre_count
+                new_msgs = [m for m in user_msg_list if m['text'] not in pre_texts]
+                text_changed = len(new_msgs) > 0
+                self._log(level='DEBUG', content=f"第{attempt + 1}次轮询: 消息总数={len(user_msg_list)}(快照={pre_count}) 数量变化={count_changed} 文本变化={text_changed}", task_id=task_id, test_case_id=test_case_id)
 
-            if user_msg_list:
-                user_msg_sorted = sorted(user_msg_list, key=lambda x: x['top'], reverse=True)
-                latest_user_text = user_msg_sorted[0]['text']
-                self._log(level='DEBUG', content=f"抓取到最新用户消息: {latest_user_text}", task_id=task_id, test_case_id=test_case_id)
-                return {'success': True, 'message': 'Success', 'asr': latest_user_text, 'translation': ''}
+                if new_msgs:
+                    user_msg_sorted = sorted(new_msgs, key=lambda x: x['top'], reverse=True)
+                    candidate = user_msg_sorted[0]['text']
 
-            self._log(level='WARNING', content="消息列表内未找到用户右侧发送消息", task_id=task_id, test_case_id=test_case_id)
-            return {'success': True, 'message': 'Success', 'asr': '', 'translation': ''}
+                    if candidate:
+                        if candidate == prev_candidate:
+                            stable_hits += 1
+                        else:
+                            stable_hits = 1
+                            prev_candidate = candidate
+
+                        self._log(level='DEBUG', content=f"候选文本: '{candidate}' 稳定计数: {stable_hits}", task_id=task_id, test_case_id=test_case_id)
+
+                        if stable_hits >= 2:
+                            latest_user_text = candidate
+                            self._log(level='INFO', content=f"抓取到最新用户消息: {latest_user_text}", task_id=task_id, test_case_id=test_case_id)
+                            return {'success': True, 'message': 'Success', 'asr': latest_user_text, 'translation': ''}
+
+                time.sleep(retry_interval)
+
+            self._log(level='WARNING', content=f"轮询{max_retries}次未检测到稳定新消息", task_id=task_id, test_case_id=test_case_id)
+            self._scroll_to_bottom(driver)
+            user_msg_list = self._collect_user_messages(driver)
+            new_msgs = [m for m in user_msg_list if m['text'] not in pre_texts]
+            if not new_msgs:
+                self._log(level='WARNING', content="未检测到新用户消息，语音可能未被识别", task_id=task_id, test_case_id=test_case_id)
+                return {'success': False, 'message': 'No new message detected, speech may not be recognized', 'asr': '', 'translation': ''}
+
+            user_msg_sorted = sorted(new_msgs, key=lambda x: x['top'], reverse=True)
+            latest_user_text = user_msg_sorted[0]['text']
+            self._log(level='INFO', content=f"回退抓取到新用户消息: {latest_user_text}", task_id=task_id, test_case_id=test_case_id)
+            return {'success': True, 'message': 'Success', 'asr': latest_user_text, 'translation': ''}
 
         except Exception as e:
             self._log(level='ERROR', content=f'Android get_results 捕获全局异常 device {device_sn}: {str(e)}', task_id=task_id, test_case_id=test_case_id)
