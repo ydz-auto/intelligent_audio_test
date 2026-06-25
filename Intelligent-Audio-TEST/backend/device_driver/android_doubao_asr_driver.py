@@ -29,7 +29,7 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     # 时间配置常量
     SCREEN_ON_DELAY = 0.5                 # 屏幕点亮后等待时间（秒）
     ADB_TIMEOUT = 5                       # ADB命令执行超时时间（秒）
-    ASR_MAX_WAIT = 30                     # ASR结果最大等待时间（秒）
+    ASR_MAX_WAIT = 10                    # ASR结果最大等待时间（秒）
     ASR_WAIT_INTERVAL = 1                 # ASR结果轮询间隔（秒）
     ASR_STABLE_WAIT = 2                   # 文本内容稳定等待时间（秒），防止识别结果更正
 
@@ -247,17 +247,21 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
 
             # 轮询等待ASR结果，最多等待ASR_MAX_WAIT秒
             while waited < self.ASR_MAX_WAIT:
+                self._log(level='DEBUG', content=f"[轮询 {waited}s] 开始检测...")
+
                 # 检查消息列表中是否存在加载指示器圆点（正在思考/输入中）
                 # v_dot1/v_dot2/v_dot3 都表示加载状态，只要存在任意一个就说明消息还在生成中
                 loading_dots = driver.xpath(
                     f'//*[@resource-id="{self.MESSAGE_LIST_RES_ID}"]//*[contains(@resource-id, "{self.LOADING_DOT_RES_PREFIX}")]'
                 ).all()
                 if loading_dots:
-                    self._log(level='DEBUG', content=f"检测到{len(loading_dots)}个加载指示器圆点，消息生成中...")
+                    self._log(level='DEBUG', content=f"[轮询 {waited}s] 检测到{len(loading_dots)}个加载指示器圆点，消息生成中...")
+                    # 只有在还没有找到有效用户消息时，才重置稳定性计数器
+                    # 避免豆包回复导致加载指示器出现时，重置了用户消息的稳定性计数
+                    if last_asr_text is None:
+                        stable_count = 0
                     time.sleep(self.ASR_WAIT_INTERVAL)
                     waited += self.ASR_WAIT_INTERVAL
-                    last_asr_text = None
-                    stable_count = 0
                     continue
 
                 # 向下滚动页面，确保最新消息在可视区域内
@@ -271,9 +275,12 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
                     f'//*[@resource-id="{self.MESSAGE_LIST_RES_ID}"]//android.widget.TextView'
                 ).all()
 
+                self._log(level='DEBUG', content=f"[轮询 {waited}s] 找到{len(elements_list)}个TextView元素")
+
                 # 筛选用户消息：有文本内容、resourceId为空、且left值大于等于阈值的TextView
                 # 用户消息（右侧蓝色气泡）的left值较大（>=107），豆包回复（左侧黄色气泡）的left值较小
                 user_messages = []
+                all_texts_info = []
                 for elem in elements_list:
                     try:
                         text = elem.text
@@ -281,29 +288,43 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
                         res_id = info.get('resourceId', '')
                         bounds = info.get('bounds', {})
                         left = bounds.get('left', 0)
+                        all_texts_info.append(f"text='{text[:30]}...' left={left}" if len(text) > 30 else f"text='{text}' left={left}")
                         if text and text.strip() and res_id == '' and left >= self.USER_MESSAGE_LEFT_THRESHOLD:
                             user_messages.append(text)
                     except Exception:
                         pass
 
+                self._log(level='DEBUG', content=f"[轮询 {waited}s] 所有文本: {all_texts_info}")
+                self._log(level='DEBUG', content=f"[轮询 {waited}s] 符合条件的用户消息: {len(user_messages)}个")
+
                 # 如果找到用户消息
                 if user_messages:
                     current_asr_text = user_messages[-1]
+                    self._log(level='DEBUG', content=f"[轮询 {waited}s] 当前ASR文本: {current_asr_text[:50]}...")
 
                     # 检查文本是否稳定（防止识别结果更正）
                     if current_asr_text == last_asr_text:
                         stable_count += 1
-                        self._log(level='DEBUG', content=f"文本稳定计数: {stable_count}/{self.ASR_STABLE_WAIT}")
+                        self._log(level='DEBUG', content=f"[轮询 {waited}s] 文本稳定计数: {stable_count}/{self.ASR_STABLE_WAIT}")
                         if stable_count >= self.ASR_STABLE_WAIT:
                             self._log(level='DEBUG', content=f"获取用户输入的ASR结果: {current_asr_text}")
                             return [{"result_type": "real-time", "success": True, "message": "Success", "asr": current_asr_text}]
                     else:
                         last_asr_text = current_asr_text
                         stable_count = 1
-                        self._log(level='DEBUG', content=f"检测到文本变化: {current_asr_text}")
+                        self._log(level='DEBUG', content=f"[轮询 {waited}s] 检测到文本变化")
                 else:
-                    last_asr_text = None
-                    stable_count = 0
+                    self._log(level='DEBUG', content=f"[轮询 {waited}s] 未找到符合条件的用户消息 (last_asr_text={last_asr_text}, stable_count={stable_count})")
+                    # 没有找到用户消息时，只有在还没有找到过有效消息时才重置
+                    # 避免用户消息被暂时顶出视野时丢失稳定性计数
+                    if last_asr_text is None:
+                        stable_count = 0
+                    else:
+                        # 如果之前找到过用户消息，但现在找不到了，尝试向上滚动查找
+                        self._log(level='DEBUG', content="用户消息暂不可见，向上滚动查找...")
+                        width, height = driver.window_size()
+                        driver.swipe(width / 2, height * 0.2, width / 2, height * 0.8)
+                        time.sleep(0.5)
 
                 # 等待后继续轮询
                 time.sleep(self.ASR_WAIT_INTERVAL)
