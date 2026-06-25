@@ -1858,8 +1858,24 @@ class DeviceResultCollector:
 
             res.update(mapped_results)
 
-            has_values = any(mapped_results.values())
-            res['success'] = has_values
+            if not mapped_results:
+                # 映射结果为空，说明字段映射配置的 source_param 与驱动返回的 key 对不上
+                res['success'] = False
+                # 提取映射配置里期望的 source_param 列表，方便对比
+                expected_source_params = []
+                if isinstance(mapped_fields, list):
+                    expected_source_params = [f.get('source_param', f.get('code')) for f in mapped_fields]
+                elif isinstance(mapped_fields, dict):
+                    expected_source_params = [f.get('source_param', k) for k, f in mapped_fields.items()]
+                log_not_emit('WARNING', 'device_collector',
+                             f'convert_results: mapped_results 为空，判定失败! '
+                             f'algorithm_type={algorithm_type}, result_type={result_type}, '
+                             f'驱动返回的 raw_keys={list(raw_results.keys())}, '
+                             f'映射配置期望的 source_params={expected_source_params}, '
+                             f'请检查字段映射配置的 source_param 是否与驱动返回的 key 一致',
+                             category='engine')
+            else:
+                res['success'] = raw_results.get('success', False)
 
         return all_results
 

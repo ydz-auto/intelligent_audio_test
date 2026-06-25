@@ -140,7 +140,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             return False
 
     @check_stop("get_results")
-    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
+    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> list:
         """
         获取设备输出结果 - 返回原始文本、音频列表
         """
