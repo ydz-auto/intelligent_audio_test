@@ -791,7 +791,7 @@ class TaskController:
             from backend.utils.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
-            return success_response(IdData(id=new_task.id), "任务创建成功", http_code=201)
+            return success_response({"id": new_task.id, "case_ids": case_ids}, "任务创建成功", http_code=201)
         except Exception as e:
             db.session.rollback()
             return error_response(str(e), code=ErrorCode.DATABASE_ERROR)

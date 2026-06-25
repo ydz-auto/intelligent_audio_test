@@ -341,12 +341,15 @@ export function useE2eView() {
       console.log('[startTest] 任务创建响应:', response)
       currentTaskId.value = response.id
 
-      console.log('[E2E测试] selectedTestCaseIds:', selectedTestCaseIds.value)
-      console.log('[E2E测试] e2eTestCases数量:', e2eTestCases.value.length)
-      
-      associatedCases.value = selectedCaseIds.map((id: any) => ({
+      // 用后端返回的 case_ids 构建关联用例列表
+      const responseCaseIds: any[] = response.case_ids || []
+      console.log('[E2E测试] 后端返回case_ids数量:', responseCaseIds.length)
+
+      associatedCases.value = responseCaseIds.map((id: any) => ({
         id: id,
-        name: e2eTestCases.value.find((c: any) => String(c.id) === String(id))?.name || `用例 ${id}`,
+        name: e2eTestCases.value.find((c: any) => String(c.id) === String(id))?.name
+          || Object.values(useTestCaseStore().testCaseGroups).flat().find((tc: TestCase) => String(tc.id) === String(id))?.name
+          || `用例 ${id}`,
         status: 'pending',
         executionStatus: 'pending',
         evaluationStatus: 'pending'

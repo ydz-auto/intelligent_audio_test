@@ -432,10 +432,11 @@ export function useApiTest() {
         const taskResponse = await tasksApi.create(taskData)
         const taskId = taskResponse.id
         currentTaskId.value = taskId
-        
-        associatedCases.value = selectedTestCaseIds.value
+
+        // 用后端返回的 case_ids 构建关联用例列表
+        const responseCaseIds: any[] = taskResponse.case_ids || []
+        associatedCases.value = responseCaseIds
           .map(id => {
-            const allCases = Object.values(testCaseGroups.value as Record<string, TestCase[]>).flat()
             const testCase = allCases.find(tc => String(tc.id) === String(id))
             return testCase ? {
               ...testCase,
