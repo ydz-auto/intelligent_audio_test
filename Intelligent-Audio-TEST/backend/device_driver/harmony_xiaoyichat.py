@@ -82,6 +82,8 @@ class Xiaoyilivechat(HarmonyDriver):
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
         # 等待小艺回复结束（"正在听…"出现表示回复完毕）
+        while not driver.find_component(By.text('说话可打断')):
+            time.sleep(1)
         while not driver.find_component(By.text('正在听…')):
             time.sleep(1)
         # 停止录屏
