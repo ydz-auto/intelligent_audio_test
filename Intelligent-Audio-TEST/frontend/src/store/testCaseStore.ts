@@ -176,11 +176,16 @@ export const useTestCaseStore = defineStore('testCase', () => {
       allGroups.value = Object.keys(groups);
       testCaseGroups.value = groups;
       
+      const totalCases = Object.values(fullGroupsMap.value).reduce((sum, g) => {
+        const count = (g as any).testCaseCount || (g as any).test_case_count || 0;
+        return sum + count;
+      }, 0);
+
       paginationInfo.value = {
         page: 1,
         pages: 1,
         perPage: DEFAULT_FETCH_PAGE_SIZE,
-        total: 0
+        total: totalCases
       };
       
       extractTags();
@@ -325,7 +330,11 @@ export const useTestCaseStore = defineStore('testCase', () => {
     const groupKey = groupId.toString();
     const currentPagination = groupPagination.value[groupKey];
     
-    if (!currentPagination || currentPagination.page >= currentPagination.pages) {
+    if (!currentPagination) {
+      return fetchCasesByGroup(groupId, { page: 1 });
+    }
+    
+    if (currentPagination.page >= currentPagination.pages) {
       return null;
     }
     

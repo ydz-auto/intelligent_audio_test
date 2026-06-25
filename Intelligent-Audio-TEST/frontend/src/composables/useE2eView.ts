@@ -316,11 +316,21 @@ export function useE2eView() {
       const selectedDeviceIds = associatedDevices.value.map((d: any) => d.id)
       console.log('[startTest] 选择的设备数量:', selectedDeviceIds.length)
 
+      // 过滤掉已属于选中分组的用例ID，避免冗余提交
+      const store = useTestCaseStore()
+      const allCases = Object.values(store.testCaseGroups).flat() as TestCase[]
+      const groupCaseIdSet = new Set(
+        allCases
+          .filter(tc => selectedGroupIds.value.some(gid => String(gid) === String(tc.groupId)))
+          .map(tc => tc.id)
+      )
+      const individualCaseIds = selectedCaseIds.filter((id: any) => !groupCaseIdSet.has(id))
+
       const payload = {
         name: taskName.value || `E2E测试任务_${new Date().toLocaleString()}`,
         type: 'e2e',
         deviceIds: selectedDeviceIds,
-        caseIds: selectedCaseIds,
+        caseIds: individualCaseIds,
         groupIds: selectedGroupIds.value,
         config: { parallel: true, concurrentTasks: concurrentTasks.value }
       }

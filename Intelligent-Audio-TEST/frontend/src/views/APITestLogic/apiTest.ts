@@ -410,14 +410,23 @@ export function useApiTest() {
           return
         }
         
-        const taskData = { 
-          name: taskName.value || 'API测试任务', 
-          description: '通过API测试任务', 
-          type: 'api', 
-          caseIds: selectedTestCaseIds.value, 
+        // 过滤掉已属于选中分组的用例ID，避免冗余提交
+        const allCases = Object.values(testCaseGroups.value as Record<string, TestCase[]>).flat()
+        const groupCaseIdSet = new Set(
+          allCases
+            .filter(tc => selectedGroupIds.value.some(gid => String(gid) === String(tc.groupId)))
+            .map(tc => tc.id)
+        )
+        const individualCaseIds = selectedTestCaseIds.value.filter(id => !groupCaseIdSet.has(id))
+
+        const taskData = {
+          name: taskName.value || 'API测试任务',
+          description: '通过API测试任务',
+          type: 'api',
+          caseIds: individualCaseIds,
           groupIds: selectedGroupIds.value,
-          apiIds: selectedAPIIds.value, 
-          tags: [] 
+          apiIds: selectedAPIIds.value,
+          tags: []
         }
         
         const taskResponse = await tasksApi.create(taskData)
