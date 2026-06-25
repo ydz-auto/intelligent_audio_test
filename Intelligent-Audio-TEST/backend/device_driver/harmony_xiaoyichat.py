@@ -4,7 +4,6 @@ import os
 import re
 
 from hypium.model import UiParam
-from sympy import swinnerton_dyer_poly
 
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
