@@ -107,7 +107,7 @@ class Xiaoyilivechat(HarmonyDriver):
 
         return True
 
-    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
+    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> list:
         record_file_name = getattr(self, '_record_file_name', 'record.mp4')
         question_text = getattr(self, 'question_text', None)
         answer_text = getattr(self, 'answer_text', None)
