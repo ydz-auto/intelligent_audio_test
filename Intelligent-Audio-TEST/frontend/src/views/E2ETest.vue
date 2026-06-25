@@ -173,6 +173,7 @@
           @resume-test="resumeTest"
           @stop-test="stopTest"
           @test-case-click="showTestCaseDetails"
+          @load-more-cases="loadMoreCases"
         />
       </TestStepContainer>
 
@@ -378,6 +379,7 @@ const {
   exportResults,
   publishReport,
   startNewTest,
+  loadMoreCases,
   
   // 算法相关
   algorithmList,

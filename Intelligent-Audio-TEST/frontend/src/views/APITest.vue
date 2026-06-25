@@ -171,6 +171,7 @@
           @resume-test="resumeTest"
           @stop-test="stopTest"
           @test-case-click="showTestCaseDetails"
+          @load-more-cases="loadMoreCases"
           @update:active-tab="newTab => activeTab = newTab"
         />
       </TestStepContainer>
@@ -399,6 +400,7 @@ const {
   skipTestCase,
   removeTestCase,
   startNewTest,
+  loadMoreCases,
   
   // 常量/列定义
   deviceAPIColumns: deviceApiColumns,
