@@ -71,9 +71,9 @@ class GroupController:
         except Exception as e:
             return error_response(f"请求参数错误: {str(e)}")
 
-        existing = TestCaseGroup.query.filter_by(name=validated_data.name).first()
+        existing = TestCaseGroup.query.filter_by(name=validated_data.name, algorithm_type=validated_data.algorithm_type).first()
         if existing:
-            return error_response(f"已存在名为 '{validated_data.name}' 的分组")
+            return error_response(f"已存在名为 '{validated_data.name}' 且算法类型为 '{validated_data.algorithm_type}' 的分组")
 
         try:
             from backend.schemas.common import StringIdData
@@ -106,12 +106,14 @@ class GroupController:
         try:
             from backend.schemas.common import StringIdData
             if validated_data.name is not None and validated_data.name != group.name:
+                effective_algo = validated_data.algorithm_type if validated_data.algorithm_type is not None else group.algorithm_type
                 existing = TestCaseGroup.query.filter(
                     TestCaseGroup.name == validated_data.name,
+                    TestCaseGroup.algorithm_type == effective_algo,
                     TestCaseGroup.id != group_id
                 ).first()
                 if existing:
-                    return error_response(f"已存在名为 '{validated_data.name}' 的其他分组")
+                    return error_response(f"已存在名为 '{validated_data.name}' 且算法类型相同的其他分组")
                 group.name = validated_data.name
             
             if validated_data.description is not None:

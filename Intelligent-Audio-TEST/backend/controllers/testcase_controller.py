@@ -304,7 +304,7 @@ class TestCaseController:
         
         if group_id is None and data.group:
             group_name = data.group
-            group = TestCaseGroup.query.filter_by(name=group_name).first()
+            group = TestCaseGroup.query.filter_by(name=group_name, algorithm_type=data.algorithm_type).first()
             if group:
                 group_id = group.id
             else:
@@ -312,7 +312,8 @@ class TestCaseController:
                 new_group = TestCaseGroup(
                     id=group_id,
                     name=group_name,
-                    description=f"自动创建的分组: {group_name}"
+                    description=f"自动创建的分组: {group_name}",
+                    algorithm_type=data.algorithm_type
                 )
                 db.session.add(new_group)
         
@@ -450,7 +451,7 @@ class TestCaseController:
             # 2. 如果没有group_id，但有group名称，根据名称查找或创建分组
             if group_id is None and data.group:
                 group_name = data.group
-                group = TestCaseGroup.query.filter_by(name=group_name).first()
+                group = TestCaseGroup.query.filter_by(name=group_name, algorithm_type=data.algorithm_type).first()
                 if group:
                     group_id = group.id
                 else:
@@ -459,7 +460,8 @@ class TestCaseController:
                     new_group = TestCaseGroup(
                         id=group_id,
                         name=group_name,
-                        description=f"自动创建的分组: {group_name}"
+                        description=f"自动创建的分组: {group_name}",
+                        algorithm_type=data.algorithm_type
                     )
                     db.session.add(new_group)
             
@@ -915,14 +917,15 @@ class TestCaseController:
                     return error_response(f"未找到分组: {group_name}")
                 
                 new_group_name = f"{group_name}_copy"
-                existing_group = TestCaseGroup.query.filter_by(name=new_group_name).first()
+                existing_group = TestCaseGroup.query.filter_by(name=new_group_name, algorithm_type=source_group.algorithm_type).first()
                 if existing_group:
                     new_group = existing_group
                 else:
                     new_group = TestCaseGroup(
                         id=str(uuid.uuid4()),
                         name=new_group_name,
-                        description=source_group.description
+                        description=source_group.description,
+                        algorithm_type=source_group.algorithm_type
                     )
                     db.session.add(new_group)
                 
@@ -1882,16 +1885,17 @@ class TestCaseController:
                     group = None
                     group_id = case_data.get('group_id')
                     group_name = case_data.get('group', '未分类')
+                    case_algorithm_type = case_data.get('algorithm_type') or case_data.get('algorithmType')
                     
                     if group_id:
                         group = db.session.get(TestCaseGroup, group_id)
                     
                     if not group:
-                        group = TestCaseGroup.query.filter_by(name=group_name).first()
+                        group = TestCaseGroup.query.filter_by(name=group_name, algorithm_type=case_algorithm_type).first()
                     
                     if not group:
                         # 如果都没有，则创建（注意：如果 group_id 是 UUID 字符串，建议使用 name 创建）
-                        group = TestCaseGroup(id=str(uuid.uuid4()) if not group_id else group_id, name=group_name)
+                        group = TestCaseGroup(id=str(uuid.uuid4()) if not group_id else group_id, name=group_name, algorithm_type=case_algorithm_type)
                         db.session.add(group)
                         db.session.flush()
                     

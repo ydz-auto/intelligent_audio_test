@@ -121,8 +121,11 @@ class TestCaseGroup(db.Model):
     用于对测试用例进行逻辑分类管理。
     """
     __tablename__ = 'test_case_groups'
+    __table_args__ = (
+        UniqueConstraint('name', 'algorithm_type', name='uq_group_name_algorithm'),
+    )
     id = Column(String(50), primary_key=True, comment='分组唯一标识符')
-    name = Column(String(100), unique=True, nullable=False, comment='分组显示名称')
+    name = Column(String(100), nullable=False, comment='分组显示名称')
     description = Column(Text, comment='分组详细描述')
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')

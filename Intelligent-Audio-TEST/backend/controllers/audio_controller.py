@@ -1056,11 +1056,23 @@ class AudioController:
             noise_spl = validated.noise_spl
             noise_audio_id = validated.noise_audio_id
             test_case_group_name = validated.test_case_group_name
+            group_name_type = validated.group_name_type
+            custom_group_name = validated.custom_group_name
             algorithm_type = validated.algorithm_type
             algorithm_params = validated.algorithm_params
             algorithm_params_dict = validated.get_algorithm_params_dict()
             description = validated.description
             user_tags = validated.tags
+            
+            # 计算实际分组名称
+            if group_name_type in ('custom', 'folder') and custom_group_name:
+                effective_group_name = custom_group_name
+            elif test_case_group_name:
+                effective_group_name = test_case_group_name
+            elif algorithm_type:
+                effective_group_name = algorithm_type
+            else:
+                effective_group_name = '音频上传生成'
             
             prompt_device_id = validated.prompt_device_id
             prompt_source_language = validated.prompt_source_language
@@ -1115,7 +1127,7 @@ class AudioController:
                             default_spl,
                             noise_spl,
                             noise_audio_id,
-                            test_case_group_name,
+                            effective_group_name,
                             dimensions_data,
                             algorithm_type,
                             algorithm_params_dict
@@ -1361,7 +1373,7 @@ class AudioController:
                     default_spl,
                     noise_spl,
                     noise_audio_id,
-                    test_case_group_name,
+                    effective_group_name,
                     dimensions_data,
                     algorithm_type,
                     algorithm_params_dict
@@ -1480,13 +1492,14 @@ class AudioController:
         effective_group_name = group_name if group_name else '音频上传生成'
         
         with db.session.no_autoflush:
-            # 获取或创建分组
-            group = TestCaseGroup.query.filter_by(name=effective_group_name).first()
+            # 获取或创建分组（按 name + algorithm_type 联合查找）
+            group = TestCaseGroup.query.filter_by(name=effective_group_name, algorithm_type=algorithm_type).first()
             if not group:
                 group = TestCaseGroup(
                     id=str(uuid.uuid4()),
                     name=effective_group_name,
-                    description=f'通过音频上传自动创建的测试用例分组: {effective_group_name}'
+                    description=f'通过音频上传自动创建的测试用例分组: {effective_group_name}',
+                    algorithm_type=algorithm_type
                 )
                 db.session.add(group)
                 db.session.flush()
