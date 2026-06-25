@@ -743,18 +743,11 @@ const toggleTestCaseSelection = (caseId: string | number) => {
 const toggleGroupSelection = async (group: string) => {
   const allSelected = groupSelectionStates.value[group];
   const groupInfo = findGroupInfo(group);
-  
-  if (!allSelected) {
-    const store = useTestCaseStore();
-    if (groupInfo) {
-      while (store.hasMoreGroupCases(groupInfo.id)) {
-        await store.loadMoreGroupCases(groupInfo.id);
-      }
-    }
-  }
-  
+
+  // 只操作已加载的用例的选中状态，不再全量加载分页
+  // 分组级选中通过 selectedGroupIds 提交，后端展开为用例ID
   const groupCases = filteredTestCases.value[group] || [];
-  
+
   groupCases.forEach((testCase: TestCase) => {
     const index = selectedCases.value.indexOf(testCase.id);
     if (allSelected) {
