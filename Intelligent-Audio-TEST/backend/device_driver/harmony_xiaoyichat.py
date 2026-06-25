@@ -66,10 +66,6 @@ class Xiaoyilivechat(HarmonyDriver):
         return True
 
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-
-        return True
-
-    def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
 
         # 开启录屏
@@ -78,10 +74,15 @@ class Xiaoyilivechat(HarmonyDriver):
                         '--ps', 'CustomizedFileName', self._record_file_name)
         self._log(level='INFO', content=f"启动录屏: {self._record_file_name}", task_id=task_id,
                   test_case_id=test_case_id)
-        # 停止录屏
-        while driver.find_component(By.text('正在听…')):
-            time.sleep(1)
+        time.sleep(2)
+        return True
 
+    def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+        driver = self._get_driver(device_sn)
+        # 等待小艺回复结束（"正在听…"出现表示回复完毕）
+        while not driver.find_component(By.text('正在听…')):
+            time.sleep(1)
+        # 停止录屏
         self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY)
         self._log(level='INFO', content="停止录屏", task_id=task_id, test_case_id=test_case_id)
         time.sleep(5)
@@ -94,12 +95,13 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception as e:
             self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
         driver.wait(5)
-        self.question_text = driver.find_all_components(By.xpath(
-            '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Row/Text'))[
-            0].getText()
-        self.answer_text = driver.find_all_components(By.xpath(
-            '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Column/Column/Stack/Stack/Stack/Row/Column/__Common__/Column/List/ListItem/Stack/__Common__/Stack/Text'))[
-            0].getText()
+        # 提取聊天文本，未识别到则返回 None
+        question_components = driver.find_all_components(By.xpath(
+            '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Row/Text'))
+        self.question_text = question_components[0].getText() if question_components else None
+        answer_components = driver.find_all_components(By.xpath(
+            '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Column/Column/Stack/Stack/Stack/Row/Column/__Common__/Column/List/ListItem/Stack/__Common__/Stack/Text'))
+        self.answer_text = answer_components[0].getText() if answer_components else None
 
         return True
 
