@@ -11,6 +11,10 @@ def get_all():
 def get_one(task_id):
     return TaskController.get_one(task_id)
 
+@task_bp.route('/<int:task_id>/cases', methods=['GET'])
+def get_cases(task_id):
+    return TaskController.get_cases(task_id)
+
 @task_bp.route('/<int:task_id>/cases/<string:case_id>/detail', methods=['GET'])
 def get_case_detail(task_id, case_id):
     return TaskController.get_case_detail(task_id, case_id)

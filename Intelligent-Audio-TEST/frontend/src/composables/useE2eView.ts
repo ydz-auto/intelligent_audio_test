@@ -90,6 +90,8 @@ export function useE2eView() {
 
   const currentStep = ref(0)
   const currentTaskId = ref<number | null>(null)
+  const associatedCasesPage = ref(1)
+  const isLoadingMoreCases = ref(false)
   const isExecuting = ref(false)
   const activeTab = ref('cases')
   const concurrentTasks = ref(4)
@@ -341,22 +343,20 @@ export function useE2eView() {
       console.log('[startTest] 任务创建响应:', response)
       currentTaskId.value = response.id
 
-      // 用后端返回的 case_ids 构建关联用例列表
-      const responseCaseIds: any[] = response.case_ids || []
-      console.log('[E2E测试] 后端返回case_ids数量:', responseCaseIds.length)
-
-      associatedCases.value = responseCaseIds.map((id: any) => ({
-        id: id,
-        name: e2eTestCases.value.find((c: any) => String(c.id) === String(id))?.name
-          || Object.values(useTestCaseStore().testCaseGroups).flat().find((tc: TestCase) => String(tc.id) === String(id))?.name
-          || `用例 ${id}`,
-        status: 'pending',
-        executionStatus: 'pending',
-        evaluationStatus: 'pending'
+      // 调用任务关联用例分页接口加载第一页
+      const casesResponse = await tasksApi.getCases(response.id, { page: 1, per_page: 50 })
+      associatedCasesPage.value = 1
+      associatedCases.value = (casesResponse.items || []).map((tc: any) => ({
+        id: tc.id || tc.caseId,
+        name: tc.name || `用例 ${tc.id || tc.caseId}`,
+        status: tc.status || 'pending',
+        executionStatus: tc.executionStatus || 'pending',
+        evaluationStatus: tc.evaluationStatus || 'pending',
+        duration: tc.duration
       }))
-      
-      console.log('[E2E测试] associatedCases:', associatedCases.value)
-      totalTestCases.value = associatedCases.value.length
+
+      console.log('[E2E测试] associatedCases:', associatedCases.value.length, 'total:', casesResponse.total)
+      totalTestCases.value = casesResponse.total || associatedCases.value.length
       pendingTests.value = totalTestCases.value
 
       addLog({ content: '测试任务已创建，正在启动...', level: 'info' })
@@ -382,6 +382,31 @@ export function useE2eView() {
       // 不再使用 alert 弹窗
       console.log('[startTest] 返回false，将触发步骤回退')
       return false
+    }
+  }
+
+  const loadMoreCases = async () => {
+    if (!currentTaskId.value || isLoadingMoreCases.value) return
+    const nextPage = associatedCasesPage.value + 1
+    isLoadingMoreCases.value = true
+    try {
+      const response = await tasksApi.getCases(currentTaskId.value, { page: nextPage, per_page: 50 })
+      if (response.items && response.items.length > 0) {
+        associatedCasesPage.value = nextPage
+        const newCases = response.items.map((tc: any) => ({
+          id: tc.id || tc.caseId,
+          name: tc.name || `用例 ${tc.id || tc.caseId}`,
+          status: tc.status || 'pending',
+          executionStatus: tc.executionStatus || 'pending',
+          evaluationStatus: tc.evaluationStatus || 'pending',
+          duration: tc.duration
+        }))
+        associatedCases.value = [...associatedCases.value, ...newCases]
+      }
+    } catch (error) {
+      console.error('[loadMoreCases] 加载更多用例失败:', error)
+    } finally {
+      isLoadingMoreCases.value = false
     }
   }
 
@@ -692,6 +717,7 @@ export function useE2eView() {
     exportResults,
     publishReport,
     startNewTest,
+    loadMoreCases,
     // 设备分页相关
     currentPage,
     pageSize,

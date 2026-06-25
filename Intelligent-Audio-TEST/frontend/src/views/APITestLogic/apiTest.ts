@@ -115,6 +115,8 @@ export function useApiTest() {
   const taskName = ref('API测试任务')
   const concurrentTasks = ref(5)
   const currentTaskId = ref<string | number | null>(null)
+  const associatedCasesPage = ref(1)
+  const isLoadingMoreCases = ref(false)
   const isExecuting = computed(() => taskStatus.value === 'running' || taskStatus.value === 'starting' || taskStatus.value === 'pending')
   const executionProgress = computed(() => progressPercentage.value)
   
@@ -433,22 +435,19 @@ export function useApiTest() {
         const taskId = taskResponse.id
         currentTaskId.value = taskId
 
-        // 用后端返回的 case_ids 构建关联用例列表
-        const responseCaseIds: any[] = taskResponse.case_ids || []
-        associatedCases.value = responseCaseIds
-          .map(id => {
-            const testCase = allCases.find(tc => String(tc.id) === String(id))
-            return testCase ? {
-              ...testCase,
-              status: 'pending',
-              duration: '0',
-              executionStatus: 'pending',
-              evaluationStatus: 'pending'
-            } as AssociatedCase : undefined
-          })
-          .filter((item): item is AssociatedCase => item !== undefined)
-        
-        totalTestCases.value = associatedCases.value.length
+        // 调用任务关联用例分页接口加载第一页
+        const casesResponse = await tasksApi.getCases(taskId, { page: 1, per_page: 50 })
+        associatedCasesPage.value = 1
+        associatedCases.value = (casesResponse.items || []).map((tc: any) => ({
+          id: tc.id || tc.caseId,
+          name: tc.name || `用例 ${tc.id || tc.caseId}`,
+          status: tc.status || 'pending',
+          duration: tc.duration || '0',
+          executionStatus: tc.executionStatus || 'pending',
+          evaluationStatus: tc.evaluationStatus || 'pending'
+        } as AssociatedCase))
+
+        totalTestCases.value = casesResponse.total || associatedCases.value.length
         pendingTests.value = totalTestCases.value
         
         const maxConcurrent = selectedApis.reduce((sum, api) => {
@@ -474,6 +473,31 @@ export function useApiTest() {
     
     if (currentStep.value < 4) {
       currentStep.value++
+    }
+  }
+
+  const loadMoreCases = async () => {
+    if (!currentTaskId.value || isLoadingMoreCases.value) return
+    const nextPage = associatedCasesPage.value + 1
+    isLoadingMoreCases.value = true
+    try {
+      const response = await tasksApi.getCases(currentTaskId.value, { page: nextPage, per_page: 50 })
+      if (response.items && response.items.length > 0) {
+        associatedCasesPage.value = nextPage
+        const newCases = response.items.map((tc: any) => ({
+          id: tc.id || tc.caseId,
+          name: tc.name || `用例 ${tc.id || tc.caseId}`,
+          status: tc.status || 'pending',
+          duration: tc.duration || '0',
+          executionStatus: tc.executionStatus || 'pending',
+          evaluationStatus: tc.evaluationStatus || 'pending'
+        } as AssociatedCase))
+        associatedCases.value = [...associatedCases.value, ...newCases]
+      }
+    } catch (error) {
+      console.error('[loadMoreCases] 加载更多用例失败:', error)
+    } finally {
+      isLoadingMoreCases.value = false
     }
   }
 
@@ -734,6 +758,7 @@ export function useApiTest() {
     skipTestCase,
     removeTestCase,
     startNewTest,
+    loadMoreCases,
     deviceAPIColumns,
     caseExecutionColumns,
     algorithmList,

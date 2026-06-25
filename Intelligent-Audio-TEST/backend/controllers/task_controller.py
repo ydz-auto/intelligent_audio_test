@@ -188,6 +188,41 @@ class TaskController:
             )
         )
 
+    # 获取任务关联用例（分页）
+    @staticmethod
+    def get_cases(task_id):
+        task = Task.query.filter_by(id=task_id, deleted=False).first()
+        if not task:
+            return error_response("未找到任务", code=ErrorCode.NOT_FOUND, http_code=404)
+
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+
+        query = TaskCase.query.filter_by(task_id=task_id).order_by(TaskCase.id.asc())
+        total = query.count()
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+        items = []
+        for tc in pagination.items:
+            case_info = db.session.get(TestCase, tc.test_case_id)
+            items.append({
+                'id': tc.test_case_id,
+                'caseId': tc.test_case_id,
+                'name': case_info.name if case_info else "未知用例",
+                'status': tc.status or 'pending',
+                'executionStatus': tc.execution_status or 'pending',
+                'evaluationStatus': tc.evaluation_status or 'pending',
+                'duration': tc.duration,
+            })
+
+        return success_response({
+            'items': items,
+            'total': total,
+            'page': page,
+            'perPage': per_page,
+            'pages': pagination.pages,
+        })
+
     # 获取单个任务详情
     @staticmethod
     def get_one(task_id):
