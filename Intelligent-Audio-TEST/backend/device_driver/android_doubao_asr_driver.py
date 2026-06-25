@@ -33,10 +33,14 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     ASR_WAIT_INTERVAL = 1                 # ASR结果轮询间隔（秒）
 
     # UI元素资源ID常量
-    MESSAGE_LIST_RES_ID = "com.larus.nova:id/message_list"    # 消息列表容器
-    SPEAK_BUTTON_RES_ID = "com.larus.nova:id/speak_normal"    # 说话按钮
-    BACK_ICON_RES_ID = "com.larus.nova:id/back_icon"          # 返回图标
-    LOADING_DOT_RES_PREFIX = "com.larus.nova:id/v_dot"        # 加载指示器圆点前缀（v_dot1/v_dot2/v_dot3）
+    MESSAGE_LIST_RES_ID = "com.larus.nova:id/message_list"        # 消息列表容器
+    SPEAK_BUTTON_RES_ID = "com.larus.nova:id/speak_normal"        # 说话按钮
+    BACK_ICON_RES_ID = "com.larus.nova:id/back_icon"              # 返回图标
+    LOADING_DOT_RES_PREFIX = "com.larus.nova:id/v_dot"            # 加载指示器圆点前缀（v_dot1/v_dot2/v_dot3）
+
+    # 用户消息位置判断阈值
+    # 用户消息（右侧蓝色气泡）的 left 值较大（>=40），豆包回复（左侧黄色气泡）的 left 值较小
+    USER_MESSAGE_LEFT_THRESHOLD = 40
 
     def __init__(self):
         """初始化驱动实例"""
@@ -255,15 +259,17 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
                     f'//*[@resource-id="{self.MESSAGE_LIST_RES_ID}"]//android.widget.TextView'
                 ).all()
 
-                # 筛选用户消息：有文本内容且resourceId为空的TextView
-                # 根据UI分析，豆包App中用户消息的resourceId为空字符串
+                # 筛选用户消息：有文本内容、resourceId为空、且left值大于等于阈值的TextView
+                # 用户消息（右侧蓝色气泡）的left值较大（>=107），豆包回复（左侧黄色气泡）的left值较小
                 user_messages = []
                 for elem in elements_list:
                     try:
                         text = elem.text
                         info = elem.info
                         res_id = info.get('resourceId', '')
-                        if text and text.strip() and res_id == '':
+                        bounds = info.get('bounds', {})
+                        left = bounds.get('left', 0)
+                        if text and text.strip() and res_id == '' and left >= self.USER_MESSAGE_LEFT_THRESHOLD:
                             user_messages.append(text)
                     except Exception:
                         pass
@@ -271,7 +277,7 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
                 # 如果找到用户消息，取最后一条作为最新的ASR结果
                 if user_messages:
                     asr_text = user_messages[-1]
-                    self._log(level='DEBUG', content=f"获取ASR结果: {asr_text}")
+                    self._log(level='DEBUG', content=f"获取用户输入的ASR结果: {asr_text}")
                     return [{"result_type": "real-time", "success": True, "message": "Success", "asr": asr_text}]
 
                 # 未找到结果，等待后继续轮询
