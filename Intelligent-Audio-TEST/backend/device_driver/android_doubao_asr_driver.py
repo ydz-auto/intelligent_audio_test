@@ -31,6 +31,7 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     ADB_TIMEOUT = 5                       # ADB命令执行超时时间（秒）
     ASR_MAX_WAIT = 30                     # ASR结果最大等待时间（秒）
     ASR_WAIT_INTERVAL = 1                 # ASR结果轮询间隔（秒）
+    ASR_STABLE_WAIT = 2                   # 文本内容稳定等待时间（秒），防止识别结果更正
 
     # UI元素资源ID常量
     MESSAGE_LIST_RES_ID = "com.larus.nova:id/message_list"        # 消息列表容器
@@ -241,6 +242,9 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
 
         try:
             waited = 0
+            last_asr_text = None
+            stable_count = 0
+
             # 轮询等待ASR结果，最多等待ASR_MAX_WAIT秒
             while waited < self.ASR_MAX_WAIT:
                 # 检查消息列表中是否存在加载指示器圆点（正在思考/输入中）
@@ -252,7 +256,15 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
                     self._log(level='DEBUG', content=f"检测到{len(loading_dots)}个加载指示器圆点，消息生成中...")
                     time.sleep(self.ASR_WAIT_INTERVAL)
                     waited += self.ASR_WAIT_INTERVAL
+                    last_asr_text = None
+                    stable_count = 0
                     continue
+
+                # 向下滚动页面，确保最新消息在可视区域内
+                # 防止用户消息被豆包的长回复顶出屏幕
+                width, height = driver.window_size()
+                driver.swipe(width / 2, height * 0.8, width / 2, height * 0.2)
+                time.sleep(0.5)
 
                 # 在消息列表中查找所有TextView元素
                 elements_list = driver.xpath(
@@ -274,13 +286,26 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
                     except Exception:
                         pass
 
-                # 如果找到用户消息，取最后一条作为最新的ASR结果
+                # 如果找到用户消息
                 if user_messages:
-                    asr_text = user_messages[-1]
-                    self._log(level='DEBUG', content=f"获取用户输入的ASR结果: {asr_text}")
-                    return [{"result_type": "real-time", "success": True, "message": "Success", "asr": asr_text}]
+                    current_asr_text = user_messages[-1]
 
-                # 未找到结果，等待后继续轮询
+                    # 检查文本是否稳定（防止识别结果更正）
+                    if current_asr_text == last_asr_text:
+                        stable_count += 1
+                        self._log(level='DEBUG', content=f"文本稳定计数: {stable_count}/{self.ASR_STABLE_WAIT}")
+                        if stable_count >= self.ASR_STABLE_WAIT:
+                            self._log(level='DEBUG', content=f"获取用户输入的ASR结果: {current_asr_text}")
+                            return [{"result_type": "real-time", "success": True, "message": "Success", "asr": current_asr_text}]
+                    else:
+                        last_asr_text = current_asr_text
+                        stable_count = 1
+                        self._log(level='DEBUG', content=f"检测到文本变化: {current_asr_text}")
+                else:
+                    last_asr_text = None
+                    stable_count = 0
+
+                # 等待后继续轮询
                 time.sleep(self.ASR_WAIT_INTERVAL)
                 waited += self.ASR_WAIT_INTERVAL
 
