@@ -296,7 +296,7 @@ export function useE2eView() {
 
       const selectedCaseIds = selectedTestCaseIds.value.length > 0 ? selectedTestCaseIds.value : e2eTestCases.value.map((c: any) => c.id)
       console.log('[startTest] selectedCaseIds数量:', selectedCaseIds.length, 'selectedTestCaseIds:', selectedTestCaseIds.value.length, 'e2eTestCases:', e2eTestCases.value.length)
-      if (selectedCaseIds.length === 0) {
+      if (selectedCaseIds.length === 0 && selectedGroupIds.value.length === 0) {
         console.log('[startTest] 没有可用的E2E测试用例')
         throw new Error('没有可用的E2E测试用例')
       }

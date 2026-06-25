@@ -387,7 +387,7 @@ export function useApiTest() {
   const nextStep = async () => {
     if (currentStep.value === 2) {
       try {
-        if (selectedTestCaseIds.value.length === 0) {
+        if (selectedTestCaseIds.value.length === 0 && selectedGroupIds.value.length === 0) {
           alert('请至少选择一个测试用例')
           return
         }
