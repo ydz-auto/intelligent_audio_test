@@ -4,9 +4,12 @@ import os
 import re
 
 from hypium.model import UiParam
+from sympy import swinnerton_dyer_poly
+
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
-from config.config import Config
+from .config import Config
+
 _RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
 _RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
 
@@ -129,10 +132,29 @@ class Xiaoyilivechat(HarmonyDriver):
             if not os.path.exists(local_path):
                 self._log(level='ERROR', content=f"录屏文件拉取失败: {recv_result.stderr}",
                           task_id=task_id, test_case_id=test_case_id)
-                return {'success': False, 'message': f'录屏文件拉取失败: {recv_result.stderr}',
-                        'record_path': '', 'question': question_text or '', 'answer': answer_text or ''}
-            return {'success': True, 'message': 'Success', 'record_path': local_path, 'question': question_text,
-                    'answer': answer_text}
+                result = {
+                    'success': False,
+                    'message': f'录屏文件拉取失败: {recv_result.stderr}',
+                    'record_path': '',
+                    'question': question_text or '',
+                    'answer': answer_text or ''
+                }
+                return [result]
+            result = {
+                'success': True,
+                'message': 'Success',
+                'record_path': local_path,
+                'question': question_text,
+                'answer': answer_text
+            }
+            return [result]
         except Exception as e:
             self._log(level='ERROR', content=f"获取录屏文件失败: {e}", task_id=task_id, test_case_id=test_case_id)
-            return {'success': False, 'message': str(e), 'record_path': '', 'question': "", 'answer': ''}
+            result = {
+                'success': False,
+                'message': str(e),
+                'record_path': '',
+                'question': "",
+                'answer': ""
+            }
+            return [result]
