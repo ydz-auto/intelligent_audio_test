@@ -36,6 +36,7 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
     MESSAGE_LIST_RES_ID = "com.larus.nova:id/message_list"    # 消息列表容器
     SPEAK_BUTTON_RES_ID = "com.larus.nova:id/speak_normal"    # 说话按钮
     BACK_ICON_RES_ID = "com.larus.nova:id/back_icon"          # 返回图标
+    LOADING_DOT_RES_PREFIX = "com.larus.nova:id/v_dot"        # 加载指示器圆点前缀（v_dot1/v_dot2/v_dot3）
 
     def __init__(self):
         """初始化驱动实例"""
@@ -155,18 +156,23 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
         return True
 
     @check_stop("pre_process")
-    def pre_process(self, device_id, translation_direction="Voice Conversion"):
+    def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """按住说话按钮开始录音
 
         通过模拟触摸按下操作，触发豆包App的语音录制功能。
 
         Args:
-            device_id: 设备ID/序列号
-            translation_direction: 翻译方向（保留参数，兼容接口）
+            device_sn: 设备序列号
+            task_id: 任务ID（可选）
+            test_case_id: 测试用例ID（可选）
+            **kwargs: 其他参数
+
+        Returns:
+            bool: True表示操作成功，False表示失败
         """
-        driver = self._get_driver_or_log(device_id)
+        driver = self._get_driver_or_log(device_sn, task_id, test_case_id)
         if not driver:
-            return
+            return False
 
         # 定位说话按钮并执行按下操作
         btn = driver.xpath(f'//*[@resource-id="{self.SPEAK_BUTTON_RES_ID}"]')
@@ -174,22 +180,29 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
             x, y = btn.center()
             driver.touch.down(x, y)
             self._log(level='INFO', content=f"按住说话按钮 ({x}, {y})")
+            return True
         else:
             self._log(level='WARNING', content=f"未找到说话按钮: {self.SPEAK_BUTTON_RES_ID}")
+            return False
 
     @check_stop("post_process")
-    def post_process(self, device_id, translation_direction="Voice Conversion"):
+    def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """松开说话按钮结束录音
 
         通过模拟触摸抬起操作，结束语音录制并触发识别。
 
         Args:
-            device_id: 设备ID/序列号
-            translation_direction: 翻译方向（保留参数，兼容接口）
+            device_sn: 设备序列号
+            task_id: 任务ID（可选）
+            test_case_id: 测试用例ID（可选）
+            **kwargs: 其他参数
+
+        Returns:
+            bool: True表示操作成功，False表示失败
         """
-        driver = self._get_driver_or_log(device_id)
+        driver = self._get_driver_or_log(device_sn, task_id, test_case_id)
         if not driver:
-            return
+            return False
 
         # 定位说话按钮并执行抬起操作
         btn = driver.xpath(f'//*[@resource-id="{self.SPEAK_BUTTON_RES_ID}"]')
@@ -197,11 +210,13 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
             x, y = btn.center()
             driver.touch.up(x, y)
             self._log(level='INFO', content="松开说话按钮")
+            return True
         else:
             self._log(level='WARNING', content=f"未找到说话按钮: {self.SPEAK_BUTTON_RES_ID}")
+            return False
 
     @check_stop("get_results")
-    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
+    def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> list:
         """获取语音识别结果（ASR）
 
         在消息列表中查找用户发送的消息文本，
@@ -214,16 +229,27 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
             **kwargs: 其他参数
 
         Returns:
-            dict: 包含asr字段的字典，如 {"asr": "识别到的文本"}
+            list: 包含识别结果字典的列表，如 [{"result_type": "real-time", "success": True, "message": "Success", "asr": "识别到的文本"}]
         """
         driver = self._get_driver_or_log(device_sn, task_id, test_case_id)
         if not driver:
-            return {"asr": ""}
+            return [{"result_type": "real-time", "success": False, "message": "Driver not available", "asr": ""}]
 
         try:
             waited = 0
             # 轮询等待ASR结果，最多等待ASR_MAX_WAIT秒
             while waited < self.ASR_MAX_WAIT:
+                # 检查消息列表中是否存在加载指示器圆点（正在思考/输入中）
+                # v_dot1/v_dot2/v_dot3 都表示加载状态，只要存在任意一个就说明消息还在生成中
+                loading_dots = driver.xpath(
+                    f'//*[@resource-id="{self.MESSAGE_LIST_RES_ID}"]//*[contains(@resource-id, "{self.LOADING_DOT_RES_PREFIX}")]'
+                ).all()
+                if loading_dots:
+                    self._log(level='DEBUG', content=f"检测到{len(loading_dots)}个加载指示器圆点，消息生成中...")
+                    time.sleep(self.ASR_WAIT_INTERVAL)
+                    waited += self.ASR_WAIT_INTERVAL
+                    continue
+
                 # 在消息列表中查找所有TextView元素
                 elements_list = driver.xpath(
                     f'//*[@resource-id="{self.MESSAGE_LIST_RES_ID}"]//android.widget.TextView'
@@ -246,7 +272,7 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
                 if user_messages:
                     asr_text = user_messages[-1]
                     self._log(level='DEBUG', content=f"获取ASR结果: {asr_text}")
-                    return {"asr": asr_text}
+                    return [{"result_type": "real-time", "success": True, "message": "Success", "asr": asr_text}]
 
                 # 未找到结果，等待后继续轮询
                 time.sleep(self.ASR_WAIT_INTERVAL)
@@ -254,8 +280,8 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
 
             # 等待超时
             self._log(level='WARNING', content=f"等待超时({self.ASR_MAX_WAIT}s)，未找到ASR文本元素")
-            return {"asr": ""}
+            return [{"result_type": "real-time", "success": False, "message": "Timeout", "asr": ""}]
 
         except Exception as e:
             self._log(level='ERROR', content=f"获取ASR结果失败：{e}", task_id=task_id, test_case_id=test_case_id)
-            return {"asr": ""}
+            return [{"result_type": "real-time", "success": False, "message": str(e), "asr": ""}]
