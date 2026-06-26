@@ -337,13 +337,15 @@
                   <th style="width: 100px;">参考类型</th>
                   <th style="width: 120px;">标注代码</th>
                   <th style="width: 100px;">标注格式</th>
+                  <th style="width: 140px;">字段路径</th>
+                  <th style="width: 90px;">合并方式</th>
                   <th style="width: 120px;">帮助文本</th>
                   <th style="width: 60px;">操作</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="formState.reference_params.length === 0">
-                  <td colspan="7" class="empty-row">暂无参考参数</td>
+                  <td colspan="9" class="empty-row">暂无参考参数</td>
                 </tr>
                 <tr v-else v-for="(param, index) in formState.reference_params" :key="param.id || param.tempId || index">
                   <td>
@@ -386,6 +388,16 @@
                       <option value="json">JSON</option>
                       <option value="rttm">RTTM</option>
                       <option value="stm">STM</option>
+                    </select>
+                  </td>
+                  <td>
+                    <input type="text" class="form-input form-input-sm" v-model="param.field_path" placeholder="如: model 或 segments[].emotion" @blur="handleReferenceParamBlur(param, index)">
+                  </td>
+                  <td>
+                    <select class="form-input form-input-sm" v-model="param.merge_mode" @change="handleReferenceParamBlur(param, index)">
+                      <option value="join">拼接</option>
+                      <option value="collect">收集数组</option>
+                      <option value="first">取第一个</option>
                     </select>
                   </td>
                   <td>
@@ -649,7 +661,7 @@ const formState = reactive({
     evaluation: [] as any[]
   },
   associated_dimensions: [] as { dimension_id: number | null; weight: number; is_default: boolean }[],
-  reference_params: [] as { code: string; name: string; type: string; annotation_code: string; annotation_format: string; help_text: string }[]
+  reference_params: [] as { code: string; name: string; type: string; annotation_code: string; annotation_format: string; field_path: string; merge_mode: string; help_text: string }[]
 })
 
 const currentParams = computed(() => {
@@ -820,6 +832,8 @@ watch(() => [props.mode, props.editData], ([mode, editData]) => {
         type: p.type || 'text',
         annotation_code: p.annotation_code || '',
         annotation_format: p.annotation_format || '',
+        field_path: p.field_path || '',
+        merge_mode: p.merge_mode || 'join',
         help_text: p.help_text || ''
       }))
     })
@@ -984,6 +998,8 @@ async function handleEdit(record: AlgorithmRecord) {
           type: p.type || 'text',
           annotation_code: p.annotation_code || '',
           annotation_format: p.annotation_format || '',
+          field_path: p.field_path || '',
+          merge_mode: p.merge_mode || 'join',
           help_text: p.help_text || ''
         }))
       })
@@ -1102,6 +1118,8 @@ function handleAddReferenceParam() {
     type: 'text',
     annotation_code: '',
     annotation_format: '',
+    field_path: '',
+    merge_mode: 'join',
     help_text: ''
   })
 }
@@ -1241,6 +1259,8 @@ async function autoSaveReferenceParams(param: any, index: number) {
       type: param.type,
       annotation_code: param.annotation_code || null,
       annotation_format: param.annotation_format || null,
+      field_path: param.field_path || null,
+      merge_mode: param.merge_mode || 'join',
       help_text: param.help_text
     }
     let result

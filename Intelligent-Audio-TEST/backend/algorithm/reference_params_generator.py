@@ -162,15 +162,24 @@ class ReferenceParamsGenerator:
         param_type = ref_param.param_type
         annotation_code = ref_param.annotation_code
         annotation_format = ref_param.annotation_format
+        field_path = getattr(ref_param, 'field_path', None)
+        merge_mode = getattr(ref_param, 'merge_mode', None) or 'join'
         record_test_type = config.get('_record_test_type', 'api')
         
         log_not_emit('DEBUG', 'reference_params_generator', 
-            f'_generate_single_param: code={code}, param_type={param_type}, annotation_code={annotation_code}, annotation_format={annotation_format}, record_test_type={record_test_type}', 
+            f'_generate_single_param: code={code}, param_type={param_type}, annotation_code={annotation_code}, annotation_format={annotation_format}, field_path={field_path}, merge_mode={merge_mode}, record_test_type={record_test_type}', 
             category='algorithm')
         
         values = {}
         
-        if annotation_code == 'translation':
+        if field_path:
+            # 按字段路径提取：从标注 data 中提取指定字段
+            values = _extract_field_from_audios(
+                config, field_path, merge_mode,
+                annotation_code=annotation_code,
+                annotation_format=annotation_format
+            )
+        elif annotation_code == 'translation':
             values = _extract_translation_from_audios(config)
         elif param_type in ['json', 'rttm', 'stm']:
             structured_values = _extract_annotation_with_overlap(
@@ -633,6 +642,106 @@ def _merge_annotation_segments(segments_list: List[List[Dict]]) -> List[Dict]:
     
     all_segments.sort(key=lambda x: (x.get('start', 0), x.get('play_order', 0)))
     return all_segments
+
+
+def _extract_field_from_audios(config: Dict, field_path: str, merge_mode: str = 'join',
+                                annotation_code: str = None, annotation_format: str = None) -> Dict[str, Any]:
+    """
+    从音频标注的 data 中按字段路径提取值
+    
+    field_path 格式:
+    - 'model'          → 取 data['model']（顶层标量）
+    - 'segments[].emotion' → 遍历 data['segments']，每项取 ['emotion']（数组字段）
+    
+    merge_mode:
+    - 'join'    → 空格拼接成字符串（适用于 text 类型）
+    - 'collect' → 收集成数组
+    - 'first'   → 只取第一个音频的值
+    """
+    record_test_type = config.get('_record_test_type', 'api')
+    result = {'api': None, 'e2e': None}
+    
+    audios_config = config.get('audios', [])
+    if not audios_config:
+        return result
+    
+    sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
+    
+    preload_context = config.get('_preload_context', {})
+    annotation_map = preload_context.get('annotation_map', {})
+    
+    is_segment_field = '[].' in field_path
+    if is_segment_field:
+        seg_key = field_path.split('[].')[1]
+    else:
+        seg_key = None
+    
+    def _get_annotations_for_audio(audio_id: int, code: str = None, fmt: str = None) -> List:
+        if annotation_map and audio_id in annotation_map:
+            all_anns = annotation_map[audio_id]
+            if code and fmt:
+                filtered = [a for a in all_anns if a.code == code and a.format == fmt]
+                if filtered:
+                    return filtered
+            if code:
+                filtered = [a for a in all_anns if a.code == code]
+                if filtered:
+                    return filtered
+            if fmt:
+                filtered = [a for a in all_anns if a.format == fmt]
+                if filtered:
+                    return filtered
+            return all_anns
+        else:
+            query = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False)
+            if code:
+                query = query.filter_by(code=code)
+            if fmt:
+                query = query.filter_by(format=fmt)
+            return query.all()
+    
+    collected_values = []
+    
+    for audio_item in sorted_audios:
+        audio_id = audio_item.get('audio_id')
+        if not audio_id:
+            continue
+        
+        annotations = _get_annotations_for_audio(audio_id, annotation_code, annotation_format)
+        if not annotations:
+            annotations = _get_annotations_for_audio(audio_id)
+        
+        for ann in annotations:
+            if not ann.data or not isinstance(ann.data, dict):
+                continue
+            
+            if is_segment_field:
+                segments = ann.data.get('segments', [])
+                for seg in segments:
+                    val = seg.get(seg_key)
+                    if val is not None:
+                        collected_values.append(val)
+            else:
+                val = ann.data.get(field_path)
+                if val is not None:
+                    collected_values.append(val)
+                    break  # 每个音频只取第一个匹配标注的值
+        
+        if merge_mode == 'first' and collected_values:
+            break
+    
+    if not collected_values:
+        return result
+    
+    if merge_mode == 'first':
+        value = collected_values[0]
+    elif merge_mode == 'collect':
+        value = collected_values
+    else:  # join
+        value = ' '.join(str(v) for v in collected_values)
+    
+    result[record_test_type] = value
+    return result
 
 
 def _extract_text_from_audios(config: Dict, text_field: str = None, annotation_code: str = None, annotation_format: str = None) -> Dict[str, str]:

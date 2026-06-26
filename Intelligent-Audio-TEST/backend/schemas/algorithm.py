@@ -687,6 +687,8 @@ class ReferenceParamCreateRequest(BaseModel):
     type: str = Field(default='text')
     annotation_code: Optional[str] = Field(None, validation_alias='annotationCode')
     annotation_format: Optional[str] = Field(None, validation_alias='annotationFormat')
+    field_path: Optional[str] = Field(None, validation_alias='fieldPath')
+    merge_mode: Optional[str] = Field(None, validation_alias='mergeMode')
     help_text: Optional[str] = Field(None, validation_alias='helpText')
 
     model_config = {'populate_by_name': True}
@@ -700,6 +702,8 @@ class ReferenceParamUpdateRequest(BaseModel):
     type: Optional[str] = Field(None)
     annotation_code: Optional[str] = Field(None, validation_alias='annotationCode')
     annotation_format: Optional[str] = Field(None, validation_alias='annotationFormat')
+    field_path: Optional[str] = Field(None, validation_alias='fieldPath')
+    merge_mode: Optional[str] = Field(None, validation_alias='mergeMode')
     help_text: Optional[str] = Field(None, validation_alias='helpText')
 
     model_config = {'populate_by_name': True}

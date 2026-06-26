@@ -209,6 +209,8 @@ class AlgorithmReferenceParam(db.Model):
     param_type = Column(String(30), default='text', comment='参考类型：text, audio, json, rttm, stm')
     annotation_code = Column(String(100), nullable=True, comment='关联的音频标注代码（匹配AudioAnnotation.code）')
     annotation_format = Column(String(20), nullable=True, comment='关联的音频标注格式（text/json/rttm/stm）')
+    field_path = Column(String(255), nullable=True, comment='标注数据字段路径，如 model / segments[].emotion')
+    merge_mode = Column(String(20), nullable=True, default='join', comment='多音频合并方式：join(空格拼接)/collect(收集数组)/first(取第一个)')
     help_text = Column(Text, comment='帮助提示文字')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
@@ -227,6 +229,8 @@ class AlgorithmReferenceParam(db.Model):
             'type': self.param_type,
             'annotation_code': self.annotation_code,
             'annotation_format': self.annotation_format,
+            'field_path': self.field_path,
+            'merge_mode': self.merge_mode or 'join',
             'help_text': self.help_text,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None

@@ -911,6 +911,8 @@ def create_reference_param():
         param_type=req.type or 'text',
         annotation_code=req.annotation_code,
         annotation_format=req.annotation_format,
+        field_path=req.field_path,
+        merge_mode=req.merge_mode or 'join',
         help_text=req.help_text or ''
     )
     db.session.add(new_param)
@@ -943,6 +945,10 @@ def update_reference_param(param_id: int):
         relation.annotation_code = req.annotation_code
     if req.annotation_format is not None:
         relation.annotation_format = req.annotation_format
+    if req.field_path is not None:
+        relation.field_path = req.field_path
+    if req.merge_mode is not None:
+        relation.merge_mode = req.merge_mode
     if req.help_text is not None:
         relation.help_text = req.help_text
     
