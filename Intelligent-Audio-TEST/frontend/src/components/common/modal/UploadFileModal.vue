@@ -343,7 +343,7 @@ const processFiles = (files) => {
                     name: code,
                     code: code,
                     type: type,
-                    data: { segments: ann.segments },
+                    data: { segments: ann.segments, ...(ann.extra_fields || {}) },
                     source_language: ann.source_language || '',
                     target_language: ann.target_language || ''
                 })
@@ -356,7 +356,7 @@ const processFiles = (files) => {
                 name: annotationCodeVal,
                 code: annotationCodeVal,
                 type: type,
-                data: { segments: annData.segments },
+                data: { segments: annData.segments, ...(annData.extra_fields || {}) },
                 source_language: annData.source_language || '',
                 target_language: annData.target_language || ''
             })

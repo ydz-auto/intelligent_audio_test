@@ -494,7 +494,7 @@ const handleImport = async () => {
             name: ann.name || ann.code || 'asr',
             code: ann.code || ann.name || 'asr',
             type: ann.type || determineAnnotationType(ann.name || ann.code || 'asr'),
-            data: { segments: ann.segments },
+            data: { segments: ann.segments, ...(ann.extra_fields || {}) },
             source_language: ann.source_language || '',
             target_language: ann.target_language || ''
           }))
@@ -507,7 +507,7 @@ const handleImport = async () => {
             name: annotationCode,
             code: annotationCode,
             type: type,
-            data: { segments: parsedData.segments },
+            data: { segments: parsedData.segments, ...(parsedData.extra_fields || {}) },
             source_language: parsedData.source_language || '',
             target_language: parsedData.target_language || ''
           }])

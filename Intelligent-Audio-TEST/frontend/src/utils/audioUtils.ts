@@ -370,6 +370,9 @@ export const determineAnnotationType = (name: string): string => {
   return 'asr'
 }
 
+const KNOWN_TOP_KEYS = new Set(['name', 'code', 'type', 'source_language', 'target_language', 'text', 'txt', 'annotations', 'timestamps', 'timestamps_global']);
+const KNOWN_SEG_KEYS = new Set(['speaker', 'start', 'end', 'text', 'confidence']);
+
 /**
  * 解析标注文件（JSON/RTTM/STM/JSONL格式）
  * @param content - 标注文件内容
@@ -384,30 +387,12 @@ export const parseAnnotationFormat = (content: string, format: string): {
   type: string;
   source_language: string;
   target_language: string;
-  segments: Array<{
-    speaker: string;
-    start: number;
-    end: number;
-    text: string;
-    confidence: number;
-  }>;
+  segments: any[];
   timestamps: number[][];
   timestamps_global: number[][];
   raw_data: any;
-  annotations: Array<{
-    name: string;
-    code: string;
-    type: string;
-    source_language: string;
-    target_language: string;
-    segments: Array<{
-      speaker: string;
-      start: number;
-      end: number;
-      text: string;
-      confidence: number;
-    }>;
-  }>;
+  extra_fields: Record<string, any>;
+  annotations: any[];
 } => {
   const result = {
     format: format,
@@ -417,11 +402,12 @@ export const parseAnnotationFormat = (content: string, format: string): {
     type: '',
     source_language: '',
     target_language: '',
-    segments: [] as Array<{ speaker: string; start: number; end: number; text: string; confidence: number }>,
+    segments: [] as any[],
     timestamps: [] as number[][],
     timestamps_global: [] as number[][],
     raw_data: {} as any,
-    annotations: [] as Array<{ name: string; code: string; type: string; source_language: string; target_language: string; segments: Array<{ speaker: string; start: number; end: number; text: string; confidence: number }> }>
+    extra_fields: {} as Record<string, any>,
+    annotations: [] as any[]
   };
 
   const formatLower = format.toLowerCase();
@@ -446,7 +432,16 @@ export const parseAnnotationFormat = (content: string, format: string): {
       }
       
       result.raw_data = data;
-      
+
+      // 捕获顶层未知字段
+      const topExtra: Record<string, any> = {};
+      for (const key of Object.keys(data)) {
+        if (!KNOWN_TOP_KEYS.has(key)) {
+          topExtra[key] = data[key];
+        }
+      }
+      result.extra_fields = topExtra;
+
       if (data.name) {
         result.name = data.name;
       }
@@ -479,12 +474,19 @@ export const parseAnnotationFormat = (content: string, format: string): {
         const txtList = data.txt || [];
         for (const item of txtList) {
           if (item.speaker || item.text || item.start !== undefined) {
+            const segExtra: Record<string, any> = {};
+            for (const key of Object.keys(item)) {
+              if (!KNOWN_SEG_KEYS.has(key)) {
+                segExtra[key] = item[key];
+              }
+            }
             result.segments.push({
               speaker: item.speaker || '',
               start: parseFloat(item.start) || 0,
               end: parseFloat(item.end) || 0,
               text: item.text || '',
-              confidence: parseFloat(item.confidence) || 1.0
+              confidence: parseFloat(item.confidence) || 1.0,
+              ...segExtra
             });
           }
         }
@@ -504,12 +506,19 @@ export const parseAnnotationFormat = (content: string, format: string): {
           } else if (ann.txt && Array.isArray(ann.txt)) {
             for (const item of ann.txt) {
               if (item.speaker || item.text || item.start !== undefined) {
+                const segExtra: Record<string, any> = {};
+                for (const key of Object.keys(item)) {
+                  if (!KNOWN_SEG_KEYS.has(key)) {
+                    segExtra[key] = item[key];
+                  }
+                }
                 annSegments.push({
                   speaker: item.speaker || '',
                   start: parseFloat(item.start) || 0,
                   end: parseFloat(item.end) || 0,
                   text: item.text || '',
-                  confidence: parseFloat(item.confidence) || 1.0
+                  confidence: parseFloat(item.confidence) || 1.0,
+                  ...segExtra
                 });
               }
             }
