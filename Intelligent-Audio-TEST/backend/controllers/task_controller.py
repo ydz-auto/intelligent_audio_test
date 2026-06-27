@@ -31,7 +31,7 @@ from backend.algorithm.reference_params_generator import ReferenceParamsGenerato
 
 class TaskController:
     @staticmethod
-    def _cleanup_case_results(task_id, case_ids):
+    def _cleanup_case_results(task_id, case_ids, keep_test_result=False):
         import os
         import shutil
         from backend.models.models import TestResult, TestResultDimension, TaskCase
@@ -50,31 +50,88 @@ class TaskController:
 
         result_ids = [r.id for r in results]
         if result_ids:
+            # 始终删除评估维度记录（TestResultDimension）
             TestResultDimension.query.filter(
                 TestResultDimension.test_result_id.in_(result_ids)
             ).delete(synchronize_session=False)
 
-            TestResult.query.filter(
-                TestResult.id.in_(result_ids)
-            ).delete(synchronize_session=False)
+            # 仅在需要重新执行时删除执行结果记录（TestResult）
+            if not keep_test_result:
+                TestResult.query.filter(
+                    TestResult.id.in_(result_ids)
+                ).delete(synchronize_session=False)
 
-        # 2. 删除文件系统中的日志文件
-        # 获取所有相关的 TaskCase 记录以获取 device_id
-        task_cases = TaskCase.query.filter(
-            TaskCase.task_id == task_id,
-            TaskCase.test_case_id.in_(case_ids)
-        ).all()
+        # 2. 删除文件系统中的日志文件（仅在需要重新执行时删除）
+        if not keep_test_result:
+            # 获取所有相关的 TaskCase 记录以获取 device_id
+            task_cases = TaskCase.query.filter(
+                TaskCase.task_id == task_id,
+                TaskCase.test_case_id.in_(case_ids)
+            ).all()
 
-        for tc in task_cases:
-            # 构建日志文件路径
-            local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{tc.test_case_id}')
-            if os.path.exists(local_dir):
-                try:
-                    shutil.rmtree(local_dir)
-                except Exception as e:
-                    errors.append(f"删除用例 {tc.test_case_id} 日志文件失败: {str(e)}")
+            for tc in task_cases:
+                # 构建日志文件路径
+                local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{tc.test_case_id}')
+                if os.path.exists(local_dir):
+                    try:
+                        shutil.rmtree(local_dir)
+                    except Exception as e:
+                        errors.append(f"删除用例 {tc.test_case_id} 日志文件失败: {str(e)}")
 
         return errors if errors else None
+
+    # 对已执行完成的用例触发重新评估（复用已有 TestResult，不重新执行）
+    @staticmethod
+    def _trigger_reevaluate(task_id, case_ids):
+        from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from backend.utils.evaluation_service import evaluation_service
+
+        task = db.session.get(Task, task_id)
+        test_type = task.type if task and task.type else 'api'
+
+        for case_id in case_ids:
+            try:
+                result = TestResult.query.filter_by(
+                    task_id=task_id, test_case_id=case_id
+                ).first()
+                if not result or not result.algorithm_result:
+                    continue
+
+                algo_result = result.algorithm_result or {}
+                reference_params = result.result_data.get(
+                    'adjusted_reference_params', []
+                ) if result.result_data else []
+
+                test_case = db.session.get(TestCase, case_id)
+                algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
+
+                full_case_params = {
+                    'algorithm_type': algorithm_type,
+                    'algorithm_params': test_case.algorithm_params if test_case and test_case.algorithm_params else {},
+                    'reference_params': reference_params
+                }
+
+                eval_params = CaseParameterExtractor.get_evaluation_params(
+                    case_config=full_case_params,
+                    algorithm_result=algo_result,
+                    test_type=test_type
+                )
+                eval_params['algorithm_type'] = algorithm_type
+                eval_params['test_type'] = test_type
+
+                evaluation_service.evaluate_case(
+                    task_id=task_id,
+                    result_id=result.id,
+                    test_case_id=case_id,
+                    algorithm_result=algo_result,
+                    **eval_params
+                )
+            except Exception as e:
+                import traceback
+                import logging
+                logging.getLogger(__name__).error(
+                    f"重新评估用例失败: test_case_id={case_id}, error={str(e)}, traceback={traceback.format_exc()}"
+                )
 
     # 获取所有任务，支持分页和过滤
     @staticmethod
@@ -957,17 +1014,41 @@ class TaskController:
             if not retry_cases:
                 return success_response(None, "没有需要重试的用例")
 
-            retry_case_ids = [tc.test_case_id for tc in retry_cases]
+            # 区分：已执行完成的用例（只需重新评估）和未执行完成的用例（需重新执行）
+            reevaluate_cases = [tc for tc in retry_cases if tc.execution_status == 'completed']
+            reexecute_cases = [tc for tc in retry_cases if tc.execution_status != 'completed']
 
-            cleanup_errors = TaskController._cleanup_case_results(task_id, retry_case_ids)
-            if cleanup_errors:
-                return error_response(
-                    f"清理旧结果失败: {'; '.join(cleanup_errors)}",
-                    code=ErrorCode.OPERATION_FAILED
-                )
+            reevaluate_case_ids = [tc.test_case_id for tc in reevaluate_cases]
+            reexecute_case_ids = [tc.test_case_id for tc in reexecute_cases]
 
-            # 3. 重置 TaskCase 状态
-            for tc in retry_cases:
+            # 清理旧结果
+            # 已执行完成的用例：只清理评估维度记录，保留 TestResult 和日志文件
+            if reevaluate_case_ids:
+                cleanup_errors = TaskController._cleanup_case_results(task_id, reevaluate_case_ids, keep_test_result=True)
+                if cleanup_errors:
+                    return error_response(
+                        f"清理旧结果失败: {'; '.join(cleanup_errors)}",
+                        code=ErrorCode.OPERATION_FAILED
+                    )
+
+            # 未执行完成的用例：清理全部记录和日志文件
+            if reexecute_case_ids:
+                cleanup_errors = TaskController._cleanup_case_results(task_id, reexecute_case_ids)
+                if cleanup_errors:
+                    return error_response(
+                        f"清理旧结果失败: {'; '.join(cleanup_errors)}",
+                        code=ErrorCode.OPERATION_FAILED
+                    )
+
+            # 重置 TaskCase 状态
+            # 已执行完成的用例：只重置评估状态，保留执行状态和执行时间
+            for tc in reevaluate_cases:
+                tc.status = 'failed'
+                tc.evaluation_status = 'pending'
+                tc.error_message = None
+
+            # 未执行完成的用例：重置全部状态
+            for tc in reexecute_cases:
                 tc.status = 'failed'
                 tc.execution_status = 'pending'
                 tc.evaluation_status = 'pending'
@@ -976,29 +1057,39 @@ class TaskController:
                 tc.duration = None
                 tc.error_message = None
 
-            # 4. 更新任务统计信息
-            # 重新计算已完成和失败的数量 (基于已经执行成功且状态为completed的用例)
+            # 更新任务统计信息
             task.completed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='completed').count()
             task.failed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='failed').count()
-            
-            # 如果任务之前是失败、停止或完成状态，改回 running (由执行引擎启动)
+
             if task.status in ['failed', 'stopped', 'completed']:
                 task.status = 'pending'
                 task.started_at = None
                 task.completed_at = None
                 task.actual_duration = None
-            
+
             db.session.commit()
 
-            # 5. 调用执行引擎启动任务
             app = current_app._get_current_object()
-            success, message = execution_engine.start_task(app, task.id)
-            
-            if not success:
-                return error_response(message, code=ErrorCode.TASK_EXECUTION_ERROR)
+            has_reexecute = bool(reexecute_cases)
+
+            # 启动需要重新执行的用例
+            if has_reexecute:
+                success, message = execution_engine.start_task(app, task.id)
+                if not success:
+                    return error_response(message, code=ErrorCode.TASK_EXECUTION_ERROR)
+
+            # 对已执行完成的用例触发重新评估（复用已有 TestResult，不重新执行）
+            if reevaluate_cases:
+                # 若无需重新执行，将任务状态置为 evaluating，评估完成后由评估服务回写
+                if not has_reexecute:
+                    task = db.session.get(Task, task_id)
+                    task.status = 'evaluating'
+                    db.session.commit()
+
+                TaskController._trigger_reevaluate(task_id, reevaluate_case_ids)
 
             return success_response(TaskStatusData(task_id=str(task.id), status="running"), "重试任务已启动")
-            
+
         except Exception as e:
             db.session.rollback()
             return error_response(str(e), code=ErrorCode.INTERNAL_ERROR)
@@ -1034,16 +1125,23 @@ class TaskController:
                     tc.evaluation_status = 'stopped'
                     tc.error_message = tc.error_message or '用例被手动跳过'
                 else: # retry
-                    # status字段只能是completed或failed，不能是pending
-                    tc.status = 'failed'  # 重试时先标记为失败，执行时会重新评估
-                    tc.execution_status = 'pending'
-                    tc.evaluation_status = 'pending'
-                    tc.started_at = None
-                    tc.completed_at = None
-                    tc.duration = None
+                    was_execution_completed = (tc.execution_status == 'completed')
+                    tc.status = 'failed'
                     tc.error_message = None
 
-                    cleanup_errors = TaskController._cleanup_case_results(task_id, [case_id])
+                    if was_execution_completed:
+                        # 已执行完成的用例：只重置评估状态，保留执行状态和执行时间
+                        tc.evaluation_status = 'pending'
+                        cleanup_errors = TaskController._cleanup_case_results(task_id, [case_id], keep_test_result=True)
+                    else:
+                        # 未执行完成的用例：重置全部状态
+                        tc.execution_status = 'pending'
+                        tc.evaluation_status = 'pending'
+                        tc.started_at = None
+                        tc.completed_at = None
+                        tc.duration = None
+                        cleanup_errors = TaskController._cleanup_case_results(task_id, [case_id])
+
                     if cleanup_errors:
                         return error_response(
                             f"清理旧结果失败: {'; '.join(cleanup_errors)}",
@@ -1053,17 +1151,25 @@ class TaskController:
                     task.completed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='completed').count()
                     task.failed_cases = TaskCase.query.filter_by(task_id=task_id, execution_status='completed', status='failed').count()
                     if task.status in ['failed', 'stopped', 'completed']:
-                        task.status = 'pending'
-                        task.started_at = None
-                        task.completed_at = None
-                        task.actual_duration = None
-                
+                        if was_execution_completed:
+                            task.status = 'evaluating'
+                        else:
+                            task.status = 'pending'
+                            task.started_at = None
+                            task.completed_at = None
+                            task.actual_duration = None
+
                 db.session.commit()
 
-                # 如果任务当前没在运行，且是 retry 操作，则尝试重新启动任务
+                # retry 操作：根据用例执行状态决定重新执行还是重新评估
                 if action == 'retry' and task.status not in ['running', 'paused']:
                     app = current_app._get_current_object()
-                    execution_engine.start_task(app, task_id)
+                    if was_execution_completed:
+                        # 已执行完成的用例：触发重新评估（复用已有 TestResult）
+                        TaskController._trigger_reevaluate(task_id, [case_id])
+                    else:
+                        # 未执行完成的用例：重新启动任务执行
+                        execution_engine.start_task(app, task_id)
 
                 return success_response(None, f"Action '{action}' executed successfully")
 
