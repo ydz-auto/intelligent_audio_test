@@ -27,7 +27,6 @@ from backend.schemas.task import (
 )
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import and_, or_
-from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
 
 class TaskController:
     @staticmethod
@@ -352,85 +351,11 @@ class TaskController:
         
         # 2. 获取基础用例信息
         case_info = db.session.get(TestCase, case_id)
-        
-        # 3. 获取参考ASR文本和参考翻译文本
-        reference_asr_text = None
-        reference_translation_text = None
-        
-        if case_info and case_info.config:
-            try:
-                # 从用例配置中获取配置
-                config = case_info.config
-                if isinstance(config, str):
-                    import json
-                    config = json.loads(config)
-                
-                # 从配置中获取音频ID
-                audio_id = None
-                if isinstance(config, dict):
-                    # 检查不同的配置结构
-                    if 'audioId' in config:
-                        audio_id = config['audioId']
-                    elif 'audio_id' in config:
-                        audio_id = config['audio_id']
-                    elif 'audio' in config:
-                        if isinstance(config['audio'], dict) and 'id' in config['audio']:
-                            audio_id = config['audio']['id']
-                    elif 'audioConfig' in config:
-                        if isinstance(config['audioConfig'], dict):
-                            audio_config = config['audioConfig']
-                            if 'audioId' in audio_config:
-                                audio_id = audio_config['audioId']
-                            elif 'audio_id' in audio_config:
-                                audio_id = audio_config['audio_id']
-                
-                # 根据测试类型从配置中获取参考文本，优先使用配置中的参考文本
-                task = db.session.get(Task, task_id)
-                test_type = task.type if task else 'api'
-                case_config = config
-                asr_ref = ReferenceParamsGenerator.get_reference_text(case_config, 'asr_reference_text')
-                preset_trans = ReferenceParamsGenerator.get_reference_text(case_config, 'translation_reference_text')
-                
-                # 获取音频对象，用于默认值
-                audio = None
-                if audio_id:
-                    from backend.models.models import Audio, AudioAnnotation
-                    audio = db.session.get(Audio, audio_id)
-                
-                # 如果配置中没有参考文本，则使用音频对象的默认值
-                if not asr_ref and audio:
-                    asr_ref = audio.asr_text
-                
-                # 获取翻译对象，用于默认值 (从 AudioAnnotation 中获取)
-                translation_obj = None
-                td_id = config.get('translation_direction_id') if isinstance(config, dict) else None
-                if audio_id:
-                    from backend.models.models import AudioAnnotation
-                    annotations = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False).all()
-                    if td_id:
-                        for ann in annotations:
-                            if ann.target_language:
-                                direction = TranslationDirection.query.get(td_id)
-                                if direction and ann.target_language == direction.target_language:
-                                    translation_obj = ann
-                                    break
-                    else:
-                        for ann in annotations:
-                            if ann.format == 'json' and ann.data:
-                                translation_obj = ann
-                                break
-                
-                # 如果配置中没有参考翻译文本，则使用翻译对象的默认值
-                if not preset_trans and translation_obj:
-                    preset_trans = translation_obj.data.get('text') if translation_obj.data else None
-                
-                # 设置最终的参考文本
-                reference_asr_text = asr_ref
-                reference_translation_text = preset_trans
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Error getting reference texts: {e}")
-        
+
+        # 3. 获取测试类型
+        task = db.session.get(Task, task_id)
+        test_type = task.type if task else 'api'
+
         # 4. 获取执行结果 (可能有多个设备/API的结果，这里取最新的一个或全部)
         results = TestResult.query.filter_by(task_id=task_id, test_case_id=case_id).all()
         
@@ -483,8 +408,6 @@ class TaskController:
                 "algorithm_result": result.algorithm_result,
                 "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
                 "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
-                "reference_asr_text": reference_asr_text,
-                "reference_translation_text": reference_translation_text,
                 "result_data": result.result_data,
                 "error_message": result.error_message,
                 "dimensions": dim_data,
@@ -634,8 +557,6 @@ class TaskController:
             "completed_at": tc.completed_at.isoformat() if tc.completed_at else None,
             "duration": tc.duration,
             "error_message": tc.error_message,
-            "reference_asr_text": reference_asr_text,
-            "reference_translation_text": reference_translation_text,
             "audio_list": audios_list,
             "reference_params": reference_params,
             "algorithm_results": algorithm_results,
@@ -657,67 +578,7 @@ class TaskController:
             return error_response("未找到该任务关联的用例", code=ErrorCode.NOT_FOUND, http_code=404)
         
         case_info = db.session.get(TestCase, case_id)
-        
-        # 获取参考文本
-        reference_asr_text = None
-        reference_translation_text = None
-        if case_info and case_info.config:
-            try:
-                config = case_info.config
-                if isinstance(config, str):
-                    import json
-                    config = json.loads(config)
-                
-                audio_id = None
-                if isinstance(config, dict):
-                    if 'audioId' in config:
-                        audio_id = config['audioId']
-                    elif 'audio_id' in config:
-                        audio_id = config['audio_id']
-                    elif 'audio' in config:
-                        if isinstance(config['audio'], dict) and 'id' in config['audio']:
-                            audio_id = config['audio']['id']
-                    elif 'audioConfig' in config:
-                        if isinstance(config['audioConfig'], dict):
-                            audio_config = config['audioConfig']
-                            if 'audioId' in audio_config:
-                                audio_id = audio_config['audioId']
-                            elif 'audio_id' in audio_config:
-                                audio_id = audio_config['audio_id']
-                
-                task = db.session.get(Task, task_id)
-                test_type = task.type if task else 'api'
-                asr_ref = ReferenceParamsGenerator.get_reference_text(config, 'asr_reference_text')
-                preset_trans = ReferenceParamsGenerator.get_reference_text(config, 'translation_reference_text')
-                
-                if audio_id and not asr_ref:
-                    from backend.models.models import Audio
-                    audio = db.session.get(Audio, audio_id)
-                    if audio:
-                        asr_ref = audio.asr_text
-                
-                if audio_id and not preset_trans:
-                    from backend.models.models import AudioAnnotation
-                    td_id = config.get('translation_direction_id') if isinstance(config, dict) else None
-                    annotations = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False).all()
-                    if td_id:
-                        for ann in annotations:
-                            if ann.target_language:
-                                direction = TranslationDirection.query.get(td_id)
-                                if direction and ann.target_language == direction.target_language:
-                                    preset_trans = ann.data.get('text') if ann.data else None
-                                    break
-                    else:
-                        for ann in annotations:
-                            if ann.format == 'json' and ann.data:
-                                preset_trans = ann.data.get('text')
-                                break
-                
-                reference_asr_text = asr_ref
-                reference_translation_text = preset_trans
-            except Exception:
-                pass
-        
+
         # 获取执行结果
         results = TestResult.query.filter_by(task_id=task_id, test_case_id=case_id).all()
         
@@ -768,8 +629,6 @@ class TaskController:
                 "algorithm_result": result.algorithm_result,
                 "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
                 "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
-                "reference_asr_text": reference_asr_text,
-                "reference_translation_text": reference_translation_text,
                 "result_data": result.result_data,
                 "error_message": result.error_message,
                 "dimensions": dim_data,

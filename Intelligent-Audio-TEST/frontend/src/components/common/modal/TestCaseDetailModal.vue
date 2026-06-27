@@ -210,8 +210,6 @@ const fetchDetail = async () => {
       executionStatus: detailData.execution_status,
       evaluationStatus: detailData.evaluation_status,
       duration: detailData.duration,
-      referenceAsrText: detailData.reference_asr_text,
-      referenceTranslationText: detailData.reference_translation_text,
       errorMessage: detailData.error_message,
       results: resultsData.results || [],
       // 后端返回完整的对比展示数据
