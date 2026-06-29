@@ -641,6 +641,10 @@ class E2EExecutor(BaseExecutor):
             all_eval_items = result['all_eval_items']
             case_params = result['case_params']
             
+            # 重新查询 tc_rel：_execute_extra_params 内部调用了 db.session().close()，
+            # 会导致 tc_rel 从 session 的 identity map 中被移除（变为 detached），
+            # 后续对 tc_rel 属性的修改不会被 commit 持久化
+            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
             tc_rel.execution_status = 'completed' if execution_success else 'failed'
             if not execution_success:
                 tc_rel.evaluation_status = 'failed'
