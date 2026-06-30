@@ -5,7 +5,7 @@
         <div class="form-group">
           <label for="caseName">用例名称 <span class="required">*</span></label>
           <div class="input-with-action">
-            <input type="text" id="caseName" v-model="localFormData.name" class="form-control" required>
+            <input type="text" id="caseName" v-model="localFormData.name" class="form-control" required @input="emitFormData">
             <button type="button" class="btn btn-outline-primary btn-auto-generate" @click="autoGenerateName" title="根据标签自动生成名称">
               <i class="fas fa-wand-magic-sparkles"></i>
               <span>自动生成</span>
@@ -14,7 +14,7 @@
         </div>
         <div class="form-group">
           <label for="caseGroup">所属分组 <span class="required">*</span></label>
-          <select id="caseGroup" v-model="localFormData.group" class="form-control" required>
+          <select id="caseGroup" v-model="localFormData.group" class="form-control" required @change="emitFormData">
             <option v-for="group in testCaseGroups" :key="group" :value="group">{{ group }}</option>
             <option value="new-group">+ 新建分组</option>
           </select>
@@ -78,7 +78,7 @@
       <div class="form-row">
         <div class="form-group">
           <label for="caseDescription">描述</label>
-          <textarea id="caseDescription" v-model="localFormData.description" class="form-control" rows="2"></textarea>
+          <textarea id="caseDescription" v-model="localFormData.description" class="form-control" rows="2" @input="emitFormData"></textarea>
         </div>
       </div>
     </div>
@@ -87,6 +87,7 @@
       v-model="localFormData.algorithmType"
       :initial-params="algorithmParams"
       :single="true"
+      :show-params="false"
       @params-change="handleAlgorithmParamsChange"
       @algorithm-type-change="handleAlgorithmTypeChange"
     />
@@ -100,6 +101,7 @@
             type="button"
             class="test-type-btn"
             :class="{ active: localFormData.test_type === 'api' }"
+            :disabled="isTestTypeLocked && testType !== 'api'"
             @click="switchTestType('api')"
           >
             <i class="fas fa-cloud"></i> API
@@ -108,10 +110,20 @@
             type="button"
             class="test-type-btn"
             :class="{ active: localFormData.test_type === 'e2e' }"
+            :disabled="isTestTypeLocked && testType !== 'e2e'"
             @click="switchTestType('e2e')"
           >
             <i class="fas fa-microchip"></i> E2E
           </button>
+        </div>
+      </div>
+      <div class="form-row" v-if="localFormData.related_case_id">
+        <div class="form-group">
+          <label>关联用例</label>
+          <div class="related-case-info">
+            <i class="fas fa-link"></i>
+            <span>关联 {{ localFormData.test_type === 'api' ? 'E2E' : 'API' }} 用例 ID: {{ localFormData.related_case_id }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -119,13 +131,20 @@
     <!-- ===== 轮次配置编辑器（替换旧的音频/噪声/维度三大区块） ===== -->
     <div class="form-section round-editor-section">
       <RoundConfigEditor
+        ref="roundConfigRef"
         v-model="localFormData.config.rounds"
         :test-type="localFormData.test_type || 'api'"
         :case-algorithm-params="caseAlgorithmParams"
         :api-input-params="apiInputParams"
         :algorithm-type="localFormData.algorithmType"
+        :algorithm-form-schema="algorithmFormSchema"
         @update:model-value="handleRoundsUpdate"
         @open-audio-select="handleAudioSelectRequest"
+        @open-device-modal="(audioIndex: number) => emit('openDeviceModal', audioIndex)"
+        @open-batch-device-modal="() => emit('openBatchDeviceModal')"
+        @open-cross-device-modal="() => emit('openCrossDeviceModal')"
+        @open-batch-spl-modal="() => emit('openBatchSplModal')"
+        @preview-audio="(audioId: string, audioType: 'dry' | 'noise') => emit('previewAudio', audioId, audioType)"
       />
     </div>
 
@@ -147,11 +166,12 @@ const props = defineProps<{
   testCaseGroups: string[];
   audioConfig?: any;
   dimensionConfig?: any;
+  testType?: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'update', data: TestCaseFormData): void;
-  (e: 'openAudioModal', audioType: 'dry' | 'noise', index?: number): void;
+  (e: 'openAudioModal', audioType: 'dry' | 'noise', index?: number, callback?: (audios: { id: string; name?: string }[]) => void): void;
   (e: 'openDeviceModal', audioIndex: number): void;
   (e: 'openNoiseDeviceModal'): void;
   (e: 'openBatchDeviceModal'): void;
@@ -165,6 +185,11 @@ const { algorithmOptions: fallbackOptions, loadAlgorithms } = useAlgorithmLabels
 
 const injectedAudioConfig = inject<any>('audioConfig');
 const audioConfig = props.audioConfig || injectedAudioConfig;
+
+// 当外部传入 testType 时（'api' 或 'e2e'），锁定切换器
+const isTestTypeLocked = computed(() => {
+  return props.testType === 'api' || props.testType === 'e2e';
+});
 
 const localFormData = ref<TestCaseFormData>(createInitialFormData());
 const tagsInput = ref('');
@@ -196,6 +221,7 @@ function createInitialFormData(): TestCaseFormData {
 
 // ---- test_type 切换 ----
 function switchTestType(type: 'api' | 'e2e') {
+  if (isTestTypeLocked.value && type !== props.testType) return;
   localFormData.value.test_type = type;
   emitFormData();
 }
@@ -207,18 +233,15 @@ function handleRoundsUpdate(rounds: RoundConfigItem[]) {
 }
 
 // ---- 音频选择请求 ----
-function handleAudioSelectRequest(callback: (audioId: string, audioName?: string) => void) {
-  // 转发到父级处理（打开音频选择弹窗）
-  emit('openAudioModal', 'dry');
-  // 父级选择完成后调用 callback
-  pendingAudioCallback.value = callback;
+function handleAudioSelectRequest(audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void) {
+  // 转发到父级处理（打开音频选择弹窗），携带 callback
+  emit('openAudioModal', audioType, undefined, callback);
 }
-
-const pendingAudioCallback = ref<((audioId: string, audioName?: string) => void) | null>(null);
 
 // ---- 算法参数定义（从 AlgorithmSelector 获取） ----
 const caseAlgorithmParams = ref<any[]>([]);
 const apiInputParams = ref<any[]>([]);
+const algorithmFormSchema = ref<any>(null);
 
 function handleAlgorithmParamsChange(params: any) {
   algorithmParams.value = params || {};
@@ -228,6 +251,9 @@ function handleAlgorithmParamsChange(params: any) {
   }
   if (params?.apiInputParams) {
     apiInputParams.value = params.apiInputParams;
+  }
+  if (params?.algorithmFormSchema !== undefined) {
+    algorithmFormSchema.value = params.algorithmFormSchema;
   }
   emitFormData();
 }
@@ -286,6 +312,8 @@ async function loadAvailableTags() {
 
 function initFormData() {
   const raw = props.formData || {};
+  // 当外部锁定 testType 时，强制使用该类型
+  const forcedTestType = isTestTypeLocked.value ? (props.testType as 'api' | 'e2e') : null;
   localFormData.value = {
     id: raw.id,
     name: raw.name || '',
@@ -293,7 +321,7 @@ function initFormData() {
     group: raw.group || raw.groupName || raw.group_name || '',
     tags: raw.tags || [],
     algorithmType: raw.algorithmType || raw.algorithm_type || '',
-    test_type: raw.test_type || 'api',
+    test_type: forcedTestType || raw.test_type || 'api',
     config: raw.config?.rounds ? raw.config : {
       rounds: [{ roundNumber: 1, audios: [] }],
       dimensions: [],
@@ -312,19 +340,22 @@ function emitFormData() {
 
 function addTags() {
   if (!localFormData.value.tags) localFormData.value.tags = [];
-  const tags = tagsInput.value.split(/[，,]/).map(t => t.trim()).filter(t => t && !localFormData.value.tags.includes(t));
+  const tags = tagsInput.value.split(/[，,]/).map(t => t.trim()).filter(t => t && !localFormData.value.tags?.includes(t));
   localFormData.value.tags.push(...tags);
   tagsInput.value = '';
+  emitFormData();
 }
 
 function removeTag(index: number) {
   (localFormData.value.tags || []).splice(index, 1);
+  emitFormData();
 }
 
 function selectTag(tag: string) {
   if (!localFormData.value.tags) localFormData.value.tags = [];
   if (!localFormData.value.tags.includes(tag)) {
     localFormData.value.tags.push(tag);
+    emitFormData();
   }
 }
 
@@ -333,11 +364,14 @@ function autoGenerateName() {
     const filteredTags = localFormData.value.tags.filter(t => t.length <= 25);
     const sortedTags = filteredTags.sort((a, b) => a.length - b.length);
     localFormData.value.name = sortedTags.join('-');
+    emitFormData();
   }
 }
 
-function handleAlgorithmTypeChange() {
-  // test_type 切换时，RoundConfigEditor 会根据 scope 过滤
+function handleAlgorithmTypeChange(newType: string) {
+  console.log("[CaseForm] algorithmType changed to:", newType);
+  localFormData.value.algorithmType = newType;
+  emitFormData();
 }
 
 // ---- 旧版音频/噪声/维度函数已迁移到 RoundConfigEditor ----
@@ -365,17 +399,105 @@ function syncConfigFromParent() {
   });
 }
 
-defineExpose({ syncConfigFromParent, initFormData, algorithmParams, newGroupName });
+const roundConfigRef = ref<InstanceType<typeof RoundConfigEditor> | null>(null);
+
+const currentRoundIndex = computed(() => roundConfigRef.value?.activeRoundIndex ?? 0);
+
+// ---- Batch operation methods (modify localFormData directly) ----
+function getCurrentRoundAudiosLocal(): any[] {
+  const config = localFormData.value.config;
+  if (!config) return [];
+  if (config.rounds && config.rounds.length > 0) {
+    const roundIdx = roundConfigRef.value?.activeRoundIndex ?? 0;
+    return config.rounds[roundIdx]?.audios || [];
+  }
+  return config.audios || [];
+}
+
+function applyBatchDevice(deviceId: string) {
+  const audios = getCurrentRoundAudiosLocal();
+  const updated = audios.map((a: any) => ({ ...a, playbackDeviceId: deviceId }));
+  if (localFormData.value.config?.rounds) {
+    const roundIdx = roundConfigRef.value?.activeRoundIndex ?? 0;
+    const round = localFormData.value.config.rounds[roundIdx];
+    if (round) {
+      localFormData.value.config.rounds = localFormData.value.config.rounds.map((r: any, i: number) =>
+        i === roundIdx ? { ...r, audios: updated } : r
+      );
+    }
+  } else if (localFormData.value.config?.audios) {
+    localFormData.value.config.audios = updated;
+  }
+  emitFormData();
+}
+
+function applyCrossDevice(deviceIds: string[]) {
+  const audios = getCurrentRoundAudiosLocal();
+  const updated = audios.map((a: any, idx: number) => ({
+    ...a,
+    playbackDeviceId: deviceIds[idx % deviceIds.length]
+  }));
+  if (localFormData.value.config?.rounds) {
+    const roundIdx = roundConfigRef.value?.activeRoundIndex ?? 0;
+    localFormData.value.config.rounds = localFormData.value.config.rounds.map((r: any, i: number) =>
+      i === roundIdx ? { ...r, audios: updated } : r
+    );
+  } else if (localFormData.value.config?.audios) {
+    localFormData.value.config.audios = updated;
+  }
+  emitFormData();
+}
+
+function applyBatchSpl(spl: number) {
+  console.log('[applyBatchSpl] called with spl:', spl);
+  console.log('[applyBatchSpl] has config:', !!localFormData.value.config);
+  console.log('[applyBatchSpl] has rounds:', !!localFormData.value.config?.rounds);
+  const audios = getCurrentRoundAudiosLocal();
+  console.log('[applyBatchSpl] current round audios count:', audios.length);
+  console.log('[applyBatchSpl] current round audios:', JSON.stringify(audios.map(a => ({id: a.audioId, spl: a.spl}))));
+  if (audios.length === 0) {
+    console.warn('[applyBatchSpl] No audios found, cannot apply batch SPL!');
+    return;
+  }
+  const updated = audios.map((a: any) => ({ ...a, spl }));
+  console.log('[applyBatchSpl] updated audios spl:', updated.map(a => a.spl));
+  if (localFormData.value.config?.rounds) {
+    const roundIdx = roundConfigRef.value?.activeRoundIndex ?? 0;
+    console.log('[applyBatchSpl] updating rounds at index:', roundIdx);
+    localFormData.value.config.rounds = localFormData.value.config.rounds.map((r: any, i: number) =>
+      i === roundIdx ? { ...r, audios: updated } : r
+    );
+    console.log('[applyBatchSpl] updated round audios spl:', localFormData.value.config.rounds[roundIdx].audios.map((a: any) => a.spl));
+  } else if (localFormData.value.config?.audios) {
+    localFormData.value.config.audios = updated;
+  }
+  emitFormData();
+  console.log('[applyBatchSpl] emitFormData called');
+}
+
+function applySingleDevice(audioIndex: number, deviceId: string) {
+  const audios = getCurrentRoundAudiosLocal();
+  const updated = audios.map((a: any, i: number) =>
+    i === audioIndex ? { ...a, playbackDeviceId: deviceId } : a
+  );
+  if (localFormData.value.config?.rounds) {
+    const roundIdx = roundConfigRef.value?.activeRoundIndex ?? 0;
+    localFormData.value.config.rounds = localFormData.value.config.rounds.map((r: any, i: number) =>
+      i === roundIdx ? { ...r, audios: updated } : r
+    );
+  } else if (localFormData.value.config?.audios) {
+    localFormData.value.config.audios = updated;
+  }
+  emitFormData();
+}
+
+defineExpose({ syncConfigFromParent, initFormData, algorithmParams, newGroupName, currentRoundIndex, applyBatchDevice, applyCrossDevice, applyBatchSpl, applySingleDevice, getCurrentRoundAudiosLocal });
 
 watch(() => tagSearchQuery.value, () => {
   currentTagPage.value = 1;
 });
 
-watch(() => localFormData.value, (newVal) => {
-  if (!isSyncingFromParent) {
-    emit('update', { ...newVal });
-  }
-}, { deep: true });
+// Deep watcher removed: explicit emitFormData() calls prevent double-emit.
 
 onMounted(async () => {
   await loadAlgorithms();
@@ -663,6 +785,11 @@ onMounted(async () => {
 .test-type-btn.active {
   background: var(--primary-color);
   color: white;
+}
+
+.test-type-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .test-type-btn + .test-type-btn {

@@ -158,6 +158,92 @@ for round_idx, round_config in enumerate(rounds):
 }
 ```
 
+### 7. 对齐前置判断（_needs_alignment）
+
+#### 7.1 问题
+
+时间对齐逻辑依赖 STM/RTTM 时间线段数据。对于不产出 STM/RTTM 的算法（如纯文本 ASR、翻译等），`_extract_segments_from_result` 和 `_extract_segments_from_reference` 都会返回空列表，对齐计算完全无意义，浪费计算资源。
+
+#### 7.2 解决方案
+
+新增 `_needs_alignment` 方法，根据算法配置判断是否需要时间对齐：
+
+```python
+def _needs_alignment(self, algorithm_type, reference_params):
+    """判断是否需要进行时间对齐"""
+    if not reference_params:
+        return False
+    # 1. 检查参考参数中是否有 rttm/stm 类型
+    has_time_series_ref = False
+    for param in reference_params:
+        if isinstance(param, dict):
+            param_type = param.get('type', '')
+            if param_type in ('rttm', 'stm'):
+                has_time_series_ref = True
+                break
+    if not has_time_series_ref:
+        return False
+    # 2. 检查设备输出字段是否有 stm/rttm 类型
+    if algorithm_type and self.field_mapper:
+        try:
+            stm_codes = self.field_mapper.get_device_output_field_codes_by_type(algorithm_type, 'stm')
+            rttm_codes = self.field_mapper.get_device_output_field_codes_by_type(algorithm_type, 'rttm')
+            has_time_series_output = bool(stm_codes or rttm_codes)
+            if not has_time_series_output:
+                return False
+        except Exception:
+            return True
+    return True
+```
+
+#### 7.3 判断逻辑
+
+| 条件 | 结果 |
+|------|------|
+| reference_params 为空 | 不对齐 |
+| 参考参数中无 rttm/stm 类型 | 不对齐 |
+| 设备输出字段中无 stm/rttm 类型 | 不对齐 |
+| 以上均满足 | 进行对齐 |
+| FieldMapper 查询异常 | 保守对齐（返回 True） |
+
+#### 7.4 调用位置
+
+在 `_calculate_effective_offset_for_single_result` 入口处调用 `_needs_alignment`，返回 `False` 时直接跳过对齐计算，将原始 reference_params 作为 adjusted_reference_params 返回。
+
+### 8. adjusted_reference_params 全覆盖保证
+
+#### 8.1 设计原则
+
+所有结果（无论是否进行时间对齐）统一包含 `adjusted_reference_params` 字段，确保下游消费者可以无差别访问该字段。
+
+#### 8.2 覆盖路径
+
+| 代码路径 | 处理方式 |
+|---------|---------|
+| 对齐成功 | 写入对齐后的 reference_params |
+| 对齐跳过（_needs_alignment 返回 False） | 写入原始 reference_params |
+| reference_params 为 list 分支 | 使用 `... or reference_params or []` 兜底 |
+| reference_params 为 dict 分支 | 使用 `... or reference_params or []` 兜底 |
+| 异常分支 | 使用 `setdefault` 确保字段存在 |
+
+#### 8.3 关键代码
+
+```python
+# 对齐跳过时
+if not self._needs_alignment(algorithm_type, reference_params):
+    result_data['adjusted_reference_params'] = reference_params or []
+    return result_data
+
+# list 分支兜底
+result_data['adjusted_reference_params'] = adjusted_params or reference_params or []
+
+# dict 分支兜底
+result_data['adjusted_reference_params'] = adjusted_params or reference_params or []
+
+# 异常分支兜底
+result_data.setdefault('adjusted_reference_params', reference_params or [])
+```
+
 ---
 
 ## 不变部分

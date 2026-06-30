@@ -95,7 +95,7 @@
         <div v-show="activeTab === 'basic'" class="tab-content">
           <div class="form-row">
             <div class="form-group">
-              <label>算法类型 <span class="required">*</span></label>
+              <label>算法代码 <span class="required">*</span></label>
               <input
                 type="text"
                 class="form-input"
@@ -236,21 +236,24 @@
 
           <!-- 用例参数表格 -->
           <div v-if="paramConfigType === 'case'" class="table-container">
-            <table class="data-table">
+            <table class="data-table" style="table-layout: fixed;">
               <thead>
                 <tr>
-                  <th>参数代码</th>
-                  <th>参数名称</th>
-                  <th>类型</th>
-                  <th>选项来源</th>
-                  <th>必填</th>
-                  <th>默认值</th>
-                  <th>操作</th>
+                  <th style="width: 110px;">参数代码</th>
+                  <th style="width: 100px;">参数名称</th>
+                  <th style="width: 90px;">类型</th>
+                  <th style="width: 80px;">适用范围</th>
+                  <th style="width: 90px;">选项来源</th>
+                  <th style="width: 50px;">必填</th>
+                  <th style="width: 80px;">默认值</th>
+                  <th style="width: 160px;">范围约束</th>
+                  <th style="width: 120px;">帮助文本</th>
+                  <th style="width: 50px;">操作</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="formState.case_params.length === 0">
-                  <td colspan="7" class="empty-row">暂无用例参数</td>
+                  <td colspan="10" class="empty-row">暂无用例参数</td>
                 </tr>
                 <tr v-else v-for="(param, index) in formState.case_params" :key="param.id || param.tempId || index">
                   <td>
@@ -270,8 +273,15 @@
                       <option value="slider">滑块</option>
                       <option value="audio_select">音频选择</option>
                       <option value="device_select">设备选择</option>
-                      <option value="interferer_list">干扰人列表</option>
+                      <option value="json">JSON结构化</option>
                       <option value="reference">参考参数</option>
+                    </select>
+                  </td>
+                  <td>
+                    <select class="form-input form-input-sm" v-model="param.scope" @change="handleCaseParamBlur(param, index)">
+                      <option value="common">通用</option>
+                      <option value="api">API</option>
+                      <option value="e2e">E2E</option>
                     </select>
                   </td>
                   <td>
@@ -293,6 +303,19 @@
                   </td>
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.default_value" placeholder="默认值" @blur="handleCaseParamBlur(param, index)">
+                  </td>
+                  <td>
+                    <div v-if="['slider', 'number'].includes(param.param_type)" class="range-constraints">
+                      <input type="number" class="form-input form-input-sm range-input" v-model="param.min_value" placeholder="最小" @blur="handleCaseParamBlur(param, index)">
+                      <span class="range-sep">~</span>
+                      <input type="number" class="form-input form-input-sm range-input" v-model="param.max_value" placeholder="最大" @blur="handleCaseParamBlur(param, index)">
+                      <input type="number" class="form-input form-input-sm range-input" v-model="param.step" placeholder="步长" @blur="handleCaseParamBlur(param, index)">
+                      <input type="text" class="form-input form-input-sm range-input range-unit" v-model="param.unit" placeholder="单位" @blur="handleCaseParamBlur(param, index)">
+                    </div>
+                    <span v-else class="text-muted">—</span>
+                  </td>
+                  <td>
+                    <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="帮助提示" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
                     <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveCaseParam(index)">
@@ -324,23 +347,28 @@
           <div class="table-container">
             <table class="data-table" style="table-layout: fixed;">
               <thead>
-                <tr>
-                  <th style="width: 120px;">参数代码</th>
-                  <th style="width: 100px;">参数名称</th>
-                  <th style="width: 100px;">参考类型</th>
-                  <th style="width: 120px;">标注代码</th>
-                  <th style="width: 100px;">标注格式</th>
-                  <th style="width: 120px;">帮助文本</th>
-                  <th style="width: 60px;">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-if="formState.reference_params.length === 0">
-                  <td colspan="7" class="empty-row">暂无参考参数</td>
-                </tr>
+                  <tr>
+                    <th style="width: 120px;">参数代码</th>
+                    <th style="width: 120px;">标注代码</th>
+                    <th style="width: 100px;">参数名称</th>
+                    <th style="width: 100px;">参考类型</th>
+                    <th style="width: 100px;">标注格式</th>
+                    <th style="width: 140px;">字段路径</th>
+                    <th style="width: 90px;">合并方式</th>
+                    <th style="width: 120px;">帮助文本</th>
+                    <th style="width: 60px;">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-if="formState.reference_params.length === 0">
+                    <td colspan="9" class="empty-row">暂无参考参数</td>
+                  </tr>
                 <tr v-else v-for="(param, index) in formState.reference_params" :key="param.id || param.tempId || index">
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.code" placeholder="如: asr_reference_text" @blur="handleReferenceParamBlur(param, index)">
+                  </td>
+                  <td>
+                    <input type="text" class="form-input form-input-sm" v-model="param.annotation_code" placeholder="标注匹配代码，默认同算法代码" @blur="handleReferenceParamBlur(param, index)">
                   </td>
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.name" placeholder="参数名称" @blur="handleReferenceParamBlur(param, index)">
@@ -355,35 +383,27 @@
                     </select>
                   </td>
                   <td>
-                    <div class="annotation-name-input-group" style="display: flex; flex-wrap: wrap; gap: 4px;">
-                      <select class="form-input form-input-sm" v-model="param.annotation_code" @change="handleReferenceParamBlur(param, index)">
-                        <option value="">自定义...</option>
-                        <option value="diarization">diarization</option>
-                        <option value="asr">asr</option>
-                        <option value="translation">translation</option>
+                      <select class="form-input form-input-sm" v-model="param.annotation_format" @change="handleReferenceParamBlur(param, index)">
+                        <option value="">不指定</option>
+                        <option value="text">文本</option>
+                        <option value="json">JSON</option>
+                        <option value="rttm">RTTM</option>
+                        <option value="stm">STM</option>
                       </select>
-                      <input 
-                        v-if="!param.annotation_code || !['diarization', 'asr', 'translation'].includes(param.annotation_code)"
-                        type="text" 
-                        class="form-input form-input-sm" 
-                        v-model="param.annotation_code" 
-                        placeholder="自定义名称"
-                        @blur="handleReferenceParamBlur(param, index)"
-                      >
-                    </div>
-                  </td>
-                  <td>
-                    <select class="form-input form-input-sm" v-model="param.annotation_format" @change="handleReferenceParamBlur(param, index)">
-                      <option value="">不指定</option>
-                      <option value="text">文本</option>
-                      <option value="json">JSON</option>
-                      <option value="rttm">RTTM</option>
-                      <option value="stm">STM</option>
-                    </select>
-                  </td>
-                  <td>
-                    <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="可选提示" @blur="handleReferenceParamBlur(param, index)">
-                  </td>
+                    </td>
+                    <td>
+                      <input type="text" class="form-input form-input-sm" v-model="param.field_path" placeholder="如: model 或 segments[].emotion" @blur="handleReferenceParamBlur(param, index)">
+                    </td>
+                    <td>
+                      <select class="form-input form-input-sm" v-model="param.merge_mode" @change="handleReferenceParamBlur(param, index)">
+                        <option value="join">拼接</option>
+                        <option value="collect">收集数组</option>
+                        <option value="first">取第一个</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="可选提示" @blur="handleReferenceParamBlur(param, index)">
+                    </td>
                   <td>
                     <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveReferenceParam(index)">
                       <i class="fas fa-trash btn-icon"></i>
@@ -524,7 +544,7 @@ const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string
   'voiceprintWaitTime': { param_name: '声纹等待时间(秒)', param_type: 'number', default_value: '5.0', help_text: '声纹注册后等待时间', min_value: 0, max_value: 60, step: 1, unit: 's' },
   'interruptionEnabled': { param_name: '打断检测', param_type: 'switch', default_value: 'false', help_text: '是否启用全双工打断检测' },
   'interruptionSensitivity': { param_name: '打断灵敏度', param_type: 'slider', default_value: '0.5', help_text: '打断检测灵敏度(0~1)', min_value: 0, max_value: 1, step: 0.1 },
-  'interferers': { param_name: '干扰人列表', param_type: 'interferer_list', default_value: '[]', help_text: '干扰人配置列表' },
+  'interferers': { param_name: '干扰人列表', param_type: 'json', default_value: '[]', help_text: '干扰人配置列表' },
   'promptAudioId': { param_name: 'Prompt 音频', param_type: 'audio_select', help_text: '在干声播放之前播放的引导音频' },
   'inputText': { param_name: '输入文本', param_type: 'text', help_text: '发送给 API 的文本内容' },
   'inputAudio': { param_name: '输入音频', param_type: 'audio_select', help_text: '发送给 API 的音频文件' },
@@ -662,7 +682,7 @@ const formState = reactive({
     evaluation: [] as any[]
   },
   associated_dimensions: [] as { dimension_id: number | null; weight: number; is_default: boolean }[],
-  reference_params: [] as { code: string; name: string; type: string; annotation_code: string; annotation_format: string; help_text: string }[]
+  reference_params: [] as { code: string; name: string; type: string; annotation_code: string; annotation_format: string; field_path: string; merge_mode: string; help_text: string }[]
 })
 
 const currentParams = computed(() => {
@@ -831,8 +851,10 @@ watch(() => [props.mode, props.editData], ([mode, editData]) => {
         code: p.code || '',
         name: p.name || '',
         type: p.type || 'text',
-        annotation_code: p.annotation_code || '',
+        annotation_code: p.annotation_code || p.code || '',
         annotation_format: p.annotation_format || '',
+        field_path: p.field_path || '',
+        merge_mode: p.merge_mode || 'join',
         help_text: p.help_text || ''
       }))
     })
@@ -995,8 +1017,10 @@ async function handleEdit(record: AlgorithmRecord) {
           code: p.code || '',
           name: p.name || '',
           type: p.type || 'text',
-          annotation_code: p.annotation_code || '',
+          annotation_code: p.annotation_code || p.code || '',
           annotation_format: p.annotation_format || '',
+          field_path: p.field_path || '',
+          merge_mode: p.merge_mode || 'join',
           help_text: p.help_text || ''
         }))
       })
@@ -1065,11 +1089,17 @@ function handleAddParam() {
       param_name: '',
       param_type: 'text',
       component: 'input',
+      scope: 'common',
       options_source: '',
       options_field: '',
       options_label_field: '',
       required: false,
       default_value: '',
+      min_value: null,
+      max_value: null,
+      step: null,
+      unit: '',
+      help_text: '',
       ui_order: formState.case_params.length
     })
   } else {
@@ -1113,8 +1143,10 @@ function handleAddReferenceParam() {
     code: '',
     name: '',
     type: 'text',
-    annotation_code: '',
+    annotation_code: formState.type || '',
     annotation_format: '',
+    field_path: '',
+    merge_mode: 'join',
     help_text: ''
   })
 }
@@ -1145,7 +1177,7 @@ function getDefaultComponent(paramType: string): string {
     'switch': 'switch',
     'audio_select': 'audio-select',
     'device_select': 'device-select',
-    'interferer_list': 'interferer-list',
+    'json': 'json-editor',
     'reference': 'reference'
   }
   return typeComponentMap[paramType] || 'input'
@@ -1240,7 +1272,12 @@ async function autoSaveCaseParams(param: any, index: number) {
       help_text: param.help_text,
       component: param.component,
       ui_order: param.ui_order,
-      hidden: param.hidden
+      hidden: param.hidden,
+      scope: param.scope || 'common',
+      min_value: param.min_value,
+      max_value: param.max_value,
+      step: param.step,
+      unit: param.unit
     }
     bodyData.options_source = param.options_source || null
     bodyData.options_field = param.options_field || null
@@ -1258,6 +1295,10 @@ async function autoSaveCaseParams(param: any, index: number) {
 }
 
 async function handleReferenceParamBlur(param: any, index: number) {
+  // 自动同步：annotation_code 为空时填充为 code
+  if (!param.annotation_code && param.code) {
+    param.annotation_code = param.code
+  }
   if (!formState.type || !param.code) return
   if (referenceParamSaveTimeout) clearTimeout(referenceParamSaveTimeout)
   referenceParamSaveTimeout = setTimeout(async () => {
@@ -1269,13 +1310,15 @@ async function autoSaveReferenceParams(param: any, index: number) {
   if (!formState.type || !param.code) return
   try {
     const bodyData = {
-      code: param.code,
-      name: param.name,
-      type: param.type,
-      annotation_code: param.annotation_code || null,
-      annotation_format: param.annotation_format || null,
-      help_text: param.help_text
-    }
+        code: param.code,
+        name: param.name,
+        type: param.type,
+        annotation_code: param.annotation_code || param.code,
+        annotation_format: param.annotation_format || null,
+        field_path: param.field_path || null,
+        merge_mode: param.merge_mode || 'join',
+        help_text: param.help_text
+      }
     let result
     if (param.id) {
       result = await algorithmApi.updateReferenceParam(param.id, formState.type, bodyData)
@@ -1707,5 +1750,32 @@ async function handleDimensionBlur(index: number) {
   .form-group {
     min-width: 100%;
   }
+}
+
+.range-constraints {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.range-input {
+  width: 36px !important;
+  min-width: 36px;
+  padding: 2px 4px !important;
+  font-size: 11px;
+  text-align: center;
+}
+.range-unit {
+  width: 40px !important;
+  min-width: 40px;
+  text-align: left;
+}
+.range-sep {
+  font-size: 11px;
+  color: #999;
+  flex-shrink: 0;
+}
+.text-muted {
+  color: #ccc;
+  font-size: 12px;
 }
 </style>

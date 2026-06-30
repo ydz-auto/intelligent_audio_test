@@ -8,7 +8,7 @@
 from flask import request
 from ..models.algorithm_models import AlgorithmGroup, AlgorithmDefinition
 from ..models.database import db
-from ..utils.response import success_response, error_response
+from ..utils.web.response import success_response, error_response
 from ..schemas.algorithm import AlgorithmGroupCreate, AlgorithmGroupUpdate, AlgorithmGroupItem
 from datetime import datetime
 

@@ -362,6 +362,7 @@ export function useE2eView() {
     editingTestCase.value = testCase
     
     const normalized = normalizeTestCaseConfig(testCase.config || {})
+    const testCaseType = (testCase as any).test_type || (testCase as any).testType || 'e2e'
     
     formData.value = {
       id: testCase.id,
@@ -373,17 +374,19 @@ export function useE2eView() {
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
       config: normalized as TestCaseFormData['config'],
       translationDirectionId: testCase.translationDirectionId,
-      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || ''
+      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
+      test_type: testCaseType as 'api' | 'e2e'
     }
     
     try {
       const result = await modalManager.open(MODAL_TYPES.TEST_CASE_RELATED, {
         visible: true,
         mode: 'case',
-        testType: 'e2e',
+        testType: testCaseType,
         formData: formData.value,
         title: '编辑测试用例',
-        width: '900px'
+        width: '1800px',
+        maxWidth: '98vw'
       });
       
       if (result) {

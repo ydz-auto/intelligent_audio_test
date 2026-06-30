@@ -88,16 +88,16 @@
         :show-tags-input="true"
       />
 
-      <!-- 标注 Code 手动配置 -->
-      <div class="annotation-code-config" v-if="selectedFiles.length > 0">
+      <!-- 标注 Code 选择 -->
+      <div class="annotation-code-config" v-if="selectedFiles.length > 0 && referenceParamOptions.length > 0">
         <div class="form-row">
           <label>标注代码：</label>
-          <input 
-            type="text" 
-            v-model="annotationCode" 
-            class="form-input" 
-            placeholder="diarization asr translation ...,留空则使用 JSON 内 code/name 字段"
-          >
+          <select v-model="annotationCode" class="form-input">
+            <option value="">留空则使用 JSON 内 code/name 字段</option>
+            <option v-for="opt in referenceParamOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
         </div>
       </div>
     </div>
@@ -128,7 +128,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, reactive, onMounted, onUnmounted } from 'vue'
 import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType } from '../../../utils/audioUtils'
-import { evaluationApi, devicesApi } from '../../../utils/api'
+import { evaluationApi, devicesApi, algorithmApi } from '../../../utils/api'
 import type { PropType } from 'vue'
 import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/useTestCaseConfig'
 import UploadOptions from '../../common/UploadOptions.vue'
@@ -193,6 +193,7 @@ const importProgress = ref(0)
 const selectedFiles = ref<File[]>([])
 const tags = ref('')
 const annotationCode = ref('')
+const referenceParamOptions = ref<Array<{label: string; value: string}>>([])
 
 const uploadConfig = reactive<Record<string, any>>(
   Object.assign(
@@ -336,9 +337,20 @@ onMounted(async () => {
   }
 })
 
-watch(() => uploadConfig.algorithmType, (newType) => {
+watch(() => uploadConfig.algorithmType, async (newType) => {
+  referenceParamOptions.value = []
+  annotationCode.value = ''
   if (newType) {
     loadAlgorithmFormSchema(newType)
+    try {
+      const res = await algorithmApi.getReferenceParams(newType)
+      referenceParamOptions.value = (res.data || []).map((p: any) => ({
+        label: p.code ? `${p.code}${p.name ? ' - ' + p.name : ''}` : p.name,
+        value: p.code || ''
+      }))
+    } catch (e) {
+      console.error('加载参考参数失败:', e)
+    }
   } else {
     algorithmFormSchema.value = null
     algorithmParams.value = []
@@ -494,7 +506,7 @@ const handleImport = async () => {
             name: ann.name || ann.code || 'asr',
             code: ann.code || ann.name || 'asr',
             type: ann.type || determineAnnotationType(ann.name || ann.code || 'asr'),
-            data: { segments: ann.segments },
+            data: { segments: ann.segments, ...(ann.extra_fields || {}) },
             source_language: ann.source_language || '',
             target_language: ann.target_language || ''
           }))
@@ -507,7 +519,7 @@ const handleImport = async () => {
             name: annotationCode,
             code: annotationCode,
             type: type,
-            data: { segments: parsedData.segments },
+            data: { segments: parsedData.segments, ...(parsedData.extra_fields || {}) },
             source_language: parsedData.source_language || '',
             target_language: parsedData.target_language || ''
           }])

@@ -60,7 +60,7 @@ doc/voice_llm/
 │       ├── 08_useAudioConfig_test_type适配.md           # 音频配置 Hook 按 test_type 区分
 │       ├── 09_useDimensionConfig扁平维度.md             # dimensions 从 {api,e2e} 改为数组
 │       ├── 10_RoundConfigEditor.md                      # 轮次编辑器（参数驱动，DynamicForm）
-│       ├── 11_SessionConfigEditor.md                    # 会话配置编辑器（API）
+│       ├── 11_SessionConfigEditor.md                    # 会话配置编辑器（已移除，通过 DynamicForm 替代）
 │       ├── 12_VoiceprintConfigEditor.md                 # 声纹注册编辑器（DynamicForm 子编辑器）
 │       ├── 13_InterfererConfigEditor.md                 # 干扰人配置编辑器（DynamicForm 子编辑器）
 │       ├── 14_RoundEvaluationEditor.md                  # 单轮评估配置编辑器（E2E）
@@ -193,7 +193,7 @@ doc/voice_llm/
 | 08 | 02_选用例 | `02_选用例/frontend/08_useAudioConfig_test_type适配.md` | 音频配置 Hook 按 test_type 区分 |
 | 09 | 02_选用例 | `02_选用例/frontend/09_useDimensionConfig扁平维度.md` | dimensions 从 {api,e2e} 改为数组 |
 | 10 | 02_选用例 | `02_选用例/frontend/10_RoundConfigEditor.md` | 轮次编辑器（参数驱动，DynamicForm 渲染） |
-| 11 | 02_选用例 | `02_选用例/frontend/11_SessionConfigEditor.md` | 会话配置编辑器（API） |
+| 11 | 02_选用例 | `02_选用例/frontend/11_SessionConfigEditor.md` | 会话配置编辑器（已移除，通过 DynamicForm 替代） |
 | 12 | 02_选用例 | `02_选用例/frontend/12_VoiceprintConfigEditor.md` | 声纹注册编辑器（DynamicForm 子编辑器） |
 | 13 | 02_选用例 | `02_选用例/frontend/13_InterfererConfigEditor.md` | 干扰人配置编辑器（DynamicForm 子编辑器） |
 | 14 | 02_选用例 | `02_选用例/frontend/14_RoundEvaluationEditor.md` | 单轮评估配置编辑器 |
@@ -318,7 +318,7 @@ doc/voice_llm/
 | 层 | 路径 | 说明 |
 |----|------|------|
 | 前端 | `02_选用例/frontend/10_RoundConfigEditor` | 轮次编辑器（参数驱动，DynamicForm 渲染） |
-| 前端 | `02_选用例/frontend/11_SessionConfigEditor` | 会话配置编辑器（API） |
+| 前端 | `02_选用例/frontend/11_SessionConfigEditor` | 会话配置编辑器（已移除，通过 DynamicForm 替代） |
 | 前端 | `02_选用例/frontend/12_VoiceprintConfigEditor` | 声纹注册编辑器（DynamicForm 子编辑器） |
 | 前端 | `02_选用例/frontend/13_InterfererConfigEditor` | 干扰人配置编辑器（DynamicForm 子编辑器） |
 | 前端 | `02_选用例/frontend/14_RoundEvaluationEditor` | 单轮评估配置编辑器 |
@@ -439,7 +439,7 @@ graph TD
         D01 --> D05[05_双记录CRUD]
         F01[01_types.ts] --> F06[06_CaseForm]
         F01 --> F10[10_RoundConfigEditor]
-        F01 --> F11[11_SessionConfigEditor]
+        F01 --> F11[11_SessionConfigEditor 已移除]
         F01 --> F12[12_VoiceprintConfigEditor]
         F01 --> F13[13_InterfererConfigEditor]
         F01 --> F14[14_RoundEvaluationEditor]

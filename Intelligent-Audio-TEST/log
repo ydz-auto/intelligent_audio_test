@@ -1,145 +1,1343 @@
-C:\Users\ljh\AppData\Local\Microsoft\WindowsApps\python3.12.exe C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\run.py 
-[2026-04-24 16:59:17,744] INFO in app: Task Manager 后端服务启动中... (Level: DEBUG)
-[2026-04-24 16:59:17,744] INFO in app: JSON_AS_ASCII configuration: False
-[2026-04-24 16:59:17] - log_worker - INFO - Worker thread started.
-[2026-04-24 16:59:17] - get_db_handler - INFO - DatabaseLogHandler singleton created.
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: Task Manager 后端服务启动中... (Level: DEBUG)
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: JSON_AS_ASCII configuration: False
-[2026-04-24 16:59:17] - DatabaseLogHandler - DEBUG - Database init deferred: The current Flask app is not registered with this 'SQLAlchemy' instance. Did you forget to call 'init_app', or did you create multiple 'SQLAlchemy' instances?
-[2026-04-24 16:59:17] - DatabaseLogHandler - DEBUG - Database init deferred: The current Flask app is not registered with this 'SQLAlchemy' instance. Did you forget to call 'init_app', or did you create multiple 'SQLAlchemy' instances?
-[2026-04-24 16:59:17,993] INFO in app: 服务重启后任务状态更新：
-[2026-04-24 16:59:17,993] INFO in app: - 更新任务状态数: 1 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17,993] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17,993] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17,993] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:18,003] INFO in app: 任务调度器初始化完成
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: 服务重启后任务状态更新：
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务状态数: 1 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17] - log_worker - INFO - Database components initialized successfully.
-[2026-04-24 16:59:18] - log_and_emit - INFO - [Engine] 任务调度器已启动
-[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [app] INFO in app: 任务调度器初始化完成
-[2026-04-24 16:59:18,297] DEBUG in app: Registering blueprints...
-[2026-04-24 16:59:18] - DatabaseLogHandler - DEBUG - [app] DEBUG in app: Registering blueprints...
-[2026-04-24 16:59:18] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal: Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
- * Serving Flask app 'backend.app'
- * Debug mode: on
-[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5000
- * Running on http://100.70.28.65:5000
-[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: Press CTRL+C to quit
-[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal:  * Restarting with stat
-[2026-04-24 16:59:20] - log_worker - INFO - Worker thread started.
-[2026-04-24 16:59:20] - get_db_handler - INFO - DatabaseLogHandler singleton created.
-[2026-04-24 16:59:20,973] INFO in app: 服务重启后任务状态更新：
-[2026-04-24 16:59:20,974] INFO in app: - 更新任务状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20,974] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20,975] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20,977] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: 服务重启后任务状态更新：
-[2026-04-24 16:59:20] - log_worker - INFO - Database components initialized successfully.
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:21,029] INFO in app: 任务调度器初始化完成
-[2026-04-24 16:59:21] - log_and_emit - INFO - [Engine] 任务调度器已启动
-[2026-04-24 16:59:21] - DatabaseLogHandler - INFO - [app] INFO in app: 任务调度器初始化完成
-[2026-04-24 16:59:21] - DatabaseLogHandler - DEBUG - [app] DEBUG in app: Registering blueprints...
-[2026-04-24 16:59:21,305] DEBUG in app: Registering blueprints...
-[2026-04-24 16:59:21] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal: Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
-[2026-04-24 16:59:21] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal:  * Debugger is active!
-[2026-04-24 16:59:21] - DatabaseLogHandler - INFO - [_internal] INFO in _internal:  * Debugger PIN: 514-547-148
-[2026-04-24 16:59:30] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/tasks | Method: OPTIONS | Args: {"page": "1", "per_page": "100", "perPage": "100"}
-[2026-04-24 16:59:30] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:30] "OPTIONS /api/v1/tasks?page=1&per_page=100 HTTP/1.1" 200 -
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/tasks | Method: GET | Args: {"page": "1", "per_page": "100", "perPage": "100"}
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/tasks | Method: GET | Status: 200 | Response: {"code": 0, "data": {"items": [{"apis": [], "caseCount": 1, "completedAt": "2026-04-17T10:14:59.369075", "completedCases": 0, "config": {"concurrentTasks": 4, "parallel": true}, "createdAt": "2026-04-17T10:13:57.262993", "deviceCount": 1, "devices": [{"id": 16, "model": "BKQ_AN10", "name": "Plaud", "status": "online"}], "failedCases": 1, "id": 285, "name": "E2E测试任务_2026/4/17 10:13:50", "reports": {"count": 1, "reports": [{"createdAt": "2026-04-17T10:14:59.989150", "id": 11, "name": "任务报告_E2E测试任务
-[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "GET /api/v1/tasks?page=1&per_page=100 HTTP/1.1" 200 -
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/algorithm/options | Method: OPTIONS
-[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "OPTIONS /api/v1/algorithm/options HTTP/1.1" 200 -
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/algorithm/options | Method: GET
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/logs | Method: OPTIONS | Args: {"module": "task"}
-[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "OPTIONS /api/v1/logs?module=task HTTP/1.1" 200 -
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/algorithm/options | Method: GET | Status: 200 | Response: {"code": 0, "data": {"algorithms": [{"groupId": 1, "groupName": "翻译", "icon": "", "name": "机器翻译", "value": "translation"}, {"groupId": 2, "groupName": "语音识别", "icon": "", "name": "语音识别(ASR)", "value": "asr"}, {"groupId": 3, "groupName": "声纹识别", "icon": "", "name": "说话人识别", "value": "speaker_recognition"}, {"groupId": 4, "groupName": "语音合成", "icon": null, "name": "语音合成(TTS)", "value": "tts"}, {"groupId": null, "groupName": null, "icon": null, "name": "ASR评估", "value": "asr_eval"}]}, "message": "S
-[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "GET /api/v1/algorithm/options HTTP/1.1" 200 -
-[2026-04-24 16:59:32] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/logs | Method: GET | Args: {"module": "task"}
-[2026-04-24 16:59:32] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/logs | Method: GET | Status: 200 | Response: {"code": 0, "data": {"items": [], "page": 1, "pages": 0, "perPage": 50, "total": 0}, "message": "Success", "success": true}
-[2026-04-24 16:59:32] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:32] "GET /api/v1/logs?module=task HTTP/1.1" 200 -
-[2026-04-24 16:59:37] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/evaluation/task/reevaluate | Method: OPTIONS
-[2026-04-24 16:59:37] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:37] "OPTIONS /api/v1/evaluation/task/reevaluate HTTP/1.1" 200 -
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/evaluation/task/reevaluate | Method: POST | Body: {"task_id": 243, "reevaluate_type": "all", "reextract_device_output": true}
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 重新评估任务 243: 找到 2 条测试结果, reextract_device_output=True
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
-[2026-04-24 16:59:38] - log_worker - INFO - Worker thread started.
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
-[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
-    result = driver.extract_results_from_archive(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
-    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: '<' not supported between instances of 'float' and 'NoneType'
+这是为啥啊：
+[_evaluate_result] reference_params: {
+  "default": [
+    {
+      "code": "text",
+      "type": "text",
+      "api": "",
+      "e2e": "为了应对新冠疫情科研团队加速开发疫苗并利用大数据追踪病毒传播路径",
+      "annotation_code": "asr",
+      "annotation_format": "text"
+    }
+  ]
+}
+[kwargs field_key] field_key=asr_ref, field_value=None, field_value_type=<class 'NoneType'>
+[ref_texts] final ref_texts={}
+[ref_texts] final ref_texts={}
 
-[2026-04-24 16:59:38] - DatabaseLogHandler - WARNING - [device_result_reextractor] WARNING in device_result_reextractor: 跳过 test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a: 提取结果格式异常
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 重新提取设备输出完成: 成功重新提取 0 个用例
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 检查结果 317: execution_status=completed, has_algorithm_result=True
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 结果 317: test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a, reference_params_count=3
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
-[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
-    result = driver.extract_results_from_archive(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
-    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: '<' not supported between instances of 'float' and 'NoneType'
+这是为啥
+对，完全可以修。问题就在 `_build_evaluation_params` 里，`reference_params` 进来后只认 list，其他格式直接跳过，导致 payload 里没有参考文本。
 
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [evaluation] 从存档提取设备输出返回格式异常: <class 'dict'>
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 检查结果 316: execution_status=completed, has_algorithm_result=True
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 结果 316: test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a, reference_params_count=3
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
-[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
-    result = driver.extract_results_from_archive(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
-    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: '<' not supported between instances of 'float' and 'NoneType'
+加一个归一化方法，把所有格式统一转成 list，同时处理 `api`/`e2e` 字段没有 `value` 的情况。
 
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [evaluation] 从存档提取设备输出返回格式异常: <class 'dict'>
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/evaluation/task/reevaluate | Method: POST | Status: 400 | Response: {"code": 203, "message": "没有需要重新评估的用例", "success": false}
-[2026-04-24 16:59:38] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:38] "POST /api/v1/evaluation/task/reevaluate HTTP/1.1" 400 -
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\case_parameter_extractor.py
+          
+changes: undefined
+          
+改完了，让我验证一下改动是否正确。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\case_parameter_extractor.py
+          
+改完了，让我验证一下改动是否正确。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\case_parameter_extractor.py
+          
+改完了，让我验证一下改动是否正确。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\case_parameter_extractor.py
+          
+改完了，让我验证一下改动是否正确。代码结构没问题。现在来总结一下这次修复做了什么：
+
+## 修复内容
+
+在 [case_parameter_extractor.py](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/algorithm/case_parameter_extractor.py#L147-L191) 中新增了两个方法：
+
+### 1. `_normalize_reference_params` — 格式归一化
+
+把所有格式的 `reference_params` 统一转成标准 list：
+
+| 输入格式 | 处理方式 |
+|---------|---------|
+| `list`（标准格式） | 直接遍历，逐项 normalize |
+| `{"params": [...]}` | 取出 `params` 列表再递归 |
+| `{"default": [...]}` / `{"api": [...]}` / `{"e2e": [...]}` | 取出对应列表再递归 |
+| `{code: {type, value, ...}}` (报告格式) | 转为 list，key 补为 `code` 字段 |
+
+### 2. `_normalize_single_ref_param` — 值字段归一化
+
+处理没有 `value` 字段、但有 `api`/`e2e` 字段的情况：
+
+```python
+# 输入: {"code": "text", "type": "text", "api": "", "e2e": "为了应对..."}
+# test_type='e2e' 时 → 输出: {..., "value": "为了应对..."}
+```
+
+优先级：`value` > `test_type对应字段` > `api/e2e` fallback
+
+### 3. `_build_evaluation_params` 改动
+
+- 第 215-216 行：先取原始数据，再过归一化
+- 第 241 行：`isinstance(reference_params, list)` → `if reference_params:`（归一化后一定是 list）
+- 增加了 DEBUG 日志，打印归一化前后的类型和 code 列表，方便排查
+
+这样不管数据库里存的是哪种格式，评估参数构建都能正确提取到参考文本，payload 不会再丢了。
+
+让我深入追溯每种格式的来源，搞清楚为什么会出现这么多格式。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\reference_params_generator.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\testcase_controller.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\testcase_controller.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\schemas\testcase.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\test-case\TestCaseModal\types.ts
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: reference_params|referenceParams
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\e2e_executor.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\test-case\TestCaseModal\CaseForm.vue
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: normalizeParams
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: referenceParams|reference_params
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\device_result_collector.py
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: handleSubmit|submitForm|saveCase|referenceParams|reference_params
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\test-case\TestCaseModal\index.vue
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: @save|handleSave|referenceParams|reference_params|algorithmParams
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: @save.*TestCaseModal|handleSaveCase|saveCase|createTestCase|updateTestCase
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: referenceParams|reference_params|algorithmParams|algorithm_params
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: referenceParams|reference_params|algorithmParams|algorithm_params
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: createTestCase|updateTestCase
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: convertTestCaseFormData|addTestCase
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: convertTestCaseFormData
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\base_executor.py
+          
+现在我完全搞清楚了。让我给你画一张完整的"格式演变史"。
+
+## `reference_params` 多格式的根本原因
+
+### 格式 1：生成器标准格式（list）
+
+来源：[ReferenceParamsGenerator.generate()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/algorithm/reference_params_generator.py#L37-L96) → [apply_to_config()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/algorithm/reference_params_generator.py#L217-L243)
+
+```python
+# 生成器输出，直接写入 test_case.reference_params
+[
+    {"code": "asr_reference_text", "type": "text", "value": "你好世界"},
+    {"code": "rttm_ref", "type": "rttm", "value": {"text": "...", "segments": [...]}}
+]
+```
+
+这是**唯一的标准格式**，所有用例创建/更新时都会经过 `refresh_reference_texts()` → `apply_to_config()` 生成这个格式。
+
+---
+
+### 格式 2：前端提交格式（list，但字段不同）
+
+来源：前端 [convertTestCaseFormData()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/utils/utils.ts#L188-L216)
+
+```typescript
+// 前端把 Record<string, any> 转成数组
+convertedData.referenceParams = Object.entries(params).map(([key, value]) => ({
+    code: key,       // ← key 作为 code
+    ...value         // ← 展开 value 对象（可能包含 type, api, e2e 等字段）
+}));
+```
+
+如果前端存的 value 是 `{"type": "text", "api": "", "e2e": "为了应对..."}`，提交后变成：
+
+```json
+[{"code": "text", "type": "text", "api": "", "e2e": "为了应对..."}]
+```
+
+**问题**：没有 `value` 字段！数据在 `api`/`e2e` 字段里。而且 `code` 是 `"text"` 而不是 `"asr_reference_text"`。
+
+---
+
+### 格式 3：你遇到的 `{"default": [...]}` 格式
+
+来源：**前端 `normalizeParams` 读取时的副作用**
+
+前端 [normalizeParams()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/CaseForm.vue#L531-L544) 把后端返回的 list 转成 `Record<string, any>`：
+
+```typescript
+// list → dict，以 code 为 key
+params.reduce((acc, item) => {
+    const code = item.fieldCode || item.field_code;  // ← 注意：找的是 fieldCode
+    acc[code] = value;
+}, {});
+```
+
+但后端返回的 `ReferenceParamItem` 的字段是 `code`（不是 `fieldCode`），所以 `normalizeParams` 找不到 `code`，**整个 list 被当成普通 object 原样返回**。
+
+然后编辑保存时，这个数据又被 `convertTestCaseFormData` 二次加工，格式越来越乱。
+
+**而 `{"default": [...]}` 这个结构**，很可能是某个旧版本的前端或某个批量操作接口直接写入了这种格式到数据库。
+
+---
+
+### 格式 4：报告展示格式（dict，按 code 索引）
+
+来源：[get_reference_params_for_report()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/algorithm/reference_params_generator.py#L290-L345) 和 [report_utils.py](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/report_utils.py#L1178-L1197)
+
+```python
+{
+    "asr_reference_text": {"code": "asr_reference_text", "type": "text", "value": "..."},
+    "rttm_ref": {"code": "rttm_ref", "type": "rttm", "value": {...}}
+}
+```
+
+这是**有意为之**的格式转换，为了报告展示方便按 code 快速查找。
+
+---
+
+### 格式 5：E2E 执行器中间格式（list → dict）
+
+来源：[e2e_executor._process_results()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/e2e_executor.py#L598-L610)
+
+```python
+# 把 list 转成 dict，以 code 为键
+adjusted_ref_dict = {}
+for item in adjusted_case_reference_params:
+    code = item.get('code')
+    adjusted_ref_dict[code] = item
+case_reference_params = adjusted_ref_dict
+```
+
+这也是**有意为之**的运行时转换，但转换后的 dict 格式如果泄漏到下游就会出问题。
+
+---
+
+### 格式 6：旧兼容格式 `{"params": [...]}`
+
+来源：历史遗留数据，[get_all_reference_params()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/algorithm/reference_params_generator.py#L274-L288) 有兼容处理：
+
+```python
+if isinstance(reference_params, dict):
+    return reference_params.get('params', [])
+```
+
+---
+
+## 总结：为什么会有这么多格式？
+
+| 原因 | 涉及的格式 |
+|------|-----------|
+| **1. 不同阶段有不同需求** | 生成器用 list（顺序遍历），报告用 dict（按 code 查找），E2E 用 dict（运行时转换） |
+| **2. 前后端数据结构不统一** | 后端 Schema 用 `{code, type, value}`，前端用 `Record<string, any>`，互转时丢失/变形字段 |
+| **3. `normalizeParams` 字段名不匹配** | 前端找 `fieldCode`/`field_code`，后端返回的是 `code`，导致读取失败，数据被原样透传 |
+| **4. 前端提交时 `...value` 展开** | 把 `value` 对象的子字段（`api`, `e2e`）直接展开到顶层，丢失了 `value` 字段本身 |
+| **5. 历史遗留** | 旧版本存了 `{"params": [...]}` 或 `{"default": [...]}` 格式，没有数据迁移 |
+| **6. 消费端只认 list** | `_build_evaluation_params` 的 `isinstance(reference_params, list)` 只处理格式 1，其他全部静默跳过 |
+
+**核心问题**：写入路径有多条（生成器、前端提交、批量操作、旧数据），但读取路径（`_build_evaluation_params`）只认一种格式，且没有任何兼容/归一化处理。
+
+需要我修复这个兼容性问题吗？
+
+
+问题很明显：请求体里发的是 `asr_result`，但评估服务期望的是 `asr_hyp`。让我查一下两边的字段映射。
+
+
+        
+            
+toolName: no_need_execute
+            
+status: no_need_execute
+          
+          
+
+        
+            
+toolName: no_need_execute
+            
+status: no_need_execute
+          
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: asr_result|asr_hyp
+          
+
+        
+            
+toolName: search_codebase
+            
+status: success
+          
+query: eval_server validates required fields for wer task_type, asr_ref and asr_hyp field validation
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: evaluation.*payload|eval.*request|评测.*请求
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: wer.*task_type|task_type.*wer
+          
+
+        
+            
+toolName: search_codebase
+            
+status: success
+          
+query: evaluation API request payload building, asr_result asr_hyp field names
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: asr_ref|asr_hyp
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_api_client.py
+          
+现在让我读取核心验证逻辑所在的文件，获取更完整的上下文。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\eval_server\app\controllers\api.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\eval_server\app\services\task_service.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\algorithm_result_field_mapper.py
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: asr_hyp
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_service.py
+          
+Now let me look at the `field_mapper` module and the `render_body_template` utility, as well as the `body_template` rendering logic:
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\field_mapper.py
+          
+## 查找结果
+
+在 eval_server 中，`wer` 任务类型的必填字段验证逻辑位于以下位置：
+
+### 核心验证代码
+
+文件 [api.py](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/eval_server/app/controllers/api.py#L137-L139)，第 137-139 行：
+
+```python
+if task_type in ['wer', 'ser']:
+    if not task_params.get('asr_ref') or not task_params.get('asr_result'):
+        return error_response(f"Missing required fields for {task_type}: asr_ref, asr_result", code=CODE_VALIDATION_ERROR)
+```
+
+### 重要说明：字段名称不是 `asr_hyp`，而是 `asr_result`
+
+在整个代码库中 **不存在** `asr_hyp` 这个字段。`wer` 任务类型的两个必填字段实际名称为：
+
+| 字段名 | 说明 |
+|--------|------|
+| `asr_ref` | 参考文本（标准答案） |
+| `asr_result` | ASR 识别结果（待评估文本） |
+
+### 完整验证流程
+
+[create_task](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/eval_server/app/controllers/api.py#L88-L147) 函数的验证流程如下：
+
+1. **第 124-125 行** -- 验证 `Content-Type` 必须为 `application/json`
+2. **第 128 行** -- 从请求体获取 `task_type`，默认值为 `'wer'`
+3. **第 131-133 行** -- 验证 `task_type` 是否在支持列表 `['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer']` 中
+4. **第 135 行** -- 将除 `task_type` 和 `endpoints` 之外的所有参数提取为 `task_params`
+5. **第 137-139 行** -- 当 `task_type` 为 `wer` 或 `ser` 时，验证 `asr_ref` 和 `asr_result` 必须存在且非空
+
+### 计算阶段的字段使用
+
+验证通过后，在 [TaskService.calculate](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/eval_server/app/services/task_service.py#L29-L37) 方法中（第 29-37 行），`wer` 任务会这样使用这两个字段：
+
+```python
+if task_type == 'wer':
+    return calculate_wer(
+        task_params.get('asr_ref'),
+        task_params.get('asr_result'),
+        task_params.get('source_lang'),
+        task_params.get('target_lang'),
+        task_params.get('translate_direct') or task_params.get('translation_direction'),
+        normalize=normalize
+    )
+```
+
+### 验证逻辑的特点
+
+验证使用的是 `not task_params.get(...)` 模式，这意味着以下值都会导致验证失败（被视为"缺失"）：
+- 字段完全不存在
+- 值为 `None`
+- 值为空字符串 `""`
+- 值为 `0` 或 `False`（但在实际场景中这些值不太可能作为文本输入）
+
+### 总结
+
+如果您在寻找 `asr_hyp` 字段的验证，该字段在代码库中并不存在。与 `asr_ref` 配对的字段名称是 `asr_result`。如果您正在对接 eval_server 的 `wer` 任务类型，请求体中需要包含的必填字段是 `asr_ref` 和 `asr_result`。
+        
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_utils.py
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: body_template
+          
+Let me also look at the `algorithm_config_loader` to understand how evaluation input fields are loaded from the database, and the `ParamMapping` model:
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\algorithm_config_loader.py
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: class ParamMapping
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\views\EvaluationLogic\evaluation.ts
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\views\EvaluationLogic\evaluation.ts
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\views\EvaluationLogic\evaluation.ts
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\views\EvaluationLogic\evaluation.ts
+          
+Now I have a comprehensive understanding of the entire flow. Let me compile the analysis.
+
+---
+
+## 评测 API 请求 Payload 构建流程分析：`asr_result` / `asr_hyp` 字段名的确定机制
+
+### 一、总体架构概述
+
+评测 API 请求 payload 的构建涉及 **三层** 协作：
+
+1. **数据库配置层** -- `param_mappings` 表 + `dimensions` 表中的 `api_settings` 和 `required_inputs`
+2. **后端构建层** -- `evaluation_service.py` 构建 context, `evaluation_api_client.py` 的 `build_payload()` 渲染 payload
+3. **前端配置层** -- `evaluation.ts` 中维度编辑表单动态生成 `body_template`
+
+---
+
+### 二、字段名的源头：数据库 `param_mappings` 表
+
+字段名（如 `asr_result`、`asr_hyp`）的**最终源头**是数据库中的 [ParamMapping](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/models/algorithm_models.py#L286-L308) 模型：
+
+```python
+class ParamMapping(db.Model):
+    __tablename__ = 'param_mappings'
+    algorithm_type = Column(String(50))   # 关联算法类型，如 'asr'
+    source = Column(String(20))           # 参数来源：case/reference/device/api
+    source_param = Column(String(50))     # 源参数代码，如 'asr_result'
+    source_direction = Column(String(10)) # 源参数方向：input/output
+    target_param = Column(String(50))     # 目标评估维度参数代码，如 'asr_result'
+    transform_type = Column(String(20))   # 转换类型
+```
+
+数据库中每条记录定义了"从哪个源参数（`source_param`）映射到哪个评测参数（`target_param`）"。**`target_param` 的值就是最终出现在 payload 中的字段名**。
+
+---
+
+### 三、后端字段名确定的完整链路
+
+#### 步骤 1：`AlgorithmConfigLoader` 从数据库加载映射
+
+[AlgorithmConfigLoader._get_evaluation_mappings()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/algorithm/algorithm_config_loader.py#L282-L311) 将所有 `source` 为 `device`/`api`/`case`/`reference` 的映射汇总为评估输入映射列表：
+
+```python
+def _get_evaluation_mappings(self, algorithm_type: str) -> List[Dict[str, Any]]:
+    mappings = self._config_cache.get('mappings', {}).get(algorithm_type, {})
+    result = []
+    for source in ['device', 'api', 'case', 'reference', 'adjusted_reference']:
+        for m in mappings.get(source, []):
+            result.append({
+                'source': source,
+                'source_param': m['source_param'],
+                'target_param': m['target_param'],  # <-- 这就是评测 payload 中的字段名
+                ...
+            })
+    return result
+```
+
+#### 步骤 2：`FieldMapper` 构建评估输入字段定义
+
+[FieldMapper._build_field_definitions()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/algorithm/field_mapper.py#L157-L279) 将评估映射转化为评估输入字段定义：
+
+```python
+eval_mappings = mappings.get('evaluation', [])
+for m in eval_mappings:
+    target_param = m.get('target_param')
+    source_param = m.get('source_param', target_param)
+    # ...
+    original_fields['evaluation']['input'][target_param] = {
+        'code': target_param,       # <-- 字段名由 target_param 决定
+        'name': m.get('dimension_name', target_param),
+        'type': param_type,
+        'source': source,
+        # ...
+    }
+```
+
+关键点：**`target_param` 成为评估输入字段的 `code`**，也就是后续 context 字典中的 key。
+
+#### 步骤 3：`EvaluationService.evaluate_case()` 构建 context
+
+[evaluate_case()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/evaluation_service.py#L365-L744) 中，先从 `algorithm_result` 提取算法输出字段，再合并参考参数：
+
+```python
+# 获取评估输入字段定义
+eval_input_fields = field_mapper.get_evaluation_input_fields(algorithm_type)
+
+# 从 kwargs 中提取参考文本
+ref_texts = {}
+for field_key, field_info in eval_input_fields.items():
+    field_value = kwargs.get(field_key)
+    if field_value:
+        ref_texts[field_key] = { 'value': field_value, 'field_type': field_type }
+```
+
+然后在 [EndpointWorker._execute_evaluation()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/evaluation_service.py#L120-L255) 中构建完整 context：
+
+```python
+# 1. 从 algorithm_result 提取算法输出字段
+output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
+algo_results = {}
+for key in output_field_keys:
+    val = algorithm_result.get(key)
+    algo_results[key] = val if val is not None else ''
+
+# 2. 构建 context
+context = { "algorithm_result": algorithm_result, "algorithm_type": algorithm_type }
+for key, value in algo_results.items():
+    if key not in context:
+        context[key] = value
+
+# 3. 合并评估输入字段（参考参数等）
+for field_key, field_info in eval_input_fields.items():
+    field_value = kwargs.get(field_key)
+    if field_value:
+        context[field_key] = { 'value': field_value, 'field_type': field_type }
+```
+
+此时 context 中包含了诸如 `asr_result`（来自算法输出）和 `asr_ref`（来自参考参数）等字段。
+
+#### 步骤 4：`build_payload()` 渲染 body_template
+
+[evaluationApiClient.build_payload()](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/evaluation_api_client.py#L697-L744) 是最终构建 payload 的核心方法：
+
+```python
+def build_payload(self, body_template, context, task_id=None, test_case_id=None, algorithm_type=None):
+    # 1. 识别特殊字段（来自 AlgorithmResultFieldMapper）
+    special_fields = set()
+    if algorithm_type:
+        output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type)
+        for field in output_fields:
+            source_param = field.get('source_param', '')
+            if source_param:
+                special_fields.add(source_param)
+
+    # 2. 处理 context 中的字段值
+    for k, v in context.items():
+        if special_fields and k in special_fields and isinstance(v, dict) and 'text' in v and 'json' in v:
+            processed_context[k] = v  # 保留 {text, json} 结构
+        elif isinstance(v, dict) and 'field_type' in v:
+            processed_context[k] = self._process_field_by_type(v, v.get('field_type', 'text'))
+        else:
+            processed_context[k] = v
+
+    # 3. 渲染 body_template
+    if body_template:
+        if isinstance(body_template, dict):
+            result = {}
+            for k, v in body_template.items():
+                if k in processed_context:
+                    result[k] = processed_context[k]
+                elif isinstance(v, str) and v.startswith('{{') and v.endswith('}}'):
+                    placeholder_key = v[2:-2]
+                    if placeholder_key in processed_context:
+                        result[k] = processed_context[placeholder_key]
+                    else:
+                        result[k] = v  # 未找到则保留占位符
+                else:
+                    result[k] = v
+            return result
+```
+
+**核心逻辑**：遍历 `body_template` 的每个 key，如果 key 在 `processed_context` 中存在，则用 context 中的值替换；如果值是 `{{xxx}}` 格式的占位符，则用 `xxx` 作为 key 去 context 中查找。
+
+---
+
+### 四、`body_template` 的来源：维度配置
+
+`body_template` 存储在数据库 `dimensions` 表的 `api_settings` JSON 字段中。例如：
+
+```json
+{
+  "method": "POST",
+  "headers": {"content-type": "application/json"},
+  "body_template": {
+    "asr_result": "{{asr_result}}",
+    "asr_ref": "{{asr_ref}}"
+  }
+}
+```
+
+在 [evaluation_service.py 第194-196行](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/evaluation_service.py#L194-L196)：
+
+```python
+api_settings = representative_dim_data.get('api_settings', {})
+body_template = api_settings.get('body_template')
+```
+
+---
+
+### 五、前端如何动态生成 `body_template`
+
+在前端 [evaluation.ts](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/views/EvaluationLogic/evaluation.ts#L376-L383) 中，保存维度时会根据 `requiredInputs` 自动生成 `body_template`：
+
+```typescript
+// 保存时：根据 requiredInputs 自动生成 body_template
+if (requiredInputsArray.length > 0 && apiSettingsObj.body_template) {
+    requiredInputsArray.forEach((input: any) => {
+        const inputKey = input.param_code || input.key;
+        if (inputKey && !apiSettingsObj.body_template[inputKey]) {
+            apiSettingsObj.body_template[inputKey] = `{{${inputKey}}}`;
+        }
+    });
+}
+```
+
+同时会**删除** `body_template` 中不在 `requiredInputs` 里的多余 key：
+
+```typescript
+Object.keys(apiSettingsObj.body_template).forEach(key => {
+    if (!requiredInputKeys.has(key)) {
+        delete apiSettingsObj.body_template[key];
+    }
+});
+```
+
+这意味着：**`body_template` 的 key 完全由 `requiredInputs` 中的 `param_code`（或 `key`）决定**。
+
+---
+
+### 六、`asr_result` vs `asr_hyp` 的确定机制总结
+
+字段名 `asr_result` 或 `asr_hyp` 的确定取决于以下**三个配置点的联动**：
+
+| 配置点 | 位置 | 作用 |
+|--------|------|------|
+| **1. `param_mappings` 表** | 数据库 | `target_param` 定义了评测输入字段的代码名（如 `asr_result`） |
+| **2. `dimensions.required_inputs`** | 数据库/前端 | 维度的 `requiredInputs[].param_code` 或 `.key` 声明了该维度需要哪些字段 |
+| **3. `dimensions.api_settings.body_template`** | 数据库/前端 | `body_template` 的 key 和 `{{xxx}}` 占位符决定了最终 payload 的字段名 |
+
+**具体流程**：
+
+```
+param_mappings.target_param (数据库)
+        |
+        v
+FieldMapper.get_evaluation_input_fields() 返回的字段 code
+        |
+        v
+evaluate_case() 中构建 context 字典的 key
+        |
+        v
+dimensions.required_inputs[].param_code (前端配置)
+        |
+        v
+dimensions.api_settings.body_template 的 key (前端自动生成)
+        |
+        v
+build_payload() 将 body_template 的 key 与 context 匹配
+        |
+        v
+最终发送给 eval_server 的 payload 字段名
+```
+
+**因此**：
+- 如果数据库 `param_mappings` 中 `target_param` 配置为 `asr_result`，且维度的 `requiredInputs` 和 `body_template` 也配置为 `asr_result`，则 payload 中字段名就是 `asr_result`。
+- 如果配置为 `asr_hyp`，则 payload 中字段名就是 `asr_hyp`。
+- **字段名不是硬编码的**，而是完全由数据库配置 + 维度配置动态决定的。
+
+---
+
+### 七、eval_server 端的验证
+
+在 [eval_server/api.py](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/eval_server/app/controllers/api.py#L122-L148) 中，服务端根据 `task_type` 验证必需字段：
+
+```python
+if task_type in ['wer', 'ser']:
+    if not task_params.get('asr_ref') or not task_params.get('asr_result'):
+        return error_response(f"Missing required fields for {task_type}: asr_ref, asr_result")
+elif task_type in ['cpwer', 'tcpwer', 'stm_wer']:
+    if not task_params.get('ref_stm') or not task_params.get('hyp_stm'):
+        return error_response(f"Missing required fields for {task_type}: ref_stm, hyp_stm")
+```
+
+这意味着 `eval_server` 端**硬编码**期望 `asr_result`（WER/SER 类型）或 `hyp_stm`（CPWER 类型）。因此 Intelligent-Audio-TEST 后端的 `param_mappings` 和维度配置必须与 eval_server 的期望字段名保持一致，否则评测请求会因缺少必需字段而失败。
+        
+          
+问题很清楚了。让我直接看一下 eval_server 的验证代码，确认它到底期望什么字段名。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\eval_server\app\controllers\api.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_api_client.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_service.py
+          
+不合理，有两个问题。让我定位根因。
+
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: _process_field_by_type
+          
+不合理，有两个问题。让我定位根因。现在完全清楚了。请求体有 **两个问题**：
+
+## 问题 1：`asr_ref` 是 dict，eval_server 期望 string
+
+请求体里 `asr_ref` 发的是：
+```json
+{"text": "手持哑铃...", "json": []}
+```
+
+但 eval_server 验证 `not task_params.get('asr_ref')` 时，非空 dict 是 truthy 的，**这个检查本身能通过**。问题出在下游 WER 计算函数期望的是纯文本字符串。
+
+**根因链路**：
+
+1. [_execute_evaluation](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/evaluation_service.py#L176-L177) 中，`asr_ref` 的值是 `{"text": "...", "json": []}` (dict with `text`)，被原样放入 context：
+   ```python
+   if isinstance(field_value, dict) and 'text' in field_value:
+       context[field_key] = field_value  # dict 原样保留
+   ```
+
+2. [build_payload](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/evaluation_api_client.py#L712-L714) 中，`asr_ref` 被识别为 `special_fields`（算法结果输出字段），dict 结构被保留：
+   ```python
+   if special_fields and k in special_fields and isinstance(v, dict) and 'text' in v and 'json' in v:
+       processed_context[k] = v  # dict 原样保留
+   ```
+
+3. body_template 渲染时，`asr_ref` 作为 dict 直接进入 payload。
+
+## 问题 2：`source_lang` 占位符未解析
+
+```json
+"source_lang": "{{source_lang}}"
+```
+
+说明 `source_lang` 在 context 中找不到，占位符被原样输出。
+
+## 问题 3：错误信息说 `asr_hyp`，但代码检查的是 `asr_result`
+
+eval_server 磁盘上的代码（[api.py:138](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/eval_server/app/controllers/api.py#L138)）检查的是 `asr_result`，但错误信息说的是 `asr_hyp`。**说明运行的 eval_server 和磁盘代码不一致**，可能是改了代码没重启。
+
+---
+
+现在来修复 `build_payload`，让 `asr_ref` 这类参考文本字段在发送给 eval_server 时提取为纯文本：
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_api_client.py
+          
+
+</think>
+
+
+        
+            
+toolName: no_need_execute
+            
+status: no_need_execute
+          
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: class AlgorithmResultFieldMapper
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: get_output_fields
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\algorithm\algorithm_result_field_mapper.py
+          
+现在让我进一步搜索 `asr_ref` 是否在代码库中被引用，以及 `ParamMapping` 模型的结构。
+
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: asr_ref
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: class ParamMapping
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: source_direction.*output|source.*reference
+          
+让我进一步查看 `ParamMapping` 模型定义，以及 `evaluation_api_client.py` 中 `get_output_fields` 的使用方式。
+
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: class ParamMapping
+          
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: get_output_fields|asr_ref
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_api_client.py
+          
+现在我已经完整了解了 `AlgorithmResultFieldMapper` 类的结构和 `asr_ref` 的角色。以下是详细分析：
+
+---
+
+## AlgorithmResultFieldMapper 类分析
+
+### 类定义位置
+
+[AlgorithmResultFieldMapper](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/algorithm/algorithm_result_field_mapper.py#L16-L328)
+
+### `get_output_fields` 方法 (第45-110行)
+
+该方法从数据库 `param_mappings` 表中动态获取算法的所有**输出字段**。其核心查询条件是：
+
+```python
+mappings = ParamMapping.query.filter(
+    ParamMapping.algorithm_type == algorithm_type,
+    ParamMapping.source.in_(['api', 'device']),      # 只查 api 和 device 来源
+    ParamMapping.source_direction == 'output',        # 只查 output 方向
+    ParamMapping.deleted == False
+).all()
+```
+
+返回的每个字段包含以下信息：
+- `source_param` - 源参数代码（如 `rttm_res`, `stm_res`, `asr_result`）
+- `target_param` - 目标参数代码
+- `transform_type` - 转换类型
+- `dimension_id` / `dimension_name` - 关联的评估维度
+- `param_type` - 参数类型（通过 `_resolve_param_type` 解析，可能是 `rttm`, `stm`, `text` 等）
+
+### `get_reference_output_fields` 方法 (第112-163行)
+
+该方法获取**参考参数**的输出字段，查询条件是：
+
+```python
+mappings = ParamMapping.query.filter_by(
+    algorithm_type=algorithm_type,
+    source='reference',     # 只查 reference 来源
+    deleted=False
+).all()
+```
+
+注意：这个方法**没有**过滤 `source_direction == 'output'`。
+
+### `asr_ref` 是否包含在输出字段中？
+
+**`asr_ref` 不会被 `get_output_fields` 返回。** 原因如下：
+
+1. **`asr_ref` 是一个 `target_param`（目标参数），而非 `source_param`（源参数）。** 根据代码库中的文档和映射配置，实际的映射关系是：
+
+   ```
+   source_param: "asr_reference_text"  →  target_param: "asr_ref"
+   ```
+
+   `get_output_fields` 返回的字段是以 `source_param` 为标识的，所以返回的是 `asr_reference_text` 而不是 `asr_ref`。
+
+2. **`asr_ref` 属于 reference（参考参数）路径，而非 api/device output 路径。** 在 `param_mappings` 表中，`asr_reference_text` 的 `source` 是 `'reference'`，而 `get_output_fields` 只查询 `source.in_(['api', 'device'])` 的记录。参考参数需要通过 `get_reference_output_fields` 方法获取。
+
+3. **在 `build_payload` 中的 `special_fields` 集合中也不包含 `asr_ref`。** 查看 [evaluation_api_client.py](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/evaluation_api_client.py#L703-L710) 第703-710行：
+
+   ```python
+   special_fields = set()
+   if algorithm_type:
+       output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type)
+       for field in output_fields:
+           source_param = field.get('source_param', '')
+           if source_param:
+               special_fields.add(source_param)
+   ```
+
+   这里只从 `get_output_fields`（api/device output）中收集 `source_param`，所以 `special_fields` 中会包含类似 `rttm_res`、`stm_res`、`asr_result` 等算法输出参数，但**不会**包含 `asr_ref`。
+
+### 总结：字段分类
+
+| 方法 | 查询范围 | 典型字段 |
+|------|---------|---------|
+| `get_output_fields` | `source` in `['api', 'device']`, `source_direction='output'` | `rttm_res`, `stm_res`, `asr_result` 等算法输出 |
+| `get_reference_output_fields` | `source='reference'` | `asr_reference_text`（其 `target_param` 为 `asr_ref`）等参考参数 |
+| `get_field_mapping` | 两者合并 | `result` + `reference` 完整映射 |
+
+**`asr_ref` 本身是一个评估服务端（eval_server）使用的参数名**，在 `param_mappings` 表中它作为 `target_param` 存在，由 `source_param = asr_reference_text`（source='reference'）映射而来。它不属于 `get_output_fields` 返回的"输出/特殊字段"范畴。
+        
+          
+好，现在确认了 `asr_ref` **不在** `special_fields` 里。那问题就出在 `build_payload` 的 `else` 分支——dict 直接透传了。
+
+让我追踪完整链路：
+
+1. `_execute_evaluation` 第 176-177 行：`asr_ref` 值是 `{"text": "...", "json": []}` (dict with `text`)，原样放入 context
+2. `build_payload` 第 712-718 行：
+   - `asr_ref` 不在 `special_fields` → 跳过第一个分支
+   - dict 里没有 `field_type` 键 → 跳过第二个分支
+   - **落入 `else` → dict 原样透传**
+
+这就是 bug：一个 `{"text": "...", "json": []}` 的 dict 没有任何处理就直接发给了 eval_server。
+
+修复 `build_payload`，在 `else` 分支里对这种 dict 提取 text：
+
+
+</think>
+
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_api_client.py
+          
+changes: undefined
+          
+修复完成。让我验证一下最终代码：
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\evaluation_api_client.py
+          
+好，修复完成。总结一下你那个请求的 **三个问题**：
+
+## 问题 1：`asr_ref` 发了 dict → ✅ 已修复
+
+**根因**：[build_payload](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/utils/evaluation_api_client.py#L712-L720) 中，`asr_ref` 的值 `{"text": "...", "json": []}` 不满足任何处理分支，直接透传为 dict。
+
+**修复**：新增第三个分支，对含有 `text` 键的 dict 提取纯文本：
+
+```python
+elif isinstance(v, dict) and 'text' in v:
+    processed_context[k] = v.get('text', '')
+```
+
+修复后 `asr_ref` 会变成 `"手持哑铃或杠铃手掌面向前方手臂自然下垂肘部贴近身体两侧"`（纯字符串）。
+
+## 问题 2：`source_lang` 占位符未解析
+
+```json
+"source_lang": "{{source_lang}}"
+```
+
+说明 `source_lang` 不在 context 中。这是**参数映射配置问题**——`source_lang` 需要在 `param_mappings` 表中有一条映射记录（`source='case'`, `source_param='source_lang'`），这样 `CaseParameterExtractor` 才会把它提取到 `eval_params` 里，最终传入 context。
+
+## 问题 3：错误信息说 `asr_hyp`，但磁盘代码检查的是 `asr_result`
+
+eval_server 磁盘上的代码（[api.py:138](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/eval_server/app/controllers/api.py#L138)）：
+
+```python
+if not task_params.get('asr_ref') or not task_params.get('asr_result'):
+    return error_response(f"Missing required fields for {task_type}: asr_ref, asr_result")
+```
+
+但你的错误信息说的是 `asr_hyp`。**说明运行的 eval_server 进程和磁盘代码不一致**，需要重启 eval_server。

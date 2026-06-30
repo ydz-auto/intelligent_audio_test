@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="audio-list-component">
     <!-- 卡片头部 -->
     <div class="card-header">
@@ -313,196 +313,19 @@
     <div v-if="viewMode === 'folder'" class="card-body">
       <div class="folder-view">
         <div class="folder-tree">
-          <div class="folder-node" :key="folderTree.name">
-            <div 
-              class="folder-header" 
-              @click="toggleFolder(folderTree)"
-            >
-              <i class="fas" :class="{ 'fa-folder-open': isFolderOpen(folderTree), 'fa-folder': !isFolderOpen(folderTree) }"></i>
-              <span class="folder-name">{{ folderTree.name }}</span>
-              <span class="folder-stats">
-                ({{ folderTree.files.length }} 个文件, {{ folderTree.folders.length }} 个文件夹)
-              </span>
-            </div>
-            <div class="folder-content" v-if="isFolderOpen(folderTree)">
-              <!-- 递归渲染子文件夹 -->
-              <template v-for="subfolder in folderTree.folders" :key="subfolder.name">
-                <div class="folder-children">
-                  <div class="folder-node">
-                    <div 
-                      class="folder-header" 
-                      @click="toggleFolder(subfolder)"
-                    >
-                      <i class="fas" :class="{ 'fa-folder-open': isFolderOpen(subfolder), 'fa-folder': !isFolderOpen(subfolder) }"></i>
-                      <span class="folder-name">{{ subfolder.name }}</span>
-                      <span class="folder-stats">
-                        ({{ subfolder.files.length }} 个文件, {{ subfolder.folders.length }} 个文件夹)
-                      </span>
-                    </div>
-                    <div class="folder-content" v-if="isFolderOpen(subfolder)">
-                      <!-- 递归渲染更深层的子文件夹 -->
-                      <template v-for="deeperFolder in subfolder.folders" :key="deeperFolder.name">
-                        <div class="folder-children">
-                          <div class="folder-node">
-                            <div
-                              class="folder-header"
-                              @click="toggleFolder(deeperFolder)"
-                            >
-                              <i class="fas" :class="{ 'fa-folder-open': isFolderOpen(deeperFolder), 'fa-folder': !isFolderOpen(deeperFolder) }"></i>
-                              <span class="folder-name">{{ deeperFolder.name }}</span>
-                              <span class="folder-stats">
-                                ({{ deeperFolder.files.length }} 个文件, {{ deeperFolder.folders.length }} 个文件夹)
-                              </span>
-                            </div>
-                            <div class="folder-content" v-if="isFolderOpen(deeperFolder)">
-                              <!-- 当前文件夹的文件列表 -->
-                              <div class="file-list">
-                                <div
-                                  v-for="file in deeperFolder.files"
-                                  :key="file.id"
-                                  class="file-item"
-                                  :class="{ 'highlighted': isSelected(file.id) }"
-                                  @click="toggleAudioSelection(file.id)"
-                                >
-                                  <input
-                                    v-if="enableSelection"
-                                    type="checkbox"
-                                    class="audio-checkbox"
-                                    :value="file.id"
-                                    :checked="isSelected(file.id)"
-                                    @change="toggleAudioSelection(file.id)"
-                                    @click.stop
-                                  >
-                                  <i class="fas fa-file-audio file-icon"></i>
-                                  <div class="file-info">
-                                    <div class="file-name">{{ file.filename }}</div>
-                                    <div class="file-meta">
-                                      <span class="format-badge" :class="file.format">{{ file.format.toUpperCase() }}</span>
-                                      <span class="file-size">{{ file.size }}</span>
-                                      <span class="file-duration">{{ file.duration }}</span>
-                                      <span class="audio-type-badge" :class="file.type">
-                                        {{ file.type === 'dry' ? '干声' : (file.type === 'noise' ? '噪声' : (file.type === 'mixed' ? '混合' : '提示词')) }}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div class="file-actions">
-                                    <button class="btn btn-secondary" @click.stop="previewAudio(file.id)">
-                                      <i class="fas fa-play btn-icon"></i>
-                                      预览
-                                    </button>
-                                    <button class="btn btn-secondary" @click.stop="editMetadata(file.id)">
-                                      <i class="fas fa-edit btn-icon"></i>
-                                      详情
-                                    </button>
-                                    <button class="btn btn-danger" @click.stop="deleteAudio(file.id)">
-                                      <i class="fas fa-trash-alt btn-icon"></i>
-                                      删除
-                                    </button>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </template>
-                      <!-- 当前文件夹的文件列表 -->
-                      <div class="file-list">
-                        <div
-                          v-for="file in subfolder.files"
-                          :key="file.id"
-                          class="file-item"
-                          :class="{ 'highlighted': isSelected(file.id) }"
-                          @click="toggleAudioSelection(file.id)"
-                        >
-                          <input
-                            v-if="enableSelection"
-                            type="checkbox"
-                            class="audio-checkbox"
-                            :value="file.id"
-                            :checked="isSelected(file.id)"
-                            @change="toggleAudioSelection(file.id)"
-                            @click.stop
-                          >
-                          <i class="fas fa-file-audio file-icon"></i>
-                          <div class="file-info">
-                            <div class="file-name">{{ file.filename }}</div>
-                            <div class="file-meta">
-                              <span class="format-badge" :class="file.format">{{ file.format.toUpperCase() }}</span>
-                              <span class="file-size">{{ file.size }}</span>
-                              <span class="file-duration">{{ file.duration }}</span>
-                              <span class="audio-type-badge" :class="file.type">
-                                {{ file.type === 'dry' ? '干声' : (file.type === 'noise' ? '噪声' : (file.type === 'mixed' ? '混合' : '提示词')) }}
-                              </span>
-                            </div>
-                          </div>
-                          <div class="file-actions">
-                            <button class="btn btn-secondary" @click.stop="previewAudio(file.id)">
-                              <i class="fas fa-play btn-icon"></i>
-                              预览
-                            </button>
-                            <button class="btn btn-secondary" @click.stop="editMetadata(file.id)">
-                              <i class="fas fa-edit btn-icon"></i>
-                              详情
-                            </button>
-                            <button class="btn btn-danger" @click.stop="deleteAudio(file.id)">
-                              <i class="fas fa-trash-alt btn-icon"></i>
-                              删除
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </template>
-              <!-- 根文件夹的文件列表 -->
-              <div class="file-list">
-                <div 
-                  v-for="file in folderTree.files" 
-                  :key="file.id" 
-                  class="file-item"
-                  :class="{ 'highlighted': isSelected(file.id) }"
-                  @click="toggleAudioSelection(file.id)"
-                >
-                  <input 
-                    v-if="enableSelection"
-                    type="checkbox" 
-                    class="audio-checkbox" 
-                    :value="file.id" 
-                    :checked="isSelected(file.id)"
-                    @change="toggleAudioSelection(file.id)"
-                    @click.stop
-                  >
-                  <i class="fas fa-file-audio file-icon"></i>
-                  <div class="file-info">
-                    <div class="file-name">{{ file.filename }}</div>
-                    <div class="file-meta">
-                      <span class="format-badge" :class="file.format">{{ file.format.toUpperCase() }}</span>
-                      <span class="file-size">{{ file.size }}</span>
-                      <span class="file-duration">{{ file.duration }}</span>
-                      <span class="audio-type-badge" :class="file.type">
-                        {{ file.type === 'dry' ? '干声' : (file.type === 'noise' ? '噪声' : (file.type === 'mixed' ? '混合' : '提示词')) }}
-                      </span>
-                    </div>
-                  </div>
-                  <div class="file-actions">
-                    <button class="btn btn-secondary" @click.stop="previewAudio(file.id)">
-                      <i class="fas fa-play btn-icon"></i>
-                      预览
-                    </button>
-                    <button class="btn btn-secondary" @click.stop="editMetadata(file.id)">
-                      <i class="fas fa-edit btn-icon"></i>
-                      详情
-                    </button>
-                    <button class="btn btn-danger" @click.stop="deleteAudio(file.id)">
-                      <i class="fas fa-trash-alt btn-icon"></i>
-                      删除
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <FolderNodeComponent
+            :folder="activeFolderTree"
+            :enable-selection="enableSelection"
+            :is-selected-fn="isSelected"
+            :is-folder-open-fn="isFolderOpen"
+            @toggle-folder="toggleFolder"
+            @expand-folder="(path: string) => emit('expand-folder', path)"
+            :expanded-paths="expandedFolderPaths"
+            @toggle-audio-selection="toggleAudioSelection"
+            @preview="previewAudio"
+            @edit="editMetadata"
+            @delete="deleteAudio"
+          />
         </div>
       </div>
     </div>
@@ -579,15 +402,6 @@
       />
     </div>
     
-    <!-- 音频播放模态框 -->
-    <AudioPlayerModal
-      :visible="showAudioPlayerModal"
-      :audio-id="currentAudioId"
-      :audio-title="currentAudioTitle"
-      :audio-type="props.audioType"
-      :selected-devices="[]"
-      @close="showAudioPlayerModal = false"
-    />
   </div>
 </template>
 
@@ -595,7 +409,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { buildFolderTree, isFolderOpen as checkFolderOpen, toggleFolder as toggleFolderState, extractAllTags, filterAudios as filterAudiosUtil } from '../../utils/audioUtils';
 import { useTagFilter, type TagFilterState } from '../../composables/useTagFilter';
-import AudioPlayerModal from './AudioPlayerModal.vue';
+import FolderNodeComponent from './FolderNodeComponent.vue';
 import PaginationComponent from './PaginationComponent.vue';
 
 interface AudioProblem {
@@ -639,6 +453,9 @@ const props = defineProps<{
   allTags: string[];
   selectedTags: string[];
   tagModes?: Record<string, 'or' | 'and'>;
+  serverFolderTree?: any;
+  folderLoading?: boolean;
+  expandedFolderPaths?: Set<string>;
 }>();
 
 const emit = defineEmits<{
@@ -660,6 +477,7 @@ const emit = defineEmits<{
   (e: 'deselectAll'): void;
   (e: 'view-change', mode: string): void;
   (e: 'toggleTag', tag: string, mode?: 'or' | 'and'): void;
+  (e: 'expand-folder', folderPath: string): void;
 }>();
 
 const viewMode = ref<'list' | 'folder' | 'diagnostics'>(props.viewMode ?? 'list');
@@ -814,12 +632,15 @@ const folderTree = ref<FolderNode>({
   folders: []
 });
 
+const activeFolderTree = computed(() => {
+  if (props.serverFolderTree && props.serverFolderTree.name) {
+    return props.serverFolderTree as FolderNode;
+  }
+  return folderTree.value;
+});
+
 const expandedFolders = ref<Set<string>>(new Set(['音频文件']));
 
-const showAudioPlayerModal = ref(false);
-const currentAudioId = ref<string | number | null>(null);
-const currentAudioTitle = ref('');
-const currentAudioType = ref('dry');
 const MAX_VISIBLE_TAGS = 8;
 const expandedTags = ref<Record<string | number, boolean>>({});
 
@@ -941,18 +762,7 @@ const handleSizeChange = (size: number) => {
 };
 
 const previewAudio = (audioId: string | number) => {
-  if (!audioId) {
-    alert('请先选择音频');
-    return;
-  }
-  
-  const audio = props.audios.find(a => a.id === audioId);
-  if (audio) {
-    currentAudioId.value = audioId;
-    currentAudioTitle.value = audio.filename || '未知音频';
-    currentAudioType.value = audio?.audioType || audio?.type || 'dry';
-    showAudioPlayerModal.value = true;
-  }
+  emit('preview', audioId);
 };
 
 const editMetadata = (audioId: string | number) => {
@@ -1979,4 +1789,31 @@ onUnmounted(() => {
   margin-bottom: var(--spacing-md);
   color: var(--text-light);
 }
+
+.folder-loading {
+  margin-left: 8px;
+  color: var(--primary-color);
+  font-size: 12px;
+}
+
+.lazy-load-hint {
+  padding: 12px 20px;
+  color: var(--text-muted, #999);
+  font-size: 13px;
+  text-align: center;
+}
+
+.lazy-load-hint i {
+  margin-right: 6px;
+}
+
+.virtual-list {
+  position: relative;
+}
+
+.virtual-list .file-item {
+  height: 48px;
+  box-sizing: border-box;
+}
+
 </style>

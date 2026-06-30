@@ -351,26 +351,40 @@ class TestCaseController:
                 if audio and audio.duration:
                     total_duration += float(audio.duration)
 
-        return success_response(
-            TestCaseDetailData(
-                id=tc.id,
-                name=tc.name,
-                description=tc.description,
-                group_id=tc.group_id,
-                group_name=tc.group.name if tc.group else None,
-                group={"id": tc.group.id, "name": tc.group.name} if tc.group else None,
-                type=tc_test_type,
-                related_case_id=tc.related_case_id,
-                config=config,
-                algorithm_type=tc.algorithm_type,
-                tags=[tag.name for tag in tc.tags],
-                audios=audios,
-                dimensions=dimensions,
-                created_at=tc.created_at.isoformat() if tc.created_at else None,
-                updated_at=tc.updated_at.isoformat() if tc.updated_at else None,
-                total_duration=round(total_duration, 2) if total_duration > 0 else None,
-            )
+        # Debug logging
+        import json as json_debug
+        print(f'[DEBUG get_one] tc.id={tc.id}')
+        print(f'[DEBUG get_one] config type={type(config)}')
+        print(f'[DEBUG get_one] config is None: {config is None}')
+        print(f'[DEBUG get_one] config == {{}}: {config == {}}')
+        if isinstance(config, dict):
+            print(f'[DEBUG get_one] config keys={list(config.keys())}')
+            print(f'[DEBUG get_one] config JSON={json_debug.dumps(config, ensure_ascii=False)[:300]}')
+        
+        # Create TestCaseDetailData and check config
+        detail_data = TestCaseDetailData(
+            id=tc.id,
+            name=tc.name,
+            description=tc.description,
+            group_id=tc.group_id,
+            group_name=tc.group.name if tc.group else None,
+            group={"id": tc.group.id, "name": tc.group.name} if tc.group else None,
+            type=tc_test_type,
+            related_case_id=tc.related_case_id,
+            config=config,
+            algorithm_type=tc.algorithm_type,
+            tags=[tag.name for tag in tc.tags],
+            audios=audios,
+            dimensions=dimensions,
+            created_at=tc.created_at.isoformat() if tc.created_at else None,
+            updated_at=tc.updated_at.isoformat() if tc.updated_at else None,
+            total_duration=round(total_duration, 2) if total_duration > 0 else None,
         )
+        
+        dumped = detail_data.model_dump(by_alias=True)
+        print(f'[DEBUG get_one] dumped config={json_debug.dumps(dumped.get("config"), ensure_ascii=False)[:300]}')
+        
+        return success_response(detail_data)
 
     # 创建测试用例
     @staticmethod
@@ -835,59 +849,26 @@ class TestCaseController:
         preview_stop_flags[tc_id] = False
 
         try:
-            from backend.services.audio.audio_engine import prepare_audio_playback_info, execute_audio_playback
-            
-            playback_info = prepare_audio_playback_info(preview_audios, config, db.session)
-            if not playback_info:
+            from backend.services.audio.playback_orchestrator import playback_orchestrator
+
+            preview_result = playback_orchestrator.preview(
+                audio_configs=preview_audios,
+                case_config=config,
+                task_id=preview_task_id,
+                offset=offset,
+                overlap_rate=overlap_rate,
+                overlap_time=overlap_time,
+            )
+            if not preview_result:
                 return error_response("用例未配置有效的干声音频")
-            
-            dry_audios_info = playback_info['dry_audios_info']
-            dry_devices = playback_info['dry_devices']
-            noise_audio_info_for_playback = playback_info['noise_audio_info']
-            all_noise_devices = playback_info['noise_devices']
-            
-            TestCaseController._log('info', f"Preview prepared: dry_audios={len(dry_audios_info)}, dry_devices={len(dry_devices)}, noise_devices={len(all_noise_devices)}", test_case_id=tc_id, category='preview')
-            
-            app = current_app._get_current_object()
-            from backend.services.audio.audio_engine import build_audio_timelines, build_speakers_map_from_dry_audios
 
-            speakers_map = build_speakers_map_from_dry_audios(dry_audios_info, app=app)
-            audio_timelines = build_audio_timelines(dry_audios_info, overlap_rate, overlap_time, speakers_map)
-
-            total_duration = max((t.get('end', 0) for t in audio_timelines), default=0) if audio_timelines else 0
-            
-            TestCaseController._log('info', f"Previewing test case {tc_id} with offset {offset}", test_case_id=tc_id, category='preview')
-            TestCaseController._log('info', f"Preview with offset {offset}: dry_devices count={len(dry_devices)}, noise_devices count={len(all_noise_devices)}", test_case_id=tc_id, category='preview')
-            
-            def play_audio(app):
-                from flask import has_app_context
-                from backend.services.audio.audio_engine import execute_audio_playback
-                global preview_stop_flags
-                if not preview_stop_flags.get(tc_id, False):
-                    try:
-                        result = execute_audio_playback(
-                            task_id=preview_task_id,
-                            dry_audios_info=dry_audios_info,
-                            noise_audio_info=noise_audio_info_for_playback,
-                            noise_devices=all_noise_devices,
-                            dry_devices=dry_devices,
-                            overlap_rate=overlap_rate,
-                            overlap_time=overlap_time,
-                            global_offset=offset,
-                            loop=False,
-                            audio_service=audio_service,
-                            app=app
-                        )
-                        if result:
-                            TestCaseController._log('info', f"Preview started successfully", test_case_id=tc_id, category='preview')
-                        else:
-                            TestCaseController._log('error', f"Preview failed to start", test_case_id=tc_id, category='preview')
-                    except Exception as e:
-                        TestCaseController._log('error', f"Error playing audio: {str(e)}", test_case_id=tc_id, category='preview')
-            
-            if dry_audios_info:
-                from backend.services.execution.execution_engine import execution_engine
-                execution_engine.audio_playback_pool.submit(play_audio, app)
+            total_duration = preview_result.get('total_duration', 0)
+            TestCaseController._log(
+                'info',
+                f"Previewing test case {tc_id}: offset={offset}, duration={total_duration:.2f}s",
+                test_case_id=tc_id,
+                category='preview',
+            )
 
             return success_response(
                 TestCasePreviewData(
@@ -2330,6 +2311,9 @@ class TestCaseController:
         new_ref_params = data.get('referenceParams')
         if new_ref_params is None:
             return error_response("缺少 referenceParams 字段")
+        
+        from backend.utils.algorithm.reference_params_generator import normalize_reference_params
+        new_ref_params = normalize_reference_params(new_ref_params)
         
         config = tc.config or {}
         rounds = config.get('rounds', [])

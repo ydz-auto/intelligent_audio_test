@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from backend.models.models import Audio, PlaybackDevice, Device, TaskCase, TaskDevice, PromptAudioRelation, TestResult, TestResultDimension, Dimension, utc8now
 from backend.models.database import db
 from backend.services.audio.audio_engine import audio_service
+from backend.services.audio.playback_orchestrator import playback_orchestrator
 from backend.services.audio.spl_service import spl_service
 from backend.utils.device_driver import device_driver_factory, register_task_events
 from backend.utils.algorithm.field_mapper import get_field_mapper
@@ -130,7 +131,7 @@ class E2EExecutor(BaseExecutor):
             # 声纹注册（循环前一次性执行）
             voiceprint_config = case_config.get('voiceprint_config', {})
             if voiceprint_config.get('enabled'):
-                if not self._register_voiceprint(task_id, case_config, device_info_list):
+                if not playback_orchestrator.play_voiceprint(voiceprint_config, device_info_list, task_id):
                     self._log(level='ERROR', content='声纹注册失败，中止测试', task_id=task_id, test_case_id=test_case_id)
                     self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message='声纹注册失败')
                     return False
@@ -156,148 +157,86 @@ class E2EExecutor(BaseExecutor):
                     test_case_id=test_case_id
                 )
                 
-                # 合并 round_config 到临时 config（供 prepare_audio_playback_info 使用）
-                round_case_config = case_config.copy()
-                round_case_config['audios'] = round_config.get('audios', [])
-                round_case_config['background_noise'] = round_config.get('backgroundNoise')
-                if round_config.get('algorithmParams'):
-                    round_case_config['algorithm_params'] = round_config['algorithmParams']
-                
-                # 处理本轮音频配置
-                from backend.services.audio.audio_engine import prepare_audio_playback_info
-                local_db_session = db.session()
-                try:
-                    audios = round_case_config.get('audios', [])
-                    e2e_audios = [audio for audio in audios if audio.get('audio_id')]
-                    if not e2e_audios:
-                        self._log(level='WARNING', content=f"第 {round_number} 轮未配置有效音频，跳过", task_id=task_id, test_case_id=test_case_id)
-                        continue
-                    
-                    playback_info = prepare_audio_playback_info(e2e_audios, round_case_config, local_db_session)
-                    if not playback_info:
-                        self._log(level='WARNING', content=f"第 {round_number} 轮没有可用的干声音频，跳过", task_id=task_id, test_case_id=test_case_id)
-                        continue
-                    
-                    dry_audios_info = playback_info['dry_audios_info']
-                    dry_devices = playback_info['dry_devices']
-                    noise_audio_info = playback_info['noise_audio_info']
-                    noise_devices = playback_info['noise_devices']
-                    
-                    if not dry_audios_info:
-                        continue
-                    
-                    main_audio_config = dry_audios_info[0][0]
-                    playback_dev = dry_devices[0] if dry_devices else None
-                    if not playback_dev:
-                        continue
-                finally:
-                    local_db_session.close()
-                
                 # 提取本轮算法参数
                 from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
                 round_algo_params = _normalize_algorithm_params(round_config.get('algorithmParams', []))
                 
-                # 导轨控制
-                rail_distance = round_algo_params.get('railDistance')
-                rail_controller = None
-                if rail_distance is not None:
-                    try:
-                        from backend.utils.env_device.rail import RailEnvDevice
-                        rail_controller = RailEnvDevice()
-                        if rail_controller.is_available():
-                            rail_controller.move_rail(float(rail_distance))
-                            self._log(level='INFO', content=f"导轨已移动到 {rail_distance}cm", task_id=task_id)
-                        else:
-                            rail_controller = None
-                    except Exception as e:
-                        self._log(level='WARNING', content=f"导轨控制失败: {e}", task_id=task_id)
-                        rail_controller = None
+                # 环境设备设置（导轨等，setup 自动保存状态）
+                env_states = self._setup_env_devices_for_round(round_algo_params, task_id)
                 
-                # 构建干扰人音频配置（如有）
-                interferer_audio_configs = self._build_interferer_configs(
-                    task_id, round_config.get('interferers', []), device_info_list
-                )
-                
-                # pre_process（含音量设置）
-                volume_level = round_algo_params.get('volumeLevel')
-                original_volumes = {}
-                if volume_level is not None:
-                    for info in device_info_list:
-                        driver = info.get('driver')
-                        device_sn = info.get('device_sn')
-                        if driver and device_sn:
-                            try:
-                                original_volumes[device_sn] = driver.get_volume(device_sn)
-                                driver.set_volume(device_sn, int(volume_level))
-                                self._log(level='INFO', content=f"设备 {device_sn} 音量已设为 {volume_level}", task_id=task_id)
-                            except Exception as e:
-                                self._log(level='WARNING', content=f"设备 {device_sn} 音量控制失败: {e}", task_id=task_id)
-                
-                # 播放音频（内部调用 pre_process）
-                self._execute_audio_playback(
-                    task_id, playback_dev, main_audio_config, main_gain=1.0,
-                    device_index=audio_service.get_device_index(playback_dev.device_unique_id),
+                # 通过 PlaybackOrchestrator 统一播放本轮音频（主讲人 + 噪声 + 干扰人）
+                play_result = playback_orchestrator.play_round(
+                    round_config=round_config,
                     device_info_list=device_info_list,
-                    dry_audios_info=dry_audios_info,
-                    dry_devices=dry_devices,
-                    noise_audio_info=noise_audio_info,
-                    noise_devices=noise_devices,
-                    case_config=round_case_config,
-                    algorithm_type=algorithm_type,
+                    task_id=task_id,
+                    case_config=case_config,
                     test_case_id=test_case_id,
-                    extra_audio_configs=interferer_audio_configs
                 )
+                if not play_result:
+                    self._log(
+                        level='WARNING',
+                        content=f"第 {round_number} 轮音频播放失败，跳过",
+                        task_id=task_id, test_case_id=test_case_id,
+                    )
+                    self._teardown_env_devices_for_round(env_states, task_id)
+                    continue
                 
-                # post_process（含音量恢复）
+                # post_process（音量恢复由驱动内部管理）
                 self._post_process_devices(device_info_list, task_id, test_case_id=test_case_id)
-                
-                if original_volumes:
-                    for device_sn, original_vol in original_volumes.items():
-                        if original_vol < 0:
-                            continue
-                        for info in device_info_list:
-                            if info.get('device_sn') == device_sn:
-                                try:
-                                    info['driver'].set_volume(device_sn, original_vol)
-                                except Exception as e:
-                                    self._log(level='WARNING', content=f"设备 {device_sn} 音量恢复失败: {e}", task_id=task_id)
-                
-                # 等待并检测打断事件
-                interruption_events = self._wait_and_detect_interruption(
-                    task_id, device_info_list, round_algo_params, E2E_RESULT_COLLECTION_WAIT_TIME
-                )
-                
+
+                # 等待结果就绪
+                time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
+
                 # 收集本轮结果
                 collect_result = self._collect_results(
                     task_id, test_case_id, device_info_list,
                     algorithm_type=algorithm_type,
                     case_reference_params=case_reference_params
                 )
-                
+
                 if isinstance(collect_result, tuple):
                     round_results, adjusted_case_ref_params = collect_result
                     if adjusted_case_ref_params:
                         last_adjusted_ref_params = adjusted_case_ref_params
                 else:
                     round_results = collect_result
-                
-                # 附加打断事件到本轮结果
-                if interruption_events:
-                    for r in (round_results if isinstance(round_results, list) else [round_results]):
-                        r['interruption_events'] = interruption_events
-                
+
                 # 为每轮结果标记 round_number，供评估阶段透传 (0-indexed)
                 tagged_results = round_results if isinstance(round_results, list) else [round_results]
                 for r in tagged_results:
                     r['round_number'] = round_idx
                 all_round_results.extend(tagged_results)
                 
-                # 导轨复位
-                if rail_controller:
-                    try:
-                        rail_controller.reset_rail()
-                    except Exception as e:
-                        self._log(level='WARNING', content=f"导轨复位失败: {e}", task_id=task_id)
+                # 收集播放时间戳（供后续 offset 计算）
+                audio_timelines = play_result.get('audio_timelines', []) if play_result else []
+                from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
+                overlap_rate = CaseParameterExtractor.get_overlap_rate(case_config) if case_config else 0
+                overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
+                for timeline in audio_timelines:
+                    if timeline.get('is_noise', False):
+                        continue
+                    audio_config = timeline.get('config', {})
+                    audio_obj = timeline.get('audio', {})
+                    audio_id = getattr(audio_obj, 'id', None)
+                    if audio_id:
+                        if task_id not in self._playback_timestamps:
+                            self._playback_timestamps[task_id] = {
+                                'record_start_time': time.time(),
+                                'audio_play_times': [],
+                                'theory_offsets': {},
+                            }
+                        self._playback_timestamps[task_id]['audio_play_times'].append({
+                            'audio_id': audio_id,
+                            'play_order': audio_config.get('play_order', 0),
+                            'actual_time': timeline.get('actual_play_time', time.time()),
+                            'actual_start_offset': timeline.get('start', 0),
+                            'is_overlap': bool(overlap_rate and overlap_rate > 0),
+                            'overlap_rate': overlap_rate,
+                            'overlap_time': overlap_time,
+                        })
+
+                # 环境设备恢复（teardown 自动恢复到 setup 前的状态）
+                self._teardown_env_devices_for_round(env_states, task_id)
             
             if not all_round_results:
                 error_msg = "所有轮次均未产生有效结果"
@@ -435,69 +374,6 @@ class E2EExecutor(BaseExecutor):
         finally:
             local_db_session.close()
     
-    def _execute_audio_playback(self, task_id, playback_dev, main_audio_config, main_gain, device_index, 
-                                device_info_list, dry_audios_info, dry_devices, noise_audio_info, noise_devices, case_config, 
-                                test_case_id=None, **kwargs):
-        algorithm_type = kwargs.get('algorithm_type', 'translation')
-        
-        extra_params = getattr(self, 'current_extra_params', {}) or self._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
-        
-        devices_needing_prompt = [info for info in device_info_list if info.get("needs_prompt_audio", False)]
-        devices_not_needing_prompt = [info for info in device_info_list if not info.get("needs_prompt_audio", False)]
-        
-        if devices_needing_prompt:
-            self._pre_process_devices(devices_needing_prompt, task_id, test_case_id=test_case_id, extra_params=extra_params)
-        
-        self._play_prompt_audio(device_info_list, task_id, device_index, playback_dev, main_gain)
-        
-        if devices_not_needing_prompt:
-            self._pre_process_devices(devices_not_needing_prompt, task_id, test_case_id=test_case_id, extra_params=extra_params)
-        
-        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
-        overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
-        overlap_rate = CaseParameterExtractor.get_overlap_rate(case_config) if case_config else 0
-        
-        from backend.services.audio.audio_engine import execute_audio_playback
-        extra_audio_configs = kwargs.get('extra_audio_configs', [])
-        playback_result = execute_audio_playback(
-            task_id=task_id,
-            dry_audios_info=dry_audios_info,
-            noise_audio_info=noise_audio_info,
-            noise_devices=noise_devices,
-            dry_devices=dry_devices,
-            overlap_rate=overlap_rate,
-            overlap_time=overlap_time,
-            global_offset=0,
-            loop=False,
-            audio_service=audio_service,
-            wait_for_completion=True,
-            stop_noise_after_dry=True,
-            extra_audio_configs=extra_audio_configs
-        )
-        
-        audio_timelines = []
-        if isinstance(playback_result, dict) and 'audio_timelines' in playback_result:
-            audio_timelines = playback_result['audio_timelines']
-        
-        for i, timeline in enumerate(audio_timelines):
-            if timeline.get('is_noise', False):
-                continue
-            
-            audio_config = timeline.get('config', {})
-            audio_obj = timeline.get('audio', {})
-            audio_id = audio_obj.id if hasattr(audio_obj, 'id') else None
-            
-            if task_id in self._playback_timestamps and audio_id:
-                self._playback_timestamps[task_id]['audio_play_times'].append({
-                    'audio_id': audio_id,
-                    'play_order': audio_config.get('play_order', 0),
-                    'actual_time': timeline.get('actual_play_time', time.time()),
-                    'actual_start_offset': timeline.get('start', 0),
-                    'is_overlap': True if overlap_rate and overlap_rate > 0 else False,
-                    'overlap_rate': overlap_rate,
-                    'overlap_time': overlap_time
-                })
-    
     def _pre_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
         extra_params = kwargs.get('extra_params', {})
         record_start_time = time.time()
@@ -608,9 +484,11 @@ class E2EExecutor(BaseExecutor):
         if adjusted_ref_params:
             result_to_return = (all_results, adjusted_ref_params)
         
+        _first = result_to_return[0] if result_to_return else None
+        _first_device = _first[0] if isinstance(_first, list) else _first
         self._log(
             level='DEBUG',
-            content=f"[e2e_executor] returning: result_to_return id={id(result_to_return)}, raw_keys[0]={list(result_to_return[0][0].get('raw_results', {}).keys())[:10] if result_to_return else 'empty'}",
+            content=f"[e2e_executor] returning: result_to_return id={id(result_to_return)}, raw_keys[0]={list(_first_device.get('raw_results', {}).keys())[:10] if _first_device else 'empty'}",
             task_id=task_id
         )
         
@@ -690,262 +568,40 @@ class E2EExecutor(BaseExecutor):
         failed = [r for r in results if not r['success']]
         if failed: raise RuntimeError(f"设备初始化失败: {'; '.join([f'{r.get('device_name')}: {r.get('error')}' for r in failed])}")
 
-    def _register_voiceprint(self, task_id, case_config, device_info_list):
+    def _setup_env_devices_for_round(self, round_algo_params, task_id):
+        """设置本轮环境设备（导轨等），返回状态列表供 teardown 恢复。
+
+        通过 EnvDeviceFactory 创建环境设备实例，调用 setup() 完成 save_state + apply_settings。
+        新增环境设备只需：1) 实现 BaseEnvDevice 子类  2) 注册到工厂  3) 在 _ENV_DEVICE_PARAM_MAP 中添加映射。
         """
-        播放声纹注册音频并等待注册完成。
+        from backend.utils.env_device import EnvDeviceFactory
 
-        触发条件: case_config.voiceprint_config.enabled = true
-        与算法类型无关，是 E2E 测试的通用能力。
+        _ENV_DEVICE_PARAM_MAP = {
+            'railDistance': ('rail', lambda v: {'distance_cm': float(v)}),
+        }
 
-        Returns:
-            True  注册成功 / 不需要注册
-            False 注册失败（应中止后续轮次）
-        """
-        vp_config = case_config.get('voiceprint_config', {})
-        if not vp_config.get('enabled'):
-            return True  # 无需注册
-
-        audio_info = vp_config.get('audio', {})
-        device_cfg = vp_config.get('device', {})
-        spl = vp_config.get('spl')
-        wait_time_ms = int(vp_config.get('waitTime', 3000))
-
-        audio_id = audio_info.get('id')
-        device_id = device_cfg.get('id')
-
-        if not audio_id or not device_id:
-            self._log(level='WARNING', content='声纹注册配置不完整 (缺少 audio.id 或 device.id)，跳过',
-                      task_id=task_id)
-            return True
-
-        # 查找注册设备对应的 driver
-        target_info = None
-        for dev in device_info_list:
-            if dev['device_id'] == device_id:
-                target_info = dev
-                break
-
-        if target_info is None:
-            self._log(level='ERROR',
-                      content=f'声纹注册设备 (id={device_id}, name={device_cfg.get("name")}) 未找到',
-                      task_id=task_id)
-            return False
-
-        driver = target_info.get('driver')
-        device_sn = target_info.get('device_sn')
-
-        # 从数据库获取音频文件路径
-        audio_obj = db.session.get(Audio, audio_id)
-        if not audio_obj or not audio_obj.file_path:
-            self._log(level='ERROR',
-                      content=f'声纹注册音频 (id={audio_id}) 不存在或无文件路径',
-                      task_id=task_id)
-            return False
-
-        original_volume = None
-        try:
-            # 保存原始音量并设置注册音量
-            if driver and device_sn and spl:
-                try:
-                    original_volume = driver.get_volume(device_sn)
-                    driver.set_volume(device_sn, int(spl))
-                    self._log(level='INFO',
-                              content=f'声纹注册: 设备 {device_sn} 音量已设为 {spl}',
-                              task_id=task_id)
-                except Exception as e:
-                    self._log(level='WARNING',
-                              content=f'声纹注册: 音量控制失败: {e}',
-                              task_id=task_id)
-
-            # 通过 audio_service 播放注册音频
-            device_unique_id = target_info.get('device_unique_id')
-            channel_index = target_info.get('channel_index', 0)
-            device_index = audio_service.get_device_index(device_unique_id) if device_unique_id else 0
-
-            if device_index is None:
-                self._log(level='ERROR',
-                          content=f'声纹注册: 无法获取设备索引 (unique_id={device_unique_id})',
-                          task_id=task_id)
-                return False
-
-            audio_config = {
-                'file': audio_obj.file_path,
-                'device_index': device_index,
-                'channel': channel_index,
-                'gain': 1.0,
-                'delay': 0,
-                'is_noise': False,
-                'loop': False,
-            }
-
-            self._log(level='INFO',
-                      content=f'开始声纹注册: 播放 {audio_info.get("name", audio_obj.file_path)}',
-                      task_id=task_id)
-
-            audio_service.play_overlap(
-                task_id=task_id,
-                audio_configs=[audio_config],
-                overlap_time=0,
-                overlap_rate=0,
-                offset=0,
-                loop=False,
-            )
-
-            # 等待注册完成
-            wait_seconds = wait_time_ms / 1000.0
-            time.sleep(wait_seconds)
-
-            self._log(level='INFO',
-                      content=f'声纹注册完成 (等待 {wait_seconds}s)',
-                      task_id=task_id)
-            return True
-
-        except Exception as e:
-            self._log(level='ERROR',
-                      content=f'声纹注册失败: {e}',
-                      task_id=task_id)
-            return False
-
-        finally:
-            # 恢复原始音量
-            if original_volume is not None and driver and device_sn:
-                try:
-                    driver.set_volume(device_sn, original_volume)
-                except Exception:
-                    pass
-
-    def _build_interferer_configs(self, task_id, interferer_config, device_info_list):
-        """
-        将干扰人配置转为 audio_to_play 格式，供 play_overlap 使用。
-        输出格式与 execute_audio_playback 中的 audio_to_play 完全一致。
-
-        Args:
-            task_id: 任务ID
-            interferer_config: 干扰人配置列表 (round_config.interferers)
-            device_info_list: 可用设备信息列表
-
-        Returns:
-            list[dict]: audio_to_play 格式的列表
-        """
-        if not interferer_config:
-            return []
-
-        from flask import current_app
-        app = None
-        try:
-            app = current_app._get_current_object()
-        except RuntimeError:
-            pass
-
-        audio_to_play = []
-
-        for idx, interferer in enumerate(interferer_config):
-            if not isinstance(interferer, dict):
+        env_states = []
+        for param_key, (device_type, build_settings) in _ENV_DEVICE_PARAM_MAP.items():
+            value = round_algo_params.get(param_key)
+            if value is None:
                 continue
+            try:
+                dev = EnvDeviceFactory.create(device_type)
+                if dev and dev.is_available():
+                    state = dev.setup(build_settings(value))
+                    env_states.append((dev, state))
+                    self._log(level='INFO', content=f"环境设备 {device_type} 已设置: {param_key}={value}", task_id=task_id)
+            except Exception as e:
+                self._log(level='WARNING', content=f"环境设备 {device_type} 设置失败: {e}", task_id=task_id)
+        return env_states
 
-            audio_info = interferer.get('audio')
-            device_cfg = interferer.get('device')
-            spl = interferer.get('spl')
-            start_delay_ms = interferer.get('startDelay', 0)
-            loop = interferer.get('loop', False)
-
-            if not audio_info or not device_cfg:
-                self._log(level='WARNING',
-                          content=f'干扰人 {idx} 配置不完整 (缺少 audio 或 device)，跳过',
-                          task_id=task_id)
-                continue
-
-            # 查找干扰人设备
-            target_info = None
-            device_id = device_cfg.get('id')
-            for dev in device_info_list:
-                if dev['device_id'] == device_id:
-                    target_info = dev
-                    break
-
-            if target_info is None:
-                self._log(level='WARNING',
-                          content=f'干扰人 {idx} 设备 (id={device_id}, name={device_cfg.get("name")}) 未找到，跳过',
-                          task_id=task_id)
-                continue
-
-            device_unique_id = target_info.get('device_unique_id')
-            channel_index = target_info.get('channel_index', 0)
-            device_index = audio_service.get_device_index(device_unique_id) if device_unique_id else None
-
-            if device_index is None:
-                self._log(level='WARNING',
-                          content=f'干扰人 {idx} 无法获取设备索引 (unique_id={device_unique_id})，跳过',
-                          task_id=task_id)
-                continue
-
-            # SPL → 软件增益（与噪声/干声使用相同机制）
-            gain = 1.0
-            spl_mapping_id = target_info.get('current_spl_mapping_id')
-            if spl_mapping_id and spl:
-                try:
-                    from backend.services.audio.spl_service import spl_service
-                    gain = spl_service.spl_to_gain(spl_mapping_id, spl, app=app)
-                except Exception:
-                    gain = 1.0
-
-            # 获取音频文件路径
-            file_path = audio_info.get('path', '')
-            if not file_path and audio_info.get('id'):
-                audio_obj = db.session.get(Audio, audio_info['id'])
-                if audio_obj:
-                    file_path = audio_obj.file_path
-
-            if not file_path:
-                self._log(level='WARNING',
-                          content=f'干扰人 {idx} 音频文件路径为空，跳过',
-                          task_id=task_id)
-                continue
-
-            audio_to_play.append({
-                'file': file_path,
-                'device_index': device_index,
-                'channel': channel_index,
-                'gain': gain,
-                'delay': start_delay_ms / 1000.0,   # ms → s
-                'is_noise': bool(loop),              # loop=true → 循环播放
-                'loop': bool(loop),
-            })
-
-        if audio_to_play:
-            self._log(level='INFO',
-                      content=f'构建了 {len(audio_to_play)} 个干扰人音频配置',
-                      task_id=task_id)
-
-        return audio_to_play
-
-    def _wait_and_detect_interruption(self, task_id, device_info_list, algo_params, wait_time):
-        """等待并检测打断事件"""
-        enabled = algo_params.get('interruptionEnabled', 'false')
-        if isinstance(enabled, str):
-            enabled = enabled.lower() in ('true', '1', 'yes')
-        if not enabled:
-            time.sleep(wait_time)
-            return []
-
-        sensitivity = float(algo_params.get('interruptionSensitivity', '0.5'))
-        events = []
-        poll_interval = 0.1
-        elapsed = 0.0
-        while elapsed < wait_time:
-            time.sleep(poll_interval)
-            elapsed += poll_interval
-            for info in device_info_list:
-                driver = info.get('driver')
-                device_sn = info.get('device_sn')
-                if driver and device_sn:
-                    try:
-                        result = driver.detect_interruption(device_sn, sensitivity)
-                        if result:
-                            events.append(result)
-                    except Exception:
-                        pass
-        return events
+    def _teardown_env_devices_for_round(self, env_states, task_id):
+        """恢复本轮环境设备到 setup 前的状态。"""
+        for dev, state in env_states:
+            try:
+                dev.teardown(state)
+            except Exception as e:
+                self._log(level='WARNING', content=f"环境设备 {dev.device_type} 恢复失败: {e}", task_id=task_id)
 
     def _process_results(self, task_id, case_name, tc_rel_id, test_case_id, all_results, case_config=None,
                         case_reference_params=None, case_algorithm_params=None, adjusted_case_reference_params=None, **kwargs):
@@ -1027,6 +683,9 @@ class E2EExecutor(BaseExecutor):
                     test_case_id=test_case_id
                 )
 
+                # _execute_extra_params 内部调用 db.session().close() 会导致 scoped session 被关闭，
+                # tc_rel 变为 detached 状态，重新查询以确保后续变更能被持久化
+                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
                 tc_rel.execution_status = 'completed' if execution_success else 'failed'
                 if not execution_success:
                     tc_rel.evaluation_status = 'failed'
@@ -1099,6 +758,9 @@ class E2EExecutor(BaseExecutor):
                 all_eval_items = result['all_eval_items']
                 case_params = result['case_params']
                 
+                # super()._process_results() 同样会调用 db.session().close()，
+                # 重新查询 tc_rel 确保它重新进入 identity map
+                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
                 tc_rel.execution_status = 'completed' if execution_success else 'failed'
                 if not execution_success:
                     tc_rel.evaluation_status = 'failed'
@@ -1162,7 +824,6 @@ class E2EExecutor(BaseExecutor):
         case_rounds = case_config.get('rounds', [])
         rounds_list = []
         latency_values = []
-        interruption_count = 0
 
         for round_idx in sorted(rounds_by_index.keys()):
             round_results = rounds_by_index[round_idx]
@@ -1177,10 +838,6 @@ class E2EExecutor(BaseExecutor):
 
             asr_text = primary.get('asr_text', '')
             device_raw = primary.get('raw_results', {})
-
-            interruption = primary.get('interruption_events')
-            if interruption:
-                interruption_count += 1
 
             latency = primary.get('response_time') or primary.get('latency')
             if latency is not None:
@@ -1204,7 +861,6 @@ class E2EExecutor(BaseExecutor):
                     'asr_text': asr_text,
                     'device_raw': device_raw,
                 },
-                'interruption': interruption if interruption else None,
                 'latency': latency,
                 'wait_time': wait_time,
                 'evaluation': {},
@@ -1216,7 +872,6 @@ class E2EExecutor(BaseExecutor):
 
         aggregated = {
             'avg_latency': avg_latency,
-            'interruption_count': interruption_count,
             'avg_wer': None,
             'avg_llm_judge': None,
         }
@@ -1231,7 +886,7 @@ class E2EExecutor(BaseExecutor):
 
         self._log(
             level='DEBUG',
-            content=f"[_build_e2e_algorithm_result] 构建 E2E 算法结果: total_rounds={len(rounds_list)}, avg_latency={avg_latency}, interruption_count={interruption_count}",
+            content=f"[_build_e2e_algorithm_result] 构建 E2E 算法结果: total_rounds={len(rounds_list)}, avg_latency={avg_latency}",
             task_id=task_id
         )
 

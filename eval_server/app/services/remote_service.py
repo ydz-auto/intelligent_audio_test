@@ -2,8 +2,10 @@ import threading
 import requests
 import time
 import json
+import os
 from typing import List, Dict, Optional
 from ..models.task import TaskModel
+from ..config import config
 from datetime import datetime
 
 class RemoteService:
@@ -12,8 +14,8 @@ class RemoteService:
         self._endpoint_concurrency = {}
         self._lock = threading.Lock()
 
-    def create_remote_task(self, task_type: str, task_params: dict = None, 
-                          endpoints: Optional[List[Dict]] = None) -> str:
+    def create_remote_task(self, task_type: str, task_params: dict = None,
+                          endpoints: Optional[List[Dict]] = None, caller_task_id: str = None) -> str:
         """
         在合适的远程端点上创建任务，并返回任务ID
         支持多对多指标分配，每个端点可以配置处理多种指标及其并发限制
@@ -86,58 +88,91 @@ class RemoteService:
         # 转发请求
         try:
             payload = {"task_type": task_type}
-            
             if task_params:
                 payload.update(task_params)
-            
+
             timeout = selected_endpoint_config.get('max_timeout', 30)
             if task_type == 'llm_judge':
                 timeout = max(timeout, 180)
-            
-            response = requests.post(
-                f"{selected_endpoint.rstrip('/')}/api/create_task",
-                json=payload,
-                timeout=timeout
-            )
+
+            # 检测 task_params 中是否有文件路径（来自 create_task_upload 的二进制文件）
+            file_fields = {}
+            form_fields = {}
+            if task_params:
+                for key, value in task_params.items():
+                    if isinstance(value, str) and os.path.isabs(value) and os.path.exists(value):
+                        # 是文件路径，读取文件内容用于 multipart 上传
+                        try:
+                            with open(value, 'rb') as f:
+                                file_bytes = f.read()
+                            filename = os.path.basename(value)
+                            file_fields[key] = (filename, file_bytes, 'application/octet-stream')
+                        except Exception:
+                            form_fields[key] = value
+                    elif isinstance(value, (dict, list)):
+                        form_fields[key] = json.dumps(value)
+                    else:
+                        form_fields[key] = value
+
+            if file_fields:
+                # 有文件，使用 multipart 上传端点
+                form_fields['task_type'] = task_type
+                if caller_task_id:
+                    form_fields['task_id'] = caller_task_id
+                response = requests.post(
+                    f"{selected_endpoint.rstrip('/')}/api/create_task_upload",
+                    data=form_fields,
+                    files=file_fields,
+                    timeout=timeout
+                )
+            else:
+                # 无文件，使用 JSON 端点
+                if caller_task_id:
+                    payload['task_id'] = caller_task_id
+                response = requests.post(
+                    f"{selected_endpoint.rstrip('/')}/api/create_task",
+                    json=payload,
+                    timeout=timeout
+                )
             
             if response.status_code != 200:
-                self._decrement_concurrency(selected_endpoint, task_type)
                 raise RuntimeError(f"远程端点响应错误 ({response.status_code}): {response.text}")
             
             result = response.json()
             if result.get('code') != 0:
-                self._decrement_concurrency(selected_endpoint, task_type)
                 raise RuntimeError(f"远程端点业务错误: {result.get('msg')}")
             
             task_data = result.get('data', {})
-            remote_task_id = task_data.get('task_id')
+            remote_eval_task_id = task_data.get('eval_task_id')
             
-            if not remote_task_id:
-                self._decrement_concurrency(selected_endpoint, task_type)
-                raise RuntimeError("远程端点未返回有效的 task_id")
+            if not remote_eval_task_id:
+                raise RuntimeError("远程端点未返回有效的 eval_task_id")
 
-            local_task_id = remote_task_id 
+            source_lang = task_params.get('source_lang') if task_params else None
+            target_lang = task_params.get('target_lang') if task_params else None
+            translate_direct = task_params.get('translate_direct') if task_params else None
             TaskModel.create_task(
-                task_id=local_task_id,
+                eval_task_id=remote_eval_task_id,
                 task_type=task_type,
                 source_lang=source_lang,
                 target_lang=target_lang,
                 translate_direct=translate_direct,
                 task_params=task_params,
                 endpoints=endpoints,
-                endpoint_url=selected_endpoint
+                endpoint_url=selected_endpoint,
+                task_id=caller_task_id
             )
             
-            TaskModel.update_task_status(local_task_id, 'processing', started_at=datetime.now().isoformat())
+            TaskModel.update_task_status(remote_eval_task_id, 'processing', started_at=datetime.now().isoformat())
 
             thread = threading.Thread(
                 target=self._poll_task_status,
-                args=(selected_endpoint, local_task_id, task_type)
+                args=(selected_endpoint, remote_eval_task_id, task_type)
             )
             thread.daemon = True
             thread.start()
             
-            return local_task_id
+            return remote_eval_task_id
 
         except Exception as e:
             if selected_endpoint:
@@ -158,14 +193,14 @@ class RemoteService:
         with self._lock:
             return self._endpoint_concurrency.copy()
 
-    def _poll_task_status(self, endpoint_url: str, task_id: str, task_type: str):
+    def _poll_task_status(self, endpoint_url: str, eval_task_id: str, task_type: str):
         """轮询任务状态，完成后释放并发并同步结果"""
         poll_interval = 5 if task_type == 'llm_judge' else 2
         max_attempts = 60 if task_type == 'llm_judge' else 30
 
         try:
-            status_url = f"{endpoint_url.rstrip('/')}/api/get_status/{task_id}"
-            result_url = f"{endpoint_url.rstrip('/')}/api/get_final_result/{task_id}"
+            status_url = f"{endpoint_url.rstrip('/')}/api/get_status/{eval_task_id}"
+            result_url = f"{endpoint_url.rstrip('/')}/api/get_final_result/{eval_task_id}"
             
             for _attempt in range(max_attempts):
                 time.sleep(poll_interval)
@@ -181,27 +216,27 @@ class RemoteService:
                                     if res_resp.status_code == 200:
                                         res_data = res_resp.json().get('data', {})
                                         TaskModel.update_task_status(
-                                            task_id,
+                                            eval_task_id,
                                             'completed',
                                             completed_at=datetime.now().isoformat(),
                                             result=res_data.get('result')
                                         )
                                     else:
-                                        TaskModel.update_task_status(task_id, 'failed', error_msg="无法获取远程结果")
+                                        TaskModel.update_task_status(eval_task_id, 'failed', error_msg="无法获取远程结果")
                                 except Exception as e:
-                                    TaskModel.update_task_status(task_id, 'failed', error_msg=f"同步结果失败: {str(e)}")
+                                    TaskModel.update_task_status(eval_task_id, 'failed', error_msg=f"同步结果失败: {str(e)}")
                             else:
                                 error_msg = data.get('data', {}).get('error_msg', '远程任务失败')
-                                TaskModel.update_task_status(task_id, 'failed', error_msg=error_msg)
+                                TaskModel.update_task_status(eval_task_id, 'failed', error_msg=error_msg)
                             break
                     elif resp.status_code == 404:
-                        TaskModel.update_task_status(task_id, 'failed', error_msg="任务在远程端点不存在")
+                        TaskModel.update_task_status(eval_task_id, 'failed', error_msg="任务在远程端点不存在")
                         break
                 except Exception as e:
-                    print(f"Polling error for {task_id}: {e}")
+                    print(f"Polling error for {eval_task_id}: {e}")
             else:
                 TaskModel.update_task_status(
-                    task_id, 'failed',
+                    eval_task_id, 'failed',
                     error_msg=f"Remote task timeout after {max_attempts * poll_interval}s"
                 )
                     

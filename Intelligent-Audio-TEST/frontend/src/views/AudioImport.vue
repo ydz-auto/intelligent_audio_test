@@ -1,4 +1,4 @@
-<!-- MVC role: View -->
+﻿<!-- MVC role: View -->
 <template>
   <div class="audio-import-view">
     <!-- 页面标题 -->
@@ -61,6 +61,9 @@
           :enable-selection="true"
           :show-status="true"
           :audio-type="audioTypeFilter"
+          :server-folder-tree="serverFolderTree"
+          :folder-loading="folderLoading"
+          :expanded-folder-paths="expandedFolderPaths"
           @view-change="switchView"
           @search="searchAudios"
           @filterChange="filterAudios"
@@ -76,6 +79,7 @@
           @convert="convertAudio"
           @pageChange="handleGoToPage"
           @sizeChange="handlePageSizeChange"
+          @expand-folder="handleExpandFolder"
         >
           <template #actions></template>
           <template #file-actions></template>
@@ -141,17 +145,6 @@
       </div>
     </div>
 
-    <!-- 全局播放设备选择模态窗 -->
-    <GlobalPlaybackDeviceModal
-      :visible="showDeviceModal"
-      :title="'选择播放设备'"
-      :is-multi-select="currentPreviewAudioType === 'noise'"
-      :initial-selected-devices="[]"
-      :playback-devices="playbackDevices"
-      :audio-type="currentPreviewAudioType"
-      @close="showDeviceModal = false"
-      @confirm="handleDeviceSelect"
-    />
     
     <!-- 音频播放器模态窗 -->
     <AudioPlayerModal
@@ -160,7 +153,7 @@
       :audio-id="currentPreviewAudioId"
       :audio-title="audioTitle"
       :audio-type="currentPreviewAudioType"
-      :selected-devices="selectedPlaybackDevices"
+      :selected-devices="[]"
       @close="showAudioPlayerModal = false"
     />
 
@@ -183,7 +176,6 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
 };
 import AudioListComponent from '../components/common/AudioListComponent.vue';
 import UploadProgressCard from '../components/common/UploadProgressCard.vue';
-import GlobalPlaybackDeviceModal from '../components/common/modal/GlobalPlaybackDeviceModal.vue';
 import AudioPlayerModal from '../components/common/AudioPlayerModal.vue';
 import { useAudioImport } from './AudioImportLogic/audioImport';
 import { useUploadState } from '../composables/useUploadState';
@@ -235,6 +227,8 @@ const {
   fetchFolderTree,
   toggleFolderExpand,
   isFolderExpanded,
+  loadSubTree,
+  mergeSubTree,
   expandedFolders: expandedFolders,
   switchView: switchView, 
   applyFilters: applyFilters, 
@@ -362,6 +356,17 @@ const filterAudios = (newFilters?: any) => {
 const uploadTasks = rawUploadTasks as unknown as Ref<AudioUploadTask[]>;
 const currentTask = rawCurrentTask as unknown as Ref<AudioUploadTask | null>;
 
+
+const handleExpandFolder = async (folderPath: string) => {
+  toggleFolderExpand(folderPath);
+  if (isFolderExpanded(folderPath)) {
+    const subTree = await loadSubTree(folderPath);
+    if (subTree) {
+      mergeSubTree(folderPath, subTree);
+    }
+  }
+};
+
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeyDown);
 });
@@ -380,45 +385,12 @@ const formattedAudios = computed(() => {
   const audioTypeFilter = ref('all');
 
 // 播放设备选择模态窗状态
-const showDeviceModal = ref(false);
 
 // 音频播放器模态窗状态
-const selectedPlaybackDevices = ref<any[]>([]);
 
 // 修改预览音频函数，直接打开音频播放器模态窗
-const previewAudioWithDeviceSelection = async (audioId: string | number) => {
-  await previewAudio(audioId);
-};
 
 // 处理设备选择
-const handleDeviceSelect = async (selectedDeviceIds: (string | number)[]) => {
-  if (selectedDeviceIds && selectedDeviceIds.length > 0) {
-    const devices = selectedDeviceIds.map((deviceId) => {
-      let deviceInfo = playbackDevices.value.find(d => d.id === deviceId);
-      
-      if (!deviceInfo) {
-        let deviceName = deviceId.toString();
-        let channelIndex = '';
-        
-        if (deviceName.includes('-') && deviceName.lastIndexOf('-') < deviceName.length - 1) {
-          const lastDashIndex = deviceName.lastIndexOf('-');
-          deviceName = deviceName.substring(0, lastDashIndex);
-          channelIndex = deviceName.substring(lastDashIndex + 1);
-          
-          channelIndex = channelIndex.replace('undefined', '');
-        }
-        
-        return {id: deviceId, name: deviceName, channel: channelIndex};
-      }
-      
-      return deviceInfo;
-    });
-    
-    selectedPlaybackDevices.value = devices;
-    showAudioPlayerModal.value = true;
-  }
-  showDeviceModal.value = false;
-};
 </script>
 
 <style>

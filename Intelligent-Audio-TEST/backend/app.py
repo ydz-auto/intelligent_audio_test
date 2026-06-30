@@ -390,8 +390,8 @@ def create_app(config_name='default'):
         return response
 
     # 全局错误处理
-    from utils.error_codes import ErrorCode
-    from utils.response import format_response
+    from utils.web.error_codes import ErrorCode
+    from utils.web.response import format_response
     from flask import jsonify
 
     @app.errorhandler(Exception)

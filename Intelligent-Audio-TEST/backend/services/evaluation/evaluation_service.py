@@ -21,16 +21,17 @@ def get_app():
     return app
 
 class EndpointWorker:
-    def __init__(self, endpoint_url, eval_service, max_timeout=30):
+    def __init__(self, endpoint_url, eval_service, max_timeout=30, max_concurrent=1):
         self.endpoint_url = endpoint_url
         self.eval_service = eval_service
         self.max_timeout = max_timeout
+        self.max_concurrent = max_concurrent  # 最大并发消费线程数
         self.task_queue = queue.Queue()
-        self.worker_thread = None
+        self.worker_threads = []  # 多个消费线程
         self.stop_event = threading.Event()
         self.completion_events = {}  # task_id -> threading.Event for completion signaling
         self.completion_events_lock = threading.Lock()
-        self._log(level='INFO', content=f"端点Worker已创建: {endpoint_url}, 超时时间: {max_timeout}秒")
+        self._log(level='INFO', content=f"端点Worker已创建: {endpoint_url}, 超时时间: {max_timeout}秒, 最大并发: {max_concurrent}")
     
     def _log(self, level, content, task_id=None, test_case_id=None, api_id=None, **kwargs):
         LogController.log_and_emit(
@@ -46,20 +47,24 @@ class EndpointWorker:
         )
     
     def start(self):
-        if self.worker_thread is None or not self.worker_thread.is_alive():
+        if not self.worker_threads or not any(t.is_alive() for t in self.worker_threads):
             self.stop_event.clear()
-            self.worker_thread = threading.Thread(
-                target=self._worker_loop,
-                name=f"EndpointWorker-{self.endpoint_url[:30]}",
-                daemon=True
-            )
-            self.worker_thread.start()
-            self._log(level='INFO', content=f"端点Worker已启动: {self.endpoint_url}")
+            self.worker_threads = []
+            for i in range(self.max_concurrent):
+                t = threading.Thread(
+                    target=self._worker_loop,
+                    name=f"EndpointWorker-{self.endpoint_url[:30]}-{i}",
+                    daemon=True
+                )
+                t.start()
+                self.worker_threads.append(t)
+            self._log(level='INFO', content=f"端点Worker已启动: {self.endpoint_url}, 消费线程数: {self.max_concurrent}")
     
     def stop(self):
         self.stop_event.set()
-        if self.worker_thread and self.worker_thread.is_alive():
-            self.worker_thread.join(timeout=2)
+        for t in self.worker_threads:
+            if t.is_alive():
+                t.join(timeout=2)
         self._log(level='INFO', content=f"端点Worker已停止: {self.endpoint_url}")
     
     def _worker_loop(self):
@@ -87,6 +92,17 @@ class EndpointWorker:
                             task_id=task_id,
                             test_case_id=task_data.get('test_case_id')
                         )
+                        # 从 queued 改为 running，反映真实执行状态
+                        try:
+                            tc = local_db_session.query(TaskCase).filter_by(
+                                task_id=task_id, test_case_id=task_data.get('test_case_id')
+                            ).first()
+                            if tc and tc.evaluation_status == 'queued':
+                                tc.evaluation_status = 'running'
+                                local_db_session.commit()
+                        except Exception as e:
+                            local_db_session.rollback()
+                            self._log(level='WARNING', content=f"更新评估状态为running失败: {str(e)}", task_id=task_id)
                         self._execute_evaluation(**task_data)
                         
                         self._log(
@@ -230,6 +246,18 @@ class EndpointWorker:
         }
         
         try:
+            # 标记为calculating：payload已构建完成，即将提交给eval_server计算
+            try:
+                tc = local_db_session.query(TaskCase).filter_by(
+                    task_id=task_id, test_case_id=test_case_id
+                ).first()
+                if tc and tc.evaluation_status == 'running':
+                    tc.evaluation_status = 'calculating'
+                    local_db_session.commit()
+            except Exception as e:
+                local_db_session.rollback()
+                self._log(level='WARNING', content=f"更新评估状态为calculating失败: {str(e)}", task_id=task_id)
+            
             selected_url, resp_data = self.eval_service.api_client.make_api_request_with_fallback(
                 endpoints=endpoints,
                 method=method,
@@ -346,12 +374,21 @@ class EvaluationService:
         with self.endpoint_workers_lock:
             if endpoint_url not in self.endpoint_workers:
                 max_timeout = self._get_timeout_from_dim_config(dim_data, 30)
-                worker = EndpointWorker(endpoint_url, self, max_timeout=max_timeout)
+                # 从端点配置获取 max_process（并发消费线程数）
+                endpoints = dim_data.get('api_endpoints', [])
+                max_concurrent = 1
+                if endpoints and isinstance(endpoints, list) and len(endpoints) > 0:
+                    endpoint_item = endpoints[0]
+                    max_concurrent = endpoint_item.get('max_process', endpoint_item.get('maxProcess', 1))
+                # 也从 api_client.endpoint_configs 获取
+                if endpoint_url in self.api_client.endpoint_configs:
+                    max_concurrent = self.api_client.endpoint_configs[endpoint_url]
+                worker = EndpointWorker(endpoint_url, self, max_timeout=max_timeout, max_concurrent=max_concurrent)
                 self.endpoint_workers[endpoint_url] = worker
                 worker.start()
                 self._log(
                     level='INFO',
-                    content=f"为端点创建新Worker: {endpoint_url}, 超时: {max_timeout}秒"
+                    content=f"为端点创建新Worker: {endpoint_url}, 超时: {max_timeout}秒, 并发: {max_concurrent}"
                 )
             return self.endpoint_workers[endpoint_url]
     
@@ -545,8 +582,8 @@ class EvaluationService:
             update_session = db.session()
             try:
                 tc_rel = update_session.query(TaskCase).filter_by(task_id=task_id, test_case_id=test_case_id).first()
-                if tc_rel and tc_rel.evaluation_status not in ['running', 'stopped']:
-                    tc_rel.evaluation_status = 'running'
+                if tc_rel and tc_rel.evaluation_status not in ['running', 'stopped', 'queued']:
+                    tc_rel.evaluation_status = 'queued'
                     update_session.commit()
             except Exception as e:
                 self._log(level='WARNING', content=f"更新评估状态失败: {str(e)}", task_id=task_id, test_case_id=test_case_id)

@@ -1,0 +1,104 @@
+[
+  {
+    "code": "rttm_ref",
+    "type": "rttm",
+    "value": {
+      "json": "[{\"speaker\": \"spk1\", \"start\": 0.0, \"end\": 0.75, \"text\": \"与观点碰。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk4\", \"start\": 0.75, \"end\": 3.75, \"text\": \"陪你打开文艺电影的盲盒，你可以。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 3.75, \"end\": 7.5, \"text\": \"可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk4\", \"start\": 7.5, \"end\": 8.785, \"text\": \"不再小众。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 8.785, \"end\": 11.915, \"text\": \"Hello，Hello，大家好，我是乔恩，好久不见。\", \"confidence\": 1, \"play_order\": 0}]",
+      "text": "SPEAKER test_case 1 0.000 0.750 <NA> <NA> spk1 <NA> <NA>\nSPEAKER test_case 1 0.750 3.000 <NA> <NA> spk4 <NA> <NA>\nSPEAKER test_case 1 3.750 3.750 <NA> <NA> spk1 <NA> <NA>\nSPEAKER test_case 1 7.500 1.285 <NA> <NA> spk4 <NA> <NA>\nSPEAKER test_case 1 8.785 3.130 <NA> <NA> spk1 <NA> <NA>",
+      "format": "rttm",
+      "segments": [
+        {
+          "end": 0.75,
+          "text": "与观点碰。",
+          "start": 0.0,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 3.75,
+          "text": "陪你打开文艺电影的盲盒，你可以。",
+          "start": 0.75,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 7.5,
+          "text": "可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。",
+          "start": 3.75,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 8.785,
+          "text": "不再小众。",
+          "start": 7.5,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 11.915,
+          "text": "Hello，Hello，大家好，我是乔恩，好久不见。",
+          "start": 8.785,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 0
+        }
+      ]
+    }
+  },
+  {
+    "code": "stm_ref",
+    "type": "stm",
+    "value": {
+      "json": "[{\"speaker\": \"spk1\", \"start\": 0.0, \"end\": 0.75, \"text\": \"与观点碰。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk4\", \"start\": 0.75, \"end\": 3.75, \"text\": \"陪你打开文艺电影的盲盒，你可以。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 3.75, \"end\": 7.5, \"text\": \"可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk4\", \"start\": 7.5, \"end\": 8.785, \"text\": \"不再小众。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 8.785, \"end\": 11.915, \"text\": \"Hello，Hello，大家好，我是乔恩，好久不见。\", \"confidence\": 1, \"play_order\": 0}]",
+      "text": "test_case 1 spk1 0.000 0.750 与观点碰。\ntest_case 1 spk4 0.750 3.750 陪你打开文艺电影的盲盒，你可以。\ntest_case 1 spk1 3.750 7.500 可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\ntest_case 1 spk4 7.500 8.785 不再小众。\ntest_case 1 spk1 8.785 11.915 Hello，Hello，大家好，我是乔恩，好久不见。",
+      "format": "stm",
+      "segments": [
+        {
+          "end": 0.75,
+          "text": "与观点碰。",
+          "start": 0.0,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 3.75,
+          "text": "陪你打开文艺电影的盲盒，你可以。",
+          "start": 0.75,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 7.5,
+          "text": "可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。",
+          "start": 3.75,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 8.785,
+          "text": "不再小众。",
+          "start": 7.5,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 11.915,
+          "text": "Hello，Hello，大家好，我是乔恩，好久不见。",
+          "start": 8.785,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 0
+        }
+      ]
+    }
+  }
+]

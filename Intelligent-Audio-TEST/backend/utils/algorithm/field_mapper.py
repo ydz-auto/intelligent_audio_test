@@ -242,18 +242,34 @@ class FieldMapper:
                     'component_type': 'api'
                 })
 
+        param_type_lookup = {}
+        for param in device_params + api_params:
+            code = param.get('code')
+            p_type = param.get('param_type') or param.get('type', 'text')
+            if code:
+                param_type_lookup[code] = p_type
+
+        reference_params = self._loader.get_reference_params(algorithm_type)
+        for ref_param in reference_params:
+            code = ref_param.get('code')
+            p_type = ref_param.get('type', 'text')
+            if code:
+                param_type_lookup[code] = p_type
+
         eval_mappings = mappings.get('evaluation', [])
         for m in eval_mappings:
             target_param = m.get('target_param')
             source = m.get('source', 'api')
+            source_param = m.get('source_param', '')
+            resolved_type = param_type_lookup.get(source_param, 'text')
             original_fields['evaluation']['input'][target_param] = {
                 'code': target_param,
                 'name': m.get('dimension_name', target_param),
-                'type': 'text',
+                'type': resolved_type,
                 'source': source,
                 'required': True,
                 'transform': m.get('transform_type', 'none'),
-                'param_type': 'text',
+                'param_type': resolved_type,
                 'dimension_id': m.get('dimension_id'),
                 'component_type': 'evaluation'
             }

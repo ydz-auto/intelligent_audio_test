@@ -56,6 +56,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import DataTable from '../common/DataTable.vue'
 import { reportsApi } from '../../utils/api'
+import { getValidResources } from '../../utils/reportDataUtils'
 
 const props = defineProps({
   reportData: {
@@ -175,24 +176,6 @@ const getResourceLabel = (resourceKey) => {
   }
 
   return resourceKey
-}
-
-const getValidResources = (data) => {
-  const resources = [
-    data.resources,
-    data.devices,
-    data.apis,
-    data.summary?.resources,
-    data.summary?.apis,
-    data.summary?.devices
-  ];
-
-  for (const resource of resources) {
-    if (Array.isArray(resource) && resource.length > 0) {
-      return resource;
-    }
-  }
-  return [];
 }
 
 const devices = computed(() => getValidResources(props.reportData))

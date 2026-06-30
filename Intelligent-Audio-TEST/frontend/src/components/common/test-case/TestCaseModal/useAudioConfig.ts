@@ -113,6 +113,31 @@ export function useAudioConfig() {
     return String(rawTags);
   }
 
+  function getAudioDuration(audioId: string | number): number {
+    const allAudios = [...dryAudios.value, ...noiseAudios.value];
+    const audio = allAudios.find(a => String(a.id) === String(audioId));
+    if (!audio || !audio.duration) return 0;
+    if (typeof audio.duration === 'number') return audio.duration;
+    // Parse "MM:SS" or "HH:MM:SS" format
+    const parts = String(audio.duration).split(':').map(Number);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    const num = parseFloat(String(audio.duration));
+    return isNaN(num) ? 0 : num;
+  }
+
+  function formatDuration(totalSeconds: number): string {
+    if (!totalSeconds || totalSeconds <= 0) return '0s';
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = Math.round(totalSeconds % 60);
+    const parts: string[] = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+    return parts.join(' ');
+  }
+
   function getNormalizedTags(tagsStr: string): string[] {
     if (!tagsStr) return [];
     if (typeof tagsStr === 'string') {
@@ -677,6 +702,8 @@ export function useAudioConfig() {
     loadResources,
     getAudioName,
     getAudioTags,
+    getAudioDuration,
+    formatDuration,
     getNormalizedTags,
     getDeviceName,
     toggleAudioTags,

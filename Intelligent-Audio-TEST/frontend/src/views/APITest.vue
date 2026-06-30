@@ -66,6 +66,7 @@
           :test-case-groups="testCaseGroups"
           :tags="tags"
           :algorithm-type-filter="selectedAlgorithmType || 'all'"
+          :test-type-filter="'api'"
           :is-loading="isLoading || false"
           @delete-group="handleDeleteGroup"
           @delete-test-case="handleDeleteTestCase"

@@ -16,6 +16,7 @@ from typing import Dict, List, Any, Optional
 from .algorithm_config_loader import get_config_loader
 from .reference_params_generator import (
     get_reference_value as gen_reference_value,
+    normalize_reference_params,
     ReferenceParamsGenerator as RefGenerator
 )
 from backend.utils.web.log_handler import log_not_emit
@@ -210,8 +211,15 @@ class CaseParameterExtractor:
         """
         eval_params = {}
         case_params = _normalize_algorithm_params(case_config.get('algorithm_params', {}))
-        reference_params = case_config.get('reference_params', [])
+        raw_reference_params = case_config.get('reference_params', [])
+        reference_params = normalize_reference_params(raw_reference_params, test_type)
         
+        log_not_emit('DEBUG', 'case_parameter_extractor',
+                     f'[_build_evaluation_params] raw_ref_type={type(raw_reference_params).__name__}, '
+                     f'normalized_count={len(reference_params)}, '
+                     f'codes={[p.get("code") for p in reference_params]}',
+                     category='algorithm')
+
         if algorithm_result is None:
             algorithm_result = {}
 
@@ -229,7 +237,7 @@ class CaseParameterExtractor:
             if source == 'case':
                 value = case_params.get(source_param)
             elif source == 'reference':
-                if isinstance(reference_params, list):
+                if reference_params:
                     ref_type = None
                     loader = cls._get_loader()
                     for ref_def in loader.get_reference_params(algorithm_type):

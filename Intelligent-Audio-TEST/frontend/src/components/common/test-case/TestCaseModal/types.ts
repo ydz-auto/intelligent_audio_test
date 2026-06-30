@@ -45,6 +45,9 @@ export interface AudioItem {
   name: string;
   audioType?: string;
   tags?: string | string[];
+  duration?: number | string;
+  filePath?: string;
+  filename?: string;
 }
 
 export interface PlaybackDevice {

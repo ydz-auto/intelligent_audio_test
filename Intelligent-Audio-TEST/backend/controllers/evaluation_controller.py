@@ -32,6 +32,64 @@ from backend.schemas.evaluation import (
     TaskReevaluateResult,
 )
 from datetime import datetime, timezone, timedelta
+import re
+
+
+def _sync_body_template(api_settings, param_codes):
+    """
+    根据 param_codes 同步 api_settings 中的 body_template。
+    - 新增参数：添加 "{{param_code}}" 占位符
+    - 删除参数：移除对应的占位符
+    - 静态字段（非 {{xxx}} 格式的值）保持不变
+    """
+    if not param_codes:
+        return api_settings
+
+    if api_settings is None:
+        api_settings = {}
+    if not isinstance(api_settings, dict):
+        return api_settings
+
+    body_template = api_settings.get('body_template')
+
+    # 解析 body_template 为 dict
+    if body_template is None:
+        bt_dict = {}
+    elif isinstance(body_template, str):
+        try:
+            bt_dict = json.loads(body_template) if body_template.strip() else {}
+        except json.JSONDecodeError:
+            bt_dict = {}
+    elif isinstance(body_template, dict):
+        bt_dict = dict(body_template)
+    else:
+        bt_dict = {}
+
+    param_set = set(param_codes)
+
+    # 移除已删除参数对应的占位符（值为 {{xxx}} 且 xxx 不在 param_set 中）
+    placeholder_re = re.compile(r'^\{\{(\w+)\}\}$')
+    keys_to_remove = []
+    for key, value in bt_dict.items():
+        if isinstance(value, str):
+            match = placeholder_re.match(value)
+            if match and match.group(1) not in param_set:
+                keys_to_remove.append(key)
+    for key in keys_to_remove:
+        del bt_dict[key]
+
+    # 添加新参数的占位符
+    for code in param_codes:
+        if code not in bt_dict:
+            bt_dict[code] = f"{{{{{code}}}}}"
+
+    # 写回 body_template（保持与原始类型一致）
+    if isinstance(body_template, str):
+        api_settings['body_template'] = json.dumps(bt_dict, ensure_ascii=False)
+    else:
+        api_settings['body_template'] = bt_dict
+
+    return api_settings
 
 
 class EvaluationController:
@@ -373,6 +431,17 @@ class EvaluationController:
                         )
                         db.session.add(param)
 
+            # 同步 body_template：根据 required_inputs 中的 param_code 更新 api_settings
+            if required_inputs and isinstance(required_inputs, list):
+                created_param_codes = []
+                for inp in required_inputs:
+                    pc = inp.get('param_code', inp.get('key', ''))
+                    if pc:
+                        created_param_codes.append(pc)
+                if created_param_codes:
+                    current_api_settings = new_dim.api_settings or {}
+                    new_dim.api_settings = _sync_body_template(current_api_settings, created_param_codes)
+
             db.session.commit()
 
             from backend.utils.report.stats_cache import refresh_stats_cache
@@ -504,6 +573,17 @@ class EvaluationController:
                             ui_order=inp.get('ui_order', idx)
                         )
                         db.session.add(param)
+
+            # 同步 body_template：根据 required_inputs 中的 param_code 更新 api_settings
+            if required_inputs is not None and isinstance(required_inputs, list):
+                updated_param_codes = []
+                for inp in required_inputs:
+                    pc = inp.get('param_code', inp.get('key', ''))
+                    if pc:
+                        updated_param_codes.append(pc)
+                if updated_param_codes:
+                    current_api_settings = dim.api_settings or {}
+                    dim.api_settings = _sync_body_template(current_api_settings, updated_param_codes)
 
             dim.updated_at = datetime.now(timezone(timedelta(hours=8)))
 

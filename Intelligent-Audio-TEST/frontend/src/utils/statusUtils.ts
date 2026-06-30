@@ -1,6 +1,6 @@
 const executionStatusMap: Record<string, string> = {'pending': 'pending', 'queued': 'queued', 'running': 'in_progress', 'evaluating': 'evaluating', 'completed': 'completed', 'stopped': 'stopped', 'failed': 'failed'};
 
-const evaluationStatusMap: Record<string, string> = {'pending': 'pending', 'running': 'calculating', 'completed': 'completed', 'stopped': 'stopped', 'calculating': 'calculating', 'failed': 'failed'};
+const evaluationStatusMap: Record<string, string> = {'pending': 'pending', 'queued': 'queued', 'running': 'calculating', 'completed': 'completed', 'stopped': 'stopped', 'calculating': 'calculating', 'failed': 'failed'};
 
 const resultStatusMap: Record<string, string> = {'completed': 'completed', 'passed': 'completed', 'failed': 'failed'};
 
@@ -46,7 +46,9 @@ export function transformTestCaseStatus(testCaseProgress: TestCaseProgress): Tra
   } else if (executionStatus === 'queued') {
     finalStatus = 'queued';
   } else if (executionStatus === 'completed') {
-    if (evaluationStatus === 'calculating' || evaluationStatus === 'running') {
+    if (evaluationStatus === 'queued') {
+      finalStatus = 'queued';
+    } else if (evaluationStatus === 'calculating' || evaluationStatus === 'running') {
       finalStatus = 'calculating';
     } else if (evaluationStatus === 'failed') {
       finalStatus = 'failed';

@@ -40,6 +40,7 @@
         :round="currentRound"
         :api-input-params="apiInputParams || []"
         :case-algorithm-params="caseAlgorithmParams || []"
+        :algorithm-form-schema="algorithmFormSchema"
         :test-type="effectiveTestType"
         @update:round="updateCurrentRoundData"
         @open-audio-select="handleAudioSelect"
@@ -51,6 +52,11 @@
         :round="currentRound"
         @update:round="updateCurrentRoundData"
         @open-audio-select="handleAudioSelect"
+        @open-device-modal="(audioIndex: number) => emit('openDeviceModal', audioIndex)"
+        @open-batch-device-modal="() => emit('openBatchDeviceModal')"
+        @open-cross-device-modal="() => emit('openCrossDeviceModal')"
+        @open-batch-spl-modal="() => emit('openBatchSplModal')"
+        @preview-audio="(audioId: string) => emit('previewAudio', audioId, 'dry')"
       />
 
       <!-- ===== 步骤 3: 噪声 & 干扰 (仅 E2E) ===== -->
@@ -65,7 +71,17 @@
         @open-audio-select="handleAudioSelect"
       />
 
-      <!-- ===== 步骤 4: 评估维度 ===== -->
+      <!-- ===== 步骤 4: 高级配置 (仅当有高级参数时显示) ===== -->
+      <AdvancedConfigStep
+        v-if="currentRound && hasAdvancedParams"
+        :round="currentRound"
+        :case-algorithm-params="caseAlgorithmParams || []"
+        :test-type="effectiveTestType"
+        @update:round="updateCurrentRoundData"
+        @open-audio-select="handleAudioSelect"
+      />
+
+      <!-- ===== 步骤 5: 评估维度 ===== -->
       <div class="rce-step" id="step-eval" v-if="currentRound">
         <div class="rce-step-header">
           <i class="fas fa-chart-bar rce-step-icon"></i>
@@ -102,6 +118,7 @@ import AlgoParamsStep from './sections/AlgoParamsStep.vue'
 import AudioListStep from './sections/AudioListStep.vue'
 import NoiseInterferenceStep from './sections/NoiseInterferenceStep.vue'
 import ReferencePathStep from './sections/ReferencePathStep.vue'
+import AdvancedConfigStep from './sections/AdvancedConfigStep.vue'
 
 // ---- Props ----
 const props = defineProps<{
@@ -110,11 +127,17 @@ const props = defineProps<{
   caseAlgorithmParams?: any[]
   apiInputParams?: any[]
   algorithmType?: string
+  algorithmFormSchema?: any
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: RoundConfigItem[]]
-  'openAudioSelect': [callback: (audioId: string, audioName?: string) => void]
+  'openAudioSelect': [audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void]
+  'openDeviceModal': [audioIndex: number]
+  'openBatchDeviceModal': []
+  'openCrossDeviceModal': []
+  'openBatchSplModal': []
+  'previewAudio': [audioId: string, audioType: 'dry' | 'noise']
 }>()
 
 // ---- Injects ----
@@ -124,6 +147,11 @@ const availableDimensions = inject<Dimension[]>('availableDimensions', [])
 // ---- 本地状态 ----
 const localRounds = ref<RoundConfigItem[]>([])
 const activeRoundIndex = ref(0)
+
+// Reset step view when switching rounds
+watch(() => activeRoundIndex.value, () => {
+  activeStep.value = "algo";
+});
 const activeStep = ref('algo')
 const contentAreaRef = ref<HTMLElement>()
 
@@ -143,6 +171,17 @@ const currentRound = computed(() => localRounds.value[activeRoundIndex.value] ||
 const effectiveTestType = computed(() => props.testType || 'api')
 
 // ---- 步骤定义 ----
+const ADVANCED_PARAM_TYPES = new Set(['audio_select', 'device_select', 'slider', 'switch'])
+
+const hasAdvancedParams = computed(() => {
+  const params = props.caseAlgorithmParams || []
+  const tt = effectiveTestType.value
+  return params.some((p: any) => {
+    const scopeMatch = p.scope === 'common' || p.scope === tt || !p.scope
+    return scopeMatch && ADVANCED_PARAM_TYPES.has(p.param_type)
+  })
+})
+
 const steps = computed(() => {
   const base = [
     { id: 'algo', num: 1, label: '算法参数', icon: 'fas fa-sliders-h' },
@@ -150,6 +189,9 @@ const steps = computed(() => {
   ]
   if (effectiveTestType.value === 'e2e') {
     base.push({ id: 'noise', num: 3, label: '噪声 & 干扰', icon: 'fas fa-volume-up' })
+  }
+  if (hasAdvancedParams.value) {
+    base.push({ id: 'advanced', num: base.length + 1, label: '高级配置', icon: 'fas fa-cogs' })
   }
   base.push({ id: 'eval', num: base.length + 1, label: '评估维度', icon: 'fas fa-chart-bar' })
   base.push({ id: 'ref', num: base.length + 2, label: '参考参数', icon: 'fas fa-file-alt' })
@@ -216,6 +258,7 @@ function copyCurrentRound() {
 
 function removeCurrentRound() {
   if (localRounds.value.length <= 1) return
+  if (!confirm('确定要删除第 ' + (activeRoundIndex.value + 1) + ' 轮吗？该操作不可撤销。')) return
   const idx = activeRoundIndex.value
   localRounds.value = localRounds.value
     .filter((_, i) => i !== idx)
@@ -239,9 +282,13 @@ function updateCurrentRound(key: keyof RoundConfigItem, value: unknown) {
   emitUpdate()
 }
 
-function handleAudioSelect(callback: (audioId: string) => void) {
-  emit('openAudioSelect', callback)
+function handleAudioSelect(audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void) {
+  emit('openAudioSelect', audioType, callback)
 }
+
+defineExpose({
+  activeRoundIndex
+});
 
 // ---- 步骤导航 ----
 function scrollToStep(stepId: string) {
@@ -253,6 +300,12 @@ function scrollToStep(stepId: string) {
 }
 
 // ---- 辅助 ----
+// ---- Round validation ----
+function isRoundValid(round: RoundConfigItem): boolean {
+  const audios = round.audios || []
+  return audios.some((a: any) => a.audioId && a.audioId.trim() !== '')
+}
+
 function emitUpdate() {
   emit('update:modelValue', [...localRounds.value])
 }

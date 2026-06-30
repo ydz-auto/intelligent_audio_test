@@ -201,6 +201,27 @@ class DeviceResultReextractor:
 
             device_map = {d.id: d for d in task_devices}
 
+            from backend.utils.device_driver import device_driver_factory
+            reextractable_device_map = {}
+            for d_id, d in device_map.items():
+                driver = device_driver_factory.get_driver(d.system or '', keywords=d.keywords)
+                if driver and hasattr(driver, 'extract_results_from_archive'):
+                    reextractable_device_map[d_id] = d
+                else:
+                    driver_name = driver.__class__.__name__ if driver else 'None'
+                    log_and_emit('INFO', 'reextractor',
+                                 f"跳过设备 {d.name}(id={d_id}): 驱动 {driver_name} 不支持重新提取",
+                                 task_id=task_id)
+
+            if not reextractable_device_map:
+                return {
+                    'success': True,
+                    'message': f'任务 {task_id} 的所有设备均不支持重新提取',
+                    'reextracted_cases': []
+                }
+
+            device_map = reextractable_device_map
+
             query = db.session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
                 TaskCase.execution_status == execution_status
@@ -311,6 +332,11 @@ class DeviceResultReextractor:
                             result_data_to_save['adjusted_reference_params'] = adjusted_reference_params
                             log_and_emit('DEBUG', 'reextractor',
                                          f"使用旧的 adjusted_reference_params",
+                                         task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+                        else:
+                            result_data_to_save['adjusted_reference_params'] = original_reference_params or []
+                            log_and_emit('DEBUG', 'reextractor',
+                                         f"使用原始 reference_params 作为 adjusted_reference_params",
                                          task_id=task_id, test_case_id=test_case_id, device_id=device_id)
 
                         if new_alignment_info:

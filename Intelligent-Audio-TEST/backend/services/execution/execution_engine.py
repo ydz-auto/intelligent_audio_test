@@ -590,10 +590,23 @@ class ExecutionEngine:
                     self.stop_flags.pop(task_id, None)
                     self.pause_flags.pop(task_id, None)
                     self.task_completion_events.pop(task_id, None)
-                    
+                    # 清理进度缓存，避免内存泄漏
+                    self.task_progress_cache.pop(task_id, None)
+                    self.last_progress_update.pop(task_id, None)
+                    # 清理多轮进度缓存（key 为 tc_rel_id，需查询当前任务的用例 ID）
+                    try:
+                        tc_rel_ids = [
+                            tc_id for (tc_id,) in
+                            local_db_session.query(TaskCase.id).filter_by(task_id=task_id).all()
+                        ]
+                        for tc_rel_id in tc_rel_ids:
+                            self.round_progress_cache.pop(tc_rel_id, None)
+                    except Exception:
+                        pass
+
                     # 检查队列并启动下一个任务
                     self._check_queue()
-                    
+
                     device_driver_factory.cleanup_devices(task_id)
                     unregister_task_events(task_id)
                     
@@ -807,7 +820,7 @@ class ExecutionEngine:
                                     TaskCase.task_id == task_id,
                                     TaskCase.execution_status.in_(['queued', 'running'])
                                 ).count()
-                                
+
                                 # 检查是否有正在评估的用例（评估可能在执行完成后才开始）
                                 evaluating_count = local_db_session.query(TaskCase).filter(
                                     TaskCase.task_id == task_id,
@@ -1095,10 +1108,10 @@ class ExecutionEngine:
                     if task:
                         # 获取所有测试用例
                         all_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id).count()
-                        # 获取已处理的测试用例（状态为completed或failed）
+                        # 获取已处理的测试用例（状态为completed/failed/skipped）
                         all_processed_cases = local_db_session.query(TaskCase).filter(
                             TaskCase.task_id == task_id, 
-                            TaskCase.status.in_(['completed', 'failed'])
+                            TaskCase.status.in_(['completed', 'failed', 'skipped'])
                         ).count()
                         # 获取运行中的测试用例 (只包括执行中、排队中，不包括评估中/待评估)
                         running_cases = local_db_session.query(TaskCase).filter(
@@ -1118,9 +1131,9 @@ class ExecutionEngine:
                             else:
                                 task.status = 'completed'
                             
-                            # 注意：不在此处更新任务状态，由评估服务的 _post_evaluate_updates 统一更新
-                            # 避免执行引擎和评估服务重复更新导致状态不一致
-                            
+                            # 提前更新任务状态和统计信息，后续等待循环会继续监控评估完成
+                            # 最终状态由评估服务的 _post_evaluate_updates 统一确认
+
                             if task.status in ['completed', 'failed']:
                                 # 更新任务完成时间和实际执行时长
                                 task.completed_at = datetime.now(self.utc_plus_8)
@@ -1574,7 +1587,25 @@ class ExecutionEngine:
                     self.workers.pop(task_id, None)
                     self.stop_flags.pop(task_id, None)
                     self.pause_flags.pop(task_id, None)
-                    
+                    self.task_completion_events.pop(task_id, None)
+                    # 清理进度缓存，避免内存泄漏
+                    self.task_progress_cache.pop(task_id, None)
+                    self.last_progress_update.pop(task_id, None)
+                    # 清理多轮进度缓存（key 为 tc_rel_id，需查询当前任务的用例 ID）
+                    try:
+                        cleanup_session = db.session()
+                        try:
+                            tc_rel_ids = [
+                                tc_id for (tc_id,) in
+                                cleanup_session.query(TaskCase.id).filter_by(task_id=task_id).all()
+                            ]
+                            for tc_rel_id in tc_rel_ids:
+                                self.round_progress_cache.pop(tc_rel_id, None)
+                        finally:
+                            cleanup_session.close()
+                    except Exception:
+                        pass
+
                     # 检查队列并启动下一个任务
                     self._check_queue()
 

@@ -1,6 +1,6 @@
 # 17_e2e_executor 多轮循环（轮次为顶层）
 
-> 文件：`backend/utils/e2e_executor.py`
+> 文件：`backend/services/execution/e2e_executor.py`
 
 ## 现状分析
 
@@ -15,7 +15,10 @@
 3. **algorithmParams 读取**：`_normalize_algorithm_params(round.algorithmParams)` 转为 dict 后按 field_code 读取
 4. **referenceParams 从文件读取**：`round.referenceParamsPath` → 读取文件
 5. **循环外一次性准备**：设备获取、初始化、声纹注册在循环外完成，避免每轮重复
-6. **轮末恢复**：每轮设置的设备环境（音量、导轨）在该轮结束时恢复
+6. **职责分离**：
+   - **executor** 只编排流程，不直接操作音量/导轨等具体设备
+   - **device_driver** 被测设备驱动自行管理音量（`pre_process` 设置，`post_process` 恢复）
+   - **env_device** 环境设备通过 `EnvDeviceFactory` + `setup()`/`teardown()` 统一管理
 
 ### 改造后执行流程
 
@@ -30,29 +33,16 @@ graph TD
 
     E["for round in config.rounds:"]
 
-    E --> F{"algorithmParams.railDistance?"}
-    F -->|有| F1["move_rail"]
-    F -->|无| G
-    F1 --> G
+    E --> F["env_devices setup<br/>(EnvDeviceFactory + setup)"]
+    F --> G["构建干扰人配置"]
 
-    G["构建干扰人配置"]
-
-    G --> H{"algorithmParams.volumeLevel?"}
-    H -->|有| H1["保存原始音量 + set_volume"]
-    H -->|无| I
-    H1 --> I
-
-    I["播放音频（内部调用 pre_process）<br/>干声+噪声+干扰人统一混音"]
-    I --> J["post_process"]
-    J --> K["恢复音量"]
-    K --> L["等待 + 打断检测"]
-    L --> M["收集本轮结果"]
-    M --> N["标记 round_number"]
-    N --> O{"railDistance?"}
-    O -->|有| O1["reset_rail"]
-    O -->|无| P
-    O1 --> P
-    P --> E
+    G --> H["播放音频<br/>pre_process → 提示音 → pre_process → 混音播放<br/>干声+噪声+干扰人统一混音<br/>(音量由驱动 pre_process 自行管理)"]
+    H --> I["post_process<br/>(驱动自行恢复音量等)"]
+    I --> J["等待 + 打断检测"]
+    J --> K["收集本轮结果"]
+    K --> L["标记 round_number"]
+    L --> M["env_devices teardown"]
+    M --> E
 
     E -->|完成| Q["汇总多轮结果 + 整体评估"]
 
@@ -95,48 +85,89 @@ class E2EExecutor:
                 round_config.get('algorithmParams', [])
             )
 
-            # 3. 导轨控制
-            rail_distance = round_algo_params.get('railDistance')
-            if rail_distance:
-                rail_controller = RailController()
-                rail_controller.move_rail(float(rail_distance))
+            # 3. 环境设备设置（导轨等，setup 自动保存状态）
+            env_states = self._setup_env_devices_for_round(round_algo_params, task_id)
 
             # 4. 构建干扰人配置
             interferer_configs = self._build_interferer_configs(...)
 
-            # 5. 音量设置（pre_process 前）
-            volume_level = round_algo_params.get('volumeLevel')
-            original_volumes = {}
-            if volume_level:
-                for info in device_info_list:
-                    original_volumes[device_sn] = driver.get_volume(device_sn)
-                    driver.set_volume(device_sn, int(volume_level))
+            # 5. 播放音频（pre_process 由驱动自行管理音量）
+            self._execute_audio_playback(
+                ..., extra_audio_configs=interferer_configs
+            )
 
-            # 6. 播放音频（内部调用 pre_process）
-            self._execute_audio_playback(...)
-
-            # 7. post_process
+            # 6. post_process（驱动自行恢复音量等）
             self._post_process_devices(device_info_list, task_id, ...)
 
-            # 8. 恢复音量（post_process 后）
-            for device_sn, original_vol in original_volumes.items():
-                driver.set_volume(device_sn, original_vol)
-
-            # 9. 等待 + 打断检测
+            # 7. 等待 + 打断检测
             interruption_events = self._wait_and_detect_interruption(...)
 
-            # 10. 收集本轮结果
+            # 8. 收集本轮结果
             round_results = self._collect_results(...)
             for r in round_results:
                 r['round_number'] = round_idx
             all_round_results.extend(round_results)
 
-            # 11. 导轨复位
-            if rail_controller:
-                rail_controller.reset_rail()
+            # 9. 环境设备恢复（teardown 自动恢复到 setup 前的状态）
+            self._teardown_env_devices_for_round(env_states, task_id)
 
         # ── 循环后：汇总 + 评估 ──
         self._process_results(task_id, ..., all_round_results, ...)
+```
+
+### 环境设备管理
+
+环境设备（导轨、声压计、人工嘴等）通过 `EnvDeviceFactory` + `BaseEnvDevice` 统一管理：
+
+```python
+def _setup_env_devices_for_round(self, round_algo_params, task_id):
+    """设置本轮环境设备，返回状态列表供 teardown 恢复。"""
+    from backend.utils.env_device import EnvDeviceFactory
+
+    _ENV_DEVICE_PARAM_MAP = {
+        'railDistance': ('rail', lambda v: {'distance_cm': float(v)}),
+        # 新增环境设备只需在此添加映射
+    }
+
+    env_states = []
+    for param_key, (device_type, build_settings) in _ENV_DEVICE_PARAM_MAP.items():
+        value = round_algo_params.get(param_key)
+        if value is None:
+            continue
+        dev = EnvDeviceFactory.create(device_type)
+        if dev and dev.is_available():
+            state = dev.setup(build_settings(value))  # save_state + apply_settings
+            env_states.append((dev, state))
+    return env_states
+
+def _teardown_env_devices_for_round(self, env_states, task_id):
+    """恢复本轮环境设备到 setup 前的状态。"""
+    for dev, state in env_states:
+        dev.teardown(state)  # restore_state
+```
+
+**新增环境设备只需 3 步**：
+1. 实现 `BaseEnvDevice` 子类
+2. 注册到 `EnvDeviceFactory`
+3. 在 `_ENV_DEVICE_PARAM_MAP` 加一行映射
+
+executor 循环体**零改动**。
+
+### 音频混音模型
+
+干声、噪声、干扰人在 `play_multi` 中统一混音，走完全相同的代码路径：
+
+| 类型 | 来源 | 循环播放 | SPL 增益 | 延迟 |
+|------|------|---------|---------|------|
+| 干声 | `round.audios[]` | 否 | 按设备 SPL 映射 | 按 play_order/overlap 计算 |
+| 噪声 | `round.backgroundNoise` | 是（loop） | 按设备 SPL 映射 | 从 0 开始 |
+| 干扰人 | `round.algorithmParams[interferers]` | 可配置 | 按设备 SPL 映射 | 按 startDelay 配置 |
+
+```
+_execute_audio_playback(..., extra_audio_configs=interferer_configs)
+  └─ execute_audio_playback(dry + noise + extra_audio_configs)
+       └─ play_overlap()
+            └─ play_multi()  ← 干声 + 噪声 + 干扰人 统一混音
 ```
 
 ### 与现有流程对比
@@ -146,9 +177,9 @@ class E2EExecutor:
 | 设备获取/初始化 | 循环内每轮重复 | **循环外一次性** |
 | 声纹注册 | 循环内首轮（flag 控制） | **循环外一次性** |
 | 主循环 | 无 | for round in rounds（每轮自包含） |
-| 音量设置 | 独立 `_apply_round_device_settings` | 内联到 pre_process 前 |
-| 音量恢复 | 独立 `_restore_round_device_settings` + finally | 内联到 post_process 后 |
-| 导轨控制 | 独立方法 + saved_state | 内联到循环内 + 循环末复位 |
+| 音量设置/恢复 | executor 内联代码 | **驱动自行管理**（pre_process/post_process） |
+| 导轨控制 | 独立方法 + saved_state | **EnvDeviceFactory** + setup/teardown |
+| 干扰人 | 无 | 作为 `extra_audio_configs` 与干声/噪声统一混音 |
 | 参考字段 | TestCase.reference_params 列 | 从 round.referenceParamsPath 文件读取 |
 | 评估 | 整体评估 | 循环后按 round_number 分组评估 + 整体评估 |
 
@@ -156,8 +187,8 @@ class E2EExecutor:
 
 | 方法 | 原因 |
 |------|------|
-| `_apply_round_device_settings()` | 音量/导轨逻辑已内联到循环中 |
-| `_restore_round_device_settings()` | 音量恢复紧跟 post_process，导轨复位在循环末尾 |
+| `_apply_round_device_settings()` | 音量由驱动管理，导轨由 EnvDeviceFactory 管理 |
+| `_restore_round_device_settings()` | 同上 |
 
 ## 引用关系
 

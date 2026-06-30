@@ -1,3 +1,4 @@
+import os
 import logging
 
 logger = logging.getLogger(__name__)
@@ -142,14 +143,14 @@ def calculate_der(rttm_ref, stm_ref, rttm_res, stm_res, source_lang=None, target
             return False
         if not isinstance(content, str):
             return False
-        return content.startswith('/') or content.startswith('C:') or (len(content) > 1 and content[1] == ':')
+        return os.path.isabs(content) and os.path.exists(content)
 
     def get_annotation(file_or_content, file_type):
         if is_file_path(file_or_content):
             try:
                 with open(file_or_content, 'r') as f:
                     content = f.read()
-            except:
+            except Exception:
                 content = file_or_content
         else:
             if isinstance(file_or_content, dict):
@@ -193,7 +194,7 @@ def calculate_der(rttm_ref, stm_ref, rttm_res, stm_res, source_lang=None, target
             false_alarm = detailed.get('false alarm', 0)
             missed_speech = detailed.get('missed speech', 0)
             speaker_error = detailed.get('speaker error', 0)
-        except:
+        except Exception:
             false_alarm = 0
             missed_speech = 0
             speaker_error = 0
@@ -203,7 +204,7 @@ def calculate_der(rttm_ref, stm_ref, rttm_res, stm_res, source_lang=None, target
             for segment, track, label in ref_annotation.itertracks(yield_label=True):
                 if hasattr(segment, 'duration'):
                     total_ref_time += segment.duration
-        except:
+        except Exception:
             total_ref_time = 0.0
 
         return {

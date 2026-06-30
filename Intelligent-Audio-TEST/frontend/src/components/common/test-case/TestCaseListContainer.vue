@@ -6,7 +6,7 @@
       <div class="toolbar-actions">
           <button class="btn btn-primary" @click="() => {
             const algoType = algorithmTypeFilter === 'all' ? '' : algorithmTypeFilter;
-            emit('openAddModal', undefined, { algorithmType: algoType });
+            emit('openAddModal', undefined, { algorithmType: algoType, testType: testTypeFilter.value === 'all' ? undefined : testTypeFilter.value as 'api' | 'e2e' });
           }">
             <i class="fas fa-plus"></i>
             新增用例
@@ -117,7 +117,7 @@
                 @click.stop
                 @edit="() => emit('openEditGroupModal', group)"
                 @delete="() => handleGroupDelete(group)"
-                @addCase="() => emit('openAddModal', group, { algorithmType: algorithmTypeFilter === 'all' ? '' : algorithmTypeFilter })"
+                @addCase="() => emit('openAddModal', group, { algorithmType: algorithmTypeFilter === 'all' ? '' : algorithmTypeFilter, testType: testTypeFilter.value === 'all' ? undefined : testTypeFilter.value as 'api' | 'e2e' })"
                 @copyGroup="() => handleCopyGroup(group)"
                 @updateAlgorithmParams="() => handleUpdateAlgorithmParams(group)"
                 @updatePlaybackDevice="() => handleUpdatePlaybackDevice(group)"
@@ -277,12 +277,13 @@ const props = defineProps<{
   paginationInfo?: PaginationInfo;
   isLoading?: boolean;
   algorithmTypeFilter?: string;
+  testTypeFilter?: string;
 }>();
 
 const emit = defineEmits<{
   (e: 'deleteGroup', groupName: string): void;
   (e: 'deleteTestCase', testCase: TestCase): void;
-  (e: 'openAddModal', group?: string, options?: { algorithmType?: string }): void;
+  (e: 'openAddModal', group?: string, options?: { algorithmType?: string; testType?: 'api' | 'e2e' }): void;
   (e: 'openEditModal', testCase: TestCase): void;
   (e: 'openCreateGroupModal'): void;
   (e: 'openEditGroupModal', groupName: string): void;
@@ -351,6 +352,12 @@ watch(selectedCases, (newValue) => {
 watch(() => props.algorithmTypeFilter, (newValue, oldValue) => {
   if (newValue !== undefined) {
     algorithmTypeFilter.value = newValue;
+  }
+}, { immediate: true });
+
+watch(() => props.testTypeFilter, (newValue) => {
+  if (newValue !== undefined) {
+    testTypeFilter.value = newValue;
   }
 }, { immediate: true });
 

@@ -21,6 +21,59 @@ from backend.utils.web.log_handler import log_not_emit
 from backend.config.config import Config as _AppConfig
 REF_PARAMS_DIR = _AppConfig.REF_PARAMS_STORAGE_PATH
 
+# annotation data 中的已知顶层字段，其余字段视为额外字段并透传到参考参数
+_KNOWN_DATA_KEYS = {'segments', 'text', 'annotations', 'timestamps', 'timestamps_global'}
+
+
+def normalize_reference_params(params, test_type: str = 'api') -> List[Dict[str, Any]]:
+    if not params:
+        return []
+    if isinstance(params, list):
+        return [_normalize_single_ref_param(item, test_type) for item in params if isinstance(item, dict)]
+    if isinstance(params, dict):
+        if 'params' in params:
+            return normalize_reference_params(params['params'], test_type)
+        for key in ('default', 'api', 'e2e'):
+            if key in params and isinstance(params[key], list):
+                return normalize_reference_params(params[key], test_type)
+        result = []
+        for code, val in params.items():
+            if isinstance(val, dict):
+                item = dict(val)
+                if 'code' not in item:
+                    item['code'] = code
+                result.append(_normalize_single_ref_param(item, test_type))
+        return result
+    return []
+
+
+def _normalize_single_ref_param(param: Dict, test_type: str = 'api') -> Dict:
+    if 'value' in param and param['value'] is not None:
+        if 'api' in param or 'e2e' in param or 'test_type' in param:
+            param = dict(param)
+            param.pop('api', None)
+            param.pop('e2e', None)
+            param.pop('test_type', None)
+        return param
+    tt_value = param.get(test_type)
+    if tt_value is not None and tt_value != '':
+        param = dict(param)
+        param['value'] = tt_value
+        param.pop('api', None)
+        param.pop('e2e', None)
+        param.pop('test_type', None)
+        return param
+    for fallback in ('api', 'e2e'):
+        fb_value = param.get(fallback)
+        if fb_value is not None and fb_value != '':
+            param = dict(param)
+            param['value'] = fb_value
+            param.pop('api', None)
+            param.pop('e2e', None)
+            param.pop('test_type', None)
+            return param
+    return param
+
 
 class ReferenceParamsGenerator:
     """
@@ -214,15 +267,24 @@ class ReferenceParamsGenerator:
         param_type = ref_param.param_type
         annotation_code = ref_param.annotation_code
         annotation_format = ref_param.annotation_format
+        field_path = getattr(ref_param, 'field_path', None)
+        merge_mode = getattr(ref_param, 'merge_mode', None) or 'join'
         record_test_type = config.get('_record_test_type', 'api')
         
         log_not_emit('DEBUG', 'reference_params_generator', 
-            f'_generate_single_param: code={code}, param_type={param_type}, annotation_code={annotation_code}, annotation_format={annotation_format}, record_test_type={record_test_type}', 
+            f'_generate_single_param: code={code}, param_type={param_type}, annotation_code={annotation_code}, annotation_format={annotation_format}, field_path={field_path}, merge_mode={merge_mode}, record_test_type={record_test_type}', 
             category='algorithm')
         
         values = {}
         
-        if annotation_code == 'translation':
+        if field_path:
+            # 按字段路径提取：从标注 data 中提取指定字段
+            values = _extract_field_from_audios(
+                config, field_path, merge_mode,
+                annotation_code=annotation_code,
+                annotation_format=annotation_format
+            )
+        elif annotation_code == 'translation' or (code and 'translation' in code.lower()):
             values = _extract_translation_from_audios(config)
         elif param_type in ['json', 'rttm', 'stm']:
             structured_values = _extract_annotation_with_overlap(
@@ -309,6 +371,8 @@ class ReferenceParamsGenerator:
                              f'round {round_number}: no params generated', category='algorithm')
                 continue
             
+            round_params = normalize_reference_params(round_params)
+            
             # 写入该 round 的独立文件
             filename = f"{case_id}_round_{round_number}.json"
             filepath = os.path.join(ref_dir, filename)
@@ -365,6 +429,8 @@ class ReferenceParamsGenerator:
             log_not_emit('WARNING', 'reference_params_generator',
                          f'on_audio_associated: no params generated for round {round_number}', category='algorithm')
             return
+        
+        round_params = normalize_reference_params(round_params)
         
         # 写入文件
         case_id = getattr(test_case, 'id', '') or str(id(test_case))
@@ -448,10 +514,7 @@ class ReferenceParamsGenerator:
         # 直接传入的 reference_params（报告 adjusted_params 场景）
         direct_ref = config.get('reference_params')
         if direct_ref:
-            if isinstance(direct_ref, list):
-                return direct_ref
-            if isinstance(direct_ref, dict):
-                return direct_ref.get('params', [])
+            return normalize_reference_params(direct_ref)
 
         rounds = config.get('rounds', [])
         if not rounds:
@@ -816,6 +879,106 @@ def _merge_annotation_segments(segments_list: List[List[Dict]]) -> List[Dict]:
     return all_segments
 
 
+def _extract_field_from_audios(config: Dict, field_path: str, merge_mode: str = 'join',
+                                annotation_code: str = None, annotation_format: str = None) -> Dict[str, Any]:
+    """
+    从音频标注的 data 中按字段路径提取值
+    
+    field_path 格式:
+    - 'model'          → 取 data['model']（顶层标量）
+    - 'segments[].emotion' → 遍历 data['segments']，每项取 ['emotion']（数组字段）
+    
+    merge_mode:
+    - 'join'    → 空格拼接成字符串（适用于 text 类型）
+    - 'collect' → 收集成数组
+    - 'first'   → 只取第一个音频的值
+    """
+    record_test_type = config.get('_record_test_type', 'api')
+    result = {'api': None, 'e2e': None}
+    
+    audios_config = config.get('audios', [])
+    if not audios_config:
+        return result
+    
+    sorted_audios = sorted(audios_config, key=lambda x: x.get('play_order', 0))
+    
+    preload_context = config.get('_preload_context', {})
+    annotation_map = preload_context.get('annotation_map', {})
+    
+    is_segment_field = '[].' in field_path
+    if is_segment_field:
+        seg_key = field_path.split('[].')[1]
+    else:
+        seg_key = None
+    
+    def _get_annotations_for_audio(audio_id: int, code: str = None, fmt: str = None) -> List:
+        if annotation_map and audio_id in annotation_map:
+            all_anns = annotation_map[audio_id]
+            if code and fmt:
+                filtered = [a for a in all_anns if a.code == code and a.format == fmt]
+                if filtered:
+                    return filtered
+            if code:
+                filtered = [a for a in all_anns if a.code == code]
+                if filtered:
+                    return filtered
+            if fmt:
+                filtered = [a for a in all_anns if a.format == fmt]
+                if filtered:
+                    return filtered
+            return all_anns
+        else:
+            query = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False)
+            if code:
+                query = query.filter_by(code=code)
+            if fmt:
+                query = query.filter_by(format=fmt)
+            return query.all()
+    
+    collected_values = []
+    
+    for audio_item in sorted_audios:
+        audio_id = audio_item.get('audio_id')
+        if not audio_id:
+            continue
+        
+        annotations = _get_annotations_for_audio(audio_id, annotation_code, annotation_format)
+        if not annotations:
+            annotations = _get_annotations_for_audio(audio_id)
+        
+        for ann in annotations:
+            if not ann.data or not isinstance(ann.data, dict):
+                continue
+            
+            if is_segment_field:
+                segments = ann.data.get('segments', [])
+                for seg in segments:
+                    val = seg.get(seg_key)
+                    if val is not None:
+                        collected_values.append(val)
+            else:
+                val = ann.data.get(field_path)
+                if val is not None:
+                    collected_values.append(val)
+                    break  # 每个音频只取第一个匹配标注的值
+        
+        if merge_mode == 'first' and collected_values:
+            break
+    
+    if not collected_values:
+        return result
+    
+    if merge_mode == 'first':
+        value = collected_values[0]
+    elif merge_mode == 'collect':
+        value = collected_values
+    else:  # join
+        value = ' '.join(str(v) for v in collected_values)
+    
+    result[record_test_type] = value
+    return result
+
+
 def _extract_text_from_audios(config: Dict, text_field: str = None, annotation_code: str = None, annotation_format: str = None) -> Dict[str, str]:
     """从音频配置中提取文本"""
     reference_texts = {'api': '', 'e2e': ''}
@@ -1035,6 +1198,7 @@ def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotat
             return query.all()
     
     segments_list = []
+    top_level_extra = {}
     
     for audio_item in sorted_audios:
         audio_id = audio_item.get('audio_id')
@@ -1043,6 +1207,13 @@ def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotat
             continue
         
         offset = audio_offsets.get(play_order, 0)
+
+        # 收集 data 顶层的额外字段（非已知字段），平铺到参考参数
+        for ann in _get_annotations_for_audio(audio_id):
+            if ann.data and isinstance(ann.data, dict):
+                for k, v in ann.data.items():
+                    if k not in _KNOWN_DATA_KEYS:
+                        top_level_extra[k] = v
         
         if annotation_code and annotation_format:
             annotations = _get_annotations_for_audio(audio_id, annotation_code, annotation_format)
@@ -1104,7 +1275,8 @@ def _extract_annotation_with_overlap(config: Dict, format: str = 'rttm', annotat
     value_data = {
         'segments': merged_segments,
         'text': text_content,
-        'json': json.dumps(merged_segments, ensure_ascii=False)
+        'json': json.dumps(merged_segments, ensure_ascii=False),
+        **top_level_extra
     }
     
     # 返回兼容结构，但仅 record_test_type 有值

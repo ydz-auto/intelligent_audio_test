@@ -24,22 +24,10 @@ export function useTestCaseCard() {
     description: '',
     tags: [],
     tagsInput: '',
+    test_type: 'e2e',
     config: {
-      backgroundNoise: {
-        audioId: null,
-        spl: null,
-        deviceIds: []
-      },
-      audios: [
-        {
-          audioId: '',
-          testType: 'api',
-          playbackDeviceId: '',
-          spl: 65,
-          playOrder: 0
-        }
-      ],
-      dimensions: []
+      rounds: [{ roundNumber: 1, audios: [] }],
+      dimensions: [],
     }
   };
 
@@ -51,23 +39,26 @@ export function useTestCaseCard() {
     algorithmType: ''
   });
 
-  const openAddTestCaseModal = async (group = '默认分组', options?: { algorithmType?: string }) => {
-    console.log('[useTestCaseCard] 调用openAddTestCaseModal，分组:', group, '算法类型:', options?.algorithmType);
+  const openAddTestCaseModal = async (group = '默认分组', options?: { algorithmType?: string; testType?: 'api' | 'e2e' }) => {
+    console.log('[useTestCaseCard] 调用openAddTestCaseModal，分组:', group, '算法类型:', options?.algorithmType, '测试类型:', options?.testType);
     editingTestCase.value = null;
+    const testType = options?.testType || 'e2e';
     formData.value = {
       ...initialFormData,
       group: group,
-      algorithmType: options?.algorithmType || ''
+      algorithmType: options?.algorithmType || '',
+      test_type: testType
     };
     
     try {
       const result = await modalControl.open(MODAL_TYPES.TEST_CASE_RELATED, {
         visible: true,
         mode: 'case',
-        testType: 'e2e',
+        testType: testType,
         formData: formData.value,
         title: '新增测试用例',
-        width: '900px'
+        width: '1800px',
+        maxWidth: '98vw'
       });
       
       if (result) {
@@ -84,6 +75,7 @@ export function useTestCaseCard() {
     editingTestCase.value = testCase;
     
     const normalized = normalizeTestCaseConfig(testCase.config || {});
+    const testCaseType = (testCase as any).test_type || (testCase as any).testType || 'e2e';
     
     formData.value = {
       id: testCase.id,
@@ -95,17 +87,19 @@ export function useTestCaseCard() {
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
       config: normalized as TestCaseFormData['config'],
       translationDirectionId: testCase.translationDirectionId,
-      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || ''
+      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
+      test_type: testCaseType as 'api' | 'e2e'
     };
     
     try {
       const result = await modalControl.open(MODAL_TYPES.TEST_CASE_RELATED, {
         visible: true,
         mode: 'case',
-        testType: 'e2e',
+        testType: testCaseType,
         formData: formData.value,
         title: '编辑测试用例',
-        width: '900px'
+        width: '1800px',
+        maxWidth: '98vw'
       });
       
       if (result) {

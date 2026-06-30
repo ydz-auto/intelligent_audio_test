@@ -1,3 +1,4 @@
+import os
 import time
 import traceback
 import json
@@ -241,22 +242,111 @@ class evaluationApiClient:
         
         return resp_data
     
-    def create_task(self, url, payload, timeout=10):
+    def create_task(self, url, payload, timeout=10, task_id=None):
         """
         创建WER/SER计算任务
         """
         headers = {'Content-Type': 'application/json'}
         create_task_url = f"{url}/api/create_task"
+        if task_id:
+            payload = {**payload, 'task_id': task_id}
         return self.make_api_request(create_task_url, 'POST', headers, payload, timeout)
+
+    def _extract_files_from_payload(self, payload):
+        """
+        从 payload 中提取 data URI 格式的值，转为文件上传字段。
+
+        Returns:
+            (form_fields, files) 元组
+            - form_fields: 不含 data URI 的标量字段（dict/list 转 JSON 字符串）
+            - files: {field_name: (filename, bytes, content_type)} 字典
+        """
+        form_fields = {}
+        files = {}
+
+        for key, value in payload.items():
+            if isinstance(value, str) and value.startswith('data:') and ',' in value:
+                try:
+                    header, data = value.split(',', 1)
+                    mime = header.split(':')[1].split(';')[0] if ':' in header else 'application/octet-stream'
+                    import base64
+                    file_bytes = base64.b64decode(data)
+
+                    ext_map = {
+                        'audio/wav': '.wav', 'audio/x-wav': '.wav',
+                        'audio/mpeg': '.mp3', 'audio/mp3': '.mp3',
+                        'audio/flac': '.flac', 'audio/ogg': '.ogg',
+                        'audio/mp4': '.m4a', 'audio/aac': '.aac',
+                    }
+                    ext = ext_map.get(mime, '.bin')
+                    filename = f"{key}{ext}"
+                    files[key] = (filename, file_bytes, mime)
+                except Exception:
+                    form_fields[key] = value
+            elif isinstance(value, str) and len(value) < 4096 and os.path.isabs(value) and os.path.exists(value):
+                # 是文件路径，读取文件内容用于 multipart 上传
+                try:
+                    with open(value, 'rb') as f:
+                        file_bytes = f.read()
+                    filename = os.path.basename(value)
+                    files[key] = (filename, file_bytes, 'application/octet-stream')
+                except Exception:
+                    form_fields[key] = value
+            elif isinstance(value, (dict, list)):
+                form_fields[key] = json.dumps(value)
+            else:
+                form_fields[key] = value
+
+        return form_fields, files
+
+    def create_task_upload(self, url, form_fields, files, timeout=30, task_id=None):
+        """
+        通过 multipart/form-data 创建评估任务（支持文件上传）
+        """
+        create_task_url = f"{url}/api/create_task_upload"
+
+        if task_id:
+            form_fields['task_id'] = task_id
+
+        multipart_files = {}
+        for field_name, (filename, file_bytes, content_type) in files.items():
+            multipart_files[field_name] = (filename, file_bytes, content_type)
+
+        try:
+            resp = requests.post(create_task_url, data=form_fields, files=multipart_files, timeout=timeout)
+            try:
+                resp_data = resp.json()
+            except json.JSONDecodeError:
+                resp_data = resp.text
+
+            if resp.status_code != 200:
+                self._log(
+                    level='ERROR',
+                    category='execution',
+                    content=f"上传API返回错误: {resp.status_code}, URL: {create_task_url}, 响应: {resp.text}"
+                )
+                if isinstance(resp_data, dict):
+                    resp_data['__error__'] = f"HTTP {resp.status_code}"
+                else:
+                    resp_data = {'__error__': f"HTTP {resp.status_code}", '__raw_response__': resp_data}
+
+            return resp_data
+        except Exception as e:
+            self._log(
+                level='ERROR',
+                category='execution',
+                content=f"上传API请求异常: {str(e)}"
+            )
+            return {'__error__': str(e)}
     
-    def get_task_status(self, url, eval_task_id, timeout=10):
+    def get_task_status(self, url, eval_task_id, timeout=30):
         """
         查询评估任务状态
         """
         status_url = f"{url}/api/get_status/{eval_task_id}"
         return self.make_api_request(status_url, 'GET', {}, {}, timeout)
     
-    def get_task_result(self, url, eval_task_id, timeout=10):
+    def get_task_result(self, url, eval_task_id, timeout=30):
         """
         获取评估任务结果
         """
@@ -357,6 +447,7 @@ class evaluationApiClient:
                 api_id=api_id
             )
             
+            slot_released = False
             try:
                 self._log(
                     level='INFO',
@@ -418,10 +509,26 @@ class evaluationApiClient:
                         if formatted_endpoints:
                             create_task_payload["endpoints"] = formatted_endpoints
                     
-                    create_response = self.create_task(selected_url, create_task_payload)
+                    form_fields, files = self._extract_files_from_payload(create_task_payload)
+                    if files:
+                        create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id)
+                    else:
+                        create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
+                    
+                    # 创建任务后立即释放端点槽位，轮询等待不需要占用并发槽位
+                    self.release_endpoint_slot(selected_url)
+                    self._log(
+                        level='DEBUG',
+                        category='execution',
+                        content=f"任务已创建，释放端点 {selected_url} 并发槽位，开始轮询结果",
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
+                    )
+                    slot_released = True
                     
                     if isinstance(create_response, dict) and create_response.get('code') == 0:
-                        eval_task_id = create_response.get('data', {}).get('task_id')
+                        eval_task_id = create_response.get('data', {}).get('eval_task_id')
                         if eval_task_id:
                             self._log(
                                 level='INFO',
@@ -502,16 +609,17 @@ class evaluationApiClient:
                     api_id=api_id
                 )
             finally:
-                # 释放端点并发槽位
-                self.release_endpoint_slot(selected_url)
-                self._log(
-                    level='DEBUG',
-                    category='execution',
-                    content=f"释放端点 {selected_url} 并发槽位",
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    api_id=api_id
-                )
+                # 释放端点并发槽位（如果尚未释放）
+                if not slot_released:
+                    self.release_endpoint_slot(selected_url)
+                    self._log(
+                        level='DEBUG',
+                        category='execution',
+                        content=f"释放端点 {selected_url} 并发槽位",
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
+                    )
         except Exception as e:
             self._log(
                 level='WARNING',
@@ -574,6 +682,7 @@ class evaluationApiClient:
                             api_id=api_id
                         )
                     
+                        fallback_slot_released = False
                         try:
                             # 所有评测任务都需要使用异步任务
                             is_async_api = True
@@ -587,10 +696,18 @@ class evaluationApiClient:
                                     else:
                                         create_task_payload["task_type"] = "wer"
                                 
-                                create_response = self.create_task(fallback_url, create_task_payload)
-                                
+                                form_fields, files = self._extract_files_from_payload(create_task_payload)
+                                if files:
+                                    create_response = self.create_task_upload(fallback_url, form_fields, files, task_id=task_id)
+                                else:
+                                    create_response = self.create_task(fallback_url, create_task_payload, task_id=task_id)
+
+                                # 创建任务后立即释放端点槽位
+                                self.release_endpoint_slot(fallback_url)
+                                fallback_slot_released = True
+
                                 if isinstance(create_response, dict) and create_response.get('code') == 0:
-                                    eval_task_id = create_response.get('data', {}).get('task_id')
+                                    eval_task_id = create_response.get('data', {}).get('eval_task_id')
                                     if eval_task_id:
                                         result_response = self.wait_for_task_completion(
                                             fallback_url, 
@@ -642,7 +759,8 @@ class evaluationApiClient:
                                 )
                                 break
                         finally:
-                            self.release_endpoint_slot(fallback_url)
+                            if not fallback_slot_released:
+                                self.release_endpoint_slot(fallback_url)
                     except Exception as fallback_e:
                         self._log(
                             level='WARNING',
@@ -658,6 +776,9 @@ class evaluationApiClient:
     def _process_field_by_type(self, field_value, field_type):
         """
         根据字段类型处理字段值
+        
+        对于 audio/file 类型：读取文件内容并转为 base64 data URI
+        对于其他类型：如果值是文件路径字符串，自动检测并读取文件内容
         
         Args:
             field_value: 字段值
@@ -688,6 +809,25 @@ class evaluationApiClient:
                 return field_value
             return field_value
         
+        if isinstance(field_value, str) and field_value and not field_value.startswith('data:'):
+            import os
+            if os.path.isfile(field_value):
+                import base64
+                try:
+                    ext = os.path.splitext(field_value)[1].lower()
+                    binary_exts = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac',
+                                   '.pcm', '.opus', '.amr', '.wma', '.webm', '.mp4',
+                                   '.mpg', '.mpeg', '.avi', '.mov', '.mkv'}
+                    with open(field_value, 'rb') as f:
+                        content = f.read()
+                    if ext in binary_exts:
+                        mime = 'audio/wav' if ext == '.wav' else 'audio/' + ext.lstrip('.')
+                        return 'data:' + mime + ';base64,' + base64.b64encode(content).decode()
+                    else:
+                        return content.decode('utf-8', errors='replace')
+                except Exception:
+                    return field_value
+        
         return field_value
     
     def build_payload(self, body_template, context, task_id=None, test_case_id=None, algorithm_type=None):
@@ -710,6 +850,8 @@ class evaluationApiClient:
                 processed_context[k] = v
             elif isinstance(v, dict) and 'field_type' in v:
                 processed_context[k] = self._process_field_by_type(v, v.get('field_type', 'text'))
+            elif isinstance(v, dict) and 'text' in v:
+                processed_context[k] = v.get('text', '')
             else:
                 processed_context[k] = v
         

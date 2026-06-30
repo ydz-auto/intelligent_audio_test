@@ -1,0 +1,184 @@
+[
+  {
+    "code": "rttm_ref",
+    "type": "rttm",
+    "value": {
+      "json": "[{\"speaker\": \"spk9\", \"start\": 0, \"end\": 0.75, \"text\": \"与观点碰。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk8\", \"start\": 0.75, \"end\": 3.75, \"text\": \"陪你打开文艺电影的盲盒，你可以。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk9\", \"start\": 3.75, \"end\": 7.5, \"text\": \"可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 4.181, \"end\": 4.931, \"text\": \"与观点碰。\", \"confidence\": 1, \"play_order\": 1}, {\"speaker\": \"spk4\", \"start\": 4.931, \"end\": 7.931, \"text\": \"陪你打开文艺电影的盲盒，你可以。\", \"confidence\": 1, \"play_order\": 1}, {\"speaker\": \"spk4\", \"start\": 7.5, \"end\": 8.785, \"text\": \"不再小众。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 7.931, \"end\": 11.681000000000001, \"text\": \"可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\", \"confidence\": 1, \"play_order\": 1}, {\"speaker\": \"spk9\", \"start\": 8.785, \"end\": 11.915, \"text\": \"Hello，Hello，大家好，我是乔恩，好久不见。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk4\", \"start\": 11.681000000000001, \"end\": 12.966000000000001, \"text\": \"不再小众。\", \"confidence\": 1, \"play_order\": 1}, {\"speaker\": \"spk1\", \"start\": 12.966000000000001, \"end\": 16.096, \"text\": \"Hello，Hello，大家好，我是乔恩，好久不见。\", \"confidence\": 1, \"play_order\": 1}]",
+      "text": "SPEAKER test_case 1 0.000 0.750 <NA> <NA> spk9 <NA> <NA>\nSPEAKER test_case 1 0.750 3.000 <NA> <NA> spk8 <NA> <NA>\nSPEAKER test_case 1 3.750 3.750 <NA> <NA> spk9 <NA> <NA>\nSPEAKER test_case 1 4.181 0.750 <NA> <NA> spk1 <NA> <NA>\nSPEAKER test_case 1 4.931 3.000 <NA> <NA> spk4 <NA> <NA>\nSPEAKER test_case 1 7.500 1.285 <NA> <NA> spk4 <NA> <NA>\nSPEAKER test_case 1 7.931 3.750 <NA> <NA> spk1 <NA> <NA>\nSPEAKER test_case 1 8.785 3.130 <NA> <NA> spk9 <NA> <NA>\nSPEAKER test_case 1 11.681 1.285 <NA> <NA> spk4 <NA> <NA>\nSPEAKER test_case 1 12.966 3.130 <NA> <NA> spk1 <NA> <NA>",
+      "format": "rttm",
+      "segments": [
+        {
+          "end": 0.75,
+          "text": "与观点碰。",
+          "start": 0,
+          "speaker": "spk9",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 3.75,
+          "text": "陪你打开文艺电影的盲盒，你可以。",
+          "start": 0.75,
+          "speaker": "spk8",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 7.5,
+          "text": "可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。",
+          "start": 3.75,
+          "speaker": "spk9",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 4.931,
+          "text": "与观点碰。",
+          "start": 4.181,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 1
+        },
+        {
+          "end": 7.931,
+          "text": "陪你打开文艺电影的盲盒，你可以。",
+          "start": 4.931,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 1
+        },
+        {
+          "end": 8.785,
+          "text": "不再小众。",
+          "start": 7.5,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 11.681000000000001,
+          "text": "可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。",
+          "start": 7.931,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 1
+        },
+        {
+          "end": 11.915,
+          "text": "Hello，Hello，大家好，我是乔恩，好久不见。",
+          "start": 8.785,
+          "speaker": "spk9",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 12.966000000000001,
+          "text": "不再小众。",
+          "start": 11.681000000000001,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 1
+        },
+        {
+          "end": 16.096,
+          "text": "Hello，Hello，大家好，我是乔恩，好久不见。",
+          "start": 12.966000000000001,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 1
+        }
+      ]
+    }
+  },
+  {
+    "code": "stm_ref",
+    "type": "stm",
+    "value": {
+      "json": "[{\"speaker\": \"spk9\", \"start\": 0, \"end\": 0.75, \"text\": \"与观点碰。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk8\", \"start\": 0.75, \"end\": 3.75, \"text\": \"陪你打开文艺电影的盲盒，你可以。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk9\", \"start\": 3.75, \"end\": 7.5, \"text\": \"可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 4.181, \"end\": 4.931, \"text\": \"与观点碰。\", \"confidence\": 1, \"play_order\": 1}, {\"speaker\": \"spk4\", \"start\": 4.931, \"end\": 7.931, \"text\": \"陪你打开文艺电影的盲盒，你可以。\", \"confidence\": 1, \"play_order\": 1}, {\"speaker\": \"spk4\", \"start\": 7.5, \"end\": 8.785, \"text\": \"不再小众。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 7.931, \"end\": 11.681000000000001, \"text\": \"可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\", \"confidence\": 1, \"play_order\": 1}, {\"speaker\": \"spk9\", \"start\": 8.785, \"end\": 11.915, \"text\": \"Hello，Hello，大家好，我是乔恩，好久不见。\", \"confidence\": 1, \"play_order\": 0}, {\"speaker\": \"spk4\", \"start\": 11.681000000000001, \"end\": 12.966000000000001, \"text\": \"不再小众。\", \"confidence\": 1, \"play_order\": 1}, {\"speaker\": \"spk1\", \"start\": 12.966000000000001, \"end\": 16.096, \"text\": \"Hello，Hello，大家好，我是乔恩，好久不见。\", \"confidence\": 1, \"play_order\": 1}]",
+      "text": "test_case 1 spk9 0.000 0.750 与观点碰。\ntest_case 1 spk8 0.750 3.750 陪你打开文艺电影的盲盒，你可以。\ntest_case 1 spk9 3.750 7.500 可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\ntest_case 1 spk1 4.181 4.931 与观点碰。\ntest_case 1 spk4 4.931 7.931 陪你打开文艺电影的盲盒，你可以。\ntest_case 1 spk4 7.500 8.785 不再小众。\ntest_case 1 spk1 7.931 11.681 可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。\ntest_case 1 spk9 8.785 11.915 Hello，Hello，大家好，我是乔恩，好久不见。\ntest_case 1 spk4 11.681 12.966 不再小众。\ntest_case 1 spk1 12.966 16.096 Hello，Hello，大家好，我是乔恩，好久不见。",
+      "format": "stm",
+      "segments": [
+        {
+          "end": 0.75,
+          "text": "与观点碰。",
+          "start": 0,
+          "speaker": "spk9",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 3.75,
+          "text": "陪你打开文艺电影的盲盒，你可以。",
+          "start": 0.75,
+          "speaker": "spk8",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 7.5,
+          "text": "可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。",
+          "start": 3.75,
+          "speaker": "spk9",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 4.931,
+          "text": "与观点碰。",
+          "start": 4.181,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 1
+        },
+        {
+          "end": 7.931,
+          "text": "陪你打开文艺电影的盲盒，你可以。",
+          "start": 4.931,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 1
+        },
+        {
+          "end": 8.785,
+          "text": "不再小众。",
+          "start": 7.5,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 11.681000000000001,
+          "text": "可以在小宇宙、喜马拉雅、苹果Podcast等平台订阅我们的节。",
+          "start": 7.931,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 1
+        },
+        {
+          "end": 11.915,
+          "text": "Hello，Hello，大家好，我是乔恩，好久不见。",
+          "start": 8.785,
+          "speaker": "spk9",
+          "confidence": 1,
+          "play_order": 0
+        },
+        {
+          "end": 12.966000000000001,
+          "text": "不再小众。",
+          "start": 11.681000000000001,
+          "speaker": "spk4",
+          "confidence": 1,
+          "play_order": 1
+        },
+        {
+          "end": 16.096,
+          "text": "Hello，Hello，大家好，我是乔恩，好久不见。",
+          "start": 12.966000000000001,
+          "speaker": "spk1",
+          "confidence": 1,
+          "play_order": 1
+        }
+      ]
+    }
+  }
+]

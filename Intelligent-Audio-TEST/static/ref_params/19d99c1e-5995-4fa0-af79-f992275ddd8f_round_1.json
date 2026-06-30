@@ -1,0 +1,22 @@
+[
+  {
+    "code": "rttm_ref",
+    "type": "rttm",
+    "value": {
+      "json": "[]",
+      "text": "",
+      "format": "rttm",
+      "segments": []
+    }
+  },
+  {
+    "code": "stm_ref",
+    "type": "stm",
+    "value": {
+      "json": "[]",
+      "text": "",
+      "format": "stm",
+      "segments": []
+    }
+  }
+]

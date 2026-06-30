@@ -92,6 +92,7 @@
 import { ref, watch, onMounted, computed, onUnmounted, nextTick } from 'vue'
 import DynamicForm from '../algorithm/DynamicForm.vue'
 import { useAlgorithmConfig } from '../../composables/useAlgorithmConfig'
+import { algorithmApi } from '../../utils/api'
 
 interface AlgorithmOption {
   value: string
@@ -139,6 +140,7 @@ const getFormSchema = algorithmConfig.getFormSchema
 const getAssociatedDimensions = algorithmConfig.getAssociatedDimensions
 const getCaseAlgorithmParams = algorithmConfig.getCaseAlgorithmParams
 const caseAlgorithmParamsDef = ref<any[]>([])
+const apiInputParamsDef = ref<any[]>([])
 
 interface AlgorithmGroup {
   name: string
@@ -313,6 +315,7 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
   if (!algorithmType) {
     algorithmFormSchema.value = null
     caseAlgorithmParamsDef.value = []
+    apiInputParamsDef.value = []
     if (Object.keys(algorithmParams.value).length === 0) {
       algorithmParams.value = {}
     }
@@ -323,12 +326,16 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
   const savedParams = { ...algorithmParams.value }
 
   try {
-    const [schema, caseParamsDef] = await Promise.all([
+    const [schema, caseParamsDef, algoDef] = await Promise.all([
       getFormSchema(algorithmType),
-      getCaseAlgorithmParams(algorithmType)
+      getCaseAlgorithmParams(algorithmType),
+      algorithmApi.getDefinition(algorithmType).catch(() => null)
     ])
     algorithmFormSchema.value = schema
     caseAlgorithmParamsDef.value = caseParamsDef
+    // Extract API input params (direction=input)
+    const apiParams = (algoDef as any)?.api_params || []
+    apiInputParamsDef.value = apiParams.filter((p: any) => p.direction === 'input')
     
     const newParams: Record<string, any> = {}
     
@@ -352,7 +359,9 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
     algorithmParams.value = newParams
     emit('paramsChange', {
       ...algorithmParams.value,
-      caseAlgorithmParams: caseAlgorithmParamsDef.value
+      caseAlgorithmParams: caseAlgorithmParamsDef.value,
+      apiInputParams: apiInputParamsDef.value,
+      algorithmFormSchema: schema
     })
   } catch (error) {
     console.error('加载算法表单Schema失败:', error)
@@ -379,7 +388,8 @@ function onFieldChange(field: string, value: any) {
   algorithmParams.value[field] = value
   emit('paramsChange', {
     ...algorithmParams.value,
-    caseAlgorithmParams: caseAlgorithmParamsDef.value
+    caseAlgorithmParams: caseAlgorithmParamsDef.value,
+    algorithmFormSchema: algorithmFormSchema.value
   })
 }
 

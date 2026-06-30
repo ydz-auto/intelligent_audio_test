@@ -139,9 +139,9 @@ class TaskService:
                 task_type = task.get('task_type', 'wer')
                 
                 if ConcurrencyManager.can_start(task_type):
-                    print(f"Worker: Starting task {task['task_id']} (Type: {task_type})")
+                    print(f"Worker: Starting task {task['eval_task_id']} (Type: {task_type})")
                     ConcurrencyManager.increment(task_type)
-                    TaskModel.update_task_status(task['task_id'], 'processing', started_at=datetime.now().isoformat())
+                    TaskModel.update_task_status(task['eval_task_id'], 'processing', started_at=datetime.now().isoformat())
                     threading.Thread(target=TaskService._run_task_wrapper, args=(task,), daemon=True).start()
                 
             time.sleep(1)
@@ -153,26 +153,28 @@ class TaskService:
 
     @staticmethod
     def _run_task(task):
-        task_id = task['task_id']
+        eval_task_id = task['eval_task_id']
         task_type = task['task_type']
         task_params = task.get('task_params', {})
-
-        import time
-        time.sleep(50)
 
         try:
             result = TaskService.calculate(task_type, task_params)
             
             TaskModel.update_task_status(
-                task_id, 
+                eval_task_id, 
                 'completed', 
                 completed_at=datetime.now().isoformat(),
                 result=result
             )
         except Exception as e:
             TaskModel.update_task_status(
-                task_id, 
+                eval_task_id, 
                 'failed', 
                 completed_at=datetime.now().isoformat(),
                 error_msg=str(e)
             )
+
+
+def calculate_in_process(task_type, task_params):
+    """模块级函数，供 ProcessPoolExecutor 调用（可被 pickle 序列化到子进程）"""
+    return TaskService.calculate(task_type, task_params)

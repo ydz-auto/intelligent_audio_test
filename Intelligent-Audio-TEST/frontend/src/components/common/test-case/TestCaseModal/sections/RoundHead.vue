@@ -9,7 +9,7 @@
             <i class="fas fa-music"></i> {{ round.audios.length }} 条音频
           </span>
           <span v-if="round.backgroundNoise?.audioId">
-            <i class="fas fa-volume-up"></i> {{ round.backgroundNoise.audioId }}
+            <i class="fas fa-volume-up"></i> {{ getAudioName(round.backgroundNoise.audioId) }}
           </span>
           <span v-if="round.evaluation?.dimensions?.length">
             <i class="fas fa-chart-bar"></i> {{ round.evaluation.dimensions.length }} 维度
@@ -44,7 +44,14 @@
 </template>
 
 <script setup lang="ts">
+import { inject } from 'vue'
 import type { RoundConfigItem } from '../types'
+
+const audioConfig = inject<any>('audioConfig', {});
+
+function getAudioName(audioId: string): string {
+  return audioConfig?.getAudioName?.(audioId) || audioId;
+}
 
 defineProps<{
   round: RoundConfigItem

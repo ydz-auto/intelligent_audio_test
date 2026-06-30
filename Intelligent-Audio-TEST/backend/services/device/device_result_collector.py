@@ -93,7 +93,7 @@ class DeviceResultCollector:
                             alignment_result = self._calculate_effective_offset_for_single_result(
                                 result_item, reference_params, playback_time_offsets, algorithm_type
                             )
-                            item_res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
+                            item_res['adjusted_reference_params'] = alignment_result.get('adjusted_params') or reference_params or []
                             item_res['alignment_info'] = alignment_result.get('alignment_info')
 
                             all_results.append(item_res)
@@ -108,12 +108,14 @@ class DeviceResultCollector:
                     alignment_result = self._calculate_effective_offset_for_single_result(
                         raw_results, reference_params, playback_time_offsets, algorithm_type
                     )
-                    res['adjusted_reference_params'] = alignment_result.get('adjusted_params')
+                    res['adjusted_reference_params'] = alignment_result.get('adjusted_params') or reference_params or []
                     res['alignment_info'] = alignment_result.get('alignment_info')
 
             except Exception as e:
                 if log_callback:
                     log_callback('ERROR', f"采集结果失败: {str(e)}", task_id, info["device_id"])
+                res.setdefault('adjusted_reference_params', reference_params or [])
+                res.setdefault('alignment_info', {'method': 'error', 'offset': 0.0})
             all_results.append(res)
 
         log_not_emit('DEBUG', 'device_collector',
@@ -251,6 +253,57 @@ class DeviceResultCollector:
 
         return alignment_result
 
+    def _needs_alignment(self, algorithm_type, reference_params):
+        """判断是否需要进行时间对齐
+
+        根据算法配置判断：
+        1. reference_params 中是否有 rttm/stm 类型的参考参数
+        2. 设备输出字段中是否有 rttm/stm 类型
+
+        两者都满足时才需要对齐，否则对齐无意义（如纯文本 ASR、翻译等）。
+
+        Args:
+            algorithm_type: 算法类型
+            reference_params: 参考参数列表
+
+        Returns:
+            bool: True 表示需要对齐，False 表示不需要
+        """
+        if not reference_params:
+            return False
+
+        has_time_series_ref = False
+        for param in reference_params:
+            if isinstance(param, dict):
+                param_type = param.get('type', '')
+                if param_type in ('rttm', 'stm'):
+                    has_time_series_ref = True
+                    break
+
+        if not has_time_series_ref:
+            log_not_emit('DEBUG', 'device_collector',
+                         f'[_needs_alignment] No rttm/stm in reference_params, alignment not needed',
+                         category='engine')
+            return False
+
+        if algorithm_type and self.field_mapper:
+            try:
+                stm_codes = self.field_mapper.get_device_output_field_codes_by_type(algorithm_type, 'stm')
+                rttm_codes = self.field_mapper.get_device_output_field_codes_by_type(algorithm_type, 'rttm')
+                has_time_series_output = bool(stm_codes or rttm_codes)
+                if not has_time_series_output:
+                    log_not_emit('DEBUG', 'device_collector',
+                                 f'[_needs_alignment] No rttm/stm device output fields for {algorithm_type}, alignment not needed',
+                                 category='engine')
+                    return False
+            except Exception as e:
+                log_not_emit('DEBUG', 'device_collector',
+                             f'[_needs_alignment] FieldMapper lookup failed: {e}, defaulting to True',
+                             category='engine')
+                return True
+
+        return True
+
     def _calculate_effective_offset_for_single_result(self, raw_results, reference_params, playback_time_offsets, algorithm_type=None):
         """为单个设备结果计算 effective_offset 并调整参考参数
 
@@ -313,7 +366,14 @@ class DeviceResultCollector:
         if not reference_params:
             log_not_emit('WARNING', 'device_collector',
                          '[_calculate_effective_offset_for_single_result] reference_params is empty', category='engine')
-            return {'adjusted_params': None, 'alignment_info': alignment_info}
+            return {'adjusted_params': reference_params or [], 'alignment_info': alignment_info}
+
+        if not self._needs_alignment(algorithm_type, reference_params):
+            log_not_emit('INFO', 'device_collector',
+                         f'[_calculate_effective_offset_for_single_result] Alignment not needed for algorithm_type={algorithm_type}, skipping',
+                         category='engine')
+            alignment_info['method'] = 'skipped'
+            return {'adjusted_params': reference_params, 'alignment_info': alignment_info}
 
         device_segments = self._extract_segments_from_result(raw_results, algorithm_type)
         ref_segments = self._extract_segments_from_reference(reference_params)

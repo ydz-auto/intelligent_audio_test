@@ -14,8 +14,12 @@
 
 import uuid
 import json
+import os
 import threading
+import logging
+from concurrent.futures import ProcessPoolExecutor
 from flask import Blueprint, request, url_for
+from werkzeug.utils import secure_filename
 from ..models.task import TaskModel
 from ..utils.responses import (
     success_response,        # 成功响应工具函数
@@ -28,6 +32,7 @@ from ..utils.responses import (
 from datetime import datetime
 from ..config import config  # 配置信息
 from ..services.wer_calculator import calculate_wer, calculate_ser, calculate_cpwer, calculate_tcpwer, calculate_stm_wer  # WER/SER 计算函数
+from ..services.task_service import calculate_in_process  # 进程池计算包装函数
 from ..utils.concurrency import ConcurrencyManager  # 并发管理器
 
 # 创建 API Blueprint，所有 API 路由以 /api 开头
@@ -71,10 +76,16 @@ class LocalConcurrencyManager:
             cls._current_concurrency = max(0, cls._current_concurrency - 1)
 
     @classmethod
+    def get_current(cls):
+        """获取当前并发数（线程安全）"""
+        with cls._lock:
+            return cls._current_concurrency
+
+    @classmethod
     def get_stats(cls):
         """
         获取本地并发统计信息
-        
+
         Returns:
             dict: 包含最大并发数、当前并发数和可用并发数的字典
         """
@@ -84,6 +95,139 @@ class LocalConcurrencyManager:
                 'current_concurrency': cls._current_concurrency,
                 'available_concurrency': cls._max_concurrency - cls._current_concurrency
             }
+
+# 文本文件扩展名（读取内容为字符串）
+TEXT_FILE_EXTENSIONS = {'.txt', '.stm', '.rttm', '.json', '.csv', '.srt', '.vtt', '.xml', '.tsv'}
+
+# 进程池（避免 GIL 争抢，CPU 密集型计算在子进程执行）
+_calc_pool = None
+_pool_logger = logging.getLogger('api')
+
+
+def _get_calc_pool():
+    """懒加载进程池，避免子进程导入时递归创建"""
+    global _calc_pool
+    if _calc_pool is None:
+        import multiprocessing as mp
+        max_workers = min(config.LOCAL_MAX_CONCURRENCY, mp.cpu_count() or 4)
+        _calc_pool = ProcessPoolExecutor(max_workers=max_workers)
+        _pool_logger.info(f"进程池已创建，max_workers={max_workers}")
+    return _calc_pool
+
+
+def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=None, eval_task_id=None):
+    """
+    验证任务参数并分发到本地或远程处理。
+    被 create_task 和 create_task_upload 共用。
+    caller_task_id 为调用方的任务 ID（可选）。
+    eval_task_id 可由调用方预先生成（如 create_task_upload 需要先存文件）。
+    """
+    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge']
+    if task_type not in SUPPORTED_TASK_TYPES:
+        return error_response(f"Unsupported task type: {task_type}. Supported types: {SUPPORTED_TASK_TYPES}", code=CODE_BUSINESS_ERROR)
+
+    if task_type in ['wer', 'ser']:
+        if 'rounds' not in task_params:
+            if not task_params.get('asr_ref') or not task_params.get('asr_result'):
+                return error_response(f"Missing required fields for {task_type}: asr_ref, asr_result (or 'rounds' for multi-round mode)", code=CODE_VALIDATION_ERROR)
+    elif task_type in ['cpwer', 'tcpwer', 'stm_wer']:
+        if not task_params.get('ref_stm') or not task_params.get('hyp_stm'):
+            return error_response(f"Missing required fields for {task_type}: ref_stm, hyp_stm", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'der':
+        required_fields = ['rttm_ref', 'stm_ref', 'rttm_res', 'stm_res']
+        missing = [f for f in required_fields if not task_params.get(f)]
+        if missing:
+            return error_response(f"Missing required fields for der: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'llm_judge':
+        required_fields = ['hypothesis', 'reference', 'model', 'prompt_template']
+        missing = [f for f in required_fields if not task_params.get(f)]
+        if missing:
+            return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
+
+    if eval_task_id is None:
+        eval_task_id = f"task_{uuid.uuid4().hex}"
+
+    if endpoints:
+        from ..services.remote_service import remote_service
+        try:
+            remote_task_id = remote_service.create_remote_task(
+                task_type=task_type,
+                task_params=task_params,
+                endpoints=endpoints,
+                caller_task_id=caller_task_id
+            )
+            base_url = request.host_url.rstrip('/')
+            return success_response({
+                "eval_task_id": remote_task_id,
+                "task_id": caller_task_id,
+                "status_url": f"{base_url}/api/get_status/{remote_task_id}",
+                "final_result_url": f"{base_url}/api/get_final_result/{remote_task_id}",
+                "task_type": task_type,
+                "msg": "任务已分发到远程端点处理"
+            })
+        except RuntimeError as e:
+            return error_response(str(e), code=CODE_CONCURRENCY_EXCEEDED)
+    else:
+        if not LocalConcurrencyManager.can_start():
+            return error_response(
+                f"达到最大并发限制: {config.LOCAL_MAX_CONCURRENCY}",
+                code=CODE_CONCURRENCY_EXCEEDED,
+                data={
+                    "max_concurrency": config.LOCAL_MAX_CONCURRENCY,
+                    "current_concurrency": LocalConcurrencyManager.get_current()
+                }
+            )
+
+        LocalConcurrencyManager.increment()
+        try:
+            TaskModel.create_task(
+                eval_task_id=eval_task_id,
+                task_type=task_type,
+                task_params=task_params,
+                endpoints=None,
+                endpoint_url=None,
+                task_id=caller_task_id
+            )
+            TaskModel.update_task_status(eval_task_id, 'processing', started_at=datetime.now().isoformat())
+        except Exception:
+            LocalConcurrencyManager.decrement()
+            raise
+
+        def process_local_task(eval_task_id, task_type, task_params):
+            try:
+                pool = _get_calc_pool()
+                future = pool.submit(calculate_in_process, task_type, task_params)
+                result = future.result()  # 阻塞等待子进程完成，但释放 GIL，不阻塞 HTTP 处理线程
+                TaskModel.update_task_status(
+                    eval_task_id,
+                    'completed',
+                    completed_at=datetime.now().isoformat(),
+                    result=result
+                )
+            except Exception as e:
+                TaskModel.update_task_status(
+                    eval_task_id,
+                    'failed',
+                    completed_at=datetime.now().isoformat(),
+                    error_msg=str(e)
+                )
+            finally:
+                LocalConcurrencyManager.decrement()
+
+        thread = threading.Thread(target=process_local_task, args=(eval_task_id, task_type, task_params))
+        thread.daemon = True
+        thread.start()
+
+        base_url = request.host_url.rstrip('/')
+        return success_response({
+            "eval_task_id": eval_task_id,
+            "task_id": caller_task_id,
+            "status_url": f"{base_url}/api/get_status/{eval_task_id}",
+            "final_result_url": f"{base_url}/api/get_final_result/{eval_task_id}",
+            "task_type": task_type,
+            "msg": "任务已创建，正在本地处理"
+        })
+
 
 @api_bp.route('/create_task', methods=['POST'])
 def create_task():
@@ -127,114 +271,67 @@ def create_task():
     data = request.get_json()
     task_type = data.get('task_type', 'wer')
     endpoints = data.get('endpoints')
-    
-    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge']
-    if task_type not in SUPPORTED_TASK_TYPES:
-        return error_response(f"Unsupported task type: {task_type}. Supported types: {SUPPORTED_TASK_TYPES}", code=CODE_BUSINESS_ERROR)
-    
-    task_params = {k: v for k, v in data.items() if k not in ['task_type', 'endpoints']}
-    
-    if task_type in ['wer', 'ser']:
-        # Multi-round mode uses 'rounds' instead of 'asr_ref'/'asr_result'
-        if 'rounds' not in task_params:
-            if not task_params.get('asr_ref') or not task_params.get('asr_result'):
-                return error_response(f"Missing required fields for {task_type}: asr_ref, asr_result (or 'rounds' for multi-round mode)", code=CODE_VALIDATION_ERROR)
-    elif task_type in ['cpwer', 'tcpwer', 'stm_wer']:
-        if not task_params.get('ref_stm') or not task_params.get('hyp_stm'):
-            return error_response(f"Missing required fields for {task_type}: ref_stm, hyp_stm", code=CODE_VALIDATION_ERROR)
-    elif task_type == 'der':
-        required_fields = ['rttm_ref', 'stm_ref', 'rttm_res', 'stm_res']
-        missing = [f for f in required_fields if not task_params.get(f)]
-        if missing:
-            return error_response(f"Missing required fields for der: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
-    elif task_type == 'llm_judge':
-        required_fields = ['hypothesis', 'reference', 'model', 'prompt_template']
-        missing = [f for f in required_fields if not task_params.get(f)]
-        if missing:
-            return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
+    caller_task_id = data.pop('task_id', None)
+    task_params = {k: v for k, v in data.items() if k not in ['task_type', 'endpoints', 'task_id']}
 
-    task_id = f"task_{uuid.uuid4().hex}"
+    return _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=caller_task_id)
 
-    if endpoints:
-        from ..services.remote_service import remote_service
+
+@api_bp.route('/create_task_upload', methods=['POST'])
+def create_task_upload():
+    """
+    创建评估任务（支持文件上传）
+
+    接收 multipart/form-data 请求：
+    - 表单字段：task_type, endpoints (JSON字符串), 其他标量参数
+    - 文件字段：通过 request.files 接收
+      - 文本文件 (.txt/.stm/.rttm/.json/.csv/.srt/.vtt): 读取内容为字符串
+      - 二进制文件 (.wav/.mp3 等): 保存到上传目录，使用文件路径
+    """
+    task_type = request.form.get('task_type', 'wer')
+    caller_task_id = request.form.get('task_id')
+    eval_task_id = f"task_{uuid.uuid4().hex}"
+    storage_id = caller_task_id or eval_task_id
+    upload_dir = os.path.join(config.UPLOAD_DIR, storage_id)
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # 解析 endpoints（JSON 字符串）
+    endpoints = None
+    endpoints_str = request.form.get('endpoints')
+    if endpoints_str:
         try:
-            remote_task_id = remote_service.create_remote_task(
-                task_type=task_type,
-                task_params=task_params,
-                endpoints=endpoints
-            )
-            TaskModel.create_task(
-                task_id=remote_task_id,
-                task_type=task_type,
-                task_params=task_params,
-                endpoints=endpoints,
-                endpoint_url=remote_service._last_endpoint if hasattr(remote_service, '_last_endpoint') else endpoints[0].get('endpoint')
-            )
-            base_url = request.host_url.rstrip('/')
-            return success_response({
-                "task_id": remote_task_id,
-                "status_url": f"{base_url}/api/get_status/{remote_task_id}",
-                "final_result_url": f"{base_url}/api/get_final_result/{remote_task_id}",
-                "task_type": task_type,
-                "msg": "任务已分发到远程端点处理"
-            })
-        except RuntimeError as e:
-            return error_response(str(e), code=CODE_CONCURRENCY_EXCEEDED)
-    else:
-        if not LocalConcurrencyManager.can_start():
-            return error_response(
-                f"达到最大并发限制: {config.LOCAL_MAX_CONCURRENCY}",
-                code=CODE_CONCURRENCY_EXCEEDED,
-                data={
-                    "max_concurrency": config.LOCAL_MAX_CONCURRENCY,
-                    "current_concurrency": LocalConcurrencyManager._current_concurrency
-                }
-            )
-        
-        LocalConcurrencyManager.increment()
-        TaskModel.create_task(
-            task_id=task_id,
-            task_type=task_type,
-            task_params=task_params,
-            endpoints=None,
-            endpoint_url=None
-        )
-        
-        def process_local_task(task_id, task_type, task_params):
-            try:
-                TaskModel.update_task_status(task_id, 'processing', started_at=datetime.now().isoformat())
-                
-                from ..services.task_service import TaskService
-                result = TaskService.calculate(task_type, task_params)
-                
-                TaskModel.update_task_status(
-                    task_id,
-                    'completed',
-                    completed_at=datetime.now().isoformat(),
-                    result=result
-                )
-            except Exception as e:
-                TaskModel.update_task_status(
-                    task_id,
-                    'failed',
-                    completed_at=datetime.now().isoformat(),
-                    error_msg=str(e)
-                )
-            finally:
-                LocalConcurrencyManager.decrement()
+            endpoints = json.loads(endpoints_str)
+        except json.JSONDecodeError:
+            return error_response("Invalid endpoints JSON format", code=CODE_VALIDATION_ERROR)
 
-        thread = threading.Thread(target=process_local_task, args=(task_id, task_type, task_params))
-        thread.daemon = True
-        thread.start()
+    # 构建 task_params：从 form 字段中提取（排除 task_type、endpoints 和 task_id）
+    task_params = {}
+    for key in request.form:
+        if key not in ('task_type', 'endpoints', 'task_id'):
+            task_params[key] = request.form[key]
 
-        base_url = request.host_url.rstrip('/')
-        return success_response({
-            "task_id": task_id,
-            "status_url": f"{base_url}/api/get_status/{task_id}",
-            "final_result_url": f"{base_url}/api/get_final_result/{task_id}",
-            "task_type": task_type,
-            "msg": "任务已创建，正在本地处理"
-        })
+    # 处理文件字段
+    for field_name, file_storage in request.files.items():
+        if not file_storage or not file_storage.filename:
+            continue
+
+        filename = secure_filename(file_storage.filename)
+        if not filename:
+            filename = f"upload_{uuid.uuid4().hex}"
+
+        ext = os.path.splitext(filename)[1].lower()
+
+        if ext in TEXT_FILE_EXTENSIONS:
+            # 文本文件：读取内容为字符串
+            content = file_storage.read().decode('utf-8', errors='replace')
+            task_params[field_name] = content
+        else:
+            # 二进制文件：保存到上传子目录，使用文件路径
+            file_path = os.path.join(upload_dir, filename)
+            file_storage.save(file_path)
+            task_params[field_name] = file_path
+
+    return _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=caller_task_id, eval_task_id=eval_task_id)
 
 @api_bp.route('/status', methods=['GET'])
 def get_status_info():
@@ -255,7 +352,7 @@ def get_status_info():
     for ep in endpoints:
         url = ep['url']
         ep_stats = remote_stats.get(url, {})
-        current = ep_stats.get('wer', 0) + ep_stats.get('ser', 0)
+        current = sum(ep_stats.values()) if ep_stats else 0
         
         capabilities = ep.get('capabilities', {})
         max_by_cap = {}
@@ -277,23 +374,24 @@ def get_status_info():
         "worker_concurrency": worker_concurrency
     })
 
-@api_bp.route('/get_status/<task_id>', methods=['GET'])
-def get_status(task_id):
+@api_bp.route('/get_status/<eval_task_id>', methods=['GET'])
+def get_status(eval_task_id):
     """
     获取指定任务的状态
     
     Args:
-        task_id (str): 任务 ID
+        eval_task_id (str): 评估任务 ID
     
     Returns:
         json: 包含任务状态、类型、时间等信息的响应
     """
-    task = TaskModel.get_task(task_id)
+    task = TaskModel.get_task(eval_task_id)
     if not task:
         return error_response("Task not found", status_code=404, code=CODE_BUSINESS_ERROR)
     
     return success_response({
-        "task_id": task['task_id'],
+        "eval_task_id": task['eval_task_id'],
+        "task_id": task.get('task_id'),
         "status": task['status'],
         "task_type": task['task_type'],
         "created_at": task['created_at'],
@@ -302,57 +400,60 @@ def get_status(task_id):
         "error_msg": task['error_msg']
     })
 
-@api_bp.route('/get_final_result/<task_id>', methods=['GET'])
-def get_final_result(task_id):
+@api_bp.route('/get_final_result/<eval_task_id>', methods=['GET'])
+def get_final_result(eval_task_id):
     """
     获取指定任务的最终评估结果
     
     Args:
-        task_id (str): 任务 ID
+        eval_task_id (str): 评估任务 ID
     
     Returns:
         json: 包含评估结果的响应
     """
-    task = TaskModel.get_task(task_id)
+    task = TaskModel.get_task(eval_task_id)
     if not task:
         return error_response("Task not found", status_code=404, code=CODE_BUSINESS_ERROR)
     
     if task['status'] == 'pending' or task['status'] == 'processing':
         return error_response("Task is still processing", status_code=202, code=CODE_BUSINESS_ERROR, data={
-            "task_id": task_id,
+            "eval_task_id": eval_task_id,
             "status": task['status']
         })
     
     if task['status'] == 'failed':
         return error_response(f"Task failed: {task['error_msg']}", status_code=500, code=CODE_SERVER_ERROR, data={
-            "task_id": task_id,
+            "eval_task_id": eval_task_id,
             "status": "failed",
             "error_msg": task['error_msg']
         })
     
-    result = json.loads(task['result']) if task['result'] else {}
+    result = task['result'] if task['result'] else {}
+    if isinstance(result, str):
+        result = json.loads(result)
     
     return success_response({
-        "task_id": task['task_id'],
+        "eval_task_id": task['eval_task_id'],
+        "task_id": task.get('task_id'),
         "status": task['status'],
         "result": result,
         "task_type": task['task_type'],
         "completed_at": task['completed_at']
     })
 
-@api_bp.route('/delete_task/<task_id>', methods=['DELETE'])
-def delete_task(task_id):
+@api_bp.route('/delete_task/<eval_task_id>', methods=['DELETE'])
+def delete_task(eval_task_id):
     """
     删除指定任务
     
     Args:
-        task_id (str): 任务 ID
+        eval_task_id (str): 评估任务 ID
     
     Returns:
         json: 删除结果响应
     """
-    if TaskModel.delete_task(task_id):
-        return success_response({"task_id": task_id}, msg=f"任务 {task_id} 已成功删除")
+    if TaskModel.delete_task(eval_task_id):
+        return success_response({"eval_task_id": eval_task_id}, msg=f"任务 {eval_task_id} 已成功删除")
     else:
         return error_response("Task not found", status_code=404, code=CODE_BUSINESS_ERROR)
 

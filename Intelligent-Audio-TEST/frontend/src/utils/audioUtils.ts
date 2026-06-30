@@ -376,6 +376,20 @@ export const determineAnnotationType = (name: string): string => {
  * @param format - 标注格式 (json/rttm/stm/jsonl)
  * @returns 解析后的标注对象
  */
+// 已知的顶层字段名，不属于此集合的字段会被收入 extra_fields
+const KNOWN_TOP_KEYS = new Set([
+  'name', 'code', 'type', 'source_language', 'target_language',
+  'text', 'txt', 'annotations', 'timestamps', 'timestamps_global',
+]);
+// 已知的 txt/segment 字段名
+const KNOWN_SEG_KEYS = new Set([
+  'speaker', 'start', 'end', 'text', 'confidence',
+]);
+// 已知的 annotation 子字段名
+const KNOWN_ANN_KEYS = new Set([
+  'name', 'code', 'type', 'source_language', 'target_language', 'text', 'txt',
+]);
+
 export const parseAnnotationFormat = (content: string, format: string): {
   format: string;
   filename: string;
@@ -384,29 +398,19 @@ export const parseAnnotationFormat = (content: string, format: string): {
   type: string;
   source_language: string;
   target_language: string;
-  segments: Array<{
-    speaker: string;
-    start: number;
-    end: number;
-    text: string;
-    confidence: number;
-  }>;
+  segments: Array<Record<string, any>>;
   timestamps: number[][];
   timestamps_global: number[][];
   raw_data: any;
+  extra_fields: Record<string, any>;
   annotations: Array<{
     name: string;
     code: string;
     type: string;
     source_language: string;
     target_language: string;
-    segments: Array<{
-      speaker: string;
-      start: number;
-      end: number;
-      text: string;
-      confidence: number;
-    }>;
+    segments: Array<Record<string, any>>;
+    extra_fields: Record<string, any>;
   }>;
 } => {
   const result = {
@@ -417,11 +421,12 @@ export const parseAnnotationFormat = (content: string, format: string): {
     type: '',
     source_language: '',
     target_language: '',
-    segments: [] as Array<{ speaker: string; start: number; end: number; text: string; confidence: number }>,
+    segments: [] as Array<Record<string, any>>,
     timestamps: [] as number[][],
     timestamps_global: [] as number[][],
     raw_data: {} as any,
-    annotations: [] as Array<{ name: string; code: string; type: string; source_language: string; target_language: string; segments: Array<{ speaker: string; start: number; end: number; text: string; confidence: number }> }>
+    extra_fields: {} as Record<string, any>,
+    annotations: [] as Array<{ name: string; code: string; type: string; source_language: string; target_language: string; segments: Array<Record<string, any>>, extra_fields: Record<string, any> }>
   };
 
   const formatLower = format.toLowerCase();
@@ -478,13 +483,21 @@ export const parseAnnotationFormat = (content: string, format: string): {
       } else {
         const txtList = data.txt || [];
         for (const item of txtList) {
-          if (item.speaker || item.text || item.start !== undefined) {
+          if (item && typeof item === 'object' && (item.speaker || item.text || item.start !== undefined)) {
+            // 收集 txt 项中的未知字段，平铺到 segment 中
+            const segExtra: Record<string, any> = {};
+            for (const k of Object.keys(item)) {
+              if (!KNOWN_SEG_KEYS.has(k)) {
+                segExtra[k] = item[k];
+              }
+            }
             result.segments.push({
               speaker: item.speaker || '',
               start: parseFloat(item.start) || 0,
               end: parseFloat(item.end) || 0,
               text: item.text || '',
-              confidence: parseFloat(item.confidence) || 1.0
+              confidence: parseFloat(item.confidence) || 1.0,
+              ...segExtra
             });
           }
         }
@@ -503,13 +516,21 @@ export const parseAnnotationFormat = (content: string, format: string): {
             });
           } else if (ann.txt && Array.isArray(ann.txt)) {
             for (const item of ann.txt) {
-              if (item.speaker || item.text || item.start !== undefined) {
+              if (item && typeof item === 'object' && (item.speaker || item.text || item.start !== undefined)) {
+                // 收集 annotation txt 项中的未知字段，平铺到 segment 中
+                const segExtra: Record<string, any> = {};
+                for (const k of Object.keys(item)) {
+                  if (!KNOWN_SEG_KEYS.has(k)) {
+                    segExtra[k] = item[k];
+                  }
+                }
                 annSegments.push({
                   speaker: item.speaker || '',
                   start: parseFloat(item.start) || 0,
                   end: parseFloat(item.end) || 0,
                   text: item.text || '',
-                  confidence: parseFloat(item.confidence) || 1.0
+                  confidence: parseFloat(item.confidence) || 1.0,
+                  ...segExtra
                 });
               }
             }
@@ -517,13 +538,21 @@ export const parseAnnotationFormat = (content: string, format: string): {
           if (annSegments.length > 0) {
             const annName = ann.name || ann.code || 'asr'
             const annType = ann.type || determineAnnotationType(annName)
+            // 收集 annotation 中的未知字段（排除已处理的 txt/text）
+            const annExtra: Record<string, any> = {};
+            for (const k of Object.keys(ann)) {
+              if (!KNOWN_ANN_KEYS.has(k)) {
+                annExtra[k] = ann[k];
+              }
+            }
             result.annotations.push({
               name: annName,
               code: ann.code || ann.name || 'asr',
               type: annType,
               source_language: ann.source_language || '',
               target_language: ann.target_language || '',
-              segments: annSegments
+              segments: annSegments,
+              extra_fields: annExtra
             });
           }
         }
@@ -534,6 +563,13 @@ export const parseAnnotationFormat = (content: string, format: string): {
       }
       if (data.timestamps_global) {
         result.timestamps_global = data.timestamps_global;
+      }
+
+      // 收集顶层未知字段
+      for (const k of Object.keys(data)) {
+        if (!KNOWN_TOP_KEYS.has(k)) {
+          result.extra_fields[k] = data[k];
+        }
       }
     } catch (e) {
       console.error('JSON/JSONL parse error:', e);

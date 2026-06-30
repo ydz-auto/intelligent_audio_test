@@ -1,6 +1,9 @@
 import re
+import logging
 import numpy as np
 import json
+
+logger = logging.getLogger('wer')
 
 try:
     import meeteval
@@ -345,7 +348,7 @@ def calculate_wer(ref_text, hyp_text, source_lang, target_lang, translate_direct
                 'translate_direct': translate_direct
             }
         except Exception as e:
-            pass
+            logger.warning(f"meeteval WER 计算失败，回退到手动计算: {e}")
     
     ref_chars, ref_zh, ref_en = split_text(ref_text)
     hyp_chars, hyp_zh, hyp_en = split_text(hyp_text)
@@ -363,6 +366,11 @@ def calculate_wer(ref_text, hyp_text, source_lang, target_lang, translate_direct
         'wer': round(total_wer, 4),
         'wer_zh': round(zh_wer, 4),
         'wer_en': round(en_wer, 4),
+        'errors': total_errors,
+        'length': len(ref_chars),
+        'insertions': 0,
+        'deletions': 0,
+        'substitutions': total_errors,
         'source_lang': source_lang,
         'target_lang': target_lang,
         'translate_direct': translate_direct

@@ -28,11 +28,17 @@ from backend.schemas.task import (
 )
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import and_, or_
-from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
 
 class TaskController:
     @staticmethod
-    def _cleanup_case_results(task_id, case_ids):
+    def _cleanup_case_results(task_id, case_ids, preserve_test_result=False):
+        """清理用例的旧结果
+
+        Args:
+            task_id: 任务ID
+            case_ids: 用例ID列表
+            preserve_test_result: 为True时只清除TestResultDimension，保留TestResult（用于已执行完成的用例只需重新评估）
+        """
         import os
         import shutil
         from backend.models.models import TestResult, TestResultDimension, TaskCase
@@ -51,31 +57,118 @@ class TaskController:
 
         result_ids = [r.id for r in results]
         if result_ids:
+            # 先删除子表 TestResultDimension（维度评估记录）
             TestResultDimension.query.filter(
                 TestResultDimension.test_result_id.in_(result_ids)
             ).delete(synchronize_session=False)
 
-            TestResult.query.filter(
-                TestResult.id.in_(result_ids)
-            ).delete(synchronize_session=False)
+            if not preserve_test_result:
+                # 完全清理：删除主表 TestResult（执行结果）
+                TestResult.query.filter(
+                    TestResult.id.in_(result_ids)
+                ).delete(synchronize_session=False)
 
-        # 2. 删除文件系统中的日志文件
-        # 获取所有相关的 TaskCase 记录以获取 device_id
-        task_cases = TaskCase.query.filter(
-            TaskCase.task_id == task_id,
-            TaskCase.test_case_id.in_(case_ids)
-        ).all()
+        # 2. 删除文件系统中的日志文件（仅在完全清理时）
+        if not preserve_test_result:
+            task_cases = TaskCase.query.filter(
+                TaskCase.task_id == task_id,
+                TaskCase.test_case_id.in_(case_ids)
+            ).all()
 
-        for tc in task_cases:
-            # 构建日志文件路径
-            local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{tc.test_case_id}')
-            if os.path.exists(local_dir):
-                try:
-                    shutil.rmtree(local_dir)
-                except Exception as e:
-                    errors.append(f"删除用例 {tc.test_case_id} 日志文件失败: {str(e)}")
+            for tc in task_cases:
+                local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{tc.test_case_id}')
+                if os.path.exists(local_dir):
+                    try:
+                        shutil.rmtree(local_dir)
+                    except Exception as e:
+                        errors.append(f"删除用例 {tc.test_case_id} 日志文件失败: {str(e)}")
 
         return errors if errors else None
+
+    @staticmethod
+    def _trigger_reevaluate(task_id, completed_cases):
+        """触发已执行完成用例的重新评估（不重新执行）
+
+        直接调用 ReevaluationExecutor 的评估方法，绕过执行引擎。
+        执行引擎的 wait loop 会自动等待 evaluation_status 变为 completed。
+
+        Args:
+            task_id: 任务ID
+            completed_cases: 已执行完成的 TaskCase 列表（execution_status='completed'）
+        """
+        if not completed_cases:
+            return
+
+        from backend.services.execution.reevaluation_executor import ReevaluationExecutor
+        from backend.models.models import TestCase
+
+        reevaluation_executor = ReevaluationExecutor.get_instance()
+        task = db.session.get(Task, task_id)
+        test_type = task.type if task and task.type else 'api'
+
+        for tc in completed_cases:
+            test_case_id = tc.test_case_id
+            try:
+                result = TestResult.query.filter_by(
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                ).first()
+
+                if not result:
+                    tc.evaluation_status = 'failed'
+                    tc.error_message = '未找到执行结果，无法重新评估'
+                    continue
+
+                if not result.algorithm_result:
+                    tc.evaluation_status = 'failed'
+                    tc.error_message = '执行结果无 algorithm_result，无法重新评估'
+                    continue
+
+                algo_result = result.algorithm_result or {}
+                full_data = load_full_result_data(
+                    result.result_data,
+                    getattr(result, 'result_data_path', None)
+                )
+                reference_params = full_data.get(
+                    'adjusted_reference_params', []
+                ) if full_data else []
+
+                test_case = db.session.get(TestCase, test_case_id)
+                algorithm_type = (
+                    test_case.algorithm_type
+                    if test_case and test_case.algorithm_type
+                    else 'translation'
+                )
+
+                if algo_result and 'rounds' in algo_result:
+                    reevaluation_executor._reevaluate_multi_round(
+                        task_id=task_id,
+                        result=result.id,
+                        test_case_id=test_case_id,
+                        algorithm_result=algo_result,
+                        test_type=test_type,
+                        algorithm_type=algorithm_type,
+                    )
+                else:
+                    reevaluation_executor._reevaluate_single(
+                        task_id=task_id,
+                        result_id=result.id,
+                        test_case_id=test_case_id,
+                        algorithm_result=algo_result,
+                        reference_params=reference_params,
+                        test_type=test_type,
+                        algorithm_type=algorithm_type,
+                    )
+
+            except Exception as e:
+                import traceback
+                tc.evaluation_status = 'failed'
+                tc.error_message = f'重新评估触发失败: {str(e)}'
+                print(f"[WARN] 触发重新评估失败: task_id={task_id}, "
+                      f"test_case_id={test_case_id}, error={str(e)}, "
+                      f"traceback={traceback.format_exc()}")
+
+        db.session.commit()
 
     # 获取所有任务，支持分页和过滤
     @staticmethod
@@ -262,83 +355,9 @@ class TaskController:
         # 2. 获取基础用例信息
         case_info = db.session.get(TestCase, case_id)
         
-        # 3. 获取参考ASR文本和参考翻译文本
-        reference_asr_text = None
-        reference_translation_text = None
-        
-        if case_info and case_info.config:
-            try:
-                # 从用例配置中获取配置
-                config = case_info.config
-                if isinstance(config, str):
-                    import json
-                    config = json.loads(config)
-                
-                # 从配置中获取音频ID
-                audio_id = None
-                if isinstance(config, dict):
-                    # 检查不同的配置结构
-                    if 'audioId' in config:
-                        audio_id = config['audioId']
-                    elif 'audio_id' in config:
-                        audio_id = config['audio_id']
-                    elif 'audio' in config:
-                        if isinstance(config['audio'], dict) and 'id' in config['audio']:
-                            audio_id = config['audio']['id']
-                    elif 'audioConfig' in config:
-                        if isinstance(config['audioConfig'], dict):
-                            audio_config = config['audioConfig']
-                            if 'audioId' in audio_config:
-                                audio_id = audio_config['audioId']
-                            elif 'audio_id' in audio_config:
-                                audio_id = audio_config['audio_id']
-                
-                # 根据测试类型从配置中获取参考文本，优先使用配置中的参考文本
-                task = db.session.get(Task, task_id)
-                test_type = task.type if task else 'api'
-                case_config = config
-                asr_ref = ReferenceParamsGenerator.get_reference_text(case_config, 'asr_reference_text')
-                preset_trans = ReferenceParamsGenerator.get_reference_text(case_config, 'translation_reference_text')
-                
-                # 获取音频对象，用于默认值
-                audio = None
-                if audio_id:
-                    from backend.models.models import Audio, AudioAnnotation
-                    audio = db.session.get(Audio, audio_id)
-                
-                # 如果配置中没有参考文本，则使用音频对象的默认值
-                if not asr_ref and audio:
-                    asr_ref = audio.asr_text
-                
-                # 获取翻译对象，用于默认值 (从 AudioAnnotation 中获取)
-                translation_obj = None
-                td_id = config.get('translation_direction_id') if isinstance(config, dict) else None
-                if audio_id:
-                    from backend.models.models import AudioAnnotation
-                    annotations = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False).all()
-                    if td_id:
-                        for ann in annotations:
-                            if ann.target_language:
-                                direction = TranslationDirection.query.get(td_id)
-                                if direction and ann.target_language == direction.target_language:
-                                    translation_obj = ann
-                                    break
-                    else:
-                        for ann in annotations:
-                            if ann.format == 'json' and ann.data:
-                                translation_obj = ann
-                                break
-                
-                # 如果配置中没有参考翻译文本，则使用翻译对象的默认值
-                if not preset_trans and translation_obj:
-                    preset_trans = translation_obj.data.get('text') if translation_obj.data else None
-                
-                # 设置最终的参考文本
-                reference_asr_text = asr_ref
-                reference_translation_text = preset_trans
-            except Exception as e:
-                import logging
-                logging.getLogger(__name__).error(f"Error getting reference texts: {e}")
+        # 3. 获取测试类型（后续构建 reference_params 时需要）
+        task = db.session.get(Task, task_id)
+        test_type = task.type if task else 'api'
         
         # 4. 获取执行结果 (可能有多个设备/API的结果，这里取最新的一个或全部)
         results = TestResult.query.filter_by(task_id=task_id, test_case_id=case_id).all()
@@ -393,8 +412,6 @@ class TaskController:
                 "algorithm_result": result.algorithm_result,
                 "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
                 "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
-                "reference_asr_text": reference_asr_text,
-                "reference_translation_text": reference_translation_text,
                 "result_data": full_result_data,
                 "error_message": result.error_message,
                 "dimensions": dim_data,
@@ -532,8 +549,6 @@ class TaskController:
             "completed_at": tc.completed_at.isoformat() if tc.completed_at else None,
             "duration": tc.duration,
             "error_message": tc.error_message,
-            "reference_asr_text": reference_asr_text,
-            "reference_translation_text": reference_translation_text,
             "audio_list": audios_list,
             "reference_params": reference_params,
             "algorithm_results": algorithm_results,
@@ -555,67 +570,7 @@ class TaskController:
             return error_response("未找到该任务关联的用例", code=ErrorCode.NOT_FOUND, http_code=404)
         
         case_info = db.session.get(TestCase, case_id)
-        
-        # 获取参考文本
-        reference_asr_text = None
-        reference_translation_text = None
-        if case_info and case_info.config:
-            try:
-                config = case_info.config
-                if isinstance(config, str):
-                    import json
-                    config = json.loads(config)
-                
-                audio_id = None
-                if isinstance(config, dict):
-                    if 'audioId' in config:
-                        audio_id = config['audioId']
-                    elif 'audio_id' in config:
-                        audio_id = config['audio_id']
-                    elif 'audio' in config:
-                        if isinstance(config['audio'], dict) and 'id' in config['audio']:
-                            audio_id = config['audio']['id']
-                    elif 'audioConfig' in config:
-                        if isinstance(config['audioConfig'], dict):
-                            audio_config = config['audioConfig']
-                            if 'audioId' in audio_config:
-                                audio_id = audio_config['audioId']
-                            elif 'audio_id' in audio_config:
-                                audio_id = audio_config['audio_id']
-                
-                task = db.session.get(Task, task_id)
-                test_type = task.type if task else 'api'
-                asr_ref = ReferenceParamsGenerator.get_reference_text(config, 'asr_reference_text')
-                preset_trans = ReferenceParamsGenerator.get_reference_text(config, 'translation_reference_text')
-                
-                if audio_id and not asr_ref:
-                    from backend.models.models import Audio
-                    audio = db.session.get(Audio, audio_id)
-                    if audio:
-                        asr_ref = audio.asr_text
-                
-                if audio_id and not preset_trans:
-                    from backend.models.models import AudioAnnotation
-                    td_id = config.get('translation_direction_id') if isinstance(config, dict) else None
-                    annotations = AudioAnnotation.query.filter_by(audio_id=audio_id, deleted=False).all()
-                    if td_id:
-                        for ann in annotations:
-                            if ann.target_language:
-                                direction = TranslationDirection.query.get(td_id)
-                                if direction and ann.target_language == direction.target_language:
-                                    preset_trans = ann.data.get('text') if ann.data else None
-                                    break
-                    else:
-                        for ann in annotations:
-                            if ann.format == 'json' and ann.data:
-                                preset_trans = ann.data.get('text')
-                                break
-                
-                reference_asr_text = asr_ref
-                reference_translation_text = preset_trans
-            except Exception:
-                pass
-        
+
         # 获取执行结果
         results = TestResult.query.filter_by(task_id=task_id, test_case_id=case_id).all()
         
@@ -666,8 +621,6 @@ class TaskController:
                 "algorithm_result": result.algorithm_result,
                 "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
                 "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
-                "reference_asr_text": reference_asr_text,
-                "reference_translation_text": reference_translation_text,
                 "result_data": load_full_result_data(result.result_data, getattr(result, 'result_data_path', None)),
                 "error_message": result.error_message,
                 "dimensions": dim_data,
@@ -903,9 +856,24 @@ class TaskController:
             if not retry_cases:
                 return success_response(None, "没有需要重试的用例")
 
-            retry_case_ids = [tc.test_case_id for tc in retry_cases]
+            # 区分已执行完成（只需重新评估）和未执行完成（需重新执行）的用例
+            completed_cases = [tc for tc in retry_cases if tc.execution_status == 'completed']
+            incomplete_cases = [tc for tc in retry_cases if tc.execution_status != 'completed']
 
-            cleanup_errors = TaskController._cleanup_case_results(task_id, retry_case_ids)
+            # 分别清理：已执行完成的保留 TestResult，只删 TestResultDimension
+            cleanup_errors = None
+            if completed_cases:
+                errs = TaskController._cleanup_case_results(
+                    task_id, [tc.test_case_id for tc in completed_cases], preserve_test_result=True
+                )
+                if errs:
+                    cleanup_errors = (cleanup_errors or []) + errs
+            if incomplete_cases:
+                errs = TaskController._cleanup_case_results(
+                    task_id, [tc.test_case_id for tc in incomplete_cases], preserve_test_result=False
+                )
+                if errs:
+                    cleanup_errors = (cleanup_errors or []) + errs
             if cleanup_errors:
                 return error_response(
                     f"清理旧结果失败: {'; '.join(cleanup_errors)}",
@@ -913,7 +881,13 @@ class TaskController:
                 )
 
             # 3. 重置 TaskCase 状态
-            for tc in retry_cases:
+            # 已执行完成的用例：保持 execution_status='completed'，只重置评估状态
+            for tc in completed_cases:
+                tc.status = 'pending'  # 评估完成后由 _post_evaluate_updates 设为 execution_status
+                tc.evaluation_status = 'pending'
+                tc.error_message = None
+            # 未执行完成的用例：完全重置，重新执行
+            for tc in incomplete_cases:
                 tc.status = 'failed'
                 tc.execution_status = 'pending'
                 tc.evaluation_status = 'pending'
@@ -936,7 +910,11 @@ class TaskController:
             
             db.session.commit()
 
-            # 5. 调用执行引擎启动任务
+            # 5. 触发已执行完成用例的重新评估（绕过执行引擎，直接调用评估）
+            if completed_cases:
+                TaskController._trigger_reevaluate(task_id, completed_cases)
+
+            # 6. 调用执行引擎启动任务（处理未执行完成的用例 + 等待所有评估完成）
             app = current_app._get_current_object()
             success, message = execution_engine.start_task(app, task.id)
             
@@ -980,16 +958,26 @@ class TaskController:
                     tc.evaluation_status = 'stopped'
                     tc.error_message = tc.error_message or '用例被手动跳过'
                 else: # retry
-                    # status字段只能是completed或failed，不能是pending
-                    tc.status = 'failed'  # 重试时先标记为失败，执行时会重新评估
-                    tc.execution_status = 'pending'
-                    tc.evaluation_status = 'pending'
-                    tc.started_at = None
-                    tc.completed_at = None
-                    tc.duration = None
-                    tc.error_message = None
+                    if tc.execution_status == 'completed':
+                        # 已执行完成的用例：保留 TestResult，只删 TestResultDimension，只重新评估
+                        tc.status = 'pending'  # 评估完成后由 _post_evaluate_updates 设为 execution_status
+                        tc.evaluation_status = 'pending'
+                        tc.error_message = None
+                        # execution_status 保持 'completed' 不变
 
-                    cleanup_errors = TaskController._cleanup_case_results(task_id, [case_id])
+                        cleanup_errors = TaskController._cleanup_case_results(task_id, [case_id], preserve_test_result=True)
+                    else:
+                        # 未执行完成的用例：完全重置，重新执行
+                        tc.status = 'failed'
+                        tc.execution_status = 'pending'
+                        tc.evaluation_status = 'pending'
+                        tc.started_at = None
+                        tc.completed_at = None
+                        tc.duration = None
+                        tc.error_message = None
+
+                        cleanup_errors = TaskController._cleanup_case_results(task_id, [case_id], preserve_test_result=False)
+
                     if cleanup_errors:
                         return error_response(
                             f"清理旧结果失败: {'; '.join(cleanup_errors)}",
@@ -1005,6 +993,10 @@ class TaskController:
                         task.actual_duration = None
                 
                 db.session.commit()
+
+                # 如果是 retry 已执行完成的用例，触发重新评估
+                if action == 'retry' and tc.execution_status == 'completed':
+                    TaskController._trigger_reevaluate(task_id, [tc])
 
                 # 如果任务当前没在运行，且是 retry 操作，则尝试重新启动任务
                 if action == 'retry' and task.status not in ['running', 'paused']:

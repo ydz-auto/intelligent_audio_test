@@ -423,6 +423,10 @@ class CaseAlgorithmParamCreate(BaseModel):
     ui_order: int = Field(default=0, ge=0, description='界面排序', validation_alias='uiOrder')
     hidden: bool = Field(default=False, description='是否隐藏', validation_alias='hidden')
     scope: str = Field(default='common', max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
+    min_value: Optional[float] = Field(None, description='最小值 (slider/number)', validation_alias='minValue')
+    max_value: Optional[float] = Field(None, description='最大值 (slider/number)', validation_alias='maxValue')
+    step: Optional[float] = Field(None, description='步长 (slider/number)', validation_alias='step')
+    unit: Optional[str] = Field(None, max_length=20, description='单位显示 (如 cm, dB, s)', validation_alias='unit')
 
     model_config = {'populate_by_name': True}
 
@@ -441,6 +445,10 @@ class CaseAlgorithmParamUpdate(BaseModel):
     ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
     hidden: Optional[bool] = Field(None, validation_alias='hidden')
     scope: Optional[str] = Field(None, max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
+    min_value: Optional[float] = Field(None, description='最小值 (slider/number)', validation_alias='minValue')
+    max_value: Optional[float] = Field(None, description='最大值 (slider/number)', validation_alias='maxValue')
+    step: Optional[float] = Field(None, description='步长 (slider/number)', validation_alias='step')
+    unit: Optional[str] = Field(None, max_length=20, description='单位显示 (如 cm, dB, s)', validation_alias='unit')
 
     model_config = {'populate_by_name': True}
 
@@ -691,6 +699,8 @@ class ReferenceParamCreateRequest(BaseModel):
     type: str = Field(default='text')
     annotation_code: Optional[str] = Field(None, validation_alias='annotationCode')
     annotation_format: Optional[str] = Field(None, validation_alias='annotationFormat')
+    field_path: Optional[str] = Field(None, validation_alias='fieldPath')
+    merge_mode: Optional[str] = Field(None, validation_alias='mergeMode')
     help_text: Optional[str] = Field(None, validation_alias='helpText')
 
     model_config = {'populate_by_name': True}
@@ -704,6 +714,8 @@ class ReferenceParamUpdateRequest(BaseModel):
     type: Optional[str] = Field(None)
     annotation_code: Optional[str] = Field(None, validation_alias='annotationCode')
     annotation_format: Optional[str] = Field(None, validation_alias='annotationFormat')
+    field_path: Optional[str] = Field(None, validation_alias='fieldPath')
+    merge_mode: Optional[str] = Field(None, validation_alias='mergeMode')
     help_text: Optional[str] = Field(None, validation_alias='helpText')
 
     model_config = {'populate_by_name': True}

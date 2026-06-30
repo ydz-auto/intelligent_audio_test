@@ -18,7 +18,7 @@
             <input
               type="text"
               class="form-control form-control-sm"
-              :value="round.backgroundNoise?.audioId || ''"
+              :value="round.backgroundNoise?.audioId ? getAudioName(round.backgroundNoise.audioId) : ''"
               placeholder="选择噪声..."
               readonly
               @click="openNoiseAudioModal"
@@ -78,7 +78,7 @@
       <VoiceprintConfigEditor
         :model-value="round.algorithmParams || []"
         @update:model-value="(v: AlgorithmParamItem[]) => emit('update:round', { ...round, algorithmParams: v })"
-        @open-audio-modal="(cb: (audioId: string) => void) => emit('openAudioSelect', cb)"
+        @open-audio-modal="(cb: (audioId: string) => void) => emit('openAudioSelect', 'noise', (audios: { id: string; name?: string }[]) => { if (audios.length > 0) cb(audios[0].id) })"
       />
     </div>
 
@@ -87,7 +87,7 @@
       <InterfererConfigEditor
         :model-value="round.algorithmParams || []"
         @update:model-value="(v: AlgorithmParamItem[]) => emit('update:round', { ...round, algorithmParams: v })"
-        @open-audio-modal="(cb: (audioId: string, audioName?: string) => void) => emit('openAudioSelect', cb)"
+        @open-audio-modal="(cb: (audioId: string, audioName?: string) => void) => emit('openAudioSelect', 'noise', (audios: { id: string; name?: string }[]) => { if (audios.length > 0) cb(audios[0].id, audios[0].name) })"
       />
     </div>
 
@@ -129,7 +129,7 @@
 <script setup lang="ts">
 import type { RoundConfigItem, AlgorithmParamItem, BackgroundNoiseConfig } from '../types'
 import type { PlaybackDevice } from '../../../../../shared/types'
-import { inject } from 'vue'
+import { inject, computed } from 'vue'
 import VoiceprintConfigEditor from '../VoiceprintConfigEditor.vue'
 import InterfererConfigEditor from '../InterfererConfigEditor.vue'
 
@@ -143,8 +143,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'update:round': [value: RoundConfigItem]
-  'openAudioSelect': [callback: (audioId: string) => void]
+  'openAudioSelect': [audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void]
 }>()
+
+const audioConfig = inject<any>('audioConfig', {})
+
+function getAudioName(audioId: string): string {
+  return audioConfig?.getAudioName?.(audioId) || audioId
+}
 
 function getAlgoParam(fieldCode: string, defaultValue?: unknown): unknown {
   const params = props.round.algorithmParams || []
@@ -182,8 +188,10 @@ function clearNoise() {
 }
 
 function openNoiseAudioModal() {
-  emit('openAudioSelect', (audioId: string) => {
-    updateNoise('audioId', audioId)
+  emit('openAudioSelect', 'noise', (audios: { id: string; name?: string }[]) => {
+    if (audios.length > 0) {
+      updateNoise('audioId', audios[0].id)
+    }
   })
 }
 </script>

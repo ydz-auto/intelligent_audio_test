@@ -12,7 +12,7 @@
         :class="{ active: activeIndex === idx }"
         @click="$emit('update:activeIndex', idx)"
       >
-        <span class="rce-nav-num">{{ round.roundNumber }}</span>
+        <span class="rce-nav-num" :class="{ 'has-error': !isRoundValid(round) }">{{ round.roundNumber }}</span>
         <span class="rce-nav-meta">{{ getRoundSummary(round) }}</span>
       </div>
     </div>
@@ -45,6 +45,11 @@ defineEmits<{
   'add': []
   'copy': []
 }>()
+
+function isRoundValid(round: RoundConfigItem): boolean {
+  const audios = round.audios || []
+  return audios.some((a: any) => a.audioId && a.audioId.trim() !== '')
+}
 
 function getRoundSummary(round: RoundConfigItem): string {
   const parts: string[] = []
@@ -125,6 +130,10 @@ function getRoundSummary(round: RoundConfigItem): string {
 }
 .rce-nav-item.active .rce-nav-num {
   background: var(--primary-color, #ff6a00);
+  color: #fff;
+}
+.rce-nav-num.has-error {
+  background: var(--danger-color, #f44336);
   color: #fff;
 }
 

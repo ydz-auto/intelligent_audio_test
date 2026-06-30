@@ -3,7 +3,7 @@ from backend.models.models import Report, ReportSummary, ReportSummaryMeta, Repo
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.utils.report.report_utils import ReportUtils
-from backend.utils.common.query_utils import escape_like_path, sanitize_keyword, normalize_sort_field, normalize_sort_order
+from backend.utils.common.query_utils import escape_like_pattern, sanitize_keyword, normalize_sort_field, normalize_sort_order
 from backend.utils.common.result_data_store import load_full_result_data
 from backend.schemas.report import ReportDetailData, ReportListData, ReportListItem, ReportListItemSummary, ReportSummarySimplified, ReportListQuery, ReportCaseListQuery, ReportSearchCasesRequest
 from datetime import datetime

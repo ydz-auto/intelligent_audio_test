@@ -119,16 +119,16 @@
         </div>
       </div>
 
-      <!-- 标注 Code 手动配置 -->
-      <div class="annotation-code-config" v-if="selectedFiles.length > 0">
+      <!-- 标注 Code 选择 -->
+      <div class="annotation-code-config" v-if="selectedFiles.length > 0 && referenceParamOptions.length > 0">
         <div class="form-row">
           <label>标注代码：</label>
-          <input 
-            type="text" 
-            v-model="annotationCode" 
-            class="form-input" 
-            placeholder="diarization asr translation ...,留空则使用 JSON 内 code/name 字段"
-          >
+          <select v-model="annotationCode" class="form-input">
+            <option value="">留空则使用 JSON 内 code/name 字段</option>
+            <option v-for="opt in referenceParamOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </select>
         </div>
       </div>
       
@@ -173,6 +173,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/useTestCaseConfig'
 import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType } from '../../../utils/audioUtils'
+import { algorithmApi } from '../../../utils/api'
 import UploadOptions from '../../common/UploadOptions.vue'
 
 const props = defineProps({
@@ -198,6 +199,7 @@ const isDragging = ref(false)
 const uploading = ref(false)
 const tags = ref('')
 const annotationCode = ref('')
+const referenceParamOptions = ref<Array<{label: string; value: string}>>([])
 
 const inputId = computed(() => `file-input-${props.modalId || 'default'}`)
 
@@ -221,6 +223,22 @@ const {
 } = useTestCaseConfig({
   translationDirectionOptions: props.uploadOptions.find((o) => o.key === 'translationDirectionId')?.options || [],
   audioTypeOptions: props.uploadOptions.find((o) => o.key === 'audioType')?.options || []
+})
+
+watch(() => uploadConfig.value.algorithmType, async (newType) => {
+  referenceParamOptions.value = []
+  annotationCode.value = ''
+  if (newType) {
+    try {
+      const res = await algorithmApi.getReferenceParams(newType)
+      referenceParamOptions.value = (res.data || []).map((p: any) => ({
+        label: p.code ? `${p.code}${p.name ? ' - ' + p.name : ''}` : p.name,
+        value: p.code || ''
+      }))
+    } catch (e) {
+      console.error('加载参考参数失败:', e)
+    }
+  }
 })
 
 const playbackDeviceOptions = computed(() => {
@@ -343,7 +361,7 @@ const processFiles = (files) => {
                     name: code,
                     code: code,
                     type: type,
-                    data: { segments: ann.segments },
+                    data: { segments: ann.segments, ...(ann.extra_fields || {}) },
                     source_language: ann.source_language || '',
                     target_language: ann.target_language || ''
                 })
@@ -356,7 +374,7 @@ const processFiles = (files) => {
                 name: annotationCodeVal,
                 code: annotationCodeVal,
                 type: type,
-                data: { segments: annData.segments },
+                data: { segments: annData.segments, ...(annData.extra_fields || {}) },
                 source_language: annData.source_language || '',
                 target_language: annData.target_language || ''
             })

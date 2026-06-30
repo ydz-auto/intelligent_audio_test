@@ -406,6 +406,8 @@ import { API_CONFIG } from '../../utils/config'
 import { reportService } from '../../services/reportService'
 import { useNotification } from '../../composables/useNotification'
 import '../../assets/styles/components/report-filter-card.css'
+import { useReportFilters } from '../../composables/useReportFilters'
+import { processTags as _processTags, processCategories as _processCategories, getValidResources as _getValidResources } from '../../utils/reportDataUtils'
 
 // Audio player state
 const showAudioModal = ref(false)
@@ -488,39 +490,16 @@ const getResourceLabel = (resourceKey) => {
 // Data
 const searchKeyword = ref('')
 const selectedCategories = ref([])
-const categorySearchQuery = ref('')
-const categoryPage = ref(1)
-const categoryPageSize = ref(50)
+const {
+  tagSearchQuery, tagPage, tagPageSize,
+  categorySearchQuery, categoryPage, categoryPageSize,
+  metricSearchQuery, metricPage, metricPageSize,
+  createTagFilter, createCategoryFilter, createMetricFilter,
+  resetFilterState
+} = useReportFilters({ tagPageSize: 50, categoryPageSize: 50, metricPageSize: 30 })
 
-const filteredCategoriesForSelection = computed(() => {
-  if (!categorySearchQuery.value.trim()) {
-    return categories.value
-  }
-  const query = categorySearchQuery.value.toLowerCase()
-  return categories.value.filter(cat => cat.toLowerCase().includes(query))
-})
-
-const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
-
-const paginatedCategories = computed(() => {
-  const start = (categoryPage.value - 1) * categoryPageSize.value
-  const end = start + categoryPageSize.value
-  return filteredCategoriesForSelection.value.slice(start, end)
-})
-
-// 处理标签：如果是对象数组，提取name属性
-const processTags = (tags) => {
-  if (!tags) return []
-  if (!Array.isArray(tags)) return []
-  return tags.map(tag => typeof tag === 'object' ? tag.name : tag)
-}
-
-// 处理类别：如果是对象数组，提取name属性
-const processCategories = (categories) => {
-  if (!categories) return []
-  if (!Array.isArray(categories)) return []
-  return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
-}
+const processTags = _processTags
+const processCategories = _processCategories
 
 const selectedTags = ref([])
 const selectedMetrics = ref([])
@@ -555,48 +534,6 @@ const currentCaseDetailWithPreparedData = computed(() => {
   }
 })
 
-// Search and pagination for tags
-const tagSearchQuery = ref('')
-const tagPage = ref(1)
-const tagPageSize = ref(50)
-
-const filteredTags = computed(() => {
-  if (!tagSearchQuery.value.trim()) {
-    return allTags.value
-  }
-  const query = tagSearchQuery.value.toLowerCase()
-  return allTags.value.filter(tag => tag.toLowerCase().includes(query))
-})
-
-const totalTagPages = computed(() => Math.ceil(filteredTags.value.length / tagPageSize.value) || 1)
-
-const paginatedTags = computed(() => {
-  const start = (tagPage.value - 1) * tagPageSize.value
-  const end = start + tagPageSize.value
-  return filteredTags.value.slice(start, end)
-})
-
-// Search and pagination for metrics
-const metricSearchQuery = ref('')
-const metricPage = ref(1)
-const metricPageSize = ref(30)
-
-const filteredMetricsForDisplay = computed(() => {
-  if (!metricSearchQuery.value.trim()) {
-    return actualAllMetrics.value
-  }
-  const query = metricSearchQuery.value.toLowerCase()
-  return actualAllMetrics.value.filter(metric => metric.name.toLowerCase().includes(query))
-})
-
-const totalMetricPages = computed(() => Math.ceil(filteredMetricsForDisplay.value.length / metricPageSize.value) || 1)
-
-const paginatedMetrics = computed(() => {
-  const start = (metricPage.value - 1) * metricPageSize.value
-  const end = start + metricPageSize.value
-  return filteredMetricsForDisplay.value.slice(start, end)
-})
-
 // 从reportData中获取数据，优先使用reportData直接提供的数据，然后再使用summary中的数据
 // 注意：二次对比报告中用例分组存储在caseCategories字段中，而不是categories字段中
 const categories = ref(processCategories(props.reportData.categories || props.reportData.summary?.categories || props.reportData.summary?.caseCategories))
@@ -604,6 +541,9 @@ const allTags = ref(processTags(props.reportData.allTags || props.reportData.sum
 
 // 所有评测维度，确保至少有一个默认维度
 const allMetrics = ref(props.reportData.allMetrics || props.reportData.summary?.allMetrics || [])
+
+const { filteredCategories: filteredCategoriesForSelection, totalCategoryPages, paginatedCategories } = createCategoryFilter(categories)
+const { filteredTags, totalTagPages, paginatedTags } = createTagFilter(allTags)
 
 // 计算实际使用的评测维度
 const actualAllMetrics = computed(() => {
@@ -678,25 +618,10 @@ const actualAllMetrics = computed(() => {
   return metrics;
 })
 
+const { filteredMetrics: filteredMetricsForDisplay, totalMetricPages, paginatedMetrics } = createMetricFilter(actualAllMetrics)
+
 // 设备/API列表
-// 使用??替代||，并检查数组长度，确保空数组不会被当作有效值
-const getValidResources = (data) => {
-  const resources = [
-    data.resources,
-    data.devices,
-    data.apis,
-    data.summary?.resources,
-    data.summary?.apis,
-    data.summary?.devices
-  ];
-  
-  for (const resource of resources) {
-    if (Array.isArray(resource) && resource.length > 0) {
-      return resource;
-    }
-  }
-  return [];
-};
+const getValidResources = _getValidResources
 
 const devices = ref(getValidResources(props.reportData));
 
@@ -1669,17 +1594,12 @@ const toggleMetric = (metricName) => {
 const resetFilters = () => {
   searchKeyword.value = ''
   selectedCategories.value = []
-  categorySearchQuery.value = ''
-  categoryPage.value = 1
   selectedTags.value = []
   selectedMetrics.value = []
   sortDimension.value = 'name'
   selectedSortMetric.value = ''
   sortOrder.value = 'asc'
-  tagSearchQuery.value = ''
-  tagPage.value = 1
-  metricSearchQuery.value = ''
-  metricPage.value = 1
+  resetFilterState()
 }
 
 const applyFilters = () => {

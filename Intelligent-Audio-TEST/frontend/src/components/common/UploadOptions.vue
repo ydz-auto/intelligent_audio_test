@@ -294,13 +294,14 @@ const clearNoiseAudio = () => {
       </div>
     </div>
 
-    <!-- 算法选择器（除噪声外都显示，支持多算法选择） -->
+    <!-- 算法选择器（除噪声外都显示，单选） -->
     <AlgorithmSelector
       v-if="!['noise'].includes(uploadConfig.audioType)"
       v-model="uploadConfig.algorithmType"
       v-model:algorithm-relations="uploadConfig.algorithmRelations"
       :initial-params="algorithmParams"
       :show-params="showTestCaseConfig"
+      :single="true"
       @params-change="handleAlgorithmParamsChange"
       @dimensions-change="handleDimensionsChange"
     />

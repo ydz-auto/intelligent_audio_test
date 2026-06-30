@@ -258,6 +258,8 @@ import ChartComponent from './ChartComponent.vue'
 import DataTable from '../common/DataTable.vue'
 import { reportsApi } from '../../utils/api'
 import '../../assets/styles/components/report-filter-card.css'
+import { useReportFilters } from '../../composables/useReportFilters'
+import { extractTagsFromReport, extractCategoriesFromReport, getValidResources as _getValidResources, buildMetricDecimalPlacesMap, formatMetricForDisplay as _formatMetricForDisplay } from '../../utils/reportDataUtils'
 
 // Collapse state
 const isCollapsed = ref(false)
@@ -293,20 +295,8 @@ const props = defineProps({
 // Data
 // 从reportData中获取数据，优先使用reportData直接提供的数据，然后再使用summary中的数据
 // 处理allTags：如果是对象数组，提取name属性作为显示值
-const getTags = (data) => {
-  if (!data) return []
-  const tags = data.allTags || data.summary?.allTags || data.allCaseTags || data.summary?.allCaseTags || []
-  if (!Array.isArray(tags)) return []
-  return tags.map(tag => typeof tag === 'object' ? tag.name : tag)
-}
-
-// 处理caseCategories：如果是对象数组，提取name属性作为显示值
-const getCategories = (data) => {
-  if (!data) return []
-  const categories = data.caseCategories || data.summary?.caseCategories || []
-  if (!Array.isArray(categories)) return []
-  return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
-}
+const getTags = (data) => extractTagsFromReport(data || {})
+const getCategories = (data) => extractCategoriesFromReport(data || {})
 
 const allTags = ref(getTags(props.reportData))
 const caseCategories = ref(getCategories(props.reportData))
@@ -314,112 +304,30 @@ const caseCategories = ref(getCategories(props.reportData))
 const selectedTags = ref([])
 const selectedCategories = ref([])
 
-// Search and pagination for categories
-const categorySearchQuery = ref('')
-const categoryPage = ref(1)
-const categoryPageSize = ref(50)
+const {
+  tagSearchQuery, tagPage, tagPageSize,
+  categorySearchQuery, categoryPage, categoryPageSize,
+  metricSearchQuery, metricPage, metricPageSize,
+  createTagFilter, createCategoryFilter, createMetricFilter,
+  resetFilterState
+} = useReportFilters({ tagPageSize: 50, categoryPageSize: 50, metricPageSize: 30 })
 
-const filteredCategoriesForSelection = computed(() => {
-  if (!categorySearchQuery.value.trim()) {
-    return caseCategories.value
-  }
-  const query = categorySearchQuery.value.toLowerCase()
-  return caseCategories.value.filter(cat => cat.toLowerCase().includes(query))
-})
+const pageSize = tagPageSize
 
-const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
-
-const paginatedCategories = computed(() => {
-  const start = (categoryPage.value - 1) * categoryPageSize.value
-  const end = start + categoryPageSize.value
-  return filteredCategoriesForSelection.value.slice(start, end)
-})
-
-// Search and pagination for tags
-const tagSearchQuery = ref('')
-const tagPage = ref(1)
-const pageSize = ref(50)
-
-const availableTagsForSelection = computed(() => {
-  if (!tagSearchQuery.value.trim()) {
-    return allTags.value
-  }
-  const query = tagSearchQuery.value.toLowerCase()
-  return allTags.value.filter(tag => tag.toLowerCase().includes(query))
-})
-
-const totalTagPages = computed(() => Math.ceil(availableTagsForSelection.value.length / pageSize.value) || 1)
-
-const paginatedTags = computed(() => {
-  const start = (tagPage.value - 1) * pageSize.value
-  const end = start + pageSize.value
-  return availableTagsForSelection.value.slice(start, end)
-})
+const { filteredCategories: filteredCategoriesForSelection, totalCategoryPages, paginatedCategories } = createCategoryFilter(caseCategories)
+const { filteredTags: availableTagsForSelection, totalTagPages, paginatedTags } = createTagFilter(allTags)
 
 // Metrics configuration
 const allMetrics = ref(props.reportData.allMetrics || props.reportData.summary?.allMetrics || [])
 
 const selectedMetrics = ref([])
 
-// Search and pagination for metrics
-const metricSearchQuery = ref('')
-const metricPage = ref(1)
-const metricPageSize = ref(30)
+const { filteredMetrics: filteredMetricsForDisplay, totalMetricPages, paginatedMetrics } = createMetricFilter(allMetrics)
 
-const filteredMetricsForDisplay = computed(() => {
-  if (!metricSearchQuery.value.trim()) {
-    return allMetrics.value
-  }
-  const query = metricSearchQuery.value.toLowerCase()
-  return allMetrics.value.filter(metric => metric.name.toLowerCase().includes(query))
-})
+const metricDecimalPlacesMap = computed(() => buildMetricDecimalPlacesMap(allMetrics.value))
 
-const totalMetricPages = computed(() => Math.ceil(filteredMetricsForDisplay.value.length / metricPageSize.value) || 1)
-
-const paginatedMetrics = computed(() => {
-  const start = (metricPage.value - 1) * metricPageSize.value
-  const end = start + metricPageSize.value
-  return filteredMetricsForDisplay.value.slice(start, end)
-})
-
-const metricDecimalPlacesMap = computed(() => {
-  const map = {}
-  const list = Array.isArray(allMetrics.value) ? allMetrics.value : []
-  list.forEach(m => {
-    if (!m || !m.name) return
-    const dp = m.decimalPlaces ?? m.decimal_places
-    if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
-  })
-  return map
-})
-
-const formatMetricForDisplay = (metricName, value) => {
-  if (value === '-' || value === null || value === undefined) return '-'
-  const num = typeof value === 'number' ? value : Number(value)
-  if (!Number.isFinite(num)) return String(value)
-  const dp = metricDecimalPlacesMap.value?.[String(metricName)]
-  if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp)
-  return String(num)
-}
-// 同时使用设备和API作为资源，API任务可能没有设备，设备任务可能没有API
-// 使用??替代||，并检查数组长度，确保空数组不会被当作有效值
-const getValidResources = (data) => {
-  const resources = [
-    data.resources,
-    data.devices,
-    data.apis,
-    data.summary?.resources,
-    data.summary?.apis,
-    data.summary?.devices
-  ];
-  
-  for (const resource of resources) {
-    if (Array.isArray(resource) && resource.length > 0) {
-      return resource;
-    }
-  }
-  return [];
-};
+const formatMetricForDisplayLocal = (metricName, value) => _formatMetricForDisplay(metricName, value, metricDecimalPlacesMap.value)
+const getValidResources = _getValidResources
 
 const devices = ref(getValidResources(props.reportData));
 
@@ -1027,12 +935,7 @@ const resetFilters = () => {
   selectedTags.value = []
   selectedCategories.value = []
   selectedMetrics.value = []
-  categorySearchQuery.value = ''
-  categoryPage.value = 1
-  tagSearchQuery.value = ''
-  tagPage.value = 1
-  metricSearchQuery.value = ''
-  metricPage.value = 1
+  resetFilterState()
   applyFilters()
 }
 
@@ -1215,7 +1118,7 @@ const getMetricValue = (tag, device, metricName) => {
 }
 
 const getMetricDisplayValue = (tag, device, metricName) => {
-  return formatMetricForDisplay(metricName, getMetricValue(tag, device, metricName))
+  return formatMetricForDisplayLocal(metricName, getMetricValue(tag, device, metricName))
 }
 
 const getMetricUnit = (metricName) => {

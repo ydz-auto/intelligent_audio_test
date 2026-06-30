@@ -97,7 +97,7 @@ def seed_voice_llm():
              None, None, None, None),
 
             # --- E2E 专用参数（scope=e2e） ---
-            ('voice_llm', 'interferers', '干扰人列表', '干扰人', 'interferer_list', 'e2e',
+            ('voice_llm', 'interferers', '干扰人列表', '干扰人', 'json', 'e2e',
              False, '[]', '干扰人配置列表，支持多路独立干扰', 20, False, False,
              None, None, None, None),
             ('voice_llm', 'railDistance', '导轨距离(cm)', '导轨距离', 'slider', 'e2e',
@@ -152,12 +152,12 @@ def seed_voice_llm():
             if existing:
                 conn.execute(text(
                     "UPDATE case_algorithm_params SET "
-                    "  scope = :scope, min_value = :mn, max_value = :mx, "
+                    "  param_type = :pt, scope = :scope, min_value = :mn, max_value = :mx, "
                     "  step = :st, unit = :un "
                     "WHERE id = :id"
-                ), {'scope': scope, 'mn': min_value, 'mx': max_value,
+                ), {'pt': param_type, 'scope': scope, 'mn': min_value, 'mx': max_value,
                     'st': step, 'un': unit, 'id': existing[0]})
-                print(f"  - {param_code} 已存在，已更新 scope/min/max/step/unit")
+                print(f"  - {param_code} 已存在，已更新 param_type/scope/min/max/step/unit")
                 skipped_count += 1
             else:
                 conn.execute(text(

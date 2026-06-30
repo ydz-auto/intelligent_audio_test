@@ -1,4 +1,4 @@
-import os
+﻿﻿﻿﻿﻿﻿﻿﻿import os
 import uuid
 import requests
 import time
@@ -2406,33 +2406,44 @@ class AudioController:
             return error_response(str(e))
 
     @staticmethod
+    def folder_import():
+        """
+        文件夹批量导入（服务端扫描指定目录）
+        请求体: { path: str, recursive: bool, createTestCase: bool, ... }
+        当前为占位实现，前端暂未调用。
+        """
+        return error_response('文件夹批量导入接口尚未实现，请使用逐文件上传接口', 501)
+
+    @staticmethod
     def get_folder_tree():
         """
         获取音频文件夹树结构（支持筛选、懒加载）
         服务端计算文件夹树，支持大数据量
         """
         data = request.get_json() or {}
-        
+
+        # NamingRequest already normalizes camelCase → snake_case,
+        # so data.get('audio_type') works; keep fallback for safety.
         keyword = data.get('keyword')
-        audio_type = data.get('audioType', data.get('audio_type'))
+        audio_type = data.get('audio_type')
         format_ = data.get('format')
-        sample_rate = data.get('sampleRate', data.get('sample_rate'))
+        sample_rate = data.get('sample_rate')
         duration = data.get('duration')
         tags_data = data.get('tags', [])
         direction = data.get('direction')
-        algorithm_type = data.get('algorithmType')
-        parent_path = data.get('parentPath', '')
+        algorithm_type = data.get('algorithm_type')
+        parent_path = data.get('parent_path', '')
         depth = data.get('depth', 1)
-        
+
         query = Audio.query.filter_by(deleted=False)
-        
+
         if keyword:
             query = query.filter(
-                (Audio.name.like(f"%{keyword}%")) |
-                (Audio.original_filename.like(f"%{keyword}%")) |
-                (Audio.asr_text.like(f"%{keyword}%"))
+                (Audio.name.like(f'%{keyword}%')) |
+                (Audio.original_filename.like(f'%{keyword}%')) |
+                (Audio.asr_text.like(f'%{keyword}%'))
             )
-        
+
         if audio_type:
             query = query.filter_by(audio_type=audio_type)
         if format_:
@@ -2441,7 +2452,7 @@ class AudioController:
             query = query.filter(Audio.sample_rate.between(sample_rate - 100, sample_rate + 100))
         if direction:
             query = query.filter(Audio.source_language == direction)
-        
+
         if duration:
             if duration == 'short':
                 query = query.filter(Audio.duration <= 30)
@@ -2449,11 +2460,11 @@ class AudioController:
                 query = query.filter(Audio.duration > 30, Audio.duration <= 300)
             elif duration == 'long':
                 query = query.filter(Audio.duration > 300)
-        
+
         if tags_data:
             or_tags = []
             and_tags = []
-            
+
             for t in tags_data:
                 if isinstance(t, dict):
                     tag_name = t.get('name', '')
@@ -2465,7 +2476,7 @@ class AudioController:
                             and_tags.append(tag_name)
                 elif isinstance(t, str):
                     and_tags.append(t)
-            
+
             if or_tags:
                 or_audio_ids = (
                     db.session.query(AudioTag.audio_id)
@@ -2474,7 +2485,7 @@ class AudioController:
                     .distinct()
                 )
                 query = query.filter(Audio.id.in_(or_audio_ids))
-            
+
             if and_tags:
                 and_tag_ids = (
                     db.session.query(Tag.id)
@@ -2488,7 +2499,7 @@ class AudioController:
                     .subquery()
                 )
                 query = query.join(audio_tag_counts, audio_tag_counts.c.audio_id == Audio.id).filter(audio_tag_counts.c.tag_count == len(and_tags))
-        
+
         if algorithm_type:
             from backend.models.models import AudioAlgorithmRelation
             audio_ids_with_algo = (
@@ -2497,38 +2508,83 @@ class AudioController:
                 .distinct()
             )
             query = query.filter(Audio.id.in_(audio_ids_with_algo))
-        
-        audios = query.order_by(Audio.file_path).all()
-        
+
+        # Lazy loading: when parent_path is provided, only query files under that path
+        # Escape SQL LIKE wildcards (% and _) to prevent unintended matches
+        if parent_path:
+            normalized_parent = parent_path.replace(chr(92), '/')
+            escaped = normalized_parent.replace('%', r'\%').replace('_', r'\_')
+            query = query.filter(
+                (Audio.file_path.like(f'%{escaped}/%', escape=chr(92))) |
+                (Audio.file_path.like(f'%{escaped}' + chr(92) + '%', escape=chr(92)))
+            )
+
+        # Only load the columns needed for tree building (performance)
+        audios = query.with_entities(
+            Audio.id, Audio.name, Audio.original_filename, Audio.file_path,
+            Audio.format, Audio.duration, Audio.size, Audio.audio_type, Audio.created_at
+        ).order_by(Audio.file_path).all()
+
+        # Compute the base storage path prefix for reliable folder key extraction
+        audio_storage_path = current_app.config.get('AUDIO_STORAGE_PATH', '')
+        base_normalized = audio_storage_path.replace(chr(92), '/').rstrip('/')
+
         def get_folder_key(file_path):
-            normalized = file_path.replace('\\', '/') if file_path else ''
-            parts = [p for p in normalized.split('/') if p and p not in ['audios', 'audio']]
-            return parts[:-1] if parts else []
-        
+            """Extract folder hierarchy relative to the audio storage root."""
+            normalized = file_path.replace(chr(92), '/') if file_path else ''
+            parts = [p for p in normalized.split('/') if p]
+
+            # Strategy 1: strip configured AUDIO_STORAGE_PATH prefix (most reliable)
+            if base_normalized and normalized.startswith(base_normalized + '/'):
+                relative = normalized[len(base_normalized) + 1:]
+                rel_parts = [p for p in relative.split('/') if p]
+                return rel_parts[:-1] if len(rel_parts) > 1 else []
+
+            # Strategy 2: strip everything up to and including the last 'audios'/'audio' segment
+            last_audio_idx = -1
+            for idx, p in enumerate(parts):
+                if p in ('audios', 'audio'):
+                    last_audio_idx = idx
+            if last_audio_idx >= 0:
+                parts = parts[last_audio_idx + 1:]
+                return parts[:-1] if len(parts) > 1 else []
+
+            # Strategy 3: strip drive letter and common project directory prefixes
+            if parts and len(parts[0]) == 2 and parts[0][1] == ':':
+                parts = parts[1:]
+            skip_segments = {'static', 'S2TT', 'auto_test', 'ver8', '202604231600', 'Intelligent-Audio-TEST'}
+            while parts and parts[0] in skip_segments:
+                parts = parts[1:]
+            return parts[:-1] if len(parts) > 1 else []
+
+        def make_file_item(audio):
+            return {
+                'id': audio.id,
+                'name': audio.name,
+                'filename': audio.original_filename or audio.name,
+                'format': audio.format,
+                'duration': audio.duration,
+                'size': audio.size,
+                'audio_type': audio.audio_type,
+                'created_at': audio.created_at.isoformat() if audio.created_at else None
+            }
+
         folder_map = {}
         root_files = []
-        
+        subfolder_parents = set()  # pre-compute which folders have sub-folders
+
         for audio in audios:
             folder_parts = get_folder_key(audio.file_path)
-            
+
             if not folder_parts:
-                root_files.append({
-                    'id': audio.id,
-                    'name': audio.name,
-                    'filename': audio.original_filename or audio.name,
-                    'format': audio.format,
-                    'duration': audio.duration,
-                    'size': audio.size,
-                    'audio_type': audio.audio_type,
-                    'created_at': audio.created_at.isoformat() if audio.created_at else None
-                })
+                root_files.append(make_file_item(audio))
                 continue
-            
+
             current_path = ''
             for i, part in enumerate(folder_parts):
                 parent = current_path
-                current_path = f"{current_path}/{part}" if current_path else part
-                
+                current_path = f'{current_path}/{part}' if current_path else part
+
                 if current_path not in folder_map:
                     folder_map[current_path] = {
                         'name': part,
@@ -2540,37 +2596,37 @@ class AudioController:
                         'files': []
                     }
                 folder_map[current_path]['count'] += 1
-                
+
+                if parent:
+                    subfolder_parents.add(parent)
+
                 if i == len(folder_parts) - 1:
                     folder_map[current_path]['file_count'] += 1
-                    if depth >= i + 1:
-                        folder_map[current_path]['files'].append({
-                            'id': audio.id,
-                            'name': audio.name,
-                            'filename': audio.original_filename or audio.name,
-                            'format': audio.format,
-                            'duration': audio.duration,
-                            'size': audio.size,
-                            'audio_type': audio.audio_type,
-                            'created_at': audio.created_at.isoformat() if audio.created_at else None
-                        })
-        
-        def build_tree(folders, parent=''):
+                    if parent_path or depth >= i + 1:
+                        folder_map[current_path]['files'].append(make_file_item(audio))
+
+        # O(n) tree building: group folder paths by their parent key
+        from collections import defaultdict
+        children_map = defaultdict(list)
+        for path_key, folder in folder_map.items():
+            children_map[folder['parent']].append(path_key)
+
+        def build_tree(parent_key=''):
             result = []
-            for path, folder in folders.items():
-                if folder['parent'] == parent:
-                    children = build_tree(folders, path)
-                    result.append({
-                        'name': folder['name'],
-                        'path': folder['path'],
-                        'count': folder['count'],
-                        'file_count': folder['file_count'],
-                        'has_children': len(children) > 0 or folder['file_count'] > 0,
-                        'files': folder['files'] if depth >= folder['depth'] else [],
-                        'folders': children
-                    })
+            for path_key in children_map.get(parent_key, []):
+                folder = folder_map[path_key]
+                children = build_tree(path_key)
+                result.append({
+                    'name': folder['name'],
+                    'path': folder['path'],
+                    'count': folder['count'],
+                    'file_count': folder['file_count'],
+                    'has_children': len(children) > 0 or folder['file_count'] > 0,
+                    'files': folder['files'] if parent_path or depth >= folder['depth'] else [],
+                    'folders': children
+                })
             return sorted(result, key=lambda x: x['name'])
-        
+
         tree = {
             'name': '音频文件',
             'path': '',
@@ -2578,20 +2634,20 @@ class AudioController:
             'file_count': len(root_files),
             'has_children': len(folder_map) > 0 or len(root_files) > 0,
             'files': root_files if depth >= 1 else [],
-            'folders': build_tree(folder_map)
+            'folders': build_tree()
         }
-        
+
         folder_list = []
-        for path, folder in folder_map.items():
-            if folder['parent'] == '':
-                folder_list.append({
-                    'name': folder['name'],
-                    'path': folder['path'],
-                    'count': folder['count'],
-                    'file_count': folder['file_count'],
-                    'has_children': any(f['parent'] == folder['path'] for f in folder_map.values())
-                })
-        
+        for path_key in children_map.get('', []):
+            folder = folder_map[path_key]
+            folder_list.append({
+                'name': folder['name'],
+                'path': folder['path'],
+                'count': folder['count'],
+                'file_count': folder['file_count'],
+                'has_children': path_key in subfolder_parents
+            })
+
         return success_response({
             'tree': tree,
             'folders': sorted(folder_list, key=lambda x: x['name']),

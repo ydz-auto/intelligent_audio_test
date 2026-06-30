@@ -84,9 +84,18 @@
                   :max="field.validation?.max ?? 100"
                   :step="field.validation?.step ?? 1"
                   :disabled="disabled"
-                  @change="handleFieldChange(field, $event)"
+                  @input="handleFieldChange(field, $event)"
                 />
-                <span class="slider-value">{{ formatSliderValue(formData[field.fieldCode], field) }}</span>
+                <input
+                  v-model.number="formData[field.fieldCode]"
+                  type="number"
+                  class="slider-number-input form-control form-control-sm"
+                  :min="field.validation?.min ?? 0"
+                  :max="field.validation?.max ?? 100"
+                  :step="field.validation?.step ?? 1"
+                  :disabled="disabled"
+                  @input="handleFieldChange(field, $event)"
+                />
               </div>
               
               <label v-else-if="field.component === 'switch'" class="switch-container">
@@ -208,9 +217,18 @@
               :max="field.validation?.max ?? 100"
               :step="field.validation?.step ?? 1"
               :disabled="disabled"
-              @change="handleFieldChange(field, $event)"
+              @input="handleFieldChange(field, $event)"
             />
-            <span class="slider-value">{{ formatSliderValue(formData[field.fieldCode], field) }}</span>
+            <input
+              v-model.number="formData[field.fieldCode]"
+              type="number"
+              class="slider-number-input form-control form-control-sm"
+              :min="field.validation?.min ?? 0"
+              :max="field.validation?.max ?? 100"
+              :step="field.validation?.step ?? 1"
+              :disabled="disabled"
+              @input="handleFieldChange(field, $event)"
+            />
           </div>
           
           <label v-else-if="field.component === 'switch'" class="switch-container">
@@ -759,5 +777,27 @@ textarea.form-input {
   font-size: 12px;
   color: #EF4444;
   line-height: 1.4;
+}
+
+.slider-number-input {
+  width: 80px;
+  text-align: center;
+  font-weight: 600;
+  color: #FF6A00;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 13px;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.slider-number-input:hover {
+  border-color: #FF6A00;
+}
+
+.slider-number-input:focus {
+  border-color: #FF6A00;
+  box-shadow: 0 0 0 3px rgba(255, 106, 0, 0.1);
 }
 </style>

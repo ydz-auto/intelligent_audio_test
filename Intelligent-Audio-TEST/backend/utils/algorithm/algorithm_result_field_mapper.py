@@ -42,7 +42,7 @@ class AlgorithmResultFieldMapper:
         return 'text'
 
     @classmethod
-    def get_output_fields(cls, algorithm_type: str) -> List[Dict[str, Any]]:
+    def get_output_fields(cls, algorithm_type: str, test_type: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         获取算法的所有输出字段（从 param_mappings 表）
 
@@ -60,6 +60,9 @@ class AlgorithmResultFieldMapper:
         Returns:
             输出字段列表
         """
+        if algorithm_type == 'voice_llm':
+            return cls._get_voice_llm_output_fields(test_type)
+
         if algorithm_type in cls._output_field_cache:
             return cls._output_field_cache[algorithm_type]
 
@@ -319,6 +322,129 @@ class AlgorithmResultFieldMapper:
             'result': result_fields,
             'reference': reference_fields
         }
+
+    @classmethod
+    def _get_voice_llm_output_fields(cls, test_type=None):
+        """voice_llm output fields (API vs E2E)"""
+        if test_type == 'e2e':
+            return [
+                {'source_param': 'test_type', 'target_param': 'test_type', 'param_type': 'text', 'dimension_name': 'test type'},
+                {'source_param': 'algorithm_type', 'target_param': 'algorithm_type', 'param_type': 'text', 'dimension_name': 'algorithm type'},
+                {'source_param': 'session_id', 'target_param': 'session_id', 'param_type': 'text', 'dimension_name': 'session ID'},
+                {'source_param': 'rail_distance', 'target_param': 'rail_distance', 'param_type': 'number', 'dimension_name': 'rail distance(cm)'},
+                {'source_param': 'voiceprint_registered', 'target_param': 'voiceprint_registered', 'param_type': 'boolean', 'dimension_name': 'voiceprint registered'},
+                {'source_param': 'total_rounds', 'target_param': 'total_rounds', 'param_type': 'number', 'dimension_name': 'total rounds'},
+                {'source_param': 'rounds', 'target_param': 'rounds', 'param_type': 'json', 'dimension_name': 'round results'},
+                {'source_param': 'aggregated', 'target_param': 'aggregated', 'param_type': 'json', 'dimension_name': 'aggregated metrics'},
+            ]
+        else:  # api
+            return [
+                {'source_param': 'session_id', 'target_param': 'session_id', 'param_type': 'text', 'dimension_name': 'session ID'},
+                {'source_param': 'round_count', 'target_param': 'round_count', 'param_type': 'number', 'dimension_name': 'round count'},
+                {'source_param': 'total_latency', 'target_param': 'total_latency', 'param_type': 'number', 'dimension_name': 'total latency(ms)'},
+                {'source_param': 'context_mode', 'target_param': 'context_mode', 'param_type': 'text', 'dimension_name': 'context mode'},
+                {'source_param': 'history_count', 'target_param': 'history_count', 'param_type': 'number', 'dimension_name': 'history count'},
+                {'source_param': 'error', 'target_param': 'error', 'param_type': 'text', 'dimension_name': 'error'},
+                {'source_param': 'rounds', 'target_param': 'rounds', 'param_type': 'json', 'dimension_name': 'round results'},
+            ]
+
+    @classmethod
+    def map_api_results(cls, algorithm_type, raw_results, test_type=None):
+        """Map raw API results to standard output fields.
+
+        Args:
+            algorithm_type: Algorithm type string
+            raw_results: Raw result dict from API/executor
+            test_type: 'api' or 'e2e', only used for voice_llm
+
+        Returns:
+            Mapped result dict
+        """
+        if algorithm_type == 'voice_llm':
+            return cls._map_voice_llm_results(raw_results, test_type)
+
+        output_fields = cls.get_output_fields(algorithm_type)
+        mapped = {}
+        for field in output_fields:
+            source_param = field.get('source_param', '')
+            target_param = field.get('target_param', source_param)
+            if source_param and source_param in raw_results:
+                mapped[target_param] = raw_results[source_param]
+        return mapped
+
+    @classmethod
+    def _map_voice_llm_results(cls, raw_results, test_type=None):
+        """voice_llm result mapping - API vs E2E"""
+        if test_type == 'e2e':
+            return {
+                'test_type': raw_results.get('test_type', 'e2e'),
+                'algorithm_type': raw_results.get('algorithm_type', 'voice_llm'),
+                'session_id': raw_results.get('session_id'),
+                'rail_distance': raw_results.get('rail_distance', 50),
+                'voiceprint_registered': raw_results.get('voiceprint_registered', False),
+                'total_rounds': raw_results.get('total_rounds', 0),
+                'rounds': raw_results.get('rounds', []),
+                'aggregated': raw_results.get('aggregated', {}),
+            }
+        else:  # api
+            return {
+                'session_id': raw_results.get('session_id', ''),
+                'round_count': raw_results.get('round_count', 0),
+                'total_latency': raw_results.get('total_latency', 0),
+                'context_mode': raw_results.get('context_mode', ''),
+                'history_count': raw_results.get('history_count', 0),
+                'error': raw_results.get('error'),
+                'rounds': raw_results.get('rounds', []),
+            }
+
+    @classmethod
+    def extract_round_results(cls, algorithm_result, test_type=None):
+        """Extract per-round results from stored algorithm_result JSON.
+
+        Handles different indexing: API uses 1-indexed roundNumber,
+        E2E uses 0-indexed round.
+
+        Args:
+            algorithm_result: Stored algorithm_result dict from DB
+            test_type: 'api' or 'e2e'
+
+        Returns:
+            List of per-round result dicts, sorted by round_number
+        """
+        if not algorithm_result:
+            return []
+
+        rounds = algorithm_result.get('rounds', [])
+        is_e2e = test_type == 'e2e' or algorithm_result.get('test_type') == 'e2e'
+
+        if is_e2e:
+            return [
+                {
+                    'round_number': r.get('round', idx),
+                    'input_audio_name': r.get('input', {}).get('audio_name', ''),
+                    'input_audio_path': r.get('input', {}).get('audio_path', ''),
+                    'input_type': r.get('input', {}).get('type', ''),
+                    'asr_text': r.get('output', {}).get('asr_text', ''),
+                    'device_raw': r.get('output', {}).get('device_raw'),
+                    'latency': r.get('latency', 0),
+                    'wait_time': r.get('wait_time'),
+                    'interruption': r.get('interruption'),
+                    'evaluation': r.get('evaluation', {}),
+                }
+                for idx, r in enumerate(rounds)
+            ]
+        else:  # api
+            return [
+                {
+                    'round_number': r.get('roundNumber', idx + 1) - 1,
+                    'input_text': r.get('input', {}).get('text', ''),
+                    'llm_response': r.get('output', ''),
+                    'latency': r.get('latency', 0),
+                    'response_metrics': r.get('response_metrics', {}),
+                    'round_evaluation': r.get('round_evaluation', {}),
+                }
+                for idx, r in enumerate(rounds)
+            ]
 
     @classmethod
     def clear_cache(cls) -> None:

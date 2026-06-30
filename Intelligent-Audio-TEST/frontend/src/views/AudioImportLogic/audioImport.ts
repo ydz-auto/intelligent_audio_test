@@ -1,4 +1,4 @@
-import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
+﻿import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
 import { audiosApi, devicesApi } from '../../utils/api';
 import SparkMD5 from 'spark-md5';
 import { getModalManager } from '../../utils/modalManager';
@@ -303,6 +303,34 @@ export function useAudioImport() {
   const folderLoading = ref(false);
   const expandedFolderPaths = ref<Set<string>>(new Set(['']));
 
+  function normalizeFile(file: any): any {
+    return {
+      ...file,
+      id: file.id,
+      name: file.name || '',
+      filename: file.filename || file.name || '',
+      format: file.format || '',
+      duration: file.duration || 0,
+      size: file.size || 0,
+      audio_type: file.audio_type || file.audioType || file.type || 'dry',
+      type: file.type || file.audio_type || file.audioType || 'dry',
+      created_at: file.created_at || file.createdAt || '',
+    };
+  }
+
+  function normalizeTreeNode(node: any): any {
+    if (!node) return { name: 'root', path: '', count: 0, file_count: 0, has_children: false, files: [], folders: [] };
+    return {
+      name: node.name || 'unnamed',
+      path: node.path ?? '',
+      count: node.count ?? node.total ?? 0,
+      file_count: node.file_count ?? node.fileCount ?? (Array.isArray(node.files) ? node.files.length : 0),
+      has_children: node.has_children ?? node.hasChildren ?? false,
+      files: Array.isArray(node.files) ? node.files.map(normalizeFile) : [],
+      folders: Array.isArray(node.folders) ? node.folders.map(normalizeTreeNode) : [],
+    };
+  }
+
   async function fetchFolderTree(params: any = {}) {
     folderLoading.value = true;
     try {
@@ -317,12 +345,12 @@ export function useAudioImport() {
           return { name: tag, mode: mode || 'and' };
         }) : undefined,
         algorithmType: uploadOptions.algorithmType || undefined,
-        depth: 2,
+        depth: 1,
         ...params
-      });
+      }, { unwrapResponse: false });
       
       if (response.success && response.data) {
-        serverFolderTree.value = response.data.tree;
+        serverFolderTree.value = normalizeTreeNode(response.data.tree);
         totalAudios.value = response.data.total;
       }
     } catch (error) {
@@ -333,15 +361,71 @@ export function useAudioImport() {
   }
 
   function toggleFolderExpand(folderPath: string) {
-    if (expandedFolderPaths.value.has(folderPath)) {
-      expandedFolderPaths.value.delete(folderPath);
+    const newSet = new Set(expandedFolderPaths.value);
+    if (newSet.has(folderPath)) {
+      newSet.delete(folderPath);
     } else {
-      expandedFolderPaths.value.add(folderPath);
+      newSet.add(folderPath);
     }
+    expandedFolderPaths.value = newSet;
   }
 
   function isFolderExpanded(folderPath: string): boolean {
     return expandedFolderPaths.value.has(folderPath);
+  }
+
+  async function loadSubTree(folderPath: string): Promise<any | null> {
+    folderLoading.value = true;
+    try {
+      const response = await audiosApi.getFolderTree({
+        keyword: searchQuery.value || undefined,
+        audioType: filters.value.audioType === 'all' ? undefined : filters.value.audioType,
+        format: filters.value.format === 'all' ? undefined : filters.value.format,
+        duration: filters.value.duration === 'all' ? undefined : filters.value.duration,
+        parentPath: folderPath,
+        depth: 10
+      }, { unwrapResponse: false });
+      if (response.success && response.data) {
+        return normalizeTreeNode(response.data.tree);
+      }
+    } catch (error) {
+      console.error('Load sub-tree failed:', error);
+    } finally {
+      folderLoading.value = false;
+    }
+    return null;
+  }
+
+  function mergeSubTree(targetPath: string, fullTree: any) {
+    // Find the node at targetPath in fullTree
+    function findNode(node: any, path: string): any {
+      if (node.path === path) return node;
+      if (node.folders) {
+        for (const child of node.folders) {
+          const found = findNode(child, path);
+          if (found) return found;
+        }
+      }
+      return null;
+    }
+    const subNode = findNode(fullTree, targetPath);
+    if (!subNode) return;
+    
+    // Update the corresponding node in serverFolderTree
+    function findAndUpdate(node: any): boolean {
+      if (node.path === targetPath) {
+        node.files = subNode.files;
+        node.folders = subNode.folders;
+        return true;
+      }
+      if (node.folders) {
+        for (const child of node.folders) {
+          if (findAndUpdate(child)) return true;
+        }
+      }
+      return false;
+    }
+    findAndUpdate(serverFolderTree.value);
   }
 
   async function calculateMd5(file: File): Promise<string> {
@@ -625,6 +709,7 @@ export function useAudioImport() {
 
   function applyFilters() {
     currentPage.value = 1;
+    if (viewMode.value === 'folder') fetchFolderTree();
     fetchAudios();
   }
 
@@ -1948,7 +2033,7 @@ export function useAudioImport() {
     }
   });
 
-  const searchAudios = () => fetchAudios();
+  const searchAudios = () => { fetchAudios(); if (viewMode.value === 'folder') fetchFolderTree(); };
   const filterAudios = (newFilters?: any) => {
     if (newFilters) {
       // 更新筛选条件
@@ -2016,6 +2101,8 @@ export function useAudioImport() {
     fetchFolderTree,
     toggleFolderExpand,
     isFolderExpanded,
+    loadSubTree,
+    mergeSubTree,
     fetchAudios,
     searchAudios,
     filterAudios,

@@ -17,7 +17,7 @@ from ..models.algorithm_models import (
 from ..models.database import db
 from backend.utils.algorithm.algorithm_config_loader import AlgorithmConfigLoader
 from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
-from ..utils.response import success_response, error_response
+from ..utils.web.response import success_response, error_response
 from ..models.models import TranslationDirection, Dimension
 from ..schemas.algorithm import (
     AlgorithmListQuery,
@@ -413,7 +413,8 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                 submitted_ids.add(param_id)
                 for field in ['param_name', 'label', 'param_type', 'required', 
                               'default_value', 'options_source', 'options_field', 'options_label_field',
-                              'help_text', 'ui_order', 'hidden', 'scope']:
+                              'help_text', 'ui_order', 'hidden', 'scope',
+                              'min_value', 'max_value', 'step', 'unit']:
                     if field in param_data and param_data[field] is not None:
                         if field == 'scope' and param_data[field] not in valid_scopes:
                             continue
@@ -435,7 +436,11 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                 help_text=param_data.get('help_text'),
                 ui_order=param_data.get('ui_order', 0),
                 hidden=param_data.get('hidden', False),
-                scope=scope_value
+                scope=scope_value,
+                min_value=param_data.get('min_value'),
+                max_value=param_data.get('max_value'),
+                step=param_data.get('step'),
+                unit=param_data.get('unit')
             )
             db.session.add(param)
 
@@ -847,7 +852,11 @@ def create_case_param():
         help_text=req.help_text,
         ui_order=req.ui_order or 0,
         hidden=req.hidden or False,
-        scope=req.scope or 'common'
+        scope=req.scope or 'common',
+        min_value=req.min_value,
+        max_value=req.max_value,
+        step=req.step,
+        unit=req.unit
     )
     db.session.add(param)
     db.session.commit()
@@ -869,7 +878,8 @@ def update_case_param(param_id: int):
     updatable_fields = [
         'param_name', 'label', 'param_type', 'required', 'default_value',
         'options_source', 'options_field', 'options_label_field',
-        'help_text', 'ui_order', 'hidden', 'scope'
+        'help_text', 'ui_order', 'hidden', 'scope',
+        'min_value', 'max_value', 'step', 'unit'
     ]
     for field in updatable_fields:
         value = getattr(req, field, None)
@@ -930,6 +940,8 @@ def create_reference_param():
         param_type=req.type or 'text',
         annotation_code=req.annotation_code,
         annotation_format=req.annotation_format,
+        field_path=req.field_path,
+        merge_mode=req.merge_mode or 'join',
         help_text=req.help_text or ''
     )
     db.session.add(new_param)
@@ -962,6 +974,10 @@ def update_reference_param(param_id: int):
         relation.annotation_code = req.annotation_code
     if req.annotation_format is not None:
         relation.annotation_format = req.annotation_format
+    if req.field_path is not None:
+        relation.field_path = req.field_path
+    if req.merge_mode is not None:
+        relation.merge_mode = req.merge_mode
     if req.help_text is not None:
         relation.help_text = req.help_text
     

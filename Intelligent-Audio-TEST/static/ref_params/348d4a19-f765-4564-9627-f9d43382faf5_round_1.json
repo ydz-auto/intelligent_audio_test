@@ -1,0 +1,56 @@
+[
+  {
+    "code": "rttm_ref",
+    "type": "rttm",
+    "annotation_code": "diarization",
+    "annotation_format": "rttm",
+    "value": {
+      "segments": [
+        {
+          "speaker": "spk0",
+          "start": 0,
+          "end": 2,
+          "text": "你好",
+          "play_order": 0
+        },
+        {
+          "speaker": "spk1",
+          "start": 2,
+          "end": 2.8,
+          "text": "哈喽",
+          "play_order": 0
+        }
+      ],
+      "format": "rttm",
+      "text": "SPEAKER test_case 1 0.000 2.000 <NA> <NA> spk0 <NA> <NA>\nSPEAKER test_case 1 2.000 0.800 <NA> <NA> spk1 <NA> <NA>",
+      "json": "[{\"speaker\": \"spk0\", \"start\": 0, \"end\": 2, \"text\": \"你好\", \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 2, \"end\": 2.8, \"text\": \"哈喽\", \"play_order\": 0}]"
+    }
+  },
+  {
+    "code": "stm_ref",
+    "type": "stm",
+    "annotation_code": "diarization",
+    "annotation_format": "stm",
+    "value": {
+      "segments": [
+        {
+          "speaker": "spk0",
+          "start": 0,
+          "end": 2,
+          "text": "你好",
+          "play_order": 0
+        },
+        {
+          "speaker": "spk1",
+          "start": 2,
+          "end": 2.8,
+          "text": "哈喽",
+          "play_order": 0
+        }
+      ],
+      "format": "stm",
+      "text": "test_case 1 spk0 0.000 2.000 你好\ntest_case 1 spk1 2.000 2.800 哈喽",
+      "json": "[{\"speaker\": \"spk0\", \"start\": 0, \"end\": 2, \"text\": \"你好\", \"play_order\": 0}, {\"speaker\": \"spk1\", \"start\": 2, \"end\": 2.8, \"text\": \"哈喽\", \"play_order\": 0}]"
+    }
+  }
+]

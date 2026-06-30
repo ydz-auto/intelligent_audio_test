@@ -180,7 +180,8 @@ def calculate_speaker_aware_audio_delays(audio_configs, overlap_rate, is_overlap
     Returns:
         list: [(config, start_time), ...] 按 play_order 排序
     """
-    dry_configs = [c.copy() for c in audio_configs if not c.get('is_noise', False)]
+    dry_configs = [c.copy() for c in audio_configs
+                   if not c.get('is_noise', False) and c.get('type') != 'interferer']
     sorted_dry = sorted(dry_configs, key=lambda x: x.get('play_order', 0))
 
     audio_delays_with_config = []
@@ -233,6 +234,10 @@ def calculate_speaker_aware_audio_delays(audio_configs, overlap_rate, is_overlap
     for config in noise_configs:
         audio_delays_with_config.append((config, 0))
 
+    interferer_configs = [c.copy() for c in audio_configs if c.get('type') == 'interferer']
+    for config in interferer_configs:
+        audio_delays_with_config.append((config, config.get('delay', 0)))
+
     return audio_delays_with_config
 
 
@@ -257,7 +262,8 @@ def calculate_audio_delays(audio_configs, overlap_rate, is_overlap, global_offse
     Returns:
         list: [(config, start_time), ...] 按 play_order 排序
     """
-    dry_configs = [c.copy() for c in audio_configs if not c.get('is_noise', False)]
+    dry_configs = [c.copy() for c in audio_configs
+                   if not c.get('is_noise', False) and c.get('type') != 'interferer']
     sorted_dry = sorted(dry_configs, key=lambda x: x.get('play_order', 0))
 
     audio_delays_with_config = []
@@ -295,6 +301,10 @@ def calculate_audio_delays(audio_configs, overlap_rate, is_overlap, global_offse
     noise_configs = [c.copy() for c in audio_configs if c.get('is_noise', False)]
     for config in noise_configs:
         audio_delays_with_config.append((config, 0))
+
+    interferer_configs = [c.copy() for c in audio_configs if c.get('type') == 'interferer']
+    for config in interferer_configs:
+        audio_delays_with_config.append((config, config.get('delay', 0)))
 
     return audio_delays_with_config
 
@@ -478,297 +488,6 @@ def get_audio_configs_for_offset(audio_timelines, global_offset, playback_device
     return audio_to_play
 
 
-def prepare_audio_playback_info(audio_configs, case_config, db_session):
-    """
-    准备音频播放所需的信息 - 公共方法，供 testcase_controller 和 e2e_executor 使用
-    
-    处理：
-    - 从音频配置中分类干声和噪声
-    - 收集干声播放设备
-    - 获取噪声设备和噪声音频信息
-    
-    Args:
-        audio_configs: 音频配置列表 [{'audio_id': xxx, 'playback_device_id': xxx, ...}, ...]
-        case_config: 用例配置 dict，包含 background_noise 配置
-        db_session: 数据库会话
-    
-    Returns:
-        dict: {
-            'dry_audios_info': [(audio_config, audio_obj), ...],
-            'dry_devices': [device_obj, ...],
-            'noise_audio_info': (audio_config, audio_obj) or None,
-            'noise_devices': [device_obj, ...]
-        }
-    """
-    from backend.models.models import Audio, PlaybackDevice
-    
-    dry_audios_info = []
-    noise_case_audio_info = None
-    
-    for audio_config in audio_configs:
-        audio = db_session.get(Audio, audio_config.get('audio_id'))
-        if not audio:
-            continue
-        if audio.audio_type == 'noise':
-            noise_case_audio_info = (audio_config, audio)
-        else:
-            dry_audios_info.append((audio_config, audio))
-    
-    if not dry_audios_info:
-        return None
-    
-    dry_audios_info.sort(key=lambda x: x[0].get('play_order', 0))
-    
-    device_ids_seen = set()
-    dry_devices = []
-    for audio_config, _ in dry_audios_info:
-        playback_device_id = audio_config.get('playback_device_id')
-        if playback_device_id and playback_device_id not in device_ids_seen:
-            dev = db_session.get(PlaybackDevice, playback_device_id)
-            if dev:
-                dry_devices.append(dev)
-                device_ids_seen.add(playback_device_id)
-    
-    noise_audio = None
-    noise_spl = 0
-    if noise_case_audio_info:
-        n_ca, n_audio = noise_case_audio_info
-        noise_audio = n_audio
-        noise_spl = n_ca.get('spl', 0)
-    elif case_config and case_config.get('background_noise', {}).get('audio_id'):
-        bg_noise_id = case_config['background_noise']['audio_id']
-        noise_audio = db_session.get(Audio, bg_noise_id)
-        noise_spl = case_config['background_noise'].get('spl', 0)
-    
-    noise_configured_device_ids = []
-    if case_config:
-        noise_configured_device_ids = case_config.get('background_noise', {}).get('device_ids', [])
-    
-    all_noise_devices = []
-    for device_id in noise_configured_device_ids:
-        if isinstance(device_id, str):
-            device = PlaybackDevice.query.filter_by(device_unique_id=device_id, is_deleted=0).first()
-        else:
-            device = db_session.get(PlaybackDevice, device_id)
-        if device:
-            all_noise_devices.append(device)
-    
-    noise_audio_info_for_playback = None
-    if noise_audio and all_noise_devices:
-        noise_config = {
-            'spl': noise_spl,
-            'audio_id': noise_audio.id if hasattr(noise_audio, 'id') else None
-        }
-        noise_audio_info_for_playback = (noise_config, noise_audio)
-    
-    return {
-        'dry_audios_info': dry_audios_info,
-        'dry_devices': dry_devices,
-        'noise_audio_info': noise_audio_info_for_playback,
-        'noise_devices': all_noise_devices
-    }
-
-
-def execute_audio_playback(
-    task_id,
-    dry_audios_info,
-    noise_audio_info,
-    noise_devices,
-    dry_devices,
-    overlap_rate=0,
-    overlap_time=0,
-    global_offset=0,
-    loop=False,
-    audio_service=None,
-    wait_for_completion=False,
-    stop_noise_after_dry=False,
-    app=None,
-    extra_audio_configs=None
-):
-    """
-    执行音频播放 - 统一方法，供 testcase_controller 和 e2e_executor 使用
-    
-    统一处理：
-    - 噪声和干声一起播放
-    - 支持顺序播放和重叠播放
-    - 支持 offset（预览时的进度条拖动）
-    - 支持干扰人音频（extra_audio_configs）
-    
-    Args:
-        task_id: 任务ID
-        dry_audios_info: 干声列表 [(audio_config, audio_obj), ...]
-        noise_audio_info: 噪声音频信息 (audio_config, audio_obj) 或 None
-        noise_devices: 噪声设备列表 [device_obj, ...]
-        dry_devices: 干声播放设备列表 [device_obj, ...]
-        overlap_rate: 重叠率 (0.0-1.0)
-        overlap_time: 重叠时间（秒），优先级高于 overlap_rate
-        global_offset: 全局偏移量（秒），0 表示从头播放
-        loop: 是否循环播放（仅对干声有效）
-        extra_audio_configs: 额外音频配置列表（如干扰人），格式与 audio_to_play 一致
-        audio_service: AudioService 实例，如果传入会使用该实例，否则使用全局 audio_service
-        wait_for_completion: 是否等待播放完成（同步模式），默认 False（异步）
-        app: Flask 应用实例，用于在子线程中提供数据库上下文
-    
-    Returns:
-        bool or dict: 成功时返回包含 audio_timelines 的字典，失败时返回 False
-    """
-    if not audio_service:
-        audio_service = globals().get('audio_service')
-    
-    if not audio_service:
-        log_and_emit('ERROR', 'audio_engine', 'execute_audio_playback: audio_service not found', category='audio')
-        return False
-    
-    playback_start_time = time.time()
-    
-    playback_devices_map = {}
-    for dev in dry_devices:
-        dev_id = dev.id if hasattr(dev, 'id') else dev.get('id')
-        device_index = audio_service.get_device_index(dev.device_unique_id) if hasattr(dev, 'device_unique_id') else audio_service.get_device_index(dev.get('device_unique_id'))
-        playback_devices_map[dev_id] = {
-            'device_obj': dev,
-            'device_index': device_index,
-            'channel_index': dev.channel_index if hasattr(dev, 'channel_index') else dev.get('channel_index', 0),
-            'gain': 1.0,
-            'name': dev.name if hasattr(dev, 'name') else dev.get('name', ''),
-            'current_spl_mapping_id': dev.current_spl_mapping_id if hasattr(dev, 'current_spl_mapping_id') else dev.get('current_spl_mapping_id')
-        }
-    
-    log_and_emit('DEBUG', 'audio_engine', f"[execute_audio_playback] playback_devices_map: {[(k, v.get('device_index'), v.get('channel_index')) for k, v in playback_devices_map.items()]}", category='audio')
-    
-    log_and_emit('DEBUG', 'audio_engine', f"[execute_audio_playback] RECEIVED: overlap_rate={overlap_rate}, overlap_time={overlap_time}", category='audio')
-    
-    speakers_map = build_speakers_map_from_dry_audios(dry_audios_info, app=app)
-    
-    audio_timelines = build_audio_timelines(dry_audios_info, overlap_rate, overlap_time, speakers_map)
-    
-    audio_to_play = []
-    
-    log_and_emit('DEBUG', 'audio_engine', f"[execute_audio_playback] noise_audio_info={noise_audio_info is not None}, noise_devices={len(noise_devices) if noise_devices else 0}, dry_audios_info count={len(dry_audios_info) if dry_audios_info else 0}", category='audio')
-    
-    if noise_audio_info and noise_devices:
-        n_config, n_audio = noise_audio_info
-        noise_file_path = n_audio.file_path if hasattr(n_audio, 'file_path') else n_audio.get('file_path')
-        noise_spl = n_config.get('spl', 60) if n_config else 60
-        
-        for n_dev in noise_devices:
-            n_dev_unique_id = n_dev.device_unique_id if hasattr(n_dev, 'device_unique_id') else n_dev.get('device_unique_id')
-            n_channel_index = n_dev.channel_index if hasattr(n_dev, 'channel_index') else n_dev.get('channel_index', 0)
-            n_spl_mapping_id = n_dev.current_spl_mapping_id if hasattr(n_dev, 'current_spl_mapping_id') else n_dev.get('current_spl_mapping_id')
-            
-            n_gain = 1.0
-            if n_spl_mapping_id:
-                try:
-                    from backend.services.audio.spl_service import spl_service
-                    n_gain = spl_service.spl_to_gain(n_spl_mapping_id, noise_spl, app=app)
-                except:
-                    n_gain = 1.0
-            
-            n_device_index = audio_service.get_device_index(n_dev_unique_id)
-            log_and_emit('DEBUG', 'audio_engine', f"[execute_audio_playback] noise: device={n_dev_unique_id}, index={n_device_index}", category='audio')
-            if n_device_index is not None:
-                audio_to_play.append({
-                    'file': noise_file_path,
-                    'device_index': n_device_index,
-                    'channel': n_channel_index,
-                    'gain': n_gain,
-                    'offset': global_offset,
-                    'duration': n_audio.duration if hasattr(n_audio, 'duration') else 0,
-                    'play_order': 0,
-                    'loop': True,
-                    'is_noise': True
-                })
-    
-    # 获取 Flask app 用于数据库访问（在后台线程中需要显式传递）
-    if app is None:
-        try:
-            from flask import current_app
-            app = current_app._get_current_object()
-        except RuntimeError:
-            app = None
-    
-    dry_configs = get_audio_configs_for_offset(
-        audio_timelines, 
-        global_offset, 
-        playback_devices_map,
-        audio_service=audio_service,
-        app=app
-    )
-    log_and_emit('DEBUG', 'audio_engine', f'[execute_audio_playback] dry_configs from get_audio_configs_for_offset: count={len(dry_configs) if dry_configs else 0}, playback_devices_map keys={list(playback_devices_map.keys())}', category='audio')
-    
-    audio_to_play.extend(dry_configs)
-    
-    # 合并额外音频配置（如干扰人音频）
-    if extra_audio_configs:
-        audio_to_play.extend(extra_audio_configs)
-        log_and_emit('DEBUG', 'audio_engine', f'[execute_audio_playback] added {len(extra_audio_configs)} extra audio configs (e.g. interferers)', category='audio')
-    
-    audio_list_str = ', '.join([f"{{file={c.get('file', '')}, is_noise={c.get('is_noise')}, device={c.get('device_index')}, delay={c.get('delay', 0)}}}" for c in audio_to_play])
-    
-    if not audio_to_play:
-        log_and_emit('WARNING', 'audio_engine', 'execute_audio_playback: no audio to play', category='audio')
-        return False
-    
-    try:
-        threads = audio_service.play_overlap(
-            task_id=task_id,
-            audio_configs=audio_to_play,
-            overlap_time=overlap_time,
-            overlap_rate=overlap_rate,
-            offset=global_offset,
-            loop=loop,
-            speakers_map=speakers_map,
-            app=app
-        )
-        
-        if wait_for_completion and threads:
-            if stop_noise_after_dry and noise_audio_info and noise_devices:
-                total_duration = 0
-                audio_timelines = build_audio_timelines(dry_audios_info, overlap_rate, overlap_time, speakers_map)
-                if audio_timelines:
-                    total_duration = max(t.get('end', 0) for t in audio_timelines)
-                else:
-                    total_duration = sum(audio.duration or 0 for _, audio in dry_audios_info)
-                
-                log_and_emit('DEBUG', 'audio_engine', f"[execute_audio_playback] Waiting {total_duration}s for dry audio to finish, then stopping noise", category='audio')
-                time.sleep(total_duration)
-                log_and_emit('DEBUG', 'audio_engine', f"[execute_audio_playback] Sleep done, calling stop_task_audio", category='audio')
-                audio_service.stop_task_audio(task_id)
-            else:
-                for future in threads:
-                    try:
-                        future.result()
-                    except Exception as e:
-                        log_and_emit('ERROR', 'audio_engine', f"[execute_audio_playback] Audio playback error: {e}", category='audio')
-        
-        audio_delays = calculate_speaker_aware_audio_delays(
-            audio_to_play, 
-            overlap_rate, 
-            overlap_time > 0,
-            global_offset,
-            overlap_time,
-            speakers_map=speakers_map
-        )
-        
-        delay_map = {}
-        for config, delay in audio_delays:
-            play_order = config.get('play_order', 0)
-            delay_map[play_order] = delay
-        
-        log_and_emit('DEBUG', 'audio_engine', f'[execute_audio_playback] delay_map={delay_map}, timelines_count={len(audio_timelines)}, audio_to_play_count={len(audio_to_play)}, audio_to_play_play_orders={[c.get("play_order") for c in audio_to_play]}', category='audio')
-        
-        for timeline in audio_timelines:
-            play_order = timeline.get('config', {}).get('play_order', 0)
-            delay = delay_map.get(play_order, 0)
-            timeline['delay'] = delay
-            timeline['actual_play_time'] = playback_start_time + delay
-            # log_and_emit('DEBUG', 'audio_engine', f'[execute_audio_playback] timeline play_order={play_order}, delay={delay}, actual_play_time={timeline["actual_play_time"]}', category='audio')
-        
-        return {'success': True, 'audio_timelines': audio_timelines}
-    except Exception as e:
-        log_and_emit('ERROR', 'audio_engine', f'execute_audio_playback failed: {e}', category='audio')
-        return False
-
 
 class AudioDriver(ABC):
     """音频驱动基类"""
@@ -901,6 +620,7 @@ class PyAudioDriver(AudioDriver):
         audio_file_channels = []
         audio_file_rates = []
         audio_is_noise = []
+        audio_loops = []
         audio_delays = []
 
         for config in audio_configs:
@@ -908,6 +628,7 @@ class PyAudioDriver(AudioDriver):
             channel = config.get('channel', 0)
             gain = config.get('gain', 1.0)
             is_noise = config.get('is_noise', False)
+            audio_loop = config.get('loop', False)
             delay = config.get('delay', 0)
 
             audio_delays.append(delay)
@@ -935,7 +656,8 @@ class PyAudioDriver(AudioDriver):
                 audio_file_channels.append(wf.getnchannels())
                 audio_file_rates.append(wf.getframerate())
                 audio_is_noise.append(is_noise)
-                log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Opened audio file: {file_path}, channel={channel}, delay={delay}, is_noise={is_noise}, rate={wf.getframerate()}", category='audio')
+                audio_loops.append(audio_loop)
+                log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Opened audio file: {file_path}, channel={channel}, delay={delay}, is_noise={is_noise}, loop={audio_loop}, rate={wf.getframerate()}", category='audio')
             except Exception as e:
                 log_and_emit('ERROR', 'audio_engine', f"Failed to open audio file {file_path}: {e}", category='audio')
         
@@ -1051,7 +773,7 @@ class PyAudioDriver(AudioDriver):
                             _stream_audio_delays = audio_delays if audio_delays is not None else [0] * len(audio_configs)
                             log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Attempting: device={device_index}, ch={ch}, rate={rate}, format={fmt}", category='audio')
 
-                            def create_multi_callback(stream_channels, stream_rate, audio_gains, gain_compensations, file_channels_list, file_rates_list, channel_indices, wave_files, parent_stop_event, loop, audio_is_noise_list, audio_delays):
+                            def create_multi_callback(stream_channels, stream_rate, audio_gains, gain_compensations, file_channels_list, file_rates_list, channel_indices, wave_files, parent_stop_event, loop, audio_is_noise_list, audio_delays, audio_loops_list):
 
                                 import threading
                                 thread_name = threading.current_thread().name
@@ -1073,7 +795,8 @@ class PyAudioDriver(AudioDriver):
 
                                         for i, wf in enumerate(wave_files):
                                             is_noise = audio_is_noise_list[i] if i < len(audio_is_noise_list) else False
-                                            use_loop = is_noise
+                                            audio_loop = audio_loops_list[i] if (audio_loops_list and i < len(audio_loops_list)) else False
+                                            use_loop = is_noise or audio_loop
 
                                             delay = audio_delays[i] if i < len(audio_delays) else 0
                                             if delay > 0:
@@ -1092,7 +815,7 @@ class PyAudioDriver(AudioDriver):
                                                     data = wf.readframes(frame_count)
                                                     if len(data) == 0:
                                                         continue
-                                                elif not is_noise:
+                                                elif not use_loop:
                                                     if dry_finished_list[i]:
                                                         data = bytes(frame_count * 2)
                                                         continue
@@ -1100,7 +823,7 @@ class PyAudioDriver(AudioDriver):
                                                     data = bytes(frame_count * 2)
                                                     continue
 
-                                            if not is_noise:
+                                            if not is_noise and not use_loop:
                                                 all_empty = False
 
                                             audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
@@ -1124,7 +847,7 @@ class PyAudioDriver(AudioDriver):
                                                 if ch_idx + 1 < stream_channels:
                                                     out_buffer[ch_idx+1:limit*stream_channels:stream_channels] += audio_data[1:limit*2:2]
 
-                                        all_dry_finished = all(dry_finished_list[i] for i in range(len(wave_files)) if not audio_is_noise_list[i]) if audio_is_noise_list and any(not n for n in audio_is_noise_list) else False
+                                        all_dry_finished = all(dry_finished_list[i] for i in range(len(wave_files)) if not audio_is_noise_list[i] and not (audio_loops_list[i] if audio_loops_list and i < len(audio_loops_list) else False)) if audio_is_noise_list and any(not audio_is_noise_list[i] and not (audio_loops_list[i] if audio_loops_list and i < len(audio_loops_list) else False) for i in range(len(wave_files))) else False
 
                                         all_delays_zero = all(audio_delays[i] <= 0 for i in range(len(audio_delays)))
 
@@ -1141,7 +864,7 @@ class PyAudioDriver(AudioDriver):
                                 return callback
                             
                             current_callback = create_multi_callback(
-                                ch, rate, audio_gains, audio_gain_compensations, audio_file_channels, audio_file_rates, audio_channels, audio_files, stop_event, loop, audio_is_noise, _stream_audio_delays
+                                ch, rate, audio_gains, audio_gain_compensations, audio_file_channels, audio_file_rates, audio_channels, audio_files, stop_event, loop, audio_is_noise, _stream_audio_delays, audio_loops
                             )
                             
                             stream = self.pa.open(
@@ -1600,7 +1323,8 @@ class AudioService:
         if not audio_configs or len(audio_configs) < 1:
             return
 
-        dry_audio_files = [c for c in audio_configs if not c.get('is_noise', False)]
+        dry_audio_files = [c for c in audio_configs
+                           if not c.get('is_noise', False) and c.get('type') != 'interferer']
         if not dry_audio_files:
             return
 

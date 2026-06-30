@@ -583,7 +583,7 @@ export function useApiTest() {
   }
 
   const showAddTestCaseModalHandler = () => {
-    openAddTestCaseModal('默认分组')
+    openAddTestCaseModal('默认分组', { testType: 'api' })
   }
 
   const removeTestCase = (testCaseId: string | number) => {
