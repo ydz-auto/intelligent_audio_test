@@ -714,6 +714,9 @@ class ReportControllerTask(ReportControllerBase):
                     })
                     return
 
+                # 过滤：用例下任一维度评估状态非 completed 则整个用例不参与统计
+                results = ReportUtils.filter_results_by_case_evaluation(results)
+
                 existing_report = Report.query.filter_by(task_id=task_id).first()
                 if existing_report:
                     with _generating_lock:

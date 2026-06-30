@@ -3,7 +3,7 @@ from typing import Any, Generic, Optional, TypeVar
 from pydantic import Field
 
 from backend.schemas.base import APIModel
-from backend.utils.error_codes import ErrorCode
+from backend.utils.web.error_codes import ErrorCode
 
 T = TypeVar("T")
 

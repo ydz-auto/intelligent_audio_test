@@ -535,6 +535,9 @@ class ReportController(ReportControllerBase):
                     TestResult.task_id == task_id
                 ).all()
             
+            # 过滤：用例下任一维度评估状态非 completed 则整个用例不参与统计
+            test_results = ReportUtils.filter_results_by_case_evaluation(test_results)
+
             all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).all()
             used_dim_ids = set()
             res_ids = [r.id for r in test_results]

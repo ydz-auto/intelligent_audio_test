@@ -422,6 +422,7 @@ class CaseAlgorithmParamCreate(BaseModel):
     help_text: Optional[str] = Field(None, validation_alias='helpText')
     ui_order: int = Field(default=0, ge=0, description='界面排序', validation_alias='uiOrder')
     hidden: bool = Field(default=False, description='是否隐藏', validation_alias='hidden')
+    scope: str = Field(default='common', max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
 
     model_config = {'populate_by_name': True}
 
@@ -439,6 +440,7 @@ class CaseAlgorithmParamUpdate(BaseModel):
     help_text: Optional[str] = Field(None, validation_alias='helpText')
     ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
     hidden: Optional[bool] = Field(None, validation_alias='hidden')
+    scope: Optional[str] = Field(None, max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
 
     model_config = {'populate_by_name': True}
 
@@ -658,6 +660,7 @@ class CaseParamCreateRequest(BaseModel):
     help_text: Optional[str] = Field(None, validation_alias='helpText')
     ui_order: int = Field(default=0, validation_alias='uiOrder')
     hidden: bool = Field(default=False)
+    scope: str = Field(default='common', max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
 
     model_config = {'populate_by_name': True}
 
@@ -675,6 +678,7 @@ class CaseParamUpdateRequest(BaseModel):
     help_text: Optional[str] = Field(None, validation_alias='helpText')
     ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
     hidden: Optional[bool] = Field(None)
+    scope: Optional[str] = Field(None, max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
 
     model_config = {'populate_by_name': True}
 

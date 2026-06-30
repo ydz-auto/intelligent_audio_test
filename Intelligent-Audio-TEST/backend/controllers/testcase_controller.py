@@ -1,9 +1,10 @@
+import os
 from flask import request, send_file, current_app
 from backend.models.models import TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice
 from backend.models.database import db
-from backend.utils.response import success_response, error_response
-from backend.utils.log_handler import log_and_emit
-from backend.utils.task_utils import has_running_e2e_tasks
+from backend.utils.web.response import success_response, error_response
+from backend.utils.web.log_handler import log_and_emit
+from backend.utils.common.task_utils import has_running_e2e_tasks
 from sqlalchemy.orm import joinedload
 
 from backend.schemas.common import StringIdData
@@ -24,10 +25,9 @@ from backend.schemas.testcase import (
     TestCasePreviewRequest,
     TestCaseBatchActionRequest,
     TestCaseExportRequest,
-    AlgorithmParamItem,
-    ReferenceParamItem,
+    RoundConfigItem,
 )
-from backend.algorithm.reference_params_generator import ReferenceParamsGenerator
+from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
 
 
 import uuid
@@ -99,6 +99,95 @@ class TestCaseController:
         
         return old_overlap != new_overlap
 
+    @staticmethod
+    def _get_algo_params_list_from_config(config: dict) -> list:
+        """从 config 中提取 algorithm_params 列表格式"""
+        first_round = config.get('rounds', [{}])[0] if config.get('rounds') else {}
+        if isinstance(first_round, dict):
+            ap_dict = first_round.get('algorithmParams', {})
+            if isinstance(ap_dict, dict):
+                return [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]
+        return []
+
+    @staticmethod
+    def _has_rounds(config: dict) -> bool:
+        """判断 config 是否为 rounds-as-top-level 格式"""
+        return bool(config and isinstance(config.get('rounds'), list) and len(config['rounds']) > 0)
+
+    @staticmethod
+    def _convert_flat_config_to_rounds(config: dict) -> dict:
+        """将平面格式 config 转换为 rounds-as-top-level 格式"""
+        if TestCaseController._has_rounds(config):
+            return config
+        
+        result = dict(config)
+        audios = result.pop('audios', [])
+        bg_noise = result.pop('background_noise', None) or result.pop('backgroundNoise', None)
+        dimensions = result.pop('dimensions', [])
+        algorithm_params = result.pop('algorithm_params', {})
+        
+        for key in ('reference_params', 'referenceParamsPath'):
+            result.pop(key, None)
+        
+        round_data = {
+            'roundNumber': 1,
+            'audios': audios or [],
+            'backgroundNoise': bg_noise,
+            'algorithmParams': algorithm_params or {},
+            'evaluation': {'dimensions': dimensions or []},
+        }
+        
+        result['rounds'] = [round_data]
+        return result
+
+    @staticmethod
+    def _collect_audios(config: dict) -> list:
+        """从 config 中提取所有音频配置项（从 rounds[].audios 收集）"""
+        if not config:
+            return []
+        all_audios = []
+        for round_item in config.get('rounds', []):
+            if isinstance(round_item, dict):
+                round_audios = round_item.get('audios', [])
+                if isinstance(round_audios, list):
+                    all_audios.extend(round_audios)
+        return all_audios
+
+    @staticmethod
+    def _collect_dimensions(config: dict) -> list:
+        """从 config 中提取评测维度（从 rounds[0].evaluation.dimensions）"""
+        if not config:
+            return []
+        rounds = config.get('rounds', [])
+        if rounds:
+            first_round = rounds[0] if rounds else {}
+            if isinstance(first_round, dict):
+                evaluation = first_round.get('evaluation', {})
+                if isinstance(evaluation, dict):
+                    return evaluation.get('dimensions', [])
+        return []
+
+    @staticmethod
+    def _audios_changed(old_config: dict, new_config: dict) -> bool:
+        """比较两个 config 中的音频配置是否发生变化"""
+        old_audios = TestCaseController._collect_audios(old_config)
+        new_audios = TestCaseController._collect_audios(new_config)
+        old_ids = sorted([a.get('audio_id') for a in old_audios if isinstance(a, dict) and a.get('audio_id')])
+        new_ids = sorted([a.get('audio_id') for a in new_audios if isinstance(a, dict) and a.get('audio_id')])
+        return old_ids != new_ids
+
+    @staticmethod
+    def _get_algorithm_params_dict_for_executor(config: dict) -> dict:
+        """从 rounds[0].algorithmParams 读取"""
+        if not config:
+            return {}
+        rounds = config.get('rounds', [])
+        if rounds:
+            first_round = rounds[0] if rounds else {}
+            if isinstance(first_round, dict):
+                return first_round.get('algorithmParams', {}) or {}
+        return {}
+
     # 公共方法：刷新测试用例的ASR和翻译参考文本
     @staticmethod
     def refresh_reference_texts(test_case):
@@ -154,8 +243,7 @@ class TestCaseController:
         audio_ids = set()
         for tc in test_cases:
             config = tc.config or {}
-            audios = config.get('audios', [])
-            for audio_item in audios:
+            for audio_item in TestCaseController._collect_audios(config):
                 aid = audio_item.get('audio_id')
                 if aid is not None:
                     audio_ids.add(aid)
@@ -168,13 +256,12 @@ class TestCaseController:
         data = []
         for tc in test_cases:
             config = tc.config or {}
-            audios = config.get('audios', [])
             # 直接使用 test_type 列，不再从音频配置推导
             tc_test_type = tc.test_type or 'api'
 
             # 计算时长：根据记录的 test_type 分配
             total_duration = 0.0
-            for audio_item in audios:
+            for audio_item in TestCaseController._collect_audios(config):
                 audio_id = audio_item.get('audio_id')
                 if audio_id:
                     audio = audio_map.get(audio_id)
@@ -193,8 +280,6 @@ class TestCaseController:
                     tags=[tag.name for tag in tc.tags],
                     config=tc.config.copy() if tc.config else {},
                     algorithm_type=tc.algorithm_type,
-                    algorithm_params=AlgorithmParamItem.convert_params(tc.algorithm_params),
-                    reference_params=ReferenceParamItem.convert_params(tc.reference_params),
                     created_at=tc.created_at.isoformat() if tc.created_at else None,
                     updated_at=tc.updated_at.isoformat() if tc.updated_at else None,
                     total_duration=round(total_duration, 2) if total_duration > 0 else None,
@@ -223,23 +308,23 @@ class TestCaseController:
         
         # 从config中提取音频配置
         audios = []
-        for i, audio_item in enumerate(config.get('audios', [])):
+        for i, audio_item in enumerate(TestCaseController._collect_audios(config)):
             audio = db.session.get(Audio, audio_item.get('audio_id'))
             audios.append(
                 TestCaseAudioConfigItem(
                     id=i,
                     audio_id=audio_item.get('audio_id'),
                     audio_name=audio.name if audio else None,
-                    test_type=tc_test_type,  # 使用记录的 test_type
+                    test_type=tc_test_type,
                     spl=audio_item.get('spl'),
                     playback_device_id=TestCaseController._normalize_optional_int(audio_item.get('playback_device_id')),
                     play_order=audio_item.get('play_order'),
                 )
             )
 
-        # 从config中提取评测维度配置
+        # 从config中提取评测维度配置（兼容新旧格式）
         dimensions = []
-        dim_config = config.get('dimensions', [])
+        dim_config = TestCaseController._collect_dimensions(config)
         dimension_ids = []
 
         for item in dim_config:
@@ -257,38 +342,49 @@ class TestCaseController:
             if dim:
                 dimensions.append(TestCaseDimensionBrief(id=dim.id, name=dim.name, type=dim.type))
 
-        # 计算时长
-        audio_configs = config.get('audios', [])
+        # 计算时长（兼容新旧格式）
         total_duration = 0.0
-        for audio_item in audio_configs:
+        for audio_item in TestCaseController._collect_audios(config):
             audio_id = audio_item.get('audio_id')
             if audio_id:
                 audio = db.session.get(Audio, audio_id)
                 if audio and audio.duration:
                     total_duration += float(audio.duration)
 
-        return success_response(
-            TestCaseDetailData(
-                id=tc.id,
-                name=tc.name,
-                description=tc.description,
-                group_id=tc.group_id,
-                group_name=tc.group.name if tc.group else None,
-                group={"id": tc.group.id, "name": tc.group.name} if tc.group else None,
-                type=tc_test_type,
-                related_case_id=tc.related_case_id,
-                config=config,
-                algorithm_type=tc.algorithm_type,
-                algorithm_params=AlgorithmParamItem.convert_params(tc.algorithm_params),
-                reference_params=ReferenceParamItem.convert_params(tc.reference_params),
-                tags=[tag.name for tag in tc.tags],
-                audios=audios,
-                dimensions=dimensions,
-                created_at=tc.created_at.isoformat() if tc.created_at else None,
-                updated_at=tc.updated_at.isoformat() if tc.updated_at else None,
-                total_duration=round(total_duration, 2) if total_duration > 0 else None,
-            )
+        # Debug logging
+        import json as json_debug
+        print(f'[DEBUG get_one] tc.id={tc.id}')
+        print(f'[DEBUG get_one] config type={type(config)}')
+        print(f'[DEBUG get_one] config is None: {config is None}')
+        print(f'[DEBUG get_one] config == {{}}: {config == {}}')
+        if isinstance(config, dict):
+            print(f'[DEBUG get_one] config keys={list(config.keys())}')
+            print(f'[DEBUG get_one] config JSON={json_debug.dumps(config, ensure_ascii=False)[:300]}')
+        
+        # Create TestCaseDetailData and check config
+        detail_data = TestCaseDetailData(
+            id=tc.id,
+            name=tc.name,
+            description=tc.description,
+            group_id=tc.group_id,
+            group_name=tc.group.name if tc.group else None,
+            group={"id": tc.group.id, "name": tc.group.name} if tc.group else None,
+            type=tc_test_type,
+            related_case_id=tc.related_case_id,
+            config=config,
+            algorithm_type=tc.algorithm_type,
+            tags=[tag.name for tag in tc.tags],
+            audios=audios,
+            dimensions=dimensions,
+            created_at=tc.created_at.isoformat() if tc.created_at else None,
+            updated_at=tc.updated_at.isoformat() if tc.updated_at else None,
+            total_duration=round(total_duration, 2) if total_duration > 0 else None,
         )
+        
+        dumped = detail_data.model_dump(by_alias=True)
+        print(f'[DEBUG get_one] dumped config={json_debug.dumps(dumped.get("config"), ensure_ascii=False)[:300]}')
+        
+        return success_response(detail_data)
 
     # 创建测试用例
     @staticmethod
@@ -304,7 +400,7 @@ class TestCaseController:
         
         if group_id is None and data.group:
             group_name = data.group
-            group = TestCaseGroup.query.filter_by(name=group_name, algorithm_type=data.algorithm_type).first()
+            group = TestCaseGroup.query.filter_by(name=group_name).first()
             if group:
                 group_id = group.id
             else:
@@ -312,8 +408,7 @@ class TestCaseController:
                 new_group = TestCaseGroup(
                     id=group_id,
                     name=group_name,
-                    description=f"自动创建的分组: {group_name}",
-                    algorithm_type=data.algorithm_type
+                    description=f"自动创建的分组: {group_name}"
                 )
                 db.session.add(new_group)
         
@@ -328,60 +423,68 @@ class TestCaseController:
         # 数据验证: 校验 config 中的结构
         config = data.config or {}
         
-        # 合并配置，支持从data直接传入的字段
-        merged_config = config.copy() if config else {}
-        
-        # 处理背景噪声配置 (支持从 config 或直接从 data 获取)
-        if 'background_noise' not in merged_config:
-            bg_noise_audio_id = data.background_noise_id
-            bg_noise_spl = data.background_noise_spl
-            bg_noise_device_ids = getattr(data, 'background_noise_device_ids', None)
-            if bg_noise_audio_id is not None:
-                merged_config['background_noise'] = {
-                    'audio_id': bg_noise_audio_id,
-                    'spl': bg_noise_spl
-                }
-                if bg_noise_device_ids:
-                    merged_config['background_noise']['device_ids'] = bg_noise_device_ids
-        
-        # 处理音频配置 (支持从data直接传入的audios字段)
-        audios_data = data.audios
-        if audios_data:
-            # 校验音频配置（根据记录的 test_type 决定校验规则）
-            for i, audio_item in enumerate(audios_data):
-                aid = audio_item.audio_id
-                spl = audio_item.spl
-                porder = audio_item.play_order
-                pdid = TestCaseController._normalize_optional_int(audio_item.playback_device_id)
-
-                if aid is None or spl is None or porder is None:
-                    return error_response(f"第 {i+1} 个音频配置缺少必要字段: audio_id, spl, play_order")
-                
-                # E2E 记录：所有音频必须有 playback_device_id
-                if test_type_val == 'e2e' and not pdid:
-                    return error_response(f"第 {i+1} 个音频配置为 E2E 类型用例，必须指定 playback_device_id")
+        # 统一为 rounds 格式
+        if TestCaseController._has_rounds(config):
+            merged_config = config.copy()
+            # 验证各轮音频配置
+            if test_type_val == 'e2e':
+                for rn, round_item in enumerate(merged_config.get('rounds', []), 1):
+                    for ai, audio_item in enumerate(round_item.get('audios', []), 1):
+                        if not audio_item.get('playback_device_id'):
+                            return error_response(f"第{rn}轮第{ai}个音频配置为 E2E 类型用例，必须指定 playback_device_id")
+        else:
+            # 前端传入平面数据，构建配置后转换为 rounds
+            merged_config = config.copy() if config else {}
             
-            # 将音频配置转换为标准格式并存储到config中（不存储 test_type）
-            standard_audios = []
-            for audio_item in audios_data:
-                standard_audios.append({
-                    'audio_id': audio_item.audio_id,
-                    'spl': audio_item.spl,
-                    'playback_device_id': TestCaseController._normalize_optional_int(audio_item.playback_device_id),
-                    'play_order': audio_item.play_order
-                })
-            merged_config['audios'] = standard_audios
+            if 'background_noise' not in merged_config:
+                bg_noise_audio_id = data.background_noise_id
+                bg_noise_spl = data.background_noise_spl
+                bg_noise_device_ids = getattr(data, 'background_noise_device_ids', None)
+                if bg_noise_audio_id is not None:
+                    merged_config['background_noise'] = {
+                        'audio_id': bg_noise_audio_id,
+                        'spl': bg_noise_spl
+                    }
+                    if bg_noise_device_ids:
+                        merged_config['background_noise']['device_ids'] = bg_noise_device_ids
+            
+            audios_data = data.audios
+            if audios_data:
+                for i, audio_item in enumerate(audios_data):
+                    aid = audio_item.audio_id
+                    spl = audio_item.spl
+                    porder = audio_item.play_order
+                    pdid = TestCaseController._normalize_optional_int(audio_item.playback_device_id)
+                    if aid is None or spl is None or porder is None:
+                        return error_response(f"第 {i+1} 个音频配置缺少必要字段: audio_id, spl, play_order")
+                    if test_type_val == 'e2e' and not pdid:
+                        return error_response(f"第 {i+1} 个音频配置为 E2E 类型用例，必须指定 playback_device_id")
+                standard_audios = []
+                for audio_item in audios_data:
+                    standard_audios.append({
+                        'audio_id': audio_item.audio_id,
+                        'spl': audio_item.spl,
+                        'playback_device_id': TestCaseController._normalize_optional_int(audio_item.playback_device_id),
+                        'play_order': audio_item.play_order
+                    })
+                merged_config['audios'] = standard_audios
+            
+            dimensions_data = data.dimensions
+            if dimensions_data:
+                merged_config['dimensions'] = dimensions_data
+            
+            # 转换为 rounds 格式
+            merged_config = TestCaseController._convert_flat_config_to_rounds(merged_config)
         
-        # 处理评测维度配置 (支持从data直接传入的dimensions字段)
-        dimensions_data = data.dimensions
-        if dimensions_data:
-            merged_config['dimensions'] = dimensions_data
+        # algorithm_params 存入 rounds[].algorithmParams
+        algorithm_params_list = data.get_algorithm_params_dict()
+        if algorithm_params_list:
+            ap_dict = {item['field_code']: item['field_value'] for item in algorithm_params_list if item.get('field_code')}
+            for round_item in merged_config.get('rounds', []):
+                if isinstance(round_item, dict):
+                    round_item['algorithmParams'] = ap_dict
         
-        # 标签存储在 test_case_tags 关联表中，不再写入 config
-
         algorithm_type = data.algorithm_type
-        algorithm_params = data.get_algorithm_params_dict()
-        reference_params = data.get_reference_params_dict()
 
         try:
             tc_id = str(uuid.uuid4())
@@ -392,8 +495,6 @@ class TestCaseController:
                 group_id=group_id,
                 config=merged_config,
                 algorithm_type=algorithm_type,
-                algorithm_params=algorithm_params,
-                reference_params=reference_params,
                 test_type=test_type_val,
                 related_case_id=data.related_case_id
             )
@@ -409,12 +510,12 @@ class TestCaseController:
                         db.session.add(tag)
                     new_tc.tags.append(tag)
 
-            # 刷新用例参考文本/音频/...
+            # 刷新用例参考文本（新格式会写入文件并设置 referenceParamsPath）
             TestCaseController.refresh_reference_texts(new_tc)
 
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(StringIdData(id=tc_id), "测试用例创建成功", 0, 201)
@@ -451,7 +552,7 @@ class TestCaseController:
             # 2. 如果没有group_id，但有group名称，根据名称查找或创建分组
             if group_id is None and data.group:
                 group_name = data.group
-                group = TestCaseGroup.query.filter_by(name=group_name, algorithm_type=data.algorithm_type).first()
+                group = TestCaseGroup.query.filter_by(name=group_name).first()
                 if group:
                     group_id = group.id
                 else:
@@ -460,8 +561,7 @@ class TestCaseController:
                     new_group = TestCaseGroup(
                         id=group_id,
                         name=group_name,
-                        description=f"自动创建的分组: {group_name}",
-                        algorithm_type=data.algorithm_type
+                        description=f"自动创建的分组: {group_name}"
                     )
                     db.session.add(new_group)
             
@@ -471,49 +571,57 @@ class TestCaseController:
             
             # 4. 处理测试用例名称
             if data.name is not None:
-                # 更新用例名称
                 tc.name = data.name
             
             if data.description is not None:
                 tc.description = data.description
             
-            # 合并配置，支持从data直接传入的字段
-            merged_config = current_config.copy()
+            # 判断是否为 rounds-as-top-level 格式（当前或传入）
+            incoming_config = data.config if data.config is not None else {}
             
-            # 如果提供了完整的config，使用它作为基础
             if data.config is not None:
-                merged_config = data.config.copy()
+                if TestCaseController._has_rounds(data.config):
+                    merged_config = data.config.copy()
+                else:
+                    # 传入平面格式，转换为 rounds
+                    merged_config = TestCaseController._convert_flat_config_to_rounds(data.config.copy())
+            elif TestCaseController._has_rounds(current_config):
+                merged_config = current_config.copy()
+            else:
+                # 当前配置也是平面格式（不应发生），转换后继续
+                merged_config = TestCaseController._convert_flat_config_to_rounds(current_config.copy())
             
-            # 处理背景噪声配置 (支持从 config 或直接从 data 获取)
+            # 如果传入了 algorithm_params，更新到所有 rounds 的 algorithmParams 中
+            algorithm_params_list = data.get_algorithm_params_dict()
+            if algorithm_params_list:
+                ap_dict = {item['field_code']: item['field_value'] for item in algorithm_params_list if item.get('field_code')}
+                for round_item in merged_config.get('rounds', []):
+                    if isinstance(round_item, dict):
+                        round_item['algorithmParams'] = ap_dict
+            
+            # 处理前端传入的平面字段（更新到 rounds[0]）
             bg_noise_audio_id = data.background_noise_id
             bg_noise_spl = data.background_noise_spl
             bg_noise_device_ids = getattr(data, 'background_noise_device_ids', None)
             if bg_noise_audio_id is not None:
-                merged_config['background_noise'] = {
-                    'audio_id': bg_noise_audio_id,
-                    'spl': bg_noise_spl
-                }
-                if bg_noise_device_ids:
-                    merged_config['background_noise']['device_ids'] = bg_noise_device_ids
+                first_round = merged_config.get('rounds', [{}])[0]
+                if isinstance(first_round, dict):
+                    noise_cfg = {'audio_id': bg_noise_audio_id, 'spl': bg_noise_spl}
+                    if bg_noise_device_ids:
+                        noise_cfg['device_ids'] = bg_noise_device_ids
+                    first_round['backgroundNoise'] = noise_cfg
             
-            # 处理音频配置 (支持从data直接传入的audios字段)
             audios_data = data.audios
             if audios_data is not None:
-                # 验证音频数据（根据记录的 test_type 决定校验规则）
                 for i, audio_item in enumerate(audios_data):
                     aid = audio_item.audio_id
                     spl = audio_item.spl
                     porder = audio_item.play_order
                     pdid = TestCaseController._normalize_optional_int(audio_item.playback_device_id)
-
                     if aid is None or spl is None or porder is None:
                         return error_response(f"第 {i+1} 个音频配置缺少必要字段: audio_id, spl, play_order")
-                    
-                    # E2E 记录：所有音频必须有 playback_device_id
                     if tc_test_type == 'e2e' and not pdid:
                         return error_response(f"第 {i+1} 个音频配置为 E2E 类型用例，必须指定 playback_device_id")
-                
-                # 将音频配置转换为标准格式并存储到config中（不存储 test_type）
                 standard_audios = []
                 for audio_item in audios_data:
                     standard_audios.append({
@@ -522,16 +630,20 @@ class TestCaseController:
                         'playback_device_id': TestCaseController._normalize_optional_int(audio_item.playback_device_id),
                         'play_order': audio_item.play_order
                     })
-                merged_config['audios'] = standard_audios
+                # 写入 rounds[0].audios
+                first_round = merged_config.get('rounds', [{}])[0]
+                if isinstance(first_round, dict):
+                    first_round['audios'] = standard_audios
             
-            # 处理评测维度配置 (支持从data直接传入的dimensions字段)
             dimensions_data = data.dimensions
             if dimensions_data is not None:
-                merged_config['dimensions'] = dimensions_data
+                first_round = merged_config.get('rounds', [{}])[0]
+                if isinstance(first_round, dict):
+                    if 'evaluation' not in first_round:
+                        first_round['evaluation'] = {}
+                    first_round['evaluation']['dimensions'] = dimensions_data
             
-            # 标签存储在 test_case_tags 关联表中，不再写入 config
-            
-            # 更新标签关联（从 data.tags 获取）
+            # 更新标签
             tags_data = data.tags
             if tags_data is not None:
                 tc.tags = []
@@ -545,27 +657,19 @@ class TestCaseController:
             tc.config = merged_config
             
             algorithm_type = data.algorithm_type
-            algorithm_params = data.get_algorithm_params_dict()
-            reference_params = data.get_reference_params_dict()
-            
             need_refresh_reference = False
             
-            if audios_data is not None:
-                need_refresh_reference = True
-            elif merged_config.get('audios') != current_config.get('audios'):
+            if TestCaseController._audios_changed(current_config, merged_config):
                 need_refresh_reference = True
             
             if algorithm_type is not None and algorithm_type != tc.algorithm_type:
                 need_refresh_reference = True
                 tc.algorithm_type = algorithm_type
             
-            if algorithm_params is not None:
-                if TestCaseController._has_overlap_param_changed(tc.algorithm_params or [], algorithm_params):
+            if algorithm_params_list:
+                old_params = TestCaseController._get_algo_params_list_from_config(current_config)
+                if TestCaseController._has_overlap_param_changed(old_params, algorithm_params_list):
                     need_refresh_reference = True
-                tc.algorithm_params = algorithm_params
-            
-            if reference_params is not None:
-                tc.reference_params = reference_params
             
             tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
             
@@ -574,7 +678,7 @@ class TestCaseController:
             
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(None, "测试用例更新成功")
@@ -594,7 +698,7 @@ class TestCaseController:
             tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
             db.session.commit()
 
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
 
             return success_response(None, "测试用例已删除")
@@ -618,8 +722,6 @@ class TestCaseController:
                 group_id=tc.group_id,
                 config=tc.config.copy() if tc.config else {},
                 algorithm_type=tc.algorithm_type,
-                algorithm_params=tc.algorithm_params,
-                reference_params=tc.reference_params,
                 test_type=tc.test_type or 'api',
                 related_case_id=None  # 复制时不继承关联
             )
@@ -657,13 +759,15 @@ class TestCaseController:
         playback_mode = req_data.playback_mode or 'backend'
         
         config = tc.config or {}
-        algorithm_params = tc.algorithm_params or {}
-        TestCaseController._log('info', f"tc.algorithm_params: {algorithm_params}", test_case_id=tc_id, category='preview')
+        
+        # 注入 algorithm_params 到 config
+        algorithm_params = TestCaseController._get_algorithm_params_dict_for_executor(config)
         if algorithm_params:
             config = config.copy() if config else {}
             config['algorithm_params'] = algorithm_params
         
-        audios_config = config.get('audios', [])
+        # 从 rounds 获取音频
+        audios_config = TestCaseController._collect_audios(config)
         
         # 1. 检查音频配置
         if not audios_config:
@@ -688,7 +792,7 @@ class TestCaseController:
             return error_response("用例未配置有效的音频ID")
 
         # 计算总时长
-        from backend.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
         overlap_time = CaseParameterExtractor.get_overlap_time(config) if config else 0
         overlap_rate = CaseParameterExtractor.get_overlap_rate(config) if config else 0
         
@@ -723,8 +827,8 @@ class TestCaseController:
         if has_running_e2e_tasks():
             return error_response("当前有待执行的E2E测试任务，不允许使用后端扬声器播放", 403)
 
-        from backend.utils.audio_engine import audio_service
-        from backend.utils.spl_service import spl_service
+        from backend.services.audio.audio_engine import audio_service
+        from backend.services.audio.spl_service import spl_service
         from backend.models.models import PlaybackDevice, Audio
         
         preview_task_id = f"PREVIEW_{tc_id}"
@@ -745,7 +849,7 @@ class TestCaseController:
         preview_stop_flags[tc_id] = False
 
         try:
-            from backend.utils.audio_engine import prepare_audio_playback_info, execute_audio_playback
+            from backend.services.audio.audio_engine import prepare_audio_playback_info, execute_audio_playback
             
             playback_info = prepare_audio_playback_info(preview_audios, config, db.session)
             if not playback_info:
@@ -759,7 +863,7 @@ class TestCaseController:
             TestCaseController._log('info', f"Preview prepared: dry_audios={len(dry_audios_info)}, dry_devices={len(dry_devices)}, noise_devices={len(all_noise_devices)}", test_case_id=tc_id, category='preview')
             
             app = current_app._get_current_object()
-            from backend.utils.audio_engine import build_audio_timelines, build_speakers_map_from_dry_audios
+            from backend.services.audio.audio_engine import build_audio_timelines, build_speakers_map_from_dry_audios
 
             speakers_map = build_speakers_map_from_dry_audios(dry_audios_info, app=app)
             audio_timelines = build_audio_timelines(dry_audios_info, overlap_rate, overlap_time, speakers_map)
@@ -771,7 +875,7 @@ class TestCaseController:
             
             def play_audio(app):
                 from flask import has_app_context
-                from backend.utils.audio_engine import execute_audio_playback
+                from backend.services.audio.audio_engine import execute_audio_playback
                 global preview_stop_flags
                 if not preview_stop_flags.get(tc_id, False):
                     try:
@@ -796,7 +900,7 @@ class TestCaseController:
                         TestCaseController._log('error', f"Error playing audio: {str(e)}", test_case_id=tc_id, category='preview')
             
             if dry_audios_info:
-                from backend.utils.execution_engine import execution_engine
+                from backend.services.execution.execution_engine import execution_engine
                 execution_engine.audio_playback_pool.submit(play_audio, app)
 
             return success_response(
@@ -820,7 +924,7 @@ class TestCaseController:
         """
         停止预览测试用例：向音频引擎发送停止信号
         """
-        from backend.utils.audio_engine import audio_service
+        from backend.services.audio.audio_engine import audio_service
         preview_task_id = f"PREVIEW_{tc_id}"
         
         # 设置停止标志，通知播放线程停止
@@ -870,8 +974,6 @@ class TestCaseController:
                             group_id=target_group_id,
                             config=tc.config.copy() if tc.config else {},
                             algorithm_type=tc.algorithm_type,
-                            algorithm_params=tc.algorithm_params,
-                            reference_params=tc.reference_params,
                             test_type=tc.test_type or 'api',
                             related_case_id=None
                         )
@@ -894,8 +996,6 @@ class TestCaseController:
                             group_id=tc.group_id,
                             config=tc.config.copy() if tc.config else {},
                             algorithm_type=tc.algorithm_type,
-                            algorithm_params=tc.algorithm_params,
-                            reference_params=tc.reference_params,
                             test_type=tc.test_type or 'api',
                             related_case_id=None
                         )
@@ -917,15 +1017,14 @@ class TestCaseController:
                     return error_response(f"未找到分组: {group_name}")
                 
                 new_group_name = f"{group_name}_copy"
-                existing_group = TestCaseGroup.query.filter_by(name=new_group_name, algorithm_type=source_group.algorithm_type).first()
+                existing_group = TestCaseGroup.query.filter_by(name=new_group_name).first()
                 if existing_group:
                     new_group = existing_group
                 else:
                     new_group = TestCaseGroup(
                         id=str(uuid.uuid4()),
                         name=new_group_name,
-                        description=source_group.description,
-                        algorithm_type=source_group.algorithm_type
+                        description=source_group.description
                     )
                     db.session.add(new_group)
                 
@@ -940,8 +1039,6 @@ class TestCaseController:
                         group_id=new_group.id,
                         config=tc.config.copy() if tc.config else {},
                         algorithm_type=tc.algorithm_type,
-                        algorithm_params=tc.algorithm_params,
-                        reference_params=tc.reference_params,
                         test_type=tc.test_type or 'api',
                         related_case_id=None
                     )
@@ -958,7 +1055,22 @@ class TestCaseController:
                 test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
                 updated_count = 0
                 for tc in test_cases:
-                    tc.algorithm_params = algorithm_params
+                    tc_config = tc.config or {}
+                    ap_dict = {}
+                    if isinstance(algorithm_params, list):
+                        for item in algorithm_params:
+                            if isinstance(item, dict):
+                                code = item.get('field_code') or item.get('fieldCode', '')
+                                value = item.get('field_value') or item.get('fieldValue', '')
+                                if code:
+                                    ap_dict[code] = value
+                    elif isinstance(algorithm_params, dict):
+                        ap_dict = algorithm_params
+                    tc_config = tc_config.copy()
+                    for round_item in tc_config.get('rounds', []):
+                        if isinstance(round_item, dict):
+                            round_item['algorithmParams'] = ap_dict.copy()
+                    tc.config = tc_config
                     tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
                     updated_count += 1
                 message = f"已成功更新 {updated_count} 个用例的专属参数"
@@ -983,12 +1095,15 @@ class TestCaseController:
                     logger.debug(f"[update_playback_devices] 处理用例 {tc.id}, config: {tc.config}")
                     if tc.config:
                         config = tc.config.copy()
-                        if 'audios' in config:
-                            for idx, audio_config in enumerate(config['audios']):
-                                device_id = playback_devices.get('deviceId') or playback_devices.get('device_id')
-                                logger.debug(f"[update_playback_devices] 更新用例 {tc.id} audio[{idx}] 的 playback_device_id 为 {device_id}")
-                                if device_id is not None:
-                                    audio_config['playback_device_id'] = device_id
+                        device_id = playback_devices.get('deviceId') or playback_devices.get('device_id')
+                        
+                        # 更新 rounds[].audios[].playback_device_id
+                        for round_item in config.get('rounds', []):
+                            if isinstance(round_item, dict):
+                                for idx, audio_config in enumerate(round_item.get('audios', [])):
+                                    logger.debug(f"[update_playback_devices] 更新用例 {tc.id} round audio[{idx}] 的 playback_device_id 为 {device_id}")
+                                    if device_id is not None:
+                                        audio_config['playback_device_id'] = device_id
                         tc.config = config
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
@@ -1020,11 +1135,14 @@ class TestCaseController:
                     logger.debug(f"[update_spl] 处理用例 {tc.id}, config: {tc.config}")
                     if tc.config:
                         config = tc.config.copy()
-                        if 'audios' in config:
-                            for audio_config in config['audios']:
-                                if spl_data.get('value') is not None:
-                                    audio_config['spl'] = spl_data['value']
-                                    logger.debug(f"[update_spl] 更新用例 {tc.id} 的 spl 为 {spl_data['value']}")
+                        
+                        # 更新 rounds[].audios[].spl
+                        for round_item in config.get('rounds', []):
+                            if isinstance(round_item, dict):
+                                for audio_config in round_item.get('audios', []):
+                                    if spl_data.get('value') is not None:
+                                        audio_config['spl'] = spl_data['value']
+                                        logger.debug(f"[update_spl] 更新用例 {tc.id} 的 spl 为 {spl_data['value']}")
                         tc.config = config
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
@@ -1067,7 +1185,12 @@ class TestCaseController:
                             })
                             logger.debug(f"[update_dimensions] 用例 {tc.id} 设置维度 {dim_id}")
 
-                        config['dimensions'] = new_dim_list
+                        # 写入 rounds[].evaluation.dimensions
+                        for round_item in config.get('rounds', []):
+                            if isinstance(round_item, dict):
+                                if 'evaluation' not in round_item:
+                                    round_item['evaluation'] = {}
+                                round_item['evaluation']['dimensions'] = new_dim_list
                         tc.config = config
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
@@ -1102,20 +1225,22 @@ class TestCaseController:
                     else:
                         config = tc.config.copy()
 
-                    if 'background_noise' not in config:
-                        config['background_noise'] = {'audio_id': '', 'spl': 0, 'device_ids': []}
-
-                    if audio_id is not None:
-                        config['background_noise']['audio_id'] = audio_id
-                    if spl is not None:
-                        config['background_noise']['spl'] = spl
-                    if device_ids is not None:
-                        config['background_noise']['device_ids'] = device_ids
+                    # 更新 rounds[].backgroundNoise
+                    for round_item in config.get('rounds', []):
+                        if isinstance(round_item, dict):
+                            if 'backgroundNoise' not in round_item:
+                                round_item['backgroundNoise'] = {'audio_id': '', 'spl': 0, 'device_ids': []}
+                            if audio_id is not None:
+                                round_item['backgroundNoise']['audio_id'] = audio_id
+                            if spl is not None:
+                                round_item['backgroundNoise']['spl'] = spl
+                            if device_ids is not None:
+                                round_item['backgroundNoise']['device_ids'] = device_ids
 
                     tc.config = config
                     import sqlalchemy.orm.attributes
                     sqlalchemy.orm.attributes.flag_modified(tc, 'config')
-                    logger.info(f"[update_noise] 更新用例 {tc.id} background_noise: {config['background_noise']}")
+                    logger.info(f"[update_noise] 更新用例 {tc.id} noise config")
 
                     tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
                     db.session.add(tc)
@@ -1232,7 +1357,7 @@ class TestCaseController:
                 logger.info(f"[refresh_reference] 查询到 {len(test_cases)} 个用例")
 
                 if len(ids) > 50:
-                    from backend.utils.reference_refresh_task import submit_reference_refresh_task
+                    from backend.utils.common.reference_refresh_task import submit_reference_refresh_task
 
                     task_id = submit_reference_refresh_task(ids)
                     logger.info(f"[refresh_reference] 异步任务已提交: {task_id}")
@@ -1261,7 +1386,7 @@ class TestCaseController:
             
             db.session.commit()
             
-            from backend.utils.stats_cache import refresh_stats_cache
+            from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
             
             return success_response(None, message)
@@ -1345,7 +1470,7 @@ class TestCaseController:
                 # 从config中提取音频信息
                 audios = []
                 playback_device_names = set()
-                for i, audio_item in enumerate(config.get('audios', [])):
+                for i, audio_item in enumerate(TestCaseController._collect_audios(config)):
                     audio_id = audio_item.get('audio_id')
                     audio = db.session.get(Audio, audio_id)
                     # 优先使用数据库中的最新名称，如果找不到则保留原样或标记未知
@@ -1369,8 +1494,8 @@ class TestCaseController:
                         "play_order": audio_item.get('play_order', i + 1)
                     })
                 
-                # 获取评分维度名称
-                dimensions_data = config.get('dimensions', [])
+                # 获取评分维度名称（兼容新旧格式）
+                dimensions_data = TestCaseController._collect_dimensions(config)
                 
                 def get_dim_names(dim_list):
                     names = []
@@ -1419,8 +1544,12 @@ class TestCaseController:
                     a_device = audio_item.get('playback_device_name', '-')
                     audio_details.append(f"[{order}] {a_name}({a_spl}dB, 设备:{a_device})")
                 
-                # 获取背景噪声名称及SPL
-                noise_config = config.get('background_noise', {})
+                # 获取背景噪声名称及SPL（兼容新旧格式）
+                # 获取噪声配置（从 rounds[0].backgroundNoise）
+                noise_config = {}
+                first_round = config.get('rounds', [{}])[0] if config.get('rounds') else {}
+                if isinstance(first_round, dict):
+                    noise_config = first_round.get('backgroundNoise') or {}
                 noise_name = "无"
                 noise_spl = noise_config.get('spl') or noise_config.get('noise_spl', '')
                 noise_audio_id = noise_config.get('audio_id')
@@ -1885,17 +2014,16 @@ class TestCaseController:
                     group = None
                     group_id = case_data.get('group_id')
                     group_name = case_data.get('group', '未分类')
-                    case_algorithm_type = case_data.get('algorithm_type') or case_data.get('algorithmType')
                     
                     if group_id:
                         group = db.session.get(TestCaseGroup, group_id)
                     
                     if not group:
-                        group = TestCaseGroup.query.filter_by(name=group_name, algorithm_type=case_algorithm_type).first()
+                        group = TestCaseGroup.query.filter_by(name=group_name).first()
                     
                     if not group:
                         # 如果都没有，则创建（注意：如果 group_id 是 UUID 字符串，建议使用 name 创建）
-                        group = TestCaseGroup(id=str(uuid.uuid4()) if not group_id else group_id, name=group_name, algorithm_type=case_algorithm_type)
+                        group = TestCaseGroup(id=str(uuid.uuid4()) if not group_id else group_id, name=group_name)
                         db.session.add(group)
                         db.session.flush()
                     
@@ -1956,6 +2084,10 @@ class TestCaseController:
                         if isinstance(dimensions_data, list):
                             dimension_ids = [d.get('id') if isinstance(d, dict) else d for d in dimensions_data]
                             merged_config['dimensions'] = dimension_ids
+
+                    # 转换为 rounds 格式（已有 rounds 的不做转换）
+                    if not TestCaseController._has_rounds(merged_config):
+                        merged_config = TestCaseController._convert_flat_config_to_rounds(merged_config)
 
                     # 4. 执行创建或更新
                     if existing_tc:
@@ -2162,3 +2294,89 @@ class TestCaseController:
             return success_response(data=preview_result)
         except Exception as e:
             return error_response(f"预览失败: {str(e)}")
+
+    # ---- reference_params 文件读写 ----
+
+    @staticmethod
+    def get_ref_params(tc_id, round_number):
+        """获取指定用例指定轮的参考参数文件内容"""
+        tc = TestCase.query.filter_by(id=tc_id, deleted=False).first()
+        if not tc:
+            return error_response("未找到测试用例", 404)
+        
+        config = tc.config or {}
+        rounds = config.get('rounds', [])
+        
+        target_round = None
+        for r in rounds:
+            if isinstance(r, dict) and r.get('roundNumber') == round_number:
+                target_round = r
+                break
+        
+        if not target_round:
+            return error_response(f"未找到第 {round_number} 轮", 404)
+        
+        ref_path = target_round.get('referenceParamsPath')
+        if not ref_path:
+            return error_response(f"第 {round_number} 轮未配置参考参数路径", 404)
+        
+        ref_data = ReferenceParamsGenerator.load_from_file(ref_path)
+        if ref_data is None:
+            return error_response(f"参考参数文件不存在或读取失败: {ref_path}", 404)
+        
+        return success_response({
+            'roundNumber': round_number,
+            'referenceParamsPath': ref_path,
+            'referenceParams': ref_data
+        })
+
+    @staticmethod
+    def update_ref_params(tc_id, round_number):
+        """更新指定用例指定轮的参考参数文件"""
+        tc = TestCase.query.filter_by(id=tc_id, deleted=False).first()
+        if not tc:
+            return error_response("未找到测试用例", 404)
+        
+        data = request.get_json()
+        if not data:
+            return error_response("请求体不能为空")
+        
+        new_ref_params = data.get('referenceParams')
+        if new_ref_params is None:
+            return error_response("缺少 referenceParams 字段")
+        
+        from backend.utils.algorithm.reference_params_generator import normalize_reference_params
+        new_ref_params = normalize_reference_params(new_ref_params)
+        
+        config = tc.config or {}
+        rounds = config.get('rounds', [])
+        
+        target_round = None
+        for r in rounds:
+            if isinstance(r, dict) and r.get('roundNumber') == round_number:
+                target_round = r
+                break
+        
+        if not target_round:
+            return error_response(f"未找到第 {round_number} 轮", 404)
+        
+        ref_path = target_round.get('referenceParamsPath')
+        if not ref_path:
+            return error_response(f"第 {round_number} 轮未配置参考参数路径", 404)
+        
+        import os
+        if not os.path.exists(ref_path):
+            return error_response(f"参考参数文件不存在: {ref_path}", 404)
+        
+        try:
+            with open(ref_path, 'w', encoding='utf-8') as f:
+                json.dump(new_ref_params, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            return error_response(f"写入参考参数文件失败: {str(e)}")
+        
+        return success_response({
+            'roundNumber': round_number,
+            'referenceParamsPath': ref_path,
+            'referenceParams': new_ref_params
+        }, "参考参数更新成功")
+

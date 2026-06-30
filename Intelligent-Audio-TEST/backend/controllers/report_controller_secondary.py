@@ -70,6 +70,8 @@ class ReportControllerSecondary(ReportControllerBase):
     @staticmethod
     def _collect_all_resources(task_ids, tasks):
         results = TestResult.query.filter(TestResult.task_id.in_(task_ids)).all()
+        # 过滤：用例下任一维度评估状态非 completed 则整个用例不参与统计
+        results = ReportUtils.filter_results_by_case_evaluation(results)
         if not results:
             return None, None, None, None, None, "未找到测试结果数据"
 
@@ -117,6 +119,8 @@ class ReportControllerSecondary(ReportControllerBase):
             return {}
 
         results = TestResult.query.filter(TestResult.task_id.in_(task_ids)).all()
+        # 过滤：用例下任一维度评估状态非 completed 则整个用例不参与统计
+        results = ReportUtils.filter_results_by_case_evaluation(results)
         dim_map = {d.id: d for d in all_dimensions}
 
         for res in results:

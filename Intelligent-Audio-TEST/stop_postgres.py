@@ -5,7 +5,7 @@ import ctypes
 
 PGSQL_BIN = r"C:\S2TT\environment\pgsql\bin"
 PGSQL_DATA = r"C:\S2TT\environment\pgsql\data"
-PGSQL_PORTS = [5432, 5423]
+PGSQL_PORTS = [5432]
 
 def is_admin():
     try:

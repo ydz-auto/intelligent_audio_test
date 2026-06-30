@@ -455,6 +455,8 @@ class ReportControllerCompare(ReportControllerBase):
             )
 
             results = TestResult.query.filter(TestResult.task_id.in_(task_ids)).all()
+            # 过滤：用例下任一维度评估状态非 completed 则整个用例不参与统计
+            results = ReportUtils.filter_results_by_case_evaluation(results)
             
             res_ids_all = [r.id for r in results]
             all_dimensions = ReportControllerCompare._get_all_dimensions_with_results(res_ids_all)

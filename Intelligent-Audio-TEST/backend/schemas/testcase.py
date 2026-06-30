@@ -31,6 +31,7 @@ class TestCaseBackgroundNoiseItem(APIModel):
     audio_id: Optional[Union[int, str]] = Field(None, alias='audioId', validation_alias=AliasChoices('audio_id', 'audioId'))
     spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
     device_ids: Optional[List[Union[int, str]]] = Field(None, alias='deviceIds', validation_alias=AliasChoices('device_ids', 'deviceIds'))
+    loop: Optional[bool] = Field(True, alias='loop', validation_alias='loop')
 
 
 class TestCaseDimensionItem(APIModel):
@@ -40,11 +41,49 @@ class TestCaseDimensionItem(APIModel):
     threshold: Optional[float] = Field(None, alias='threshold', validation_alias='threshold')
 
 
-class TestCaseConfig(APIModel):
-    audios: Optional[List[TestCaseAudioConfigItem]] = Field(None, alias='audios', validation_alias='audios')
+class RoundConfigItem(APIModel):
+    """单轮配置项 — rounds-as-top-level 架构下的核心数据结构
+
+    结构性字段（Schema 固定，不随算法变化）：
+      - roundNumber, audios, backgroundNoise, evaluation, referenceParamsPath
+    表驱动参数（由 case_algorithm_params 表定义，DynamicForm 动态渲染）：
+      - algorithmParams: [{field_code, field_value}] 数组
+
+    废弃字段（全部移入 algorithmParams）：
+      railDistance, volumeLevel, voiceprintRegistration, promptAudioId,
+      interferers, interruption, tags
+    """
+    model_config = ConfigDict(extra='allow')
+
+    # === 结构性字段 ===
+    round_number: Optional[int] = Field(1, alias='roundNumber', validation_alias=AliasChoices('round_number', 'roundNumber'))
+    audios: Optional[List[TestCaseAudioConfigItem]] = Field(default_factory=list, alias='audios', validation_alias='audios')
     background_noise: Optional[TestCaseBackgroundNoiseItem] = Field(None, alias='backgroundNoise', validation_alias=AliasChoices('background_noise', 'backgroundNoise'))
-    dimensions: Optional[List[TestCaseDimensionItem]] = Field(None, alias='dimensions', validation_alias='dimensions')
-    tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
+    evaluation: Optional[Dict[str, Any]] = Field(None, alias='evaluation', validation_alias='evaluation')
+    reference_params_path: Optional[str] = Field(None, alias='referenceParamsPath', validation_alias=AliasChoices('reference_params_path', 'referenceParamsPath'))
+
+    # === 算法参数（由 case_algorithm_params 表定义驱动，[{field_code, field_value}] 格式）===
+    algorithm_params: Optional[List[AlgorithmParamItem]] = Field(
+        default_factory=list, alias='algorithmParams',
+        validation_alias=AliasChoices('algorithm_params', 'algorithmParams'))
+
+    @field_validator('algorithm_params', mode='before')
+    @classmethod
+    def coerce_dict_to_list(cls, v):
+        if isinstance(v, dict):
+            return [
+                {'field_code': k, 'field_value': str(val) if val is not None else None}
+                for k, val in v.items()
+            ]
+        return v
+
+
+class TestCaseConfig(APIModel):
+    """测试用例配置 — rounds-as-top-level 架构
+    config = { rounds: [...], dimensions: [...] }
+    """
+    rounds: Optional[List[RoundConfigItem]] = Field(default_factory=list, alias='rounds', validation_alias='rounds')
+    dimensions: Optional[List[TestCaseDimensionItem]] = Field(default_factory=list, alias='dimensions', validation_alias='dimensions')
 
 
 class TestCaseListItem(APIModel):
@@ -58,8 +97,6 @@ class TestCaseListItem(APIModel):
     tags: List[str] = Field(default_factory=list, alias='tags', validation_alias='tags')
     config: TestCaseConfig = Field(default_factory=TestCaseConfig, alias='config', validation_alias='config')
     algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
-    algorithm_params: Optional[List[AlgorithmParamItem]] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
-    reference_params: Optional[List[ReferenceParamItem]] = Field(None, alias='referenceParams', validation_alias='referenceParams')
     created_at: Optional[str] = Field(None, alias='createdAt', validation_alias='createdAt')
     updated_at: Optional[str] = Field(None, alias='updatedAt', validation_alias='updatedAt')
     total_duration: Optional[float] = Field(None, alias='totalDuration', validation_alias='totalDuration')
@@ -89,8 +126,6 @@ class TestCaseDetailData(APIModel):
     audios: List[TestCaseAudioConfigItem] = Field(default_factory=list, alias='audios', validation_alias='audios')
     dimensions: List[TestCaseDimensionBrief] = Field(default_factory=list, alias='dimensions', validation_alias='dimensions')
     algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
-    algorithm_params: Optional[List[AlgorithmParamItem]] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
-    reference_params: Optional[List[ReferenceParamItem]] = Field(None, alias='referenceParams', validation_alias='referenceParams')
     created_at: Optional[str] = Field(None, alias='createdAt', validation_alias='createdAt')
     updated_at: Optional[str] = Field(None, alias='updatedAt', validation_alias='updatedAt')
     total_duration: Optional[float] = Field(None, alias='totalDuration', validation_alias='totalDuration')
@@ -280,10 +315,15 @@ class TestCaseDimensionItemRequest(APIModel):
 
 
 class AlgorithmParamItem(APIModel):
+    """算法参数项 — {field_code, field_value}
+    
+    field_value 类型由 case_algorithm_params 表的 param_type 定义决定，
+    Schema 层不限制具体类型，支持 str/int/float/bool/list/dict 等。
+    """
     model_config = ConfigDict(extra='allow')
 
     field_code: Optional[str] = Field(None, alias='fieldCode', validation_alias=AliasChoices('field_code', 'fieldCode'))
-    field_value: Optional[Union[str, int, float]] = Field(None, alias='fieldValue', validation_alias=AliasChoices('field_value', 'fieldValue'))
+    field_value: Optional[Any] = Field(None, alias='fieldValue', validation_alias=AliasChoices('field_value', 'fieldValue'))
 
     @staticmethod
     def convert_params(params) -> Optional[List['AlgorithmParamItem']]:
@@ -362,6 +402,16 @@ class TestCaseCreateSchema(APIModel):
     algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias=AliasChoices('algorithm_type', 'algorithmType'))
     algorithm_params: Optional[List[AlgorithmParamItem]] = Field(None, alias='algorithmParams', validation_alias=AliasChoices('algorithm_params', 'algorithmParams'))
     reference_params: Optional[List[ReferenceParamItem]] = Field(None, alias='referenceParams', validation_alias=AliasChoices('reference_params', 'referenceParams'))
+
+    @field_validator('algorithm_params', mode='before')
+    @classmethod
+    def coerce_dict_to_list(cls, v):
+        if isinstance(v, dict):
+            return [
+                {'field_code': k, 'field_value': str(val) if val is not None else None}
+                for k, val in v.items()
+            ]
+        return v
 
     def get_algorithm_params_dict(self) -> Optional[List[Dict[str, Any]]]:
         if not self.algorithm_params:
@@ -449,6 +499,16 @@ class TestCaseUpdateSchema(APIModel):
     algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias=AliasChoices('algorithm_type', 'algorithmType'))
     algorithm_params: Optional[List[AlgorithmParamItem]] = Field(None, alias='algorithmParams', validation_alias=AliasChoices('algorithm_params', 'algorithmParams'))
     reference_params: Optional[List[ReferenceParamItem]] = Field(None, alias='referenceParams', validation_alias=AliasChoices('reference_params', 'referenceParams'))
+
+    @field_validator('algorithm_params', mode='before')
+    @classmethod
+    def coerce_dict_to_list(cls, v):
+        if isinstance(v, dict):
+            return [
+                {'field_code': k, 'field_value': str(val) if val is not None else None}
+                for k, val in v.items()
+            ]
+        return v
 
     def get_algorithm_params_dict(self) -> Optional[List[Dict[str, Any]]]:
         if not self.algorithm_params:
