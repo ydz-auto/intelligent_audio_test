@@ -7,7 +7,7 @@ import threading
 import queue
 from threading import Lock
 from datetime import datetime
-from backend.models.models import TaskAPI, Audio, AudioAnnotation, TestCase, TaskCase, Task, API, TestResult, TranslationDirection
+from backend.models.models import TaskAPI, Audio, AudioAnnotation, TestCase, TaskCase, Task, API, TestResult
 from backend.models.database import db
 from backend.utils.clients.api_driver import APIDriver
 from backend.utils.common.config_manager import config_manager
@@ -404,46 +404,8 @@ class APIExecutor(BaseExecutor):
                     ap_dict = rounds[0].get('algorithmParams', {})
                     if ap_dict and isinstance(ap_dict, dict):
                         algorithm_params = ap_dict
-            
-            # 使用 field_mapper 动态获取翻译方向字段
-            field_mapper = get_field_mapper()
-            field_codes = field_mapper.get_reference_field_codes(algorithm_type)
-            trans_direction_id_field = field_codes.get('trans_direction_id_field')
-            trans_direction_field = field_codes.get('trans_direction_field')
-            
-            # 动态获取翻译方向ID
-            td_id = None
-            if trans_direction_id_field:
-                td_id = algorithm_params.get(trans_direction_id_field) or case_config.get(trans_direction_id_field)
-            
-            # 根据音频ID和翻译方向查询正确的翻译文本 (从 AudioAnnotation 中获取)
-            translation_obj = None
-            if audio_id:
-                annotations = local_db_session.query(AudioAnnotation).filter_by(audio_id=audio_id, deleted=False).all()
-                if td_id:
-                    for ann in annotations:
-                        if ann.target_language:
-                            direction = local_db_session.query(TranslationDirection).get(td_id)
-                            if direction and ann.target_language == direction.target_language:
-                                translation_obj = ann
-                                break
-                else:
-                    for ann in annotations:
-                        if ann.format == 'json' and ann.data:
-                            translation_obj = ann
-                            break
-            
+
             api_specific_config = case_config.get('api', {})
-            
-            # 动态获取翻译方向
-            translation_direction = None
-            if td_id:
-                translation_dir = local_db_session.query(TranslationDirection).get(td_id)
-                if translation_dir:
-                    translation_direction = f"{translation_dir.source_language}2{translation_dir.target_language}"
-            # 如果没有从数据库获取，尝试从配置中获取
-            if not translation_direction and trans_direction_field:
-                translation_direction = algorithm_params.get(trans_direction_field) or case_config.get(trans_direction_field)
             
             # 重新获取任务对象，确保在有效会话中
             task = local_db_session.query(Task).get(task_id)
@@ -471,7 +433,6 @@ class APIExecutor(BaseExecutor):
                 'api_configs': processed_api_configs,  # 返回所有API配置列表
                 'audio': audio_data,  # 返回audio_data字典而不是audio对象
                 'api_specific_config': api_specific_config,
-                'translation_direction': translation_direction,
                 'current_app': current_app,
                 'total_audio_duration': total_audio_duration,  # 返回所有API音频的总时长
                 'case_algorithm_params': algorithm_params  # 用例算法参数
@@ -602,7 +563,7 @@ class APIExecutor(BaseExecutor):
         
         return context
     
-    def _create_task(self, task_id, audio, api_config, api_specific_config, api_paths, select_base_url, release_base_url, translation_direction, algorithm_type='translation'):
+    def _create_task(self, task_id, audio, api_config, api_specific_config, api_paths, select_base_url, release_base_url, algorithm_type='translation'):
         """
         创建API任务 - 使用字段映射器动态构建请求参数
         """
@@ -650,7 +611,6 @@ class APIExecutor(BaseExecutor):
                 algorithm_type=algorithm_type,
                 case_config=case_config,
                 audio_path=audio_path,
-                translation_direction=translation_direction,
                 vendor=vendor,
                 max_process=max_process,
                 max_timeout=max_timeout,
@@ -660,8 +620,6 @@ class APIExecutor(BaseExecutor):
             # 确保必要字段存在（向后兼容）
             if 'audio_path' not in create_task_data:
                 create_task_data['audio_path'] = audio_path
-            if 'trans_direction' not in create_task_data and 'translation_direction' not in create_task_data:
-                create_task_data['trans_direction'] = translation_direction
             
             self._log(
                 level='DEBUG',
@@ -1462,7 +1420,6 @@ class APIExecutor(BaseExecutor):
                 api_configs = data['api_configs']  # 获取所有API配置
                 audio = data['audio']
                 api_specific_config = data['api_specific_config']
-                translation_direction = data['translation_direction']  # 获取翻译方向
                 current_app = data['current_app']
                 total_audio_duration = data['total_audio_duration']  # 获取所有API音频的总时长
                 case_algorithm_params = data.get('case_algorithm_params')  # 用例算法参数
@@ -1612,11 +1569,8 @@ class APIExecutor(BaseExecutor):
                             # 执行健康检查
                             context = self._health_check(task_id, case_name, audio, api_config, api_specific_config, api_paths, select_base_url, release_base_url)
                         
-                            # 使用统一的翻译方向变量（优先使用api_specific_config中的值，否则使用从case获取的值）
-                            actual_translation_direction = api_specific_config.get('translation_direction') if api_specific_config.get('translation_direction') else translation_direction
-                            
-                            # 创建任务，传递翻译方向
-                            api_task_id = self._create_task(task_id, audio, api_config, api_specific_config, api_paths, select_base_url, release_base_url, actual_translation_direction, algorithm_type)
+                            # 创建任务
+                            api_task_id = self._create_task(task_id, audio, api_config, api_specific_config, api_paths, select_base_url, release_base_url, algorithm_type)
                         
                             try:
                                 # 等待任务完成
@@ -1843,7 +1797,6 @@ class APIExecutor(BaseExecutor):
         api_configs = data['api_configs']
         api_specific_config = data['api_specific_config']
         case_algorithm_params = data.get('case_algorithm_params')
-        translation_direction = data.get('translation_direction')
         
         rounds = case_config.get('rounds', [])
         session_config = case_config.get('session', {})
@@ -1947,7 +1900,6 @@ class APIExecutor(BaseExecutor):
                             case_algorithm_params=case_algorithm_params,
                             algorithm_type=algorithm_type,
                             adapter_base_url=adapter_base_url,
-                            translation_direction=translation_direction,
                             total_rounds=len(rounds)
                         )
                         
@@ -2055,7 +2007,7 @@ class APIExecutor(BaseExecutor):
         return True
 
     def _build_round_context(self, session, round_number, round_config, total_rounds,
-                              case_algorithm_params, algorithm_type, translation_direction,
+                              case_algorithm_params, algorithm_type,
                               audio=None, case_name=''):
         round_algo_params = round_config.get('algorithmParams', [])
 
@@ -2094,9 +2046,6 @@ class APIExecutor(BaseExecutor):
             'timestamp': int(time.time()),
         }
 
-        if translation_direction:
-            context['translation_direction'] = translation_direction
-
         for param in round_algo_params:
             fc = param.get('field_code', '')
             fv = param.get('field_value', '')
@@ -2127,7 +2076,6 @@ class APIExecutor(BaseExecutor):
         case_algorithm_params,
         algorithm_type,
         adapter_base_url,
-        translation_direction=None,
         total_rounds=None
     ):
         import requests as http_requests
@@ -2146,7 +2094,6 @@ class APIExecutor(BaseExecutor):
             total_rounds=total_rounds,
             case_algorithm_params=case_algorithm_params,
             algorithm_type=algorithm_type,
-            translation_direction=translation_direction,
             case_name=''
         )
 

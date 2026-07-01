@@ -42,9 +42,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
 import type { RoundConfigItem } from '../types'
 import DynamicForm from '../../../../algorithm/DynamicForm.vue'
+import { algorithmApi } from '../../../../../utils/api'
 
 // 这些类型不在算法参数步骤显示，由其他步骤处理
 const EXCLUDED_TYPES = new Set([
@@ -54,7 +55,14 @@ const EXCLUDED_TYPES = new Set([
 
 // 这些 param_code 由专门步骤处理，不在算法参数步骤显示
 const EXCLUDED_CODES = new Set([
-  'interferers'
+  'interferers',
+  'voiceprintEnabled',
+  'voiceprintAudioId',
+  'voiceprintPlaybackDeviceId',
+  'voiceprintSpl',
+  'voiceprintWaitTime',
+  'overlap_rate',
+  'overlap_time',
 ])
 
 const PARAM_TYPE_TO_COMPONENT: Record<string, string> = {
@@ -77,6 +85,41 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:round': [value: RoundConfigItem]
 }>()
+
+// 动态选项缓存：param_code → options 列表
+const dynamicOptions = ref<Record<string, { value: string; label: string }[]>>({})
+
+// 加载 select 类型参数的动态选项（从 options_source 加载）
+async function loadDynamicOptions() {
+  const params = eligibleParams.value
+  const needLoad = params.filter((p: any) => {
+    const paramType = p.param_type || p.fieldType
+    const optionsSource = p.options_source || p.optionsSource
+    return paramType === 'select' && optionsSource && !dynamicOptions.value[p.param_code || p.fieldCode]
+  })
+  if (needLoad.length === 0) return
+  // 通过后端 API 获取选项（按 algorithmType 批量获取）
+  const algoType = props.algorithmFormSchema?.algorithmType || ''
+  if (algoType) {
+    try {
+      const result = await algorithmApi.getParamOptions(algoType)
+      const options = (result as any)?.options || {}
+      for (const [code, opts] of Object.entries(options)) {
+        dynamicOptions.value[code] = opts as any
+      }
+    } catch (e) {
+      console.error('[AlgoParamsStep] 加载动态选项失败:', e)
+    }
+  }
+}
+
+onMounted(() => {
+  loadDynamicOptions()
+})
+
+watch(() => props.caseAlgorithmParams, () => {
+  loadDynamicOptions()
+}, { deep: true })
 
 function getAlgoParam(fieldCode: string, defaultValue?: unknown): unknown {
   const params = props.round.algorithmParams || []
@@ -118,11 +161,17 @@ const dynamicSchema = computed(() => {
   }
   const fields = eligibleParams.value.map((p: any) => {
     let options: { value: string; label: string }[] | undefined
-    if (p.param_type === 'select' && p.options) {
-      const opts = typeof p.options === 'string' ? JSON.parse(p.options) : p.options
-      options = Array.isArray(opts)
-        ? opts.map((o: any) => typeof o === 'string' ? { value: o, label: o } : o)
-        : undefined
+    if (p.param_type === 'select') {
+      // 优先使用动态加载的选项
+      const code = p.param_code
+      if (code && dynamicOptions.value[code]) {
+        options = dynamicOptions.value[code]
+      } else if (p.options) {
+        const opts = typeof p.options === 'string' ? JSON.parse(p.options) : p.options
+        options = Array.isArray(opts)
+          ? opts.map((o: any) => typeof o === 'string' ? { value: o, label: o } : o)
+          : undefined
+      }
     }
     return {
       fieldCode: p.param_code,

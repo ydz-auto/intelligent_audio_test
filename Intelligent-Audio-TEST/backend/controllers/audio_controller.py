@@ -6,7 +6,7 @@ import shutil
 from flask import request, send_file, Response, current_app
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
-from backend.models.models import Audio, Tag, AudioAnnotation, TranslationDirection, AudioTag, TestCase, TestCaseGroup, PlaybackDevice, UploadTask, UploadFile, UploadChunk, PromptAudioRelation
+from backend.models.models import Audio, Tag, AudioAnnotation, AudioTag, TestCase, TestCaseGroup, PlaybackDevice, UploadTask, UploadFile, UploadChunk
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.utils.common.task_utils import has_running_e2e_tasks
@@ -18,8 +18,6 @@ from backend.schemas.audio import (
     BatchActionRequest,
     BatchPlaybackRequest,
     ConvertFormatRequest,
-    DirectionItem,
-    DirectionListData,
     InitUploadTaskRequest,
     MergeChunksRequest,
     RegisterUploadFileRequest,
@@ -160,22 +158,6 @@ class AudioController:
             elif hasattr(param, 'field_code') and param.field_code == 'source_language':
                 return param.field_value
         return None
-
-    # 获取所有翻译语向列表
-    @staticmethod
-    def get_directions():
-        directions = TranslationDirection.query.all()
-        data = []
-        for d in directions:
-            data.append(
-                DirectionItem(
-                    id=d.id,
-                    source_language=d.source_language,
-                    target_language=d.target_language,
-                    description=d.description,
-                )
-            )
-        return success_response(DirectionListData(items=data, total=len(data)))
 
     # 获取所有可用的音频标签
     @staticmethod
@@ -1254,20 +1236,6 @@ class AudioController:
                 new_audio = Audio(**audio_meta)
                 db.session.add(new_audio)
                 db.session.flush()  # 获取音频ID用于后续关联
-                
-                # 处理提示词音频关联（仅当 audio_type 为 prompt 且有配置时）
-                if validated.audio_type == 'prompt' and prompt_device_id:
-                    prompt_translation_direction = validated.prompt_translation_direction
-                    prompt_relation = PromptAudioRelation(
-                        audio_id=new_audio.id,
-                        device_id=prompt_device_id,
-                        algorithm_type=prompt_algorithm_type,
-                        source_language=prompt_source_language,
-                        target_language=prompt_target_language,
-                        translation_direction=prompt_translation_direction,
-                        priority=0
-                    )
-                    db.session.add(prompt_relation)
                 
                 # 处理标签 (目录结构 + 用户自定义)
                 audio_tags = []

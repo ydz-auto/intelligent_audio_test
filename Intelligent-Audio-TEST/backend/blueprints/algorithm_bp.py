@@ -9,7 +9,7 @@ from backend.controllers.algorithm_controller import (
     import_algorithms, bulk_delete, extract_params, get_dimension_params,
     list_reference_params, create_reference_param, update_reference_param, delete_reference_param,
     get_options_sources, create_dimension_relation, update_dimension_relation, delete_dimension_relation,
-    list_case_params, create_case_param, update_case_param, delete_case_param
+    list_case_params, get_case_param, create_case_param, update_case_param, delete_case_param
 )
 from backend.controllers.algorithm_group_controller import AlgorithmGroupController
 
@@ -82,6 +82,10 @@ def delete_param_by_id(param_id):
 @algorithm_bp.route('/case-params', methods=['GET'])
 def get_case_params():
     return list_case_params()
+
+@algorithm_bp.route('/case-params/<int:param_id>', methods=['GET'])
+def get_case_param_by_id(param_id):
+    return get_case_param(param_id)
 
 @algorithm_bp.route('/case-params', methods=['POST'])
 def post_case_param():

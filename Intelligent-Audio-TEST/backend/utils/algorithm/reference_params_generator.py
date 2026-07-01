@@ -1308,7 +1308,7 @@ def _extract_translation_from_audios(config: Dict) -> Dict[str, Any]:
     }
     
     Args:
-        config: 用例配置，包含 audios, translation_direction_id, source_language, target_language
+        config: 用例配置，包含 audios, translation_direction, source_language, target_language
         
     Returns:
         {'api': [...], 'e2e': [...]} 每个翻译方向一个对象
@@ -1480,31 +1480,7 @@ def get_reference_value(
         if not value:
             return ''
         
-        target_direction = None
-        target_source_lang = None
-        
-        if case_config and algorithm_type:
-            if algorithm_type == 'translation':
-                td = case_config.get('translation_direction') or case_config.get('translation_direction_id')
-                if td:
-                    target_direction = str(td)
-            else:
-                target_source_lang = case_config.get('source_language')
-        
-        for item in value:
-            if not isinstance(item, dict):
-                continue
-            
-            if target_direction:
-                item_direction = item.get('translation_direction', '')
-                if item_direction == target_direction:
-                    return item.get('text', '')
-            
-            if target_source_lang:
-                item_source = item.get('source_language', '')
-                if item_source == target_source_lang:
-                    return item.get('text', '')
-        
+        # 直接返回第一个可用项
         first_item = value[0]
         if isinstance(first_item, dict):
             return first_item.get('text', '')

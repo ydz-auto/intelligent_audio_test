@@ -31,12 +31,6 @@ export interface APIDevice {
   [key: string]: any;
 }
 
-export interface TranslationDirection {
-  id: string | number;
-  name: string;
-  [key: string]: any;
-}
-
 export type DeviceUnion = TestDevice | APIDevice | PlaybackDevice;
 
 const tabs = [
@@ -84,7 +78,6 @@ const apiPageSize = ref(12);
 const apiTotalItems = ref(0);
 const apiTotalPages = computed(() => Math.ceil(apiTotalItems.value / apiPageSize.value));
 
-const translationDirections = ref<TranslationDirection[]>([]);
 const promptAudios = ref<Audio[]>([]);
 const availableSerials = ref<string[]>([]);
 const algorithmTypeOptions = ref<{ value: string; label: string }[]>([]);
@@ -104,7 +97,6 @@ async function fetchAllDevices() {
     const basicResults = await Promise.allSettled([
       devicesApi.getAll() as Promise<ListResponse<TestDevice> | TestDevice[]>,
       apisApi.getAll() as Promise<ListResponse<APIDevice> | APIDevice[]>,
-      audiosApi.getDirections() as Promise<ListResponse<TranslationDirection>>,
       audiosApi.getAll({ audioType: 'prompt' }) as Promise<ListResponse<Audio>>
     ]);
     
@@ -148,18 +140,10 @@ async function fetchAllDevices() {
     }
     
     if (basicResults[2].status === 'fulfilled') {
-      const directionsRes = basicResults[2].value;
-      translationDirections.value = directionsRes.items || [];
-    } else {
-      console.error('Failed to fetch translation directions:', basicResults[2].reason);
-      translationDirections.value = [];
-    }
-    
-    if (basicResults[3].status === 'fulfilled') {
-      const audioRes = basicResults[3].value;
+      const audioRes = basicResults[2].value;
       promptAudios.value = (audioRes.items || []).filter(d => d);
     } else {
-      console.error('Failed to fetch prompt audios:', basicResults[3].reason);
+      console.error('Failed to fetch prompt audios:', basicResults[2].reason);
       promptAudios.value = [];
     }
     

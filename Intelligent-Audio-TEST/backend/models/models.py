@@ -231,19 +231,6 @@ class DeviceTag(db.Model):
 
 # 5. 音频文件管理 (Audio Management)
 
-class TranslationDirection(db.Model):
-    """
-    翻译语向模型 (Translation Direction Model)
-    定义音频翻译支持的源语言和目标语言组合。
-    """
-    __tablename__ = 'translation_directions'
-    id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
-    source_language = Column(String(20), nullable=False, comment='源语言代码 (如 zh, en)')
-    target_language = Column(String(20), nullable=False, comment='目标语言代码 (如 en, ja)')
-    description = Column(Text, comment='描述')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
-
 class Audio(db.Model):
     """
     音频文件模型 (Audio Model)
@@ -348,24 +335,6 @@ class AudioAlgorithmRelation(db.Model):
             'weight': self.weight,
             'params': self.params
         }
-
-class PromptAudioRelation(db.Model):
-    """
-    提示词音频关联模型 (Prompt Audio Relation)
-    支持多维度关联提示词音频：设备、算法类型、翻译方向/语言。
-    """
-    __tablename__ = 'prompt_audio_relations'
-    id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
-    audio_id = Column(Integer, ForeignKey('audios.id'), nullable=False, comment='关联提示词音频ID')
-    device_id = Column(Integer, ForeignKey('devices.id'), comment='关联设备ID (可选，为空表示通用)')
-    algorithm_type = Column(String(50), comment='算法类型 (如: translation, asr, tts, speaker_recognition)')
-    source_language = Column(String(20), comment='源语言代码 (如 zh, en)')
-    target_language = Column(String(20), comment='目标语言代码 (如 en, ja)')
-    translation_direction = Column(String(50), comment='翻译方向字符串 (如 zh2en, en2zh)')
-    priority = Column(Integer, default=0, comment='匹配优先级 (数值越大优先级越高)')
-    deleted = Column(Boolean, default=False, nullable=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
-    updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 
 # 6. API 配置管理 (API Configuration)
 

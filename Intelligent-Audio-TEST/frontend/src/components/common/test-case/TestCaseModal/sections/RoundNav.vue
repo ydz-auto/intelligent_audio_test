@@ -67,6 +67,7 @@ function getRoundSummary(round: RoundConfigItem): string {
   border-right: 1px solid var(--border-color, #e0e0e0);
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
 }
 
 .rce-nav-header {

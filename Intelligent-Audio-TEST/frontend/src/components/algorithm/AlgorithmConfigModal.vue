@@ -149,6 +149,30 @@
         </div>
 
         <div v-show="activeTab === 'params'" class="tab-content">
+          <!-- 功能特性快捷开关 -->
+          <div class="feature-bundles" v-if="paramConfigType === 'case'">
+            <div class="feature-bundles-header">
+              <i class="fas fa-bolt"></i>
+              <span class="feature-bundles-title">功能特性快捷开关</span>
+              <span class="feature-bundles-hint">勾选后自动批量添加/删除对应参数</span>
+            </div>
+            <div class="feature-bundles-list">
+              <label
+                v-for="(bundle, key) in FEATURE_BUNDLES"
+                :key="key"
+                class="feature-bundle-chip"
+                :class="{ 'feature-bundle-chip--active': isBundleActive(key as string) }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="isBundleActive(key as string)"
+                  @change="toggleBundle(key as string)"
+                />
+                <span class="feature-bundle-label">{{ bundle.label }}</span>
+                <span class="feature-bundle-count">{{ bundle.params.length }}个参数</span>
+              </label>
+            </div>
+          </div>
           <div class="params-toolbar">
             <div class="param-type-tabs">
               <button 
@@ -268,13 +292,11 @@
                       <option value="number">数字</option>
                       <option value="textarea">多行文本</option>
                       <option value="select">下拉框</option>
-                      <option value="boolean">布尔</option>
                       <option value="switch">开关</option>
                       <option value="slider">滑块</option>
                       <option value="audio_select">音频选择</option>
                       <option value="device_select">设备选择</option>
                       <option value="json">JSON结构化</option>
-                      <option value="reference">参考参数</option>
                     </select>
                   </td>
                   <td>
@@ -532,7 +554,10 @@ import { useModalControl, MODAL_TYPES } from '../../composables/useModal'
 import { useDimensions } from '../../composables/useDimensions'
 import { algorithmApi, evaluationApi } from '../../utils/api'
 
-const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string; default_value?: string; help_text?: string; min_value?: number; max_value?: number; step?: number; unit?: string}> = {
+const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string; default_value?: string; help_text?: string; min_value?: number; max_value?: number; step?: number; unit?: string; options_source?: string}> = {
+  'translation_direction': { param_name: '翻译方向', param_type: 'text', help_text: '翻译方向字符串（如 zh2en, en2zh）' },
+  'source_language': { param_name: '源语种', param_type: 'text', help_text: '源语言代码（如 zh, en, ja）' },
+  'target_language': { param_name: '目标语种', param_type: 'text', help_text: '目标语言代码（如 en, ja, zh）' },
   'overlap_rate': { param_name: '交叠率', param_type: 'slider', default_value: '0', help_text: '音频交叠比例(0~1)', min_value: 0, max_value: 1, step: 0.05 },
   'overlap_time': { param_name: '交叠时间(秒)', param_type: 'number', default_value: '0', help_text: '音频交叠时间（秒），优先级高于交叠率', min_value: 0, max_value: 30, step: 0.5, unit: 's' },
   'railDistance': { param_name: '导轨距离(cm)', param_type: 'slider', help_text: '导轨距离，本轮结束后自动复位', min_value: 10, max_value: 200, step: 5, unit: 'cm' },
@@ -550,6 +575,75 @@ const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string
   'inputAudio': { param_name: '输入音频', param_type: 'audio_select', help_text: '发送给 API 的音频文件' },
   'asr_ref': { param_name: 'ASR参考文本', param_type: 'text', help_text: 'ASR识别参考文本' },
   'tran_ref': { param_name: '翻译参考文本', param_type: 'text', help_text: '翻译参考文本' },
+}
+
+// 功能特性快捷开关：每个 bundle 对应一组 param_code
+const FEATURE_BUNDLES: Record<string, { label: string; scope: string; params: string[] }> = {
+  translation: { label: '翻译方向', scope: 'common', params: ['translation_direction', 'source_language', 'target_language'] },
+  voiceprint: { label: '声纹注册', scope: 'e2e', params: ['voiceprintEnabled', 'voiceprintAudioId', 'voiceprintPlaybackDeviceId', 'voiceprintSpl', 'voiceprintWaitTime'] },
+  interferer: { label: '干扰人', scope: 'e2e', params: ['interferers'] },
+  env_device: { label: '环境设备', scope: 'e2e', params: ['railDistance', 'volumeLevel'] },
+  overlap: { label: '交叠播放', scope: 'e2e', params: ['overlap_rate', 'overlap_time'] },
+  prompt_audio: { label: 'Prompt音频', scope: 'common', params: ['promptAudioId'] },
+}
+
+function isBundleActive(bundleKey: string): boolean {
+  const bundle = FEATURE_BUNDLES[bundleKey]
+  if (!bundle) return false
+  const codes = new Set(formState.case_params.map((p: any) => p.param_code))
+  return bundle.params.every((code) => codes.has(code))
+}
+
+function toggleBundle(bundleKey: string) {
+  const bundle = FEATURE_BUNDLES[bundleKey]
+  if (!bundle) return
+  const codes = new Set(formState.case_params.map((p: any) => p.param_code))
+  const hasAll = bundle.params.every((code) => codes.has(code))
+  if (hasAll) {
+    // 删除该 bundle 的所有参数
+    formState.case_params = formState.case_params.filter((p: any) => !bundle.params.includes(p.param_code))
+  } else {
+    // 添加缺失的参数
+    for (const code of bundle.params) {
+      if (!codes.has(code)) {
+        const preset = PARAM_CODE_PRESETS[code]
+        formState.case_params.push({
+          param_code: code,
+          param_name: preset?.param_name || code,
+          param_type: preset?.param_type || 'text',
+          scope: bundle.scope,
+          required: false,
+          default_value: preset?.default_value ?? '',
+          help_text: preset?.help_text || '',
+          min_value: preset?.min_value,
+          max_value: preset?.max_value,
+          step: preset?.step,
+          unit: preset?.unit,
+          options_source: preset?.options_source || '',
+          hidden: false,
+          deleted: false,
+          tempId: `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        })
+      }
+    }
+  }
+  // 触发保存
+  saveCaseParams()
+}
+
+async function saveCaseParams() {
+  if (!formState.type) return
+  try {
+    // 只保存没有 id 的新参数（已存在的参数不需要重复保存）
+    for (let i = 0; i < formState.case_params.length; i++) {
+      const p = formState.case_params[i]
+      if (!p.id && p.param_code) {
+        await autoSaveCaseParams(p, i)
+      }
+    }
+  } catch (e) {
+    console.error('[toggleBundle] 保存失败:', e)
+  }
 }
 
 interface AlgorithmGroup {
@@ -819,12 +913,40 @@ function normalizeParamFields(param: any) {
   }
 }
 
+function normalizeCaseParamFields(param: any) {
+  const normalized = {
+    ...param,
+    param_code: param.paramCode ?? param.param_code,
+    param_name: param.paramName ?? param.param_name,
+    param_type: param.paramType ?? param.param_type,
+    label: param.label,
+    required: param.required,
+    default_value: param.defaultValue ?? param.default_value,
+    help_text: param.helpText ?? param.help_text,
+    ui_order: param.uiOrder ?? param.ui_order,
+    hidden: param.hidden,
+    scope: param.scope ?? 'common',
+    options_source: param.optionsSource ?? param.options_source,
+    options_field: param.optionsField ?? param.options_field,
+    options_label_field: param.optionsLabelField ?? param.options_label_field,
+    min_value: param.minValue ?? param.min_value ?? param.min ?? null,
+    max_value: param.maxValue ?? param.max_value ?? param.max ?? null,
+    step: param.step ?? null,
+    unit: param.unit ?? ''
+  }
+  // 确保 component 字段与 param_type 同步
+  if (!normalized.component) {
+    normalized.component = getDefaultComponent(normalized.param_type || 'text')
+  }
+  return normalized
+}
+
 watch(() => [props.mode, props.editData], ([mode, editData]) => {
   console.log('watch mode:', mode, 'editData:', editData)
   if (mode === 'edit' && editData) {
     const deviceParams = ((editData.deviceParams ?? editData.device_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
     const apiParams = ((editData.apiParams ?? editData.api_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-    const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(p => ({ ...p }))
+    const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(normalizeCaseParamFields).map(p => ({ ...p }))
     const refConfig = editData.reference_params ?? editData.referenceConfig ?? editData.reference_config ?? editData.referenceParams
     
     Object.assign(formState, {
@@ -989,7 +1111,7 @@ async function handleEdit(record: AlgorithmRecord) {
       const editData = result
       const deviceParams = ((editData.deviceParams ?? editData.device_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
       const apiParams = ((editData.apiParams ?? editData.api_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-      const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(p => ({ ...p }))
+      const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(normalizeCaseParamFields).map(p => ({ ...p }))
       const refConfig = editData.reference_params ?? editData.referenceConfig ?? editData.reference_config ?? editData.referenceParams
       
       Object.assign(formState, {
@@ -1170,15 +1292,13 @@ function getDefaultComponent(paramType: string): string {
   const typeComponentMap: Record<string, string> = {
     'text': 'input',
     'number': 'input-number',
-    'boolean': 'switch',
     'select': 'select',
     'textarea': 'textarea',
     'slider': 'slider',
     'switch': 'switch',
     'audio_select': 'audio-select',
     'device_select': 'device-select',
-    'json': 'json-editor',
-    'reference': 'reference'
+    'json': 'json-editor'
   }
   return typeComponentMap[paramType] || 'input'
 }
@@ -1212,12 +1332,14 @@ function handleParamCodeSelect(param: any, index: number) {
   if (preset && !param.param_name) {
     param.param_name = preset.param_name
     param.param_type = preset.param_type
+    param.component = getDefaultComponent(preset.param_type)
     if (preset.default_value !== undefined) param.default_value = preset.default_value
     if (preset.help_text) param.help_text = preset.help_text
     if (preset.min_value !== undefined) param.min_value = preset.min_value
     if (preset.max_value !== undefined) param.max_value = preset.max_value
     if (preset.step !== undefined) param.step = preset.step
     if (preset.unit) param.unit = preset.unit
+    if (preset.options_source) param.options_source = preset.options_source
   }
   handleCaseParamBlur(param, index)
 }
@@ -1261,6 +1383,12 @@ async function autoSaveParams(param: any, paramType: string) {
 
 async function autoSaveCaseParams(param: any, index: number) {
   if (!formState.type || !param.param_code) return
+  // 检查 param_code 是否重复
+  const duplicates = formState.case_params.filter((p: any) => p.param_code === param.param_code)
+  if (duplicates.length > 1) {
+    console.warn(`参数代码 "${param.param_code}" 重复，跳过自动保存`)
+    return
+  }
   try {
     const bodyData: any = {
       algorithm_type: formState.type,
@@ -1777,5 +1905,80 @@ async function handleDimensionBlur(index: number) {
 .text-muted {
   color: #ccc;
   font-size: 12px;
+}
+
+/* 功能特性快捷开关 */
+.feature-bundles {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f8f9ff;
+  border: 1px solid #e0e7ff;
+  border-radius: 8px;
+}
+.feature-bundles-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.feature-bundles-header i {
+  color: #6366f1;
+  font-size: 14px;
+}
+.feature-bundles-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #333;
+}
+.feature-bundles-hint {
+  font-size: 11px;
+  color: #999;
+  margin-left: auto;
+}
+.feature-bundles-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.feature-bundle-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid #e0e7ff;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.15s;
+  background: #fff;
+  font-size: 13px;
+}
+.feature-bundle-chip:hover {
+  border-color: #6366f1;
+  background: #f0f4ff;
+}
+.feature-bundle-chip--active {
+  border-color: #6366f1;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+.feature-bundle-chip input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #6366f1;
+  margin: 0;
+}
+.feature-bundle-label {
+  font-weight: 500;
+}
+.feature-bundle-count {
+  font-size: 10px;
+  color: #aaa;
+  background: #f5f5f5;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+.feature-bundle-chip--active .feature-bundle-count {
+  color: #818cf8;
+  background: #e0e7ff;
 }
 </style>

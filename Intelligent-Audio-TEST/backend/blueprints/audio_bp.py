@@ -19,10 +19,6 @@ def get_by_ids():
 def get_one(audio_id):
     return AudioController.get_one(audio_id)
 
-@audio_bp.route('/directions', methods=['GET'])
-def get_directions():
-    return AudioController.get_directions()
-
 @audio_bp.route('/tags', methods=['GET'])
 def get_all_tags():
     return AudioController.get_all_tags()

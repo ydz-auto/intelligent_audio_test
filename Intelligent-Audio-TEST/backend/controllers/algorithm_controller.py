@@ -12,13 +12,13 @@ from flask import request
 from ..models.algorithm_models import (
     AlgorithmDefinition, AlgorithmDeviceParam, AlgorithmApiParam,
     ParamMapping, AlgorithmDimensionRelation, CaseAlgorithmParam, EvaluationDimensionParam,
-    Language, AlgorithmReferenceParam
+    AlgorithmReferenceParam
 )
 from ..models.database import db
 from backend.utils.algorithm.algorithm_config_loader import AlgorithmConfigLoader
 from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
 from ..utils.web.response import success_response, error_response
-from ..models.models import TranslationDirection, Dimension
+from ..models.models import Dimension
 from ..schemas.algorithm import (
     AlgorithmListQuery,
     AlgorithmDetailResponse,
@@ -118,6 +118,7 @@ def _get_options_from_source(options_source: str, options_field: str, label_fiel
 
     source_config = OPTIONS_SOURCES_CONFIG.get(options_source, {})
     source_type = source_config.get('type')
+    fallback_label_field = source_config.get('fallback_label_field')
 
     if source_type == 'table':
         model_class = source_config.get('_model_class')
@@ -127,13 +128,18 @@ def _get_options_from_source(options_source: str, options_field: str, label_fiel
                 items = model_class.query.filter_by(deleted=False).all()
             else:
                 items = model_class.query.all()
-            return [
-                {
-                    'value': getattr(item, options_field, None),
-                    'label': getattr(item, label_field, None)
-                }
-                for item in items if getattr(item, options_field, None) is not None
-            ]
+            result = []
+            for item in items:
+                val = getattr(item, options_field, None)
+                if val is None:
+                    continue
+                lbl = getattr(item, label_field, None)
+                if lbl is None and fallback_label_field:
+                    lbl = getattr(item, fallback_label_field, None)
+                if lbl is None:
+                    lbl = str(val)
+                result.append({'value': val, 'label': lbl})
+            return result
 
     return []
 
@@ -145,19 +151,10 @@ def _load_options_sources_config():
         'config',
         'algorithm_options_config.json'
     )
-    table_model_mapping = {
-        'TranslationDirection': TranslationDirection,
-        'Language': Language,
-    }
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             config = json.load(f)
-            options_sources = config.get('options_sources', {})
-            for key, value in options_sources.items():
-                model_name = value.get('model')
-                if model_name:
-                    value['_model_class'] = table_model_mapping.get(model_name)
-            return options_sources
+            return config.get('options_sources', {})
     except Exception as e:
         print(f"加载选项来源配置失败: {e}")
         return {}
@@ -422,9 +419,27 @@ def _update_case_params(algo_type: str, params: List[Dict]):
         else:
             raw_scope = param_data.get('scope', 'common')
             scope_value = raw_scope if raw_scope in valid_scopes else 'common'
+            # 查重：避免唯一约束冲突
+            pc = param_data.get('param_code')
+            if not pc:
+                continue
+            dup = CaseAlgorithmParam.query.filter_by(
+                algorithm_type=algo_type, param_code=pc, deleted=False
+            ).first()
+            if dup:
+                # 已存在则更新
+                for field in ['param_name', 'label', 'param_type', 'required',
+                              'default_value', 'options_source', 'options_field', 'options_label_field',
+                              'help_text', 'ui_order', 'hidden', 'scope',
+                              'min_value', 'max_value', 'step', 'unit']:
+                    if field in param_data and param_data[field] is not None:
+                        if field == 'scope' and param_data[field] not in valid_scopes:
+                            continue
+                        setattr(dup, field, param_data[field])
+                continue
             param = CaseAlgorithmParam(
                 algorithm_type=algo_type,
-                param_code=param_data.get('param_code'),
+                param_code=pc,
                 param_name=param_data.get('param_name'),
                 label=param_data.get('label'),
                 param_type=param_data.get('param_type', 'text'),
@@ -823,6 +838,14 @@ def list_case_params():
     })
 
 
+def get_case_param(param_id: int):
+    """获取单个用例专属参数"""
+    param = CaseAlgorithmParam.query.filter_by(id=param_id, deleted=False).first()
+    if not param:
+        return error_response('Case parameter not found', 404)
+    return success_response(param.to_dict())
+
+
 def create_case_param():
     """创建用例专属参数"""
     try:
@@ -881,9 +904,11 @@ def update_case_param(param_id: int):
         'help_text', 'ui_order', 'hidden', 'scope',
         'min_value', 'max_value', 'step', 'unit'
     ]
+    raw_data = request.get_json() or {}
     for field in updatable_fields:
-        value = getattr(req, field, None)
-        if value is not None:
+        # 检查字段是否在请求中（支持 snake_case 和 camelCase）
+        if field in raw_data or field.replace('_', '') in raw_data:
+            value = getattr(req, field, None)
             setattr(param, field, value)
 
     db.session.commit()

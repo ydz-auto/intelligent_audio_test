@@ -84,6 +84,7 @@
     </div>
 
     <AlgorithmSelector
+      v-if="!isTestTypeLocked"
       v-model="localFormData.algorithmType"
       :initial-params="algorithmParams"
       :single="true"
@@ -92,8 +93,8 @@
       @algorithm-type-change="handleAlgorithmTypeChange"
     />
 
-    <!-- ===== test_type 切换器 ===== -->
-    <div class="form-section test-type-section">
+    <!-- ===== test_type 切换器（仅用例管理页面显示） ===== -->
+    <div class="form-section test-type-section" v-if="!isTestTypeLocked">
       <div class="test-type-switcher-row">
         <label class="test-type-label">测试类型</label>
         <div class="test-type-switcher">
@@ -101,7 +102,6 @@
             type="button"
             class="test-type-btn"
             :class="{ active: localFormData.test_type === 'api' }"
-            :disabled="isTestTypeLocked && testType !== 'api'"
             @click="switchTestType('api')"
           >
             <i class="fas fa-cloud"></i> API
@@ -110,7 +110,6 @@
             type="button"
             class="test-type-btn"
             :class="{ active: localFormData.test_type === 'e2e' }"
-            :disabled="isTestTypeLocked && testType !== 'e2e'"
             @click="switchTestType('e2e')"
           >
             <i class="fas fa-microchip"></i> E2E
@@ -158,7 +157,7 @@ import AlgorithmSelector from '../../AlgorithmSelector.vue';
 import RoundConfigEditor from './RoundConfigEditor.vue';
 import { useAlgorithmConfig } from '../../../../composables/useAlgorithmConfig';
 import { useAlgorithmLabels } from '../../../../composables/useAlgorithmLabels';
-import { tagsApi } from '../../../../utils/api';
+import { tagsApi, algorithmApi } from '../../../../utils/api';
 import type { TestCaseFormData, RoundConfigItem, PlaybackDevice } from './types';
 
 const props = defineProps<{
@@ -180,7 +179,7 @@ const emit = defineEmits<{
   (e: 'previewAudio', audioId: string, audioType: 'dry' | 'noise'): void;
 }>();
 
-const { getAlgorithmOptions } = useAlgorithmConfig();
+const { getAlgorithmOptions, getCaseAlgorithmParams: fetchCaseAlgorithmParams } = useAlgorithmConfig();
 const { algorithmOptions: fallbackOptions, loadAlgorithms } = useAlgorithmLabels();
 
 const injectedAudioConfig = inject<any>('audioConfig');
@@ -335,7 +334,79 @@ function initFormData() {
 }
 
 function emitFormData() {
+  // 同步结构化字段：从 algorithmParams 提取 voiceprint_config 和 interferers
+  // 写入后端期望的位置（case_config.voiceprint_config / round_config.interferers）
+  syncStructuredFields();
   emit('update', { ...localFormData.value });
+}
+
+/**
+ * 将 algorithmParams 中的声纹/干扰人参数同步到后端期望的结构化字段：
+ * - voiceprint_config → config.voiceprint_config (case 级别)
+ * - interferers → round.interferers (round 级别)
+ */
+function syncStructuredFields() {
+  const config = localFormData.value.config;
+  if (!config) return;
+
+  const rounds = config.rounds || [];
+  for (const round of rounds) {
+    const params = round.algorithmParams || [];
+    const getParam = (code: string) => {
+      const item = params.find((p: any) => p.field_code === code);
+      return item?.field_value;
+    };
+
+    // ---- 声纹注册 → config.voiceprint_config ----
+    const vpEnabled = getParam('voiceprintEnabled');
+    const vpAudioId = getParam('voiceprintAudioId');
+    const vpDeviceId = getParam('voiceprintPlaybackDeviceId');
+    const vpSpl = getParam('voiceprintSpl');
+    const vpWaitTime = getParam('voiceprintWaitTime');
+
+    if (vpEnabled !== undefined || vpAudioId !== undefined) {
+      config.voiceprint_config = {
+        enabled: vpEnabled === true || vpEnabled === 'true',
+        audio: vpAudioId ? { id: String(vpAudioId) } : {},
+        device: vpDeviceId ? { id: String(vpDeviceId) } : {},
+        spl: vpSpl !== undefined ? Number(vpSpl) : undefined,
+        waitTime: vpWaitTime !== undefined ? Number(vpWaitTime) * 1000 : undefined, // 秒→毫秒
+      };
+    }
+
+    // ---- 干扰人 → round.interferers ----
+    const interferersRaw = getParam('interferers');
+    if (interferersRaw) {
+      let interfererList: any[] = [];
+      if (typeof interferersRaw === 'string') {
+        try { interfererList = JSON.parse(interferersRaw); } catch { interfererList = []; }
+      } else if (Array.isArray(interferersRaw)) {
+        interfererList = interferersRaw;
+      }
+      // 转换为后端期望的嵌套结构
+      round.interferers = interfererList.map((item: any) => ({
+        audio: item.audioId ? { id: String(item.audioId), name: item.audioName || '' } : {},
+        device: item.playbackDeviceId ? { id: String(item.playbackDeviceId) } : {},
+        spl: item.spl !== undefined ? Number(item.spl) : undefined,
+        startDelay: item.startDelay !== undefined ? Number(item.startDelay) * 1000 : 0, // 秒→毫秒
+        loop: item.loop ?? false,
+      }));
+    } else {
+      round.interferers = [];
+    }
+
+    // ---- 翻译方向 → config 顶层（后端执行器直接读取字符串） ----
+    const tdStr = getParam('translation_direction');
+    const srcLang = getParam('source_language');
+    const tgtLang = getParam('target_language');
+    if (tdStr !== undefined) config.translation_direction = tdStr;
+    if (srcLang !== undefined) config.source_language = srcLang;
+    if (tgtLang !== undefined) config.target_language = tgtLang;
+    // 如果没有直接的 translation_direction，则从 source/target 组合
+    if (!config.translation_direction && srcLang && tgtLang) {
+      config.translation_direction = `${srcLang}2${tgtLang}`;
+    }
+  }
 }
 
 function addTags() {
@@ -411,7 +482,7 @@ function getCurrentRoundAudiosLocal(): any[] {
     const roundIdx = roundConfigRef.value?.activeRoundIndex ?? 0;
     return config.rounds[roundIdx]?.audios || [];
   }
-  return config.audios || [];
+  return (config.audios as any[]) || [];
 }
 
 function applyBatchDevice(deviceId: string) {
@@ -504,7 +575,29 @@ onMounted(async () => {
   await loadAlgorithmOptions();
   await loadAvailableTags();
   initFormData();
+  // 当从 API/E2E 测试页面进入时，AlgorithmSelector 被隐藏，需手动加载算法参数
+  if (isTestTypeLocked.value && localFormData.value.algorithmType) {
+    await loadAlgorithmParamsForLockedMode(localFormData.value.algorithmType);
+  }
 });
+
+// 在锁定模式下手动加载算法 schema 和参数定义
+async function loadAlgorithmParamsForLockedMode(algoType: string) {
+  if (!algoType) return;
+  try {
+    const [schema, algoDef, caseParams] = await Promise.all([
+      algorithmApi.getFormSchema(algoType),
+      algorithmApi.getDefinition(algoType).catch(() => null),
+      fetchCaseAlgorithmParams(algoType)
+    ]);
+    algorithmFormSchema.value = schema;
+    caseAlgorithmParams.value = caseParams || [];
+    const apiParams = (algoDef as any)?.api_params || [];
+    apiInputParams.value = apiParams.filter((p: any) => p.direction === 'input');
+  } catch (e) {
+    console.error('[CaseForm] 加载算法参数失败:', e);
+  }
+}
 </script>
 
 <style scoped>

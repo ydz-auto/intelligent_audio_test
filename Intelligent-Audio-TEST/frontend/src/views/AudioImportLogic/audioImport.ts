@@ -1,4 +1,4 @@
-﻿import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
 import { audiosApi, devicesApi } from '../../utils/api';
 import SparkMD5 from 'spark-md5';
 import { getModalManager } from '../../utils/modalManager';
@@ -169,7 +169,6 @@ export function useAudioImport() {
   const playbackDevicePages = ref(1);
   const playbackDeviceLoading = ref(false);
   const playbackDeviceHasMore = ref(true);
-  const translationDirections = ref<any[]>([]);
   const uploadOptions = reactive<AudioUploadOptions>({
     audioType: 'dry',
     createTestCase: false,
@@ -644,27 +643,6 @@ export function useAudioImport() {
     }
   }
 
-  async function fetchTranslationDirections() {
-    try {
-      const response = await audiosApi.getDirections() as any;
-      const directions = response.items || response.data?.items || response.data || [];
-      if (Array.isArray(directions)) {
-        translationDirections.value = directions.map(dir => ({
-          id: dir.id,
-          name: dir.name || `${dir.sourceLanguage} -> ${dir.targetLanguage}`,
-          sourceLanguage: dir.sourceLanguage,
-          targetLanguage: dir.targetLanguage,
-          description: dir.description
-        }));
-      } else {
-        translationDirections.value = [];
-      }
-    } catch (e) {
-      console.error('Fetch translation directions failed:', e);
-      translationDirections.value = [];
-    }
-  }
-
   async function fetchAlgorithmOptions() {
     try {
       const response = await fetch('/api/v1/algorithm/options');
@@ -868,7 +846,6 @@ export function useAudioImport() {
     isOpeningUploadModal = true;
     try {
     await fetchPlaybackDevices();
-    await fetchTranslationDirections();
     await fetchAlgorithmOptions();
     await fetchDevices();
     
@@ -905,14 +882,14 @@ export function useAudioImport() {
           ],
           defaultValue: uploadOptions.algorithmType 
         },
-        { 
-          key: 'translationDirectionId', 
-          label: '翻译方向', 
-          type: 'select', 
-          options: (Array.isArray(translationDirections.value) ? translationDirections.value : []).map(d => ({ label: d.name, value: d.id })),
-          defaultValue: uploadOptions.translationDirectionId 
+        {
+          key: 'translationDirection',
+          label: '翻译方向',
+          type: 'text',
+          placeholder: '如 zh2en',
+          defaultValue: uploadOptions.translationDirectionId || ''
         },
-        { 
+        {
           key: 'testTypes', 
           label: '测试类型', 
           type: 'checkbox', 
@@ -1867,7 +1844,6 @@ export function useAudioImport() {
     isOpeningFolderImport = true;
     try {
     await fetchPlaybackDevices();
-    await fetchTranslationDirections();
     await fetchAlgorithmOptions();
     
     modalManager.open(MODAL_TYPES.FOLDER_IMPORT, {
@@ -1900,14 +1876,14 @@ export function useAudioImport() {
           ],
           defaultValue: uploadOptions.algorithmType 
         },
-        { 
-          key: 'translationDirectionId', 
-          label: '翻译方向', 
-          type: 'select', 
-          options: (Array.isArray(translationDirections.value) ? translationDirections.value : []).map(d => ({ label: d.name, value: d.id })),
-          defaultValue: uploadOptions.translationDirectionId 
+        {
+          key: 'translationDirection',
+          label: '翻译方向',
+          type: 'text',
+          placeholder: '如 zh2en',
+          defaultValue: uploadOptions.translationDirectionId || ''
         },
-        { 
+        {
           key: 'testTypes', 
           label: '测试类型', 
           type: 'checkbox', 
@@ -2009,7 +1985,6 @@ export function useAudioImport() {
       fetchAudios();
     });
     fetchPlaybackDevices();
-    fetchTranslationDirections();
     uploadTasks.value = getLocalTasks();
     checkAndResumeTasks();
     

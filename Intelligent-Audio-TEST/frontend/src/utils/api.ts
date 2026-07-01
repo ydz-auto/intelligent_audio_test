@@ -626,10 +626,6 @@ export const audiosApi = {
     return request('POST', '/audios/by-ids', { ids }, options);
   },
 
-  async getDirections(options: RequestOptions = {}) {
-    return request('GET', '/audios/directions', null, options);
-  },
-
   async getAllTags(options: RequestOptions = {}) {
     return request('GET', '/audios/tags', null, options);
   },

@@ -408,8 +408,8 @@ class CaseAlgorithmParam(db.Model):
             'ui_order': self.ui_order,
             'hidden': self.hidden,
             'scope': self.scope,
-            'min': self.min_value,
-            'max': self.max_value,
+            'min_value': self.min_value,
+            'max_value': self.max_value,
             'step': self.step,
             'unit': self.unit
         }
@@ -422,28 +422,3 @@ class CaseAlgorithmParam(db.Model):
             return json.loads(json_str)
         except json.JSONDecodeError:
             return None
-
-
-class Language(db.Model):
-    """语言表 - 存储系统支持的语言"""
-
-    __tablename__ = 'languages'
-
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    code = Column(String(10), nullable=False, unique=True, comment='语言代码 (如 zh, en, ja)')
-    name = Column(String(50), nullable=False, comment='语言名称 (如 中文, 英语, 日语)')
-    name_en = Column(String(50), comment='语言英文名称 (如 Chinese, English, Japanese)')
-    deleted = Column(Boolean, default=False, comment='逻辑删除标志')
-    created_at = Column(DateTime, default=datetime.now, comment='创建时间')
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'code': self.code,
-            'name': self.name,
-            'name_en': self.name_en,
-            'deleted': self.deleted,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None
-        }

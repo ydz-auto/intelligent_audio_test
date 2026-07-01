@@ -8,18 +8,6 @@ from backend.schemas.common import PaginatedData
 from backend.schemas.testcase import AlgorithmParamItem
 
 
-class DirectionItem(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    source_language: str = Field(..., alias='sourceLanguage', validation_alias='sourceLanguage')
-    target_language: str = Field(..., alias='targetLanguage', validation_alias='targetLanguage')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-
-
-class DirectionListData(APIModel):
-    items: List[DirectionItem] = Field(..., alias='items', validation_alias='items')
-    total: int = Field(..., alias='total', validation_alias='total')
-
-
 class TagListData(APIModel):
     items: List[str] = Field(..., alias='items', validation_alias='items')
     total: int = Field(..., alias='total', validation_alias='total')

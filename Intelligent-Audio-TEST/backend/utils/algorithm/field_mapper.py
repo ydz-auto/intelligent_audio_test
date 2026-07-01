@@ -467,9 +467,6 @@ class FieldMapper:
             'output_reference': None,
             'input_field': None,
             'output_field': None,
-            'needs_translation_direction': False,
-            'trans_direction_id_field': None,
-            'trans_direction_field': None,
         }
 
         for param in params:
@@ -490,13 +487,6 @@ class FieldMapper:
                 if not field_codes['output_field']:
                     field_codes['output_field'] = code
 
-            if 'translation_direction' in code.lower() or code in ['direction_id', 'trans_direction']:
-                field_codes['needs_translation_direction'] = True
-                if 'id' in code.lower():
-                    field_codes['trans_direction_id_field'] = code
-                else:
-                    field_codes['trans_direction_field'] = code
-
         mappings = self._get_param_mappings(algorithm_type)
 
         for comp_type in ['device', 'api', 'evaluation']:
@@ -504,15 +494,11 @@ class FieldMapper:
             for mapping in comp_mappings:
                 direction = mapping.get('source_direction', mapping.get('direction', 'output'))
                 target_key = mapping.get('target_key', mapping.get('source_param'))
-                source_param = mapping.get('source_param', '')
 
                 if direction == 'output' and not field_codes.get('output_field'):
                     field_codes['output_field'] = target_key
                 elif direction == 'input' and not field_codes.get('input_field'):
                     field_codes['input_field'] = target_key
-
-                if 'translation_direction' in source_param.lower() or source_param in ['direction_id', 'trans_direction']:
-                    field_codes['needs_translation_direction'] = True
 
         return field_codes
 

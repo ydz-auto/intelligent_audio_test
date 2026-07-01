@@ -9,15 +9,8 @@
       @copy="copyCurrentRound"
     />
 
-    <!-- ===== 中间：步骤目录 ===== -->
-    <StepToc
-      :steps="steps"
-      :active-step="activeStep"
-      @select="scrollToStep"
-    />
-
-    <!-- ===== 右侧：内容区 ===== -->
-    <div class="rce-content-area" ref="contentAreaRef">
+    <!-- ===== 右侧：轮次头部 + 步骤导航 + 内容区 ===== -->
+    <div class="rce-right">
       <!-- 轮次头部 -->
       <RoundHead
         v-if="currentRound"
@@ -29,75 +22,75 @@
         @delete="removeCurrentRound"
       />
 
-      <!-- 空状态 -->
-      <div v-if="!currentRound" class="rce-empty">
-        <i class="fas fa-info-circle"></i> 暂无轮次，请点击"添加轮次"
-      </div>
-
-      <!-- ===== 步骤 1: 算法参数 ===== -->
-      <AlgoParamsStep
-        v-if="currentRound"
-        :round="currentRound"
-        :api-input-params="apiInputParams || []"
-        :case-algorithm-params="caseAlgorithmParams || []"
-        :algorithm-form-schema="algorithmFormSchema"
-        :test-type="effectiveTestType"
-        @update:round="updateCurrentRoundData"
-        @open-audio-select="handleAudioSelect"
+      <!-- 横向步骤导航 -->
+      <StepToc
+        :steps="steps"
+        :active-step="activeStep"
+        @select="scrollToStep"
       />
 
-      <!-- ===== 步骤 2: 音频列表 ===== -->
-      <AudioListStep
-        v-if="currentRound"
-        :round="currentRound"
-        @update:round="updateCurrentRoundData"
-        @open-audio-select="handleAudioSelect"
-        @open-device-modal="(audioIndex: number) => emit('openDeviceModal', audioIndex)"
-        @open-batch-device-modal="() => emit('openBatchDeviceModal')"
-        @open-cross-device-modal="() => emit('openCrossDeviceModal')"
-        @open-batch-spl-modal="() => emit('openBatchSplModal')"
-        @preview-audio="(audioId: string) => emit('previewAudio', audioId, 'dry')"
-      />
-
-      <!-- ===== 步骤 3: 噪声 & 干扰 (仅 E2E) ===== -->
-      <NoiseInterferenceStep
-        v-if="currentRound && effectiveTestType === 'e2e'"
-        :round="currentRound"
-        :playback-devices="playbackDevices"
-        :has-voiceprint-param="hasVoiceprintParam"
-        :has-interferer-param="hasInterfererParam"
-        :has-interruption-param="hasInterruptionParam"
-        @update:round="updateCurrentRoundData"
-        @open-audio-select="handleAudioSelect"
-      />
-
-      <!-- ===== 步骤 4: 高级配置 (仅当有高级参数时显示) ===== -->
-      <AdvancedConfigStep
-        v-if="currentRound && hasAdvancedParams"
-        :round="currentRound"
-        :case-algorithm-params="caseAlgorithmParams || []"
-        :test-type="effectiveTestType"
-        @update:round="updateCurrentRoundData"
-        @open-audio-select="handleAudioSelect"
-      />
-
-      <!-- ===== 步骤 5: 评估维度 ===== -->
-      <div class="rce-step" id="step-eval" v-if="currentRound">
-        <div class="rce-step-header">
-          <i class="fas fa-chart-bar rce-step-icon"></i>
-          <span class="rce-step-title">评估维度</span>
-          <span class="rce-tag rce-tag-green">round.evaluation</span>
+      <div class="rce-content-area" ref="contentAreaRef">
+        <!-- 空状态 -->
+        <div v-if="!currentRound" class="rce-empty">
+          <i class="fas fa-info-circle"></i> 暂无轮次，请点击"添加轮次"
         </div>
-        <RoundEvaluationEditor
-          :model-value="currentRound.evaluation"
-          :available-dimensions="availableDimensions"
-          :algorithm-type="algorithmType"
-          @update:model-value="(v: RoundEvaluationConfig) => updateCurrentRound('evaluation', v)"
-        />
-      </div>
 
-      <!-- ===== 步骤 5: 参考参数（只读） ===== -->
-      <ReferencePathStep v-if="currentRound" :round="currentRound" />
+        <!-- ===== 步骤 1: 算法参数 ===== -->
+        <AlgoParamsStep
+          v-if="currentRound"
+          :round="currentRound"
+          :api-input-params="apiInputParams || []"
+          :case-algorithm-params="caseAlgorithmParams || []"
+          :algorithm-form-schema="algorithmFormSchema"
+          :test-type="effectiveTestType"
+          @update:round="updateCurrentRoundData"
+          @open-audio-select="handleAudioSelect"
+        />
+
+        <!-- ===== 步骤 2: 音频列表 ===== -->
+        <AudioListStep
+          v-if="currentRound"
+          :round="currentRound"
+          @update:round="updateCurrentRoundData"
+          @open-audio-select="handleAudioSelect"
+          @open-device-modal="(audioIndex: number) => emit('openDeviceModal', audioIndex)"
+          @open-batch-device-modal="() => emit('openBatchDeviceModal')"
+          @open-cross-device-modal="() => emit('openCrossDeviceModal')"
+          @open-batch-spl-modal="() => emit('openBatchSplModal')"
+          @preview-audio="(audioId: string) => emit('previewAudio', audioId, 'dry')"
+        />
+
+        <!-- ===== 步骤 3: 噪声 & 干扰 (仅 E2E) ===== -->
+        <NoiseInterferenceStep
+          v-if="currentRound && effectiveTestType === 'e2e'"
+          :round="currentRound"
+          :playback-devices="playbackDevices"
+          :has-voiceprint-param="hasVoiceprintParam"
+          :has-interferer-param="hasInterfererParam"
+          :has-interruption-param="hasInterruptionParam"
+          @update:round="updateCurrentRoundData"
+          @open-audio-select="handleAudioSelect"
+          @preview-audio="(audioId: string) => emit('previewAudio', audioId, 'noise')"
+        />
+
+        <!-- ===== 步骤 4: 评估维度 ===== -->
+        <div class="rce-step" id="step-eval" v-if="currentRound">
+          <div class="rce-step-header">
+            <i class="fas fa-chart-bar rce-step-icon"></i>
+            <span class="rce-step-title">评估维度</span>
+            <span class="rce-tag rce-tag-green">round.evaluation</span>
+          </div>
+          <RoundEvaluationEditor
+            :model-value="currentRound.evaluation"
+            :available-dimensions="availableDimensions"
+            :algorithm-type="algorithmType"
+            @update:model-value="(v: RoundEvaluationConfig) => updateCurrentRound('evaluation', v)"
+          />
+        </div>
+
+        <!-- ===== 步骤 5: 参考参数（只读） ===== -->
+        <ReferencePathStep v-if="currentRound" :round="currentRound" />
+      </div>
     </div>
   </div>
 </template>
@@ -118,7 +111,6 @@ import AlgoParamsStep from './sections/AlgoParamsStep.vue'
 import AudioListStep from './sections/AudioListStep.vue'
 import NoiseInterferenceStep from './sections/NoiseInterferenceStep.vue'
 import ReferencePathStep from './sections/ReferencePathStep.vue'
-import AdvancedConfigStep from './sections/AdvancedConfigStep.vue'
 
 // ---- Props ----
 const props = defineProps<{
@@ -171,17 +163,6 @@ const currentRound = computed(() => localRounds.value[activeRoundIndex.value] ||
 const effectiveTestType = computed(() => props.testType || 'api')
 
 // ---- 步骤定义 ----
-const ADVANCED_PARAM_TYPES = new Set(['audio_select', 'device_select', 'slider', 'switch'])
-
-const hasAdvancedParams = computed(() => {
-  const params = props.caseAlgorithmParams || []
-  const tt = effectiveTestType.value
-  return params.some((p: any) => {
-    const scopeMatch = p.scope === 'common' || p.scope === tt || !p.scope
-    return scopeMatch && ADVANCED_PARAM_TYPES.has(p.param_type)
-  })
-})
-
 const steps = computed(() => {
   const base = [
     { id: 'algo', num: 1, label: '算法参数', icon: 'fas fa-sliders-h' },
@@ -189,9 +170,6 @@ const steps = computed(() => {
   ]
   if (effectiveTestType.value === 'e2e') {
     base.push({ id: 'noise', num: 3, label: '噪声 & 干扰', icon: 'fas fa-volume-up' })
-  }
-  if (hasAdvancedParams.value) {
-    base.push({ id: 'advanced', num: base.length + 1, label: '高级配置', icon: 'fas fa-cogs' })
   }
   base.push({ id: 'eval', num: base.length + 1, label: '评估维度', icon: 'fas fa-chart-bar' })
   base.push({ id: 'ref', num: base.length + 2, label: '参考参数', icon: 'fas fa-file-alt' })
@@ -322,11 +300,19 @@ onMounted(() => {
 <style scoped>
 .round-config-editor {
   display: flex;
-  height: 100%;
-  min-height: 500px;
+  max-height: 60vh;
+  min-height: 400px;
   gap: 0;
   border: 1px solid var(--border-color, #e0e0e0);
   border-radius: 8px;
+  overflow: hidden;
+}
+
+.rce-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   overflow: hidden;
 }
 

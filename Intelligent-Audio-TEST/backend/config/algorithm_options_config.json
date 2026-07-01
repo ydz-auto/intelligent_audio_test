@@ -4,24 +4,6 @@
       "label": "静态",
       "description": "使用默认值或手动输入",
       "type": "static"
-    },
-    "translation_directions": {
-      "label": "翻译方向表",
-      "description": "从翻译方向表动态获取选项",
-      "type": "table",
-      "table": "translation_directions",
-      "value_field": "code",
-      "label_field": "description",
-      "model": "TranslationDirection"
-    },
-    "languages": {
-      "label": "语言表",
-      "description": "从语言表动态获取选项",
-      "type": "table",
-      "table": "languages",
-      "value_field": "code",
-      "label_field": "name",
-      "model": "Language"
     }
   }
 }

@@ -3,7 +3,7 @@ import threading
 import time
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from backend.models.models import Audio, PlaybackDevice, Device, TaskCase, TaskDevice, PromptAudioRelation, TestResult, TestResultDimension, Dimension, utc8now
+from backend.models.models import Audio, PlaybackDevice, Device, TaskCase, TaskDevice, TestResult, TestResultDimension, Dimension, utc8now
 from backend.models.database import db
 from backend.services.audio.audio_engine import audio_service
 from backend.services.audio.playback_orchestrator import playback_orchestrator
@@ -279,7 +279,7 @@ class E2EExecutor(BaseExecutor):
             for dev in devices:
                 driver = device_driver_factory.get_driver(dev.system, keywords=dev.keywords)
                 prompt_path, prompt_name = self._get_prompt_audio_info(
-                    dev.needs_prompt_audio, dev.prompt_config, case_config, device_id=dev.id
+                    dev.needs_prompt_audio, dev.prompt_config
                 )
                 device_info_list.append({
                     "device_id": dev.id, "device_sn": dev.serial_number or dev.ip,
@@ -295,15 +295,13 @@ class E2EExecutor(BaseExecutor):
         finally:
             local_db_session.close()
     
-    def _get_prompt_audio_info(self, needs_prompt_audio, prompt_config, case_config, device_id=None):
+    def _get_prompt_audio_info(self, needs_prompt_audio, prompt_config):
         """
-        获取提示音频信息 (支持多维度关联查询)
+        获取提示音频信息 — 直接从 prompt_config 读取音频 ID
         
         Args:
             needs_prompt_audio: 是否需要提示音频
-            prompt_config: 提示音频配置
-            case_config: 测试用例配置 (包含 algorithm_type, translation_direction, source_language, target_language)
-            device_id: 设备ID
+            prompt_config: 提示音频配置 (JSON: {音频ID} 或 {key: 音频ID})
             
         Returns:
             tuple: (prompt_audio_path, prompt_audio_name)
@@ -311,65 +309,28 @@ class E2EExecutor(BaseExecutor):
         if not needs_prompt_audio or not prompt_config:
             return None, None
         
-        direction_str = case_config.get('translation_direction')
-        algo_type = case_config.get('algorithm_type')
-        source_lang = case_config.get('source_language')
-        target_lang = case_config.get('target_language')
+        # 直接从 prompt_config 取音频 ID
+        audio_id = None
+        if isinstance(prompt_config, dict):
+            for v in prompt_config.values():
+                if v:
+                    audio_id = v
+                    break
+        elif isinstance(prompt_config, (int, str)):
+            audio_id = prompt_config
+        
+        if not audio_id:
+            return None, None
         
         local_db_session = db.session()
         try:
-            query = local_db_session.query(PromptAudioRelation, Audio).join(
-                Audio, PromptAudioRelation.audio_id == Audio.id
-            ).filter(
-                PromptAudioRelation.deleted == False,
+            audio = local_db_session.query(Audio).filter(
+                Audio.id == audio_id,
                 Audio.deleted == False,
                 Audio.audio_type == 'prompt'
-            )
-            
-            relation = None
-            
-            conditions_list = [
-                (device_id is not None and direction_str is not None and algo_type is not None, 
-                 PromptAudioRelation.device_id == device_id, 
-                 PromptAudioRelation.translation_direction == direction_str,
-                 PromptAudioRelation.algorithm_type == algo_type),
-                (device_id is not None and direction_str is not None, 
-                 PromptAudioRelation.device_id == device_id, 
-                 PromptAudioRelation.translation_direction == direction_str),
-                (device_id is not None and source_lang and target_lang and algo_type is not None,
-                 PromptAudioRelation.device_id == device_id,
-                 PromptAudioRelation.source_language == source_lang,
-                 PromptAudioRelation.target_language == target_lang,
-                 PromptAudioRelation.algorithm_type == algo_type),
-                (device_id is not None and source_lang and target_lang,
-                 PromptAudioRelation.device_id == device_id,
-                 PromptAudioRelation.source_language == source_lang,
-                 PromptAudioRelation.target_language == target_lang),
-                (device_id is not None and algo_type is not None, 
-                 PromptAudioRelation.device_id == device_id, 
-                 PromptAudioRelation.algorithm_type == algo_type),
-                (device_id is not None, 
-                 PromptAudioRelation.device_id == device_id),
-            ]
-            
-            for condition in conditions_list:
-                if condition[0] is True and len(condition) == 1:
-                    temp_query = query.order_by(PromptAudioRelation.priority.desc())
-                    relation = temp_query.first()
-                    break
-                elif condition[0]:
-                    temp_query = query
-                    for c in condition[1:]:
-                        temp_query = temp_query.filter(c)
-                    temp_query = temp_query.order_by(PromptAudioRelation.priority.desc())
-                    relation = temp_query.first()
-                    if relation:
-                        break
-            
-            if relation:
-                audio = relation[1] if isinstance(relation, tuple) else relation
+            ).first()
+            if audio:
                 return audio.file_path, audio.name
-            
             return None, None
         finally:
             local_db_session.close()

@@ -11,13 +11,6 @@ if TYPE_CHECKING:
     pass
 
 
-class TranslationDirectionItem(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    source_language: str = Field(..., alias='sourceLanguage', validation_alias='sourceLanguage')
-    target_language: str = Field(..., alias='targetLanguage', validation_alias='targetLanguage')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-
-
 class TestCaseAudioConfigItem(APIModel):
     id: Optional[int] = Field(None, alias='id', validation_alias='id')
     audio_id: Optional[Union[int, str]] = Field(None, alias='audioId', validation_alias=AliasChoices('audio_id', 'audioId'))

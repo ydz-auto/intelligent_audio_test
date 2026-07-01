@@ -181,6 +181,14 @@ export interface RoundConfigItem {
 export interface TestCaseConfig {
   rounds?: RoundConfigItem[];
   dimensions?: DimensionConfig[];
+  voiceprint_config?: {
+    enabled?: boolean;
+    audio?: { id?: string };
+    device?: { id?: string };
+    spl?: number;
+    waitTime?: number;
+  };
+  [key: string]: unknown;
 }
 
 /**
