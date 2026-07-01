@@ -35,6 +35,7 @@
         <input type="number" v-model="form.sortOrder" min="0" class="form-input" />
       </div>
     </div>
+    <div v-if="errorMessage" class="error-message">{{ errorMessage }}</div>
     <div class="form-actions">
       <button class="btn btn-secondary" @click="handleCancel">取消</button>
       <button class="btn btn-primary" @click="handleConfirm" :disabled="!isFormValid || saving">
@@ -61,6 +62,7 @@ const emit = defineEmits<{
 
 const nameInput = ref<HTMLInputElement | null>(null);
 const saving = ref(false);
+const errorMessage = ref('');
 
 const isEdit = computed(() => !!props.category);
 
@@ -95,6 +97,7 @@ onMounted(async () => {
 async function handleConfirm() {
   if (!isFormValid.value || saving.value) return;
   
+  errorMessage.value = '';
   saving.value = true;
   try {
     const data = {
@@ -114,6 +117,7 @@ async function handleConfirm() {
     emit('confirm', result);
   } catch (e: any) {
     console.error('保存分类失败:', e);
+    errorMessage.value = e?.message || '保存分类失败，请重试';
   } finally {
     saving.value = false;
   }
@@ -204,6 +208,12 @@ input[type="color"] {
   font-size: 13px;
   color: var(--text-secondary, #64748b);
   font-family: monospace;
+}
+
+.error-message {
+  color: var(--danger-color, #ef4444);
+  font-size: 13px;
+  margin-bottom: 12px;
 }
 
 .form-actions {

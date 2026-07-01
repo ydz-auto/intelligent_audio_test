@@ -210,6 +210,7 @@ const tagTotal = ref(0);
 const tagLoading = ref(false);
 const tagHasMore = ref(true);
 const tagScrollContainer = ref<HTMLElement | null>(null);
+const totalTagCount = ref(0);
 
 const currentCategoryName = computed(() => {
   if (selectedCategoryId.value === null) return '未分类';
@@ -218,7 +219,8 @@ const currentCategoryName = computed(() => {
 });
 
 const uncategorizedCount = computed(() => {
-  return tagTotal.value - tags.value.filter(t => t.categoryId).length;
+  const categorizedCount = allCategories.value.reduce((sum, c) => sum + (c.tagCount || 0), 0);
+  return Math.max(0, totalTagCount.value - categorizedCount);
 });
 
 let categorySearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -337,6 +339,9 @@ async function loadTags(append: boolean = false) {
     }
     
     tagTotal.value = res.total || 0;
+    if (selectedCategoryId.value === null) {
+      totalTagCount.value = tagTotal.value;
+    }
     tagHasMore.value = tags.value.length < tagTotal.value;
   } catch (e: any) {
     showNotification(e.message || '加载标签失败', 'error');
@@ -385,7 +390,7 @@ async function confirmDeleteCategory(cat: TagCategory) {
   
   open(MODAL_TYPES.DELETE_CONFIRM, {
     title: '删除分类',
-    message: `确定删除分类「${cat.name}」吗？此操作不可恢复。`
+    content: `确定删除分类「${cat.name}」吗？此操作不可恢复。`
   }).then(async () => {
     try {
       await api.tags.deleteCategory(cat.id);
@@ -426,7 +431,7 @@ function openTagModal(tag?: TagItem) {
 async function confirmDeleteTag(tag: TagItem) {
   open(MODAL_TYPES.DELETE_CONFIRM, {
     title: '删除标签',
-    message: `确定删除标签「${tag.name}」吗？`
+    content: `确定删除标签「${tag.name}」吗？`
   }).then(async () => {
     try {
       await api.tags.deleteTag(tag.id);
