@@ -132,19 +132,47 @@ export const applyChartTypeConfig = (config: any, type: string, title?: string):
     };
     config.scales = {
       x: {
+        type: 'linear',
         title: { display: true, text: `不同区间的${title}`, color: '#777777' },
-        grid: { display: false },
-        ticks: { color: '#777777', autoSkip: true, maxTicksLimit: 10, maxRotation: 45, minRotation: 45 },
+        grid: { display: true, color: '#F0F0F0' },
+        ticks: {
+          color: '#777777',
+          maxRotation: 45,
+          minRotation: 0,
+          callback: function(value: any) {
+            return typeof value === 'number' ? value.toFixed(1) : value;
+          }
+        },
         border: { color: '#E5E5E5' }
       },
       y: {
         title: { display: true, text: '区间内用例数量', color: '#777777' },
         grid: { color: '#F0F0F0' },
-        ticks: { color: '#777777', stepSize: 1 },
+        ticks: { color: '#777777', stepSize: 1, precision: 0 },
         beginAtZero: true,
         border: { color: '#E5E5E5' }
       }
     };
+    // 正态分布图的tooltip标题显示x值
+    if (config.plugins && config.plugins.tooltip) {
+      config.plugins.tooltip.callbacks = {
+        ...config.plugins.tooltip.callbacks,
+        title: function(context: any) {
+          if (context[0] && typeof context[0].parsed.x === 'number') {
+            return `区间: ${context[0].parsed.x.toFixed(2)}`;
+          }
+          return '';
+        },
+        label: function(context: any) {
+          let label = context.dataset.label || '';
+          if (label) {
+            label += ': ';
+          }
+          const value = typeof context.parsed.y === 'number' ? context.parsed.y : 0;
+          return `${label}${value} 个`;
+        }
+      };
+    }
   } else if (type === 'pie' || type === 'doughnut' || type === 'polarArea') {
     delete config.scales;
     delete config.zoom;
@@ -363,7 +391,10 @@ export const calculateDistributionStats = (data: any): DistributionStat[] => {
   } else {
     data.datasets.forEach((dataset: any) => {
       if (dataset.data) {
-        allData.push(...dataset.data.filter((val: any) => typeof val === 'number' && !isNaN(val)));
+        allData.push(...dataset.data
+          .map((item: any) => typeof item === 'object' && item !== null && typeof item.y === 'number' ? item.y : (typeof item === 'number' ? item : null))
+          .filter((val: any) => val !== null && !isNaN(val))
+        );
       }
     });
   }

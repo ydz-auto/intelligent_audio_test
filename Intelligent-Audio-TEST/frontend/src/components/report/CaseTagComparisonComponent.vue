@@ -1386,68 +1386,58 @@ const getChartData = (metricName) => {
       return {labels: [], datasets: [], rawData: allRawData};
     }
     
-    // 生成10个数据区间
-    const intervals = 10;
-    let minValue = distribution.mean - 4 * distribution.stdDev;
-    const maxValue = distribution.mean + 4 * distribution.stdDev;
-    // 如果所有数据都非负，将横轴下限限制为0，避免显示无意义的负值区间
-    if (minValue < 0 && !allRawData.some(v => v < 0)) {
+    // 按标准差划分区间：以mean为中心，向两侧按σ/2步长划分，共16个区间
+    // 区间边界包含0和mean，使[0, mean)和[mean, mean+4σ]清晰可见
+    const step = distribution.stdDev / 2; // 每个区间宽度 = σ/2
+    let minValue = distribution.mean - 8 * step; // mean - 4σ
+    const maxValue = distribution.mean + 8 * step; // mean + 4σ
+    // 如果所有数据都非负，横轴从0开始
+    if (!allRawData.some(v => v < 0)) {
       minValue = 0;
     }
-    const intervalWidth = (maxValue - minValue) / intervals;
-    
-    const labels = [];
-    for (let i = 0; i < intervals; i++) {
-      const start = parseFloat((minValue + i * intervalWidth).toFixed(2));
-      const end = parseFloat((start + intervalWidth).toFixed(2));
-      labels.push(`${start}-${end}`);
-    }
-    
+    const intervals = Math.round((maxValue - minValue) / step);
+
     // 为每个设备生成正态分布数据
     const chartData = {
-      labels: labels, 
+      labels: [],
       datasets: devices.value.map((device, index) => {
         const color = chartColors[index % chartColors.length];
         const borderColor = chartBorderColors[index % chartBorderColors.length];
-        
+
         // 获取该设备的所有原始数据点
         const deviceRawData = deviceRawDataMap[device] || [];
-        
+
         // 计算设备的正态分布参数
         const deviceDistribution = calculateNormalDistribution(deviceRawData);
         if (!deviceDistribution) {
           return {
             label: getResourceLabel(device),
-            data: Array(intervals).fill(0), 
-            backgroundColor: color, 
-            borderColor: borderColor, 
-            borderWidth: 1, 
-            fill: true, 
+            data: Array.from({ length: intervals }, (_, i) => ({ x: minValue + i * step, y: 0 })),
+            backgroundColor: color,
+            borderColor: borderColor,
+            borderWidth: 1,
+            fill: true,
             tension: 0.3
           };
         }
-        
-        // 使用正态分布公式计算每个区间的理论数据点数量
+
+        // 统计每个区间内实际数据点数量
         const values = [];
         for (let i = 0; i < intervals; i++) {
-          const start = parseFloat((minValue + i * intervalWidth).toFixed(2));
-          const end = parseFloat((start + intervalWidth).toFixed(2));
-          const midPoint = (start + end) / 2;
-          
-          // 正态分布公式
-          const normalDensity = (1 / (deviceDistribution.stdDev * Math.sqrt(2 * Math.PI))) * 
-                              Math.exp(-0.5 * Math.pow((midPoint - deviceDistribution.mean) / deviceDistribution.stdDev, 2));
-          const count = Math.round(normalDensity * deviceDistribution.totalDataPoints * intervalWidth);
-          values.push(count);
+          const intervalStart = minValue + i * step;
+          const midPoint = minValue + (i + 0.5) * step;
+          // 统计落在该区间内的实际数据点数（最后一个区间包含上界）
+          const count = deviceRawData.filter(v => i === intervals - 1 ? v >= intervalStart : v >= intervalStart && v < intervalStart + step).length;
+          values.push({ x: parseFloat(midPoint.toFixed(2)), y: count });
         }
-        
+
         return {
           label: getResourceLabel(device),
-          data: values, 
-          backgroundColor: color, 
-          borderColor: borderColor, 
-          borderWidth: 1, 
-          fill: false, 
+          data: values,
+          backgroundColor: color,
+          borderColor: borderColor,
+          borderWidth: 1,
+          fill: false,
           tension: 0.3
         };
       }),
