@@ -358,10 +358,13 @@ const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
   const aboveMeanWithin3Sigma = allData.filter(val => val > mean + 2 * stdDev && val <= mean + 3 * stdDev).length;
   const aboveMeanOutside3Sigma = allData.filter(val => val > mean + 3 * stdDev).length;
 
-  const belowMeanWithin1Sigma = allData.filter(val => val < mean && val >= mean - stdDev).length;
-  const belowMeanWithin2Sigma = allData.filter(val => val < mean - stdDev && val >= mean - 2 * stdDev).length;
-  const belowMeanWithin3Sigma = allData.filter(val => val < mean - 2 * stdDev && val >= mean - 3 * stdDev).length;
-  const belowMeanOutside3Sigma = allData.filter(val => val < mean - 3 * stdDev).length;
+  // 下方区间按标准差划分，数据全非负时下界钳制为0
+  const belowMeanWithin1Sigma = allData.filter(val => val < mean && val >= Math.max(mean - stdDev, 0)).length;
+  const belowMeanWithin2Sigma = allData.filter(val => val < mean - stdDev && val >= Math.max(mean - 2 * stdDev, 0)).length;
+  const belowMeanWithin3Sigma = allData.filter(val => val < mean - 2 * stdDev && val >= Math.max(mean - 3 * stdDev, 0)).length;
+  const belowMeanOutside3Sigma = allData.filter(val => val < Math.max(mean - 3 * stdDev, 0)).length;
+  // [0, μ) 区间：0到均值之间的数据点
+  const zeroToMean = allData.filter(val => val >= 0 && val < mean).length;
 
   return [
     { label: '样本数量', value: count },
@@ -372,13 +375,14 @@ const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
     { label: '中位数 (Q2)', value: median.toFixed(2) },
     { label: '上四分位数 (Q3)', value: q3.toFixed(2) },
     { label: '最大值', value: max.toFixed(2) },
-    { label: 'μ+1σ 内百分比', value: calculatePercent(aboveMeanWithin1Sigma) },
-    { label: 'μ+2σ 内百分比', value: calculatePercent(aboveMeanWithin2Sigma) },
-    { label: 'μ+3σ 内百分比', value: calculatePercent(aboveMeanWithin3Sigma) },
+    { label: '(μ, μ+σ] 百分比', value: calculatePercent(aboveMeanWithin1Sigma) },
+    { label: '(μ+σ, μ+2σ] 百分比', value: calculatePercent(aboveMeanWithin2Sigma) },
+    { label: '(μ+2σ, μ+3σ] 百分比', value: calculatePercent(aboveMeanWithin3Sigma) },
     { label: '超出+3σ 百分比', value: calculatePercent(aboveMeanOutside3Sigma) },
-    { label: 'μ-1σ 内百分比', value: calculatePercent(belowMeanWithin1Sigma) },
-    { label: 'μ-2σ 内百分比', value: calculatePercent(belowMeanWithin2Sigma) },
-    { label: 'μ-3σ 内百分比', value: calculatePercent(belowMeanWithin3Sigma) },
+    { label: '[0, μ) 百分比', value: calculatePercent(zeroToMean) },
+    { label: '[max(μ-σ,0), μ) 百分比', value: calculatePercent(belowMeanWithin1Sigma) },
+    { label: '[max(μ-2σ,0), μ-σ) 百分比', value: calculatePercent(belowMeanWithin2Sigma) },
+    { label: '[max(μ-3σ,0), μ-2σ) 百分比', value: calculatePercent(belowMeanWithin3Sigma) },
     { label: '超出-3σ 百分比', value: calculatePercent(belowMeanOutside3Sigma) }
   ];
 };
