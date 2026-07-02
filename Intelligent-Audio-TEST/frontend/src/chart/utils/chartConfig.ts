@@ -153,13 +153,17 @@ export const applyChartTypeConfig = (config: any, type: string, title?: string):
         border: { color: '#E5E5E5' }
       }
     };
-    // 正态分布图的tooltip标题显示x值
+    // 正态分布图的tooltip显示区间范围
     if (config.plugins && config.plugins.tooltip) {
       config.plugins.tooltip.callbacks = {
         ...config.plugins.tooltip.callbacks,
         title: function(context: any) {
           if (context[0] && typeof context[0].parsed.x === 'number') {
-            return `区间: ${context[0].parsed.x.toFixed(2)}`;
+            const midPoint = context[0].parsed.x;
+            const step = context[0].dataset._step || 0;
+            const intervalStart = midPoint - step / 2;
+            const intervalEnd = midPoint + step / 2;
+            return `[${intervalStart.toFixed(2)}, ${intervalEnd.toFixed(2)})`;
           }
           return '';
         },
@@ -358,15 +362,18 @@ const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
   const aboveMeanWithin3Sigma = allData.filter(val => val > mean + 2 * stdDev && val <= mean + 3 * stdDev).length;
   const aboveMeanOutside3Sigma = allData.filter(val => val > mean + 3 * stdDev).length;
 
-  // 下方区间按标准差划分，数据全非负时下界钳制为0
-  const belowMeanWithin1Sigma = allData.filter(val => val < mean && val >= Math.max(mean - stdDev, 0)).length;
-  const belowMeanWithin2Sigma = allData.filter(val => val < mean - stdDev && val >= Math.max(mean - 2 * stdDev, 0)).length;
-  const belowMeanWithin3Sigma = allData.filter(val => val < mean - 2 * stdDev && val >= Math.max(mean - 3 * stdDev, 0)).length;
-  const belowMeanOutside3Sigma = allData.filter(val => val < Math.max(mean - 3 * stdDev, 0)).length;
-  // [0, μ) 区间：0到均值之间的数据点
-  const zeroToMean = allData.filter(val => val >= 0 && val < mean).length;
+  // 下方区间从0往μ方向递进，互不重叠
+  // [0, μ-3σ) → [μ-3σ, μ-2σ) → [μ-2σ, μ-σ) → [μ-σ, μ)
+  const b3 = Math.max(mean - 3 * stdDev, 0);
+  const b2 = Math.max(mean - 2 * stdDev, 0);
+  const b1 = Math.max(mean - stdDev, 0);
+  const belowSeg1 = allData.filter(val => val >= b3 && val < b2).length;  // [μ-3σ, μ-2σ)
+  const belowSeg2 = allData.filter(val => val >= b2 && val < b1).length;  // [μ-2σ, μ-σ)
+  const belowSeg3 = allData.filter(val => val >= b1 && val < mean).length; // [μ-σ, μ)
+  const belowOutside = allData.filter(val => val >= 0 && val < b3).length;  // [0, μ-3σ)
+  const hasNegative = min < 0;
 
-  return [
+  const stats = [
     { label: '样本数量', value: count },
     { label: '平均值 (μ)', value: mean.toFixed(2) },
     { label: '标准差 (σ)', value: stdDev.toFixed(2) },
@@ -375,16 +382,35 @@ const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
     { label: '中位数 (Q2)', value: median.toFixed(2) },
     { label: '上四分位数 (Q3)', value: q3.toFixed(2) },
     { label: '最大值', value: max.toFixed(2) },
+    { label: '超出-3σ 百分比', value: calculatePercent(belowOutside) },
+    { label: '[μ-3σ, μ-2σ) 百分比', value: calculatePercent(belowSeg1) },
+    { label: '[μ-2σ, μ-σ) 百分比', value: calculatePercent(belowSeg2) },
+    { label: '[μ-σ, μ) 百分比', value: calculatePercent(belowSeg3) },
+  ];
+
+  // 有负值数据时才显示负值区间
+  if (hasNegative) {
+    const negSeg3 = allData.filter(val => val >= -stdDev && val < 0).length;       // [-σ, 0)
+    const negSeg2 = allData.filter(val => val >= -2 * stdDev && val < -stdDev).length; // [-2σ, -σ)
+    const negSeg1 = allData.filter(val => val >= -3 * stdDev && val < -2 * stdDev).length; // [-3σ, -2σ)
+    const negOutside = allData.filter(val => val < -3 * stdDev).length;             // 超出-3σ（负方向）
+    // 插入到超出-3σ之前
+    stats.splice(8, 0,
+      { label: '超出-3σ(负方向) 百分比', value: calculatePercent(negOutside) },
+      { label: '[-3σ, -2σ) 百分比', value: calculatePercent(negSeg1) },
+      { label: '[-2σ, -σ) 百分比', value: calculatePercent(negSeg2) },
+      { label: '[-σ, 0) 百分比', value: calculatePercent(negSeg3) }
+    );
+  }
+
+  stats.push(
     { label: '(μ, μ+σ] 百分比', value: calculatePercent(aboveMeanWithin1Sigma) },
     { label: '(μ+σ, μ+2σ] 百分比', value: calculatePercent(aboveMeanWithin2Sigma) },
     { label: '(μ+2σ, μ+3σ] 百分比', value: calculatePercent(aboveMeanWithin3Sigma) },
-    { label: '超出+3σ 百分比', value: calculatePercent(aboveMeanOutside3Sigma) },
-    { label: '[0, μ) 百分比', value: calculatePercent(zeroToMean) },
-    { label: '[max(μ-σ,0), μ) 百分比', value: calculatePercent(belowMeanWithin1Sigma) },
-    { label: '[max(μ-2σ,0), μ-σ) 百分比', value: calculatePercent(belowMeanWithin2Sigma) },
-    { label: '[max(μ-3σ,0), μ-2σ) 百分比', value: calculatePercent(belowMeanWithin3Sigma) },
-    { label: '超出-3σ 百分比', value: calculatePercent(belowMeanOutside3Sigma) }
-  ];
+    { label: '超出+3σ 百分比', value: calculatePercent(aboveMeanOutside3Sigma) }
+  );
+
+  return stats;
 };
 
 export const calculateDistributionStats = (data: any): DistributionStat[] => {
@@ -456,7 +482,8 @@ export const rebinDistributionData = (chartData: any, visibleMin: number, visibl
 
     return {
       ...dataset,
-      data: values
+      data: values,
+      _step: step
     };
   });
 };

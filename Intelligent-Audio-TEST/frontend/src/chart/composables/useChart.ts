@@ -1,7 +1,7 @@
 import { ref, watch, nextTick, Ref } from 'vue';
 import { Chart, ChartConfiguration } from 'chart.js/auto';
 import zoomPlugin from 'chartjs-plugin-zoom';
-import { getDefaultChartConfig, applyChartTypeConfig, mergeUserOptions, prepareChartData, calculateDistributionStats, calculateDistributionStatsByDevice, DistributionStat } from '../utils/chartConfig';
+import { getDefaultChartConfig, applyChartTypeConfig, mergeUserOptions, prepareChartData, calculateDistributionStats, calculateDistributionStatsByDevice, rebinDistributionData, DistributionStat } from '../utils/chartConfig';
 
 Chart.register(zoomPlugin);
 
@@ -173,6 +173,49 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
         
         console.log('Chart created successfully');
 
+        // 正态分布图：监听zoom/pan完成事件，在可见范围内重新分箱统计
+        if (props.type === 'distribution' && chart.value.options?.plugins?.zoom) {
+          let rebinTimer: ReturnType<typeof setTimeout> | null = null;
+
+          const onZoomOrPanComplete = () => {
+            if (!chart.value || chart.value.destroyed) return;
+
+            const xScale = chart.value.scales?.x;
+            if (!xScale) return;
+
+            const visibleMin = xScale.min;
+            const visibleMax = xScale.max;
+            if (visibleMin === undefined || visibleMax === undefined) return;
+            if (visibleMax - visibleMin <= 0) return;
+
+            // 防抖
+            if (rebinTimer) clearTimeout(rebinTimer);
+            rebinTimer = setTimeout(() => {
+              if (!chart.value || chart.value.destroyed) return;
+
+              // 重新分箱
+              const newDatasets = rebinDistributionData(props.data, visibleMin, visibleMax);
+              if (!newDatasets || newDatasets.length === 0) return;
+
+              // 更新数据，用x轴min/max固定可见范围，不重置zoom避免触发回调
+              chart.value.data.datasets = newDatasets;
+              if (!chart.value.options.scales.x) chart.value.options.scales.x = {};
+              chart.value.options.scales.x.min = visibleMin;
+              chart.value.options.scales.x.max = visibleMax;
+              chart.value.update('none');
+            }, 300);
+          };
+
+          if (!chart.value.options.plugins.zoom.zoom) {
+            chart.value.options.plugins.zoom.zoom = {};
+          }
+          if (!chart.value.options.plugins.zoom.pan) {
+            chart.value.options.plugins.zoom.pan = {};
+          }
+          chart.value.options.plugins.zoom.zoom.onZoomComplete = onZoomOrPanComplete;
+          chart.value.options.plugins.zoom.pan.onPanComplete = onZoomOrPanComplete;
+        }
+
         if (chartType === 'line' || chartType === 'bar') {
           const chartCanvasEl = chart.value.canvas;
           if (chartCanvasEl && chartCanvasEl.isConnected) {
@@ -260,13 +303,19 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
       console.warn('Chart canvas not found or detached from DOM, cannot reset zoom');
       return;
     }
-    
+
     try {
       if (chart.value.destroyed) {
         console.warn('Chart instance has been destroyed, cannot reset zoom');
         return;
       }
-      
+
+      // 清除x轴min/max固定范围，恢复完整视图
+      if (chart.value.options?.scales?.x) {
+        chart.value.options.scales.x.min = undefined;
+        chart.value.options.scales.x.max = undefined;
+      }
+
       if (chart.value.resetZoom) {
         chart.value.resetZoom();
       } else {
@@ -279,6 +328,12 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
           });
         }
         chart.value.update();
+      }
+
+      // 正态分布图：恢复原始数据
+      if (props.type === 'distribution' && props.data?.datasets) {
+        chart.value.data.datasets = props.data.datasets;
+        chart.value.update('none');
       }
     } catch (error) {
       console.warn('Error resetting zoom:', error);

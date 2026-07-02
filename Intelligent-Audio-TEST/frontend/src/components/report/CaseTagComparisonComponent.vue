@@ -1438,7 +1438,8 @@ const getChartData = (metricName) => {
           borderColor: borderColor,
           borderWidth: 1,
           fill: false,
-          tension: 0.3
+          tension: 0.3,
+          _step: step
         };
       }),
       // 添加rawData字段，用于正态分布统计计算
