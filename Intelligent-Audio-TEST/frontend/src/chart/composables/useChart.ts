@@ -1,7 +1,7 @@
 import { ref, watch, nextTick, Ref } from 'vue';
 import { Chart, ChartConfiguration } from 'chart.js/auto';
 import zoomPlugin from 'chartjs-plugin-zoom';
-import { getDefaultChartConfig, applyChartTypeConfig, mergeUserOptions, prepareChartData, calculateDistributionStats, calculateDistributionStatsByDevice, DistributionStat } from '../utils/chartConfig';
+import { getDefaultChartConfig, applyChartTypeConfig, mergeUserOptions, prepareChartData, calculateDistributionStats, calculateDistributionStatsByDevice, rebinDistributionData, DistributionStat } from '../utils/chartConfig';
 
 Chart.register(zoomPlugin);
 
@@ -172,7 +172,32 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
         };
         
         console.log('Chart created successfully');
-        
+
+        // 正态分布图：监听zoom事件，在可见范围内重新分箱统计
+        if (props.type === 'distribution' && chart.value.options?.plugins?.zoom) {
+          const onZoomComplete = () => {
+            if (!chart.value || chart.value.destroyed) return;
+
+            const xScale = chart.value.scales?.x;
+            if (!xScale) return;
+
+            const visibleMin = xScale.min;
+            const visibleMax = xScale.max;
+            if (visibleMin === undefined || visibleMax === undefined) return;
+
+            // 重新分箱
+            const newDatasets = rebinDistributionData(props.data, visibleMin, visibleMax);
+            if (newDatasets && newDatasets.length > 0) {
+              chart.value.data.datasets = newDatasets;
+              chart.value.update('none');
+            }
+          };
+
+          // chartjs-plugin-zoom 的 zoom/pan 完成事件
+          chart.value.options.plugins.zoom.onZoomComplete = onZoomComplete;
+          chart.value.options.plugins.zoom.onPanComplete = onZoomComplete;
+        }
+
         if (chartType === 'line' || chartType === 'bar') {
           const chartCanvasEl = chart.value.canvas;
           if (chartCanvasEl && chartCanvasEl.isConnected) {

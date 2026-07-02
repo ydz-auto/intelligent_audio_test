@@ -418,3 +418,45 @@ export const calculateDistributionStatsByDevice = (data: any): { [device: string
 
   return result;
 };
+
+/**
+ * 根据可见x轴范围重新分箱统计
+ * @param chartData 原始图表数据（含rawData和deviceRawData）
+ * @param visibleMin 可见区间下限
+ * @param visibleMax 可见区间上限
+ * @returns 新的datasets，每个区间内实际数据点数
+ */
+export const rebinDistributionData = (chartData: any, visibleMin: number, visibleMax: number): any[] => {
+  if (!chartData || !chartData.datasets) return [];
+
+  const range = visibleMax - visibleMin;
+  if (range <= 0) return chartData.datasets;
+
+  // 固定20个区间，放大后每个区间更细
+  const intervals = 20;
+  const step = range / intervals;
+
+  return chartData.datasets.map((dataset: any) => {
+    // 获取该设备的原始数据
+    const deviceLabel = dataset.label;
+    let deviceRaw: number[] = [];
+
+    if (chartData.deviceRawData && chartData.deviceRawData[deviceLabel]) {
+      deviceRaw = chartData.deviceRawData[deviceLabel].filter((v: any) => typeof v === 'number' && !isNaN(v) && isFinite(v));
+    }
+
+    // 按新区间重新统计
+    const values = [];
+    for (let i = 0; i < intervals; i++) {
+      const intervalStart = visibleMin + i * step;
+      const midPoint = visibleMin + (i + 0.5) * step;
+      const count = deviceRaw.filter(v => i === intervals - 1 ? v >= intervalStart : v >= intervalStart && v < intervalStart + step).length;
+      values.push({ x: parseFloat(midPoint.toFixed(2)), y: count });
+    }
+
+    return {
+      ...dataset,
+      data: values
+    };
+  });
+};
