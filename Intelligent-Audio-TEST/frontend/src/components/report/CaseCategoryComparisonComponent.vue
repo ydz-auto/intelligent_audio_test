@@ -1262,27 +1262,30 @@ const getChartData = (metricName) => {
       });
     });
     
+    // 过滤掉非数值数据，确保统计计算正确
+    allRawData = allRawData.filter(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
+    Object.keys(deviceRawDataMap).forEach(device => {
+      deviceRawDataMap[device] = deviceRawDataMap[device].filter(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
+    });
+
     // 计算正态分布统计信息
     const calculateNormalDistribution = (data) => {
       if (!data || data.length === 0) {
         return null;
       }
-      
-      // 排序数据用于计算五数概括
-      const sortedData = [...data].sort((a, b) => a - b);
-      
+
       // 计算平均值
       const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
-      
+
       // 计算方差
       const variance = data.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / data.length;
-      
+
       // 计算标准差
       const stdDev = Math.sqrt(variance);
-      
+
       return {mean, stdDev, totalDataPoints: data.length};
     };
-    
+
     const distribution = calculateNormalDistribution(allRawData);
     if (!distribution) {
       return {labels: [], datasets: [], rawData: allRawData};
@@ -1293,7 +1296,7 @@ const getChartData = (metricName) => {
     let minValue = distribution.mean - 4 * distribution.stdDev;
     const maxValue = distribution.mean + 4 * distribution.stdDev;
     // 如果所有数据都非负，将横轴下限限制为0，避免显示无意义的负值区间
-    if (minValue < 0 && allRawData.every(v => v >= 0)) {
+    if (minValue < 0 && !allRawData.some(v => v < 0)) {
       minValue = 0;
     }
     const intervalWidth = (maxValue - minValue) / intervals;
