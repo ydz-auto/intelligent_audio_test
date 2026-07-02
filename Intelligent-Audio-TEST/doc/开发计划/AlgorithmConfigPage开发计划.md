@@ -115,7 +115,7 @@
 | 配置热更新机制 | ⚠️ 待确认 | AlgorithmConfigLoader 有缓存失效接口，需确认触发时机 | 中 |
 | 参考参数生成器 | ✅ 已集成 | reference_params_generator.py 已在 CaseParameterExtractor 中使用 | - |
 | 完整字段类型 | ✅ 已实现 | text/audio/json/RTTM/STM 等类型均已支持 | - |
-| 选项动态加载 | ✅ 已实现 | 支持从 TranslationDirection、Language 等表动态获取 | - |
+| 选项动态加载 | ✅ 已实现 | 所有参数为静态文本输入，不再从数据库表动态获取 | - |
 
 ### 4.3 验证建议
 

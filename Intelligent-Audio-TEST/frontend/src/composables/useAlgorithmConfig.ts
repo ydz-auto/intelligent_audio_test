@@ -96,9 +96,6 @@ export interface AlgorithmParam {
   param_type: string
   required: boolean
   default_value?: string
-  options_source?: string
-  options_field?: string
-  options_label_field?: string
   validation_rules?: string
   help_text?: string
   component?: string
@@ -244,19 +241,6 @@ export function useAlgorithmConfig() {
     }
   }
 
-  async function getParamOptions(algorithmType: string): Promise<Record<string, { value: string; label: string }[]>> {
-    try {
-      const response = await fetch(`/api/v1/algorithm/params/${algorithmType}/options`)
-      const result = await response.json()
-      if (result.success) {
-        return result.data.options || {}
-      }
-      return {}
-    } catch (error) {
-      return {}
-    }
-  }
-
   async function getAssociatedDimensions(algorithmType: string): Promise<{
     dimensions: Array<{ id: number; name: string; description?: string; type?: string; weight: number; is_default: boolean }>;
     dimension_ids: number[];
@@ -362,9 +346,6 @@ export function useAlgorithmConfig() {
         default_value: p.defaultValue ?? p.default_value,
         help_text: p.helpText || p.help_text,
         ui_order: p.uiOrder ?? p.ui_order,
-        options_field: p.optionsField || p.options_field,
-        options_label_field: p.optionsLabelField || p.options_label_field,
-        options_source: p.optionsSource || p.options_source,
       }))
     } catch (error) {
       console.error('获取用例参数定义失败:', error)
@@ -385,7 +366,6 @@ export function useAlgorithmConfig() {
     getAlgorithm,
     getAlgorithmOptions,
     getFormSchema,
-    getParamOptions,
     getAssociatedDimensions,
     getCaseAlgorithmParams,
     createAlgorithm,
@@ -400,7 +380,6 @@ export function useAlgorithmConfig() {
 
 export function useAlgorithmForm(algorithmType: string | null) {
   const schema = ref<FormSchema | null>(null)
-  const paramOptions = ref<Record<string, { value: string; label: string }[]>>({})
   const formData = ref<Record<string, any>>({})
   const loading = ref(false)
 
@@ -412,12 +391,8 @@ export function useAlgorithmForm(algorithmType: string | null) {
 
     loading.value = true
     try {
-      const [schemaData, optionsData] = await Promise.all([
-        getFormSchema(algorithmType),
-        getParamOptions(algorithmType)
-      ])
+      const schemaData = await getFormSchema(algorithmType)
       schema.value = schemaData
-      paramOptions.value = optionsData
     } finally {
       loading.value = false
     }
@@ -443,7 +418,6 @@ export function useAlgorithmForm(algorithmType: string | null) {
 
   return {
     schema: computed(() => schema.value),
-    paramOptions: computed(() => paramOptions.value),
     formData: computed(() => formData.value),
     loading: computed(() => loading.value),
 

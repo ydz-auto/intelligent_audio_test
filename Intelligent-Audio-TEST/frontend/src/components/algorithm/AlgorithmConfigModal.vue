@@ -267,7 +267,6 @@
                   <th style="width: 100px;">参数名称</th>
                   <th style="width: 90px;">类型</th>
                   <th style="width: 80px;">适用范围</th>
-                  <th style="width: 90px;">选项来源</th>
                   <th style="width: 50px;">必填</th>
                   <th style="width: 80px;">默认值</th>
                   <th style="width: 160px;">范围约束</th>
@@ -277,7 +276,7 @@
               </thead>
               <tbody>
                 <tr v-if="formState.case_params.length === 0">
-                  <td colspan="10" class="empty-row">暂无用例参数</td>
+                  <td colspan="9" class="empty-row">暂无用例参数</td>
                 </tr>
                 <tr v-else v-for="(param, index) in formState.case_params" :key="param.id || param.tempId || index">
                   <td>
@@ -291,7 +290,6 @@
                       <option value="text">文本</option>
                       <option value="number">数字</option>
                       <option value="textarea">多行文本</option>
-                      <option value="select">下拉框</option>
                       <option value="switch">开关</option>
                       <option value="slider">滑块</option>
                       <option value="audio_select">音频选择</option>
@@ -304,18 +302,6 @@
                       <option value="common">通用</option>
                       <option value="api">API</option>
                       <option value="e2e">E2E</option>
-                    </select>
-                  </td>
-                  <td>
-                    <select 
-                      class="form-input form-input-sm" 
-                      v-model="param.options_source"
-                      :disabled="param.param_type !== 'select'"
-                      @change="handleCaseParamBlur(param, index)"
-                    >
-                      <option v-for="source in optionsSources" :key="source.value" :value="source.value">
-                        {{ source.label }}
-                      </option>
                     </select>
                   </td>
                   <td>
@@ -554,7 +540,7 @@ import { useModalControl, MODAL_TYPES } from '../../composables/useModal'
 import { useDimensions } from '../../composables/useDimensions'
 import { algorithmApi, evaluationApi } from '../../utils/api'
 
-const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string; default_value?: string; help_text?: string; min_value?: number; max_value?: number; step?: number; unit?: string; options_source?: string}> = {
+const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string; default_value?: string; help_text?: string; min_value?: number; max_value?: number; step?: number; unit?: string}> = {
   'translation_direction': { param_name: '翻译方向', param_type: 'text', help_text: '翻译方向字符串（如 zh2en, en2zh）' },
   'source_language': { param_name: '源语种', param_type: 'text', help_text: '源语言代码（如 zh, en, ja）' },
   'target_language': { param_name: '目标语种', param_type: 'text', help_text: '目标语言代码（如 en, ja, zh）' },
@@ -619,7 +605,6 @@ function toggleBundle(bundleKey: string) {
           max_value: preset?.max_value,
           step: preset?.step,
           unit: preset?.unit,
-          options_source: preset?.options_source || '',
           hidden: false,
           deleted: false,
           tempId: `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -750,7 +735,6 @@ const mappingExpanded = ref({
 const algorithms = ref<AlgorithmRecord[]>([])
 const groups = ref<AlgorithmGroup[]>([])
 const availableDimensions = ref<Dimension[]>([])
-const optionsSources = ref<{ value: string; label: string; description: string }[]>([])
 
 const { fetchAllDimensions } = useDimensions()
 
@@ -889,7 +873,6 @@ watch(() => props.visible, (visible) => {
     }
     loadGroups()
     loadDimensions()
-    loadOptionsSources()
   }
 })
 
@@ -906,10 +889,7 @@ function normalizeParamFields(param: any) {
     hidden: param.hidden,
     direction: param.direction,
     label: param.label,
-    help_text: param.helpText ?? param.help_text,
-    options_source: param.optionsSource ?? param.options_source,
-    options_field: param.optionsField ?? param.options_field,
-    options_label_field: param.optionsLabelField ?? param.options_label_field
+    help_text: param.helpText ?? param.help_text
   }
 }
 
@@ -926,9 +906,6 @@ function normalizeCaseParamFields(param: any) {
     ui_order: param.uiOrder ?? param.ui_order,
     hidden: param.hidden,
     scope: param.scope ?? 'common',
-    options_source: param.optionsSource ?? param.options_source,
-    options_field: param.optionsField ?? param.options_field,
-    options_label_field: param.optionsLabelField ?? param.options_label_field,
     min_value: param.minValue ?? param.min_value ?? param.min ?? null,
     max_value: param.maxValue ?? param.max_value ?? param.max ?? null,
     step: param.step ?? null,
@@ -1009,15 +986,6 @@ async function loadDimensions() {
     availableDimensions.value = dimensions as Dimension[]
   } catch (error) {
     console.error('加载评估维度失败:', error)
-  }
-}
-
-async function loadOptionsSources() {
-  try {
-    const result = await algorithmApi.getOptionsSources()
-    optionsSources.value = result.data || []
-  } catch (error) {
-    console.error('加载选项来源失败:', error)
   }
 }
 
@@ -1212,9 +1180,6 @@ function handleAddParam() {
       param_type: 'text',
       component: 'input',
       scope: 'common',
-      options_source: '',
-      options_field: '',
-      options_label_field: '',
       required: false,
       default_value: '',
       min_value: null,
@@ -1292,7 +1257,6 @@ function getDefaultComponent(paramType: string): string {
   const typeComponentMap: Record<string, string> = {
     'text': 'input',
     'number': 'input-number',
-    'select': 'select',
     'textarea': 'textarea',
     'slider': 'slider',
     'switch': 'switch',
@@ -1304,14 +1268,7 @@ function getDefaultComponent(paramType: string): string {
 }
 
 function handleCaseParamTypeChange(param: any, index: number) {
-  if (param.param_type !== 'select') {
-    param.component = getDefaultComponent(param.param_type)
-    param.options_source = ''
-    param.options_field = ''
-    param.options_label_field = ''
-  } else {
-    param.component = 'select'
-  }
+  param.component = getDefaultComponent(param.param_type)
   handleCaseParamBlur(param, index)
 }
 
@@ -1339,7 +1296,6 @@ function handleParamCodeSelect(param: any, index: number) {
     if (preset.max_value !== undefined) param.max_value = preset.max_value
     if (preset.step !== undefined) param.step = preset.step
     if (preset.unit) param.unit = preset.unit
-    if (preset.options_source) param.options_source = preset.options_source
   }
   handleCaseParamBlur(param, index)
 }
@@ -1407,9 +1363,6 @@ async function autoSaveCaseParams(param: any, index: number) {
       step: param.step,
       unit: param.unit
     }
-    bodyData.options_source = param.options_source || null
-    bodyData.options_field = param.options_field || null
-    bodyData.options_label_field = param.options_label_field || null
     let result
     if (param.id) {
       result = await algorithmApi.updateCaseParam(param.id, bodyData)

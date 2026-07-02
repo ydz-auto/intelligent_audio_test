@@ -1,5 +1,7 @@
 # AlgorithmConfigPage - 算法配置管理页面适配方案
 
+> **架构变更说明（2026-07）**：`options_source` 字段已废弃，`TranslationDirection` 表已删除。所有算法参数（包括翻译方向、语种）都是静态文本输入（`param_type=text`），不再从数据库表动态获取选项。本文档中涉及 `options_source=translation_directions` 的内容已过时。
+
 ## 1. 页面概述
 
 ### 1.1 页面定位

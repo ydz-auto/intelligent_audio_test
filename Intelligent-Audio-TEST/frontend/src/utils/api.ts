@@ -31,9 +31,6 @@ export interface AlgorithmParam {
   param_type: string;
   required: boolean;
   default_value?: string;
-  options_source?: string;
-  options_field?: string;
-  options_label_field?: string;
   validation_rules?: string;
   help_text?: string;
   component?: string;
@@ -1204,14 +1201,6 @@ export const algorithmApi = {
 
   async getOptions() {
     return request<{ algorithms: { value: string; name: string; group_id?: number; group_name?: string; icon?: string }[] }>('GET', '/algorithm/options');
-  },
-
-  async getOptionsSources() {
-    return request<{ data: Array<{ value: string; label: string; description: string }> }>('GET', '/algorithm/options-sources');
-  },
-
-  async getParamOptions(algoType: string) {
-    return request<{ options: Record<string, { value: string; label: string }[]> }>('GET', `/algorithm/params/${algoType}/options`);
   },
 
   async getFormSchema(algoType: string) {

@@ -171,6 +171,7 @@ function setParam(fieldCode: string, value: unknown) {
   } else {
     params.push({ field_code: fieldCode, field_value: value })
   }
+  console.log('[VoiceprintConfigEditor] setParam:', fieldCode, value, 'emitting:', params)
   emit('update:modelValue', params)
 }
 
@@ -189,9 +190,11 @@ const voiceprintSpl = computed(() => Number(getParam('voiceprintSpl', 70)))
 const voiceprintWaitTime = computed(() => Number(getParam('voiceprintWaitTime', 5)))
 
 function addVoiceprint() {
+  console.log('[VoiceprintConfigEditor] addVoiceprint called, modelValue:', props.modelValue)
   setParam('voiceprintEnabled', true)
   setParam('voiceprintSpl', 70)
   setParam('voiceprintWaitTime', 5)
+  console.log('[VoiceprintConfigEditor] after setParam, modelValue:', props.modelValue)
 }
 
 function removeVoiceprint() {

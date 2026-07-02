@@ -5,8 +5,6 @@
 提供算法定义、参数、映射的 CRUD API
 """
 
-import json
-import os
 from typing import List, Dict, Any
 from flask import request
 from ..models.algorithm_models import (
@@ -109,70 +107,6 @@ def _serialize_mappings(mappings: List[ParamMapping]) -> Dict[str, Any]:
         elif m.source in result:
             result[m.source].append(mapping_dict)
     return result
-
-
-def _get_options_from_source(options_source: str, options_field: str, label_field: str) -> List[Dict[str, Any]]:
-    """从指定源获取选项"""
-    if not options_source:
-        return []
-
-    source_config = OPTIONS_SOURCES_CONFIG.get(options_source, {})
-    source_type = source_config.get('type')
-    fallback_label_field = source_config.get('fallback_label_field')
-
-    if source_type == 'table':
-        model_class = source_config.get('_model_class')
-        if model_class:
-            deleted_field = 'deleted' if hasattr(model_class, 'deleted') else None
-            if deleted_field:
-                items = model_class.query.filter_by(deleted=False).all()
-            else:
-                items = model_class.query.all()
-            result = []
-            for item in items:
-                val = getattr(item, options_field, None)
-                if val is None:
-                    continue
-                lbl = getattr(item, label_field, None)
-                if lbl is None and fallback_label_field:
-                    lbl = getattr(item, fallback_label_field, None)
-                if lbl is None:
-                    lbl = str(val)
-                result.append({'value': val, 'label': lbl})
-            return result
-
-    return []
-
-
-def _load_options_sources_config():
-    """从配置文件加载选项来源配置"""
-    config_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)),
-        'config',
-        'algorithm_options_config.json'
-    )
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-            return config.get('options_sources', {})
-    except Exception as e:
-        print(f"加载选项来源配置失败: {e}")
-        return {}
-
-
-OPTIONS_SOURCES_CONFIG = _load_options_sources_config()
-
-
-def get_options_sources():
-    """获取可用的选项来源列表"""
-    sources = []
-    for key, config in OPTIONS_SOURCES_CONFIG.items():
-        sources.append({
-            'value': key,
-            'label': config.get('label', key),
-            'description': config.get('description', '')
-        })
-    return success_response({'data': sources})
 
 
 def list_algorithms():
@@ -409,7 +343,7 @@ def _update_case_params(algo_type: str, params: List[Dict]):
             if param:
                 submitted_ids.add(param_id)
                 for field in ['param_name', 'label', 'param_type', 'required', 
-                              'default_value', 'options_source', 'options_field', 'options_label_field',
+                              'default_value',
                               'help_text', 'ui_order', 'hidden', 'scope',
                               'min_value', 'max_value', 'step', 'unit']:
                     if field in param_data and param_data[field] is not None:
@@ -429,7 +363,7 @@ def _update_case_params(algo_type: str, params: List[Dict]):
             if dup:
                 # 已存在则更新
                 for field in ['param_name', 'label', 'param_type', 'required',
-                              'default_value', 'options_source', 'options_field', 'options_label_field',
+                              'default_value',
                               'help_text', 'ui_order', 'hidden', 'scope',
                               'min_value', 'max_value', 'step', 'unit']:
                     if field in param_data and param_data[field] is not None:
@@ -445,9 +379,6 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                 param_type=param_data.get('param_type', 'text'),
                 required=param_data.get('required', False),
                 default_value=param_data.get('default_value'),
-                options_source=param_data.get('options_source'),
-                options_field=param_data.get('options_field'),
-                options_label_field=param_data.get('options_label_field'),
                 help_text=param_data.get('help_text'),
                 ui_order=param_data.get('ui_order', 0),
                 hidden=param_data.get('hidden', False),
@@ -869,9 +800,6 @@ def create_case_param():
         param_type=req.param_type or 'text',
         required=req.required or False,
         default_value=req.default_value,
-        options_source=req.options_source,
-        options_field=req.options_field,
-        options_label_field=req.options_label_field,
         help_text=req.help_text,
         ui_order=req.ui_order or 0,
         hidden=req.hidden or False,
@@ -900,7 +828,6 @@ def update_case_param(param_id: int):
 
     updatable_fields = [
         'param_name', 'label', 'param_type', 'required', 'default_value',
-        'options_source', 'options_field', 'options_label_field',
         'help_text', 'ui_order', 'hidden', 'scope',
         'min_value', 'max_value', 'step', 'unit'
     ]
@@ -1046,24 +973,6 @@ def get_algorithm_options():
     })
 
 
-def get_param_options(algo_type: str):
-    """获取参数选项（用于下拉框）"""
-    params = CaseAlgorithmParam.query.filter_by(
-        algorithm_type=algo_type, deleted=False, hidden=False
-    ).order_by(CaseAlgorithmParam.ui_order).all()
-
-    options = {}
-    for param in params:
-        if param.options_source:
-            options[param.param_code] = _get_options_from_source(
-                param.options_source,
-                param.options_field or 'code',
-                param.options_label_field or 'name'
-            )
-
-    return success_response({'options': options})
-
-
 def get_form_schema(algo_type: str):
     """获取算法表单 Schema（用于前端动态表单）"""
     from backend.models.algorithm_models import CaseAlgorithmParam, AlgorithmDefinition
@@ -1094,20 +1003,12 @@ def get_form_schema(algo_type: str):
             'required': param.required,
             'defaultValue': param.default_value,
             'component': _get_default_component(param.param_type),
-            'options': [],
             'helpText': param.help_text,
             'hidden': param.hidden,
             'uiOrder': param.ui_order,
             'uiGroup': 'basic',
             'scope': param.scope or 'common'
         }
-        
-        if param.options_source:
-            field['options'] = _get_options_from_source(
-                param.options_source,
-                param.options_field or 'code',
-                param.options_label_field or 'name'
-            )
         
         fields.append(field)
     

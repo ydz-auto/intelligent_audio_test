@@ -367,12 +367,9 @@ class CaseAlgorithmParam(db.Model):
     param_code = Column(String(50), nullable=False, comment='参数代码')
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称')
-    param_type = Column(String(20), nullable=False, comment='参数类型：select, text, number, textarea, slider, switch')
+    param_type = Column(String(20), nullable=False, comment='参数类型：text, number, textarea, slider, switch, audio_select, device_select, json')
     required = Column(Boolean, default=False, comment='是否必填')
     default_value = Column(Text, comment='默认值（JSON格式）')
-    options_source = Column(String(50), comment='选项来源')
-    options_field = Column(String(50), comment='选项值字段')
-    options_label_field = Column(String(50), comment='选项显示字段')
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
     hidden = Column(Boolean, default=False, comment='是否隐藏')
@@ -401,9 +398,6 @@ class CaseAlgorithmParam(db.Model):
             'param_type': self.param_type,
             'required': self.required,
             'default_value': self._parse_json(self.default_value),
-            'options_source': self.options_source,
-            'options_field': self.options_field,
-            'options_label_field': self.options_label_field,
             'help_text': self.help_text,
             'ui_order': self.ui_order,
             'hidden': self.hidden,

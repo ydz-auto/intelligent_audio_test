@@ -4,11 +4,11 @@ from backend.controllers.algorithm_controller import (
     list_algorithms, get_algorithm, create_algorithm, update_algorithm,
     delete_algorithm, list_params, get_param, create_param, update_param,
     delete_param, list_mappings, create_mapping, update_mapping, delete_mapping,
-    get_algorithm_options, get_param_options, get_form_schema,
+    get_algorithm_options, get_form_schema,
     get_algorithm_dimensions, associate_dimensions, reload_config,
     import_algorithms, bulk_delete, extract_params, get_dimension_params,
     list_reference_params, create_reference_param, update_reference_param, delete_reference_param,
-    get_options_sources, create_dimension_relation, update_dimension_relation, delete_dimension_relation,
+    create_dimension_relation, update_dimension_relation, delete_dimension_relation,
     list_case_params, get_case_param, create_case_param, update_case_param, delete_case_param
 )
 from backend.controllers.algorithm_group_controller import AlgorithmGroupController
@@ -137,14 +137,6 @@ def delete_mapping_by_id(mapping_id):
 @algorithm_bp.route('/options', methods=['GET'])
 def get_options():
     return get_algorithm_options()
-
-@algorithm_bp.route('/options-sources', methods=['GET'])
-def get_algo_options_sources():
-    return get_options_sources()
-
-@algorithm_bp.route('/params/<algo_type>/options', methods=['GET'])
-def get_algo_param_options(algo_type):
-    return get_param_options(algo_type)
 
 @algorithm_bp.route('/form-schema/<algo_type>', methods=['GET'])
 def get_algo_form_schema(algo_type):
