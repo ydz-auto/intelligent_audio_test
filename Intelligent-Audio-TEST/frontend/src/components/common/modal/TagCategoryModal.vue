@@ -35,6 +35,10 @@
         <input type="number" v-model="form.sortOrder" min="0" class="form-input" />
       </div>
     </div>
+    <div v-if="errorMessage" class="form-error">
+      <i class="fas fa-exclamation-circle"></i>
+      <span>{{ errorMessage }}</span>
+    </div>
     <div class="form-actions">
       <button class="btn btn-secondary" @click="handleCancel">取消</button>
       <button class="btn btn-primary" @click="handleConfirm" :disabled="!isFormValid || saving">
@@ -61,6 +65,7 @@ const emit = defineEmits<{
 
 const nameInput = ref<HTMLInputElement | null>(null);
 const saving = ref(false);
+const errorMessage = ref('');
 
 const isEdit = computed(() => !!props.category);
 
@@ -96,6 +101,7 @@ async function handleConfirm() {
   if (!isFormValid.value || saving.value) return;
   
   saving.value = true;
+  errorMessage.value = '';
   try {
     const data = {
       name: form.value.name.trim(),
@@ -114,6 +120,7 @@ async function handleConfirm() {
     emit('confirm', result);
   } catch (e: any) {
     console.error('保存分类失败:', e);
+    errorMessage.value = e.message || '保存失败，请稍后重试';
   } finally {
     saving.value = false;
   }
@@ -213,6 +220,24 @@ input[type="color"] {
   margin-top: 24px;
   padding-top: 20px;
   border-top: 1px solid var(--border-color, #e2e8f0);
+}
+
+.form-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  color: var(--danger-color, #ef4444);
+  font-size: 13px;
+}
+
+.form-error i {
+  font-size: 16px;
+  flex-shrink: 0;
 }
 
 .btn {

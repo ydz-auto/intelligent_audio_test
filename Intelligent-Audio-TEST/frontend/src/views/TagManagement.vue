@@ -218,7 +218,9 @@ const currentCategoryName = computed(() => {
 });
 
 const uncategorizedCount = computed(() => {
-  return tagTotal.value - tags.value.filter(t => t.categoryId).length;
+  if (selectedCategoryId.value !== null) return 0;
+  const categorizedCount = allCategories.value.reduce((sum, c) => sum + (c.tagCount || 0), 0);
+  return Math.max(0, tagTotal.value - categorizedCount);
 });
 
 let categorySearchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -385,7 +387,7 @@ async function confirmDeleteCategory(cat: TagCategory) {
   
   open(MODAL_TYPES.DELETE_CONFIRM, {
     title: '删除分类',
-    message: `确定删除分类「${cat.name}」吗？此操作不可恢复。`
+    content: `确定删除分类「${cat.name}」吗？此操作不可恢复。`
   }).then(async () => {
     try {
       await api.tags.deleteCategory(cat.id);
@@ -426,7 +428,7 @@ function openTagModal(tag?: TagItem) {
 async function confirmDeleteTag(tag: TagItem) {
   open(MODAL_TYPES.DELETE_CONFIRM, {
     title: '删除标签',
-    message: `确定删除标签「${tag.name}」吗？`
+    content: `确定删除标签「${tag.name}」吗？`
   }).then(async () => {
     try {
       await api.tags.deleteTag(tag.id);

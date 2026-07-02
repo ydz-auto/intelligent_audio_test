@@ -48,7 +48,7 @@
               @cancel="(data: any) => {
                 if (isNativeEvent(data)) return;
                 console.log('[GlobalModalContainer] cancel事件触发, data:', data);
-                modalItem.resolve(false);
+                modalItem.reject('cancel');
                 handleClose(modalId);
               }"
               @save="(data: any) => {

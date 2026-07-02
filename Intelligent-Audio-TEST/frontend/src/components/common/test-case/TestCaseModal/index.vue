@@ -13,6 +13,7 @@
         :test-case-groups="testCaseGroups"
         :audio-config="audioConfig"
         :dimension-config="dimensionConfig"
+        :test-type="props.testType"
         @update="handleCaseUpdate"
         @open-audio-modal="openAudioSelectModal"
         @open-device-modal="openDeviceSelectModal"
@@ -57,8 +58,6 @@
       @close="audioConfig.showAudioModal.value = false"
       @select="handleAudioSelect"
       @select-multiple="handleMultipleAudioSelect"
-      @upload-request="handleUploadRequest"
-      @folder-import-request="handleFolderImportRequest"
     />
 
     <AudioPreviewModal
@@ -124,15 +123,17 @@
     />
 
     <BatchSplModal
-      v-model="audioConfig.batchSplValue.value"
-      v-model:visible="audioConfig.showBatchSplModal.value"
+      :visible="audioConfig.showBatchSplModal.value"
+      :model-value="audioConfig.batchSplValue.value"
+      @update:visible="(val: boolean) => audioConfig.showBatchSplModal.value = val"
+      @update:model-value="(val: number) => audioConfig.batchSplValue.value = val"
       @confirm="handleBatchSplConfirm"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, provide, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
 import { testcasesApi } from '../../../../utils/api';
 import { useNotification } from '../../../../composables/useNotification';
 import AudioSelectModal from '../../AudioSelectModal.vue';
@@ -145,8 +146,6 @@ import ImportForm from './ImportForm.vue';
 import ExportForm from './ExportForm.vue';
 import { useAudioConfig } from './useAudioConfig';
 import { useDimensionConfig } from './useDimensionConfig';
-import { getModalManager } from '../../../../utils/modalManager';
-import { MODAL_TYPES } from '../../../../shared/types';
 import type { TestCaseFormData, GroupFormData, ExportFormData, AudioItem } from './types';
 
 const props = defineProps({
@@ -163,10 +162,11 @@ const notification = useNotification();
 
 const audioConfig = useAudioConfig();
 const dimensionConfig = useDimensionConfig();
-const modalManager = getModalManager();
 
 provide('audioConfig', audioConfig);
 provide('dimensionConfig', dimensionConfig);
+provide('playbackDevices', audioConfig.playbackDevices);
+provide('availableDimensions', dimensionConfig.availableDimensions);
 
 const testCaseGroups = ref<string[]>([]);
 const caseFormData = ref<Partial<TestCaseFormData>>({});
@@ -174,6 +174,7 @@ const groupFormData = ref<GroupFormData>({ name: '', description: '', algorithmT
 const caseFormRef = ref<InstanceType<typeof CaseForm> | null>(null);
 const importFormRef = ref<InstanceType<typeof ImportForm> | null>(null);
 const exportFormRef = ref<InstanceType<typeof ExportForm> | null>(null);
+const pendingAudioCallback = ref<((audios: { id: string; name?: string }[]) => void) | null>(null);
 
 const isEditMode = computed(() => {
   if (props.mode === 'group') {
@@ -247,15 +248,17 @@ function handleExportUpdate(data: ExportFormData & { ids: (string | number)[] })
   console.log('Export update:', data);
 }
 
-function openAudioSelectModal(audioType: 'dry' | 'noise', index?: number) {
+function openAudioSelectModal(audioType: 'dry' | 'noise', index?: number, callback?: (audios: { id: string; name?: string }[]) => void) {
   audioConfig.currentAudioType.value = audioType;
   audioConfig.currentAudioIndex.value = index ?? null;
+  pendingAudioCallback.value = callback || null;
   audioConfig.showAudioModal.value = true;
 }
 
 function openDeviceSelectModal(audioIndex: number) {
   audioConfig.currentDeviceAudioIndex.value = audioIndex;
-  const audio = caseFormData.value.config?.audios?.[audioIndex];
+  const audios = getCurrentRoundAudios();
+  const audio = audios[audioIndex];
   audioConfig.initialSelectedDevices.value = audio?.playbackDeviceId ? [audio.playbackDeviceId] : [];
   audioConfig.showDeviceModal.value = true;
 }
@@ -265,62 +268,58 @@ function openNoiseDeviceSelectModal() {
   audioConfig.showNoiseDeviceModal.value = true;
 }
 
+function getCurrentRoundAudios(): any[] {
+  // Prefer CaseForm's local data
+  if (caseFormRef.value?.getCurrentRoundAudiosLocal) {
+    return caseFormRef.value.getCurrentRoundAudiosLocal();
+  }
+  const config = caseFormData.value.config;
+  if (!config) return [];
+  if (config.rounds && config.rounds.length > 0) {
+    const roundIdx = caseFormRef.value?.currentRoundIndex?.value ?? 0;
+    return config.rounds[roundIdx]?.audios || [];
+  }
+  return config.audios || [];
+}
+
 function openBatchDeviceModal() {
-  const e2eAudios = caseFormData.value.config?.audios?.filter(a => a.testType === 'e2e' && a.playbackDeviceId) || [];
-  audioConfig.batchInitialSelectedDevices.value = e2eAudios.length > 0 ? [e2eAudios[0].playbackDeviceId!] : [];
+  const audios = getCurrentRoundAudios();
+  const configured = audios.filter((a: any) => a.playbackDeviceId);
+  audioConfig.batchInitialSelectedDevices.value = configured.length > 0 ? [configured[0].playbackDeviceId] : [];
   audioConfig.showBatchDeviceModal.value = true;
 }
 
 function openBatchSplModal() {
-  console.log('[DEBUG] openBatchSplModal called');
-  const e2eAudios = caseFormData.value.config?.audios?.filter(a => a.testType === 'e2e') || [];
-  console.log('[DEBUG] e2eAudios count:', e2eAudios.length);
-  audioConfig.batchSplValue.value = e2eAudios.length > 0 ? e2eAudios[0].spl : 65;
+  console.log('[openBatchSplModal] called');
+  const audios = getCurrentRoundAudios();
+  console.log('[openBatchSplModal] audios count:', audios.length);
+  audioConfig.batchSplValue.value = audios.length > 0 ? (audios[0].spl || 65) : 65;
+  console.log('[openBatchSplModal] setting showBatchSplModal to true');
   audioConfig.showBatchSplModal.value = true;
-  console.log('[DEBUG] showBatchSplModal set to:', audioConfig.showBatchSplModal.value);
+  console.log('[openBatchSplModal] showBatchSplModal.value:', audioConfig.showBatchSplModal.value);
 }
 
 function openCrossDeviceModal() {
-  const e2eAudios = caseFormData.value.config?.audios?.filter(a => a.testType === 'e2e') || [];
-  const deviceIds = [...new Set(e2eAudios.map(a => a.playbackDeviceId).filter(Boolean))];
+  const audios = getCurrentRoundAudios();
+  const deviceIds = [...new Set(audios.map((a: any) => a.playbackDeviceId).filter(Boolean))] as string[];
   audioConfig.crossDeviceInitialSelectedDevices.value = deviceIds;
   audioConfig.showCrossDeviceModal.value = true;
 }
 
-async function handleUploadRequest() {
-  audioConfig.showAudioModal.value = false;
-  await nextTick();
-  try {
-    await modalManager.open(MODAL_TYPES.AUDIO_IMPORT, {
-      title: '上传音频',
-      multiple: true,
-      acceptedFileTypes: 'audio/*',
-      supportedFormats: ['wav', 'mp3', 'm4a', 'flac', 'aac', 'ogg']
-    });
-    audioConfig.loadResources();
-  } catch (err) {
-    console.error('上传音频失败:', err);
-  } finally {
-    audioConfig.showAudioModal.value = true;
-  }
-}
-
-async function handleFolderImportRequest() {
-  audioConfig.showAudioModal.value = false;
-  await nextTick();
-  try {
-    await modalManager.open(MODAL_TYPES.FOLDER_IMPORT, {
-      title: '批量从文件夹导入'
-    });
-    audioConfig.loadResources();
-  } catch (err) {
-    console.error('文件夹导入失败:', err);
-  } finally {
-    audioConfig.showAudioModal.value = true;
-  }
-}
-
 function handleAudioSelect(audio: AudioItem) {
+  // 优先使用轮次内音频选择的 callback
+  if (pendingAudioCallback.value) {
+    // 将选中的音频添加到缓存
+    const audioType = (audio as any).audioType || 'dry';
+    const existing = audioType === 'noise' ? audioConfig.noiseAudios.value : audioConfig.dryAudios.value;
+    if (!existing.find((e: AudioItem) => String(e.id) === String(audio.id))) {
+      existing.push(audio as AudioItem);
+    }
+    pendingAudioCallback.value([{ id: String(audio.id), name: audio.name }]);
+    pendingAudioCallback.value = null;
+    return;
+  }
+  // 回退：旧版 flat config 格式
   if (caseFormData.value.config) {
     audioConfig.handleAudioSelect(audio, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
     caseFormRef.value?.syncConfigFromParent();
@@ -328,6 +327,21 @@ function handleAudioSelect(audio: AudioItem) {
 }
 
 function handleMultipleAudioSelect(audios: AudioItem[]) {
+  // 优先使用轮次内音频选择的 callback（传递全部选中音频）
+  if (pendingAudioCallback.value) {
+    // 将选中的音频添加到缓存，以便 getAudioDuration/getAudioTags 能查到
+    audios.forEach(a => {
+      const audioType = (a as any).audioType || 'dry';
+      const existing = audioType === 'noise' ? audioConfig.noiseAudios.value : audioConfig.dryAudios.value;
+      if (!existing.find((e: AudioItem) => String(e.id) === String(a.id))) {
+        existing.push(a as AudioItem);
+      }
+    });
+    pendingAudioCallback.value(audios.map(a => ({ id: String(a.id), name: a.name })));
+    pendingAudioCallback.value = null;
+    return;
+  }
+  // 回退：旧版 flat config 格式
   if (caseFormData.value.config) {
     audioConfig.handleMultipleAudioSelect(audios, caseFormData.value.config.audios, caseFormData.value.config.backgroundNoise);
     caseFormRef.value?.syncConfigFromParent();
@@ -335,7 +349,13 @@ function handleMultipleAudioSelect(audios: AudioItem[]) {
 }
 
 function handleDeviceSelect(selectedDevices: string[]) {
-  if (caseFormData.value.config) {
+  if (selectedDevices.length === 0) return;
+  if (caseFormRef.value?.applySingleDevice) {
+    const audioIdx = audioConfig.currentDeviceAudioIndex.value;
+    if (audioIdx !== null) {
+      caseFormRef.value.applySingleDevice(audioIdx, selectedDevices[0]);
+    }
+  } else if (caseFormData.value.config?.audios) {
     audioConfig.handleDeviceSelect(selectedDevices, caseFormData.value.config.audios);
     caseFormRef.value?.syncConfigFromParent();
   }
@@ -349,22 +369,36 @@ function handleNoiseDeviceSelect(selectedDevices: string[]) {
 }
 
 function handleBatchDeviceSelect(selectedDevices: string[]) {
-  if (caseFormData.value.config) {
+  if (selectedDevices.length === 0) return;
+  if (caseFormRef.value?.applyBatchDevice) {
+    caseFormRef.value.applyBatchDevice(selectedDevices[0]);
+  } else if (caseFormData.value.config?.audios) {
     audioConfig.handleBatchDeviceSelect(selectedDevices, caseFormData.value.config.audios);
     caseFormRef.value?.syncConfigFromParent();
   }
 }
 
 function handleCrossDeviceSelect(selectedDevices: string[]) {
-  if (caseFormData.value.config) {
+  if (selectedDevices.length === 0) return;
+  if (caseFormRef.value?.applyCrossDevice) {
+    caseFormRef.value.applyCrossDevice(selectedDevices);
+  } else if (caseFormData.value.config?.audios) {
     audioConfig.handleCrossDeviceSelect(selectedDevices, caseFormData.value.config.audios);
     caseFormRef.value?.syncConfigFromParent();
   }
 }
 
 function handleBatchSplConfirm(spl: number) {
-  if (caseFormData.value.config) {
-    caseFormData.value.config.audios.forEach(audio => {
+  console.log('[handleBatchSplConfirm] called with spl:', spl);
+  console.log('[handleBatchSplConfirm] caseFormRef:', caseFormRef.value);
+  console.log('[handleBatchSplConfirm] applyBatchSpl exists:', !!caseFormRef.value?.applyBatchSpl);
+  
+  if (caseFormRef.value?.applyBatchSpl) {
+    console.log('[handleBatchSplConfirm] calling applyBatchSpl');
+    caseFormRef.value.applyBatchSpl(spl);
+  } else if (caseFormData.value.config?.audios) {
+    console.log('[handleBatchSplConfirm] fallback to legacy mode');
+    caseFormData.value.config.audios.forEach((audio: any) => {
       if (audio.testType === 'e2e') {
         audio.spl = spl;
       }
@@ -377,16 +411,25 @@ function handlePreviewAudio(audioId: string, audioType: 'dry' | 'noise') {
   audioConfig.currentPreviewAudioId.value = audioId;
   audioConfig.currentPreviewAudioType.value = audioType;
 
-  if (audioType === 'dry' && caseFormData.value.config) {
-    const audio = caseFormData.value.config.audios.find(a => a.audioId === audioId);
-    if (audio) {
-      audioConfig.currentPreviewDeviceId.value = audio.playbackDeviceId || null;
-      audioConfig.currentPreviewSpl.value = audio.spl || 65;
+  // 从 rounds 架构中查找音频对应的设备和声压级
+  const rounds = caseFormData.value.config?.rounds || [];
+  for (const round of rounds) {
+    if (audioType === 'dry') {
+      const audio = (round.audios || []).find(a => a.audioId === audioId);
+      if (audio) {
+        audioConfig.currentPreviewDeviceId.value = audio.playbackDeviceId || null;
+        audioConfig.currentPreviewSpl.value = audio.spl || 65;
+        break;
+      }
+    } else if (audioType === 'noise') {
+      const noise = round.backgroundNoise;
+      if (noise && noise.audioId === audioId) {
+        const deviceIds = noise.deviceIds || [];
+        audioConfig.currentPreviewDeviceId.value = deviceIds.length > 0 ? deviceIds[0] : null;
+        audioConfig.currentPreviewSpl.value = noise.spl || 65;
+        break;
+      }
     }
-  } else if (audioType === 'noise' && caseFormData.value.config) {
-    const deviceIds = caseFormData.value.config.backgroundNoise.deviceIds || [];
-    audioConfig.currentPreviewDeviceId.value = deviceIds.length > 0 ? deviceIds[0] : null;
-    audioConfig.currentPreviewSpl.value = caseFormData.value.config.backgroundNoise.spl || 65;
   }
 
   audioConfig.currentPreviewOffset.value = 0;
@@ -525,22 +568,36 @@ watch(() => props.visible, (newVal) => {
 
 function extractConfiguredAudioIds(formData: any): (string | number)[] {
   const ids: (string | number)[] = [];
-  if (formData?.config?.audios && Array.isArray(formData.config.audios)) {
-    formData.config.audios.forEach((audio: any) => {
-      if (audio.audioId) {
-        ids.push(audio.audioId);
+  const config = formData?.config;
+  if (!config) return ids;
+
+  // Rounds-based format (new architecture)
+  if (config.rounds && Array.isArray(config.rounds)) {
+    config.rounds.forEach((round: any) => {
+      if (Array.isArray(round.audios)) {
+        round.audios.forEach((audio: any) => {
+          if (audio.audioId) ids.push(audio.audioId);
+        });
       }
+      const noiseId = round.backgroundNoise?.audioId ?? round.backgroundNoise?.audio_id;
+      if (noiseId) ids.push(noiseId);
     });
   }
-  if (formData?.config?.backgroundNoise?.audioId) {
-    ids.push(formData.config.backgroundNoise.audioId);
+
+  // Legacy flat format fallback
+  if (config.audios && Array.isArray(config.audios)) {
+    config.audios.forEach((audio: any) => {
+      if (audio.audioId) ids.push(audio.audioId);
+    });
   }
+  if (config.backgroundNoise?.audioId) {
+    ids.push(config.backgroundNoise.audioId);
+  }
+
   return ids;
 }
 
-onMounted(() => {
-  loadTestGroups();
-});
+// loadTestGroups already called by watch with { immediate: true }
 </script>
 
 <style scoped>

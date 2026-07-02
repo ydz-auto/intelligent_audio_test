@@ -9,6 +9,7 @@
     <ChartStatsCard 
       v-if="type === 'distribution' && hasData" 
       :distributionStats="distributionStats" 
+      :distributionStatsByDevice="distributionStatsByDevice" 
     />
     
     <!-- 图表操作按钮 -->
@@ -103,6 +104,7 @@ export default {
     const {
       hasData,
       distributionStats,
+      distributionStatsByDevice,
       resetZoom,
       exportChart,
       mountChart,
@@ -124,6 +126,7 @@ export default {
       chartId,
       hasData,
       distributionStats,
+      distributionStatsByDevice,
       resetZoom,
       exportChart
     };

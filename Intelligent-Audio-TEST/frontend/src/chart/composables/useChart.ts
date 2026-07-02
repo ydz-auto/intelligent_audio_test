@@ -1,7 +1,7 @@
 import { ref, watch, nextTick, Ref } from 'vue';
 import { Chart, ChartConfiguration } from 'chart.js/auto';
 import zoomPlugin from 'chartjs-plugin-zoom';
-import { getDefaultChartConfig, applyChartTypeConfig, mergeUserOptions, prepareChartData, calculateDistributionStats, DistributionStat } from '../utils/chartConfig';
+import { getDefaultChartConfig, applyChartTypeConfig, mergeUserOptions, prepareChartData, calculateDistributionStats, calculateDistributionStatsByDevice, DistributionStat } from '../utils/chartConfig';
 
 Chart.register(zoomPlugin);
 
@@ -11,6 +11,7 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
   const isMounted = ref(true);
   const hasData = ref(false);
   const distributionStats = ref<DistributionStat[]>([]);
+  const distributionStatsByDevice = ref<{ [device: string]: DistributionStat[] }>({});
 
   const handleRetry = (retryCount: number, maxRetries = 3) => {
     if (retryCount < maxRetries) {
@@ -89,8 +90,10 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
     
     if (props.type === 'distribution' && hasData.value) {
       distributionStats.value = calculateDistributionStats(props.data);
+      distributionStatsByDevice.value = calculateDistributionStatsByDevice(props.data);
     } else {
       distributionStats.value = [];
+      distributionStatsByDevice.value = {};
     }
   };
 
@@ -347,5 +350,5 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
   watch(() => props.data, updateDataStatus, { deep: true });
   watch(() => props.type, updateDataStatus);
 
-  return { chart, hasData, distributionStats, initChart, resetZoom, exportChart, mountChart, unmountChart };
+  return { chart, hasData, distributionStats, distributionStatsByDevice, initChart, resetZoom, exportChart, mountChart, unmountChart };
 };

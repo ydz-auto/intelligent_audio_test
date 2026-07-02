@@ -1,145 +1,714 @@
-C:\Users\ljh\AppData\Local\Microsoft\WindowsApps\python3.12.exe C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\run.py 
-[2026-04-24 16:59:17,744] INFO in app: Task Manager 后端服务启动中... (Level: DEBUG)
-[2026-04-24 16:59:17,744] INFO in app: JSON_AS_ASCII configuration: False
-[2026-04-24 16:59:17] - log_worker - INFO - Worker thread started.
-[2026-04-24 16:59:17] - get_db_handler - INFO - DatabaseLogHandler singleton created.
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: Task Manager 后端服务启动中... (Level: DEBUG)
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: JSON_AS_ASCII configuration: False
-[2026-04-24 16:59:17] - DatabaseLogHandler - DEBUG - Database init deferred: The current Flask app is not registered with this 'SQLAlchemy' instance. Did you forget to call 'init_app', or did you create multiple 'SQLAlchemy' instances?
-[2026-04-24 16:59:17] - DatabaseLogHandler - DEBUG - Database init deferred: The current Flask app is not registered with this 'SQLAlchemy' instance. Did you forget to call 'init_app', or did you create multiple 'SQLAlchemy' instances?
-[2026-04-24 16:59:17,993] INFO in app: 服务重启后任务状态更新：
-[2026-04-24 16:59:17,993] INFO in app: - 更新任务状态数: 1 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17,993] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17,993] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17,993] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:18,003] INFO in app: 任务调度器初始化完成
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: 服务重启后任务状态更新：
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务状态数: 1 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:17] - log_worker - INFO - Database components initialized successfully.
-[2026-04-24 16:59:18] - log_and_emit - INFO - [Engine] 任务调度器已启动
-[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [app] INFO in app: 任务调度器初始化完成
-[2026-04-24 16:59:18,297] DEBUG in app: Registering blueprints...
-[2026-04-24 16:59:18] - DatabaseLogHandler - DEBUG - [app] DEBUG in app: Registering blueprints...
-[2026-04-24 16:59:18] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal: Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
- * Serving Flask app 'backend.app'
- * Debug mode: on
-[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5000
- * Running on http://100.70.28.65:5000
-[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: Press CTRL+C to quit
-[2026-04-24 16:59:18] - DatabaseLogHandler - INFO - [_internal] INFO in _internal:  * Restarting with stat
-[2026-04-24 16:59:20] - log_worker - INFO - Worker thread started.
-[2026-04-24 16:59:20] - get_db_handler - INFO - DatabaseLogHandler singleton created.
-[2026-04-24 16:59:20,973] INFO in app: 服务重启后任务状态更新：
-[2026-04-24 16:59:20,974] INFO in app: - 更新任务状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20,974] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20,975] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20,977] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: 服务重启后任务状态更新：
-[2026-04-24 16:59:20] - log_worker - INFO - Database components initialized successfully.
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新任务用例评估状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:20] - DatabaseLogHandler - INFO - [app] INFO in app: - 更新测试结果执行状态数: 0 (pending/queued/running/evaluating → failed)
-[2026-04-24 16:59:21,029] INFO in app: 任务调度器初始化完成
-[2026-04-24 16:59:21] - log_and_emit - INFO - [Engine] 任务调度器已启动
-[2026-04-24 16:59:21] - DatabaseLogHandler - INFO - [app] INFO in app: 任务调度器初始化完成
-[2026-04-24 16:59:21] - DatabaseLogHandler - DEBUG - [app] DEBUG in app: Registering blueprints...
-[2026-04-24 16:59:21,305] DEBUG in app: Registering blueprints...
-[2026-04-24 16:59:21] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal: Werkzeug appears to be used in a production deployment. Consider switching to a production web server instead.
-[2026-04-24 16:59:21] - DatabaseLogHandler - WARNING - [_internal] WARNING in _internal:  * Debugger is active!
-[2026-04-24 16:59:21] - DatabaseLogHandler - INFO - [_internal] INFO in _internal:  * Debugger PIN: 514-547-148
-[2026-04-24 16:59:30] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/tasks | Method: OPTIONS | Args: {"page": "1", "per_page": "100", "perPage": "100"}
-[2026-04-24 16:59:30] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:30] "OPTIONS /api/v1/tasks?page=1&per_page=100 HTTP/1.1" 200 -
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/tasks | Method: GET | Args: {"page": "1", "per_page": "100", "perPage": "100"}
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/tasks | Method: GET | Status: 200 | Response: {"code": 0, "data": {"items": [{"apis": [], "caseCount": 1, "completedAt": "2026-04-17T10:14:59.369075", "completedCases": 0, "config": {"concurrentTasks": 4, "parallel": true}, "createdAt": "2026-04-17T10:13:57.262993", "deviceCount": 1, "devices": [{"id": 16, "model": "BKQ_AN10", "name": "Plaud", "status": "online"}], "failedCases": 1, "id": 285, "name": "E2E测试任务_2026/4/17 10:13:50", "reports": {"count": 1, "reports": [{"createdAt": "2026-04-17T10:14:59.989150", "id": 11, "name": "任务报告_E2E测试任务
-[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "GET /api/v1/tasks?page=1&per_page=100 HTTP/1.1" 200 -
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/algorithm/options | Method: OPTIONS
-[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "OPTIONS /api/v1/algorithm/options HTTP/1.1" 200 -
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/algorithm/options | Method: GET
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/logs | Method: OPTIONS | Args: {"module": "task"}
-[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "OPTIONS /api/v1/logs?module=task HTTP/1.1" 200 -
-[2026-04-24 16:59:31] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/algorithm/options | Method: GET | Status: 200 | Response: {"code": 0, "data": {"algorithms": [{"groupId": 1, "groupName": "翻译", "icon": "", "name": "机器翻译", "value": "translation"}, {"groupId": 2, "groupName": "语音识别", "icon": "", "name": "语音识别(ASR)", "value": "asr"}, {"groupId": 3, "groupName": "声纹识别", "icon": "", "name": "说话人识别", "value": "speaker_recognition"}, {"groupId": 4, "groupName": "语音合成", "icon": null, "name": "语音合成(TTS)", "value": "tts"}, {"groupId": null, "groupName": null, "icon": null, "name": "ASR评估", "value": "asr_eval"}]}, "message": "S
-[2026-04-24 16:59:31] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:31] "GET /api/v1/algorithm/options HTTP/1.1" 200 -
-[2026-04-24 16:59:32] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/logs | Method: GET | Args: {"module": "task"}
-[2026-04-24 16:59:32] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/logs | Method: GET | Status: 200 | Response: {"code": 0, "data": {"items": [], "page": 1, "pages": 0, "perPage": 50, "total": 0}, "message": "Success", "success": true}
-[2026-04-24 16:59:32] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:32] "GET /api/v1/logs?module=task HTTP/1.1" 200 -
-[2026-04-24 16:59:37] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/evaluation/task/reevaluate | Method: OPTIONS
-[2026-04-24 16:59:37] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:37] "OPTIONS /api/v1/evaluation/task/reevaluate HTTP/1.1" 200 -
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [before_request] API Request - URL: /api/v1/evaluation/task/reevaluate | Method: POST | Body: {"task_id": 243, "reevaluate_type": "all", "reextract_device_output": true}
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 重新评估任务 243: 找到 2 条测试结果, reextract_device_output=True
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
-[2026-04-24 16:59:38] - log_worker - INFO - Worker thread started.
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
-[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
-    result = driver.extract_results_from_archive(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
-    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: '<' not supported between instances of 'float' and 'NoneType'
+toolName: no_need_execute
+            
+status: no_need_execute
+          
+          
 
-[2026-04-24 16:59:38] - DatabaseLogHandler - WARNING - [device_result_reextractor] WARNING in device_result_reextractor: 跳过 test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a: 提取结果格式异常
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 重新提取设备输出完成: 成功重新提取 0 个用例
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 检查结果 317: execution_status=completed, has_algorithm_result=True
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 结果 317: test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a, reference_params_count=3
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
-[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
-    result = driver.extract_results_from_archive(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
-    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: '<' not supported between instances of 'float' and 'NoneType'
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\models\algorithm_models.py
+          
 
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [evaluation] 从存档提取设备输出返回格式异常: <class 'dict'>
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 检查结果 316: execution_status=completed, has_algorithm_result=True
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [evaluation] 结果 316: test_case_id=47d09e9d-7b6a-44ed-aede-53d70fe0de0a, reference_params_count=3
-[2026-04-24 16:59:38] - log_and_emit - INFO - [evaluation] 开始从存档提取设备输出: device_system=HarmonyOS, device_keywords=harden, huiji, 慧记, device_id=3QC0124C11000914
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 从存档提取结果，路径: C:\S2TT\auto_test\ver8\static\case_result\243\47d09e9d_7b6a_44ed_aede_53d70fe0de0a\3QC0124C11000914\log
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/20/2026, 5:46:50 PM -> 2026-03-20 17:46:50 -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026220174648-7cd7e064-1419-4ec3-80dd-a00ab217baf8.txt -> 64010s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:56:02 PM -> 2026-03-25 15:56:02 -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-0169eb23-0b36-4825-9527-bdb7cd3f7733.txt -> 57362s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 解析日志时间戳: 3/25/2026, 3:55:52 PM -> 2026-03-25 15:55:52 -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [DeviceDriver] 使用日志时间戳: asr-2026225155550-9c3a845b-9704-490b-80a1-2618883e3cfa.txt -> 57352s
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [DeviceDriver] 去重后ASR文件数量(3)仍超过2个，将只使用前2个
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] ASR时间戳差值: 57362 - 57352 = 10.0s (作为第二个文件的offset)
-[2026-04-24 16:59:38] - log_and_emit - INFO - [DeviceDriver] 第二个ASR文件已添加offset: 10.0s
-[2026-04-24 16:59:38] - log_and_emit - ERROR - [evaluation] 提取设备输出异常: '<' not supported between instances of 'float' and 'NoneType', traceback: Traceback (most recent call last):
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\evaluation_controller.py", line 1308, in _extract_device_output_from_archive
-    result = driver.extract_results_from_archive(
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\device_driver\harmony_xiaoyihuiji_driver.py", line 649, in extract_results_from_archive
-    if fix_first_ts < asr['first_ts'] and fix_last_ts < asr['first_ts']:
-       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: '<' not supported between instances of 'float' and 'NoneType'
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\schemas\algorithm.py
+          
 
-[2026-04-24 16:59:38] - log_and_emit - WARNING - [evaluation] 从存档提取设备输出返回格式异常: <class 'dict'>
-[2026-04-24 16:59:38] - log_and_emit - DEBUG - [after_request] API Response - URL: /api/v1/evaluation/task/reevaluate | Method: POST | Status: 400 | Response: {"code": 203, "message": "没有需要重新评估的用例", "success": false}
-[2026-04-24 16:59:38] - DatabaseLogHandler - INFO - [_internal] INFO in _internal: 127.0.0.1 - - [24/Apr/2026 16:59:38] "POST /api/v1/evaluation/task/reevaluate HTTP/1.1" 400 -
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\algorithm_controller.py
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+现在读取前端文件中 `autoSaveReferenceParams` 函数的部分：
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+以下是您请求的所有文件指定区段的完整内容：
+
+---
+
+## 1. `AlgorithmReferenceParam` 类定义
+
+**文件路径：** `c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\models\algorithm_models.py`（第 200-233 行）
+
+```
+200  class AlgorithmReferenceParam(db.Model):
+201      """算法参考参数定义表 - 单个算法专用"""
+202  
+203      __tablename__ = 'algorithm_reference_params'
+204  
+205      id = Column(Integer, primary_key=True, autoincrement=True)
+206      algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
+207      code = Column(String(50), nullable=False, comment='参数代码')
+208      name = Column(String(100), comment='参数显示名称')
+209      param_type = Column(String(30), default='text', comment='参考类型：text, audio, json, rttm, stm')
+210      annotation_code = Column(String(100), nullable=True, comment='关联的音频标注代码（匹配AudioAnnotation.code）')
+211      annotation_format = Column(String(20), nullable=True, comment='关联的音频标注格式（text/json/rttm/stm）')
+212      help_text = Column(Text, comment='帮助提示文字')
+213      deleted = Column(Boolean, default=False, comment='逻辑删除标志')
+214      created_at = Column(DateTime, default=datetime.now, comment='创建时间')
+215      updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
+216  
+217      __table_args__ = (
+218          UniqueConstraint('algorithm_type', 'code', name='uq_algorithm_reference_param_code'),
+219      )
+220  
+221      def to_dict(self):
+222          return {
+223              'id': self.id,
+224              'algorithm_type': self.algorithm_type,
+225              'code': self.code,
+226              'name': self.name,
+227              'type': self.param_type,
+228              'annotation_code': self.annotation_code,
+229              'annotation_format': self.annotation_format,
+230              'help_text': self.help_text,
+231              'created_at': self.created_at.isoformat() if self.created_at else None,
+232              'updated_at': self.updated_at.isoformat() if self.updated_at else None
+233          }
+```
+
+---
+
+## 2. `ReferenceParamCreateRequest` 和 `ReferenceParamUpdateRequest` 类
+
+**文件路径：** `c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\schemas\algorithm.py`（第 686-709 行）
+
+```
+686  class ReferenceParamCreateRequest(BaseModel):
+687      """创建参考参数请求"""
+688      algorithm_type: str = Field(..., validation_alias='algorithmType')
+689      code: str = Field(...)
+690      name: Optional[str] = Field(None)
+691      type: str = Field(default='text')
+692      annotation_code: Optional[str] = Field(None, validation_alias='annotationCode')
+693      annotation_format: Optional[str] = Field(None, validation_alias='annotationFormat')
+694      help_text: Optional[str] = Field(None, validation_alias='helpText')
+695  
+696      model_config = {'populate_by_name': True}
+697  
+698  
+699  class ReferenceParamUpdateRequest(BaseModel):
+700      """更新参考参数请求"""
+701      algorithm_type: Optional[str] = Field(None, validation_alias='algorithmType')
+702      code: Optional[str] = Field(None)
+703      name: Optional[str] = Field(None)
+704      type: Optional[str] = Field(None)
+705      annotation_code: Optional[str] = Field(None, validation_alias='annotationCode')
+706      annotation_format: Optional[str] = Field(None, validation_alias='annotationFormat')
+707      help_text: Optional[str] = Field(None, validation_alias='helpText')
+708  
+709      model_config = {'populate_by_name': True}
+```
+
+---
+
+## 3. `create_reference_param()` 和 `update_reference_param()` 函数
+
+**文件路径：** `c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\algorithm_controller.py`（第 896-985 行）
+
+```
+896  def list_reference_params():
+897      """获取参考参数列表"""
+898      algorithm_type = request.args.get('algorithm_type')
+899      
+900      if not algorithm_type:
+901          return error_response('algorithm_type is required')
+902      
+903      params = AlgorithmReferenceParam.query.filter_by(
+904          algorithm_type=algorithm_type, deleted=False
+905      ).order_by(AlgorithmReferenceParam.id).all()
+906      
+907      return success_response({
+908          'parameters': [p.to_dict() for p in params],
+909          'total': len(params)
+910      })
+911  
+912  
+913  def create_reference_param():
+914      """创建参考参数"""
+915      try:
+916          req = ReferenceParamCreateRequest.model_validate(request.get_json())
+917      except Exception as e:
+918          return error_response(f"请求数据验证失败: {str(e)}", 400)
+919  
+920      existing = AlgorithmReferenceParam.query.filter_by(
+921          algorithm_type=req.algorithm_type, code=req.code, deleted=False
+922      ).first()
+923      if existing:
+924          return error_response(f"Reference parameter '{req.code}' already exists for algorithm '{req.algorithm_type}'")
+925      
+926      new_param = AlgorithmReferenceParam(
+927          algorithm_type=req.algorithm_type,
+928          code=req.code,
+929          name=req.name or '',
+930          param_type=req.type or 'text',
+931          annotation_code=req.annotation_code,
+932          annotation_format=req.annotation_format,
+933          help_text=req.help_text or ''
+934      )
+935      db.session.add(new_param)
+936      db.session.commit()
+937      
+938      return success_response(new_param.to_dict(), 'Reference parameter created')
+939  
+940  
+941  def update_reference_param(param_id: int):
+942      """更新参考参数"""
+943      try:
+944          req = ReferenceParamUpdateRequest.model_validate(request.get_json())
+945      except Exception as e:
+946          return error_response(f"请求数据验证失败: {str(e)}", 400)
+947      
+948      relation = AlgorithmReferenceParam.query.filter_by(
+949          id=param_id, deleted=False
+950      ).first()
+951      
+952      if not relation:
+953          return error_response('Reference parameter not found', 404)
+954      
+955      if req.code:
+956          relation.code = req.code
+957      if req.name is not None:
+958          relation.name = req.name
+959      if req.type:
+960          relation.param_type = req.type
+961      if req.annotation_code is not None:
+962          relation.annotation_code = req.annotation_code
+963      if req.annotation_format is not None:
+964          relation.annotation_format = req.annotation_format
+965      if req.help_text is not None:
+966          relation.help_text = req.help_text
+967      
+968      db.session.commit()
+969      
+970      return success_response(relation.to_dict(), 'Reference parameter updated')
+971  
+972  
+973  def delete_reference_param(param_id: int):
+974      """删除参考参数"""
+975      param = AlgorithmReferenceParam.query.filter_by(
+976          id=param_id, deleted=False
+977      ).first()
+978      
+979      if not param:
+980          return error_response('Reference parameter not found', 404)
+981      
+982      param.deleted = True
+983      db.session.commit()
+984      
+985      return success_response(None, 'Reference parameter deleted')
+```
+
+---
+
+## 4. 前端参考参数表格和 `autoSaveReferenceParams` 函数
+
+**文件路径：** `c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue`
+
+### 参考参数表格部分（第 312-396 行）
+
+```
+312          <div v-show="activeTab === 'reference'" class="tab-content">
+313            <div class="reference-config-intro">
+314              <p>配置算法的参考参数，用于存储参考文本、音频、文件等数据。</p>
+315              <p>参考类型支持：文本、音频、RTTM、STM等。配置的参考字段可参与评估参数映射。</p>
+316            </div>
+317  
+318            <div class="params-toolbar">
+319              <button class="btn btn-primary btn-sm" @click="handleAddReferenceParam">
+320                <i class="fas fa-plus btn-icon"></i>添加参考字段
+321              </button>
+322            </div>
+323  
+324            <div class="table-container">
+325              <table class="data-table" style="table-layout: fixed;">
+326                <thead>
+327                  <tr>
+328                    <th style="width: 120px;">参数代码</th>
+329                    <th style="width: 100px;">参数名称</th>
+330                    <th style="width: 100px;">参考类型</th>
+331                    <th style="width: 120px;">标注代码</th>
+332                    <th style="width: 100px;">标注格式</th>
+333                    <th style="width: 120px;">帮助文本</th>
+334                    <th style="width: 60px;">操作</th>
+335                  </tr>
+336                </thead>
+337                <tbody>
+338                  <tr v-if="formState.reference_params.length === 0">
+339                    <td colspan="7" class="empty-row">暂无参考参数</td>
+340                  </tr>
+341                  <tr v-else v-for="(param, index) in formState.reference_params" :key="param.id || param.tempId || index">
+342                    <td>
+343                      <input type="text" class="form-input form-input-sm" v-model="param.code" placeholder="如: asr_reference_text" @blur="handleReferenceParamBlur(param, index)">
+344                    </td>
+345                    <td>
+346                      <input type="text" class="form-input form-input-sm" v-model="param.name" placeholder="参数名称" @blur="handleReferenceParamBlur(param, index)">
+347                    </td>
+348                    <td>
+349                      <select class="form-input form-input-sm" v-model="param.type" @change="handleReferenceParamBlur(param, index)">
+350                        <option value="text">文本</option>
+351                        <option value="audio">音频</option>
+352                        <option value="json">JSON</option>
+353                        <option value="rttm">RTTM</option>
+354                        <option value="stm">STM</option>
+355                      </select>
+356                    </td>
+357                    <td>
+358                      <div class="annotation-name-input-group" style="display: flex; flex-wrap: wrap; gap: 4px;">
+359                        <select class="form-input form-input-sm" v-model="param.annotation_code" @change="handleReferenceParamBlur(param, index)">
+360                          <option value="">自定义...</option>
+361                          <option value="diarization">diarization</option>
+362                          <option value="asr">asr</option>
+363                          <option value="translation">translation</option>
+364                        </select>
+365                        <input 
+366                          v-if="!param.annotation_code || !['diarization', 'asr', 'translation'].includes(param.annotation_code)"
+367                          type="text" 
+368                          class="form-input form-input-sm" 
+369                          v-model="param.annotation_code" 
+370                          placeholder="自定义名称"
+371                          @blur="handleReferenceParamBlur(param, index)"
+372                        >
+373                      </div>
+374                    </td>
+375                    <td>
+376                      <select class="form-input form-input-sm" v-model="param.annotation_format" @change="handleReferenceParamBlur(param, index)">
+377                        <option value="">不指定</option>
+378                        <option value="text">文本</option>
+379                        <option value="json">JSON</option>
+380                        <option value="rttm">RTTM</option>
+381                        <option value="stm">STM</option>
+382                      </select>
+383                    </td>
+384                    <td>
+385                      <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="可选提示" @blur="handleReferenceParamBlur(param, index)">
+386                    </td>
+387                    <td>
+388                      <button class="btn btn-text btn-sm btn-danger" @click="handleRemoveReferenceParam(index)">
+389                        <i class="fas fa-trash btn-icon"></i>
+390                      </button>
+391                    </td>
+392                  </tr>
+393                </tbody>
+394              </table>
+395            </div>
+396          </div>
+```
+
+### `handleReferenceParamBlur` 和 `autoSaveReferenceParams` 函数（第 1260-1289 行）
+
+```
+1260  async function handleReferenceParamBlur(param: any, index: number) {
+1261    if (!formState.type || !param.code) return
+1262    if (referenceParamSaveTimeout) clearTimeout(referenceParamSaveTimeout)
+1263    referenceParamSaveTimeout = setTimeout(async () => {
+1264      await autoSaveReferenceParams(param, index)
+1265    }, 1000)
+1266  }
+1267  
+1268  async function autoSaveReferenceParams(param: any, index: number) {
+1269    if (!formState.type || !param.code) return
+1270    try {
+1271      const bodyData = {
+1272        code: param.code,
+1273        name: param.name,
+1274        type: param.type,
+1275        annotation_code: param.annotation_code || null,
+1276        annotation_format: param.annotation_format || null,
+1277        help_text: param.help_text
+1278      }
+1279      let result
+1280      if (param.id) {
+1281        result = await algorithmApi.updateReferenceParam(param.id, formState.type, bodyData)
+1282      } else {
+1283        result = await algorithmApi.createReferenceParam({ ...bodyData, algorithm_type: formState.type })
+1284        param.id = result.id
+1285      }
+1286    } catch (error) {
+1287      console.error('自动保存参考参数失败:', error)
+1288    }
+1289  }
+```
+
+---
+
+以上即为所请求的全部四个文件指定区段的完整内容，包含精确行号。
+        
+          
+开始实现。涉及 5 个文件，我并行改。
+
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\models\algorithm_models.py
+          
+changes: undefined
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\models\algorithm_models.py
+          
+changes: undefined
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\schemas\algorithm.py
+          
+changes: undefined
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\algorithm_controller.py
+          
+changes: undefined
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\controllers\algorithm_controller.py
+          
+changes: undefined
+          
+现在改核心生成器。先加 `_extract_field_from_audios` 函数，再改 `_generate_single_param` 的分支逻辑。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\utils\algorithm\reference_params_generator.py
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\utils\algorithm\reference_params_generator.py
+          
+changes: undefined
+          
+现在在 `_generate_single_param` 里加 `field_path` 分支。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\utils\algorithm\reference_params_generator.py
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\utils\algorithm\reference_params_generator.py
+          
+changes: undefined
+          
+后端改完了。现在改前端，在参考参数表格加"字段路径"和"合并方式"两列。
+
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+changes: undefined
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+changes: undefined
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+changes: undefined
+          
+还需要检查添加新参考参数时的默认值。
+
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: handleAddReferenceParam
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+changes: undefined
+          
+最后需要处理数据库迁移，给现有表加两个新列。
+
+
+        
+            
+toolName: file_search
+            
+status: success
+          
+file_pattern: **/alembic*
+          
+
+        
+            
+toolName: file_search
+            
+status: success
+          
+file_pattern: **/migrations/**
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\scripts\migrations\202506\extend_param_type.py
+          
+
+        
+            
+toolName: Write
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\scripts\migrations\202506\add_field_path_to_ref_params.py
+          
+changes: undefined
+          
+还需要检查前端加载参考参数时是否正确映射新字段。
+
+
+        
+            
+toolName: search_by_regex
+            
+status: success
+          
+query: reference_params
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+changes: undefined
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+changes: undefined
+          
+
+        
+            
+toolName: edit_file_search_replace
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+changes: undefined
+          
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmConfigModal.vue
+          
+所有改动完成。让我做最终验证。
+
+
+        
+            
+toolName: view_files
+            
+status: success
+          
+            
+filePath: c:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST\backend\utils\algorithm\reference_params_generator.py
+          
+全部改完了。总结一下：
+
+## 改动清单
+
+### 后端（4 个文件）
+
+| 文件 | 改动 |
+|------|------|
+| [algorithm_models.py](file:///c:/S2TT/auto_test/ver8/202604231600/Intelligent-Audio-TEST/backend/models/algorithm_models.py#L212-L213) | 模型加 `field_path`、`merge_mode` 列，`to_dict()` 输出新字段 |
+| [algorithm.py](file:///c:/S2TT/auto_test/ver8/202604231600/Intelligent-Audio-TEST/backend/schemas/algorithm.py#L694-L695) | Schema 加 `field_path`、`merge_mode` 字段验证 |
+| [algorithm_controller.py](file:///c:/S2TT/auto_test/ver8/202604231600/Intelligent-Audio-TEST/backend/controllers/algorithm_controller.py#L933-L934) | CRUD 处理新字段的创建和更新 |
+| [reference_params_generator.py](file:///c:/S2TT/auto_test/ver8/202604231600/Intelligent-Audio-TEST/backend/utils/algorithm/reference_params_generator.py#L280-L286) | 新增 `_extract_field_from_audios()` 函数 + `_generate_single_param` 加 `field_path` 分支 |
+
+### 前端（1 个文件）
+
+| 文件 | 改动 |
+|------|------|
+| [AlgorithmConfigModal.vue](file:///c:/S2TT/auto_test/ver8/202604231600/Intelligent-Audio-TEST/frontend/src/components/algorithm/AlgorithmConfigModal.vue#L333-L334) | 表格加"字段路径"和"合并方式"两列，类型定义、加载映射、保存数据、新增默认值全部补上 |
+
+### 数据库迁移（1 个文件）
+
+| 文件 | 说明 |
+|------|------|
+| [add_field_path_to_ref_params.py](file:///c:/S2TT/auto_test/ver8/202604231600/Intelligent-Audio-TEST/backend/scripts/migrations/202506/add_field_path_to_ref_params.py) | ALTER TABLE 加两列，可重复执行 |
+
+## 使用方式
+
+在算法配置的"参考参数"标签页，新增一行：
+
+| 参数代码 | 参考类型 | 标注代码 | 字段路径 | 合并方式 |
+|---------|---------|---------|---------|---------|
+| `ref_model` | text | asr | `model` | collect |
+| `ref_emotions` | json | asr | `segments[].emotion` | collect |
+| `ref_noise` | text | asr | `noise_type` | first |
+
+- **字段路径为空** → 走原有逻辑（提取 text/segments/rttm/stm）
+- **字段路径有值** → 按路径从标注 data 提取，按合并方式处理多音频
+
+部署前需要运行迁移脚本：
+```bash
+python backend/scripts/migrations/202506/add_field_path_to_ref_params.py
+```

@@ -280,71 +280,61 @@ export interface DistributionStat {
   value: string | number;
 }
 
-export const calculateDistributionStats = (data: any): DistributionStat[] => {
-  let allData: number[] = [];
-  
-  if (data.rawData && Array.isArray(data.rawData)) {
-    allData = data.rawData.filter((val: any) => typeof val === 'number' && !isNaN(val));
-  } else {
-    data.datasets.forEach((dataset: any) => {
-      if (dataset.data) {
-        allData.push(...dataset.data.filter((val: any) => typeof val === 'number' && !isNaN(val)));
-      }
-    });
-  }
-  
+const emptyDistributionStats: DistributionStat[] = [
+  { label: '样本数量', value: 0 },
+  { label: '平均值 (μ)', value: '0.00' },
+  { label: '标准差 (σ)', value: '0.00' },
+  { label: '最小值', value: '0.00' },
+  { label: '下四分位数 (Q1)', value: '0.00' },
+  { label: '中位数 (Q2)', value: '0.00' },
+  { label: '上四分位数 (Q3)', value: '0.00' },
+  { label: '最大值', value: '0.00' },
+  { label: 'μ+1σ 内百分比', value: '0.0%' },
+  { label: 'μ+2σ 内百分比', value: '0.0%' },
+  { label: 'μ+3σ 内百分比', value: '0.0%' },
+  { label: '超出+3σ 百分比', value: '0.0%' },
+  { label: 'μ-1σ 内百分比', value: '0.0%' },
+  { label: 'μ-2σ 内百分比', value: '0.0%' },
+  { label: 'μ-3σ 内百分比', value: '0.0%' },
+  { label: '超出-3σ 百分比', value: '0.0%' }
+];
+
+const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
   if (allData.length === 0) {
-    return [
-      { label: '样本数量', value: 0 },
-      { label: '平均值 (μ)', value: '0.00' },
-      { label: '标准差 (σ)', value: '0.00' },
-      { label: '最小值', value: '0.00' },
-      { label: '下四分位数 (Q1)', value: '0.00' },
-      { label: '中位数 (Q2)', value: '0.00' },
-      { label: '上四分位数 (Q3)', value: '0.00' },
-      { label: '最大值', value: '0.00' },
-      { label: 'μ+1σ 内百分比', value: '0.0%' },
-      { label: 'μ+2σ 内百分比', value: '0.0%' },
-      { label: 'μ+3σ 内百分比', value: '0.0%' },
-      { label: '超出+3σ 百分比', value: '0.0%' },
-      { label: 'μ-1σ 内百分比', value: '0.0%' },
-      { label: 'μ-2σ 内百分比', value: '0.0%' },
-      { label: 'μ-3σ 内百分比', value: '0.0%' },
-      { label: '超出-3σ 百分比', value: '0.0%' }
-    ];
+    return emptyDistributionStats;
   }
-  
+
   const count = allData.length;
   const sum = allData.reduce((acc, val) => acc + val, 0);
   const mean = sum / count;
-  
+
   const squaredDifferences = allData.map(val => Math.pow(val - mean, 2));
   const variance = squaredDifferences.reduce((acc, val) => acc + val, 0) / count;
   const stdDev = Math.sqrt(variance);
-  
+
   const sortedData = [...allData].sort((a, b) => a - b);
   const min = sortedData[0];
   const max = sortedData[count - 1];
-  const median = count % 2 === 0 
-    ? (sortedData[count / 2 - 1] + sortedData[count / 2]) / 2 
+  const median = count % 2 === 0
+    ? (sortedData[count / 2 - 1] + sortedData[count / 2]) / 2
     : sortedData[Math.floor(count / 2)];
   const q1Index = Math.floor(count / 4);
   const q1 = sortedData[q1Index];
   const q3Index = Math.floor((count * 3) / 4);
   const q3 = sortedData[q3Index];
-  
+
   const calculatePercent = (value: number) => `${((value / count) * 100).toFixed(1)}%`;
-  
+
   const aboveMeanWithin1Sigma = allData.filter(val => val > mean && val <= mean + stdDev).length;
   const aboveMeanWithin2Sigma = allData.filter(val => val > mean + stdDev && val <= mean + 2 * stdDev).length;
   const aboveMeanWithin3Sigma = allData.filter(val => val > mean + 2 * stdDev && val <= mean + 3 * stdDev).length;
   const aboveMeanOutside3Sigma = allData.filter(val => val > mean + 3 * stdDev).length;
-  
+
   const belowMeanWithin1Sigma = allData.filter(val => val < mean && val >= mean - stdDev).length;
   const belowMeanWithin2Sigma = allData.filter(val => val < mean - stdDev && val >= mean - 2 * stdDev).length;
   const belowMeanWithin3Sigma = allData.filter(val => val < mean - 2 * stdDev && val >= mean - 3 * stdDev).length;
   const belowMeanOutside3Sigma = allData.filter(val => val < mean - 3 * stdDev).length;
-  
+
   return [
     { label: '样本数量', value: count },
     { label: '平均值 (μ)', value: mean.toFixed(2) },
@@ -363,4 +353,33 @@ export const calculateDistributionStats = (data: any): DistributionStat[] => {
     { label: 'μ-3σ 内百分比', value: calculatePercent(belowMeanWithin3Sigma) },
     { label: '超出-3σ 百分比', value: calculatePercent(belowMeanOutside3Sigma) }
   ];
+};
+
+export const calculateDistributionStats = (data: any): DistributionStat[] => {
+  let allData: number[] = [];
+
+  if (data.rawData && Array.isArray(data.rawData)) {
+    allData = data.rawData.filter((val: any) => typeof val === 'number' && !isNaN(val));
+  } else {
+    data.datasets.forEach((dataset: any) => {
+      if (dataset.data) {
+        allData.push(...dataset.data.filter((val: any) => typeof val === 'number' && !isNaN(val)));
+      }
+    });
+  }
+
+  return calculateStatsFromData(allData);
+};
+
+export const calculateDistributionStatsByDevice = (data: any): { [device: string]: DistributionStat[] } => {
+  const result: { [device: string]: DistributionStat[] } = {};
+
+  if (data.deviceRawData && typeof data.deviceRawData === 'object') {
+    Object.keys(data.deviceRawData).forEach(device => {
+      const deviceData = (data.deviceRawData[device] || []).filter((val: any) => typeof val === 'number' && !isNaN(val));
+      result[device] = calculateStatsFromData(deviceData);
+    });
+  }
+
+  return result;
 };

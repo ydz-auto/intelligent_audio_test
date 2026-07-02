@@ -182,7 +182,7 @@ class TagCategoryCreateSchema(APIModel):
 
 
 class TagCategoryUpdateSchema(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
+    id: Optional[int] = Field(None, alias='id', validation_alias='id')
     name: Optional[str] = Field(None, alias='name', validation_alias='name')
     description: Optional[str] = Field(None, alias='description', validation_alias='description')
     color: Optional[str] = Field(None, alias='color', validation_alias='color')
@@ -213,7 +213,7 @@ class TagCreateSchema(APIModel):
 
 
 class TagUpdateSchema(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
+    id: Optional[int] = Field(None, alias='id', validation_alias='id')
     name: Optional[str] = Field(None, alias='name', validation_alias='name')
     description: Optional[str] = Field(None, alias='description', validation_alias='description')
     color: Optional[str] = Field(None, alias='color', validation_alias='color')

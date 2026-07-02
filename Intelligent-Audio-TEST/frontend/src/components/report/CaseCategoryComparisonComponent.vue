@@ -1240,15 +1240,22 @@ const getChartData = (metricName) => {
     
     // 收集所有原始数据
     devices.value.forEach(device => {
+      // 后端返回的raw_data是按资源维度的，会被复制到每个类别下（同一数组引用），
+      // 需要按引用去重，避免同一份数据被重复累加N次（N=类别数）
+      const seenArrays = new Set();
       filteredCategories.value.forEach(category => {
         // 获取原始值数组
         const rawDataKey = `${metricName}_raw`;
         let rawData = [];
-        
+
         if (metricData.value && metricData.value[category] && metricData.value[category][device]) {
           rawData = metricData.value[category][device][rawDataKey] || [];
         }
-        
+
+        // 跳过已处理的相同数组引用（后端数据被复制到每个类别的情况）
+        if (seenArrays.has(rawData)) return;
+        seenArrays.add(rawData);
+
         // 添加到设备原始数据和总原始数据中
         deviceRawDataMap[device] = deviceRawDataMap[device].concat(rawData);
         allRawData = allRawData.concat(rawData);
@@ -1283,8 +1290,12 @@ const getChartData = (metricName) => {
     
     // 生成10个数据区间
     const intervals = 10;
-    const minValue = distribution.mean - 4 * distribution.stdDev;
+    let minValue = distribution.mean - 4 * distribution.stdDev;
     const maxValue = distribution.mean + 4 * distribution.stdDev;
+    // 如果所有数据都非负，将横轴下限限制为0，避免显示无意义的负值区间
+    if (minValue < 0 && allRawData.every(v => v >= 0)) {
+      minValue = 0;
+    }
     const intervalWidth = (maxValue - minValue) / intervals;
     
     const labels = [];
@@ -1343,7 +1354,11 @@ const getChartData = (metricName) => {
         };
       }),
       // 添加rawData字段，用于正态分布统计计算
-      rawData: allRawData
+      rawData: allRawData,
+      // 按设备分开的原始数据，用于按设备分别统计
+      deviceRawData: Object.fromEntries(
+        devices.value.map(d => [getResourceLabel(d), deviceRawDataMap[d] || []])
+      )
     };
     
     return chartData;

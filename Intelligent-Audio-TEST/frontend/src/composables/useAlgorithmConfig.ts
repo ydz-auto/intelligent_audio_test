@@ -348,6 +348,30 @@ export function useAlgorithmConfig() {
     return algorithms.value.filter(a => a.group_id === groupId)
   }
 
+  async function getCaseAlgorithmParams(algorithmType: string): Promise<any[]> {
+    if (!algorithmType) return []
+    try {
+      const result = await algorithmApi.getCaseParams(algorithmType)
+      const params = result?.parameters || []
+      // Transform camelCase to snake_case for compatibility
+      return params.map((p: any) => ({
+        ...p,
+        param_code: p.paramCode || p.param_code,
+        param_name: p.paramName || p.param_name,
+        param_type: p.paramType || p.param_type,
+        default_value: p.defaultValue ?? p.default_value,
+        help_text: p.helpText || p.help_text,
+        ui_order: p.uiOrder ?? p.ui_order,
+        options_field: p.optionsField || p.options_field,
+        options_label_field: p.optionsLabelField || p.options_label_field,
+        options_source: p.optionsSource || p.options_source,
+      }))
+    } catch (error) {
+      console.error('获取用例参数定义失败:', error)
+      return []
+    }
+  }
+
   function clearFormSchemaCache() {
     formSchemas.value.clear()
   }
@@ -363,6 +387,7 @@ export function useAlgorithmConfig() {
     getFormSchema,
     getParamOptions,
     getAssociatedDimensions,
+    getCaseAlgorithmParams,
     createAlgorithm,
     updateAlgorithm,
     deleteAlgorithm,
