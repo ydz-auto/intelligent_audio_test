@@ -1291,11 +1291,11 @@ const getChartData = (metricName) => {
       return {labels: [], datasets: [], rawData: allRawData};
     }
     
-    // 按标准差划分区间：以mean为中心，向两侧按σ/2步长划分，共16个区间
-    // 区间边界包含0和mean，使[0, mean)和[mean, mean+4σ]清晰可见
-    const step = distribution.stdDev / 2; // 每个区间宽度 = σ/2
-    let minValue = distribution.mean - 8 * step; // mean - 4σ
-    const maxValue = distribution.mean + 8 * step; // mean + 4σ
+    // 按标准差划分区间：以mean为中心，向两侧按σ/8步长划分，共约64个区间
+    // 区间细密，放大后自然展示更细的分布细节，无需动态重算
+    const step = distribution.stdDev / 8; // 每个区间宽度 = σ/8
+    let minValue = distribution.mean - 32 * step; // mean - 4σ
+    const maxValue = distribution.mean + 32 * step; // mean + 4σ
     // 如果所有数据都非负，横轴从0开始
     if (!allRawData.some(v => v < 0)) {
       minValue = 0;
