@@ -2,7 +2,7 @@
   <div class="chartStatsCard">
     <div class="statsHeader">
       <h4 class="statsCardTitle">统计信息</h4>
-      <div class="deviceTabs" v-if="deviceList.length > 1">
+      <div class="deviceTabs" v-if="deviceList.length >= 1">
         <button
           v-for="device in deviceList"
           :key="device"
@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { StatItem } from '@/shared/types';
 
 interface Props {
@@ -60,12 +60,19 @@ const deviceList = computed<string[]>(() => {
   return Object.keys(props.distributionStatsByDevice || {});
 });
 
+// 默认选中第一个设备
+watch(deviceList, (list) => {
+  if (list.length > 0 && !list.includes(selectedDevice.value)) {
+    selectedDevice.value = list[0];
+  }
+}, { immediate: true });
+
 const currentStats = computed<StatItem[]>(() => {
   if (deviceList.value.length === 0) {
     return props.distributionStats;
   }
   if (!selectedDevice.value) {
-    return props.distributionStats;
+    return props.distributionStatsByDevice[deviceList.value[0]] || props.distributionStats;
   }
   return props.distributionStatsByDevice[selectedDevice.value] || props.distributionStats;
 });

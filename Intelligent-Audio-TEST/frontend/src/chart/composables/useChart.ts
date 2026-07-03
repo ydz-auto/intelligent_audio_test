@@ -13,14 +13,19 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
   const distributionStats = ref<DistributionStat[]>([]);
   const distributionStatsByDevice = ref<{ [device: string]: DistributionStat[] }>({});
   const chartSubType = ref<'line' | 'bar'>('line');
+  const isSwitching = ref(false);
 
   const switchChartSubType = (type: 'line' | 'bar') => {
-    if (chartSubType.value === type) return;
+    if (chartSubType.value === type || isSwitching.value) return;
+    isSwitching.value = true;
     chartSubType.value = type;
+    // 先销毁旧图表，避免 zoom 插件引用已销毁的 canvas
+    destroyChart();
     nextTick(() => {
       if (chartCanvas.value && chartCanvas.value.isConnected) {
         initChart();
       }
+      isSwitching.value = false;
     });
   };
 
@@ -187,9 +192,10 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
         // 正态分布图：监听zoom/pan完成事件，在可见范围内重新分箱统计
         if (props.type === 'distribution' && chart.value.options?.plugins?.zoom) {
           let rebinTimer: ReturnType<typeof setTimeout> | null = null;
+          let isRebinning = false;
 
           const onZoomOrPanComplete = () => {
-            if (!chart.value || chart.value.destroyed) return;
+            if (!chart.value || chart.value.destroyed || isRebinning || isSwitching.value) return;
 
             const xScale = chart.value.scales?.x;
             if (!xScale) return;
@@ -202,18 +208,20 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
             // 防抖
             if (rebinTimer) clearTimeout(rebinTimer);
             rebinTimer = setTimeout(() => {
-              if (!chart.value || chart.value.destroyed) return;
+              if (!chart.value || chart.value.destroyed || isRebinning) return;
 
               // 重新分箱
               const newDatasets = rebinDistributionData(props.data, visibleMin, visibleMax);
               if (!newDatasets || newDatasets.length === 0) return;
 
               // 更新数据，用x轴min/max固定可见范围，不重置zoom避免触发回调
+              isRebinning = true;
               chart.value.data.datasets = newDatasets;
               if (!chart.value.options.scales.x) chart.value.options.scales.x = {};
               chart.value.options.scales.x.min = visibleMin;
               chart.value.options.scales.x.max = visibleMax;
               chart.value.update('none');
+              isRebinning = false;
             }, 300);
           };
 
@@ -363,6 +371,7 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
   };
 
   watch(() => props.data, () => {
+    if (isSwitching.value) return;
     nextTick(() => {
       if (chartCanvas.value && chartCanvas.value.isConnected) {
         initChart();

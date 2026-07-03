@@ -1191,13 +1191,12 @@ const getMetricValue = (tag, device, metricName) => {
       // 首先尝试直接使用device作为key查找数据
       let deviceData = tagData[device];
 
-      // 如果找不到，尝试使用resource key（包含ID前缀）查找数据
+      // 如果找不到，按名称匹配（去掉ID前缀）
       if (!deviceData || deviceData[metricName] === undefined) {
-        // 遍历tagData中的所有资源，找到名称匹配的资源
+        const deviceName = typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device;
         for (const [resourceKey, data] of Object.entries(tagData)) {
-          // 直接实现getResourceName的逻辑
-          const currentResourceName = resourceKey.includes('_') ? resourceKey.split('_').slice(1).join('_') : resourceKey;
-          if (currentResourceName === device) {
+          const currentResourceName = resourceKey.includes('-') ? resourceKey.split('-').slice(1).join('-') : resourceKey;
+          if (currentResourceName === deviceName) {
             deviceData = data;
             break;
           }
@@ -1226,10 +1225,11 @@ const getRawDataValue = (tag, device, metricName) => {
         return tagData[device][rawDataKey];
       }
 
-      // 2. 按名称匹配
+      // 2. 按名称匹配（去掉ID前缀）
+      const deviceName = typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device;
       for (const [resourceKey, data] of Object.entries(tagData)) {
-        const currentResourceName = resourceKey.includes('_') ? resourceKey.split('_').slice(1).join('_') : resourceKey;
-        if (currentResourceName === device && Array.isArray(data[rawDataKey])) {
+        const currentResourceName = resourceKey.includes('-') ? resourceKey.split('-').slice(1).join('-') : resourceKey;
+        if (currentResourceName === deviceName && Array.isArray(data[rawDataKey])) {
           return data[rawDataKey];
         }
       }

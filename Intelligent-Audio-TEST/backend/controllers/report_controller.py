@@ -573,32 +573,36 @@ class ReportController(ReportControllerBase):
             task_devices = TaskDevice.query.filter_by(task_id=task_id).all()
             task_apis = TaskAPI.query.filter_by(task_id=task_id).all()
             
-            # 构建带时间前缀的资源列表
-            time_prefix = ReportControllerBase.get_task_time_prefix(task)
+            # 构建资源列表（不带时间前缀，与主接口get_resource_name(use_time_prefix=False)一致）
             resources = []
             resource_headers = []
             for td in task_devices:
                 d = db.session.get(Device, td.device_id)
                 if d:
-                    key = f"{time_prefix}-{d.id}-{d.name.lower()}"
+                    version = getattr(d, "app_version", None)
+                    key = f"{d.id}-{d.name.lower()}"
+                    if version:
+                        key = f"{key}-{version}"
                     resources.append(key)
                     resource_headers.append(
                         {
                             "key": key,
-                            "label": ReportUtils._format_resource_label(task, d.name, getattr(d, "app_version", None), use_time_prefix=False) or key,
+                            "label": ReportUtils._format_resource_label(task, d.name, version, use_time_prefix=False) or key,
                             "type": "device",
                             "id": int(d.id),
                             "name": str(d.name),
-                            "version": str(getattr(d, "app_version", None)) if getattr(d, "app_version", None) is not None else None,
+                            "version": str(version) if version is not None else None,
                             "editable": True,
                         }
                     )
             for ta in task_apis:
                 a = db.session.get(API, ta.api_id)
                 if a:
-                    key = f"{time_prefix}-{a.id}-{a.name.lower()}"
-                    resources.append(key)
                     version = ReportUtils._extract_api_version(a)
+                    key = f"{a.id}-{a.name.lower()}"
+                    if version:
+                        key = f"{key}-{version}"
+                    resources.append(key)
                     resource_headers.append(
                         {
                             "key": key,
@@ -617,10 +621,21 @@ class ReportController(ReportControllerBase):
             accumulator = {}
             
             for result in test_results:
-                # 使用带时间前缀的资源名称
+                # 使用不带时间前缀的资源名称（与初始报告生成一致）
                 resource = ReportControllerBase.get_resource_name(result, task, use_time_prefix=False)
+                # 如果resource不在预构建的resources列表中，动态添加
                 if resource not in resources:
-                    continue
+                    resources.append(resource)
+                    resource_headers.append({
+                        "key": resource,
+                        "label": resource,
+                        "type": "device",
+                        "id": getattr(result, 'device_id', None) or getattr(result, 'api_id', None),
+                        "name": resource,
+                        "version": None,
+                        "editable": True,
+                    })
+                    raw_data[resource] = {dim.name: [] for dim in all_dimensions}
                 
                 test_case = db.session.get(TestCase, result.test_case_id)
                 if not test_case: continue

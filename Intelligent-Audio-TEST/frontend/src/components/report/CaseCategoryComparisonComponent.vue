@@ -1084,30 +1084,30 @@ const applyFilters = async () => {
 }
 
 const getMetricValue = (category, device, metricName) => {
-  // device 可能是 "ID_Name" 格式的字符串，也可能是包含 id 和 name 的对象
+  // device 可能是 "ID-Name" 格式的字符串，也可能是包含 id 和 name 的对象
   if (metricData.value) {
     const categoryData = metricData.value[category];
     if (categoryData) {
-      // 1. 尝试直接使用 device 查找（如果 device 是 "ID_Name" 字符串）
+      // 1. 尝试直接使用 device 查找
       if (categoryData[device] && categoryData[device][metricName] !== undefined) {
         return categoryData[device][metricName];
       }
 
       // 2. 如果 device 是对象，尝试构建 key 查找
       if (typeof device === 'object' && device !== null) {
-        const resourceKey = `${device.id}_${device.name}`;
+        const resourceKey = `${device.id}-${device.name}`;
         if (categoryData[resourceKey] && categoryData[resourceKey][metricName] !== undefined) {
           return categoryData[resourceKey][metricName];
         }
       }
 
-      // 3. 兜底：如果还是找不到，尝试按名称匹配（不推荐，但在数据不全时可用）
+      // 3. 兜底：按名称匹配（去掉ID前缀，用剩余部分匹配）
       const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
-                        (device.includes('_') ? device.split('_').slice(1).join('_') : device);
+                        (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device);
 
       const entries = Object.entries(categoryData);
       for (const [key, data] of entries) {
-        const currentResourceName = key.includes('_') ? key.split('_').slice(1).join('_') : key;
+        const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key;
         if (currentResourceName === deviceName && data[metricName] !== undefined) {
           return data[metricName];
         }
@@ -1131,18 +1131,18 @@ const getRawDataValue = (category, device, metricName) => {
 
       // 2. 如果 device 是对象，尝试构建 key 查找
       if (typeof device === 'object' && device !== null) {
-        const resourceKey = `${device.id}_${device.name}`;
+        const resourceKey = `${device.id}-${device.name}`;
         if (categoryData[resourceKey] && Array.isArray(categoryData[resourceKey][rawDataKey])) {
           return categoryData[resourceKey][rawDataKey];
         }
       }
 
-      // 3. 兜底：按名称匹配
+      // 3. 兜底：按名称匹配（去掉ID前缀，用剩余部分匹配）
       const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
-                        (typeof device === 'string' && device.includes('_') ? device.split('_').slice(1).join('_') : device);
+                        (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device);
       const entries = Object.entries(categoryData);
       for (const [key, data] of entries) {
-        const currentResourceName = key.includes('_') ? key.split('_').slice(1).join('_') : key;
+        const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key;
         if (currentResourceName === deviceName && Array.isArray(data[rawDataKey])) {
           return data[rawDataKey];
         }
