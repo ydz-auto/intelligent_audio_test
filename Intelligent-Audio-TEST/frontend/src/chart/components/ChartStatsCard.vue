@@ -24,15 +24,15 @@
 
     <h5 class="statsSectionTitle">正方向区间：</h5>
     <div class="statsGrid directionStats">
-      <div class="statItem" v-for="stat in currentStats.slice(8, 12)" :key="stat.label">
+      <div class="statItem" v-for="stat in positiveStats" :key="stat.label">
         <span class="statLabel">{{ stat.label }}</span>
         <span class="statValue">{{ stat.value }}</span>
       </div>
     </div>
 
-    <h5 class="statsSectionTitle">负方向区间：</h5>
-    <div class="statsGrid directionStats">
-      <div class="statItem" v-for="stat in currentStats.slice(12)" :key="stat.label">
+    <h5 class="statsSectionTitle" v-if="negativeStats.length > 0">负方向区间：</h5>
+    <div class="statsGrid directionStats" v-if="negativeStats.length > 0">
+      <div class="statItem" v-for="stat in negativeStats" :key="stat.label">
         <span class="statLabel">{{ stat.label }}</span>
         <span class="statValue">{{ stat.value }}</span>
       </div>
@@ -69,6 +69,19 @@ const currentStats = computed<StatItem[]>(() => {
     return props.distributionStats;
   }
   return props.distributionStatsByDevice[selectedDevice.value] || props.distributionStats;
+});
+
+// 前8个是基础统计，之后正方向在前，负方向在后（以"超出-(μ"标签为分界）
+const positiveStats = computed<StatItem[]>(() => {
+  const stats = currentStats.value.slice(8);
+  const negIdx = stats.findIndex(s => s.label.includes('超出-(') || s.label.includes('[-'));
+  return negIdx === -1 ? stats : stats.slice(0, negIdx);
+});
+
+const negativeStats = computed<StatItem[]>(() => {
+  const stats = currentStats.value.slice(8);
+  const negIdx = stats.findIndex(s => s.label.includes('超出-(') || s.label.includes('[-'));
+  return negIdx === -1 ? [] : stats.slice(negIdx);
 });
 </script>
 
