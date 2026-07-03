@@ -12,6 +12,17 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
   const hasData = ref(false);
   const distributionStats = ref<DistributionStat[]>([]);
   const distributionStatsByDevice = ref<{ [device: string]: DistributionStat[] }>({});
+  const chartSubType = ref<'line' | 'bar'>('line');
+
+  const switchChartSubType = (type: 'line' | 'bar') => {
+    if (chartSubType.value === type) return;
+    chartSubType.value = type;
+    nextTick(() => {
+      if (chartCanvas.value && chartCanvas.value.isConnected) {
+        initChart();
+      }
+    });
+  };
 
   const handleRetry = (retryCount: number, maxRetries = 3) => {
     if (retryCount < maxRetries) {
@@ -140,7 +151,7 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    const chartType = props.type === 'distribution' ? 'line' : props.type;
+    const chartType = props.type === 'distribution' ? chartSubType.value : props.type;
     let defaultOptions = getDefaultChartConfig();
     defaultOptions = applyChartTypeConfig(defaultOptions, props.type, props.title);
     const chartOptions = mergeUserOptions(defaultOptions, props.options, props.type, props.enableZoom);
@@ -405,5 +416,5 @@ export const useChart = (props: any, emit: any, chartCanvas: Ref<HTMLCanvasEleme
   watch(() => props.data, updateDataStatus, { deep: true });
   watch(() => props.type, updateDataStatus);
 
-  return { chart, hasData, distributionStats, distributionStatsByDevice, initChart, resetZoom, exportChart, mountChart, unmountChart };
+  return { chart, hasData, distributionStats, distributionStatsByDevice, initChart, resetZoom, exportChart, mountChart, unmountChart, chartSubType, switchChartSubType };
 };

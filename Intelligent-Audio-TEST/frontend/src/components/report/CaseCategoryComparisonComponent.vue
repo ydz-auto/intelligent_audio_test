@@ -1057,9 +1057,7 @@ const applyFilters = async () => {
         includeUntagged,
         categories: selectedCategories.value
       });
-      
-      console.log('API返回结果:', result);
-      
+
       // 更新内部metricData ref，触发重新渲染
       metricData.value = extractInitialMetricData(result);
       return
@@ -1094,7 +1092,7 @@ const getMetricValue = (category, device, metricName) => {
       if (categoryData[device] && categoryData[device][metricName] !== undefined) {
         return categoryData[device][metricName];
       }
-      
+
       // 2. 如果 device 是对象，尝试构建 key 查找
       if (typeof device === 'object' && device !== null) {
         const resourceKey = `${device.id}_${device.name}`;
@@ -1102,11 +1100,11 @@ const getMetricValue = (category, device, metricName) => {
           return categoryData[resourceKey][metricName];
         }
       }
-      
+
       // 3. 兜底：如果还是找不到，尝试按名称匹配（不推荐，但在数据不全时可用）
-      const deviceName = typeof device === 'object' ? (device.name || device.deviceName) : 
+      const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
                         (device.includes('_') ? device.split('_').slice(1).join('_') : device);
-      
+
       const entries = Object.entries(categoryData);
       for (const [key, data] of entries) {
         const currentResourceName = key.includes('_') ? key.split('_').slice(1).join('_') : key;
@@ -1116,9 +1114,43 @@ const getMetricValue = (category, device, metricName) => {
       }
     }
   }
-  
-  return 0 
+
+  return 0
 }
+
+// 获取原始值数组（与getMetricValue相同的查找逻辑，但返回_raw数组）
+const getRawDataValue = (category, device, metricName) => {
+  const rawDataKey = `${metricName}_raw`;
+  if (metricData.value) {
+    const categoryData = metricData.value[category];
+    if (categoryData) {
+      // 1. 直接用 device key 查找
+      if (categoryData[device] && Array.isArray(categoryData[device][rawDataKey])) {
+        return categoryData[device][rawDataKey];
+      }
+
+      // 2. 如果 device 是对象，尝试构建 key 查找
+      if (typeof device === 'object' && device !== null) {
+        const resourceKey = `${device.id}_${device.name}`;
+        if (categoryData[resourceKey] && Array.isArray(categoryData[resourceKey][rawDataKey])) {
+          return categoryData[resourceKey][rawDataKey];
+        }
+      }
+
+      // 3. 兜底：按名称匹配
+      const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
+                        (typeof device === 'string' && device.includes('_') ? device.split('_').slice(1).join('_') : device);
+      const entries = Object.entries(categoryData);
+      for (const [key, data] of entries) {
+        const currentResourceName = key.includes('_') ? key.split('_').slice(1).join('_') : key;
+        if (currentResourceName === deviceName && Array.isArray(data[rawDataKey])) {
+          return data[rawDataKey];
+        }
+      }
+    }
+  }
+  return [];
+};
 
 const getMetricDisplayValue = (category, device, metricName) => {
   return formatMetricForDisplay(metricName, getMetricValue(category, device, metricName))
@@ -1244,13 +1276,8 @@ const getChartData = (metricName) => {
       // 需要按引用去重，避免同一份数据被重复累加N次（N=类别数）
       const seenArrays = new Set();
       filteredCategories.value.forEach(category => {
-        // 获取原始值数组
-        const rawDataKey = `${metricName}_raw`;
-        let rawData = [];
-
-        if (metricData.value && metricData.value[category] && metricData.value[category][device]) {
-          rawData = metricData.value[category][device][rawDataKey] || [];
-        }
+        // 使用与getMetricValue相同的查找逻辑获取原始值数组
+        const rawData = getRawDataValue(category, device, metricName);
 
         // 跳过已处理的相同数组引用（后端数据被复制到每个类别的情况）
         if (seenArrays.has(rawData)) return;

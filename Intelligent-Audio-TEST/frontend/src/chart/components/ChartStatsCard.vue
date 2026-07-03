@@ -57,15 +57,14 @@ const props = withDefaults(defineProps<Props>(), {
 const selectedDevice = ref<string>('');
 
 const deviceList = computed<string[]>(() => {
-  const devices = Object.keys(props.distributionStatsByDevice || {});
-  return devices.length > 0 ? ['全部', ...devices] : [];
-  });
+  return Object.keys(props.distributionStatsByDevice || {});
+});
 
 const currentStats = computed<StatItem[]>(() => {
   if (deviceList.value.length === 0) {
     return props.distributionStats;
   }
-  if (selectedDevice.value === '' || selectedDevice.value === '全部') {
+  if (!selectedDevice.value) {
     return props.distributionStats;
   }
   return props.distributionStatsByDevice[selectedDevice.value] || props.distributionStats;
@@ -137,9 +136,10 @@ const negativeStats = computed<StatItem[]>(() => {
 }
 
 .deviceTab.active {
-  background: #1677FF;
-  border-color: #1677FF;
-  color: white;
+  background: #fff7e6;
+  border-color: #fa8c16;
+  color: #fa8c16;
+  box-shadow: 0 0 8px rgba(250, 140, 22, 0.4);
 }
 
 .statsGrid {

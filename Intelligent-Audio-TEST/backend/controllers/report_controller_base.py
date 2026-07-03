@@ -7,6 +7,7 @@ from backend.utils.query_utils import escape_like_pattern, sanitize_keyword, nor
 from backend.schemas.report import ReportDetailData, ReportListData, ReportListItem, ReportListItemSummary, ReportSummarySimplified, ReportListQuery, ReportCaseListQuery, ReportSearchCasesRequest
 from datetime import datetime
 from sqlalchemy.orm import joinedload, load_only
+from sqlalchemy.dialects.postgresql import JSONB
 import os
 import zipfile
 import json
@@ -483,7 +484,7 @@ class ReportControllerBase:
         
         if tags:
             for tag in tags:
-                query = query.filter(ReportCase.tags.contains([tag]))
+                query = query.filter(ReportCase.tags.cast(JSONB).contains([tag]))
         
         page = query_params.page
         per_page = query_params.per_page
@@ -686,7 +687,7 @@ class ReportControllerBase:
                 )
             elif tag_set:
                 for tag in tags:
-                    query = query.filter(ReportCase.tags.contains([tag]))
+                    query = query.filter(ReportCase.tags.cast(JSONB).contains([tag]))
         
         page = data.page
         per_page = data.per_page

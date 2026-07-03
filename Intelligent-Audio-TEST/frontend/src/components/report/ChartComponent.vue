@@ -6,11 +6,29 @@
     </div>
     
     <!-- 正态分布统计信息卡片 -->
-    <ChartStatsCard 
-      v-if="type === 'distribution' && hasData" 
-      :distributionStats="distributionStats" 
-      :distributionStatsByDevice="distributionStatsByDevice" 
+    <ChartStatsCard
+      v-if="type === 'distribution' && hasData"
+      :distributionStats="distributionStats"
+      :distributionStatsByDevice="distributionStatsByDevice"
     />
+
+    <!-- 正态分布图切换按钮 -->
+    <div class="chart-type-switcher" v-if="type === 'distribution' && hasData">
+      <button
+        class="switcher-btn"
+        :class="{ active: chartSubType === 'line' }"
+        @click="switchChartSubType('line')"
+      >
+        <i class="fas fa-chart-line"></i> 折线图
+      </button>
+      <button
+        class="switcher-btn"
+        :class="{ active: chartSubType === 'bar' }"
+        @click="switchChartSubType('bar')"
+      >
+        <i class="fas fa-chart-column"></i> 直方图
+      </button>
+    </div>
     
     <!-- 图表操作按钮 -->
     <ChartActions 
@@ -99,7 +117,7 @@ export default {
     // Canvas元素引用
     const chartCanvas = ref(null);
     const chartId = ref(`chart-${Date.now()}-${Math.floor(Math.random() * 1000)}`);
-    
+
     // 使用图表管理composable
     const {
       hasData,
@@ -108,19 +126,21 @@ export default {
       resetZoom,
       exportChart,
       mountChart,
-      unmountChart
+      unmountChart,
+      chartSubType,
+      switchChartSubType
     } = useChart(props, emit, chartCanvas);
-    
+
     // 组件挂载时初始化图表
     onMounted(() => {
       mountChart();
     });
-    
+
     // 组件销毁前销毁图表
     onBeforeUnmount(() => {
       unmountChart();
     });
-    
+
     return {
       chartCanvas,
       chartId,
@@ -128,7 +148,9 @@ export default {
       distributionStats,
       distributionStatsByDevice,
       resetZoom,
-      exportChart
+      exportChart,
+      chartSubType,
+      switchChartSubType
     };
   }
 };
@@ -143,6 +165,38 @@ export default {
   margin-bottom: 24px;
   box-sizing: border-box;
   width: 100%;
+}
+
+.chart-type-switcher {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.switcher-btn {
+  padding: 6px 16px;
+  border: 1px solid #d0d5dd;
+  border-radius: 4px;
+  background: white;
+  color: #64748b;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.switcher-btn:hover {
+  border-color: #fa8c16;
+  color: #fa8c16;
+}
+
+.switcher-btn.active {
+  background: #fff7e6;
+  border-color: #fa8c16;
+  color: #fa8c16;
+  box-shadow: 0 0 8px rgba(250, 140, 22, 0.4);
 }
 
 .chart-header {

@@ -1190,7 +1190,7 @@ const getMetricValue = (tag, device, metricName) => {
     if (tagData) {
       // 首先尝试直接使用device作为key查找数据
       let deviceData = tagData[device];
-      
+
       // 如果找不到，尝试使用resource key（包含ID前缀）查找数据
       if (!deviceData || deviceData[metricName] === undefined) {
         // 遍历tagData中的所有资源，找到名称匹配的资源
@@ -1203,16 +1203,40 @@ const getMetricValue = (tag, device, metricName) => {
           }
         }
       }
-      
+
       if (deviceData && deviceData[metricName] !== undefined) {
         return deviceData[metricName];
       }
     }
   }
-  
+
   // 如果没有真实数据，返回0作为默认值
-  return 0 
+  return 0
 }
+
+// 获取原始值数组（与getMetricValue相同的查找逻辑，但返回_raw数组）
+const getRawDataValue = (tag, device, metricName) => {
+  const rawDataKey = `${metricName}_raw`;
+  const dataToUse = filteredTagMetricData.value;
+  if (dataToUse) {
+    const tagData = dataToUse[tag];
+    if (tagData) {
+      // 1. 直接用 device key 查找
+      if (tagData[device] && Array.isArray(tagData[device][rawDataKey])) {
+        return tagData[device][rawDataKey];
+      }
+
+      // 2. 按名称匹配
+      for (const [resourceKey, data] of Object.entries(tagData)) {
+        const currentResourceName = resourceKey.includes('_') ? resourceKey.split('_').slice(1).join('_') : resourceKey;
+        if (currentResourceName === device && Array.isArray(data[rawDataKey])) {
+          return data[rawDataKey];
+        }
+      }
+    }
+  }
+  return [];
+};
 
 const getMetricDisplayValue = (tag, device, metricName) => {
   return formatMetricForDisplay(metricName, getMetricValue(tag, device, metricName))
@@ -1339,13 +1363,8 @@ const getChartData = (metricName) => {
       // 需要按引用去重，避免同一份数据被重复累加N次（N=标签数）
       const seenArrays = new Set();
       filteredTags.value.forEach(tag => {
-        // 获取原始值数组
-        const rawDataKey = `${metricName}_raw`;
-        let rawData = [];
-
-        if (filteredTagMetricData.value && filteredTagMetricData.value[tag] && filteredTagMetricData.value[tag][device]) {
-          rawData = filteredTagMetricData.value[tag][device][rawDataKey] || [];
-        }
+        // 使用与getMetricValue相同的查找逻辑获取原始值数组
+        const rawData = getRawDataValue(tag, device, metricName);
 
         // 跳过已处理的相同数组引用（后端数据被复制到每个标签的情况）
         if (seenArrays.has(rawData)) return;
