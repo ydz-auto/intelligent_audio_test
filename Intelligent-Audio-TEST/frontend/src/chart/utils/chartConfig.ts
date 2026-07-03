@@ -362,15 +362,11 @@ const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
   const aboveMeanWithin3Sigma = allData.filter(val => val > mean + 2 * stdDev && val <= mean + 3 * stdDev).length;
   const aboveMeanOutside3Sigma = allData.filter(val => val > mean + 3 * stdDev).length;
 
-  // 下方区间从0往μ方向递进，互不重叠
-  // [0, μ-3σ) → [μ-3σ, μ-2σ) → [μ-2σ, μ-σ) → [μ-σ, μ)
-  const b3 = Math.max(mean - 3 * stdDev, 0);
-  const b2 = Math.max(mean - 2 * stdDev, 0);
-  const b1 = Math.max(mean - stdDev, 0);
-  const belowSeg1 = allData.filter(val => val >= b3 && val < b2).length;  // [μ-3σ, μ-2σ)
-  const belowSeg2 = allData.filter(val => val >= b2 && val < b1).length;  // [μ-2σ, μ-σ)
-  const belowSeg3 = allData.filter(val => val >= b1 && val < mean).length; // [μ-σ, μ)
-  const belowOutside = allData.filter(val => val >= 0 && val < b3).length;  // [0, μ-3σ)
+  // [0, μ) 整体区间
+  const zeroToMean = allData.filter(val => val >= 0 && val < mean).length;
+  // [-μ, 0) 区间
+  const negMeanToZero = allData.filter(val => val >= -mean && val < 0).length;
+
   const hasNegative = min < 0;
 
   const stats = [
@@ -382,32 +378,29 @@ const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
     { label: '中位数 (Q2)', value: median.toFixed(2) },
     { label: '上四分位数 (Q3)', value: q3.toFixed(2) },
     { label: '最大值', value: max.toFixed(2) },
-    { label: '超出-3σ 百分比', value: calculatePercent(belowOutside) },
-    { label: '[μ-3σ, μ-2σ) 百分比', value: calculatePercent(belowSeg1) },
-    { label: '[μ-2σ, μ-σ) 百分比', value: calculatePercent(belowSeg2) },
-    { label: '[μ-σ, μ) 百分比', value: calculatePercent(belowSeg3) },
   ];
 
-  // 有负值数据时才显示负值区间
+  // 有负值时显示负方向区间（以 -μ 为基准，按 σ 递进）
   if (hasNegative) {
-    const negSeg3 = allData.filter(val => val >= -stdDev && val < 0).length;       // [-σ, 0)
-    const negSeg2 = allData.filter(val => val >= -2 * stdDev && val < -stdDev).length; // [-2σ, -σ)
-    const negSeg1 = allData.filter(val => val >= -3 * stdDev && val < -2 * stdDev).length; // [-3σ, -2σ)
-    const negOutside = allData.filter(val => val < -3 * stdDev).length;             // 超出-3σ（负方向）
-    // 插入到超出-3σ之前
-    stats.splice(8, 0,
-      { label: '超出-3σ(负方向) 百分比', value: calculatePercent(negOutside) },
-      { label: '[-3σ, -2σ) 百分比', value: calculatePercent(negSeg1) },
-      { label: '[-2σ, -σ) 百分比', value: calculatePercent(negSeg2) },
-      { label: '[-σ, 0) 百分比', value: calculatePercent(negSeg3) }
+    const negOutside = allData.filter(val => val < -(mean + 3 * stdDev)).length;
+    const negSeg3 = allData.filter(val => val >= -(mean + 3 * stdDev) && val < -(mean + 2 * stdDev)).length;
+    const negSeg2 = allData.filter(val => val >= -(mean + 2 * stdDev) && val < -(mean + stdDev)).length;
+    const negSeg1 = allData.filter(val => val >= -(mean + stdDev) && val < -mean).length;
+    stats.push(
+      { label: '超出-(μ+3σ) 百分比', value: calculatePercent(negOutside) },
+      { label: '[-(μ+3σ), -(μ+2σ)) 百分比', value: calculatePercent(negSeg3) },
+      { label: '[-(μ+2σ), -(μ+σ)) 百分比', value: calculatePercent(negSeg2) },
+      { label: '[-(μ+σ), -μ) 百分比', value: calculatePercent(negSeg1) },
+      { label: '[-μ, 0) 百分比', value: calculatePercent(negMeanToZero) },
     );
   }
 
   stats.push(
+    { label: '[0, μ) 百分比', value: calculatePercent(zeroToMean) },
     { label: '(μ, μ+σ] 百分比', value: calculatePercent(aboveMeanWithin1Sigma) },
     { label: '(μ+σ, μ+2σ] 百分比', value: calculatePercent(aboveMeanWithin2Sigma) },
     { label: '(μ+2σ, μ+3σ] 百分比', value: calculatePercent(aboveMeanWithin3Sigma) },
-    { label: '超出+3σ 百分比', value: calculatePercent(aboveMeanOutside3Sigma) }
+    { label: '超出+(μ+3σ) 百分比', value: calculatePercent(aboveMeanOutside3Sigma) }
   );
 
   return stats;
