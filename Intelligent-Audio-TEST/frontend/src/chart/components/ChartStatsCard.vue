@@ -138,15 +138,16 @@ const negativeStats = computed<StatItem[]>(() => {
 }
 
 .deviceTab:hover {
-  border-color: #1677FF;
-  color: #1677FF;
+  border-color: #FF6A00 !important;
+  color: #FF6A00 !important;
+  background-color: rgba(255, 106, 0, 0.1) !important;
 }
 
 .deviceTab.active {
-  background: #fff7e6;
-  border-color: #fa8c16;
-  color: #fa8c16;
-  box-shadow: 0 0 8px rgba(250, 140, 22, 0.4);
+  background-color: rgba(255, 106, 0, 0.1) !important;
+  border-color: #FF6A00 !important;
+  color: #FF6A00 !important;
+  box-shadow: 0 8px 24px rgba(255, 106, 0, 0.2) !important;
 }
 
 .statsGrid {

@@ -454,9 +454,50 @@ const devices = ref(getValidResources(props.reportData));
 const extractInitialMetricData = (reportData) => {
   // 1. 优先使用后端预计算的 metricData (通常在 comparison report 的 summary 中)
   // 后端返回的 metric_data (snake_case) 会被转换为 metricData (camelCase)
-  const preCalculatedRows = reportData.metricData || reportData.summary?.metricData || 
+  const preCalculatedRows = reportData.metricData || reportData.summary?.metricData ||
                            reportData.metric_data || reportData.summary?.metric_data;
-  
+
+  // 处理 dict 格式: {category: {resource: {metric: value}}}
+  if (preCalculatedRows && !Array.isArray(preCalculatedRows) && typeof preCalculatedRows === 'object') {
+    const mergedData = {};
+    Object.keys(preCalculatedRows).forEach(category => {
+      const resData = preCalculatedRows[category];
+      if (!resData || typeof resData !== 'object') return;
+      mergedData[category] = {};
+      Object.keys(resData).forEach(resourceKey => {
+        const metrics = resData[resourceKey];
+        if (!metrics || typeof metrics !== 'object') return;
+        mergedData[category][resourceKey] = {};
+        Object.keys(metrics).forEach(metricName => {
+          mergedData[category][resourceKey][metricName] = Number(metrics[metricName] ?? 0);
+        });
+      });
+    });
+
+    // 处理 dict 格式的 rawData: {resource: {metric_raw: [values]}}
+    // rawRows 按 resource 维度组织，需要把每个 resource 的 raw 数据
+    // 合并到 mergedData[category][resourceKey] 下面（resource 级别，不是 category 级别）
+    const rawRows = reportData.rawData || reportData.summary?.rawData ||
+                   reportData.raw_data || reportData.summary?.raw_data;
+    if (rawRows && !Array.isArray(rawRows) && typeof rawRows === 'object') {
+      Object.keys(mergedData).forEach(category => {
+        const resources = mergedData[category] || {};
+        Object.keys(resources).forEach(resourceKey => {
+          const resourceObj = resources[resourceKey]; // {dim: value}
+          if (!resourceObj || typeof resourceObj !== 'object') return;
+          const resourceRawData = rawRows[resourceKey];
+          if (!resourceRawData || typeof resourceRawData !== 'object') return;
+          Object.keys(resourceRawData).forEach(key => {
+            // 合并到 resource 级别：mergedData[category][resourceKey][metric_raw]
+            resourceObj[`${key}`] = resourceRawData[key];
+          });
+        });
+      });
+    }
+
+    return mergedData;
+  }
+
   if (Array.isArray(preCalculatedRows) && preCalculatedRows.length > 0) {
     const mergedData = {};
     preCalculatedRows.forEach(row => {
@@ -491,7 +532,7 @@ const extractInitialMetricData = (reportData) => {
       }
     });
     
-    const rawRows = reportData.rawData || reportData.summary?.rawData || 
+    const rawRows = reportData.rawData || reportData.summary?.rawData ||
                    reportData.raw_data || reportData.summary?.raw_data || [];
     if (Array.isArray(rawRows) && rawRows.length > 0) {
       const rawMap = {};
@@ -1050,9 +1091,14 @@ const applyFilters = async () => {
       reportData.summary?.taskId ||
       reportData.summary?.task_id
 
+    console.log('[applyFilters] reportData keys:', Object.keys(reportData))
+    console.log('[applyFilters] taskId:', taskId, 'type:', typeof taskId)
+    console.log('[applyFilters] reportData.taskId:', reportData.taskId)
+    console.log('[applyFilters] reportData.task_id:', reportData.task_id)
+    console.log('[applyFilters] reportData.summary?.taskId:', reportData.summary?.taskId)
+
     if (taskId) {
       const result = await reportsApi.getCaseAveragesByFilters(taskId, {
-        category: selectedCategories.value.length > 0 ? selectedCategories.value[0] : null,
         tags: normalizedTags,
         includeUntagged,
         categories: selectedCategories.value

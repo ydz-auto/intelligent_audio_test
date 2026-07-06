@@ -957,8 +957,8 @@ const initializeCases = async () => {
   }
 }
 
-// 页面加载时初始化
-initializeCases()
+// 页面加载时初始化 —— 由下方 watch immediate 覆盖，不需要单独调用
+// initializeCases() 已移除，避免与 watch immediate 重复调用 search 接口
 
 watch(actualAllMetrics, (newMetrics) => {
   const names = (newMetrics || []).map(m => m?.name).filter(Boolean)
@@ -977,6 +977,9 @@ console.log('SpecificCaseComparisonComponent - caseItem.metrics sample:', cases.
 console.log('SpecificCaseComparisonComponent - actualAllMetrics:', actualAllMetrics.value)
 console.log('SpecificCaseComparisonComponent - devices:', devices.value)
 
+// 防止同一 reportId 重复加载
+let loadedReportId = null
+
 // 监听reportData变化，更新内部状态
 watch([
   () => props.reportData?.id,
@@ -994,8 +997,9 @@ watch([
   
   const effectiveReportId = id || reportId
   if (effectiveReportId) {
-    // 只有在 id 变化时才重新加载用例数据
-    if (effectiveReportId !== oldId && effectiveReportId !== oldReportId) {
+    // 只有在 id 变化时才重新加载用例数据，且跳过已加载过的 reportId
+    if (effectiveReportId !== loadedReportId && effectiveReportId !== oldId && effectiveReportId !== oldReportId) {
+      loadedReportId = effectiveReportId
       console.log('watch: 优先调用 /api/v1/reports/{id}/cases/search API 获取用例数据')
       await loadCasesFromApi(effectiveReportId)
       
