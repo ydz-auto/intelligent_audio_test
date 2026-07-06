@@ -220,8 +220,8 @@ function setAlgoParamValue(round: RoundConfigItem, fieldCode: string, value: any
 
 | param_type | 渲染组件 | 示例 field_code |
 |-----------|---------|----------------|
-| `slider` | el-slider | railDistance, volumeLevel, interruptionSensitivity |
-| `switch` | el-switch | voiceprintEnabled, interruptionEnabled |
+| `slider` | el-slider | railDistance, volumeLevel |
+| `switch` | el-switch | voiceprintEnabled |
 | `number` | el-input-number | voiceprintWaitTime, waitTime |
 | `audio_select` | AudioSelectButton | voiceprintAudioId, promptAudioId |
 | `device_select` | DeviceSelect | （设备选择） |

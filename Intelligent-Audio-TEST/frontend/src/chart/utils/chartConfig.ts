@@ -132,19 +132,51 @@ export const applyChartTypeConfig = (config: any, type: string, title?: string):
     };
     config.scales = {
       x: {
+        type: 'linear',
         title: { display: true, text: `不同区间的${title}`, color: '#777777' },
-        grid: { display: false },
-        ticks: { color: '#777777', autoSkip: true, maxTicksLimit: 10, maxRotation: 45, minRotation: 45 },
+        grid: { display: true, color: '#F0F0F0' },
+        ticks: {
+          color: '#777777',
+          maxRotation: 45,
+          minRotation: 0,
+          callback: function(value: any) {
+            return typeof value === 'number' ? value.toFixed(1) : value;
+          }
+        },
         border: { color: '#E5E5E5' }
       },
       y: {
         title: { display: true, text: '区间内用例数量', color: '#777777' },
         grid: { color: '#F0F0F0' },
-        ticks: { color: '#777777', stepSize: 1 },
+        ticks: { color: '#777777', stepSize: 1, precision: 0 },
         beginAtZero: true,
         border: { color: '#E5E5E5' }
       }
     };
+    // 正态分布图的tooltip显示区间范围
+    if (config.plugins && config.plugins.tooltip) {
+      config.plugins.tooltip.callbacks = {
+        ...config.plugins.tooltip.callbacks,
+        title: function(context: any) {
+          if (context[0] && typeof context[0].parsed.x === 'number') {
+            const midPoint = context[0].parsed.x;
+            const step = context[0].dataset._step || 0;
+            const intervalStart = midPoint - step / 2;
+            const intervalEnd = midPoint + step / 2;
+            return `[${intervalStart.toFixed(2)}, ${intervalEnd.toFixed(2)})`;
+          }
+          return '';
+        },
+        label: function(context: any) {
+          let label = context.dataset.label || '';
+          if (label) {
+            label += ': ';
+          }
+          const value = typeof context.parsed.y === 'number' ? context.parsed.y : 0;
+          return `${label}${value} 个`;
+        }
+      };
+    }
   } else if (type === 'pie' || type === 'doughnut' || type === 'polarArea') {
     delete config.scales;
     delete config.zoom;
@@ -280,72 +312,64 @@ export interface DistributionStat {
   value: string | number;
 }
 
-export const calculateDistributionStats = (data: any): DistributionStat[] => {
-  let allData: number[] = [];
-  
-  if (data.rawData && Array.isArray(data.rawData)) {
-    allData = data.rawData.filter((val: any) => typeof val === 'number' && !isNaN(val));
-  } else {
-    data.datasets.forEach((dataset: any) => {
-      if (dataset.data) {
-        allData.push(...dataset.data.filter((val: any) => typeof val === 'number' && !isNaN(val)));
-      }
-    });
-  }
-  
+const emptyDistributionStats: DistributionStat[] = [
+  { label: '样本数量', value: 0 },
+  { label: '平均值 (μ)', value: '0.00' },
+  { label: '标准差 (σ)', value: '0.00' },
+  { label: '最小值', value: '0.00' },
+  { label: '下四分位数 (Q1)', value: '0.00' },
+  { label: '中位数 (Q2)', value: '0.00' },
+  { label: '上四分位数 (Q3)', value: '0.00' },
+  { label: '最大值', value: '0.00' },
+  { label: 'μ+1σ 内百分比', value: '0.0%' },
+  { label: 'μ+2σ 内百分比', value: '0.0%' },
+  { label: 'μ+3σ 内百分比', value: '0.0%' },
+  { label: '超出+3σ 百分比', value: '0.0%' },
+  { label: 'μ-1σ 内百分比', value: '0.0%' },
+  { label: 'μ-2σ 内百分比', value: '0.0%' },
+  { label: 'μ-3σ 内百分比', value: '0.0%' },
+  { label: '超出-3σ 百分比', value: '0.0%' }
+];
+
+const calculateStatsFromData = (allData: number[]): DistributionStat[] => {
   if (allData.length === 0) {
-    return [
-      { label: '样本数量', value: 0 },
-      { label: '平均值 (μ)', value: '0.00' },
-      { label: '标准差 (σ)', value: '0.00' },
-      { label: '最小值', value: '0.00' },
-      { label: '下四分位数 (Q1)', value: '0.00' },
-      { label: '中位数 (Q2)', value: '0.00' },
-      { label: '上四分位数 (Q3)', value: '0.00' },
-      { label: '最大值', value: '0.00' },
-      { label: 'μ+1σ 内百分比', value: '0.0%' },
-      { label: 'μ+2σ 内百分比', value: '0.0%' },
-      { label: 'μ+3σ 内百分比', value: '0.0%' },
-      { label: '超出+3σ 百分比', value: '0.0%' },
-      { label: 'μ-1σ 内百分比', value: '0.0%' },
-      { label: 'μ-2σ 内百分比', value: '0.0%' },
-      { label: 'μ-3σ 内百分比', value: '0.0%' },
-      { label: '超出-3σ 百分比', value: '0.0%' }
-    ];
+    return emptyDistributionStats;
   }
-  
+
   const count = allData.length;
   const sum = allData.reduce((acc, val) => acc + val, 0);
   const mean = sum / count;
-  
+
   const squaredDifferences = allData.map(val => Math.pow(val - mean, 2));
   const variance = squaredDifferences.reduce((acc, val) => acc + val, 0) / count;
   const stdDev = Math.sqrt(variance);
-  
+
   const sortedData = [...allData].sort((a, b) => a - b);
   const min = sortedData[0];
   const max = sortedData[count - 1];
-  const median = count % 2 === 0 
-    ? (sortedData[count / 2 - 1] + sortedData[count / 2]) / 2 
+  const median = count % 2 === 0
+    ? (sortedData[count / 2 - 1] + sortedData[count / 2]) / 2
     : sortedData[Math.floor(count / 2)];
   const q1Index = Math.floor(count / 4);
   const q1 = sortedData[q1Index];
   const q3Index = Math.floor((count * 3) / 4);
   const q3 = sortedData[q3Index];
-  
+
   const calculatePercent = (value: number) => `${((value / count) * 100).toFixed(1)}%`;
-  
+
   const aboveMeanWithin1Sigma = allData.filter(val => val > mean && val <= mean + stdDev).length;
   const aboveMeanWithin2Sigma = allData.filter(val => val > mean + stdDev && val <= mean + 2 * stdDev).length;
   const aboveMeanWithin3Sigma = allData.filter(val => val > mean + 2 * stdDev && val <= mean + 3 * stdDev).length;
   const aboveMeanOutside3Sigma = allData.filter(val => val > mean + 3 * stdDev).length;
-  
-  const belowMeanWithin1Sigma = allData.filter(val => val < mean && val >= mean - stdDev).length;
-  const belowMeanWithin2Sigma = allData.filter(val => val < mean - stdDev && val >= mean - 2 * stdDev).length;
-  const belowMeanWithin3Sigma = allData.filter(val => val < mean - 2 * stdDev && val >= mean - 3 * stdDev).length;
-  const belowMeanOutside3Sigma = allData.filter(val => val < mean - 3 * stdDev).length;
-  
-  return [
+
+  // [0, μ) 整体区间
+  const zeroToMean = allData.filter(val => val >= 0 && val < mean).length;
+  // [-μ, 0) 区间
+  const negMeanToZero = allData.filter(val => val >= -mean && val < 0).length;
+
+  const hasNegative = min < 0;
+
+  const stats = [
     { label: '样本数量', value: count },
     { label: '平均值 (μ)', value: mean.toFixed(2) },
     { label: '标准差 (σ)', value: stdDev.toFixed(2) },
@@ -354,13 +378,105 @@ export const calculateDistributionStats = (data: any): DistributionStat[] => {
     { label: '中位数 (Q2)', value: median.toFixed(2) },
     { label: '上四分位数 (Q3)', value: q3.toFixed(2) },
     { label: '最大值', value: max.toFixed(2) },
-    { label: 'μ+1σ 内百分比', value: calculatePercent(aboveMeanWithin1Sigma) },
-    { label: 'μ+2σ 内百分比', value: calculatePercent(aboveMeanWithin2Sigma) },
-    { label: 'μ+3σ 内百分比', value: calculatePercent(aboveMeanWithin3Sigma) },
-    { label: '超出+3σ 百分比', value: calculatePercent(aboveMeanOutside3Sigma) },
-    { label: 'μ-1σ 内百分比', value: calculatePercent(belowMeanWithin1Sigma) },
-    { label: 'μ-2σ 内百分比', value: calculatePercent(belowMeanWithin2Sigma) },
-    { label: 'μ-3σ 内百分比', value: calculatePercent(belowMeanWithin3Sigma) },
-    { label: '超出-3σ 百分比', value: calculatePercent(belowMeanOutside3Sigma) }
   ];
+
+  // 有负值时显示负方向区间（以 -μ 为基准，按 σ 递进）
+  if (hasNegative) {
+    const negOutside = allData.filter(val => val < -(mean + 3 * stdDev)).length;
+    const negSeg3 = allData.filter(val => val >= -(mean + 3 * stdDev) && val < -(mean + 2 * stdDev)).length;
+    const negSeg2 = allData.filter(val => val >= -(mean + 2 * stdDev) && val < -(mean + stdDev)).length;
+    const negSeg1 = allData.filter(val => val >= -(mean + stdDev) && val < -mean).length;
+    stats.push(
+      { label: '超出-(μ+3σ) 百分比', value: calculatePercent(negOutside) },
+      { label: '[-(μ+3σ), -(μ+2σ)) 百分比', value: calculatePercent(negSeg3) },
+      { label: '[-(μ+2σ), -(μ+σ)) 百分比', value: calculatePercent(negSeg2) },
+      { label: '[-(μ+σ), -μ) 百分比', value: calculatePercent(negSeg1) },
+      { label: '[-μ, 0) 百分比', value: calculatePercent(negMeanToZero) },
+    );
+  }
+
+  stats.push(
+    { label: '[0, μ) 百分比', value: calculatePercent(zeroToMean) },
+    { label: '(μ, μ+σ] 百分比', value: calculatePercent(aboveMeanWithin1Sigma) },
+    { label: '(μ+σ, μ+2σ] 百分比', value: calculatePercent(aboveMeanWithin2Sigma) },
+    { label: '(μ+2σ, μ+3σ] 百分比', value: calculatePercent(aboveMeanWithin3Sigma) },
+    { label: '超出+(μ+3σ) 百分比', value: calculatePercent(aboveMeanOutside3Sigma) }
+  );
+
+  return stats;
+};
+
+export const calculateDistributionStats = (data: any): DistributionStat[] => {
+  let allData: number[] = [];
+
+  if (data.rawData && Array.isArray(data.rawData)) {
+    allData = data.rawData.filter((val: any) => typeof val === 'number' && !isNaN(val));
+  } else {
+    data.datasets.forEach((dataset: any) => {
+      if (dataset.data) {
+        allData.push(...dataset.data
+          .map((item: any) => typeof item === 'object' && item !== null && typeof item.y === 'number' ? item.y : (typeof item === 'number' ? item : null))
+          .filter((val: any) => val !== null && !isNaN(val))
+        );
+      }
+    });
+  }
+
+  return calculateStatsFromData(allData);
+};
+
+export const calculateDistributionStatsByDevice = (data: any): { [device: string]: DistributionStat[] } => {
+  const result: { [device: string]: DistributionStat[] } = {};
+
+  if (data.deviceRawData && typeof data.deviceRawData === 'object') {
+    Object.keys(data.deviceRawData).forEach(device => {
+      const deviceData = (data.deviceRawData[device] || []).filter((val: any) => typeof val === 'number' && !isNaN(val));
+      result[device] = calculateStatsFromData(deviceData);
+    });
+  }
+
+  return result;
+};
+
+/**
+ * 根据可见x轴范围重新分箱统计
+ * @param chartData 原始图表数据（含rawData和deviceRawData）
+ * @param visibleMin 可见区间下限
+ * @param visibleMax 可见区间上限
+ * @returns 新的datasets，每个区间内实际数据点数
+ */
+export const rebinDistributionData = (chartData: any, visibleMin: number, visibleMax: number): any[] => {
+  if (!chartData || !chartData.datasets) return [];
+
+  const range = visibleMax - visibleMin;
+  if (range <= 0) return chartData.datasets;
+
+  // 固定20个区间，放大后每个区间更细
+  const intervals = 20;
+  const step = range / intervals;
+
+  return chartData.datasets.map((dataset: any) => {
+    // 获取该设备的原始数据
+    const deviceLabel = dataset.label;
+    let deviceRaw: number[] = [];
+
+    if (chartData.deviceRawData && chartData.deviceRawData[deviceLabel]) {
+      deviceRaw = chartData.deviceRawData[deviceLabel].filter((v: any) => typeof v === 'number' && !isNaN(v) && isFinite(v));
+    }
+
+    // 按新区间重新统计
+    const values = [];
+    for (let i = 0; i < intervals; i++) {
+      const intervalStart = visibleMin + i * step;
+      const midPoint = visibleMin + (i + 0.5) * step;
+      const count = deviceRaw.filter(v => i === intervals - 1 ? v >= intervalStart : v >= intervalStart && v < intervalStart + step).length;
+      values.push({ x: parseFloat(midPoint.toFixed(2)), y: count });
+    }
+
+    return {
+      ...dataset,
+      data: values,
+      _step: step
+    };
+  });
 };

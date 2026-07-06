@@ -2,7 +2,7 @@
 
 > **所属步骤**：04_执行测试 → backend  
 > **改造类型**：修改  
-> **涉及文件**：`backend/utils/evaluation_result_processor.py`
+> **涉及文件**：`backend/services/evaluation/evaluation_result_processor.py`、`backend/utils/report/aggregation_strategies.py`、`backend/utils/report/report_utils.py`
 
 ---
 
@@ -31,7 +31,6 @@ def aggregate_round_results(
             "avg_wer": 0.05,
             "avg_llm_judge": 4.2,
             "avg_latency": 1.83,
-            "interruption_count": 1,
             "round_count": 3,
             "completed_rounds": 3
         }
@@ -147,22 +146,73 @@ def _check_all_round_dimensions_completed(self, result_id):
     return pending_count == 0
 ```
 
-### 6. 聚合策略
+### 6. 聚合策略（配置驱动 + 策略模式）
 
-| 维度类型 | 聚合方式 | 说明 |
-|---------|---------|------|
-| WER | 算术平均 | 多轮 WER 取平均 |
-| LLM Judge | 算术平均 | 多轮 LLM 评分取平均 |
-| SER | 加权平均 | 按句子数加权 |
-| DER | 加权平均 | 按时长加权 |
+聚合方式不再硬编码，改为通过 `Dimension.statistic_method` 字段配置，由 `AggregationStrategy` 策略类统一调度。
+
+#### 策略注册
+
+| statistic_method | 策略类 | 说明 |
+|-----------------|--------|------|
+| `average` | `SimpleAverageStrategy` | 简单算术平均（默认） |
+| `weighted_wer` | `WeightedSumRatioStrategy` | 加权 WER = Σ分子 / Σ分母 |
+
+#### 策略接口
+
+```python
+class AggregationStrategy(ABC):
+    @abstractmethod
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None) -> Optional[float]:
+        pass
+```
+
+#### WeightedSumRatioStrategy 实现
+
+```python
+class WeightedSumRatioStrategy(AggregationStrategy):
+    """
+    加权比率：Σ(numerator) / Σ(denominator)。
+    按 agg_role 找分子和分母的 field_path，从每条结果的 api_raw_response 提取值后累加。
+    典型场景：WER = Σerrors / Σlength（按字数加权）。
+    """
+    def aggregate(self, items, output_params=None):
+        numerator_path = _find_by_role(output_params, 'numerator') or 'errors'
+        denominator_path = _find_by_role(output_params, 'denominator') or 'length'
+        total_num = 0
+        total_den = 0
+        for item in items:
+            result_obj = _parse_raw_response(item.get('api_raw_response'))
+            if not result_obj:
+                continue
+            num_val = _extract_by_path(result_obj, numerator_path)
+            den_val = _extract_by_path(result_obj, denominator_path)
+            if num_val is not None and den_val is not None and den_val > 0:
+                total_num += num_val
+                total_den += den_val
+        if total_den == 0:
+            return None
+        return round(total_num / total_den, 4)
+```
+
+#### 配置示例（WER 主维度）
+
+| output 参数 | field_path | output_role | agg_role | visible_in_report |
+|------------|------------|-------------|----------|-------------------|
+| wer | `wer` | main | value | true |
+| errors | `errors` | aux | numerator | false |
+| length | `length` | aux | denominator | false |
+
+- **评估时**：`parse_dimension_result` 按 `output_role=main` 的 `field_path` 提取 `dimension_value`（wer 值）
+- **聚合时**：`WeightedSumRatioStrategy` 从 `api_raw_response` 按 `agg_role` 提取 errors/length
+- **报告展示**：`visible_in_report=false` 的辅助字段不出现在维度列中
 
 ---
 
 ## 不变部分
 
-- 单次评估的 `parse_dimension_result` 不变
 - 单条 `update_dimension_result` 不变
 - 非多轮场景的状态更新逻辑不变
+- `parse_dimension_result` 已改为配置驱动（按 `output_role=main` 的 `field_path` 提取），不再依赖 keywords 兜底
 
 ---
 

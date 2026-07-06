@@ -5,6 +5,7 @@ import { getModalManager } from '../../utils/modalManager';
 import { useModalStore } from '../../store/modalStore';
 import { useUploadState } from '../../composables/useUploadState';
 import { useTagFilter } from '../../composables/useTagFilter';
+import { extractAudioFiles, buildTestCaseConfig, groupAudioFilesByLeafFolder, type TestCaseConfig } from '../../utils/folderParser';
 import type { 
   AudioInfo, 
   AudioUploadFile, 
@@ -1032,6 +1033,42 @@ export function useAudioImport() {
       await new Promise(resolve => requestAnimationFrame(resolve));
     }
 
+    // 构建多轮测试用例配置（testCaseConfig）
+    // 从 files 中提取所有原始 File 对象，用于文件夹解析
+    const allRawFiles: File[] = files.map((f: any) => f.file || f)
+    const audioFileInfos = extractAudioFiles(allRawFiles)
+    // 按最子级文件夹分组
+    const audioGroups = groupAudioFilesByLeafFolder(audioFileInfos)
+    // 为每个分组构建 rounds 配置，合并为一个 testCaseConfig
+    let testCaseConfig: TestCaseConfig | undefined
+    if (audioFileInfos.length > 0 && uploadOptions.createTestCase) {
+      // 如果只有一个分组，直接构建；多个分组时，合并所有 rounds
+      const allRounds: any[] = []
+      let roundNumber = 1
+      audioGroups.forEach(groupFiles => {
+        const groupConfig = buildTestCaseConfig(groupFiles, allRawFiles, {
+          spl: uploadOptions.spl,
+          playbackDeviceId: uploadOptions.playbackDeviceId,
+          groupName: folderGroupMappings ? Object.values(folderGroupMappings)[0] : undefined,
+          inheritTags: uploadOptions.inheritTags,
+          algorithmParams: uploadOptions.algorithmParams
+        })
+        if (groupConfig.rounds) {
+          groupConfig.rounds.forEach(r => {
+            allRounds.push({ ...r, roundNumber: roundNumber++ })
+          })
+        }
+      })
+      if (allRounds.length > 0) {
+        testCaseConfig = {
+          rounds: allRounds,
+          group_name: folderGroupMappings ? Object.values(folderGroupMappings)[0] : undefined,
+          inherit_tags: uploadOptions.inheritTags,
+          algorithm_params: uploadOptions.algorithmParams
+        }
+      }
+    }
+
     try {
       const initResponse = await audiosApi.initUpload({ 
         signal: abortController.signal,
@@ -1138,7 +1175,7 @@ export function useAudioImport() {
           
           try {
             // 秒传时也需要调用 merge 来处理测试用例创建
-            await processMergeForExistingFile(taskId, fileTask, uploadOptions);
+            await processMergeForExistingFile(taskId, fileTask, uploadOptions, testCaseConfig);
             fileTask.status = 'completed';
             task.completedFiles = (task.completedFiles || 0) + 1;
             saveLocalTask(task);
@@ -1161,7 +1198,7 @@ export function useAudioImport() {
         currentUploadingFile.value = fileTask.name;
         
         try {
-          await uploadFileChunks(taskId, fileTask, uploadOptions);
+          await uploadFileChunks(taskId, fileTask, uploadOptions, testCaseConfig);
           fileTask.status = 'completed';
           fileTask.progress = 100;
           task.completedFiles = (task.completedFiles || 0) + 1;
@@ -1196,7 +1233,7 @@ export function useAudioImport() {
     }
   }
 
-  async function processMergeForExistingFile(taskId: string, fileTask: AudioUploadFile, options: any = uploadOptions) {
+  async function processMergeForExistingFile(taskId: string, fileTask: AudioUploadFile, options: any = uploadOptions, tcConfig?: TestCaseConfig) {
     let normalizedAlgorithmParams = options.algorithmParams;
     if (normalizedAlgorithmParams && typeof normalizedAlgorithmParams === 'object' && !Array.isArray(normalizedAlgorithmParams)) {
       normalizedAlgorithmParams = Object.entries(normalizedAlgorithmParams).map(([fieldCode, fieldValue]) => ({
@@ -1224,8 +1261,9 @@ export function useAudioImport() {
       annotations: fileTask.annotations || [],
       algorithmType: options.algorithmType,
       algorithmRelations: options.algorithmRelations,
-      algorithmParams: normalizedAlgorithmParams || []
-    }, { 
+      algorithmParams: normalizedAlgorithmParams || [],
+      testCaseConfig: tcConfig
+    }, {
       signal: abortController?.signal,
       unwrapResponse: false
     }) as APIResponse<{ audioId: string | number }>;
@@ -1237,7 +1275,7 @@ export function useAudioImport() {
     fileTask.audioId = mergeResponse.data?.audioId;
   }
 
-  async function uploadFileChunks(taskId: string, fileTask: AudioUploadFile, options: any = uploadOptions) {
+  async function uploadFileChunks(taskId: string, fileTask: AudioUploadFile, options: any = uploadOptions, tcConfig?: TestCaseConfig) {
     let normalizedAlgorithmParams = options.algorithmParams;
     if (normalizedAlgorithmParams && typeof normalizedAlgorithmParams === 'object' && !Array.isArray(normalizedAlgorithmParams)) {
       normalizedAlgorithmParams = Object.entries(normalizedAlgorithmParams).map(([fieldCode, fieldValue]) => ({
@@ -1293,8 +1331,9 @@ export function useAudioImport() {
       annotations: fileTask.annotations || [],
       algorithmType: options.algorithmType,
       algorithmRelations: options.algorithmRelations,
-      algorithmParams: normalizedAlgorithmParams || []
-    }, { 
+      algorithmParams: normalizedAlgorithmParams || [],
+      testCaseConfig: tcConfig
+    }, {
       signal: abortController?.signal,
       unwrapResponse: false
     }) as APIResponse<{ audioId: string | number }>;

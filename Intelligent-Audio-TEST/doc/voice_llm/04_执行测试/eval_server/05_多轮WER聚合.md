@@ -169,6 +169,48 @@ def calculate(cls, task_type, task_params):
 
 ---
 
+## 补充：与主后端聚合策略对齐
+
+eval_server 负责单轮 WER 计算，返回 `wer`、`errors`、`length` 等字段。多轮聚合由主后端的 `aggregation_strategies.py` 完成。
+
+### 主后端聚合配置
+
+主后端通过 `Dimension.statistic_method` 字段配置聚合方式：
+
+| statistic_method | 策略类 | 说明 |
+|-----------------|--------|------|
+| `average` | `SimpleAverageStrategy` | 简单算术平均 |
+| `weighted_wer` | `WeightedSumRatioStrategy` | 加权 WER = Σerrors / Σlength |
+
+### 数据流
+
+```
+eval_server 单轮返回: {wer: 0.15, errors: 3, length: 20}
+                          ↓
+主后端 TestResultDimension 存储:
+  dimension_value = 0.15 (按 output_role=main 的 field_path 提取)
+  api_raw_response = {wer:0.15, errors:3, length:20} (完整响应)
+                          ↓
+主后端报告聚合:
+  WeightedSumRatioStrategy 从 api_raw_response 按 agg_role 提取:
+    numerator = errors (agg_role=numerator)
+    denominator = length (agg_role=denominator)
+  = Σerrors / Σlength
+```
+
+### eval_server 返回字段与主后端 output 参数映射
+
+| eval_server 返回字段 | 主后端 output 参数配置 | |
+|---------------------|----------------------|---|
+| | output_role | agg_role |
+| `wer` | main | value |
+| `errors` | aux | numerator |
+| `length` | aux | denominator |
+
+> eval_server 不需要关心聚合策略，只负责单轮计算并返回所有字段。聚合由主后端按配置驱动完成。
+
+---
+
 ## 依赖关系
 
 | 依赖文档 | 说明 |

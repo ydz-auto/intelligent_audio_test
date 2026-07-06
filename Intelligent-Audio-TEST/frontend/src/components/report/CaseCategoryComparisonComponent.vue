@@ -275,10 +275,8 @@ import { ref, computed, watch, onUnmounted } from 'vue'
 import ChartComponent from './ChartComponent.vue'
 import DataTable from '../common/DataTable.vue'
 import { reportsApi } from '../../utils/api'
-import { reportService } from '../../services/reportService'
 import '../../assets/styles/components/report-filter-card.css'
-import { useReportFilters } from '../../composables/useReportFilters'
-import { processTags, extractCategoriesFromReport, getValidResources as _getValidResources, buildMetricDecimalPlacesMap, formatMetricForDisplay as _formatMetricForDisplay } from '../../utils/reportDataUtils'
+
 
 // Collapse state
 const isCollapsed = ref(false)
@@ -314,11 +312,19 @@ const props = defineProps({
 // Data
 // 从reportData中获取数据，优先使用reportData直接提供的数据，然后再使用summary中的数据
 // 处理caseCategories：如果是对象数组，提取name属性作为显示值
-const getCategories = (data) => extractCategoriesFromReport(data || {})
+const getCategories = (data) => {
+  if (!data) return []
+  const categories = data.caseCategories || data.summary?.caseCategories || []
+  if (!Array.isArray(categories)) return []
+  return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
+}
+
+// 处理allCaseTags：如果是对象数组，提取name属性作为显示值
 const getTags = (data) => {
   if (!data) return []
   const tags = data.allCaseTags || data.summary?.allCaseTags || []
-  return processTags(tags)
+  if (!Array.isArray(tags)) return []
+  return tags.map(tag => typeof tag === 'object' ? tag.name : tag)
 }
 
 // 保存所有可用的类别和标签，不受用户选择影响
@@ -332,42 +338,113 @@ const selectedTags = ref([])
 // Case name search
 const caseNameSearchQuery = ref('')
 
-const {
-  tagSearchQuery, tagPage, tagPageSize,
-  categorySearchQuery, categoryPage, categoryPageSize,
-  metricSearchQuery, metricPage, metricPageSize,
-  createTagFilter, createCategoryFilter, createMetricFilter,
-  resetFilterState
-} = useReportFilters({ tagPageSize: 50, categoryPageSize: 50, metricPageSize: 30 })
+// Search and pagination for categories
+const categorySearchQuery = ref('')
+const categoryPage = ref(1)
+const categoryPageSize = ref(50)
 
-const { filteredCategories: filteredCategoriesForSelection, totalCategoryPages, paginatedCategories } = createCategoryFilter(allAvailableCategories)
-const { filteredTags: filteredTagsForSelection, totalTagPages, paginatedTags } = createTagFilter(allAvailableTags)
+const filteredCategoriesForSelection = computed(() => {
+  if (!categorySearchQuery.value.trim()) {
+    return allAvailableCategories.value
+  }
+  const query = categorySearchQuery.value.toLowerCase()
+  return allAvailableCategories.value.filter(cat => cat.toLowerCase().includes(query))
+})
+
+const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
+
+const paginatedCategories = computed(() => {
+  const start = (categoryPage.value - 1) * categoryPageSize.value
+  const end = start + categoryPageSize.value
+  return filteredCategoriesForSelection.value.slice(start, end)
+})
+
+// Search and pagination for tags
+const tagSearchQuery = ref('')
+const tagPage = ref(1)
+const tagPageSize = ref(50)
+
+const filteredTagsForSelection = computed(() => {
+  if (!tagSearchQuery.value.trim()) {
+    return allAvailableTags.value
+  }
+  const query = tagSearchQuery.value.toLowerCase()
+  return allAvailableTags.value.filter(tag => tag.toLowerCase().includes(query))
+})
+
+const totalTagPages = computed(() => Math.ceil(filteredTagsForSelection.value.length / tagPageSize.value) || 1)
+
+const paginatedTags = computed(() => {
+  const start = (tagPage.value - 1) * tagPageSize.value
+  const end = start + tagPageSize.value
+  return filteredTagsForSelection.value.slice(start, end)
+})
 
 // Metrics configuration
 const allMetrics = ref(props.reportData.allMetrics || props.reportData.summary?.allMetrics || [])
 
 const selectedMetrics = ref([])
 
-const { filteredMetrics: filteredMetricsForDisplay, totalMetricPages, paginatedMetrics } = createMetricFilter(allMetrics)
+// Search and pagination for metrics
+const metricSearchQuery = ref('')
+const metricPage = ref(1)
+const metricPageSize = ref(30)
 
-const metricDecimalPlacesMap = computed(() => buildMetricDecimalPlacesMap(allMetrics.value))
-
-const formatMetricForDisplay = (metricName, value) => _formatMetricForDisplay(metricName, value, metricDecimalPlacesMap.value)
-
-const normalizeMetricValue = (algorithmResult, metricName, dimensions) => {
-  if (algorithmResult && typeof algorithmResult === 'object' && 'rounds' in algorithmResult && Array.isArray(algorithmResult.rounds)) {
-    const value = reportService.getMetricValue(algorithmResult, metricName, dimensions)
-    if (value !== null && value !== undefined) return value
-    return null
+const filteredMetricsForDisplay = computed(() => {
+  if (!metricSearchQuery.value.trim()) {
+    return allMetrics.value
   }
-  if (dimensions && Array.isArray(dimensions)) {
-    const dim = dimensions.find(d => (d.dimension_name || d.name) === metricName)
-    if (dim && dim.value !== undefined && dim.value !== null) return dim.value
-  }
-  return null
+  const query = metricSearchQuery.value.toLowerCase()
+  return allMetrics.value.filter(metric => metric.name.toLowerCase().includes(query))
+})
+
+const totalMetricPages = computed(() => Math.ceil(filteredMetricsForDisplay.value.length / metricPageSize.value) || 1)
+
+const paginatedMetrics = computed(() => {
+  const start = (metricPage.value - 1) * metricPageSize.value
+  const end = start + metricPageSize.value
+  return filteredMetricsForDisplay.value.slice(start, end)
+})
+
+const metricDecimalPlacesMap = computed(() => {
+  const map = {}
+  const list = Array.isArray(allMetrics.value) ? allMetrics.value : []
+  list.forEach(m => {
+    if (!m || !m.name) return
+    const dp = m.decimalPlaces ?? m.decimal_places
+    if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
+  })
+  return map
+})
+
+const formatMetricForDisplay = (metricName, value) => {
+  if (value === '-' || value === null || value === undefined) return '-'
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num)) return String(value)
+  const dp = metricDecimalPlacesMap.value?.[String(metricName)]
+  if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp)
+  return String(num)
 }
 
-const getValidResources = _getValidResources
+// 同时使用设备和API作为资源，API任务可能没有设备，设备任务可能没有API
+// 使用??替代||，并检查数组长度，确保空数组不会被当作有效值
+const getValidResources = (data) => {
+  const resources = [
+    data.resources,
+    data.devices,
+    data.apis,
+    data.summary?.resources,
+    data.summary?.apis,
+    data.summary?.devices
+  ];
+  
+  for (const resource of resources) {
+    if (Array.isArray(resource) && resource.length > 0) {
+      return resource;
+    }
+  }
+  return [];
+};
 
 const devices = ref(getValidResources(props.reportData));
 
@@ -377,9 +454,50 @@ const devices = ref(getValidResources(props.reportData));
 const extractInitialMetricData = (reportData) => {
   // 1. 优先使用后端预计算的 metricData (通常在 comparison report 的 summary 中)
   // 后端返回的 metric_data (snake_case) 会被转换为 metricData (camelCase)
-  const preCalculatedRows = reportData.metricData || reportData.summary?.metricData || 
+  const preCalculatedRows = reportData.metricData || reportData.summary?.metricData ||
                            reportData.metric_data || reportData.summary?.metric_data;
-  
+
+  // 处理 dict 格式: {category: {resource: {metric: value}}}
+  if (preCalculatedRows && !Array.isArray(preCalculatedRows) && typeof preCalculatedRows === 'object') {
+    const mergedData = {};
+    Object.keys(preCalculatedRows).forEach(category => {
+      const resData = preCalculatedRows[category];
+      if (!resData || typeof resData !== 'object') return;
+      mergedData[category] = {};
+      Object.keys(resData).forEach(resourceKey => {
+        const metrics = resData[resourceKey];
+        if (!metrics || typeof metrics !== 'object') return;
+        mergedData[category][resourceKey] = {};
+        Object.keys(metrics).forEach(metricName => {
+          mergedData[category][resourceKey][metricName] = Number(metrics[metricName] ?? 0);
+        });
+      });
+    });
+
+    // 处理 dict 格式的 rawData: {resource: {metric_raw: [values]}}
+    // rawRows 按 resource 维度组织，需要把每个 resource 的 raw 数据
+    // 合并到 mergedData[category][resourceKey] 下面（resource 级别，不是 category 级别）
+    const rawRows = reportData.rawData || reportData.summary?.rawData ||
+                   reportData.raw_data || reportData.summary?.raw_data;
+    if (rawRows && !Array.isArray(rawRows) && typeof rawRows === 'object') {
+      Object.keys(mergedData).forEach(category => {
+        const resources = mergedData[category] || {};
+        Object.keys(resources).forEach(resourceKey => {
+          const resourceObj = resources[resourceKey]; // {dim: value}
+          if (!resourceObj || typeof resourceObj !== 'object') return;
+          const resourceRawData = rawRows[resourceKey];
+          if (!resourceRawData || typeof resourceRawData !== 'object') return;
+          Object.keys(resourceRawData).forEach(key => {
+            // 合并到 resource 级别：mergedData[category][resourceKey][metric_raw]
+            resourceObj[`${key}`] = resourceRawData[key];
+          });
+        });
+      });
+    }
+
+    return mergedData;
+  }
+
   if (Array.isArray(preCalculatedRows) && preCalculatedRows.length > 0) {
     const mergedData = {};
     preCalculatedRows.forEach(row => {
@@ -414,7 +532,7 @@ const extractInitialMetricData = (reportData) => {
       }
     });
     
-    const rawRows = reportData.rawData || reportData.summary?.rawData || 
+    const rawRows = reportData.rawData || reportData.summary?.rawData ||
                    reportData.raw_data || reportData.summary?.raw_data || [];
     if (Array.isArray(rawRows) && rawRows.length > 0) {
       const rawMap = {};
@@ -457,9 +575,6 @@ const extractInitialMetricData = (reportData) => {
     cases.forEach(caseItem => {
       const category = caseItem.category || 'Uncategorized';
       const caseMetrics = caseItem.metrics || {};
-      const algorithmResult = caseItem.algorithmResult || caseItem.algorithm_result
-      const dimensions = caseItem.dimensions || caseItem.dimensionScores || caseItem.dimension_scores
-      const multiRound = algorithmResult && typeof algorithmResult === 'object' && reportService.parseMultiRoundResult(algorithmResult).isMultiRound
 
       if (!accumulator[category]) accumulator[category] = {};
       
@@ -474,11 +589,7 @@ const extractInitialMetricData = (reportData) => {
             if (!accumulator[category][resourceKey][dim]) {
               accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] };
             }
-            let val = m.value;
-            if (multiRound) {
-              const normalizedVal = normalizeMetricValue(algorithmResult, dim, dimensions)
-              if (normalizedVal !== null) val = normalizedVal
-            }
+            const val = m.value;
             if (val !== null && val !== undefined) {
               accumulator[category][resourceKey][dim].sum += Number(val);
               accumulator[category][resourceKey][dim].count += 1;
@@ -495,11 +606,7 @@ const extractInitialMetricData = (reportData) => {
             if (!accumulator[category][resourceKey][dim]) {
               accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] };
             }
-            let val = metrics[dim];
-            if (multiRound) {
-              const normalizedVal = normalizeMetricValue(algorithmResult, dim, dimensions)
-              if (normalizedVal !== null) val = normalizedVal
-            }
+            const val = metrics[dim];
             if (val !== null && val !== undefined) {
                accumulator[category][resourceKey][dim].sum += Number(val);
                accumulator[category][resourceKey][dim].count += 1;
@@ -866,7 +973,12 @@ const resetFilters = () => {
   selectedTags.value = []
   selectedMetrics.value = []
   caseNameSearchQuery.value = ''
-  resetFilterState()
+  categorySearchQuery.value = ''
+  categoryPage.value = 1
+  tagSearchQuery.value = ''
+  tagPage.value = 1
+  metricSearchQuery.value = ''
+  metricPage.value = 1
   applyFilters()
 }
 
@@ -900,9 +1012,6 @@ const computeMetricDataFromCases = (cases) => {
     }
 
     const caseMetrics = caseItem.metrics || {}
-    const algorithmResult = caseItem.algorithmResult || caseItem.algorithm_result
-    const dimensions = caseItem.dimensions || caseItem.dimensionScores || caseItem.dimension_scores
-    const multiRound = algorithmResult && typeof algorithmResult === 'object' && reportService.parseMultiRoundResult(algorithmResult).isMultiRound
     if (!accumulator[category]) accumulator[category] = {}
 
     if (Array.isArray(caseMetrics)) {
@@ -916,11 +1025,7 @@ const computeMetricDataFromCases = (cases) => {
           if (!accumulator[category][resourceKey][dim]) {
             accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] }
           }
-          let val = m.value
-          if (multiRound) {
-            const normalizedVal = normalizeMetricValue(algorithmResult, dim, dimensions)
-            if (normalizedVal !== null) val = normalizedVal
-          }
+          const val = m.value
           if (val !== null && val !== undefined) {
             accumulator[category][resourceKey][dim].sum += Number(val)
             accumulator[category][resourceKey][dim].count += 1
@@ -936,11 +1041,7 @@ const computeMetricDataFromCases = (cases) => {
           if (!accumulator[category][resourceKey][dim]) {
             accumulator[category][resourceKey][dim] = { sum: 0, count: 0, values: [] }
           }
-          let val = metrics[dim]
-          if (multiRound) {
-            const normalizedVal = normalizeMetricValue(algorithmResult, dim, dimensions)
-            if (normalizedVal !== null) val = normalizedVal
-          }
+          const val = metrics[dim]
           if (val !== null && val !== undefined) {
             accumulator[category][resourceKey][dim].sum += Number(val)
             accumulator[category][resourceKey][dim].count += 1
@@ -990,16 +1091,19 @@ const applyFilters = async () => {
       reportData.summary?.taskId ||
       reportData.summary?.task_id
 
+    console.log('[applyFilters] reportData keys:', Object.keys(reportData))
+    console.log('[applyFilters] taskId:', taskId, 'type:', typeof taskId)
+    console.log('[applyFilters] reportData.taskId:', reportData.taskId)
+    console.log('[applyFilters] reportData.task_id:', reportData.task_id)
+    console.log('[applyFilters] reportData.summary?.taskId:', reportData.summary?.taskId)
+
     if (taskId) {
       const result = await reportsApi.getCaseAveragesByFilters(taskId, {
-        category: selectedCategories.value.length > 0 ? selectedCategories.value[0] : null,
         tags: normalizedTags,
         includeUntagged,
         categories: selectedCategories.value
       });
-      
-      console.log('API返回结果:', result);
-      
+
       // 更新内部metricData ref，触发重新渲染
       metricData.value = extractInitialMetricData(result);
       return
@@ -1026,39 +1130,73 @@ const applyFilters = async () => {
 }
 
 const getMetricValue = (category, device, metricName) => {
-  // device 可能是 "ID_Name" 格式的字符串，也可能是包含 id 和 name 的对象
+  // device 可能是 "ID-Name" 格式的字符串，也可能是包含 id 和 name 的对象
   if (metricData.value) {
     const categoryData = metricData.value[category];
     if (categoryData) {
-      // 1. 尝试直接使用 device 查找（如果 device 是 "ID_Name" 字符串）
+      // 1. 尝试直接使用 device 查找
       if (categoryData[device] && categoryData[device][metricName] !== undefined) {
         return categoryData[device][metricName];
       }
-      
+
       // 2. 如果 device 是对象，尝试构建 key 查找
       if (typeof device === 'object' && device !== null) {
-        const resourceKey = `${device.id}_${device.name}`;
+        const resourceKey = `${device.id}-${device.name}`;
         if (categoryData[resourceKey] && categoryData[resourceKey][metricName] !== undefined) {
           return categoryData[resourceKey][metricName];
         }
       }
-      
-      // 3. 兜底：如果还是找不到，尝试按名称匹配（不推荐，但在数据不全时可用）
-      const deviceName = typeof device === 'object' ? (device.name || device.deviceName) : 
-                        (device.includes('_') ? device.split('_').slice(1).join('_') : device);
-      
+
+      // 3. 兜底：按名称匹配（去掉ID前缀，用剩余部分匹配）
+      const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
+                        (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device);
+
       const entries = Object.entries(categoryData);
       for (const [key, data] of entries) {
-        const currentResourceName = key.includes('_') ? key.split('_').slice(1).join('_') : key;
+        const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key;
         if (currentResourceName === deviceName && data[metricName] !== undefined) {
           return data[metricName];
         }
       }
     }
   }
-  
-  return 0 
+
+  return 0
 }
+
+// 获取原始值数组（与getMetricValue相同的查找逻辑，但返回_raw数组）
+const getRawDataValue = (category, device, metricName) => {
+  const rawDataKey = `${metricName}_raw`;
+  if (metricData.value) {
+    const categoryData = metricData.value[category];
+    if (categoryData) {
+      // 1. 直接用 device key 查找
+      if (categoryData[device] && Array.isArray(categoryData[device][rawDataKey])) {
+        return categoryData[device][rawDataKey];
+      }
+
+      // 2. 如果 device 是对象，尝试构建 key 查找
+      if (typeof device === 'object' && device !== null) {
+        const resourceKey = `${device.id}-${device.name}`;
+        if (categoryData[resourceKey] && Array.isArray(categoryData[resourceKey][rawDataKey])) {
+          return categoryData[resourceKey][rawDataKey];
+        }
+      }
+
+      // 3. 兜底：按名称匹配（去掉ID前缀，用剩余部分匹配）
+      const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
+                        (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device);
+      const entries = Object.entries(categoryData);
+      for (const [key, data] of entries) {
+        const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key;
+        if (currentResourceName === deviceName && Array.isArray(data[rawDataKey])) {
+          return data[rawDataKey];
+        }
+      }
+    }
+  }
+  return [];
+};
 
 const getMetricDisplayValue = (category, device, metricName) => {
   return formatMetricForDisplay(metricName, getMetricValue(category, device, metricName))
@@ -1180,110 +1318,114 @@ const getChartData = (metricName) => {
     
     // 收集所有原始数据
     devices.value.forEach(device => {
+      // 后端返回的raw_data是按资源维度的，会被复制到每个类别下（同一数组引用），
+      // 需要按引用去重，避免同一份数据被重复累加N次（N=类别数）
+      const seenArrays = new Set();
       filteredCategories.value.forEach(category => {
-        // 获取原始值数组
-        const rawDataKey = `${metricName}_raw`;
-        let rawData = [];
-        
-        if (metricData.value && metricData.value[category] && metricData.value[category][device]) {
-          rawData = metricData.value[category][device][rawDataKey] || [];
-        }
-        
+        // 使用与getMetricValue相同的查找逻辑获取原始值数组
+        const rawData = getRawDataValue(category, device, metricName);
+
+        // 跳过已处理的相同数组引用（后端数据被复制到每个类别的情况）
+        if (seenArrays.has(rawData)) return;
+        seenArrays.add(rawData);
+
         // 添加到设备原始数据和总原始数据中
         deviceRawDataMap[device] = deviceRawDataMap[device].concat(rawData);
         allRawData = allRawData.concat(rawData);
       });
     });
     
+    // 过滤掉非数值数据，确保统计计算正确
+    allRawData = allRawData.filter(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
+    Object.keys(deviceRawDataMap).forEach(device => {
+      deviceRawDataMap[device] = deviceRawDataMap[device].filter(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
+    });
+
     // 计算正态分布统计信息
     const calculateNormalDistribution = (data) => {
       if (!data || data.length === 0) {
         return null;
       }
-      
-      // 排序数据用于计算五数概括
-      const sortedData = [...data].sort((a, b) => a - b);
-      
+
       // 计算平均值
       const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
-      
+
       // 计算方差
       const variance = data.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / data.length;
-      
+
       // 计算标准差
       const stdDev = Math.sqrt(variance);
-      
+
       return {mean, stdDev, totalDataPoints: data.length};
     };
-    
+
     const distribution = calculateNormalDistribution(allRawData);
     if (!distribution) {
       return {labels: [], datasets: [], rawData: allRawData};
     }
     
-    // 生成10个数据区间
-    const intervals = 10;
-    const minValue = distribution.mean - 4 * distribution.stdDev;
-    const maxValue = distribution.mean + 4 * distribution.stdDev;
-    const intervalWidth = (maxValue - minValue) / intervals;
-    
-    const labels = [];
-    for (let i = 0; i < intervals; i++) {
-      const start = parseFloat((minValue + i * intervalWidth).toFixed(2));
-      const end = parseFloat((start + intervalWidth).toFixed(2));
-      labels.push(`${start}-${end}`);
+    // 按标准差划分区间：以mean为中心，向两侧按σ/8步长划分，共约64个区间
+    // 区间细密，放大后自然展示更细的分布细节，无需动态重算
+    const step = distribution.stdDev / 8; // 每个区间宽度 = σ/8
+    let minValue = distribution.mean - 32 * step; // mean - 4σ
+    const maxValue = distribution.mean + 32 * step; // mean + 4σ
+    // 如果所有数据都非负，横轴从0开始
+    if (!allRawData.some(v => v < 0)) {
+      minValue = 0;
     }
-    
+    const intervals = Math.round((maxValue - minValue) / step);
+
     // 为每个设备生成正态分布数据
     const chartData = {
-      labels: labels, 
+      labels: [],
       datasets: devices.value.map((device, index) => {
         const color = chartColors[index % chartColors.length];
         const borderColor = chartBorderColors[index % chartBorderColors.length];
-        
+
         // 获取该设备的所有原始数据点
         const deviceRawData = deviceRawDataMap[device] || [];
-        
+
         // 计算设备的正态分布参数
         const deviceDistribution = calculateNormalDistribution(deviceRawData);
         if (!deviceDistribution) {
           return {
           label: getResourceLabel(device),
-            data: Array(intervals).fill(0), 
-            backgroundColor: color, 
-            borderColor: borderColor, 
-            borderWidth: 1, 
-            fill: true, 
+            data: Array.from({ length: intervals }, (_, i) => ({ x: minValue + i * step, y: 0 })),
+            backgroundColor: color,
+            borderColor: borderColor,
+            borderWidth: 1,
+            fill: true,
             tension: 0.3
           };
         }
-        
-        // 使用正态分布公式计算每个区间的理论数据点数量
+
+        // 统计每个区间内实际数据点数量
         const values = [];
         for (let i = 0; i < intervals; i++) {
-          const start = parseFloat((minValue + i * intervalWidth).toFixed(2));
-          const end = parseFloat((start + intervalWidth).toFixed(2));
-          const midPoint = (start + end) / 2;
-          
-          // 正态分布公式
-          const normalDensity = (1 / (deviceDistribution.stdDev * Math.sqrt(2 * Math.PI))) * 
-                              Math.exp(-0.5 * Math.pow((midPoint - deviceDistribution.mean) / deviceDistribution.stdDev, 2));
-          const count = Math.round(normalDensity * deviceDistribution.totalDataPoints * intervalWidth);
-          values.push(count);
+          const intervalStart = minValue + i * step;
+          const midPoint = minValue + (i + 0.5) * step;
+          // 统计落在该区间内的实际数据点数（最后一个区间包含上界）
+          const count = deviceRawData.filter(v => i === intervals - 1 ? v >= intervalStart : v >= intervalStart && v < intervalStart + step).length;
+          values.push({ x: parseFloat(midPoint.toFixed(2)), y: count });
         }
-        
+
         return {
           label: getResourceLabel(device),
-          data: values, 
-          backgroundColor: color, 
-          borderColor: borderColor, 
-          borderWidth: 1, 
-          fill: false, 
-          tension: 0.3
+          data: values,
+          backgroundColor: color,
+          borderColor: borderColor,
+          borderWidth: 1,
+          fill: false,
+          tension: 0.3,
+          _step: step
         };
       }),
       // 添加rawData字段，用于正态分布统计计算
-      rawData: allRawData
+      rawData: allRawData,
+      // 按设备分开的原始数据，用于按设备分别统计
+      deviceRawData: Object.fromEntries(
+        devices.value.map(d => [getResourceLabel(d), deviceRawDataMap[d] || []])
+      )
     };
     
     return chartData;

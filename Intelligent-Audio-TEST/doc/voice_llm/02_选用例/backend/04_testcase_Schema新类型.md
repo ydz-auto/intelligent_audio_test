@@ -49,7 +49,6 @@ class RoundConfigItem(Schema):
     # voiceprintRegistration → algorithmParams[{field_code:'voiceprintEnabled', ...}]
     # promptAudioId   → algorithmParams[{field_code:'promptAudioId', field_value:...}]
     # interferers     → algorithmParams[{field_code:'interferers', field_value:...}]
-    # interruption    → algorithmParams[{field_code:'interruptionEnabled', ...}]
     # referenceParams → referenceParamsPath（文件路径）
 ```
 
@@ -170,7 +169,6 @@ def load_legacy_config(config_dict):
 | `config.voiceprintRegistration` | `rounds[0].algorithmParams[{field_code:'voiceprintEnabled', ...}]` |
 | `config.promptAudioId` | `rounds[0].algorithmParams[{field_code:'promptAudioId', field_value:...}]` |
 | `config.interferers` | `rounds[0].algorithmParams[{field_code:'interferers', field_value:...}]` |
-| `config.interruption` | `rounds[0].algorithmParams[{field_code:'interruptionEnabled', ...}]` |
 
 ## 相关文档
 - [03_Config_JSON扁平化设计.md](03_Config_JSON扁平化设计.md)

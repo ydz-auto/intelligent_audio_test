@@ -599,7 +599,7 @@ def update_endpoint_concurrency(url, task_type):
         return error_response("Endpoint not found", status_code=404, code=CODE_BUSINESS_ERROR)
     
     TaskModel.update_endpoint_concurrency(url, task_type, max_process)
-    
+
     endpoint = TaskModel.get_endpoint(url)
     return success_response({
         "endpoint": endpoint,

@@ -50,8 +50,6 @@ voice_llm 需要在 `case_algorithm_params` 中注册以下参数：
 | `voiceprintPlaybackDeviceId` | 声纹播放设备 | device_select | null | 声纹注册音频播放设备 |
 | `voiceprintSpl` | 声纹播放声压级 | number | 70.0 | 声纹注册音频播放声压级 |
 | `voiceprintWaitTime` | 声纹等待时间(秒) | number | 5.0 | 声纹注册后等待时间 |
-| `interruptionEnabled` | 打断检测 | switch | false | 是否启用全双工打断检测 |
-| `interruptionSensitivity` | 打断灵敏度 | slider | 0.5 | 打断检测灵敏度(0~1) |
 
 #### API 专用参数（scope=api）
 
@@ -108,13 +106,7 @@ VALUES
    FALSE, '70.0', '声纹注册音频播放声压级', 53, FALSE, FALSE),
 
   ('voice_llm', 'voiceprintWaitTime', '声纹等待时间(秒)', '等待时间', 'number', 'e2e',
-   FALSE, '5.0', '声纹注册后等待时间', 54, FALSE, FALSE),
-
-  ('voice_llm', 'interruptionEnabled', '打断检测', '打断检测', 'switch', 'e2e',
-   FALSE, 'false', '是否启用全双工打断检测', 60, FALSE, FALSE),
-
-  ('voice_llm', 'interruptionSensitivity', '打断灵敏度', '灵敏度', 'slider', 'e2e',
-   FALSE, '0.5', '打断检测灵敏度(0~1)', 61, FALSE, FALSE);
+   FALSE, '5.0', '声纹注册后等待时间', 54, FALSE, FALSE);
 
 
 -- === API 专用参数（scope=api，仅 API 测试显示） ===
@@ -160,8 +152,8 @@ const filteredParams = params.filter(p =>
 
 | param_type | 前端渲染组件 | 说明 |
 |-----------|------------|------|
-| `slider` | el-slider | 滑块（导轨距离、音量、灵敏度） |
-| `switch` | el-switch | 开关（声纹注册、打断检测） |
+| `slider` | el-slider | 滑块（导轨距离、音量） |
+| `switch` | el-switch | 开关（声纹注册） |
 | `number` | el-input-number | 数字输入（声压级、等待时间） |
 | `audio_select` | AudioSelectButton | 音频选择器 |
 | `device_select` | DeviceSelect | 设备选择器 |

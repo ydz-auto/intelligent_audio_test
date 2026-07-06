@@ -13,11 +13,13 @@ export function useApiTest() {
     testCaseGroups,
     tags,
     isLoading,
-    paginationInfo
+    paginationInfo,
+    tagViewData
   } = storeToRefs(testCaseStore);
 
   const {
     fetchTestCases,
+    fetchTagView,
     addTestCase,
     updateTestCase,
     deleteTestCase,
@@ -158,6 +160,7 @@ export function useApiTest() {
     apiTestCases,
     apiTestCaseGroups,
     tags,
+    tagViewData,
     paginationInfo,
     initializeApiTests,
     runApiTest,
@@ -169,6 +172,7 @@ export function useApiTest() {
     deleteGroup,
     openAddApiTestCaseModal,
     handleApiTestCaseSave,
-    handleTestCaseAction
+    handleTestCaseAction,
+    fetchTagView
   };
 }

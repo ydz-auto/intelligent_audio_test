@@ -100,7 +100,6 @@ interface RoundConfigItem {
   // voiceprintRegistration → {field_code:'voiceprintEnabled', ...}
   // promptAudioId   → {field_code:'promptAudioId', field_value:...}
   // interferers     → {field_code:'interferers', field_value:...}
-  // interruption    → {field_code:'interruptionEnabled', ...}
   // referenceParams → referenceParamsPath（文件路径）
 }
 ```
@@ -208,7 +207,6 @@ interface TestCase {
 | `voiceprintRegistration` | RoundConfigItem | algorithmParams | `voiceprintEnabled` + `voiceprintAudioId` + ... |
 | `promptAudioId` | RoundConfigItem | algorithmParams | `promptAudioId` |
 | `interferers` | RoundConfigItem | algorithmParams | `interferers` |
-| `interruption` | RoundConfigItem | algorithmParams | `interruptionEnabled` + `interruptionSensitivity` |
 | `referenceParams` | RoundConfigItem | referenceParamsPath | — |
 
 ## 不变部分

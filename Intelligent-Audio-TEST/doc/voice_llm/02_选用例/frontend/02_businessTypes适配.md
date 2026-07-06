@@ -56,7 +56,6 @@ interface RoundConfigItem {
 > - `voiceprintRegistration` 移入 `algorithmParams`（field_code = voiceprintEnabled 等）
 > - `promptAudioId` 移入 `algorithmParams`（field_code = promptAudioId）
 > - `interferers` 移入 `algorithmParams`（field_code = interferers）
-> - `interruption` 移入 `algorithmParams`（field_code = interruptionEnabled/interruptionSensitivity）
 > - `backgroundNoise` 保留在轮次顶层（E2E 基础环境配置）
 > - `algorithmParams` 格式为 `[{field_code, field_value}]` 数组，由 `case_algorithm_params` 表驱动
 

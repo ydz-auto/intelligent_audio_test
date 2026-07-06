@@ -38,6 +38,15 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const groupLoadingStates = ref<Record<string, boolean>>({});
   const groupPagination = ref<Record<string, GroupPaginationInfo>>({});
 
+  // 标签视图数据：按标签聚合的用例 { tagName: TestCase[] }
+  const tagViewData = ref<Record<string, TestCase[]>>({});
+  const tagViewPagination = ref<{ page: number; pages: number; perPage: number; total: number }>({
+    page: 1,
+    pages: 1,
+    perPage: 50,
+    total: 0
+  });
+
   interface LocalPaginationInfo {
     page: number;
     pages: number;
@@ -153,12 +162,13 @@ export const useTestCaseStore = defineStore('testCase', () => {
       
       const [groupsResponse, testCasesResponse] = await Promise.all([
         testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType }),
-        testcasesApi.getAll({ 
-          page, 
+        testcasesApi.getAll({
+          page,
           perPage,
           keyword: params.keyword,
           tag: params.tag,
           group_id: params.groupId,
+          type: params.testType,
           algorithm_type: params.algorithmType,
           include_deleted: params.includeDeleted || false
         })
@@ -205,6 +215,59 @@ export const useTestCaseStore = defineStore('testCase', () => {
       testCaseGroups.value = {};
       testCases.value = [];
       fullGroupsMap.value = {};
+    } finally {
+      isLoading.value = false;
+    }
+  };
+
+  // 标签视图：调用 GET /testcases?view=tag，返回按标签聚合的数据
+  const fetchTagView = async (params: Record<string, any> = {}) => {
+    try {
+      isLoading.value = true;
+      error.value = null;
+
+      const page = params.page || 1;
+      const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
+
+      const response = await testcasesApi.getAll({
+        page,
+        perPage,
+        view: 'tag',
+        keyword: params.keyword,
+        type: params.testType,
+        algorithm_type: params.algorithmType,
+        include_deleted: params.includeDeleted || false
+      });
+
+      const items: Array<{ tag: string; testCases: TestCase[] }> =
+        response && Array.isArray((response as any).items) ? (response as any).items : [];
+
+      const groups: Record<string, TestCase[]> = {};
+      items.forEach(item => {
+        const tagName = item.tag || '未分类';
+        groups[tagName] = Array.isArray(item.testCases) ? item.testCases : [];
+      });
+
+      tagViewData.value = groups;
+      tagViewPagination.value = {
+        page: (response as any)?.page || 1,
+        pages: (response as any)?.pages || 1,
+        perPage: (response as any)?.perPage || perPage,
+        total: typeof (response as any)?.total === 'number' ? (response as any).total : items.length
+      };
+
+      // 同步提取标签列表
+      const tagSet = new Set<string>();
+      items.forEach(item => {
+        if (item.tag) tagSet.add(item.tag);
+      });
+      if (tagSet.size > 0) {
+        tags.value = Array.from(tagSet);
+      }
+    } catch (err: any) {
+      console.error('获取标签视图数据失败:', err);
+      error.value = err.message || '获取标签视图数据失败';
+      tagViewData.value = {};
     } finally {
       isLoading.value = false;
     }
@@ -900,7 +963,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
     loadedGroupCases,
     groupLoadingStates,
     groupPagination,
+    tagViewData,
+    tagViewPagination,
     fetchTestCases,
+    fetchTagView,
     fetchGroupsList,
     fetchCasesByGroup,
     loadMoreGroupCases,

@@ -254,7 +254,6 @@
                   :class="getOverallStatus(caseItem)"
                 ></span>
                 <div class="case-name">{{ caseItem.name }}</div>
-                <span v-if="isMultiRoundCase(caseItem)" class="multi-round-badge">多轮</span>
                 <span class="case-category">{{ caseItem.category || '未分类' }}</span>
                 <span v-if="caseItem.id" class="case-id-badge" @click.stop="copyToClipboard(caseItem.id)" title="点击复制ID">
                   <i class="fas fa-copy"></i> 用例ID: {{ caseItem.id }}
@@ -403,11 +402,8 @@ import TestCaseReportDetail from '../common/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/PaginationComponent.vue'
 import { reportsApi } from '../../utils/api'
 import { API_CONFIG } from '../../utils/config'
-import { reportService } from '../../services/reportService'
 import { useNotification } from '../../composables/useNotification'
 import '../../assets/styles/components/report-filter-card.css'
-import { useReportFilters } from '../../composables/useReportFilters'
-import { processTags as _processTags, processCategories as _processCategories, getValidResources as _getValidResources } from '../../utils/reportDataUtils'
 
 // Audio player state
 const showAudioModal = ref(false)
@@ -490,16 +486,39 @@ const getResourceLabel = (resourceKey) => {
 // Data
 const searchKeyword = ref('')
 const selectedCategories = ref([])
-const {
-  tagSearchQuery, tagPage, tagPageSize,
-  categorySearchQuery, categoryPage, categoryPageSize,
-  metricSearchQuery, metricPage, metricPageSize,
-  createTagFilter, createCategoryFilter, createMetricFilter,
-  resetFilterState
-} = useReportFilters({ tagPageSize: 50, categoryPageSize: 50, metricPageSize: 30 })
+const categorySearchQuery = ref('')
+const categoryPage = ref(1)
+const categoryPageSize = ref(50)
 
-const processTags = _processTags
-const processCategories = _processCategories
+const filteredCategoriesForSelection = computed(() => {
+  if (!categorySearchQuery.value.trim()) {
+    return categories.value
+  }
+  const query = categorySearchQuery.value.toLowerCase()
+  return categories.value.filter(cat => cat.toLowerCase().includes(query))
+})
+
+const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
+
+const paginatedCategories = computed(() => {
+  const start = (categoryPage.value - 1) * categoryPageSize.value
+  const end = start + categoryPageSize.value
+  return filteredCategoriesForSelection.value.slice(start, end)
+})
+
+// 处理标签：如果是对象数组，提取name属性
+const processTags = (tags) => {
+  if (!tags) return []
+  if (!Array.isArray(tags)) return []
+  return tags.map(tag => typeof tag === 'object' ? tag.name : tag)
+}
+
+// 处理类别：如果是对象数组，提取name属性
+const processCategories = (categories) => {
+  if (!categories) return []
+  if (!Array.isArray(categories)) return []
+  return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
+}
 
 const selectedTags = ref([])
 const selectedMetrics = ref([])
@@ -534,6 +553,48 @@ const currentCaseDetailWithPreparedData = computed(() => {
   }
 })
 
+// Search and pagination for tags
+const tagSearchQuery = ref('')
+const tagPage = ref(1)
+const tagPageSize = ref(50)
+
+const filteredTags = computed(() => {
+  if (!tagSearchQuery.value.trim()) {
+    return allTags.value
+  }
+  const query = tagSearchQuery.value.toLowerCase()
+  return allTags.value.filter(tag => tag.toLowerCase().includes(query))
+})
+
+const totalTagPages = computed(() => Math.ceil(filteredTags.value.length / tagPageSize.value) || 1)
+
+const paginatedTags = computed(() => {
+  const start = (tagPage.value - 1) * tagPageSize.value
+  const end = start + tagPageSize.value
+  return filteredTags.value.slice(start, end)
+})
+
+// Search and pagination for metrics
+const metricSearchQuery = ref('')
+const metricPage = ref(1)
+const metricPageSize = ref(30)
+
+const filteredMetricsForDisplay = computed(() => {
+  if (!metricSearchQuery.value.trim()) {
+    return actualAllMetrics.value
+  }
+  const query = metricSearchQuery.value.toLowerCase()
+  return actualAllMetrics.value.filter(metric => metric.name.toLowerCase().includes(query))
+})
+
+const totalMetricPages = computed(() => Math.ceil(filteredMetricsForDisplay.value.length / metricPageSize.value) || 1)
+
+const paginatedMetrics = computed(() => {
+  const start = (metricPage.value - 1) * metricPageSize.value
+  const end = start + metricPageSize.value
+  return filteredMetricsForDisplay.value.slice(start, end)
+})
+
 // 从reportData中获取数据，优先使用reportData直接提供的数据，然后再使用summary中的数据
 // 注意：二次对比报告中用例分组存储在caseCategories字段中，而不是categories字段中
 const categories = ref(processCategories(props.reportData.categories || props.reportData.summary?.categories || props.reportData.summary?.caseCategories))
@@ -541,9 +602,6 @@ const allTags = ref(processTags(props.reportData.allTags || props.reportData.sum
 
 // 所有评测维度，确保至少有一个默认维度
 const allMetrics = ref(props.reportData.allMetrics || props.reportData.summary?.allMetrics || [])
-
-const { filteredCategories: filteredCategoriesForSelection, totalCategoryPages, paginatedCategories } = createCategoryFilter(categories)
-const { filteredTags, totalTagPages, paginatedTags } = createTagFilter(allTags)
 
 // 计算实际使用的评测维度
 const actualAllMetrics = computed(() => {
@@ -618,10 +676,25 @@ const actualAllMetrics = computed(() => {
   return metrics;
 })
 
-const { filteredMetrics: filteredMetricsForDisplay, totalMetricPages, paginatedMetrics } = createMetricFilter(actualAllMetrics)
-
 // 设备/API列表
-const getValidResources = _getValidResources
+// 使用??替代||，并检查数组长度，确保空数组不会被当作有效值
+const getValidResources = (data) => {
+  const resources = [
+    data.resources,
+    data.devices,
+    data.apis,
+    data.summary?.resources,
+    data.summary?.apis,
+    data.summary?.devices
+  ];
+  
+  for (const resource of resources) {
+    if (Array.isArray(resource) && resource.length > 0) {
+      return resource;
+    }
+  }
+  return [];
+};
 
 const devices = ref(getValidResources(props.reportData));
 
@@ -884,8 +957,8 @@ const initializeCases = async () => {
   }
 }
 
-// 页面加载时初始化
-initializeCases()
+// 页面加载时初始化 —— 由下方 watch immediate 覆盖，不需要单独调用
+// initializeCases() 已移除，避免与 watch immediate 重复调用 search 接口
 
 watch(actualAllMetrics, (newMetrics) => {
   const names = (newMetrics || []).map(m => m?.name).filter(Boolean)
@@ -904,6 +977,9 @@ console.log('SpecificCaseComparisonComponent - caseItem.metrics sample:', cases.
 console.log('SpecificCaseComparisonComponent - actualAllMetrics:', actualAllMetrics.value)
 console.log('SpecificCaseComparisonComponent - devices:', devices.value)
 
+// 防止同一 reportId 重复加载
+let loadedReportId = null
+
 // 监听reportData变化，更新内部状态
 watch([
   () => props.reportData?.id,
@@ -921,8 +997,9 @@ watch([
   
   const effectiveReportId = id || reportId
   if (effectiveReportId) {
-    // 只有在 id 变化时才重新加载用例数据
-    if (effectiveReportId !== oldId && effectiveReportId !== oldReportId) {
+    // 只有在 id 变化时才重新加载用例数据，且跳过已加载过的 reportId
+    if (effectiveReportId !== loadedReportId && effectiveReportId !== oldId && effectiveReportId !== oldReportId) {
+      loadedReportId = effectiveReportId
       console.log('watch: 优先调用 /api/v1/reports/{id}/cases/search API 获取用例数据')
       await loadCasesFromApi(effectiveReportId)
       
@@ -1007,51 +1084,6 @@ function toTextMap(objWithResults) {
   }
   _textMapCache.set(objWithResults, result)
   return result
-}
-
-const normalizeMetricValue = (algorithmResult, metricName, dimensions) => {
-  if (algorithmResult && typeof algorithmResult === 'object' && 'rounds' in algorithmResult && Array.isArray(algorithmResult.rounds)) {
-    const value = reportService.getMetricValue(algorithmResult, metricName, dimensions)
-    if (value !== null && value !== undefined) return value
-    return '—'
-  }
-  if (dimensions && Array.isArray(dimensions)) {
-    const dim = dimensions.find(d => (d.dimension_name || d.name) === metricName)
-    if (dim && dim.value !== undefined && dim.value !== null) return dim.value
-  }
-  return '—'
-}
-
-const isMultiRoundCase = (caseItem) => {
-  if (caseItem.isMultiRound || caseItem.is_multi_round) return true
-  const algorithmResult = caseItem.algorithmResult || caseItem.algorithm_result
-  if (algorithmResult && typeof algorithmResult === 'object') {
-    return reportService.parseMultiRoundResult(algorithmResult).isMultiRound
-  }
-  const algoResults = caseItem.algorithm_results || caseItem.algorithmResults
-  if (Array.isArray(algoResults)) {
-    return algoResults.some(r => {
-      if (!r || typeof r !== 'object') return false
-      const val = r.value
-      return val && typeof val === 'object' && 'rounds' in val && Array.isArray(val.rounds)
-    })
-  }
-  return false
-}
-
-const getCaseAlgorithmResult = (caseItem) => {
-  const algorithmResult = caseItem.algorithmResult || caseItem.algorithm_result
-  if (algorithmResult && typeof algorithmResult === 'object' && 'rounds' in algorithmResult) return algorithmResult
-  const algoResults = caseItem.algorithm_results || caseItem.algorithmResults
-  if (Array.isArray(algoResults)) {
-    const multiRoundItem = algoResults.find(r => {
-      if (!r || typeof r !== 'object') return false
-      const val = r.value
-      return val && typeof val === 'object' && 'rounds' in val && Array.isArray(val.rounds)
-    })
-    if (multiRoundItem) return multiRoundItem.value
-  }
-  return null
 }
 
 // Computed
@@ -1455,36 +1487,28 @@ const downloadCaseLogZip = async (caseItem) => {
 // 为 TestCaseReportDetail 准备数据
 const prepareComparisonData = (caseItem) => {
   const data = {}
-  const metricsMap = toMetricsMap(caseItem)
+  const metricsMap = toMetricsMap(caseItem)  // 扁平格式: {WER: 63.0, wer_zh: 0.0}
   const asrMap = toTextMap(caseItem.asr)
   const tranMap = toTextMap(caseItem.translation)
-  const algorithmResult = getCaseAlgorithmResult(caseItem)
-  const dimensions = caseItem.dimensions || caseItem.dimensionScores || caseItem.dimension_scores
-  const multiRound = isMultiRoundCase(caseItem)
-
+  
+  // 判断 metrics 是否是扁平格式（不在设备分组内）
   const isFlatFormat = !Object.keys(metricsMap).some(k => allDevices.value.includes(k))
-
+  
   allDevices.value.forEach(device => {
-    let deviceMetrics
     if (isFlatFormat) {
-      deviceMetrics = { ...metricsMap }
+      // 扁平格式：所有设备共享相同的指标数据
+      data[device] = {
+        metrics: metricsMap,  // 使用完整的指标对象
+        asr: { text: asrMap?.[device]?.text || '-' },
+        trans: { text: tranMap?.[device]?.text || '-' }
+      }
     } else {
-      deviceMetrics = { ...(metricsMap[device] || {}) }
-    }
-
-    if (multiRound && algorithmResult) {
-      actualAllMetrics.value.forEach(metric => {
-        const normalizedValue = normalizeMetricValue(algorithmResult, metric.name, dimensions)
-        if (normalizedValue !== '—') {
-          deviceMetrics[metric.name] = normalizedValue
-        }
-      })
-    }
-
-    data[device] = {
-      metrics: deviceMetrics,
-      asr: { text: asrMap?.[device]?.text || '-' },
-      trans: { text: tranMap?.[device]?.text || '-' }
+      // 按设备分组的格式
+      data[device] = {
+        metrics: metricsMap[device] || {},
+        asr: { text: asrMap?.[device]?.text || '-' },
+        trans: { text: tranMap?.[device]?.text || '-' }
+      }
     }
   })
   return data
@@ -1594,12 +1618,17 @@ const toggleMetric = (metricName) => {
 const resetFilters = () => {
   searchKeyword.value = ''
   selectedCategories.value = []
+  categorySearchQuery.value = ''
+  categoryPage.value = 1
   selectedTags.value = []
   selectedMetrics.value = []
   sortDimension.value = 'name'
   selectedSortMetric.value = ''
   sortOrder.value = 'asc'
-  resetFilterState()
+  tagSearchQuery.value = ''
+  tagPage.value = 1
+  metricSearchQuery.value = ''
+  metricPage.value = 1
 }
 
 const applyFilters = () => {
@@ -1853,18 +1882,6 @@ const applyFilters = () => {
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
-}
-
-.multi-round-badge {
-  padding: 1px 8px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  line-height: 18px;
 }
 
 .case-id-badge {

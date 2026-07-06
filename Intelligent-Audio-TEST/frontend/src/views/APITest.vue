@@ -62,8 +62,9 @@
         <div v-if="stepHints?.caseSelection" class="info-alert">
           <i class="fas fa-info-circle"></i> {{ stepHints.caseSelection }}
         </div>
-        <TestCaseListContainer 
+        <TestCaseListContainer
           :test-case-groups="testCaseGroups"
+          :tag-view-data="tagViewData"
           :tags="tags"
           :algorithm-type-filter="selectedAlgorithmType || 'all'"
           :test-type-filter="'api'"
@@ -77,6 +78,7 @@
           @open-import-modal="openImportTestCaseModal"
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
+          @tag-filter-change="handleTagFilterChange"
         />
       </TestStepContainer>
 
@@ -361,6 +363,7 @@ const {
   // 测试用例 Store 状态
   testCaseGroups,
   tags,
+  tagViewData,
   isLoading,
   
   formData,
@@ -407,8 +410,18 @@ const {
   
   // voice_llm 适配
   isVoiceLLM,
-  stepHints
+  stepHints,
+  fetchTagView
 } = useApiTest()
+
+// 标签视图筛选变化时重新请求数据（固定 testType=api）
+const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string }) => {
+  fetchTagView({
+    keyword: filters.keyword,
+    testType: 'api',
+    algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
+  });
+};
 
 // 处理开始任务按钮点击
 const handleStartTask = () => {

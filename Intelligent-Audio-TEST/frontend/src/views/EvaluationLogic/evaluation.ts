@@ -130,8 +130,7 @@ export function useEvaluation() {
   }
 
   const dimensionTemplate = {
-    name: '', 
-    keywords: '', 
+    name: '',
     description: '', 
     apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60}],
     apiUrl: '',
@@ -182,9 +181,8 @@ export function useEvaluation() {
   };
 
   const newDimension = ref<Partial<EvaluationDimension>>({ 
-    name: '', 
-    keywords: '', 
-    description: '', 
+    name: '',
+    description: '',
     apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60}],
     apiUrl: '',
     scoreUnit: '',
@@ -276,7 +274,6 @@ export function useEvaluation() {
   const evaluationFields = computed(() => [
     { key: 'id', type: 'hidden' },
     { key: 'name', label: '维度名称', type: 'text', required: true, placeholder: '请输入维度名称', group: '基本信息' },
-    { key: 'keywords', label: '解析关键词', type: 'text', placeholder: '请输入解析关键词，用逗号分隔', group: '基本信息' },
     { key: 'description', label: '描述', type: 'textarea', rows: 3, placeholder: '请输入维度描述', group: '基本信息' },
     { key: 'type', label: '评估类型', type: 'select', required: true, options: [
       { value: 'auto', label: '自动评估' },
@@ -333,6 +330,14 @@ export function useEvaluation() {
     { key: 'apiSettings', label: 'API设置', type: 'apiSettingsEditor', required: false, fullWidth: true, group: 'API配置', 
       conditional: { field: 'dimensionType', value: 'main' } },
     { key: 'requiredInputs', label: '所需输入配置', type: 'requiredInputs', required: false, fullWidth: true, group: 'API配置',
+      conditional: { field: 'dimensionType', value: 'main' } },
+    { key: 'outputFields', label: '输出字段配置', type: 'outputFields', required: false, fullWidth: true, group: 'API配置',
+      conditional: { field: 'dimensionType', value: 'main' } },
+    { key: 'statisticMethod', label: '统计方式', type: 'select', required: false, default: 'average', group: 'API配置',
+      options: [
+        { value: 'average', label: '简单平均' },
+        { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' }
+      ],
       conditional: { field: 'dimensionType', value: 'main' } },
     { key: 'apiEndpoints', label: 'API端点配置', type: 'array', arrayItemType: 'apiEndpoint', required: false, fullWidth: true, arrayItemTemplate: {url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60}, group: 'API配置', 
       conditional: { field: 'dimensionType', value: 'main' } },
@@ -450,10 +455,16 @@ export function useEvaluation() {
             temperature: 0.7
           };
 
+      const rawOutputFields = dimension.outputFields || (dimension as any).output_fields || [];
+      const outputFieldsArray = Array.isArray(rawOutputFields) ? rawOutputFields : [];
+      const statisticMethod = dimension.statisticMethod || (dimension as any).statistic_method || 'average';
+
       const editingData = {...dimension, categoryId: dimension.categoryId || (dimension as any).category_id, apiEndpoints, apiUrl,
         apiSettings: apiSettingsObj,
         rule: ruleObj,
         requiredInputs: requiredInputsObj,
+        outputFields: outputFieldsArray,
+        statisticMethod: statisticMethod,
         associatedAlgorithms: associatedAlgorithmsArray,
         status: String(dimension.status).toLowerCase() === 'true',
         dimensionType: dimensionType,
@@ -596,6 +607,19 @@ export function useEvaluation() {
           }
         } else {
           delete dimensionData.requiredInputs;
+        }
+      }
+
+      // 处理 outputFields
+      if (dimensionData.outputFields !== undefined) {
+        if (typeof dimensionData.outputFields === 'string' && dimensionData.outputFields.trim()) {
+          try {
+            dimensionData.outputFields = JSON.parse(dimensionData.outputFields);
+          } catch (e) {
+            throw new Error('输出字段配置格式不正确，请检查 JSON 格式');
+          }
+        } else if (!Array.isArray(dimensionData.outputFields)) {
+          delete dimensionData.outputFields;
         }
       }
 
@@ -1075,10 +1099,9 @@ export function useEvaluation() {
 
   function openAddModal() {
     const formData = {
-      name: '', 
-      keywords: '', 
-      description: '', 
-      type: 'auto', 
+      name: '',
+      description: '',
+      type: 'auto',
       categoryId: undefined, 
       apiUrl: '',
       scoreUnit: '',
@@ -1101,7 +1124,9 @@ export function useEvaluation() {
       estimatedExecTime: 5, 
       status: true, 
       rule: { ...dimensionTemplate.rule }, 
-      requiredInputs: [...dimensionTemplate.requiredInputs], 
+      requiredInputs: [...dimensionTemplate.requiredInputs],
+      outputFields: [],
+      statisticMethod: 'average',
       apiEndpoints: [{ url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60}],
       associatedAlgorithms: [],
       llmJudgeConfig: {

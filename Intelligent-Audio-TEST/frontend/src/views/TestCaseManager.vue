@@ -12,9 +12,11 @@
     
     <TestCaseListContainer
       :test-case-groups="testCaseGroups"
+      :tag-view-data="tagViewData"
       :tags="tags"
       :pagination-info="paginationInfo"
       :is-loading="isLoading"
+      v-model:view-mode="viewMode"
       @delete-group="handleDeleteGroup"
       @delete-test-case="handleDeleteTestCase"
       @open-add-modal="openAddTestCaseModal"
@@ -23,6 +25,7 @@
       @open-edit-group-modal="openEditGroupModal"
       @open-import-modal="openImportTestCaseModal"
       @open-export-modal="openExportTestCaseModal"
+      @tag-filter-change="handleTagFilterChange"
     />
   </div>
 </template>
@@ -33,9 +36,11 @@ import { useTestCaseManager } from './TestCaseManagerLogic/testCaseManager';
 
 const {
   testCaseGroups,
+  tagViewData,
   tags,
   paginationInfo,
   isLoading,
+  viewMode,
   handleDeleteGroup,
   handleDeleteTestCase,
   openAddTestCaseModal,
@@ -43,7 +48,8 @@ const {
   openCreateGroupModal,
   openEditGroupModal,
   openImportTestCaseModal,
-  openExportTestCaseModal
+  openExportTestCaseModal,
+  handleTagFilterChange
 } = useTestCaseManager();
 </script>
 

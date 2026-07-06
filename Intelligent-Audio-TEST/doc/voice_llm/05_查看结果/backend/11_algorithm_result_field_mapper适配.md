@@ -62,12 +62,12 @@ def get_output_fields(self, algorithm_type, test_type=None):
                 },
                 'rounds': {
                     'type': 'json',
-                    'description': '轮次结果数组，每轮 round/input/output/evaluation/interruption',
+                    'description': '轮次结果数组，每轮 round/input/output/evaluation',
                     'required': True
                 },
                 'aggregated': {
                     'type': 'json',
-                    'description': '多轮聚合指标 (avg_wer, avg_llm_judge, avg_latency, interruption_count)',
+                    'description': '多轮聚合指标 (avg_wer, avg_llm_judge, avg_latency)',
                     'required': False
                 }
             }
@@ -219,6 +219,44 @@ for round_idx, round_cfg in enumerate(case_config.get('rounds', [])):
 ```
 
 > **不再用 `algorithm_params` 独立列**：所有算法参数统一在 `rounds[].algorithmParams` 中，无需在 mapper 中按"输出字段"再列举。
+
+## 补充：评估维度输出字段配置化
+
+评估维度的输入/输出字段已统一到 `EvaluationDimensionParam` 表，通过前端"输出字段配置"编辑器管理。
+
+### EvaluationDimensionParam 新增字段
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `param_direction` | VARCHAR(10) | 'input' | 参数方向：input/output |
+| `field_path` | VARCHAR(200) | NULL | 结果提取路径（如 `wer`、`data.result.wer`） |
+| `agg_role` | VARCHAR(20) | NULL | 聚合角色：numerator/denominator/value |
+| `output_role` | VARCHAR(10) | 'main' | 输出字段角色：main（主结果）/ aux（辅助字段） |
+| `visible_in_report` | BOOLEAN | TRUE | 是否在报告中显示该维度列 |
+
+### ParamMapping 自动同步
+
+评估维度保存时，`_sync_param_mappings()` 自动同步 `ParamMapping` 表：
+- input 字段 → `source_direction='input'`
+- output 字段 → `source_direction='output'`
+- 删除的字段 → 软删除（`deleted=True`）
+
+### 报告过滤
+
+报告生成时，过滤掉所有 output 参数 `visible_in_report=False` 的维度（仅用于聚合，不展示）。
+
+### 前端配置
+
+`OutputFieldsEditor.vue` 组件提供以下配置列：
+- 字段代码（param_code）
+- 显示标签（param_name）
+- 提取路径（field_path）
+- 字段类型（number/text/boolean/json）
+- 字段角色（output_role: 主结果/辅助字段）
+- 聚合角色（agg_role: 无/直接值/分子/分母）
+- 显示（visible_in_report: 复选框）
+
+---
 
 ## 相关文档
 - [08_field_mapper_voice_llm映射.md](08_field_mapper_voice_llm映射.md) — 字段定义

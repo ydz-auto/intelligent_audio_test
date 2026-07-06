@@ -67,7 +67,7 @@ function isE2eTestCase(caseItem: TestCase): boolean {
 <!-- E2ETest.vue 设备选择步骤 -->
 <template v-if="isVoiceLLM">
   <el-alert type="info" :closable="false">
-    voice_llm 测试可能需要设备支持：音量控制、导轨控制、打断检测。
+    voice_llm 测试可能需要设备支持：音量控制、导轨控制。
     请确认设备能力后再选择。
   </el-alert>
 </template>
@@ -80,9 +80,6 @@ function isE2eTestCase(caseItem: TestCase): boolean {
     </el-tag>
     <el-tag v-if="item.supportsRailControl" size="small" type="success">
       导轨控制
-    </el-tag>
-    <el-tag v-if="item.supportsInterruptionDetection" size="small" type="success">
-      打断检测
     </el-tag>
   </div>
 </template>

@@ -68,7 +68,6 @@ voice_llm 的 E2E 公共能力（导轨/音量/声纹/打断等）已迁出到 `
 > **注意**：以下参数已迁出，不在 params Tab 中作为 config 结构化字段管理，而是在 `case_algorithm_params` 表中定义，通过 DynamicForm 渲染到 `algorithmParams` 中：
 > - rail_distance, volume → `algorithmParams[{field_code:'railDistance/volumeLevel', ...}]`（E2E 公共能力）
 > - voiceprint_wait_time → `algorithmParams[{field_code:'voiceprintWaitTime', ...}]`
-> - allow_interruption, interruption_sensitivity → `algorithmParams[{field_code:'interruptionEnabled/interruptionSensitivity', ...}]`
 > - session_timeout, context_mode → 移除（不在原始需求中）
 > - llm_judge_model → 评估微服务配置
 

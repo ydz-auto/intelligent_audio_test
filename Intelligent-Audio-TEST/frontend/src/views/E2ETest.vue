@@ -58,8 +58,9 @@
         :show-prev="false"
         @next="nextStep"
       >
-        <TestCaseListContainer 
+        <TestCaseListContainer
           :test-case-groups="testCaseGroups"
+          :tag-view-data="tagViewData"
           :tags="tags"
           :algorithm-type-filter="selectedAlgorithmType || 'all'"
           :test-type-filter="'e2e'"
@@ -73,6 +74,7 @@
           @open-import-modal="openImportTestCaseModal"
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
+          @tag-filter-change="handleTagFilterChange"
         />
       </TestStepContainer>
 
@@ -302,6 +304,7 @@ const {
   report,
   testCaseGroups,
   tags,
+  tagViewData,
   isLoading,
   
   // 进度状态
@@ -398,8 +401,18 @@ const {
   algorithmModalMode,
   algorithmEditData,
   algorithmSearchQuery,
-  searchAlgorithms
+  searchAlgorithms,
+  fetchTagView
 } = useE2eView()
+
+// 标签视图筛选变化时重新请求数据（固定 testType=e2e）
+const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string }) => {
+  fetchTagView({
+    keyword: filters.keyword,
+    testType: 'e2e',
+    algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
+  });
+};
 
 // 处理开始任务按钮点击
 const handleStartTask = () => {

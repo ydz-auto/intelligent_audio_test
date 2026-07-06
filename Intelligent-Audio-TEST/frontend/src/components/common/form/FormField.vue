@@ -346,6 +346,12 @@
       v-model="localValue"
       @change="handleInput"
     />
+
+    <OutputFieldsEditor
+      v-else-if="field.type === 'outputFields'"
+      v-model="localValue"
+      @change="handleInput"
+    />
     
     <APISettingsEditor
       v-else-if="field.type === 'apiSettingsEditor'"
@@ -369,6 +375,7 @@
 import { ref, watch, computed, onMounted } from 'vue'
 import AlgorithmParamsConfig from '../../algorithm/AlgorithmParamsConfig.vue'
 import RequiredInputsEditor from './RequiredInputsEditor.vue'
+import OutputFieldsEditor from './OutputFieldsEditor.vue'
 import APISettingsEditor from './APISettingsEditor.vue'
 import RuleEditor from './RuleEditor.vue'
 import { useAlgorithmConfig } from '../../../composables/useAlgorithmConfig'

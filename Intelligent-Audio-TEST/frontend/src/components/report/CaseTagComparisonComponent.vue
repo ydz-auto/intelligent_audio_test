@@ -258,8 +258,6 @@ import ChartComponent from './ChartComponent.vue'
 import DataTable from '../common/DataTable.vue'
 import { reportsApi } from '../../utils/api'
 import '../../assets/styles/components/report-filter-card.css'
-import { useReportFilters } from '../../composables/useReportFilters'
-import { extractTagsFromReport, extractCategoriesFromReport, getValidResources as _getValidResources, buildMetricDecimalPlacesMap, formatMetricForDisplay as _formatMetricForDisplay } from '../../utils/reportDataUtils'
 
 // Collapse state
 const isCollapsed = ref(false)
@@ -295,8 +293,20 @@ const props = defineProps({
 // Data
 // 从reportData中获取数据，优先使用reportData直接提供的数据，然后再使用summary中的数据
 // 处理allTags：如果是对象数组，提取name属性作为显示值
-const getTags = (data) => extractTagsFromReport(data || {})
-const getCategories = (data) => extractCategoriesFromReport(data || {})
+const getTags = (data) => {
+  if (!data) return []
+  const tags = data.allTags || data.summary?.allTags || data.allCaseTags || data.summary?.allCaseTags || []
+  if (!Array.isArray(tags)) return []
+  return tags.map(tag => typeof tag === 'object' ? tag.name : tag)
+}
+
+// 处理caseCategories：如果是对象数组，提取name属性作为显示值
+const getCategories = (data) => {
+  if (!data) return []
+  const categories = data.caseCategories || data.summary?.caseCategories || []
+  if (!Array.isArray(categories)) return []
+  return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
+}
 
 const allTags = ref(getTags(props.reportData))
 const caseCategories = ref(getCategories(props.reportData))
@@ -304,30 +314,112 @@ const caseCategories = ref(getCategories(props.reportData))
 const selectedTags = ref([])
 const selectedCategories = ref([])
 
-const {
-  tagSearchQuery, tagPage, tagPageSize,
-  categorySearchQuery, categoryPage, categoryPageSize,
-  metricSearchQuery, metricPage, metricPageSize,
-  createTagFilter, createCategoryFilter, createMetricFilter,
-  resetFilterState
-} = useReportFilters({ tagPageSize: 50, categoryPageSize: 50, metricPageSize: 30 })
+// Search and pagination for categories
+const categorySearchQuery = ref('')
+const categoryPage = ref(1)
+const categoryPageSize = ref(50)
 
-const pageSize = tagPageSize
+const filteredCategoriesForSelection = computed(() => {
+  if (!categorySearchQuery.value.trim()) {
+    return caseCategories.value
+  }
+  const query = categorySearchQuery.value.toLowerCase()
+  return caseCategories.value.filter(cat => cat.toLowerCase().includes(query))
+})
 
-const { filteredCategories: filteredCategoriesForSelection, totalCategoryPages, paginatedCategories } = createCategoryFilter(caseCategories)
-const { filteredTags: availableTagsForSelection, totalTagPages, paginatedTags } = createTagFilter(allTags)
+const totalCategoryPages = computed(() => Math.ceil(filteredCategoriesForSelection.value.length / categoryPageSize.value) || 1)
+
+const paginatedCategories = computed(() => {
+  const start = (categoryPage.value - 1) * categoryPageSize.value
+  const end = start + categoryPageSize.value
+  return filteredCategoriesForSelection.value.slice(start, end)
+})
+
+// Search and pagination for tags
+const tagSearchQuery = ref('')
+const tagPage = ref(1)
+const pageSize = ref(50)
+
+const availableTagsForSelection = computed(() => {
+  if (!tagSearchQuery.value.trim()) {
+    return allTags.value
+  }
+  const query = tagSearchQuery.value.toLowerCase()
+  return allTags.value.filter(tag => tag.toLowerCase().includes(query))
+})
+
+const totalTagPages = computed(() => Math.ceil(availableTagsForSelection.value.length / pageSize.value) || 1)
+
+const paginatedTags = computed(() => {
+  const start = (tagPage.value - 1) * pageSize.value
+  const end = start + pageSize.value
+  return availableTagsForSelection.value.slice(start, end)
+})
 
 // Metrics configuration
 const allMetrics = ref(props.reportData.allMetrics || props.reportData.summary?.allMetrics || [])
 
 const selectedMetrics = ref([])
 
-const { filteredMetrics: filteredMetricsForDisplay, totalMetricPages, paginatedMetrics } = createMetricFilter(allMetrics)
+// Search and pagination for metrics
+const metricSearchQuery = ref('')
+const metricPage = ref(1)
+const metricPageSize = ref(30)
 
-const metricDecimalPlacesMap = computed(() => buildMetricDecimalPlacesMap(allMetrics.value))
+const filteredMetricsForDisplay = computed(() => {
+  if (!metricSearchQuery.value.trim()) {
+    return allMetrics.value
+  }
+  const query = metricSearchQuery.value.toLowerCase()
+  return allMetrics.value.filter(metric => metric.name.toLowerCase().includes(query))
+})
 
-const formatMetricForDisplayLocal = (metricName, value) => _formatMetricForDisplay(metricName, value, metricDecimalPlacesMap.value)
-const getValidResources = _getValidResources
+const totalMetricPages = computed(() => Math.ceil(filteredMetricsForDisplay.value.length / metricPageSize.value) || 1)
+
+const paginatedMetrics = computed(() => {
+  const start = (metricPage.value - 1) * metricPageSize.value
+  const end = start + metricPageSize.value
+  return filteredMetricsForDisplay.value.slice(start, end)
+})
+
+const metricDecimalPlacesMap = computed(() => {
+  const map = {}
+  const list = Array.isArray(allMetrics.value) ? allMetrics.value : []
+  list.forEach(m => {
+    if (!m || !m.name) return
+    const dp = m.decimalPlaces ?? m.decimal_places
+    if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
+  })
+  return map
+})
+
+const formatMetricForDisplay = (metricName, value) => {
+  if (value === '-' || value === null || value === undefined) return '-'
+  const num = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(num)) return String(value)
+  const dp = metricDecimalPlacesMap.value?.[String(metricName)]
+  if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp)
+  return String(num)
+}
+// 同时使用设备和API作为资源，API任务可能没有设备，设备任务可能没有API
+// 使用??替代||，并检查数组长度，确保空数组不会被当作有效值
+const getValidResources = (data) => {
+  const resources = [
+    data.resources,
+    data.devices,
+    data.apis,
+    data.summary?.resources,
+    data.summary?.apis,
+    data.summary?.devices
+  ];
+  
+  for (const resource of resources) {
+    if (Array.isArray(resource) && resource.length > 0) {
+      return resource;
+    }
+  }
+  return [];
+};
 
 const devices = ref(getValidResources(props.reportData));
 
@@ -935,7 +1027,12 @@ const resetFilters = () => {
   selectedTags.value = []
   selectedCategories.value = []
   selectedMetrics.value = []
-  resetFilterState()
+  categorySearchQuery.value = ''
+  categoryPage.value = 1
+  tagSearchQuery.value = ''
+  tagPage.value = 1
+  metricSearchQuery.value = ''
+  metricPage.value = 1
   applyFilters()
 }
 
@@ -1093,32 +1190,56 @@ const getMetricValue = (tag, device, metricName) => {
     if (tagData) {
       // 首先尝试直接使用device作为key查找数据
       let deviceData = tagData[device];
-      
-      // 如果找不到，尝试使用resource key（包含ID前缀）查找数据
+
+      // 如果找不到，按名称匹配（去掉ID前缀）
       if (!deviceData || deviceData[metricName] === undefined) {
-        // 遍历tagData中的所有资源，找到名称匹配的资源
+        const deviceName = typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device;
         for (const [resourceKey, data] of Object.entries(tagData)) {
-          // 直接实现getResourceName的逻辑
-          const currentResourceName = resourceKey.includes('_') ? resourceKey.split('_').slice(1).join('_') : resourceKey;
-          if (currentResourceName === device) {
+          const currentResourceName = resourceKey.includes('-') ? resourceKey.split('-').slice(1).join('-') : resourceKey;
+          if (currentResourceName === deviceName) {
             deviceData = data;
             break;
           }
         }
       }
-      
+
       if (deviceData && deviceData[metricName] !== undefined) {
         return deviceData[metricName];
       }
     }
   }
-  
+
   // 如果没有真实数据，返回0作为默认值
-  return 0 
+  return 0
 }
 
+// 获取原始值数组（与getMetricValue相同的查找逻辑，但返回_raw数组）
+const getRawDataValue = (tag, device, metricName) => {
+  const rawDataKey = `${metricName}_raw`;
+  const dataToUse = filteredTagMetricData.value;
+  if (dataToUse) {
+    const tagData = dataToUse[tag];
+    if (tagData) {
+      // 1. 直接用 device key 查找
+      if (tagData[device] && Array.isArray(tagData[device][rawDataKey])) {
+        return tagData[device][rawDataKey];
+      }
+
+      // 2. 按名称匹配（去掉ID前缀）
+      const deviceName = typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device;
+      for (const [resourceKey, data] of Object.entries(tagData)) {
+        const currentResourceName = resourceKey.includes('-') ? resourceKey.split('-').slice(1).join('-') : resourceKey;
+        if (currentResourceName === deviceName && Array.isArray(data[rawDataKey])) {
+          return data[rawDataKey];
+        }
+      }
+    }
+  }
+  return [];
+};
+
 const getMetricDisplayValue = (tag, device, metricName) => {
-  return formatMetricForDisplayLocal(metricName, getMetricValue(tag, device, metricName))
+  return formatMetricForDisplay(metricName, getMetricValue(tag, device, metricName))
 }
 
 const getMetricUnit = (metricName) => {
@@ -1238,111 +1359,114 @@ const getChartData = (metricName) => {
     
     // 收集所有原始数据
     devices.value.forEach(device => {
+      // 后端返回的raw_data是按资源维度的，会被复制到每个标签下（同一数组引用），
+      // 需要按引用去重，避免同一份数据被重复累加N次（N=标签数）
+      const seenArrays = new Set();
       filteredTags.value.forEach(tag => {
-        // 获取原始值数组
-        const rawDataKey = `${metricName}_raw`;
-        let rawData = [];
-        
-        if (filteredTagMetricData.value && filteredTagMetricData.value[tag] && filteredTagMetricData.value[tag][device]) {
-          rawData = filteredTagMetricData.value[tag][device][rawDataKey] || [];
-        }
-        
+        // 使用与getMetricValue相同的查找逻辑获取原始值数组
+        const rawData = getRawDataValue(tag, device, metricName);
+
+        // 跳过已处理的相同数组引用（后端数据被复制到每个标签的情况）
+        if (seenArrays.has(rawData)) return;
+        seenArrays.add(rawData);
+
         // 添加到设备原始数据和总原始数据中
         deviceRawDataMap[device] = deviceRawDataMap[device].concat(rawData);
         allRawData = allRawData.concat(rawData);
       });
     });
     
-    // 直接使用前端计算逻辑，不再依赖后端数据
+    // 过滤掉非数值数据，确保统计计算正确
+    allRawData = allRawData.filter(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
+    Object.keys(deviceRawDataMap).forEach(device => {
+      deviceRawDataMap[device] = deviceRawDataMap[device].filter(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
+    });
+
     // 计算正态分布统计信息
     const calculateNormalDistribution = (data) => {
       if (!data || data.length === 0) {
         return null;
       }
-      
-      // 排序数据用于计算五数概括
-      const sortedData = [...data].sort((a, b) => a - b);
-      
+
       // 计算平均值
       const mean = data.reduce((sum, value) => sum + value, 0) / data.length;
-      
+
       // 计算方差
       const variance = data.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / data.length;
-      
+
       // 计算标准差
       const stdDev = Math.sqrt(variance);
-      
+
       return {mean, stdDev, totalDataPoints: data.length};
     };
-    
+
     const distribution = calculateNormalDistribution(allRawData);
     if (!distribution) {
       return {labels: [], datasets: [], rawData: allRawData};
     }
     
-    // 生成10个数据区间
-    const intervals = 10;
-    const minValue = distribution.mean - 4 * distribution.stdDev;
-    const maxValue = distribution.mean + 4 * distribution.stdDev;
-    const intervalWidth = (maxValue - minValue) / intervals;
-    
-    const labels = [];
-    for (let i = 0; i < intervals; i++) {
-      const start = parseFloat((minValue + i * intervalWidth).toFixed(2));
-      const end = parseFloat((start + intervalWidth).toFixed(2));
-      labels.push(`${start}-${end}`);
+    // 按标准差划分区间：以mean为中心，向两侧按σ/8步长划分，共约64个区间
+    // 区间细密，放大后自然展示更细的分布细节，无需动态重算
+    const step = distribution.stdDev / 8; // 每个区间宽度 = σ/8
+    let minValue = distribution.mean - 32 * step; // mean - 4σ
+    const maxValue = distribution.mean + 32 * step; // mean + 4σ
+    // 如果所有数据都非负，横轴从0开始
+    if (!allRawData.some(v => v < 0)) {
+      minValue = 0;
     }
-    
+    const intervals = Math.round((maxValue - minValue) / step);
+
     // 为每个设备生成正态分布数据
     const chartData = {
-      labels: labels, 
+      labels: [],
       datasets: devices.value.map((device, index) => {
         const color = chartColors[index % chartColors.length];
         const borderColor = chartBorderColors[index % chartBorderColors.length];
-        
+
         // 获取该设备的所有原始数据点
         const deviceRawData = deviceRawDataMap[device] || [];
-        
+
         // 计算设备的正态分布参数
         const deviceDistribution = calculateNormalDistribution(deviceRawData);
         if (!deviceDistribution) {
           return {
             label: getResourceLabel(device),
-            data: Array(intervals).fill(0), 
-            backgroundColor: color, 
-            borderColor: borderColor, 
-            borderWidth: 1, 
-            fill: true, 
+            data: Array.from({ length: intervals }, (_, i) => ({ x: minValue + i * step, y: 0 })),
+            backgroundColor: color,
+            borderColor: borderColor,
+            borderWidth: 1,
+            fill: true,
             tension: 0.3
           };
         }
-        
-        // 使用正态分布公式计算每个区间的理论数据点数量
+
+        // 统计每个区间内实际数据点数量
         const values = [];
         for (let i = 0; i < intervals; i++) {
-          const start = parseFloat((minValue + i * intervalWidth).toFixed(2));
-          const end = parseFloat((start + intervalWidth).toFixed(2));
-          const midPoint = (start + end) / 2;
-          
-          // 正态分布公式
-          const normalDensity = (1 / (deviceDistribution.stdDev * Math.sqrt(2 * Math.PI))) * 
-                              Math.exp(-0.5 * Math.pow((midPoint - deviceDistribution.mean) / deviceDistribution.stdDev, 2));
-          const count = Math.round(normalDensity * deviceDistribution.totalDataPoints * intervalWidth);
-          values.push(count);
+          const intervalStart = minValue + i * step;
+          const midPoint = minValue + (i + 0.5) * step;
+          // 统计落在该区间内的实际数据点数（最后一个区间包含上界）
+          const count = deviceRawData.filter(v => i === intervals - 1 ? v >= intervalStart : v >= intervalStart && v < intervalStart + step).length;
+          values.push({ x: parseFloat(midPoint.toFixed(2)), y: count });
         }
-        
+
         return {
           label: getResourceLabel(device),
-          data: values, 
-          backgroundColor: color, 
-          borderColor: borderColor, 
-          borderWidth: 1, 
-          fill: false, 
-          tension: 0.3
+          data: values,
+          backgroundColor: color,
+          borderColor: borderColor,
+          borderWidth: 1,
+          fill: false,
+          tension: 0.3,
+          _step: step
         };
       }),
       // 添加rawData字段，用于正态分布统计计算
-      rawData: allRawData
+      rawData: allRawData,
+      // 按设备分开的原始数据，用于按设备分别统计
+      deviceRawData: Object.fromEntries(
+        devices.value.map(d => [getResourceLabel(d), deviceRawDataMap[d] || []])
+      )
     };
     
     return chartData;

@@ -8,19 +8,21 @@ import { MODAL_TYPES, type TestCase, type TestCaseFormData } from '../shared/typ
 
 export function useE2eTest() {
   const testCaseStore = useTestCaseStore();
-  const { 
-    testCases, 
+  const {
+    testCases,
     testCaseGroups,
     tags,
     isLoading,
-    paginationInfo
+    paginationInfo,
+    tagViewData
   } = storeToRefs(testCaseStore);
-  
+
   const {
-    fetchTestCases, 
-    addTestCase, 
-    updateTestCase, 
-    deleteTestCase, 
+    fetchTestCases,
+    fetchTagView,
+    addTestCase,
+    updateTestCase,
+    deleteTestCase,
     copyTestCase,
     deleteGroup
   } = testCaseStore;
@@ -166,6 +168,7 @@ export function useE2eTest() {
     e2eTestCases,
     e2eTestCaseGroups,
     tags,
+    tagViewData,
     paginationInfo,
     initializeE2eTests,
     openAddE2eTestCaseModal,
@@ -180,6 +183,7 @@ export function useE2eTest() {
     deleteE2eTestCase,
     copyE2eTestCase,
     deleteGroup,
-    handleE2eTestCaseSave
+    handleE2eTestCaseSave,
+    fetchTagView
   };
 }

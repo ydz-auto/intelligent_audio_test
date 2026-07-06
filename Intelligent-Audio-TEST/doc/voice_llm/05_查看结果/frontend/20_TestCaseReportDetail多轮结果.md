@@ -269,7 +269,6 @@ function metricLabel(key: string): string {
     avg_wer: '平均 WER',
     avg_latency: '平均延迟',
     avg_llm_judge: '平均 LLM 评分',
-    interruption_count: '打断次数',
     total_latency: '总延迟',
   };
   return labels[key] || key;

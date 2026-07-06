@@ -38,7 +38,7 @@ graph TD
 
     G --> H["播放音频<br/>pre_process → 提示音 → pre_process → 混音播放<br/>干声+噪声+干扰人统一混音<br/>(音量由驱动 pre_process 自行管理)"]
     H --> I["post_process<br/>(驱动自行恢复音量等)"]
-    I --> J["等待 + 打断检测"]
+    I --> J["等待响应"]
     J --> K["收集本轮结果"]
     K --> L["标记 round_number"]
     L --> M["env_devices teardown"]
@@ -99,8 +99,8 @@ class E2EExecutor:
             # 6. post_process（驱动自行恢复音量等）
             self._post_process_devices(device_info_list, task_id, ...)
 
-            # 7. 等待 + 打断检测
-            interruption_events = self._wait_and_detect_interruption(...)
+            # 7. 等待响应
+            time.sleep(wait_time)
 
             # 8. 收集本轮结果
             round_results = self._collect_results(...)
@@ -196,5 +196,4 @@ _execute_audio_playback(..., extra_audio_configs=interferer_configs)
 - ← `03_选设备API/backend/29_设备驱动导轨控制集成`
 - → `04_执行测试/backend/19_声纹注册模块`
 - → `04_执行测试/backend/20_干扰人播放模块`
-- → `04_执行测试/backend/21_全双工打断检测`
 - → `04_执行测试/backend/22_E2E每轮结果收集`

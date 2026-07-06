@@ -553,8 +553,6 @@ const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string
   'voiceprintPlaybackDeviceId': { param_name: '声纹播放设备', param_type: 'device_select', help_text: '声纹注册音频播放设备' },
   'voiceprintSpl': { param_name: '声纹播放声压级', param_type: 'number', default_value: '70.0', help_text: '声纹注册音频播放声压级', min_value: 20, max_value: 100, step: 1, unit: 'dB' },
   'voiceprintWaitTime': { param_name: '声纹等待时间(秒)', param_type: 'number', default_value: '5.0', help_text: '声纹注册后等待时间', min_value: 0, max_value: 60, step: 1, unit: 's' },
-  'interruptionEnabled': { param_name: '打断检测', param_type: 'switch', default_value: 'false', help_text: '是否启用全双工打断检测' },
-  'interruptionSensitivity': { param_name: '打断灵敏度', param_type: 'slider', default_value: '0.5', help_text: '打断检测灵敏度(0~1)', min_value: 0, max_value: 1, step: 0.1 },
   'interferers': { param_name: '干扰人列表', param_type: 'json', default_value: '[]', help_text: '干扰人配置列表' },
   'promptAudioId': { param_name: 'Prompt 音频', param_type: 'audio_select', help_text: '在干声播放之前播放的引导音频' },
   'inputText': { param_name: '输入文本', param_type: 'text', help_text: '发送给 API 的文本内容' },

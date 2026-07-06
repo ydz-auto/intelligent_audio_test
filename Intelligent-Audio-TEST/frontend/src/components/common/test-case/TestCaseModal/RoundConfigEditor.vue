@@ -67,7 +67,6 @@
           :playback-devices="playbackDevices"
           :has-voiceprint-param="hasVoiceprintParam"
           :has-interferer-param="hasInterfererParam"
-          :has-interruption-param="hasInterruptionParam"
           @update:round="updateCurrentRoundData"
           @open-audio-select="handleAudioSelect"
           @preview-audio="(audioId: string) => emit('previewAudio', audioId, 'noise')"
@@ -190,9 +189,6 @@ const hasVoiceprintParam = computed(() =>
 )
 const hasInterfererParam = computed(() =>
   filteredCaseParams.value.some((p: any) => p.param_code === 'interferers')
-)
-const hasInterruptionParam = computed(() =>
-  filteredCaseParams.value.some((p: any) => p.param_code === 'interruptionEnabled')
 )
 
 // ---- 轮次操作 ----

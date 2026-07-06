@@ -74,8 +74,7 @@ class CaseAlgorithmParam(db.Model):
 ```json
 [
   {"field_code": "railDistance", "field_value": 50},
-  {"field_code": "volumeLevel", "field_value": 80},
-  {"field_code": "interruptionEnabled", "field_value": true}
+  {"field_code": "volumeLevel", "field_value": 80}
 ]
 ```
 

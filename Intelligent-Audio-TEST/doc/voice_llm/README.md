@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-本文档集为 **语音交互大模型（voice_llm）测试能力改造** 项目的完整技术设计文档。改造目标是在现有智能音频测试平台中新增 voice_llm 测试类型，支持多轮会话、声纹注册、干扰人播放、导轨控制、设备音量控制、全双工打断检测等能力。
+本文档集为 **语音交互大模型（voice_llm）测试能力改造** 项目的完整技术设计文档。改造目标是在现有智能音频测试平台中新增 voice_llm 测试类型，支持多轮会话、声纹注册、干扰人播放、导轨控制、设备音量控制等能力。
 
 **核心架构**：双记录用例架构（test_type=api/e2e）+ 三服务协作（主后端 + eval_server + api_adapter_service）
 
@@ -67,12 +67,11 @@ doc/voice_llm/
 │       ├── 23_UploadOptions_test_type.md                # 音频上传选项 test_type 适配
 │       └── 25_Evaluation页面_llm_judge维度.md            # 评估维度管理 llm_judge 类型
 │
-├── 03_选设备API/                                      # === 第 3 步：选设备/API（6个文档）===
-│   ├── 00_步骤总览.md                                   # 设备驱动扩展（音量/导轨/打断）
+├── 03_选设备API/                                      # === 第 3 步：选设备/API（5个文档）===
+│   ├── 00_步骤总览.md                                   # 设备驱动扩展（音量/导轨）
 │   ├── backend/                                       # -- 后端 --
 │   │   ├── 18_被测设备音量控制.md                        # base_driver 新增 set_volume
-│   │   ├── 29_设备驱动导轨控制集成.md                    # 导轨控制集成到 device_driver 框架
-│   │   └── 33_device_driver打断检测接口.md              # base_driver 新增 detect_interruption
+│   │   └── 29_设备驱动导轨控制集成.md                    # 导轨控制集成到 device_driver 框架
 │   └── frontend/                                      # -- 前端 --
 │       ├── 16_APITest页面适配.md                        # APITest.vue + useApiTest.ts
 │       └── 17_E2ETest页面适配.md                        # E2ETest.vue + useE2eTest.ts
@@ -88,7 +87,6 @@ doc/voice_llm/
 │   │   ├── 17_e2e_executor多轮循环.md                   # execute_e2e_case 配置驱动多轮循环（rounds 非空时）
 │   │   ├── 19_声纹注册模块.md                           # 播放注册音频 + 等待
 │   │   ├── 20_干扰人播放模块.md                         # 复用 play_overlap + play_multi 混音
-│   │   ├── 21_全双工打断检测.md                         # _detect_interruption 设计
 │   │   ├── 22_E2E每轮结果收集.md                       # _collect_round_results
 │   │   ├── 23_E2E测试结果存储结构.md                    # 含 rounds/rail/voiceprint
 │   │   ├── 24_evaluation_service_llm_judge分发.md       # llm_judge 维度路由
@@ -129,6 +127,8 @@ doc/voice_llm/
 │
 └── 35_数据迁移方案.md                                  # DDL + 拆分脚本 + 验证 + 回滚
 
+├── 36_多轮上传与标签视图实现记录.md                       # 三个断层修复 + 标签视图 + 标注任意字段（2026-07-06 冲刺）
+
 ├── 98_API用例端到端示例.md                              # 完整示例: API配置→执行→评估→报告
 └── 99_E2E用例端到端示例.md                              # 完整示例: E2E配置→执行→评估→报告
 ```
@@ -153,7 +153,7 @@ doc/voice_llm/
 | 08 | 01_选算法 | `01_选算法/backend/08_field_mapper_voice_llm映射.md` | voice_llm 字段定义（动态映射，无硬编码分支） |
 | 09 | 02_选用例 | `02_选用例/backend/09_case_parameter_extractor适配.md` | voice_llm 评估参数提取 |
 | 10 | 02_选用例 | `02_选用例/backend/10_reference_params_generator适配.md` | voice_llm 参考参数生成 |
-| 11 | 05_查看结果 | `05_查看结果/backend/11_algorithm_result_field_mapper适配.md` | voice_llm 输出字段映射 |
+| 11 | 05_查看结果 | `05_查看结果/backend/11_algorithm_result_field_mapper适配.md` | voice_llm 输出字段映射（含 EvaluationDimensionParam 配置化） |
 | 12 | 04_执行测试 | `04_执行测试/backend/12_api_executor多轮会话主循环.md` | execute_api_case 配置驱动多轮会话 |
 | 13 | 04_执行测试 | `04_执行测试/backend/13_SessionContext会话管理器.md` | 会话创建/上下文维护/销毁 |
 | 14 | 04_执行测试 | `04_执行测试/backend/14_轮次请求构建.md` | _send_round_request 设计 |
@@ -163,19 +163,17 @@ doc/voice_llm/
 | 18 | 03_选设备API | `03_选设备API/backend/18_被测设备音量控制.md` | base_driver 新增 set_volume + E2E 集成 |
 | 19 | 04_执行测试 | `04_执行测试/backend/19_声纹注册模块.md` | 播放注册音频 + 等待 |
 | 20 | 04_执行测试 | `04_执行测试/backend/20_干扰人播放模块.md` | 复用 play_overlap + play_multi 混音 |
-| 21 | 04_执行测试 | `04_执行测试/backend/21_全双工打断检测.md` | _detect_interruption 设计 |
 | 22 | 04_执行测试 | `04_执行测试/backend/22_E2E每轮结果收集.md` | _collect_round_results |
 | 23 | 04_执行测试 | `04_执行测试/backend/23_E2E测试结果存储结构.md` | 含 rounds/rail/voiceprint |
 | 24 | 04_执行测试 | `04_执行测试/backend/24_evaluation_service_llm_judge分发.md` | llm_judge 维度路由 |
-| 25 | 04_执行测试 | `04_执行测试/backend/25_evaluation_service单轮评估.md` | round_number 参数支持 |
+| 25 | 04_执行测试 | `04_执行测试/backend/25_evaluation_service单轮评估.md` | round_number 参数支持（含输出字段配置化） |
 | 26 | 04_执行测试 | `04_执行测试/backend/26_evaluation_api_client适配.md` | 多轮对话数据结构请求体 |
-| 27 | 04_执行测试 | `04_执行测试/backend/27_evaluation_result_processor多轮聚合.md` | 多轮评估结果处理 |
+| 27 | 04_执行测试 | `04_执行测试/backend/27_evaluation_result_processor多轮聚合.md` | 多轮评估结果处理（配置驱动聚合策略） |
 | 28 | 04_执行测试 | `04_执行测试/backend/28_base_executor评估入队适配.md` | _evaluate_result round_number |
 | 29 | 03_选设备API | `03_选设备API/backend/29_设备驱动导轨控制集成.md` | 导轨控制集成到 device_driver 框架 |
 | 30 | 04_执行测试 | `04_执行测试/backend/30_execution_engine多轮进度.md` | 任务调度支持多轮进度 |
 | 31 | 04_执行测试 | `04_执行测试/backend/31_event_manager多轮进度推送.md` | WebSocket 推送"第 N/M 轮" |
 | 32 | 04_执行测试 | `04_执行测试/backend/32_device_result_collector多轮采集.md` | 每轮单独采集 + 对齐 |
-| 33 | 03_选设备API | `03_选设备API/backend/33_device_driver打断检测接口.md` | base_driver 新增 detect_interruption |
 | 34 | 05_查看结果 | `05_查看结果/backend/34_reevaluation_executor适配.md` | 重新评估支持多轮结果 |
 | 35 | 数据迁移 | `35_数据迁移方案.md` | DDL + 拆分脚本 + 验证 + 回滚 |
 
@@ -231,11 +229,13 @@ doc/voice_llm/
 | 05 | 04_执行测试 | `04_执行测试/api_adapter/05_mock_adapter_voice_llm.md` | mock 多轮对话响应 |
 | 06 | 04_执行测试 | `04_执行测试/api_adapter/06_application_yml配置扩展.md` | voice_llm vendor 配置 |
 
-### 其他文档（4个）
+### 其他文档（5个）
 
 | 编号 | 路径 | 功能说明 |
 |------|------|---------|
 | 00 | `00_改造方案总览.md` | 改造前后流程图对比 + 三服务架构全景 |
+| 35 | `35_数据迁移方案.md` | DDL + 拆分脚本 + 验证 + 回滚 |
+| 36 | `36_多轮上传与标签视图实现记录.md` | 三个断层修复 + 标签视图 + 标注任意字段（2026-07-06 冲刺实现记录） |
 | 98 | `98_API用例端到端示例.md` | 完整示例: API配置→执行→评估→报告 |
 | 99 | `99_E2E用例端到端示例.md` | 完整示例: E2E配置→执行→评估→报告 |
 | — | `README.md` | 导航索引（本文档） |
@@ -336,7 +336,6 @@ doc/voice_llm/
 |----|------|------|
 | 后端 | `03_选设备API/backend/18_被测设备音量控制` | base_driver 新增 set_volume + E2E 集成 |
 | 后端 | `03_选设备API/backend/29_设备驱动导轨控制集成` | 导轨控制集成到 device_driver 框架 |
-| 后端 | `03_选设备API/backend/33_device_driver打断检测接口` | base_driver 新增 detect_interruption |
 | 前端 | `03_选设备API/frontend/16_APITest页面适配` | APITest.vue + useApiTest.ts |
 | 前端 | `03_选设备API/frontend/17_E2ETest页面适配` | E2ETest.vue + useE2eTest.ts |
 
@@ -344,7 +343,7 @@ doc/voice_llm/
 
 ### 第 4 步：执行测试
 
-> 任务创建 → 启动 → 多轮执行 → 实时进度推送。这是改造量最大的步骤，涉及 API 多轮会话、E2E 多轮循环、声纹注册、干扰人、打断检测、评估等。
+> 任务创建 → 启动 → 多轮执行 → 实时进度推送。这是改造量最大的步骤，涉及 API 多轮会话、E2E 多轮循环、声纹注册、干扰人、评估等。
 
 > **先读** `04_执行测试/00_步骤总览` — 了解多轮循环、评估扩展、微服务协作全景
 
@@ -371,7 +370,6 @@ doc/voice_llm/
 | 后端 | `04_执行测试/backend/17_e2e_executor多轮循环` | execute_e2e_case 配置驱动多轮循环 |
 | 后端 | `04_执行测试/backend/19_声纹注册模块` | 播放注册音频 + 等待 |
 | 后端 | `04_执行测试/backend/20_干扰人播放模块` | 复用 play_overlap + play_multi 混音 |
-| 后端 | `04_执行测试/backend/21_全双工打断检测` | _detect_interruption 设计 |
 | 后端 | `04_执行测试/backend/22_E2E每轮结果收集` | _collect_round_results |
 | 后端 | `04_执行测试/backend/23_E2E测试结果存储结构` | 含 rounds/rail/voiceprint |
 
@@ -452,7 +450,6 @@ graph TD
 
     subgraph 03_选设备API
         E18[18_设备音量控制] --> I29[29_导轨控制集成]
-        E21[21_打断检测] --> I33[33_打断检测接口]
     end
 
     subgraph 04_执行测试
@@ -513,7 +510,6 @@ graph TD
 | WER | Word Error Rate，词错误率，语音识别核心评估指标 |
 | 导轨控制 | 通过设备驱动框架控制导轨移动，自动调整被测设备与麦克风的物理距离 |
 | 被测设备音量控制 | 通过设备驱动（ADB/HDC）设置被测设备的系统音量级别 |
-| 全双工打断 | 被测设备在播放语音时能够检测并响应外部语音输入（打断当前播放） |
 | backgroundNoise | E2E 轮次顶层的背景噪声配置，含 audioId/deviceIds/spl/loop 属性，loop 控制循环播放 |
 | 统一音频模型 | 干声/噪声/干扰人统一为 `{file, device_index, channel, gain, delay, is_noise}` 格式，play_overlap→play_multi 按设备分组混音；is_noise=True 循环播放且不计入完成判定 |
 | eval_server | 评估微服务（Flask, port 5001），执行 WER/LLM Judge 等评估任务 |

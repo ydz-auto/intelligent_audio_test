@@ -149,6 +149,41 @@ for round_idx, round_config in enumerate(rounds):
 
 ---
 
+## 补充：结果解析配置化
+
+`parse_dimension_result` 已改为配置驱动，不再依赖 `keywords` 字段兜底。
+
+### 结果提取优先级
+
+1. `EvaluationDimensionParam` 表中 `output_role=main` 的 `field_path`
+2. output 参数中第一个有 `field_path` 的字段（兜底）
+3. `api_settings.response_mapping`
+4. 维度名匹配（兜底）
+
+### output_params 加载
+
+```python
+# evaluation_service.py 加载维度数据时
+for p in output_params:
+    output_param_map.setdefault(p.dimension_id, []).append({
+        'param_code': p.param_code,
+        'field_path': p.field_path,
+        'field_type': p.field_type,
+        'agg_role': p.agg_role,
+        'output_role': p.output_role,          # main / aux
+        'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True
+    })
+```
+
+### 辅助字段（output_role=aux）
+
+辅助字段（如 errors/length）不需要创建子维度，只需配在主维度的 output 参数上：
+- `output_role=aux`：不作为 `dimension_value` 的提取源
+- `visible_in_report=false`：报告不显示该字段对应的维度列
+- `agg_role=numerator/denominator`：聚合时从 `api_raw_response` 中按此角色提取
+
+---
+
 ## 依赖关系
 
 | 依赖文档 | 说明 |

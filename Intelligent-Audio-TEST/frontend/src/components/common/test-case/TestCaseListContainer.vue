@@ -1,6 +1,28 @@
 <template>
   <div class="test-case-list-container">
-    <h3 class="step-title">测试用例列表</h3>
+    <h3 class="step-title">
+      <span>测试用例列表</span>
+      <div class="view-switcher">
+        <button
+          class="btn btn-toggle"
+          :class="{ active: innerViewMode === 'group' }"
+          @click="() => updateViewMode('group')"
+          title="分组视图"
+        >
+          <i class="fas fa-folder"></i>
+          分组视图
+        </button>
+        <button
+          class="btn btn-toggle"
+          :class="{ active: innerViewMode === 'tag' }"
+          @click="() => updateViewMode('tag')"
+          title="标签视图"
+        >
+          <i class="fas fa-tags"></i>
+          标签视图
+        </button>
+      </div>
+    </h3>
     
     <div class="test-case-toolbar">
       <div class="toolbar-actions">
@@ -11,7 +33,7 @@
             <i class="fas fa-plus"></i>
             新增用例
           </button>
-          <button class="btn btn-secondary" @click="() => emit('openCreateGroupModal')">
+          <button class="btn btn-secondary" @click="() => emit('openCreateGroupModal')" v-if="innerViewMode === 'group'">
             <i class="fas fa-folder-plus"></i>
             创建分组
           </button>
@@ -95,9 +117,11 @@
     </div>
     
     <div class="single-column-layout" ref="listContainerRef" @scroll="handleScroll">
-      <div 
-        v-for="group in paginatedGroups" 
-        :key="group" 
+      <!-- ===== 分组视图 ===== -->
+      <template v-if="innerViewMode === 'group'">
+      <div
+        v-for="group in paginatedGroups"
+        :key="group"
         class="category-card"
       >
         <div class="category-header" @click="() => toggleCategory(group)">
@@ -164,22 +188,65 @@
         <p>没有找到测试用例分组</p>
         <p class="empty-state-hint">请尝试添加新的测试用例或创建分组</p>
       </div>
-      
+
       <div v-if="isLoadingMore" class="loading-more">
         <i class="fas fa-spinner fa-spin"></i>
         <span>加载更多分组...</span>
       </div>
-      
+
       <div v-if="hasMoreGroups && !isLoadingMore && paginatedGroups.length > 0" class="load-more-trigger">
         <span class="load-more-hint">已显示 {{ paginatedGroups.length }} / {{ paginationInfo.totalItems }} 个分组</span>
         <button class="btn btn-secondary btn-sm" @click="loadMoreGroups">
           <i class="fas fa-chevron-down"></i> 加载更多
         </button>
       </div>
-      
+
       <div v-if="!hasMoreGroups && paginatedGroups.length > 0" class="all-loaded">
         <span>已加载全部 {{ paginationInfo.totalItems }} 个分组</span>
       </div>
+      </template>
+
+      <!-- ===== 标签视图 ===== -->
+      <template v-else>
+        <div
+          v-for="tagName in paginatedTags"
+          :key="tagName"
+          class="category-card"
+        >
+          <div class="category-header" @click="() => toggleTagCategory(tagName)">
+            <div class="category-info">
+              <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedTagCategories[tagName] }"></i>
+              <i class="fas fa-tag" style="color: var(--primary-color, #4a90e2); margin-right: 6px;"></i>
+              <h4 class="category-title">{{ tagName }}</h4>
+              <span class="category-count">{{ filteredTagCases[tagName]?.length || 0 }}</span>
+              <span v-if="getTagDurationStats(tagName).totalDuration > 0" class="group-duration-tags">
+                <span class="duration-tag">{{ formatGroupDuration(getTagDurationStats(tagName).totalDuration) }}</span>
+              </span>
+            </div>
+          </div>
+          <div class="category-content" :class="{ expanded: expandedTagCategories[tagName] }">
+            <TestCaseListWithPagination
+              :test-cases="formattedTagCases[tagName]"
+              :actions="getTestCaseActions()"
+              :show-config="false"
+              :search-query="searchQuery"
+              :is-loading="isLoading"
+              @toggle-selection="toggleTestCaseSelection"
+              @action="(actionEvent) => handleAction(actionEvent, tagName)"
+            />
+          </div>
+        </div>
+
+        <div v-if="paginatedTags.length === 0" class="empty-state">
+          <i class="fas fa-tags"></i>
+          <p>没有找到标签分组的测试用例</p>
+          <p class="empty-state-hint">请为测试用例添加标签</p>
+        </div>
+
+        <div v-if="!hasMoreGroups && paginatedTags.length > 0" class="all-loaded">
+          <span>已加载全部 {{ sortedTags.length }} 个标签</span>
+        </div>
+      </template>
     </div>
     
   </div>
@@ -273,11 +340,13 @@ import type { Ref } from 'vue';
 
 const props = defineProps<{
   testCaseGroups?: Record<string, TestCase[]>;
+  tagViewData?: Record<string, TestCase[]>;
   tags?: string[];
   paginationInfo?: PaginationInfo;
   isLoading?: boolean;
   algorithmTypeFilter?: string;
   testTypeFilter?: string;
+  viewMode?: 'group' | 'tag';
 }>();
 
 const emit = defineEmits<{
@@ -290,9 +359,12 @@ const emit = defineEmits<{
   (e: 'openImportModal'): void;
   (e: 'openExportModal'): void;
   (e: 'updateSelectedCases', selectedCases: (string | number)[]): void;
+  (e: 'update:viewMode', mode: 'group' | 'tag'): void;
+  (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string }): void;
 }>();
 
 const expandedCategories = ref<Record<string, boolean>>({});
+const expandedTagCategories = ref<Record<string, boolean>>({});
 const selectedCases = ref<(string | number)[]>([]);
 const searchQuery = ref('');
 const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -302,6 +374,24 @@ const groupFilter = ref('all');
 const tagFilter = ref('all');
 const sortBy = ref('count');
 const sortOrder = ref('desc');
+
+// 视图模式：'group' 分组视图 | 'tag' 标签视图
+const innerViewMode = ref<'group' | 'tag'>(props.viewMode || 'group');
+const updateViewMode = (mode: 'group' | 'tag') => {
+  innerViewMode.value = mode;
+  emit('update:viewMode', mode);
+  // 切换视图时重置展开状态
+  if (mode === 'tag') {
+    expandedCategories.value = {};
+  } else {
+    expandedTagCategories.value = {};
+  }
+};
+watch(() => props.viewMode, (newMode) => {
+  if (newMode && newMode !== innerViewMode.value) {
+    innerViewMode.value = newMode;
+  }
+});
 
 // Pagination state
 const currentPage = ref(1);
@@ -363,6 +453,17 @@ watch(() => props.testTypeFilter, (newValue) => {
 
 watch([searchQuery, testTypeFilter, algorithmTypeFilter, groupFilter, tagFilter, sortBy, sortOrder], () => {
   currentPage.value = 1;
+});
+
+// 标签视图模式下，筛选条件变化时通知父组件重新请求后端
+watch([debouncedSearchQuery, testTypeFilter, algorithmTypeFilter, innerViewMode], () => {
+  if (innerViewMode.value === 'tag') {
+    emit('tagFilterChange', {
+      keyword: debouncedSearchQuery.value || undefined,
+      testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
+      algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
+    });
+  }
 });
 
 const loadPlaybackDevices = async () => {
@@ -618,6 +719,15 @@ const formatGroupDuration = (seconds: number): string => {
   return `${hours}h ${remainingMinutes}m`;
 };
 
+const getTagDurationStats = (tagName: string) => {
+  const cases = filteredTagCases.value[tagName] || [];
+  let totalDuration = 0;
+  cases.forEach((tc: TestCase) => {
+    if (tc.totalDuration) totalDuration += tc.totalDuration;
+  });
+  return { totalDuration };
+};
+
 const sortedGroups = computed(() => {
   const filteredValue = filteredTestCases.value;
   const groups = Object.keys(filteredValue);
@@ -670,7 +780,7 @@ const paginationInfo = computed(() => {
   const totalItems = sortedGroups.value.length;
   const totalPages = Math.ceil(totalItems / itemsPerPage.value);
   hasMoreGroups.value = paginatedGroups.value.length < totalItems;
-  
+
   return {
     totalItems,
     totalPages,
@@ -680,6 +790,86 @@ const paginationInfo = computed(() => {
     hasNext: currentPage.value < totalPages
   };
 });
+
+// ===== 标签视图计算属性 =====
+const availableTags = computed(() => {
+  return Object.keys(props.tagViewData || {});
+});
+
+const filteredTagCases = computed(() => {
+  const result: Record<string, TestCase[]> = {};
+  const tagData = props.tagViewData || {};
+
+  const selectedTag = tagFilter.value;
+
+  // 后端已对 keyword/testType/algorithmType 做筛选，前端只做标签选择器过滤
+  Object.keys(tagData).forEach((tagName: string) => {
+    if (selectedTag !== 'all' && tagName !== selectedTag) {
+      return;
+    }
+    result[tagName] = tagData[tagName] || [];
+  });
+
+  return result;
+});
+
+const formattedTagCases = computed(() => {
+  const result: Record<string, (TestCase & { lastEditTime?: string; selected: boolean })[]> = {};
+  const filteredValue = filteredTagCases.value;
+
+  Object.keys(filteredValue).forEach((tagName: string) => {
+    result[tagName] = filteredValue[tagName]
+      .filter((testCase: TestCase) => testCase && testCase.id)
+      .map((testCase: TestCase) => ({
+        ...testCase,
+        lastEditTime: testCase.updatedAt || testCase.createdAt,
+        selected: selectedCases.value.includes(testCase.id)
+      }));
+  });
+  return result;
+});
+
+const sortedTags = computed(() => {
+  const filteredValue = filteredTagCases.value;
+  const tagsList = Object.keys(filteredValue);
+  const currentSortBy = sortBy.value;
+  const currentSortOrder = sortOrder.value;
+
+  return tagsList.sort((a, b) => {
+    let result = 0;
+    switch (currentSortBy) {
+      case 'count':
+        result = (filteredValue[b]?.length || 0) - (filteredValue[a]?.length || 0);
+        return currentSortOrder === 'asc' ? result * -1 : result;
+      case 'name':
+        result = a.localeCompare(b, 'zh-CN');
+        return currentSortOrder === 'desc' ? result * -1 : result;
+      case 'createTime':
+        const aCases = filteredValue[a] || [];
+        const bCases = filteredValue[b] || [];
+        const aTime = aCases[0]?.createdAt ? new Date(aCases[0].createdAt).getTime() : 0;
+        const bTime = bCases[0]?.createdAt ? new Date(bCases[0].createdAt).getTime() : 0;
+        result = bTime - aTime;
+        return currentSortOrder === 'asc' ? result * -1 : result;
+      default:
+        result = (filteredValue[b]?.length || 0) - (filteredValue[a]?.length || 0);
+        return currentSortOrder === 'asc' ? result * -1 : result;
+    }
+  });
+});
+
+const paginatedTags = computed(() => {
+  const allTags = sortedTags.value;
+  const endIndex = currentPage.value * itemsPerPage.value;
+  return allTags.slice(0, endIndex);
+});
+
+const toggleTagCategory = (tagName: string) => {
+  expandedTagCategories.value = {
+    ...expandedTagCategories.value,
+    [tagName]: !expandedTagCategories.value[tagName]
+  };
+};
 
 const getTestCaseActions = () => {
   return [
@@ -1332,6 +1522,9 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   font-size: 24px;
   font-weight: 600;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
 }
 
 /* 测试用例工具栏样式 */
@@ -1360,6 +1553,37 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   width: 100%;
   justify-content: center;
   margin-bottom: var(--spacing-md);
+}
+
+.view-switcher {
+  display: inline-flex;
+  gap: 0;
+  margin-left: auto;
+  border: none;
+  overflow: hidden;
+}
+
+.view-switcher .btn-toggle {
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--text-secondary, #666);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.view-switcher .btn-toggle:hover {
+  background: var(--background-secondary, #f5f5f5);
+}
+
+.view-switcher .btn-toggle.active {
+  background: var(--primary-color, #4a90e2);
+  color: #fff;
 }
 
 /* 响应式设计：在中等屏幕及以上，工具栏操作居左，过滤居右 */

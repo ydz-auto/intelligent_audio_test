@@ -121,38 +121,6 @@
       />
     </div>
 
-    <!-- 打断检测 -->
-    <div class="rce-section" v-if="hasInterruptionParam">
-      <div class="rce-sub-title">
-        <i class="fas fa-hand-paper"></i> 打断检测
-      </div>
-      <div class="rce-param-grid">
-        <div class="rce-param-item">
-          <label class="rce-param-label">启用打断检测</label>
-          <label class="rce-switch">
-            <input
-              type="checkbox"
-              :checked="isTruthy(getAlgoParam('interruptionEnabled', false))"
-              @change="setAlgoParam('interruptionEnabled', ($event.target as HTMLInputElement).checked)"
-            />
-            <span>{{ isTruthy(getAlgoParam('interruptionEnabled')) ? '启用' : '关闭' }}</span>
-          </label>
-        </div>
-        <div class="rce-param-item" v-if="isTruthy(getAlgoParam('interruptionEnabled'))">
-          <label class="rce-param-label">灵敏度</label>
-          <div class="rce-slider-wrap">
-            <input
-              type="range"
-              class="rce-slider"
-              min="0" max="100" step="1"
-              :value="getAlgoParam('interruptionSensitivity', 50)"
-              @input="setAlgoParam('interruptionSensitivity', Number(($event.target as HTMLInputElement).value))"
-            />
-            <span class="rce-slider-val">{{ getAlgoParam('interruptionSensitivity', 50) }}%</span>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -168,7 +136,6 @@ const props = defineProps<{
   playbackDevices: PlaybackDevice[]
   hasVoiceprintParam: boolean
   hasInterfererParam: boolean
-  hasInterruptionParam: boolean
 }>()
 
 const emit = defineEmits<{

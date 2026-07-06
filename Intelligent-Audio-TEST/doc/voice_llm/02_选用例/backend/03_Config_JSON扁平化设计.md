@@ -113,9 +113,7 @@ config 简化为 `{ rounds, dimensions }`。每轮包含结构性字段 + `algor
         { "field_code": "voiceprintPlaybackDeviceId", "field_value": "dev_003" },
         { "field_code": "voiceprintSpl", "field_value": "70.0" },
         { "field_code": "voiceprintWaitTime", "field_value": "5.0" },
-        { "field_code": "promptAudioId", "field_value": "prompt_001" },
-        { "field_code": "interruptionEnabled", "field_value": "true" },
-        { "field_code": "interruptionSensitivity", "field_value": "0.5" }
+        { "field_code": "promptAudioId", "field_value": "prompt_001" }
       ],
       "referenceParamsPath": "/references/round1_ref.json"
     },
@@ -170,8 +168,6 @@ config 简化为 `{ rounds, dimensions }`。每轮包含结构性字段 + `algor
 | `voiceprintPlaybackDeviceId` | string | e2e | 声纹播放设备 |
 | `voiceprintSpl` | float | e2e | 声纹播放声压级 |
 | `voiceprintWaitTime` | float | e2e | 声纹等待时间 |
-| `interruptionEnabled` | bool | e2e | 打断检测开关 |
-| `interruptionSensitivity` | float | e2e | 打断灵敏度(0~1) |
 
 > 以上 field_code 列表来自 `07_voice_llm算法参数种子数据.md` 中的 INSERT SQL。
 > 新增参数只需在数据库中 INSERT，无需修改代码。

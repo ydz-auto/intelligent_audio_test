@@ -1,4 +1,4 @@
-import { onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { storeToRefs } from 'pinia';
 import { useTestCaseCard } from '../../composables/useTestCaseCard';
 import { useTestCaseStore } from '../../store/testCaseStore';
@@ -22,8 +22,47 @@ export function useTestCaseManager() {
   } = useTestCaseCard();
 
   const store = useTestCaseStore();
-  const { testCaseGroups, tags, paginationInfo, isLoading } = storeToRefs(store);
-  const { fetchTestCases, deleteGroup: deleteGroupFromStore, deleteTestCase } = store;
+  const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination } = storeToRefs(store);
+  const { fetchTestCases, fetchTagView, deleteGroup: deleteGroupFromStore, deleteTestCase } = store;
+
+  // 视图模式：'group' 分组视图 | 'tag' 标签视图
+  const viewMode = ref<'group' | 'tag'>('group');
+
+  // 当前筛选条件（由 TestCaseListContainer 上报）
+  const currentFilters = ref<{ keyword?: string; testType?: string; algorithmType?: string }>({});
+
+  const refreshCurrentView = async () => {
+    if (viewMode.value === 'tag') {
+      await fetchTagView({
+        keyword: currentFilters.value.keyword,
+        testType: currentFilters.value.testType,
+        algorithmType: currentFilters.value.algorithmType,
+      });
+    } else {
+      await fetchTestCases({
+        keyword: currentFilters.value.keyword,
+        testType: currentFilters.value.testType,
+        algorithmType: currentFilters.value.algorithmType,
+      });
+    }
+  };
+
+  watch(viewMode, async (newMode) => {
+    console.log('[TestCaseManager] 视图切换:', newMode);
+    await refreshCurrentView();
+  });
+
+  // 由 TestCaseListContainer 上报筛选条件变化
+  const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string }) => {
+    currentFilters.value = filters;
+    if (viewMode.value === 'tag') {
+      fetchTagView({
+        keyword: filters.keyword,
+        testType: filters.testType,
+        algorithmType: filters.algorithmType,
+      });
+    }
+  };
 
   const { confirmDeleteGroup, confirmDeleteTestCase } = useDeleteConfirm();
 
@@ -60,7 +99,7 @@ export function useTestCaseManager() {
     const result = await handleModalSave(data);
     if (result?.needRefresh) {
       console.log('刷新测试用例数据...');
-      await fetchTestCases();
+      await refreshCurrentView();
     }
   };
 
@@ -71,13 +110,12 @@ export function useTestCaseManager() {
 
   return {
     testCaseGroups,
+    tagViewData,
     tags,
     paginationInfo,
-    formData,
-    groupFormData,
-    editingTestCase,
-    editingGroup,
+    tagViewPagination,
     isLoading,
+    viewMode,
     handleDeleteGroup,
     handleDeleteTestCase,
     openAddTestCaseModal,
@@ -87,6 +125,8 @@ export function useTestCaseManager() {
     openImportTestCaseModal,
     openExportTestCaseModal,
     handleSaveModal,
-    handleTestCaseAction
+    handleTestCaseAction,
+    refreshCurrentView,
+    handleTagFilterChange
   };
 }

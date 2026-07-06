@@ -53,10 +53,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed } from 'vue'
 import DataTable from '../common/DataTable.vue'
-import { reportsApi } from '../../utils/api'
-import { getValidResources } from '../../utils/reportDataUtils'
 
 const props = defineProps({
   reportData: {
@@ -64,68 +62,17 @@ const props = defineProps({
   }
 })
 
-const cases = ref([])
-const casesLoading = ref(false)
-
 const isCollapsed = ref(false)
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
 
-const loadCasesFromApi = async (reportId) => {
-  casesLoading.value = true
-  try {
-    const perPage = 200
-    let page = 1
-    let pages = 1
-    const allItems = []
-    while (page <= pages) {
-      const data = await reportsApi.searchCases(reportId, { page, per_page: perPage })
-      const items = data?.items || []
-      pages = data?.pages || 1
-      allItems.push(...items)
-      page += 1
-      if (allItems.length >= 5000) break
-    }
-    cases.value = allItems
-  } catch (e) {
-    cases.value = []
-  } finally {
-    casesLoading.value = false
-  }
+// 从 get_one 返回的 metricData (dict格式: {category: {resource: {metric: avg}}}) 跨 category 聚合
+const getMetricData = () => {
+  return props.reportData?.metricData || props.reportData?.summary?.metricData ||
+         props.reportData?.metric_data || props.reportData?.summary?.metric_data || {}
 }
-
-const extractCasesFromReportData = (reportData) => {
-  if (reportData.testReportsCases && Array.isArray(reportData.testReportsCases) && reportData.testReportsCases.length > 0) {
-    return reportData.testReportsCases
-  }
-  if (reportData.cases && Array.isArray(reportData.cases) && reportData.cases.length > 0) {
-    return reportData.cases
-  }
-  if (reportData.summary?.cases && Array.isArray(reportData.summary.cases) && reportData.summary.cases.length > 0) {
-    return reportData.summary.cases
-  }
-  return []
-}
-
-const loadCases = async () => {
-  const reportId = props.reportData?.id || props.reportData?.reportId
-  if (reportId) {
-    await loadCasesFromApi(reportId)
-  }
-  if (cases.value.length === 0) {
-    cases.value = extractCasesFromReportData(props.reportData)
-  }
-}
-
-onMounted(async () => {
-  await loadCases()
-})
-
-watch(() => props.reportData, async () => {
-  await loadCases()
-}, { deep: true })
 
 const resourceHeaderMap = computed(() => {
   const data = props.reportData || {}
@@ -178,6 +125,24 @@ const getResourceLabel = (resourceKey) => {
   return resourceKey
 }
 
+const getValidResources = (data) => {
+  const resources = [
+    data.resources,
+    data.devices,
+    data.apis,
+    data.summary?.resources,
+    data.summary?.apis,
+    data.summary?.devices
+  ];
+
+  for (const resource of resources) {
+    if (Array.isArray(resource) && resource.length > 0) {
+      return resource;
+    }
+  }
+  return [];
+}
+
 const devices = computed(() => getValidResources(props.reportData))
 
 const processedDevices = computed(() => {
@@ -187,17 +152,21 @@ const processedDevices = computed(() => {
 const actualAllMetrics = computed(() => {
   let metrics = props.reportData?.allMetrics || props.reportData?.summary?.allMetrics || []
 
-  if (metrics.length === 0 && cases.value.length > 0) {
+  // 如果 allMetrics 为空，从 metricData 中提取维度名
+  if (metrics.length === 0) {
+    const metricData = getMetricData()
     const dimensionSet = new Set()
-    cases.value.forEach(caseItem => {
-      const metricsData = caseItem.metrics
-      if (Array.isArray(metricsData)) {
-        metricsData.forEach(m => {
-          if (m && m.metric) dimensionSet.add(m.metric)
+    Object.keys(metricData).forEach(category => {
+      const resData = metricData[category]
+      if (!resData || typeof resData !== 'object') return
+      Object.keys(resData).forEach(resourceKey => {
+        const metrics = resData[resourceKey]
+        if (!metrics || typeof metrics !== 'object') return
+        Object.keys(metrics).forEach(dimName => {
+          // 跳过 _raw 后缀的原始数据 key
+          if (!dimName.endsWith('_raw')) dimensionSet.add(dimName)
         })
-      } else if (metricsData && typeof metricsData === 'object') {
-        Object.keys(metricsData).forEach(dimName => dimensionSet.add(dimName))
-      }
+      })
     })
     metrics = Array.from(dimensionSet).map(dimName => ({ name: dimName, unit: '%' }))
   }
@@ -209,7 +178,7 @@ const actualAllMetrics = computed(() => {
   return metrics
 })
 
-const totalCases = computed(() => cases.value.length)
+const totalCases = computed(() => props.reportData?.summary?.totalCases || props.reportData?.summary?.total_cases || 0)
 const metricsCount = computed(() => actualAllMetrics.value.length)
 const devicesCount = computed(() => devices.value.length)
 
@@ -272,57 +241,47 @@ const formatMetricValue = (metricName, value) => {
   return String(num.toFixed(2))
 }
 
-const toMetricsMap = (caseItem) => {
-  const metrics = caseItem?.metrics
-  if (Array.isArray(metrics)) {
-    if (metrics.length > 0 && metrics[0]?.resource) {
-      const map = {}
-      metrics.forEach(group => {
-        if (!group || !group.resource) return
-        const resource = group.resource
-        if (!map[resource]) map[resource] = {}
-        if (Array.isArray(group.metrics)) {
-          group.metrics.forEach(m => {
-            if (!m || !m.metric) return
-            map[resource][m.metric] = m.value
-          })
-        }
-      })
-      return map
-    }
-    const flatMap = {}
-    metrics.forEach(m => {
-      if (!m || !m.metric) return
-      flatMap[m.metric] = m.value
-    })
-    return flatMap
-  }
-  return metrics || {}
-}
-
+// 从 metricData (dict格式: {category: {resource: {metric: avg}}}) 跨 category 聚合
+// 返回每个 resource 的每个 metric 的平均值（跨所有 category）
 const getAverageValue = (metricName, device) => {
-  if (!cases.value || cases.value.length === 0) return 0
+  const metricData = getMetricData()
+  if (!metricData || typeof metricData !== 'object') return 0
 
   const values = []
 
-  cases.value.forEach(caseItem => {
-    const metricsMap = toMetricsMap(caseItem)
-    const isFlatFormat = !Object.keys(metricsMap).some(k => devices.value.includes(k))
+  Object.keys(metricData).forEach(category => {
+    const resData = metricData[category]
+    if (!resData || typeof resData !== 'object') return
 
-    let value
-    if (isFlatFormat) {
-      value = metricsMap[metricName]
-    } else {
-      value = metricsMap[device]?.[metricName]
+    // 直接用 device key 查找
+    if (resData[device] && typeof resData[device][metricName] === 'number') {
+      values.push(resData[device][metricName])
+      return
     }
 
-    if (value !== null && value !== undefined && typeof value === 'number' && Number.isFinite(value)) {
-      values.push(value)
+    // 如果 device 是对象，构建 key 查找
+    if (typeof device === 'object' && device !== null) {
+      const resourceKey = `${device.id}-${device.name}`
+      if (resData[resourceKey] && typeof resData[resourceKey][metricName] === 'number') {
+        values.push(resData[resourceKey][metricName])
+        return
+      }
+    }
+
+    // 兜底：按名称匹配（去掉ID前缀）
+    const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
+                      (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device)
+    for (const [key, metrics] of Object.entries(resData)) {
+      if (!metrics || typeof metrics !== 'object') continue
+      const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key
+      if (currentResourceName === deviceName && typeof metrics[metricName] === 'number') {
+        values.push(metrics[metricName])
+        break
+      }
     }
   })
 
   if (values.length === 0) return 0
-
   const sum = values.reduce((acc, v) => acc + v, 0)
   return sum / values.length
 }

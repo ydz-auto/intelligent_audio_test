@@ -74,7 +74,7 @@ export function useE2eView() {
   } = useTestCaseCard();
 
   const modalManager = useModalControl()
-  const { isLoading: testCasesLoading, e2eTestCaseGroups, e2eTestCases, tags, initializeE2eTests, paginationInfo } = useE2eTest()
+  const { isLoading: testCasesLoading, e2eTestCaseGroups, e2eTestCases, tags, initializeE2eTests, paginationInfo, tagViewData, fetchTagView } = useE2eTest()
 
   const currentStep = ref(0)
   const currentTaskId = ref<number | null>(null)
@@ -607,6 +607,7 @@ export function useE2eView() {
     report,
     testCaseGroups: e2eTestCaseGroups,
     tags,
+    tagViewData,
     isLoading: testCasesLoading,
     progressPercentage,
     completedTests,
@@ -701,6 +702,7 @@ export function useE2eView() {
     algorithmEditData,
     editingAlgorithm,
     algorithmSearchQuery,
-    filteredAlgorithmList
+    filteredAlgorithmList,
+    fetchTagView
   }
 }

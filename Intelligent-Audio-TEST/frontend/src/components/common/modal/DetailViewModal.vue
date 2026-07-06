@@ -178,7 +178,10 @@
               <div v-else-if="editableData.annotations[selectedAnnotationIndex].format === 'json'" class="segments-editor">
                 <div class="segments-header">
                   <span>片段列表</span>
-                  <button type="button" class="btn btn-primary btn-small" @click="addSegment">+ 添加片段</button>
+                  <div class="segments-header-actions">
+                    <button type="button" class="btn btn-secondary btn-small" @click="addSegmentField">+ 添加字段</button>
+                    <button type="button" class="btn btn-primary btn-small" @click="addSegment">+ 添加片段</button>
+                  </div>
                 </div>
                 <div class="segments-list">
                   <table class="segments-table">
@@ -188,6 +191,7 @@
                         <th>开始时间(s)</th>
                         <th>结束时间(s)</th>
                         <th>文本内容</th>
+                        <th v-for="field in extraSegmentFields" :key="field">{{ field }}</th>
                         <th>操作</th>
                       </tr>
                     </thead>
@@ -205,17 +209,44 @@
                         <td>
                           <input type="text" v-model="seg.text" class="form-input" placeholder="文本内容">
                         </td>
+                        <td v-for="field in extraSegmentFields" :key="field">
+                          <input type="text" v-model="seg[field]" class="form-input input-tiny" :placeholder="field">
+                        </td>
                         <td>
                           <button type="button" class="btn btn-danger btn-tiny" @click="removeSegment(sIndex)">删除</button>
                         </td>
                       </tr>
                       <tr v-if="getCurrentSegments().length === 0">
-                        <td colspan="5" class="empty-row">
+                        <td :colspan="5 + extraSegmentFields.length" class="empty-row">
                           暂无片段，点击添加片段
                         </td>
                       </tr>
                     </tbody>
                   </table>
+                </div>
+
+                <!-- data 顶层额外字段编辑 -->
+                <div v-if="extraDataFields.length > 0" class="extra-data-fields">
+                  <div class="extra-data-header">
+                    <span>额外数据字段</span>
+                  </div>
+                  <div class="extra-data-list">
+                    <div v-for="fieldName in extraDataFields" :key="fieldName" class="extra-data-item">
+                      <label class="extra-data-label">{{ fieldName }}:</label>
+                      <input
+                        type="text"
+                        v-model="editableData.annotations[selectedAnnotationIndex].data[fieldName]"
+                        class="form-input extra-data-input"
+                        :placeholder="fieldName"
+                      >
+                      <button type="button" class="btn btn-danger btn-tiny" @click="removeDataField(fieldName)">删除</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 添加 data 字段按钮 -->
+                <div class="extra-data-actions">
+                  <button type="button" class="btn btn-secondary btn-small" @click="addDataField">+ 添加数据字段</button>
                 </div>
               </div>
               
@@ -412,6 +443,12 @@
 <script setup>
 import { computed, ref, watch, onMounted } from 'vue'
 
+// 已知的 segment 字段（这些字段有专门列，不作为额外字段显示）
+const KNOWN_SEGMENT_FIELDS = ['speaker', 'start', 'end', 'text', 'duration', 'orthography', 'speaker_type', 'speaker_name', 'file', 'channel']
+
+// 已知的 data 顶层字段（这些字段有专门 UI，不作为额外字段显示）
+const KNOWN_DATA_KEYS = ['segments', 'text', 'annotations', 'timestamps', 'timestamps_global']
+
 const props = defineProps({
   modal_id: {
     type: String,
@@ -570,6 +607,70 @@ const getCurrentSegments = () => {
     ann.data.segments = []
   }
   return ann.data.segments
+}
+
+// 计算当前 JSON 标注 segments 中的额外字段（非已知字段）
+const extraSegmentFields = computed(() => {
+  if (selectedAnnotationIndex.value === null) return []
+  const ann = editableData.value.annotations?.[selectedAnnotationIndex.value]
+  if (!ann || ann.format !== 'json') return []
+  const segments = ann.data?.segments || []
+  const fieldSet = new Set()
+  segments.forEach(seg => {
+    if (seg && typeof seg === 'object') {
+      Object.keys(seg).forEach(key => {
+        if (!KNOWN_SEGMENT_FIELDS.includes(key)) {
+          fieldSet.add(key)
+        }
+      })
+    }
+  })
+  return Array.from(fieldSet)
+})
+
+// 计算当前标注 data 顶层的额外字段（非已知字段）
+const extraDataFields = computed(() => {
+  if (selectedAnnotationIndex.value === null) return []
+  const ann = editableData.value.annotations?.[selectedAnnotationIndex.value]
+  if (!ann || !ann.data || typeof ann.data !== 'object') return []
+  return Object.keys(ann.data).filter(key => !KNOWN_DATA_KEYS.includes(key))
+})
+
+// 添加 segment 额外字段
+const addSegmentField = () => {
+  if (selectedAnnotationIndex.value === null) return
+  const ann = editableData.value.annotations[selectedAnnotationIndex.value]
+  if (!ann || !ann.data || !Array.isArray(ann.data.segments)) return
+  const fieldName = prompt('请输入字段名称：')
+  if (!fieldName || KNOWN_SEGMENT_FIELDS.includes(fieldName)) return
+  ann.data.segments.forEach(seg => {
+    if (seg && typeof seg === 'object' && !(fieldName in seg)) {
+      seg[fieldName] = ''
+    }
+  })
+}
+
+// 添加 data 顶层额外字段
+const addDataField = () => {
+  if (selectedAnnotationIndex.value === null) return
+  const ann = editableData.value.annotations[selectedAnnotationIndex.value]
+  if (!ann) return
+  if (!ann.data || typeof ann.data !== 'object') {
+    ann.data = {}
+  }
+  const fieldName = prompt('请输入字段名称：')
+  if (!fieldName || KNOWN_DATA_KEYS.includes(fieldName)) return
+  if (!(fieldName in ann.data)) {
+    ann.data[fieldName] = ''
+  }
+}
+
+// 删除 data 顶层额外字段
+const removeDataField = (fieldName) => {
+  if (selectedAnnotationIndex.value === null) return
+  const ann = editableData.value.annotations[selectedAnnotationIndex.value]
+  if (!ann || !ann.data) return
+  delete ann.data[fieldName]
 }
 
 // 获取RTTM片段
@@ -1540,6 +1641,54 @@ td {
   padding: 12px;
   font-weight: 600;
   color: #334155;
+}
+
+.segments-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.extra-data-fields {
+  margin-top: 12px;
+  padding: 12px;
+  background-color: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.extra-data-header {
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.extra-data-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.extra-data-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.extra-data-label {
+  min-width: 100px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.extra-data-input {
+  flex: 1;
+}
+
+.extra-data-actions {
+  margin-top: 8px;
+  padding: 0 12px 12px;
 }
 
 .segments-list {
