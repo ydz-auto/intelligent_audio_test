@@ -171,18 +171,6 @@ class BaseDeviceDriver:
         """
         return -1
 
-    def detect_interruption(self, device_sn, sensitivity: float = 0.5):
-        """检测全双工打断事件
-        
-        Args:
-            device_sn: 设备序列号
-            sensitivity: 检测灵敏度(0.0-1.0)
-            
-        Returns:
-            dict or None: 打断事件 {timestamp, duration, intensity} 或 None
-        """
-        return None
-
     def _log(self, level='INFO', content='', test_case_id=None, task_id=None, **kwargs):
         """记录日志
         

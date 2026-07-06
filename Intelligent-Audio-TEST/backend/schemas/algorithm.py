@@ -456,6 +456,9 @@ class EvaluationDimensionParamCreate(BaseModel):
     param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称', validation_alias='paramName')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
     field_type: str = Field(default='text', description='字段类型：text, audio, number, boolean, json', validation_alias='fieldType')
+    param_direction: str = Field(default='input', description='参数方向：input, output', validation_alias='paramDirection')
+    field_path: Optional[str] = Field(None, description='结果提取路径（output专用）', validation_alias='fieldPath')
+    agg_role: Optional[str] = Field(None, description='聚合角色（output专用）：numerator/denominator/value', validation_alias='aggRole')
     required: bool = Field(default=True, description='是否必填', validation_alias='required')
     default_value: Optional[str] = Field(None, validation_alias='defaultValue')
     help_text: Optional[str] = Field(None, validation_alias='helpText')
@@ -469,6 +472,9 @@ class EvaluationDimensionParamUpdate(BaseModel):
     param_name: Optional[str] = Field(None, max_length=100, validation_alias='paramName')
     label: Optional[str] = Field(None, max_length=100, validation_alias='label')
     field_type: Optional[str] = Field(None, validation_alias='fieldType')
+    param_direction: Optional[str] = Field(None, validation_alias='paramDirection')
+    field_path: Optional[str] = Field(None, validation_alias='fieldPath')
+    agg_role: Optional[str] = Field(None, validation_alias='aggRole')
     required: Optional[bool] = Field(None, validation_alias='required')
     default_value: Optional[str] = Field(None, validation_alias='defaultValue')
     help_text: Optional[str] = Field(None, validation_alias='helpText')
@@ -486,6 +492,9 @@ class EvaluationDimensionParamItem(BaseModel):
     param_name: Optional[str]
     label: Optional[str]
     field_type: str
+    param_direction: str
+    field_path: Optional[str]
+    agg_role: Optional[str]
     required: bool
     default_value: Optional[Any]
     help_text: Optional[str]

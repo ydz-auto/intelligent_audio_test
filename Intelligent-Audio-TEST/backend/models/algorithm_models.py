@@ -248,6 +248,11 @@ class EvaluationDimensionParam(db.Model):
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称')
     field_type = Column(String(20), default='text', comment='字段类型：text, audio, number, boolean, json')
+    param_direction = Column(String(10), nullable=False, default='input', comment='参数方向：input(输入参数), output(结果提取字段)')
+    field_path = Column(String(200), nullable=True, comment='结果提取路径（output专用，如 wer 或 data.result.wer）')
+    agg_role = Column(String(20), nullable=True, comment='聚合角色（output专用）：numerator(分子), denominator(分母), value(直接值)')
+    output_role = Column(String(10), nullable=True, comment='输出字段角色（output专用）：main(主结果), aux(辅助字段)')
+    visible_in_report = Column(Boolean, default=True, comment='是否在报告中显示该字段')
     required = Column(Boolean, default=True, comment='是否必填')
     default_value = Column(Text, comment='默认值（JSON格式）')
     help_text = Column(Text, comment='帮助提示文字')
@@ -259,7 +264,7 @@ class EvaluationDimensionParam(db.Model):
     dimension = relationship('Dimension')
 
     __table_args__ = (
-        UniqueConstraint('dimension_id', 'param_code', name='uq_dimension_param_code'),
+        UniqueConstraint('dimension_id', 'param_code', 'param_direction', name='uq_dimension_param_code_direction'),
     )
 
     def to_dict(self):
@@ -271,6 +276,11 @@ class EvaluationDimensionParam(db.Model):
             'param_name': self.param_name,
             'label': self.label,
             'field_type': self.field_type,
+            'param_direction': self.param_direction,
+            'field_path': self.field_path,
+            'agg_role': self.agg_role,
+            'output_role': self.output_role,
+            'visible_in_report': self.visible_in_report if self.visible_in_report is not None else True,
             'required': self.required,
             'default_value': self._parse_json(self.default_value),
             'help_text': self.help_text,

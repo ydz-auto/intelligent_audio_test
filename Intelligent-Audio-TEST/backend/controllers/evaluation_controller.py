@@ -6,7 +6,7 @@ import io
 import threading
 from flask import request, send_file
 from backend.models.models import Dimension, Category, Task, TaskCase, TestResult, TestResultDimension, Device
-from backend.models.algorithm_models import EvaluationDimensionParam, AlgorithmDimensionRelation
+from backend.models.algorithm_models import EvaluationDimensionParam, AlgorithmDimensionRelation, ParamMapping
 from backend.models.database import db
 from sqlalchemy import and_
 from backend.utils.web.response import success_response, error_response
@@ -90,6 +90,68 @@ def _sync_body_template(api_settings, param_codes):
         api_settings['body_template'] = bt_dict
 
     return api_settings
+
+
+def _sync_param_mappings(dimension_id, params, direction='output'):
+    """
+    同步 ParamMapping：当评估维度的输入/输出字段变更时，
+    自动为该维度创建/更新/删除对应的 ParamMapping 记录。
+
+    映射规则：source='evaluation', source_param=param_code,
+              dimension_id=dimension_id, target_param=param_code,
+              source_direction=direction (input/output)
+    """
+    if params is None:
+        return
+
+    try:
+        if isinstance(params, str):
+            params = json.loads(params)
+    except (json.JSONDecodeError, TypeError):
+        return
+
+    if not isinstance(params, list):
+        return
+
+    # 当前维度已有的映射
+    existing = ParamMapping.query.filter_by(
+        dimension_id=dimension_id,
+        source='evaluation',
+        deleted=False
+    ).all()
+    existing_map = {m.source_param: m for m in existing}
+
+    # 提交的 param_code 集合
+    submitted_codes = set()
+
+    for p in params:
+        param_code = p.get('param_code', p.get('key', ''))
+        if not param_code:
+            continue
+        submitted_codes.add(param_code)
+
+        if param_code in existing_map:
+            # 更新已有映射
+            m = existing_map[param_code]
+            m.target_param = param_code
+            m.source_direction = direction
+        else:
+            # 创建新映射
+            m = ParamMapping(
+                algorithm_type=p.get('algorithm_type', 'evaluation'),
+                source='evaluation',
+                source_param=param_code,
+                source_direction=direction,
+                dimension_id=dimension_id,
+                target_param=param_code,
+                transform_type='none'
+            )
+            db.session.add(m)
+
+    # 删除不再提交的映射（软删除）
+    for code, m in existing_map.items():
+        if code not in submitted_codes:
+            m.deleted = True
 
 
 class EvaluationController:
@@ -249,7 +311,8 @@ class EvaluationController:
             dim_params = EvaluationDimensionParam.query.filter_by(
                 dimension_id=dim.id, deleted=False
             ).order_by(EvaluationDimensionParam.ui_order).all()
-            required_inputs = [p.to_dict() for p in dim_params]
+            required_inputs = [p.to_dict() for p in dim_params if p.param_direction == 'input']
+            output_fields = [p.to_dict() for p in dim_params if p.param_direction == 'output']
 
             # 从 algorithm_dimension_relations 表获取关联的算法
             dim_relations = AlgorithmDimensionRelation.query.filter_by(
@@ -288,6 +351,8 @@ class EvaluationController:
                     estimated_exec_time=dim.estimated_exec_time,
                     rule=dim.rule,
                     required_inputs=required_inputs,
+                    output_fields=output_fields,
+                    statistic_method=getattr(dim, 'statistic_method', 'average') or 'average',
                     associated_algorithms=associated_algorithms,
                     status=dim.status,
                     created_at=dim.created_at.isoformat() if dim.created_at else None,
@@ -365,7 +430,8 @@ class EvaluationController:
             'api_endpoints', 'type', 'result_type', 'result_min',
             'result_max', 'decimal_places', 'weight', 'estimated_exec_time',
             'rule', 'api_settings', 'status', 'api_status', 'score_unit',
-            'dimension_type', 'parent_dimension_id', 'task_type_code'
+            'dimension_type', 'parent_dimension_id', 'task_type_code',
+            'statistic_method'
         ]
 
         create_data = {}
@@ -431,6 +497,9 @@ class EvaluationController:
                         )
                         db.session.add(param)
 
+            # 同步 ParamMapping：为 input 字段创建/更新映射
+            _sync_param_mappings(new_dim.id, data.get('required_inputs'), direction='input')
+
             # 同步 body_template：根据 required_inputs 中的 param_code 更新 api_settings
             if required_inputs and isinstance(required_inputs, list):
                 created_param_codes = []
@@ -441,6 +510,42 @@ class EvaluationController:
                 if created_param_codes:
                     current_api_settings = new_dim.api_settings or {}
                     new_dim.api_settings = _sync_body_template(current_api_settings, created_param_codes)
+
+            # 保存 output_fields（结果提取字段）到 EvaluationDimensionParam 表
+            raw_output_fields = data.get('output_fields')
+            if raw_output_fields:
+                try:
+                    if isinstance(raw_output_fields, str):
+                        output_fields = json.loads(raw_output_fields)
+                    else:
+                        output_fields = raw_output_fields
+                except json.JSONDecodeError:
+                    return error_response("输出字段配置格式错误: 无效的 JSON 字符串")
+
+                if isinstance(output_fields, list):
+                    for idx, outp in enumerate(output_fields):
+                        param_code = outp.get('param_code', '')
+                        if not param_code:
+                            continue
+                        param = EvaluationDimensionParam(
+                            dimension_id=new_dim.id,
+                            param_code=param_code,
+                            param_name=outp.get('param_name', outp.get('label', '')),
+                            label=outp.get('label', outp.get('param_name', '')),
+                            field_type=outp.get('field_type', 'number'),
+                            param_direction='output',
+                            field_path=outp.get('field_path', param_code),
+                            agg_role=outp.get('agg_role'),
+                            output_role=outp.get('output_role', 'main'),
+                            visible_in_report=outp.get('visible_in_report', True),
+                            required=False,
+                            help_text=outp.get('help_text', ''),
+                            ui_order=outp.get('ui_order', idx)
+                        )
+                        db.session.add(param)
+
+            # 同步 ParamMapping：为 output 字段创建/更新映射
+            _sync_param_mappings(new_dim.id, data.get('output_fields'), direction='output')
 
             db.session.commit()
 
@@ -516,7 +621,7 @@ class EvaluationController:
             model_fields = ['name', 'keywords', 'description', 'category_id', 'api_url', 'api_endpoints', 'type',
                             'result_type', 'result_min', 'result_max', 'decimal_places', 'weight',
                             'estimated_exec_time', 'rule', 'api_settings', 'status', 'api_status', 'score_unit',
-                            'dimension_type', 'parent_dimension_id', 'task_type_code']
+                            'dimension_type', 'parent_dimension_id', 'task_type_code', 'statistic_method']
 
             for field in model_fields:
                 if field in data:
@@ -551,8 +656,8 @@ class EvaluationController:
 
             # 更新 required_inputs 到 EvaluationDimensionParam 表
             if required_inputs is not None:
-                # 删除旧的参数
-                EvaluationDimensionParam.query.filter_by(dimension_id=dim.id).delete()
+                # 只删除旧的 input 参数，保留 output 参数
+                EvaluationDimensionParam.query.filter_by(dimension_id=dim.id, param_direction='input').delete()
                 db.session.flush()
 
                 # 添加新的参数
@@ -567,12 +672,56 @@ class EvaluationController:
                             param_name=inp.get('param_name', inp.get('label', '')),
                             label=inp.get('label', inp.get('param_name', '')),
                             field_type=inp.get('field_type', inp.get('type', 'text')),
+                            param_direction='input',
                             required=inp.get('required', True),
                             default_value=json.dumps(inp.get('default_value')) if inp.get('default_value') else None,
                             help_text=inp.get('help_text', inp.get('description', '')),
                             ui_order=inp.get('ui_order', idx)
                         )
                         db.session.add(param)
+
+            # 同步 ParamMapping：为 input 字段创建/更新映射
+            _sync_param_mappings(dim.id, data.get('required_inputs'), direction='input')
+
+            # 更新 output_fields 到 EvaluationDimensionParam 表
+            raw_output_fields = data.get('output_fields')
+            if raw_output_fields is not None:
+                # 只删除旧的 output 参数
+                EvaluationDimensionParam.query.filter_by(dimension_id=dim.id, param_direction='output').delete()
+                db.session.flush()
+
+                try:
+                    if isinstance(raw_output_fields, str):
+                        output_fields = json.loads(raw_output_fields)
+                    else:
+                        output_fields = raw_output_fields
+                except json.JSONDecodeError:
+                    return error_response("输出字段配置格式错误: 无效的 JSON 字符串")
+
+                if isinstance(output_fields, list):
+                    for idx, outp in enumerate(output_fields):
+                        param_code = outp.get('param_code', '')
+                        if not param_code:
+                            continue
+                        param = EvaluationDimensionParam(
+                            dimension_id=dim.id,
+                            param_code=param_code,
+                            param_name=outp.get('param_name', outp.get('label', '')),
+                            label=outp.get('label', outp.get('param_name', '')),
+                            field_type=outp.get('field_type', 'number'),
+                            param_direction='output',
+                            field_path=outp.get('field_path', param_code),
+                            agg_role=outp.get('agg_role'),
+                            output_role=outp.get('output_role', 'main'),
+                            visible_in_report=outp.get('visible_in_report', True),
+                            required=False,
+                            help_text=outp.get('help_text', ''),
+                            ui_order=outp.get('ui_order', idx)
+                        )
+                        db.session.add(param)
+
+            # 同步 ParamMapping：为 output 字段创建/更新映射
+            _sync_param_mappings(dim.id, data.get('output_fields'), direction='output')
 
             # 同步 body_template：根据 required_inputs 中的 param_code 更新 api_settings
             if required_inputs is not None and isinstance(required_inputs, list):

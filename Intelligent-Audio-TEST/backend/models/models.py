@@ -729,6 +729,7 @@ class Dimension(db.Model):
     api_endpoints = Column(JSON, nullable=True, default=list, comment='多个评估算法 API 地址及配置')
     api_url = Column(String(512), comment='评估微服务主入口URL')
     score_unit = Column(String(50), nullable=True, default='', comment='分数单位')
+    statistic_method = Column(String(30), nullable=False, default='average', comment='统计方式: average(简单平均), weighted_wer(加权WER: Σerrors/Σlength)')
 
     parent_dimension = relationship('Dimension', remote_side=[id], backref='sub_dimensions')
 

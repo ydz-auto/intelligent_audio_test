@@ -321,49 +321,89 @@ class TestCaseController:
             "pages": <总页数>
         }
         """
-        # 查询所有标签（按名称排序，分页）
+        # 1. 分页查询标签（按名称排序）
         tag_query = Tag.query.order_by(Tag.name)
-        if not tag_query:
-            pass
         tag_pagination = tag_query.paginate(page=page, per_page=per_page, error_out=False)
-        tags = tag_pagination.items
+        page_tags = tag_pagination.items
 
-        # 查询每个标签下的用例
         items = []
-        for tag in tags:
-            tc_query = TestCase.query.options(
-                joinedload(TestCase.group),
-            ).join(TestCase.tags).filter(Tag.id == tag.id)
+        if not page_tags:
+            return success_response({
+                "items": [],
+                "total": tag_pagination.total,
+                "page": tag_pagination.page,
+                "per_page": tag_pagination.per_page,
+                "pages": tag_pagination.pages,
+            })
 
-            if not include_deleted:
-                tc_query = tc_query.filter(TestCase.deleted == False)
-            if keyword:
-                tc_query = tc_query.filter(
-                    (TestCase.name.like(f'%{keyword}%')) |
-                    (TestCase.description.like(f'%{keyword}%'))
-                )
-            if test_type and test_type in ['api', 'e2e']:
-                tc_query = tc_query.filter(TestCase.test_type == test_type)
-            if algorithm_type:
-                tc_query = tc_query.filter(TestCase.algorithm_type == algorithm_type)
+        # 2. 一次性查询所有分页标签关联的用例（避免 N+1）
+        tag_ids = [t.id for t in page_tags]
+        tc_query = TestCase.query.options(
+            joinedload(TestCase.group),
+            joinedload(TestCase.tags),
+        ).join(TestCase.tags).filter(Tag.id.in_(tag_ids))
 
-            test_cases = tc_query.all()
+        if not include_deleted:
+            tc_query = tc_query.filter(TestCase.deleted == False)
+        if keyword:
+            tc_query = tc_query.filter(
+                (TestCase.name.like(f'%{keyword}%')) |
+                (TestCase.description.like(f'%{keyword}%'))
+            )
+        if test_type and test_type in ['api', 'e2e']:
+            tc_query = tc_query.filter(TestCase.test_type == test_type)
+        if algorithm_type:
+            tc_query = tc_query.filter(TestCase.algorithm_type == algorithm_type)
 
+        test_cases = tc_query.all()
+
+        # 3. 收集音频 ID，批量查询音频时长（避免逐条查询）
+        audio_ids = set()
+        for tc in test_cases:
+            config = tc.config or {}
+            for audio_item in TestCaseController._collect_audios(config):
+                aid = audio_item.get('audio_id')
+                if aid is not None:
+                    audio_ids.add(aid)
+
+        audio_map = {}
+        if audio_ids:
+            audio_list = Audio.query.filter(Audio.id.in_(audio_ids)).all()
+            audio_map = {a.id: a for a in audio_list}
+
+        # 4. 按标签分组聚合用例
+        cases_by_tag = {t.id: [] for t in page_tags}
+        for tc in test_cases:
+            for t in tc.tags:
+                if t.id in cases_by_tag:
+                    cases_by_tag[t.id].append(tc)
+
+        for tag in page_tags:
             case_list = []
-            for tc in test_cases:
+            for tc in cases_by_tag.get(tag.id, []):
+                config = tc.config or {}
+                total_duration = 0.0
+                for audio_item in TestCaseController._collect_audios(config):
+                    audio_id = audio_item.get('audio_id')
+                    if audio_id:
+                        audio = audio_map.get(audio_id)
+                        if audio and audio.duration:
+                            total_duration += float(audio.duration)
+
                 case_list.append({
                     "id": tc.id,
                     "name": tc.name,
                     "description": tc.description,
-                    "group_id": tc.group_id,
-                    "group_name": tc.group.name if tc.group else None,
+                    "groupId": tc.group_id,
+                    "groupName": tc.group.name if tc.group else None,
                     "type": tc.test_type or 'api',
-                    "related_case_id": tc.related_case_id,
+                    "relatedCaseId": tc.related_case_id,
                     "tags": [t.name for t in tc.tags],
-                    "config": tc.config or {},
-                    "algorithm_type": tc.algorithm_type,
-                    "created_at": tc.created_at.isoformat() if tc.created_at else None,
-                    "updated_at": tc.updated_at.isoformat() if tc.updated_at else None,
+                    "config": tc.config.copy() if tc.config else {},
+                    "algorithmType": tc.algorithm_type,
+                    "createdAt": tc.created_at.isoformat() if tc.created_at else None,
+                    "updatedAt": tc.updated_at.isoformat() if tc.updated_at else None,
+                    "totalDuration": round(total_duration, 2) if total_duration > 0 else None,
                 })
 
             items.append({

@@ -108,6 +108,7 @@ class ReportQueryBuilder:
             TestResultDimension.test_result_id,
             TestResultDimension.dimension_id,
             TestResultDimension.dimension_value,
+            TestResultDimension.api_raw_response,
             Dimension.name.label('dimension_name')
         ).join(Dimension, TestResultDimension.dimension_id == Dimension.id)\
          .filter(TestResultDimension.test_result_id.in_(result_ids)).all()

@@ -170,12 +170,45 @@ class ReportUtils:
         """
         category_accumulator = {}
         tag_accumulator = {}
-        
+
         # 直接使用原始维度名称初始化 raw_data
         raw_data = {res: {dim.name: [] for dim in all_dimensions} for res in resources}
-        
+
         results_by_group = {}
-        
+
+        # 维度名 -> statistic_method 映射
+        dim_statistic_method = {dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions}
+        # 需要特殊聚合的维度（非 average 的）
+        custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
+        # dim_id -> name 反向映射，用于从 dim_results_map 查 api_raw_response
+        dim_id_to_name_inv = {dim.id: dim.name for dim in all_dimensions}
+
+        # 预加载维度的 output 参数（field_path 配置），用于聚合策略提取结果字段
+        dim_output_params = {}
+        if custom_agg_dims:
+            from backend.models.algorithm_models import EvaluationDimensionParam
+            output_dim_ids = [dim.id for dim in all_dimensions if dim.name in custom_agg_dims]
+            if output_dim_ids:
+                output_params = EvaluationDimensionParam.query.filter(
+                    EvaluationDimensionParam.dimension_id.in_(output_dim_ids),
+                    EvaluationDimensionParam.param_direction == 'output',
+                    EvaluationDimensionParam.deleted == False
+                ).all()
+                for p in output_params:
+                    dim_output_params.setdefault(p.dimension_id, []).append({
+                        'param_code': p.param_code,
+                        'field_path': p.field_path,
+                        'field_type': p.field_type,
+                        'agg_role': p.agg_role,
+                        'output_role': p.output_role,
+                        'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True
+                    })
+
+        # 收集需要聚合的 items: {dim_name: {group_key: {resource: [items]}}}
+        # 每个 item 是 {dimension_value, api_raw_response, test_result_id}
+        category_agg_items = {}
+        tag_agg_items = {}
+
         # 预加载所有 TestCase，避免循环内 N+1 查询
         test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
         test_cases_map = {}
@@ -257,26 +290,52 @@ class ReportUtils:
                     if dim_name in category_accumulator[category][resource]:
                         category_accumulator[category][resource][dim_name]['sum'] += score
                         category_accumulator[category][resource][dim_name]['count'] += 1
-                    
+
                     # Tag
                     for tag in tags:
                         if dim_name in tag_accumulator[tag][resource]:
                             tag_accumulator[tag][resource][dim_name]['sum'] += score
                             tag_accumulator[tag][resource][dim_name]['count'] += 1
-                    
+
                     # Raw Data
                     if dim_name in raw_data[resource]:
                         raw_data[resource][dim_name].append(score)
 
+                    # 对非 average 维度收集完整 item，用于后续策略聚合
+                    if dim_name in custom_agg_dims:
+                        # 从 dim_results_map 拿 api_raw_response
+                        raw_resp = None
+                        if dim_results_map and result.id in dim_results_map:
+                            for dr in dim_results_map[result.id]:
+                                dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
+                                if dr_dim_id and dim_name in dim_id_to_name_inv and dr_dim_id == dim_id_to_name_inv[dim_name]:
+                                    raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
+                                    break
+
+                        agg_item = {'dimension_value': score, 'api_raw_response': raw_resp, 'test_result_id': result.id}
+                        category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
+                        for tag in tags:
+                            tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(agg_item)
+
         # 9. 计算平均值 (Metric Data & Tag Metric Data)
         metric_data = ReportUtils._calculate_averages(category_accumulator)
         tag_metric_data = ReportUtils._calculate_averages(tag_accumulator)
-        
+
+        # 9.1 对非 average 维度，用策略类聚合替换简单平均
+        if custom_agg_dims:
+            # dim_name -> output_params 映射
+            dim_name_to_output_params = {}
+            for dim in all_dimensions:
+                if dim.name in custom_agg_dims:
+                    dim_name_to_output_params[dim.name] = dim_output_params.get(dim.id, [])
+            ReportUtils._apply_aggregation_strategies(metric_data, category_agg_items, dim_statistic_method, dim_name_to_output_params)
+            ReportUtils._apply_aggregation_strategies(tag_metric_data, tag_agg_items, dim_statistic_method, dim_name_to_output_params)
+
         # 9.5 计算按标签分类统计的数据
         tag_category_metric_data = ReportUtils._calculate_tag_category_averages(
             tag_accumulator, tag_category_map
         )
-        
+
         # 10. 计算 Case Type Stats (即按分组统计)
         # 优化：使用 calculate_case_type_stats_optimized 并传入 dim_results_map 提高性能
         case_type_stats = ReportUtils.calculate_case_type_stats_optimized(results, all_dimensions, dim_results_map)
@@ -303,21 +362,49 @@ class ReportUtils:
                 for dim_name, stats in dims.items():
                     result_data[key][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
         return result_data
-    
+
+    @staticmethod
+    def _apply_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None):
+        """
+        对非 average 维度，用策略类聚合替换简单平均值。
+
+        agg_items 结构: {dim_name: {group_key: {resource: [items]}}}
+        metric_data 结构: {group_key: {resource: {dim_name: value}}}
+        dim_statistic_method: {dim_name: statistic_method}
+        dim_output_params: {dim_name: [{param_code, field_path, field_type}, ...]}
+        """
+        if not agg_items:
+            return
+
+        from backend.utils.report.aggregation_strategies import get_strategy
+
+        for dim_name, groups in agg_items.items():
+            method = dim_statistic_method.get(dim_name, 'average')
+            strategy = get_strategy(method)
+            output_params = (dim_output_params or {}).get(dim_name, [])
+
+            for group_key, resources in groups.items():
+                for resource, items in resources.items():
+                    if not items:
+                        continue
+                    agg_val = strategy.aggregate(items, output_params=output_params)
+                    if agg_val is not None and group_key in metric_data and resource in metric_data[group_key]:
+                        metric_data[group_key][resource][dim_name] = agg_val
+
     @staticmethod
     def _calculate_tag_category_averages(tag_accumulator, tag_category_map):
         """
         辅助函数：按标签分类计算平均值
-        
+
         参数:
             tag_accumulator: 标签累加器 {tag_name: {resource: {dim: {sum, count}}}}
             tag_category_map: 标签到分类的映射 {tag_name: category_id}
-        
+
         返回:
             dict: 按分类组织的统计数据
         """
         from backend.models.models import TagCategory
-        
+
         result_data = {}
         
         category_tags = {}

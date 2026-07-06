@@ -205,7 +205,6 @@ _LEGACY_FIELD_TO_ALGO_PARAM = {
     'railDistance': 'railDistance',
     'volumeLevel': 'volumeLevel',
     'promptAudioId': 'promptAudioId',
-    'interruption': 'interruptionEnabled',
 }
 
 

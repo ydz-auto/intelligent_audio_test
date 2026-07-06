@@ -538,7 +538,32 @@ class EvaluationService:
                     return False
                 
                 dimension_data_list = []
+
+                # 预加载所有维度的 output 参数，避免 N+1 查询
+                dim_ids = [dim.id for dim in dimensions]
+                output_param_map = {}
+                if dim_ids:
+                    from backend.models.algorithm_models import EvaluationDimensionParam
+                    output_params = EvaluationDimensionParam.query.filter(
+                        EvaluationDimensionParam.dimension_id.in_(dim_ids),
+                        EvaluationDimensionParam.param_direction == 'output',
+                        EvaluationDimensionParam.deleted == False
+                    ).all()
+                    for p in output_params:
+                        output_param_map.setdefault(p.dimension_id, []).append({
+                            'param_code': p.param_code,
+                            'field_path': p.field_path,
+                            'field_type': p.field_type,
+                            'agg_role': p.agg_role,
+                            'output_role': p.output_role,
+                            'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True
+                        })
+
                 for dim in dimensions:
+                    # 取该维度第一个 output 参数的 field_path 作为主结果提取路径
+                    dim_outputs = output_param_map.get(dim.id, [])
+                    output_field_path = dim_outputs[0]['field_path'] if dim_outputs else None
+
                     dim_dict = {
                         'id': dim.id,
                         'name': dim.name,
@@ -549,7 +574,9 @@ class EvaluationService:
                         'api_url': dim.api_url,
                         'dimension_type': getattr(dim, 'dimension_type', 'main'),
                         'parent_dimension_id': getattr(dim, 'parent_dimension_id', None),
-                        'task_type_code': getattr(dim, 'task_type_code', None)
+                        'task_type_code': getattr(dim, 'task_type_code', None),
+                        'output_field_path': output_field_path,
+                        'output_params': dim_outputs
                     }
                     
                     if getattr(dim, 'dimension_type', 'main') == 'sub' and not dim_dict.get('api_endpoints') and not dim_dict.get('api_url'):

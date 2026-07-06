@@ -48,6 +48,26 @@ class ReportControllerCompare(ReportControllerBase):
             used_dim_ids = {r[0] for r in rows if r and r[0] is not None}
         
         all_dimensions = [d for d in all_dimensions_all if d.id in used_dim_ids] if used_dim_ids else all_dimensions_all
+
+        # 过滤掉 visible_in_report=False 的维度（所有 output 参数都不可见的维度）
+        from backend.models.algorithm_models import EvaluationDimensionParam
+        all_output_dims = EvaluationDimensionParam.query.filter(
+            EvaluationDimensionParam.param_direction == 'output',
+            EvaluationDimensionParam.deleted == False
+        ).with_entities(EvaluationDimensionParam.dimension_id).distinct().all()
+        all_output_dim_ids = {r[0] for r in all_output_dims if r and r[0] is not None}
+
+        visible_output_dims = EvaluationDimensionParam.query.filter(
+            EvaluationDimensionParam.param_direction == 'output',
+            EvaluationDimensionParam.visible_in_report == True,
+            EvaluationDimensionParam.deleted == False
+        ).with_entities(EvaluationDimensionParam.dimension_id).distinct().all()
+        visible_dim_ids = {r[0] for r in visible_output_dims if r and r[0] is not None}
+
+        hidden_dim_ids = all_output_dim_ids - visible_dim_ids
+        if hidden_dim_ids:
+            all_dimensions = [d for d in all_dimensions if d.id not in hidden_dim_ids]
+
         return all_dimensions
 
     @staticmethod
