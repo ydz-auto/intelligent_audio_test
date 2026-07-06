@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿﻿﻿﻿import os
+import os
 import uuid
 import requests
 import time
@@ -1048,6 +1048,15 @@ class AudioController:
             prompt_source_language = validated.prompt_source_language
             prompt_target_language = validated.prompt_target_language
             prompt_algorithm_type = validated.prompt_algorithm_type
+
+            # 多轮上传配置
+            tc_config = validated.test_case_config
+            rounds_config = tc_config.rounds if tc_config else None
+            tc_group_name = tc_config.group_name if tc_config else None
+            tc_inherit_tags = tc_config.inherit_tags if tc_config is not None else True
+            # test_case_config 优先级高于顶层 test_case_group_name / inherit_tags
+            if tc_group_name:
+                test_case_group_name = tc_group_name
             
             # 验证文件存在
             upload_file = db.session.get(UploadFile, file_id)
@@ -1090,8 +1099,8 @@ class AudioController:
                     # 如果是秒传且需要创建测试用例
                     if create_test_case:
                         test_case_id = AudioController._create_test_case_from_audio(
-                            existing_audio.id, 
-                            test_types, 
+                            existing_audio.id,
+                            test_types,
                             audio_tags,
                             default_playback_device_id,
                             default_spl,
@@ -1100,7 +1109,9 @@ class AudioController:
                             test_case_group_name,
                             dimensions_data,
                             algorithm_type,
-                            algorithm_params_dict
+                            algorithm_params_dict,
+                            rounds_config=rounds_config,
+                            inherit_tags=tc_inherit_tags,
                         )
                         
                         # 提交测试用例创建
@@ -1322,8 +1333,8 @@ class AudioController:
             created_test_case_id = None
             if create_test_case:
                 created_test_case_id = AudioController._create_test_case_from_audio(
-                    new_audio.id, 
-                    test_types, 
+                    new_audio.id,
+                    test_types,
                     audio_tags,
                     default_playback_device_id,
                     default_spl,
@@ -1332,7 +1343,9 @@ class AudioController:
                     test_case_group_name,
                     dimensions_data,
                     algorithm_type,
-                    algorithm_params_dict
+                    algorithm_params_dict,
+                    rounds_config=rounds_config,
+                    inherit_tags=tc_inherit_tags,
                 )
             
             # 最终统一提交所有数据库变更
@@ -1417,36 +1430,77 @@ class AudioController:
             return error_response(str(e))
     
 
+    # 内部辅助方法：从文件列表构建 rounds 配置
+    @staticmethod
+    def _build_rounds_from_files(files, mode="multi_round", spl=65.0, playback_device_id=None):
+        """从文件列表构建 rounds 配置。
+
+        :param files: 文件列表，每项含 file_id / audio_id / filename
+        :param mode: "multi_round"（每音频一轮）或 "single_round_multi_audio"（多音频同轮）
+        :param spl: 干声压级
+        :param playback_device_id: 播放设备 ID（E2E）
+        :return: rounds 列表
+        """
+        if not files:
+            return []
+
+        def _make_audio_config(item, play_order):
+            cfg = {
+                "audio_id": item["audio_id"],
+                "spl": spl,
+                "play_order": play_order,
+            }
+            if playback_device_id:
+                cfg["playback_device_id"] = playback_device_id
+            return cfg
+
+        if mode == "single_round_multi_audio":
+            # 所有音频合并为一轮
+            audios = [_make_audio_config(item, idx) for idx, item in enumerate(files)]
+            return [{"roundNumber": 1, "audios": audios}]
+        else:
+            # multi_round: 每音频一轮
+            rounds = []
+            for idx, item in enumerate(files):
+                rounds.append({
+                    "roundNumber": idx + 1,
+                    "audios": [_make_audio_config(item, 0)],
+                })
+            return rounds
+
     # 内部辅助方法：从音频创建测试用例
     @staticmethod
-    def _create_test_case_from_audio(audio_id, test_types, audio_tags, playback_device_id=None, spl=65.0, noise_spl=60.0, noise_audio_id=None, group_name=None, dimensions_data=None, algorithm_type=None, algorithm_params=None):
+    def _create_test_case_from_audio(audio_id, test_types, audio_tags, playback_device_id=None, spl=65.0, noise_spl=60.0, noise_audio_id=None, group_name=None, dimensions_data=None, algorithm_type=None, algorithm_params=None, rounds_config=None, inherit_tags=True):
         """
-        根据音频创建测试用例，支持多测试类型（API和E2E）
-        :param audio_id: 音频ID
+        根据音频创建测试用例，支持多测试类型（API和E2E）。
+
+        :param audio_id: 音频ID（主音频，用于命名和描述）
         :param test_types: 测试类型列表，如 ['api', 'e2e']
         :param audio_tags: 音频标签列表
         :param playback_device_id: 播放设备ID（用于E2E测试）
-        :param spl: 干声压级（用于E2E测试）
-        :param noise_spl: 噪声声压级（用于E2E测试）
-        :param noise_audio_id: 噪声音频ID（用于E2E测试）
+        :param spl: 干声压级
+        :param noise_spl: 噪声声压级
+        :param noise_audio_id: 噪声音频ID
         :param group_name: 分组名称
         :param dimensions_data: 评估维度配置
         :param algorithm_type: 算法类型
         :param algorithm_params: 算法参数
+        :param rounds_config: 完整的 rounds 配置（多轮用例）。传入时优先使用，跳过平面 config 构建。
+        :param inherit_tags: 是否继承音频标签到用例（默认 True）
         """
         # 确保 test_types 是列表，并清理可能的空白字符
         if isinstance(test_types, str):
             test_types = [test_types.strip()]
         else:
             test_types = [tt.strip() if isinstance(tt, str) else tt for tt in test_types]
-        
+
         audio = db.session.get(Audio, audio_id)
         if not audio:
             return None
-        
+
         # 使用提供的分组名称，如果没有则使用默认值
         effective_group_name = group_name if group_name else '音频上传生成'
-        
+
         with db.session.no_autoflush:
             # 获取或创建分组
             group = TestCaseGroup.query.filter_by(name=effective_group_name).first()
@@ -1458,72 +1512,76 @@ class AudioController:
                 )
                 db.session.add(group)
                 db.session.flush()
-            
+
             # 获取默认播放设备（如果需要E2E测试但没有指定设备）
             effective_playback_device_id = playback_device_id
             if 'e2e' in test_types and not effective_playback_device_id:
                 default_device = PlaybackDevice.query.filter_by(device_type='dry', is_deleted=0).first()
                 if default_device:
                     effective_playback_device_id = default_device.id
-            
+
             # 创建测试用例名称
             test_case_name = f"测试用例_{audio.name}"
-            
+
             # 检查是否已存在同名用例
             existing = TestCase.query.filter_by(name=test_case_name, group_id=group.id, deleted=False).first()
             if existing:
                 test_case_name = f"测试用例_{audio.name}_{datetime.now(timezone(timedelta(hours=8))).strftime('%H%M%S')}"
-            
+
             # 确定记录类型（取第一个）
             primary_test_type = test_types[0] if test_types else 'api'
-            
-            # 构建音频配置 - 双记录架构：不再在每个音频上标记 test_type
-            audio_config = {
-                "audio_id": audio_id,
-                "spl": spl if spl else 65.0,
-                "play_order": 0
-            }
-            
-            # E2E测试需要额外的播放设备配置
-            if primary_test_type == 'e2e':
-                audio_config["playback_device_id"] = effective_playback_device_id
-            
-            audios = [audio_config]
-            
-            # 构建噪声配置 - 新结构
-            background_noise = None
-            if (noise_spl and noise_spl > 0) or noise_audio_id:
-                background_noise = {
-                    "audio_id": noise_audio_id,
-                    "spl": noise_spl if noise_spl else 60.0
+
+            # ===== 构建 config =====
+            if rounds_config:
+                # 多轮模式：直接使用传入的 rounds 配置
+                config = {
+                    "source_audio": audio.name,
+                    "auto_generated": True,
+                    "rounds": rounds_config,
                 }
-            
-            # 创建测试用例配置 - 新结构
-            config = {
-                "source_audio": audio.name,
-                "auto_generated": True,
-                "audios": audios
-            }
-            
-            # 添加噪声配置
-            if background_noise:
-                config["background_noise"] = background_noise
-            
-            # 添加评估维度配置 - 双记录架构：扁平数组
-            if dimensions_data:
-                if isinstance(dimensions_data, dict):
-                    if 'dimensions' in dimensions_data:
-                        config["dimensions"] = dimensions_data.get('dimensions')
-                    else:
-                        config["dimensions"] = []
-                elif isinstance(dimensions_data, list):
-                    config["dimensions"] = dimensions_data
+                # 评估维度
+                if dimensions_data:
+                    if isinstance(dimensions_data, dict):
+                        config["dimensions"] = dimensions_data.get('dimensions', [])
+                    elif isinstance(dimensions_data, list):
+                        config["dimensions"] = dimensions_data
                 else:
                     config["dimensions"] = []
-            
+            else:
+                # 平面模式（向后兼容）：构建单轮平面 config
+                audio_config = {
+                    "audio_id": audio_id,
+                    "spl": spl if spl else 65.0,
+                    "play_order": 0
+                }
+                if primary_test_type == 'e2e':
+                    audio_config["playback_device_id"] = effective_playback_device_id
+
+                config = {
+                    "source_audio": audio.name,
+                    "auto_generated": True,
+                    "audios": [audio_config],
+                }
+
+                # 噪声配置
+                if (noise_spl and noise_spl > 0) or noise_audio_id:
+                    config["background_noise"] = {
+                        "audio_id": noise_audio_id,
+                        "spl": noise_spl if noise_spl else 60.0
+                    }
+
+                # 评估维度
+                if dimensions_data:
+                    if isinstance(dimensions_data, dict):
+                        config["dimensions"] = dimensions_data.get('dimensions', [])
+                    elif isinstance(dimensions_data, list):
+                        config["dimensions"] = dimensions_data
+                else:
+                    config["dimensions"] = []
+
             # 创建测试用例
             tc_id = str(uuid.uuid4())
-            
+
             new_tc = TestCase(
                 id=tc_id,
                 name=test_case_name,
@@ -1534,17 +1592,18 @@ class AudioController:
                 config=config
             )
             db.session.add(new_tc)
-            
-            # 继承音频的标签
-            for tag_name in audio_tags:
-                tag = Tag.query.filter_by(name=tag_name).first()
-                if tag:
-                    new_tc.tags.append(tag)
-            
-            # 刷新用例参考文本/音频/... - 新结构：自动生成参考参数
+
+            # 继承音频的标签（受 inherit_tags 开关控制）
+            if inherit_tags:
+                for tag_name in audio_tags:
+                    tag = Tag.query.filter_by(name=tag_name).first()
+                    if tag:
+                        new_tc.tags.append(tag)
+
+            # 同步生成参考参数（rounds 模式下会真正生成文件，平面模式下 no-op）
             from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
             ReferenceParamsGenerator.apply_to_config(new_tc)
-            
+
             # 不在这里 commit，交给调用者统一提交
             db.session.flush()
             return tc_id

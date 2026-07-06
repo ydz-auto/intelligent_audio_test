@@ -66,6 +66,19 @@ class AudioAlgorithmRelationItem(APIModel):
     params: Optional[Dict] = Field(default=None)
 
 
+class TestCaseUploadConfig(APIModel):
+    """上传时携带的测试用例配置，支持多轮 rounds 架构。
+
+    字段全部 optional，不传时由 _create_test_case_from_audio 降级为平面 config。
+    """
+    rounds: Optional[List[Dict[str, Any]]] = Field(None, alias='rounds', validation_alias='rounds')
+    dimensions: Optional[List[Dict]] = Field(None, alias='dimensions', validation_alias='dimensions')
+    group_name: Optional[str] = Field(None, alias='groupName', validation_alias='groupName')
+    inherit_tags: Optional[bool] = Field(True, alias='inheritTags', validation_alias='inheritTags')
+    # 算法参数（每轮可独立配置，也可在此统一设置）
+    algorithm_params: Optional[List[AlgorithmParamItem]] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
+
+
 class MergeChunksRequest(APIModel):
     file_id: str = Field(..., alias='fileId', validation_alias='fileId')
     task_id: str = Field(..., alias='taskId', validation_alias='taskId')
@@ -94,6 +107,8 @@ class MergeChunksRequest(APIModel):
     group_name_type: Optional[str] = Field('root', alias='groupNameType', validation_alias='groupNameType')
     custom_group_name: Optional[str] = Field('', alias='customGroupName', validation_alias='customGroupName')
     inherit_tags: Optional[bool] = Field(True, alias='inheritTags', validation_alias='inheritTags')
+    # 多轮上传配置：前端解析文件夹后构建的完整 rounds 配置
+    test_case_config: Optional[TestCaseUploadConfig] = Field(None, alias='testCaseConfig', validation_alias='testCaseConfig')
 
     def get_algorithm_params_dict(self) -> Optional[List[Dict[str, Any]]]:
         if not self.algorithm_params:

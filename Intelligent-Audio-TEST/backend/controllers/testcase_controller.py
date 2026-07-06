@@ -208,8 +208,17 @@ class TestCaseController:
         group_id = request.args.get('group_id')
         test_type = request.args.get('type')
         algorithm_type = request.args.get('algorithm_type')
+        view = request.args.get('view')
         include_deleted_raw = request.args.get('include_deleted', 'false')
         include_deleted = str(include_deleted_raw).lower() in ('true', '1', 'yes')
+
+        # ===== 标签视图：按标签聚合返回 =====
+        if view == 'tag':
+            return TestCaseController._get_tag_view(
+                page=page, per_page=per_page, keyword=keyword,
+                test_type=test_type, algorithm_type=algorithm_type,
+                include_deleted=include_deleted,
+            )
 
         query = TestCase.query.options(
             joinedload(TestCase.group),
@@ -247,7 +256,7 @@ class TestCaseController:
                 aid = audio_item.get('audio_id')
                 if aid is not None:
                     audio_ids.add(aid)
-        
+
         audio_map = {}
         if audio_ids:
             audio_list = Audio.query.filter(Audio.id.in_(audio_ids)).all()
@@ -295,6 +304,80 @@ class TestCaseController:
                 pages=pagination.pages,
             )
         )
+
+    @staticmethod
+    def _get_tag_view(page=1, per_page=10, keyword=None, test_type=None, algorithm_type=None, include_deleted=False):
+        """标签视图：按标签聚合用例，分页返回标签维度。
+
+        返回结构：
+        {
+            "items": [
+                { "tag": "男声", "testCases": [TestCaseListItem, ...] },
+                ...
+            ],
+            "total": <标签总数>,
+            "page": 1,
+            "per_page": 20,
+            "pages": <总页数>
+        }
+        """
+        # 查询所有标签（按名称排序，分页）
+        tag_query = Tag.query.order_by(Tag.name)
+        if not tag_query:
+            pass
+        tag_pagination = tag_query.paginate(page=page, per_page=per_page, error_out=False)
+        tags = tag_pagination.items
+
+        # 查询每个标签下的用例
+        items = []
+        for tag in tags:
+            tc_query = TestCase.query.options(
+                joinedload(TestCase.group),
+            ).join(TestCase.tags).filter(Tag.id == tag.id)
+
+            if not include_deleted:
+                tc_query = tc_query.filter(TestCase.deleted == False)
+            if keyword:
+                tc_query = tc_query.filter(
+                    (TestCase.name.like(f'%{keyword}%')) |
+                    (TestCase.description.like(f'%{keyword}%'))
+                )
+            if test_type and test_type in ['api', 'e2e']:
+                tc_query = tc_query.filter(TestCase.test_type == test_type)
+            if algorithm_type:
+                tc_query = tc_query.filter(TestCase.algorithm_type == algorithm_type)
+
+            test_cases = tc_query.all()
+
+            case_list = []
+            for tc in test_cases:
+                case_list.append({
+                    "id": tc.id,
+                    "name": tc.name,
+                    "description": tc.description,
+                    "group_id": tc.group_id,
+                    "group_name": tc.group.name if tc.group else None,
+                    "type": tc.test_type or 'api',
+                    "related_case_id": tc.related_case_id,
+                    "tags": [t.name for t in tc.tags],
+                    "config": tc.config or {},
+                    "algorithm_type": tc.algorithm_type,
+                    "created_at": tc.created_at.isoformat() if tc.created_at else None,
+                    "updated_at": tc.updated_at.isoformat() if tc.updated_at else None,
+                })
+
+            items.append({
+                "tag": tag.name,
+                "testCases": case_list,
+            })
+
+        return success_response({
+            "items": items,
+            "total": tag_pagination.total,
+            "page": tag_pagination.page,
+            "per_page": tag_pagination.per_page,
+            "pages": tag_pagination.pages,
+        })
 
     # 获取单个测试用例详细信息
     @staticmethod
