@@ -89,49 +89,67 @@ def seed_voice_llm():
         # ============================================================
         print("\n=== Step 3: 注册 voice_llm 用例参数 (case_algorithm_params) ===")
 
+        # 清理 inputAudio（后端自动用音频 ID 填入，不需要作为用例参数定义）
+        deleted_inputAudio = conn.execute(text(
+            "DELETE FROM case_algorithm_params "
+            "WHERE algorithm_type = 'voice_llm' AND param_code = 'inputAudio'"
+        )).rowcount
+        if deleted_inputAudio:
+            print(f"  清理 {deleted_inputAudio} 条 inputAudio（后端自动填入，无需定义）")
+
         case_params = [
             # (algo_type, param_code, param_name, label, param_type, scope,
             #  required, default_value, help_text, ui_order, hidden, deleted,
-            #  min_value, max_value, step, unit)
+            #  min_value, max_value, step, unit,
+            #  annotation_code, field_path)
+            #  annotation_code 默认=algorithm_type, field_path 默认=param_code
 
             # --- 通用参数（scope=common） ---
             ('voice_llm', 'promptAudioId', 'Prompt 音频', 'Prompt 音频', 'audio_select', 'common',
              False, None, '在干声播放之前播放的引导音频', 30, False, False,
-             None, None, None, None),
+             None, None, None, None,
+             None, None),  # 不从标注提取
 
             # --- E2E 专用参数（scope=e2e） ---
             ('voice_llm', 'interferers', '干扰人列表', '干扰人', 'json', 'e2e',
              False, '[]', '干扰人配置列表，支持多路独立干扰', 20, False, False,
-             None, None, None, None),
+             None, None, None, None,
+             None, None),  # 默认 annotation_code=voice_llm, field_path=interferers
             ('voice_llm', 'railDistance', '导轨距离(cm)', '导轨距离', 'slider', 'e2e',
              False, None, '导轨距离，本轮结束后自动复位。不填则不控制导轨', 40, False, False,
-             10, 200, 5, 'cm'),
+             10, 200, 5, 'cm',
+             None, None),  # 默认 annotation_code=voice_llm, field_path=railDistance
             ('voice_llm', 'volumeLevel', '被测设备音量', '设备音量', 'slider', 'e2e',
              False, None, '被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量', 41, False, False,
-             0, 100, 1, None),
+             0, 100, 1, None,
+             None, None),  # 默认 annotation_code=voice_llm, field_path=volumeLevel
             ('voice_llm', 'voiceprintEnabled', '声纹注册', '声纹注册', 'switch', 'e2e',
              False, 'false', '是否在本轮播放声纹注册音频', 50, False, False,
-             None, None, None, None),
+             None, None, None, None,
+             None, None),
             ('voice_llm', 'voiceprintAudioId', '声纹注册音频', '声纹音频', 'audio_select', 'e2e',
              False, None, '声纹注册音频文件', 51, False, False,
-             None, None, None, None),
+             None, None, None, None,
+             None, None),
             ('voice_llm', 'voiceprintPlaybackDeviceId', '声纹播放设备', '播放设备', 'device_select', 'e2e',
              False, None, '声纹注册音频播放设备', 52, False, False,
-             None, None, None, None),
+             None, None, None, None,
+             None, None),
             ('voice_llm', 'voiceprintSpl', '声纹播放声压级', '声压级', 'number', 'e2e',
              False, '70.0', '声纹注册音频播放声压级', 53, False, False,
-             20, 100, 1, 'dB'),
+             20, 100, 1, 'dB',
+             None, None),
             ('voice_llm', 'voiceprintWaitTime', '声纹等待时间(秒)', '等待时间', 'number', 'e2e',
              False, '5.0', '声纹注册后等待时间', 54, False, False,
-             0, 60, 1, 's'),
+             0, 60, 1, 's',
+             None, None),
 
             # --- API 专用参数（scope=api） ---
             ('voice_llm', 'inputText', '输入文本', '输入文本', 'text', 'api',
              False, None, '发送给 API 的文本内容（可与输入音频共存）', 70, False, False,
-             None, None, None, None),
-            ('voice_llm', 'inputAudio', '输入音频', '输入音频', 'audio_select', 'api',
-             False, None, '发送给 API 的音频文件（可与输入文本共存）', 71, False, False,
-             None, None, None, None),
+             None, None, None, None,
+             None, 'query'),  # annotation_code 默认=voice_llm, field_path=query（标注 JSON 里字段名是 query）
+            # inputAudio 不作为用例参数定义，后端创建用例时自动用音频本身 ID 填入 algorithmParams
         ]
 
         inserted_count = 0
@@ -139,7 +157,12 @@ def seed_voice_llm():
         for p in case_params:
             (algo_type, param_code, param_name, label, param_type, scope,
              required, default_value, help_text, ui_order, hidden, deleted,
-             min_value, max_value, step, unit) = p
+             min_value, max_value, step, unit,
+             ann_code, f_path) = p
+
+            # annotation_code 默认 = algorithm_type, field_path 默认 = param_code
+            effective_ann_code = ann_code if ann_code is not None else algo_type
+            effective_f_path = f_path if f_path is not None else param_code
 
             existing = conn.execute(text(
                 "SELECT id FROM case_algorithm_params "
@@ -150,32 +173,47 @@ def seed_voice_llm():
                 conn.execute(text(
                     "UPDATE case_algorithm_params SET "
                     "  param_type = :pt, scope = :scope, min_value = :mn, max_value = :mx, "
-                    "  step = :st, unit = :un "
+                    "  step = :st, unit = :un, annotation_code = :ac, field_path = :fp "
                     "WHERE id = :id"
                 ), {'pt': param_type, 'scope': scope, 'mn': min_value, 'mx': max_value,
-                    'st': step, 'un': unit, 'id': existing[0]})
-                print(f"  - {param_code} 已存在，已更新 param_type/scope/min/max/step/unit")
+                    'st': step, 'un': unit, 'ac': effective_ann_code, 'fp': effective_f_path,
+                    'id': existing[0]})
+                print(f"  - {param_code} 已存在，已更新 param_type/scope/min/max/step/unit/annotation_code/field_path")
                 skipped_count += 1
             else:
                 conn.execute(text(
                     "INSERT INTO case_algorithm_params "
                     "  (algorithm_type, param_code, param_name, label, param_type, scope, "
                     "   required, default_value, help_text, ui_order, hidden, deleted, "
-                    "   min_value, max_value, step, unit, created_at, updated_at) "
+                    "   min_value, max_value, step, unit, annotation_code, field_path, "
+                    "   created_at, updated_at) "
                     "VALUES "
                     "  (:at, :pc, :pn, :lb, :pt, :scope, "
                     "   :req, :dv, :ht, :uo, :hid, :del, "
-                    "   :mn, :mx, :st, :un, NOW(), NOW())"
+                    "   :mn, :mx, :st, :un, :ac, :fp, "
+                    "   NOW(), NOW())"
                 ), {
                     'at': algo_type, 'pc': param_code, 'pn': param_name, 'lb': label,
                     'pt': param_type, 'scope': scope, 'req': required, 'dv': default_value,
                     'ht': help_text, 'uo': ui_order, 'hid': hidden, 'del': deleted,
-                    'mn': min_value, 'mx': max_value, 'st': step, 'un': unit
+                    'mn': min_value, 'mx': max_value, 'st': step, 'un': unit,
+                    'ac': effective_ann_code, 'fp': effective_f_path
                 })
-                print(f"  + {param_code} (scope={scope})")
+                print(f"  + {param_code} (scope={scope}, ann_code={effective_ann_code}, field_path={effective_f_path})")
                 inserted_count += 1
 
         print(f"  插入 {inserted_count} 条，跳过/更新 {skipped_count} 条")
+
+        # 清理不在当前定义里的旧残留字段（软删除）
+        valid_codes = [p[1] for p in case_params]  # p[1] = param_code
+        placeholders = ','.join([f"'{c}'" for c in valid_codes])
+        deleted_old = conn.execute(text(
+            f"UPDATE case_algorithm_params SET deleted = true, updated_at = NOW() "
+            f"WHERE algorithm_type = 'voice_llm' AND deleted = false "
+            f"AND param_code NOT IN ({placeholders})"
+        )).rowcount
+        if deleted_old:
+            print(f"  清理 {deleted_old} 条旧残留字段（NOT IN {valid_codes}）")
 
         # ============================================================
         # Step 4: 注册设备输出字段（algorithm_device_params）
@@ -297,10 +335,10 @@ def seed_voice_llm():
 
         ref_params = [
             ('voice_llm', 'correct_answer', '参考答案', 'text',
-             'correct_answer', 'text', None, 'join',
+             'correct_answer', 'text', 'correct_answer', 'join',
              'LLM Judge 评估的标准答案，从音频标注提取或手动填写'),
             ('voice_llm', 'query', '用户提问', 'text',
-             'query', 'text', None, 'join',
+             'query', 'text', 'query', 'join',
              '用户提问文本，从音频标注提取或手动填写'),
         ]
 

@@ -20,8 +20,8 @@
               @pause="handlePause"
               @retry="handleRetry"
             />
-            <AudioListComponent 
-              :audios="formattedAudios" 
+            <AudioListComponent
+              :audios="formattedAudios"
               :enable-selection="true"
               :show-status="true"
               :audio-type="props.audioType"
@@ -32,6 +32,11 @@
               :all-tags="allTags || []"
               :selected-tags="selectedTags || []"
               :tag-modes="tagModesObject || {}"
+              :server-folder-tree="serverFolderTree"
+              :folder-loading="folderLoading"
+              :expanded-folder-paths="expandedFolderPaths"
+              :is-folder-all-selected-fn="isFolderAllSelected"
+              :is-folder-partial-selected-fn="isFolderPartialSelected"
               @search="handleSearch"
               @filterChange="handleFilterChange"
               @toggleTag="(tag, mode) => handleTagClick(tag, mode)"
@@ -44,6 +49,8 @@
               @deselectCurrentPage="handleDeselectCurrentPage"
               @deselectAll="handleDeselectAll"
               @toggleSelectAll="handleToggleSelectAll"
+              @expand-folder="handleExpandFolder"
+              @toggle-folder-selection="toggleFolderSelection"
             >
               <template #header-actions>
                 <div class="header-action-buttons">
@@ -101,8 +108,10 @@ import AudioListComponent from './AudioListComponent.vue';
 import UploadProgressCard from './UploadProgressCard.vue';
 import { useAudioList, type AudioItem } from '../../composables/useAudioList';
 import { useUploadState } from '../../composables/useUploadState';
+import { useFolderSelection } from '../../composables/useFolderSelection';
 import { getModalManager } from '../../composables/useModal';
 import { MODAL_TYPES } from '../../shared/types';
+import { audiosApi } from '../../utils/api';
 import { parseDuration, formatDurationLong } from '../../utils/audioUtils';
 
 const props = defineProps<{
@@ -160,6 +169,150 @@ const batchImportFromFolder = () => {
 
 const selectedAudios = ref<(string | number)[]>([]);
 const allAudiosCache = ref<any[]>([]);
+
+// 文件夹视图状态
+const serverFolderTree = ref<any>({
+  name: '音频文件',
+  path: '',
+  count: 0,
+  file_count: 0,
+  has_children: false,
+  files: [],
+  folders: []
+});
+const folderLoading = ref(false);
+const expandedFolderPaths = ref<Set<string>>(new Set(['']));
+
+// 复用文件夹批量勾选逻辑
+const { toggleFolderSelection, isFolderAllSelected, isFolderPartialSelected } = useFolderSelection(selectedAudios);
+
+async function fetchFolderTree() {
+  folderLoading.value = true;
+  try {
+    const response: any = await audiosApi.getFolderTree({
+      audioType: props.audioType ? props.audioType : undefined,
+      depth: 1
+    }, { unwrapResponse: false });
+    if (response?.success && response?.data?.tree) {
+      serverFolderTree.value = normalizeTreeNode(response.data.tree);
+    }
+  } catch (e) {
+    console.error('加载文件夹树失败:', e);
+  } finally {
+    folderLoading.value = false;
+  }
+}
+
+function normalizeFile(file: any): any {
+  return {
+    ...file,
+    id: file.id,
+    name: file.name || '',
+    filename: file.filename || file.name || '',
+    format: file.format || '',
+    duration: file.duration || 0,
+    size: file.size || 0,
+    audio_type: file.audio_type || file.audioType || file.type || 'dry',
+    type: file.type || file.audio_type || file.audioType || file.type || 'dry',
+    created_at: file.created_at || file.createdAt || '',
+  };
+}
+
+function normalizeTreeNode(node: any): any {
+  if (!node) return { name: 'root', path: '', count: 0, file_count: 0, has_children: false, files: [], folders: [] };
+  return {
+    name: node.name || 'unnamed',
+    path: node.path ?? '',
+    count: node.count ?? node.total ?? 0,
+    file_count: node.file_count ?? node.fileCount ?? (Array.isArray(node.files) ? node.files.length : 0),
+    has_children: node.has_children ?? node.hasChildren ?? false,
+    files: Array.isArray(node.files) ? node.files.map(normalizeFile) : [],
+    folders: Array.isArray(node.folders) ? node.folders.map(normalizeTreeNode) : [],
+  };
+}
+
+function toggleFolderExpand(folderPath: string) {
+  const newSet = new Set(expandedFolderPaths.value);
+  if (newSet.has(folderPath)) {
+    newSet.delete(folderPath);
+  } else {
+    newSet.add(folderPath);
+  }
+  expandedFolderPaths.value = newSet;
+}
+
+async function loadSubTree(folderPath: string): Promise<any | null> {
+  folderLoading.value = true;
+  try {
+    const response: any = await audiosApi.getFolderTree({
+      audioType: props.audioType ? props.audioType : undefined,
+      parentPath: folderPath,
+      depth: 10
+    }, { unwrapResponse: false });
+    if (response?.success && response?.data?.tree) {
+      return normalizeTreeNode(response.data.tree);
+    }
+  } catch (e) {
+    console.error('加载子树失败:', e);
+  } finally {
+    folderLoading.value = false;
+  }
+  return null;
+}
+
+function mergeSubTree(targetPath: string, fullTree: any) {
+  function findNode(node: any, path: string): any {
+    if (node.path === path) return node;
+    if (node.folders) {
+      for (const child of node.folders) {
+        const found = findNode(child, path);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+  const subNode: any = findNode(fullTree, targetPath);
+  if (!subNode) return;
+  function findAndUpdate(node: any): boolean {
+    if (node.path === targetPath) {
+      node.files = subNode.files;
+      node.file_count = subNode.file_count ?? subNode.files?.length ?? 0;
+      node.has_children = subNode.has_children;
+      const existingFolders = new Map<string, any>((node.folders || []).map((f: any) => [f.path as string, f]));
+      const merged: any[] = [];
+      for (const newFolder of (subNode.folders || [])) {
+        const existing: any = existingFolders.get(newFolder.path);
+        if (existing) {
+          existing.name = newFolder.name;
+          existing.count = newFolder.count;
+          existing.file_count = newFolder.file_count;
+          existing.has_children = newFolder.has_children;
+          if (newFolder.files && newFolder.files.length > 0) existing.files = newFolder.files;
+          merged.push(existing);
+        } else {
+          merged.push(newFolder);
+        }
+      }
+      node.folders = merged;
+      return true;
+    }
+    if (node.folders) {
+      for (const child of node.folders) {
+        if (findAndUpdate(child)) return true;
+      }
+    }
+    return false;
+  }
+  findAndUpdate(serverFolderTree.value);
+}
+
+const handleExpandFolder = async (folderPath: string) => {
+  toggleFolderExpand(folderPath);
+  if (expandedFolderPaths.value.has(folderPath)) {
+    const subTree = await loadSubTree(folderPath);
+    if (subTree) mergeSubTree(folderPath, subTree);
+  }
+};
 
 const formattedAudios = computed((): AudioItem[] => {
   return audios.value;
@@ -222,8 +375,10 @@ watch(() => props.visible, (newVal) => {
     window.addEventListener('keydown', handleKeyDown);
     selectedAudios.value = [];
     allAudiosCache.value = [];
+    expandedFolderPaths.value = new Set(['']);
     resetFilters({ audioType: props.audioType });
     loadAllTags();
+    fetchFolderTree();
   } else {
     window.removeEventListener('keydown', handleKeyDown);
   }

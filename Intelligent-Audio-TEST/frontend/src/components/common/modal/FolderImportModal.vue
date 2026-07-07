@@ -79,12 +79,10 @@
         v-if="hasUploadOptions"
         v-model="uploadConfig"
         v-model:tags="tags"
-        :translation-direction-options="translationDirectionOptions"
         :audio-type-options="audioTypeOptions"
         :playback-device-options="playbackDeviceOptions"
         :device-options="deviceOptions"
         :algorithm-options="algorithmOptions"
-        :show-translation-direction="hasTranslationDirection"
         :show-tags-input="true"
       />
 
@@ -131,7 +129,12 @@ import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType } fro
 import { evaluationApi, devicesApi, algorithmApi } from '../../../utils/api'
 import type { PropType } from 'vue'
 import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/useTestCaseConfig'
+import { useAlgorithmConfig } from '../../../composables/useAlgorithmConfig'
 import UploadOptions from '../../common/UploadOptions.vue'
+
+const algorithmConfig = useAlgorithmConfig()
+const getAlgorithmOptions = () => algorithmConfig.getAlgorithmOptions()
+const getFormSchema = (type: string) => algorithmConfig.getFormSchema(type)
 
 interface UploadOption {
   key: string
@@ -175,7 +178,6 @@ const props = defineProps<{
   algorithmOptions?: any[]
   playbackDeviceOptions?: any[]
   audioTypeOptions?: any[]
-  translationDirectionOptions?: any[]
 }>()
 
 const emit = defineEmits([
@@ -210,8 +212,6 @@ const {
   e2eDimensionSearchQuery,
   dimensionsLoading,
   dimensionsError,
-  translationDirectionOptions,
-  hasTranslationDirection,
   audioTypeOptions,
   hasAudioType,
   groupNameTypeOptions,
@@ -223,7 +223,6 @@ const {
   ensureDimensionsLoaded,
   defaultSpl
 } = useTestCaseConfig({
-  translationDirectionOptions: props.uploadOptions.find((o: UploadOption) => o.key === 'translationDirectionId')?.options || [],
   audioTypeOptions: props.uploadOptions.find((o: UploadOption) => o.key === 'audioType')?.options || []
 })
 
@@ -292,6 +291,50 @@ const isPlaybackDeviceLoading = () => playbackDeviceLoading.value
 const selectedFolders = ref<string[]>([])
 const folderGroupNames = ref<Map<string, string>>(new Map())
 const algorithmParams = ref<any[]>([])
+const algorithmOptions = ref<{ value: string; name: string }[]>([])
+const algorithmFormSchema = ref<any>(null)
+
+async function loadAlgorithmOptions() {
+  try {
+    const options = await getAlgorithmOptions()
+    algorithmOptions.value = (options || []).map((opt: any) => ({
+      value: opt.value,
+      name: opt.name || opt.label || opt.value
+    }))
+  } catch (error) {
+    console.error('加载算法选项失败:', error)
+    algorithmOptions.value = []
+  }
+}
+
+async function loadAlgorithmFormSchema(algorithmType: string) {
+  if (!algorithmType) {
+    algorithmFormSchema.value = null
+    algorithmParams.value = []
+    return
+  }
+
+  try {
+    const schema = await getFormSchema(algorithmType)
+    algorithmFormSchema.value = schema
+
+    const newParams: any[] = []
+    if (schema?.fields) {
+      schema.fields.forEach((field: any) => {
+        if (field.defaultValue !== undefined) {
+          newParams.push({
+            fieldCode: field.fieldCode,
+            fieldValue: field.defaultValue
+          })
+        }
+      })
+    }
+    algorithmParams.value = newParams
+  } catch (error) {
+    console.error('加载算法表单Schema失败:', error)
+    algorithmFormSchema.value = null
+  }
+}
 
 const supportedAudioExts = props.supportedFormats
 
@@ -540,7 +583,7 @@ const handleImport = async () => {
       if (annData && annData.length > 0) {
         annotations = annData.map(ann => {
           if (ann.format === 'json' || ann.format === 'rttm' || ann.format === 'stm') {
-            const code = annotationCode.value || ann.code || ann.name || determineAnnotationName(baseKey, ann.format)
+            const code = uploadConfig.algorithmType || determineAnnotationName(baseKey, ann.format)
             return {
               ...ann,
               name: code,

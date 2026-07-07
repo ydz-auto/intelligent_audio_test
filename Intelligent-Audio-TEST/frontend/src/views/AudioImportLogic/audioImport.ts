@@ -1,10 +1,13 @@
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue';
-import { audiosApi, devicesApi } from '../../utils/api';
+import { useRouter } from 'vue-router';
+import { audiosApi, devicesApi, algorithmApi } from '../../utils/api';
+import { extractParamsFromAnnotations } from '../../utils/audioUtils';
 import SparkMD5 from 'spark-md5';
 import { getModalManager } from '../../utils/modalManager';
 import { useModalStore } from '../../store/modalStore';
 import { useUploadState } from '../../composables/useUploadState';
 import { useTagFilter } from '../../composables/useTagFilter';
+import { useFolderSelection } from '../../composables/useFolderSelection';
 import { extractAudioFiles, buildTestCaseConfig, groupAudioFilesByLeafFolder, type TestCaseConfig } from '../../utils/folderParser';
 import type { 
   AudioInfo, 
@@ -21,8 +24,18 @@ import { MODAL_TYPES } from '../../shared/types/index';
 export function useAudioImport() {
   const modalManager = getModalManager();
   const modalStore = useModalStore();
-  
+  const router = useRouter();
+
   const { uploadProgress, currentTask, currentUploadingFile, isRetryingFailed, uploadStatus } = useUploadState();
+
+  // 上传完成后的用例生成提示
+  const testCaseGeneratedCount = ref(0);
+  const showTestCaseGeneratedTip = ref(false);
+
+  const goToTestCaseManager = () => {
+    showTestCaseGeneratedTip.value = false;
+    router.push('/test-cases');
+  };
   
   const audioList = ref<AudioInfo[]>([]);
   const totalAudios = ref(0);
@@ -146,8 +159,7 @@ export function useAudioImport() {
     playbackDeviceId: null as string | number | null,
     spl: 65.0,
     groupNameType: 'root' as 'root' | 'folder' | 'custom',
-    customGroupName: '',
-    translationDirectionId: '' as string | number | null
+    customGroupName: ''
   });
 
   const showDeleteResultModal = computed({
@@ -176,15 +188,9 @@ export function useAudioImport() {
     tags: [],
     description: '',
     testTypes: ['api'],
-    playbackDeviceId: null,
-    spl: 65.0,
-    groupNameType: 'root',
-    customGroupName: '',
-    translationDirectionId: '',
+    // playbackDeviceId / spl / noiseAudioId / noiseSpl 已移到 CaseForm 的 RoundConfigEditor
     inheritTags: true,
     dimensions: [],
-    noiseAudioId: null,
-    noiseSpl: 60.0,
     algorithmType: '',
     algorithmRelations: [],
     algorithmParams: [],
@@ -198,6 +204,114 @@ export function useAudioImport() {
   const algorithmOptions = ref<{ value: string; name: string }[]>([]);
   const selectedAlgorithmType = ref<string>('');
   const algorithmParams = ref<any[]>([]);
+
+  // CaseAlgorithmParam 配置缓存（按 algorithmType 缓存，避免每次上传都请求）
+  const caseParamConfigCache = ref<Record<string, any[]>>({});
+
+  /**
+   * 从标注 JSON 按用例参数配置提取参数，合并到 normalizedAlgorithmParams
+   * 前端解析，用户可预览/修改解析结果。后端不再做解析。
+   */
+  async function resolveAlgorithmParamsFromAnnotations(
+    algorithmType: string | undefined,
+    annotations: any[] | undefined,
+    existingParams: any[] | undefined
+  ): Promise<any[]> {
+    // 基础参数：把现有 params 归一化为 [{field_code, field_value}]
+    let result: any[] = [];
+    if (existingParams && typeof existingParams === 'object' && !Array.isArray(existingParams)) {
+      result = Object.entries(existingParams).map(([fieldCode, fieldValue]) => ({ field_code: fieldCode, field_value: fieldValue }));
+    } else if (Array.isArray(existingParams)) {
+      // 兼容 {fieldCode, fieldValue} 和 {field_code, field_value} 两种命名
+      result = existingParams.map(p => ({
+        field_code: p.field_code ?? p.fieldCode,
+        field_value: p.field_value ?? p.fieldValue
+      })).filter(p => p.field_code);
+    }
+
+    if (!algorithmType || !annotations || annotations.length === 0) return result;
+
+    // 获取 CaseAlgorithmParam 配置（带缓存）
+    let caseParams = caseParamConfigCache.value[algorithmType];
+    if (!caseParams) {
+      try {
+        const res = await algorithmApi.getCaseParams(algorithmType);
+        caseParams = res?.parameters || [];
+        caseParamConfigCache.value[algorithmType] = caseParams;
+      } catch (e) {
+        console.warn('[resolveAlgorithmParamsFromAnnotations] 获取用例参数配置失败:', e);
+        return result;
+      }
+    }
+
+    if (!caseParams || caseParams.length === 0) return result;
+
+    // 从标注 JSON 提取参数
+    const extracted = extractParamsFromAnnotations(annotations, caseParams, algorithmType);
+
+    // 合并：提取到的参数不覆盖已有值
+    const existingCodes = new Set(result.map(p => p.field_code));
+    for (const p of extracted) {
+      if (p.field_code && !existingCodes.has(p.field_code)) {
+        result.push(p);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * 多轮模式：把当前文件的标注解析参数分发到 tcConfig.rounds 里匹配的 round
+   * - 每个 round 按 audio_name 匹配当前 fileTask
+   * - 匹配到的 round：从 fileTask.annotations 解析参数，合并到 round.algorithmParams
+   * - 单轮多音频模式：多个音频可能匹配同一个 round，参数合并到同一 round
+   */
+  async function dispatchParamsToRounds(
+    tcConfig: any | undefined,
+    algorithmType: string | undefined,
+    fileTask: AudioUploadFile,
+    options: any
+  ): Promise<void> {
+    if (!tcConfig?.rounds || !algorithmType) return;
+    const annotations = fileTask.annotations || [];
+    if (annotations.length === 0) return;
+
+    // 获取 CaseAlgorithmParam 配置（带缓存，复用 resolveAlgorithmParamsFromAnnotations 的缓存）
+    let caseParams = caseParamConfigCache.value[algorithmType];
+    if (!caseParams) {
+      try {
+        const res = await algorithmApi.getCaseParams(algorithmType);
+        caseParams = res?.parameters || [];
+        caseParamConfigCache.value[algorithmType] = caseParams;
+      } catch (e) {
+        console.warn('[dispatchParamsToRounds] 获取用例参数配置失败:', e);
+        return;
+      }
+    }
+    if (!caseParams || caseParams.length === 0) return;
+
+    // 从当前文件标注解析参数
+    const extracted = extractParamsFromAnnotations(annotations, caseParams, algorithmType);
+
+    // 遍历 rounds，把解析结果分发到匹配 audio_name 的 round
+    for (const round of tcConfig.rounds) {
+      if (!round.audios) continue;
+      // 当前 fileTask 是否属于这个 round（按 audio_name 匹配）
+      const belongsToRound = round.audios.some((a: any) => a.audio_name === fileTask.name);
+      if (!belongsToRound) continue;
+
+      if (!Array.isArray(round.algorithmParams)) {
+        round.algorithmParams = [];
+      }
+      const existingCodes = new Set(round.algorithmParams.map((p: any) => p.field_code ?? p.fieldCode));
+      for (const p of extracted) {
+        if (p.field_code && !existingCodes.has(p.field_code)) {
+          round.algorithmParams.push(p);
+          existingCodes.add(p.field_code);
+        }
+      }
+    }
+  }
 
   const uploadTasks = ref<AudioUploadTask[]>([]);
   const selectedFilesForUpload = ref<File[]>([]);
@@ -301,6 +415,7 @@ export function useAudioImport() {
     folders: []
   });
   const folderLoading = ref(false);
+  // 根目录（空路径）默认展开；子文件夹懒加载展开
   const expandedFolderPaths = ref<Set<string>>(new Set(['']));
 
   function normalizeFile(file: any): any {
@@ -381,7 +496,14 @@ export function useAudioImport() {
         keyword: searchQuery.value || undefined,
         audioType: filters.value.audioType === 'all' ? undefined : filters.value.audioType,
         format: filters.value.format === 'all' ? undefined : filters.value.format,
+        sampleRate: filters.value.sampleRate === 'all' ? undefined : normalizeSampleRate(filters.value.sampleRate),
         duration: filters.value.duration === 'all' ? undefined : filters.value.duration,
+        direction: filters.value.direction === 'all' ? undefined : filters.value.direction,
+        tags: selectedTags.value.length > 0 ? selectedTags.value.map(tag => {
+          const mode = tagModes.value?.get(tag);
+          return { name: tag, mode: mode || 'and' };
+        }) : undefined,
+        algorithmType: uploadOptions.algorithmType || undefined,
         parentPath: folderPath,
         depth: 10
       }, { unwrapResponse: false });
@@ -410,12 +532,34 @@ export function useAudioImport() {
     }
     const subNode = findNode(fullTree, targetPath);
     if (!subNode) return;
-    
-    // Update the corresponding node in serverFolderTree
+
+    // 浅合并：只更新 files 和 folder 元数据，按路径合并 folders，避免覆盖已展开子节点状态
     function findAndUpdate(node: any): boolean {
       if (node.path === targetPath) {
         node.files = subNode.files;
-        node.folders = subNode.folders;
+        node.file_count = subNode.file_count ?? subNode.files?.length ?? 0;
+        node.has_children = subNode.has_children;
+        // 按路径合并子文件夹，保留已加载的子节点
+        const existingFolders = new Map<string, any>((node.folders || []).map((f: any) => [f.path as string, f]));
+        const mergedFolders: any[] = [];
+        for (const newFolder of (subNode.folders || [])) {
+          const existing: any = existingFolders.get(newFolder.path);
+          if (existing) {
+            // 保留已展开子节点的数据，仅更新元数据
+            existing.name = newFolder.name;
+            existing.count = newFolder.count;
+            existing.file_count = newFolder.file_count;
+            existing.has_children = newFolder.has_children;
+            // 如果新数据带了 files（深度更大），则更新
+            if (newFolder.files && newFolder.files.length > 0) {
+              existing.files = newFolder.files;
+            }
+            mergedFolders.push(existing);
+          } else {
+            mergedFolders.push(newFolder);
+          }
+        }
+        node.folders = mergedFolders;
         return true;
       }
       if (node.folders) {
@@ -726,6 +870,13 @@ export function useAudioImport() {
     }
   }
 
+  // 文件夹批量勾选逻辑（复用 composable）
+  const {
+    toggleFolderSelection,
+    isFolderAllSelected,
+    isFolderPartialSelected,
+  } = useFolderSelection(selectedAudios);
+
   const selectAllAcrossPages = ref(false);
 
   function selectCurrentPage() {
@@ -884,13 +1035,6 @@ export function useAudioImport() {
           defaultValue: uploadOptions.algorithmType 
         },
         {
-          key: 'translationDirection',
-          label: '翻译方向',
-          type: 'text',
-          placeholder: '如 zh2en',
-          defaultValue: uploadOptions.translationDirectionId || ''
-        },
-        {
           key: 'testTypes', 
           label: '测试类型', 
           type: 'checkbox', 
@@ -965,7 +1109,6 @@ export function useAudioImport() {
           if (options?.defaultSpl !== undefined) uploadOptions.spl = options.defaultSpl;
           if (options?.groupNameType !== undefined) uploadOptions.groupNameType = options.groupNameType;
           if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
-          if (options?.translationDirectionId !== undefined) uploadOptions.translationDirectionId = options.translationDirectionId;
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
           uploadOptions.dimensions = [
             ...(options?.apiDimensions || []),
@@ -1217,8 +1360,14 @@ export function useAudioImport() {
       task.status = uploadStatus.value;
       task.endTime = new Date().toISOString();
       saveLocalTask(task);
-      
+
       fetchAudios();
+
+      // 如果生成了测试用例，显示提示
+      if (uploadOptions.createTestCase && (task.failedFiles || 0) === 0) {
+        testCaseGeneratedCount.value = task.completedFiles || 0;
+        showTestCaseGeneratedTip.value = true;
+      }
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
@@ -1234,13 +1383,14 @@ export function useAudioImport() {
   }
 
   async function processMergeForExistingFile(taskId: string, fileTask: AudioUploadFile, options: any = uploadOptions, tcConfig?: TestCaseConfig) {
-    let normalizedAlgorithmParams = options.algorithmParams;
-    if (normalizedAlgorithmParams && typeof normalizedAlgorithmParams === 'object' && !Array.isArray(normalizedAlgorithmParams)) {
-      normalizedAlgorithmParams = Object.entries(normalizedAlgorithmParams).map(([fieldCode, fieldValue]) => ({
-        fieldCode,
-        fieldValue
-      }));
-    }
+    // 多轮模式：把当前文件标注解析参数分发到 tcConfig.rounds 匹配的 round
+    await dispatchParamsToRounds(tcConfig, options.algorithmType, fileTask, options);
+    // 前端解析：从标注 JSON 按用例参数配置提取参数（用于平面模式，作为顶层 algorithmParams）
+    const normalizedAlgorithmParams = await resolveAlgorithmParamsFromAnnotations(
+      options.algorithmType,
+      fileTask.annotations,
+      options.algorithmParams
+    );
     const mergeResponse = await audiosApi.mergeChunks(fileTask.fileId, taskId, {
       audioType: options.audioType,
       createTestCase: options.createTestCase,
@@ -1251,7 +1401,6 @@ export function useAudioImport() {
       spl: options.spl,
       groupNameType: options.groupNameType,
       customGroupName: fileTask.folderGroupName || options.customGroupName,
-      translationDirectionId: options.translationDirectionId,
       inheritTags: options.inheritTags,
       dimensions: options.createTestCase ? options.dimensions : undefined,
       noiseAudioId: options.noiseAudioId,
@@ -1276,13 +1425,14 @@ export function useAudioImport() {
   }
 
   async function uploadFileChunks(taskId: string, fileTask: AudioUploadFile, options: any = uploadOptions, tcConfig?: TestCaseConfig) {
-    let normalizedAlgorithmParams = options.algorithmParams;
-    if (normalizedAlgorithmParams && typeof normalizedAlgorithmParams === 'object' && !Array.isArray(normalizedAlgorithmParams)) {
-      normalizedAlgorithmParams = Object.entries(normalizedAlgorithmParams).map(([fieldCode, fieldValue]) => ({
-        fieldCode,
-        fieldValue
-      }));
-    }
+    // 多轮模式：把当前文件标注解析参数分发到 tcConfig.rounds 匹配的 round
+    await dispatchParamsToRounds(tcConfig, options.algorithmType, fileTask, options);
+    // 前端解析：从标注 JSON 按用例参数配置提取参数（用于平面模式，作为顶层 algorithmParams）
+    const normalizedAlgorithmParams = await resolveAlgorithmParamsFromAnnotations(
+      options.algorithmType,
+      fileTask.annotations,
+      options.algorithmParams
+    );
     const chunkSize = fileTask.chunkSize || 10 * 1024 * 1024;
     const totalChunks = fileTask.totalChunks || Math.ceil(fileTask.size / chunkSize);
     
@@ -1321,7 +1471,6 @@ export function useAudioImport() {
       spl: options.spl,
       groupNameType: options.groupNameType,
       customGroupName: fileTask.folderGroupName || options.customGroupName,
-      translationDirectionId: options.translationDirectionId,
       inheritTags: options.inheritTags,
       dimensions: options.createTestCase ? options.dimensions : undefined,
       noiseAudioId: options.noiseAudioId,
@@ -1916,13 +2065,6 @@ export function useAudioImport() {
           defaultValue: uploadOptions.algorithmType 
         },
         {
-          key: 'translationDirection',
-          label: '翻译方向',
-          type: 'text',
-          placeholder: '如 zh2en',
-          defaultValue: uploadOptions.translationDirectionId || ''
-        },
-        {
           key: 'testTypes', 
           label: '测试类型', 
           type: 'checkbox', 
@@ -1994,7 +2136,6 @@ export function useAudioImport() {
           if (options?.defaultSpl !== undefined) uploadOptions.spl = options.defaultSpl;
           if (options?.groupNameType !== undefined) uploadOptions.groupNameType = options.groupNameType;
           if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
-          if (options?.translationDirectionId !== undefined) uploadOptions.translationDirectionId = options.translationDirectionId;
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
           uploadOptions.dimensions = [
             ...(options?.apiDimensions || []),
@@ -2106,6 +2247,9 @@ export function useAudioImport() {
     currentTask,
     currentUploadingFile,
     isRetryingFailed,
+    testCaseGeneratedCount,
+    showTestCaseGeneratedTip,
+    goToTestCaseManager,
     filteredAudios,
     totalPages,
     flattenedFolderTree,
@@ -2128,6 +2272,9 @@ export function useAudioImport() {
     toggleTag,
     toggleSelectAll,
     toggleAudioSelection,
+    toggleFolderSelection,
+    isFolderAllSelected,
+    isFolderPartialSelected,
     selectCurrentPage,
     selectAllPages,
     openUploadModal,

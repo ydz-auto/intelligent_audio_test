@@ -97,15 +97,16 @@ export interface AudioUploadOptions {
     tags: string[];
     description?: string;
     testTypes: ('api' | 'e2e')[];
+    /** @deprecated 已移到 CaseForm 的 RoundConfigEditor 里配置 */
     playbackDeviceId?: string | number | null;
+    /** @deprecated 已移到 CaseForm 的 RoundConfigEditor 里配置 */
     spl?: number;
-    groupNameType?: 'root' | 'folder' | 'custom';
-    customGroupName?: string;
-    translationDirectionId?: string | number | null;
+    /** @deprecated 已移到 CaseForm 的 RoundConfigEditor 里配置 */
+    noiseAudioId?: string | number | null;
+    /** @deprecated 已移到 CaseForm 的 RoundConfigEditor 里配置 */
+    noiseSpl?: number;
     inheritTags?: boolean;
     dimensions?: EvaluationDimensionsConfig;
-    noiseAudioId?: string | number | null;
-    noiseSpl?: number;
     algorithmType?: string;
     algorithmRelations?: Array<{
         algorithmType: string;
@@ -146,12 +147,10 @@ export interface TestCase {
     type?: string;
     testType?: string;
     test_type?: 'api' | 'e2e';
-    related_case_id?: string | number | null;
     config?: TestCaseConfig;
     groupId?: string | number;
     groupName?: string;
     tags?: string[] | { id: number; name: string }[];
-    translationDirectionId?: string | number | null;
     algorithmType?: string;
     createdAt?: string;
     updatedAt?: string;

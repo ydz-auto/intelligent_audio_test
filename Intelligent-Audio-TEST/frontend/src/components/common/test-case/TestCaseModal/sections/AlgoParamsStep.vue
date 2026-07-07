@@ -6,24 +6,6 @@
       <span class="rce-tag rce-tag-orange">algorithmParams</span>
     </div>
 
-    <!-- API 输入参数 -->
-    <div v-if="apiInputParams.length > 0" class="rce-section">
-      <div class="rce-sub-title">本轮输入</div>
-      <div class="rce-param-grid">
-        <div v-for="param in apiInputParams" :key="param.param_code" class="rce-param-item">
-          <label class="rce-param-label">{{ param.param_name || param.param_code }}</label>
-          <textarea
-            v-if="param.param_type === 'text'"
-            class="form-control form-control-sm"
-            rows="2"
-            :value="String(getAlgoParam(param.param_code) ?? '')"
-            :placeholder="param.help_text"
-            @input="setAlgoParam(param.param_code, ($event.target as HTMLTextAreaElement).value)"
-          ></textarea>
-        </div>
-      </div>
-    </div>
-
     <!-- 算法参数 (DynamicForm) -->
     <div v-if="dynamicSchema.fields.length > 0" class="rce-section">
       <div class="rce-sub-title">
@@ -42,7 +24,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, watch } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import type { RoundConfigItem } from '../types'
 import DynamicForm from '../../../../algorithm/DynamicForm.vue'
 
@@ -74,7 +56,6 @@ const PARAM_TYPE_TO_COMPONENT: Record<string, string> = {
 
 const props = defineProps<{
   round: RoundConfigItem
-  apiInputParams: any[]
   caseAlgorithmParams: any[]
   algorithmFormSchema?: any
   testType: 'api' | 'e2e'
@@ -89,23 +70,6 @@ onMounted(() => {
 
 watch(() => props.caseAlgorithmParams, () => {
 }, { deep: true })
-
-function getAlgoParam(fieldCode: string, defaultValue?: unknown): unknown {
-  const params = props.round.algorithmParams || []
-  const item = params.find((p) => p.field_code === fieldCode)
-  return item?.field_value ?? defaultValue ?? ''
-}
-
-function setAlgoParam(fieldCode: string, value: unknown) {
-  const params = [...(props.round.algorithmParams || [])]
-  const idx = params.findIndex((p) => p.field_code === fieldCode)
-  if (idx >= 0) {
-    params[idx] = { field_code: fieldCode, field_value: value }
-  } else {
-    params.push({ field_code: fieldCode, field_value: value })
-  }
-  emit('update:round', { ...props.round, algorithmParams: params })
-}
 
 const eligibleParams = computed(() => {
   if (props.algorithmFormSchema?.fields) {
@@ -210,15 +174,4 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   gap: 6px;
 }
 .rce-sub-title i { font-size: 12px; color: var(--text-light, #999); }
-
-.rce-param-grid { display: flex; gap: 12px; flex-wrap: wrap; }
-.rce-param-item { flex: 1; min-width: 160px; max-width: 320px; }
-
-.rce-param-label {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-secondary, #666);
-  margin-bottom: 4px;
-}
 </style>

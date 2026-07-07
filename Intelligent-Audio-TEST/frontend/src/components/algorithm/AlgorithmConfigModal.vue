@@ -270,13 +270,15 @@
                   <th style="width: 50px;">必填</th>
                   <th style="width: 80px;">默认值</th>
                   <th style="width: 160px;">范围约束</th>
-                  <th style="width: 120px;">帮助文本</th>
+                  <th style="width: 120px;">标注代码</th>
+                  <th style="width: 120px;">字段路径</th>
+                  <th style="width: 100px;">帮助文本</th>
                   <th style="width: 50px;">操作</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-if="formState.case_params.length === 0">
-                  <td colspan="9" class="empty-row">暂无用例参数</td>
+                  <td colspan="11" class="empty-row">暂无用例参数</td>
                 </tr>
                 <tr v-else v-for="(param, index) in formState.case_params" :key="param.id || param.tempId || index">
                   <td>
@@ -321,6 +323,12 @@
                       <input type="text" class="form-input form-input-sm range-input range-unit" v-model="param.unit" placeholder="单位" @blur="handleCaseParamBlur(param, index)">
                     </div>
                     <span v-else class="text-muted">—</span>
+                  </td>
+                  <td>
+                    <input type="text" class="form-input form-input-sm" v-model="param.annotation_code" placeholder="默认同算法类型" @blur="handleCaseParamBlur(param, index)">
+                  </td>
+                  <td>
+                    <input type="text" class="form-input form-input-sm" v-model="param.field_path" placeholder="默认同参数代码" @blur="handleCaseParamBlur(param, index)">
                   </td>
                   <td>
                     <input type="text" class="form-input form-input-sm" v-model="param.help_text" placeholder="帮助提示" @blur="handleCaseParamBlur(param, index)">
@@ -603,6 +611,8 @@ function toggleBundle(bundleKey: string) {
           max_value: preset?.max_value,
           step: preset?.step,
           unit: preset?.unit,
+          annotation_code: null,
+          field_path: null,
           hidden: false,
           deleted: false,
           tempId: `temp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -907,7 +917,9 @@ function normalizeCaseParamFields(param: any) {
     min_value: param.minValue ?? param.min_value ?? param.min ?? null,
     max_value: param.maxValue ?? param.max_value ?? param.max ?? null,
     step: param.step ?? null,
-    unit: param.unit ?? ''
+    unit: param.unit ?? '',
+    annotation_code: param.annotationCode ?? param.annotation_code ?? null,
+    field_path: param.fieldPath ?? param.field_path ?? null
   }
   // 确保 component 字段与 param_type 同步
   if (!normalized.component) {
@@ -1185,6 +1197,8 @@ function handleAddParam() {
       step: null,
       unit: '',
       help_text: '',
+      annotation_code: null,
+      field_path: null,
       ui_order: formState.case_params.length
     })
   } else {
@@ -1359,7 +1373,9 @@ async function autoSaveCaseParams(param: any, index: number) {
       min_value: param.min_value,
       max_value: param.max_value,
       step: param.step,
-      unit: param.unit
+      unit: param.unit,
+      annotation_code: param.annotation_code || null,
+      field_path: param.field_path || null
     }
     let result
     if (param.id) {

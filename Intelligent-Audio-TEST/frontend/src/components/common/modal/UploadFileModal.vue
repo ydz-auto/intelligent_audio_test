@@ -137,12 +137,10 @@
         v-if="hasUploadOptions"
         v-model="uploadConfig"
         v-model:tags="tags"
-        :translation-direction-options="translationDirectionOptions"
         :audio-type-options="audioTypeOptions"
         :playback-device-options="playbackDeviceOptions"
         :device-options="deviceOptions"
         :algorithm-options="algorithmOptions"
-        :show-translation-direction="hasTranslationDirection"
         :show-tags-input="showTagsInput"
       />
     </div>
@@ -216,12 +214,9 @@ const uploadConfig = ref(
 )
 
 const {
-  translationDirectionOptions,
-  hasTranslationDirection,
   audioTypeOptions,
   hasAudioType
 } = useTestCaseConfig({
-  translationDirectionOptions: props.uploadOptions.find((o) => o.key === 'translationDirectionId')?.options || [],
   audioTypeOptions: props.uploadOptions.find((o) => o.key === 'audioType')?.options || []
 })
 
@@ -354,7 +349,7 @@ const processFiles = (files) => {
         
         if (annData && annData.annotations && annData.annotations.length > 0) {
             for (const ann of annData.annotations) {
-                const code = annotationCode.value || ann.code || ann.name || determineAnnotationName(audioFileName, annData.format)
+                const code = uploadConfig.value.algorithmType || determineAnnotationName(audioFileName, annData.format)
                 const type = ann.type || determineAnnotationType(ann.name || ann.code || 'asr')
                 annotations.push({
                     format: annData.format,
@@ -367,7 +362,7 @@ const processFiles = (files) => {
                 })
             }
         } else if (annData && annData.segments && annData.segments.length > 0) {
-            const annotationCodeVal = annotationCode.value || annData.code || annData.name || determineAnnotationName(audioFileName, annData.format)
+            const annotationCodeVal = uploadConfig.value.algorithmType || determineAnnotationName(audioFileName, annData.format)
             const type = annData.type || determineAnnotationType(annData.name || annData.code || 'asr')
             annotations.push({
                 format: annData.format,
@@ -559,7 +554,7 @@ const handleUpload = async () => {
     const filesWithMetadata = selectedFiles.value.map(item => {
       const annotations = (item.annotations || []).map(ann => {
         if (ann.format === 'json' || ann.format === 'rttm' || ann.format === 'stm') {
-          const code = annotationCode.value || ann.code || ann.name || determineAnnotationName(item.name.replace(/\.[^/.]+$/, ''), ann.format)
+          const code = uploadConfig.value.algorithmType || determineAnnotationName(item.name.replace(/\.[^/.]+$/, ''), ann.format)
           return {
             ...ann,
             name: code,

@@ -161,7 +161,6 @@ interface TestCaseFormData {
   tags?: string[]
   algorithmType?: string
   test_type: 'api' | 'e2e'
-  related_case_id?: string
   config: TestCaseConfig
 }
 ```
@@ -171,7 +170,6 @@ interface TestCaseFormData {
 ```ts
 interface TestCase {
   test_type: 'api' | 'e2e'
-  related_case_id?: string
   config: TestCaseConfig
   // 废弃列：reference_params → 文件+rounds[].referenceParamsPath
   // 废弃列：algorithm_params → rounds[].algorithmParams

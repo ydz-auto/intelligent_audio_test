@@ -12,7 +12,7 @@
 - `delete_testcase()`：逻辑删除（deleted=True）
 - `copy_testcase()`：复制一条记录
 
-**问题**：双记录架构下，创建 voice_llm 用例时需要同时创建 API 和 E2E 两条记录，并通过 related_case_id 互指。查询、更新、删除也需要考虑关联记录。
+**问题**：双记录架构下，创建 voice_llm 用例时需要同时创建 API 和 E2E 两条记录。查询、更新、删除也需要考虑双记录。
 
 ## 改造方案
 
@@ -24,7 +24,6 @@ def create_testcase(data):
     创建测试用例
     - 接收 test_type 参数
     - 创建单条记录（前端根据用例类型分别提交）
-    - related_case_id 由前端在创建关联记录后回写
     """
     testcase = TestCase(
         id=generate_id(),
@@ -36,23 +35,16 @@ def create_testcase(data):
     db.session.add(testcase)
     db.session.commit()
 
-    if data.get('related_case_id'):
-        testcase.related_case_id = data['related_case_id']
-        related = TestCase.query.get(data['related_case_id'])
-        if related:
-            related.related_case_id = testcase.id
-        db.session.commit()
-
     return testcase
 ```
 
-### 关联管理
+### 创建说明
 
 | 操作 | 说明 |
 |------|------|
-| 创建 API 记录 | 前端先创建 API 记录，再创建 E2E 记录，E2E 记录的 related_case_id 指向 API 记录 ID |
-| 回写关联 | E2E 创建成功后，回写 API 记录的 related_case_id 指向 E2E 记录 ID |
-| 无关联 | 如果只创建单类型用例（如纯 API 用例），related_case_id 留空 |
+| 创建 API 记录 | 前端提交 test_type='api'，创建一条 API 记录 |
+| 创建 E2E 记录 | 前端提交 test_type='e2e'，创建一条 E2E 记录 |
+| 单类型用例 | 如果只创建单类型用例（如纯 API 用例），只创建一条记录 |
 
 ### 更新用例
 
@@ -88,23 +80,13 @@ def get_testcases(filters):
 ### 删除用例
 
 ```python
-def delete_testcase(testcase_id, cascade=True):
+def delete_testcase(testcase_id):
     """
     删除用例
-    - cascade=True 时，同时逻辑删除关联记录
-    - cascade=False 时，只删除当前记录，清空关联记录的 related_case_id
+    - 逻辑删除当前记录
     """
     testcase = TestCase.query.get(testcase_id)
     testcase.deleted = True
-
-    if cascade and testcase.related_case_id:
-        related = TestCase.query.get(testcase.related_case_id)
-        if related:
-            related.deleted = True
-    elif not cascade and testcase.related_case_id:
-        related = TestCase.query.get(testcase.related_case_id)
-        if related:
-            related.related_case_id = None
 
     db.session.commit()
 ```
@@ -116,20 +98,11 @@ def copy_testcase(testcase_id):
     """
     复制用例
     - 复制当前记录
-    - 如果原记录有关联记录，同时复制关联记录
-    - 新记录之间建立 related_case_id 关联
     """
     original = TestCase.query.get(testcase_id)
-    new_api = _copy_single(original)
+    new_case = _copy_single(original)
 
-    if original.related_case_id:
-        related = TestCase.query.get(original.related_case_id)
-        new_e2e = _copy_single(related)
-        new_api.related_case_id = new_e2e.id
-        new_e2e.related_case_id = new_api.id
-        db.session.commit()
-
-    return new_api
+    return new_case
 ```
 
 ## 相关文档

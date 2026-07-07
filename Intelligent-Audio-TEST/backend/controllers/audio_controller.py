@@ -6,6 +6,7 @@ import shutil
 from flask import request, send_file, Response, current_app
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
+from sqlalchemy import cast, String, func
 from backend.models.models import Audio, Tag, AudioAnnotation, AudioTag, TestCase, TestCaseGroup, PlaybackDevice, UploadTask, UploadFile, UploadChunk
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
@@ -145,6 +146,40 @@ def convert_to_wav(file_path):
     # 返回新的文件名（带.wav扩展名）
     new_filename = f"{filename}.wav"
     return new_wav_path, new_filename, original_sample_rate, original_bits_per_sample
+
+
+def _normalize_algorithm_params(ap):
+    """归一化算法参数为 [{field_code, field_value}] 列表格式。
+
+    接受两种输入：
+    - list: [{field_code, field_value}, ...] 或 [{fieldCode, fieldValue}, ...]
+    - dict: {field_code: field_value, ...}
+    """
+    if not ap:
+        return None
+    if isinstance(ap, dict):
+        return [{'field_code': k, 'field_value': v} for k, v in ap.items()]
+    if isinstance(ap, list):
+        result = []
+        for item in ap:
+            if hasattr(item, 'model_dump'):
+                d = item.model_dump()
+                fc = d.get('field_code') or d.get('fieldCode')
+                fv = d.get('field_value', d.get('fieldValue'))
+                if fc is not None:
+                    result.append({'field_code': fc, 'field_value': fv})
+                else:
+                    result.append(d)
+            elif isinstance(item, dict):
+                fc = item.get('field_code') or item.get('fieldCode')
+                fv = item.get('field_value', item.get('fieldValue'))
+                if fc is not None:
+                    result.append({'field_code': fc, 'field_value': fv})
+                else:
+                    result.append(item)
+        return result if result else None
+    return None
+
 
 class AudioController:
     @staticmethod
@@ -1057,6 +1092,12 @@ class AudioController:
             # test_case_config 优先级高于顶层 test_case_group_name / inherit_tags
             if tc_group_name:
                 test_case_group_name = tc_group_name
+            # 如果 tc_config 有 algorithm_params 且顶层没有，则用 tc_config 的
+            if tc_config and tc_config.algorithm_params and not algorithm_params_dict:
+                algorithm_params_dict = _normalize_algorithm_params(tc_config.algorithm_params)
+            # 如果 tc_config 有 dimensions 且顶层没有，则用 tc_config 的
+            if tc_config and tc_config.dimensions and not dimensions_data:
+                dimensions_data = tc_config.dimensions
             
             # 验证文件存在
             upload_file = db.session.get(UploadFile, file_id)
@@ -1284,14 +1325,49 @@ class AudioController:
                 
                 # 处理标注信息（支持 JSON/RTTM/STM 格式）
                 annotations_from_request = validated.annotations
+                raw_annotations_data = []
 
                 if annotations_from_request:
+                    # 查询用例参数字段列表，用于从标注数据中剔除（标注表只保留参考参数 + 元数据）
+                    case_param_fields = set()
+                    if algorithm_type:
+                        from backend.models.algorithm_models import CaseAlgorithmParam
+                        case_params = CaseAlgorithmParam.query.filter_by(
+                            algorithm_type=algorithm_type, deleted=False
+                        ).all()
+                        for p in case_params:
+                            fp = p.field_path or p.param_code
+                            if fp and '[]' in fp:
+                                seg_key = fp.split('[].')[1] if '[].' in fp else fp
+                                case_param_fields.add(seg_key)
+                            else:
+                                case_param_fields.add(fp)
+
+                    raw_annotations_data = []
                     for ann in annotations_from_request:
                         ann_format = ann.get('format', 'json')
                         ann_data = ann.get('data', {})
                         ann_code = ann.get('code', '')
                         ann_source_lang = ann.get('source_language', '')
                         ann_target_lang = ann.get('target_language', '')
+
+                        # 保留原始标注数据（未剔除用例参数），用于创建用例时提取用例参数
+                        raw_annotations_data.append({
+                            'code': ann_code,
+                            'data': ann_data
+                        })
+
+                        # 从标注数据中剔除用例参数字段（只保留参考参数 + 元数据）
+                        if case_param_fields and isinstance(ann_data, dict):
+                            import copy as _copy
+                            ann_data = _copy.deepcopy(ann_data)
+                            segments = ann_data.get('segments', [])
+                            if isinstance(segments, list):
+                                for seg in segments:
+                                    if isinstance(seg, dict):
+                                        for field_key in list(seg.keys()):
+                                            if field_key in case_param_fields:
+                                                del seg[field_key]
 
                         audio_annotation = AudioAnnotation(
                             audio_id=new_audio.id,
@@ -1346,6 +1422,7 @@ class AudioController:
                     algorithm_params_dict,
                     rounds_config=rounds_config,
                     inherit_tags=tc_inherit_tags,
+                    raw_annotations=raw_annotations_data or None,
                 )
             
             # 最终统一提交所有数据库变更
@@ -1470,7 +1547,7 @@ class AudioController:
 
     # 内部辅助方法：从音频创建测试用例
     @staticmethod
-    def _create_test_case_from_audio(audio_id, test_types, audio_tags, playback_device_id=None, spl=65.0, noise_spl=60.0, noise_audio_id=None, group_name=None, dimensions_data=None, algorithm_type=None, algorithm_params=None, rounds_config=None, inherit_tags=True):
+    def _create_test_case_from_audio(audio_id, test_types, audio_tags, playback_device_id=None, spl=65.0, noise_spl=60.0, noise_audio_id=None, group_name=None, dimensions_data=None, algorithm_type=None, algorithm_params=None, rounds_config=None, inherit_tags=True, raw_annotations=None):
         """
         根据音频创建测试用例，支持多测试类型（API和E2E）。
 
@@ -1520,56 +1597,166 @@ class AudioController:
                 if default_device:
                     effective_playback_device_id = default_device.id
 
-            # 创建测试用例名称
-            test_case_name = f"测试用例_{audio.name}"
+            # 创建测试用例名称（基础名）
+            base_name = f"测试用例_{audio.name}"
 
-            # 检查是否已存在同名用例
-            existing = TestCase.query.filter_by(name=test_case_name, group_id=group.id, deleted=False).first()
-            if existing:
-                test_case_name = f"测试用例_{audio.name}_{datetime.now(timezone(timedelta(hours=8))).strftime('%H%M%S')}"
+            # 确保至少有一个 test_type
+            if not test_types:
+                test_types = ['api']
 
-            # 确定记录类型（取第一个）
-            primary_test_type = test_types[0] if test_types else 'api'
+            created_tc_ids = []
+            import copy
 
-            # ===== 构建 config =====
-            if rounds_config:
-                # 多轮模式：直接使用传入的 rounds 配置
-                config = {
-                    "source_audio": audio.name,
-                    "auto_generated": True,
-                    "rounds": rounds_config,
-                }
-                # 评估维度
-                if dimensions_data:
-                    if isinstance(dimensions_data, dict):
-                        config["dimensions"] = dimensions_data.get('dimensions', [])
-                    elif isinstance(dimensions_data, list):
-                        config["dimensions"] = dimensions_data
+            for tt in test_types:
+                # 每种 test_type 一个用例，名称加后缀区分
+                if len(test_types) > 1:
+                    test_case_name = f"{base_name}_{tt}"
                 else:
-                    config["dimensions"] = []
-            else:
-                # 平面模式（向后兼容）：构建单轮平面 config
-                audio_config = {
-                    "audio_id": audio_id,
-                    "spl": spl if spl else 65.0,
-                    "play_order": 0
-                }
-                if primary_test_type == 'e2e':
-                    audio_config["playback_device_id"] = effective_playback_device_id
+                    test_case_name = base_name
+                existing = TestCase.query.filter_by(name=test_case_name, group_id=group.id, deleted=False).first()
+                if existing:
+                    test_case_name = f"{test_case_name}_{datetime.now(timezone(timedelta(hours=8))).strftime('%H%M%S')}"
+
+                # ===== 构建 config =====
+                # 统一走 rounds 架构，前端始终构建 rounds_config
+                if rounds_config:
+                    # 前端已构建 rounds 并按 round 分发 algorithmParams（含从标注解析的参数）
+                    # 后端只需把 audio_name 替换为真实的 audio_id
+                    rounds_resolved = copy.deepcopy(rounds_config)
+                else:
+                    # 兜底：前端未传 rounds_config 时构建最小 rounds
+                    audio_config = {
+                        "audio_id": audio_id,
+                        "spl": spl if spl else 65.0,
+                        "play_order": 0
+                    }
+                    if tt == 'e2e':
+                        audio_config["playback_device_id"] = effective_playback_device_id
+                    round_algorithm_params = []
+                    if algorithm_params:
+                        if isinstance(algorithm_params, dict):
+                            round_algorithm_params = [
+                                {'field_code': fc, 'field_value': fv} for fc, fv in algorithm_params.items()
+                            ]
+                        elif isinstance(algorithm_params, list):
+                            for p in algorithm_params:
+                                if isinstance(p, dict):
+                                    fc = p.get('field_code') or p.get('fieldCode')
+                                    fv = p.get('field_value', p.get('fieldValue'))
+                                    if fc:
+                                        round_algorithm_params.append({'field_code': fc, 'field_value': fv})
+                    rounds_resolved = [{
+                        "roundNumber": 1,
+                        "audios": [audio_config],
+                        "algorithmParams": round_algorithm_params,
+                    }]
+
+                # 把 audio_name 替换为真实的 audio_id
+                for round_item in rounds_resolved:
+                    if not isinstance(round_item, dict):
+                        continue
+                    audios = round_item.get('audios', [])
+                    if not isinstance(audios, list):
+                        round_item['audios'] = []
+                        audios = []
+                    if not isinstance(round_item.get('algorithmParams'), list):
+                        round_item['algorithmParams'] = []
+                    for audio_item in audios:
+                        if not isinstance(audio_item, dict):
+                            continue
+                        if audio_item.get('audio_name') and not audio_item.get('audio_id'):
+                            if audio_item['audio_name'] == audio.name:
+                                audio_item['audio_id'] = audio_id
+
+                # 后端按 test_type + scope 从原始标注提取用例参数（不依赖前端提取）
+                if algorithm_type and raw_annotations:
+                    from backend.models.algorithm_models import CaseAlgorithmParam
+                    case_params_list = CaseAlgorithmParam.query.filter_by(
+                        algorithm_type=algorithm_type, deleted=False
+                    ).all()
+                    # 按 scope 过滤：只取匹配当前 test_type 的参数
+                    scoped_params = [
+                        p for p in case_params_list
+                        if p.scope == 'common' or p.scope == tt
+                    ]
+                    if scoped_params:
+                        for round_item in rounds_resolved:
+                            if not isinstance(round_item, dict):
+                                continue
+                            round_audios = round_item.get('audios', [])
+                            if not isinstance(round_audios, list):
+                                continue
+                            # 收集该 round 涉及的 audio_id
+                            round_audio_ids = [
+                                a.get('audio_id') for a in round_audios
+                                if isinstance(a, dict) and a.get('audio_id')
+                            ]
+                            if not round_audio_ids:
+                                continue
+                            # 从原始标注提取用例参数
+                            extracted_params = []
+                            for param in scoped_params:
+                                param_code = param.param_code
+                                field_path = param.field_path or param_code
+                                ann_code = param.annotation_code or algorithm_type
+                                # 找匹配的标注
+                                matched_anns = [a for a in raw_annotations if a.get('code') == ann_code]
+                                if not matched_anns:
+                                    matched_anns = raw_annotations
+                                value = None
+                                for ann in matched_anns:
+                                    data = ann.get('data')
+                                    if data is None:
+                                        continue
+                                    if isinstance(data, str):
+                                        value = data
+                                        break
+                                    if isinstance(data, dict):
+                                        # field_path 不含 '[]' 时，自动补 'segments[].' 前缀
+                                        effective_fp = field_path
+                                        if '[]' not in effective_fp:
+                                            effective_fp = f'segments[].{effective_fp}'
+                                        if '[]' in effective_fp:
+                                            parts = effective_fp.split('[].')
+                                            arr_key = parts[0]
+                                            field_key = parts[1] if len(parts) > 1 else None
+                                            arr = data.get(arr_key, [])
+                                            if isinstance(arr, list) and field_key:
+                                                collected = [
+                                                    seg.get(field_key) for seg in arr
+                                                    if isinstance(seg, dict) and seg.get(field_key) is not None
+                                                ]
+                                                if collected:
+                                                    value = collected[0] if len(collected) == 1 else collected
+                                                    break
+                                                if value is not None:
+                                                    break
+                                if value is not None:
+                                    extracted_params.append({
+                                        'field_code': param_code,
+                                        'field_value': value
+                                    })
+                            # 合并到 round.algorithmParams（前端传来的优先，后端提取的补缺）
+                            existing_codes = set(
+                                p.get('field_code') or p.get('fieldCode')
+                                for p in round_item.get('algorithmParams', [])
+                            )
+                            for p in extracted_params:
+                                if p['field_code'] not in existing_codes:
+                                    round_item.setdefault('algorithmParams', []).append(p)
+                                    existing_codes.add(p['field_code'])
 
                 config = {
                     "source_audio": audio.name,
                     "auto_generated": True,
-                    "audios": [audio_config],
+                    "rounds": rounds_resolved,
                 }
-
                 # 噪声配置
                 if (noise_spl and noise_spl > 0) or noise_audio_id:
                     config["background_noise"] = {
                         "audio_id": noise_audio_id,
                         "spl": noise_spl if noise_spl else 60.0
                     }
-
                 # 评估维度
                 if dimensions_data:
                     if isinstance(dimensions_data, dict):
@@ -1579,34 +1766,36 @@ class AudioController:
                 else:
                     config["dimensions"] = []
 
-            # 创建测试用例
-            tc_id = str(uuid.uuid4())
+                # 创建测试用例
+                tc_id = str(uuid.uuid4())
 
-            new_tc = TestCase(
-                id=tc_id,
-                name=test_case_name,
-                description=f"自动从音频 '{audio.name}' 创建的测试用例",
-                group_id=group.id,
-                test_type=primary_test_type,
-                algorithm_type=algorithm_type,
-                config=config
-            )
-            db.session.add(new_tc)
+                new_tc = TestCase(
+                    id=tc_id,
+                    name=test_case_name,
+                    description=f"自动从音频 '{audio.name}' 创建的测试用例",
+                    group_id=group.id,
+                    test_type=tt,
+                    algorithm_type=algorithm_type,
+                    config=config
+                )
+                db.session.add(new_tc)
 
-            # 继承音频的标签（受 inherit_tags 开关控制）
-            if inherit_tags:
-                for tag_name in audio_tags:
-                    tag = Tag.query.filter_by(name=tag_name).first()
-                    if tag:
-                        new_tc.tags.append(tag)
+                # 继承音频的标签（受 inherit_tags 开关控制）
+                if inherit_tags:
+                    for tag_name in audio_tags:
+                        tag = Tag.query.filter_by(name=tag_name).first()
+                        if tag:
+                            new_tc.tags.append(tag)
 
-            # 同步生成参考参数（rounds 模式下会真正生成文件，平面模式下 no-op）
-            from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
-            ReferenceParamsGenerator.apply_to_config(new_tc)
+                # 同步生成参考参数（rounds 模式和平面模式都会真正生成文件）
+                from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
+                ReferenceParamsGenerator.apply_to_config(new_tc)
+
+                created_tc_ids.append(tc_id)
 
             # 不在这里 commit，交给调用者统一提交
             db.session.flush()
-            return tc_id
+            return created_tc_ids[0] if created_tc_ids else None
 
     # URL 远程导入
     @staticmethod
@@ -1820,7 +2009,7 @@ class AudioController:
                     # 1. 检查测试用例音频关联（在config.audios中）
                     test_case_count = TestCase.query.filter(
                         TestCase.deleted == False,
-                        TestCase.config.contains(f'"audio_id": {audio_id}')
+                        cast(TestCase.config, String).like(f'%"audio_id": {audio_id}%')
                     ).count()
                     if test_case_count > 0:
                         skipped_audio_ids.append(audio_id)
@@ -1829,7 +2018,7 @@ class AudioController:
                     # 2. 检查测试用例背景噪音引用（在config.background_noise中）
                     test_case_noise_count = TestCase.query.filter(
                         TestCase.deleted == False,
-                        TestCase.config.contains(f'"background_noise": {{"audio_id": {audio_id}}}')
+                        cast(TestCase.config, String).like(f'%"background_noise": {{"audio_id": {audio_id}}}%')
                     ).count()
                     if test_case_noise_count > 0:
                         skipped_audio_ids.append(audio_id)
@@ -1837,7 +2026,7 @@ class AudioController:
                     
                     # 3. 检查设备提示词音频引用
                     device_count = Device.query.filter(
-                        Device.prompt_config.contains(str(audio_id)),
+                        cast(Device.prompt_config, String).like(f'%{audio_id}%'),
                         Device.deleted == False
                     ).count()
                     if device_count > 0:
@@ -1846,7 +2035,7 @@ class AudioController:
                     
                     # 4. 检查任务配置中的音频引用
                     task_count = Task.query.filter(
-                        Task.config.contains(str(audio_id)),
+                        cast(Task.config, String).like(f'%{audio_id}%'),
                         Task.deleted == False
                     ).count()
                     if task_count > 0:
@@ -2283,7 +2472,7 @@ class AudioController:
             # 1. 检查测试用例音频关联（在config.audios中）
             test_case_count = TestCase.query.filter(
                 TestCase.deleted == False,
-                TestCase.config.contains(f'"audio_id": {audio_id}')
+                cast(TestCase.config, String).like(f'%"audio_id": {audio_id}%')
             ).count()
             if test_case_count > 0:
                 return error_response("该音频文件已被测试用例使用，禁止删除", 400)
@@ -2291,7 +2480,7 @@ class AudioController:
             # 2. 检查测试用例背景噪音引用
             test_case_noise_count = TestCase.query.filter(
                 TestCase.deleted == False,
-                TestCase.config.contains(f'"background_noise": {{"audio_id": {audio_id}}}')
+                cast(TestCase.config, String).like(f'%"background_noise": {{"audio_id": {audio_id}}}%')
             ).count()
             if test_case_noise_count > 0:
                 return error_response("该音频文件已被测试用例作为背景噪音使用，禁止删除", 400)
@@ -2299,7 +2488,7 @@ class AudioController:
             # 3. 检查设备提示词音频引用
             from backend.models.models import Device
             device_count = Device.query.filter(
-                Device.prompt_config.contains(str(audio_id)),
+                cast(Device.prompt_config, String).like(f'%{audio_id}%'),
                 Device.deleted == False
             ).count()
             if device_count > 0:
@@ -2308,7 +2497,7 @@ class AudioController:
             # 4. 检查任务配置中的音频引用
             from backend.models.models import Task
             task_count = Task.query.filter(
-                Task.config.contains(str(audio_id)),
+                cast(Task.config, String).like(f'%{audio_id}%'),
                 Task.deleted == False
             ).count()
             if task_count > 0:
@@ -2536,14 +2725,15 @@ class AudioController:
             )
             query = query.filter(Audio.id.in_(audio_ids_with_algo))
 
-        # Lazy loading: when parent_path is provided, only query files under that path
-        # Escape SQL LIKE wildcards (% and _) to prevent unintended matches
+        # Lazy loading: when parent_path is provided, only query files under that path.
+        # 数据库中 file_path 可能用 Windows 反斜杠 (\) 或正斜杠 (/) 存储，
+        # 用 func.replace 统一转成正斜杠再匹配，避免 escape 字符导致的语义问题。
         if parent_path:
             normalized_parent = parent_path.replace(chr(92), '/')
-            escaped = normalized_parent.replace('%', r'\%').replace('_', r'\_')
+            escaped = normalized_parent.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+            normalized_path_expr = func.replace(Audio.file_path, chr(92), '/')
             query = query.filter(
-                (Audio.file_path.like(f'%{escaped}/%', escape=chr(92))) |
-                (Audio.file_path.like(f'%{escaped}' + chr(92) + '%', escape=chr(92)))
+                normalized_path_expr.like(f'%{escaped}/%', escape='\\')
             )
 
         # Only load the columns needed for tree building (performance)
@@ -2629,7 +2819,9 @@ class AudioController:
 
                 if i == len(folder_parts) - 1:
                     folder_map[current_path]['file_count'] += 1
-                    if parent_path or depth >= i + 1:
+                    # 仅当显式指定 parent_path（懒加载子树）或 depth 严格大于文件夹深度时才返回文件
+                    # 这样 depth=1 时只返回根目录文件，子文件夹仅返回元数据
+                    if parent_path or depth > i + 1:
                         folder_map[current_path]['files'].append(make_file_item(audio))
 
         # O(n) tree building: group folder paths by their parent key
@@ -2649,7 +2841,7 @@ class AudioController:
                     'count': folder['count'],
                     'file_count': folder['file_count'],
                     'has_children': len(children) > 0 or folder['file_count'] > 0,
-                    'files': folder['files'] if parent_path or depth >= folder['depth'] else [],
+                    'files': folder['files'] if parent_path or depth > folder['depth'] else [],
                     'folders': children
                 })
             return sorted(result, key=lambda x: x['name'])

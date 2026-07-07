@@ -3,12 +3,11 @@
 拆分测试用例：将混合 API/E2E 的测试用例拆分为两条独立记录
 
 迁移步骤：
-1. DDL：为 test_cases 表新增 test_type、related_case_id 字段
+1. DDL：为 test_cases 表新增 test_type 字段
 2. DDL：为 case_algorithm_params 表新增 scope 字段
 3. 数据迁移：识别包含 E2E 音频的混合用例，拆分为 API + E2E 两条记录
    - 原记录保留为 API 记录（test_type='api'）
    - 克隆新记录为 E2E 记录（test_type='e2e'）
-   - 双向关联 related_case_id
    - 拆分 config（audios 按类型过滤、dimensions 展平）
    - 拆分 reference_params（api/e2e 键转为 value 键）
    - 复制标签关联到 E2E 记录
@@ -63,11 +62,6 @@ def add_columns(conn):
         "test_cases.test_type 已存在，跳过")
 
     _exec_ddl(conn,
-        "ALTER TABLE test_cases ADD COLUMN related_case_id VARCHAR(50)",
-        "test_cases.related_case_id (VARCHAR(50), NULLABLE)",
-        "test_cases.related_case_id 已存在，跳过")
-
-    _exec_ddl(conn,
         "CREATE INDEX ix_test_cases_test_type ON test_cases (test_type)",
         "INDEX ix_test_cases_test_type",
         "INDEX ix_test_cases_test_type 已存在，跳过")
@@ -94,11 +88,9 @@ def _has_e2e_audios(config):
 
 
 def _is_already_migrated(tc_row):
-    """判断记录是否已经迁移过（test_type 已被显式设置）"""
-    # 如果 related_case_id 已有值，说明已迁移
-    if tc_row.get('related_case_id'):
-        return True
-    return False
+    """判断记录是否已经迁移过（test_type 已被显式设置为 e2e）"""
+    # 如果 test_type 已为 e2e，说明已迁移
+    return tc_row.get('test_type') == 'e2e'
 
 
 def _split_audios(audios, target_type):
@@ -165,7 +157,7 @@ def migrate_data(conn):
 
     # 查询所有未删除的测试用例
     rows = conn.execute(text(
-        "SELECT id, name, config, reference_params, test_type, related_case_id "
+        "SELECT id, name, config, reference_params, test_type "
         "FROM test_cases WHERE deleted = false"
     )).fetchall()
 
@@ -235,12 +227,11 @@ def migrate_data(conn):
         try:
             # 更新原记录为 E2E（保留完整配置）
             conn.execute(text(
-                "UPDATE test_cases SET test_type = 'e2e', related_case_id = :api_id, "
+                "UPDATE test_cases SET test_type = 'e2e', "
                 "config = CAST(:config AS jsonb), reference_params = CAST(:ref AS jsonb), "
                 "updated_at = :now "
                 "WHERE id = :id"
             ), {
-                'api_id': api_id,
                 'config': json.dumps(e2e_config, ensure_ascii=False),
                 'ref': json.dumps(e2e_ref_params, ensure_ascii=False) if e2e_ref_params else None,
                 'now': now,
@@ -258,10 +249,10 @@ def migrate_data(conn):
             conn.execute(text(
                 "INSERT INTO test_cases "
                 "(id, name, description, group_id, config, algorithm_type, algorithm_params, "
-                "reference_params, test_type, related_case_id, created_at, updated_at, deleted) "
+                "reference_params, test_type, created_at, updated_at, deleted) "
                 "VALUES "
                 "(:id, :name, :description, :group_id, CAST(:config AS jsonb), :algorithm_type, "
-                "CAST(:algorithm_params AS jsonb), CAST(:reference_params AS jsonb), 'api', :related_case_id, "
+                "CAST(:algorithm_params AS jsonb), CAST(:reference_params AS jsonb), 'api', "
                 ":now, :now, false)"
             ), {
                 'id': api_id,
@@ -274,7 +265,6 @@ def migrate_data(conn):
                     if full_dict.get('algorithm_params') else None,
                 'reference_params': json.dumps(api_ref_params, ensure_ascii=False)
                     if api_ref_params else None,
-                'related_case_id': tc_id,
                 'now': now,
             })
 
@@ -308,6 +298,7 @@ def migrate_data(conn):
             sp.commit()
             split_count += 1
             print(f"  [{split_count}] 拆分 '{tc_name}' (id={tc_id[:8]}... -> E2E + API(id={api_id[:8]}...))")
+
         except Exception as e:
             sp.rollback()
             print(f"  !! 拆分 '{tc_name}' (id={tc_id[:8]}...) 失败: {e}")
@@ -405,19 +396,6 @@ def verify(conn):
         "SELECT COUNT(*) FROM test_cases WHERE deleted = false AND test_type = 'e2e'"
     )).scalar()
 
-    linked = conn.execute(text(
-        "SELECT COUNT(*) FROM test_cases WHERE deleted = false AND related_case_id IS NOT NULL"
-    )).scalar()
-
-    orphaned = conn.execute(text(
-        "SELECT COUNT(*) FROM test_cases tc "
-        "WHERE tc.deleted = false AND tc.related_case_id IS NOT NULL "
-        "AND NOT EXISTS ("
-        "  SELECT 1 FROM test_cases tc2 "
-        "  WHERE tc2.id = tc.related_case_id AND tc2.deleted = false"
-        ")"
-    )).scalar()
-
     # 检查是否还有混合 audios
     all_configs = conn.execute(text(
         "SELECT id, name, config FROM test_cases WHERE deleted = false"
@@ -439,11 +417,9 @@ def verify(conn):
     print(f"\n  总用例数: {total}")
     print(f"  API 用例: {api_count}")
     print(f"  E2E 用例: {e2e_count}")
-    print(f"  已关联: {linked}")
-    print(f"  孤立关联: {orphaned} {'(WARNING!)' if orphaned > 0 else ''}")
     print(f"  残留混合: {still_mixed} {'(WARNING!)' if still_mixed > 0 else ''}")
 
-    if orphaned == 0 and still_mixed == 0:
+    if still_mixed == 0:
         print("\n  ✓ 迁移验证通过")
     else:
         print("\n  ✗ 迁移存在问题，请检查")

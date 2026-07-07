@@ -230,8 +230,8 @@ class TestCreateTestCaseWithRounds:
             # 验证参考参数生成器被调用（同步生成）
             mock_gen.apply_to_config.assert_called_once_with(mock_tc)
 
-    def test_create_test_case_falls_back_to_flat_when_no_rounds(self):
-        """不传 rounds_config 时，降级为平面 config（向后兼容）"""
+    def test_create_test_case_falls_back_to_minimal_rounds_when_no_rounds(self):
+        """不传 rounds_config 时，自动构建最小 rounds（统一 rounds 架构）"""
         from backend.controllers.audio_controller import AudioController
 
         with patch("backend.controllers.audio_controller.db") as mock_db, \
@@ -263,11 +263,71 @@ class TestCreateTestCaseWithRounds:
                 spl=65.0,
             )
 
-            # 验证 config 是平面结构（无 rounds）
+            # 验证 config 统一走 rounds 架构（无平面模式 audios 字段）
             _, kwargs = mock_tc_cls.call_args
             config = kwargs.get("config", {})
-            assert "rounds" not in config
-            assert "audios" in config
+            assert "rounds" in config
+            assert "audios" not in config  # 不再有顶层 audios
+            rounds = config["rounds"]
+            assert len(rounds) == 1
+            assert rounds[0]["roundNumber"] == 1
+            # audio_id 应该已填入
+            assert rounds[0]["audios"][0]["audio_id"] == 1
+            # inputAudio 不再自动填入（音频在 round.audios 里）
+            ap_list = rounds[0]["algorithmParams"]
+            input_audio_param = next((p for p in ap_list if p.get("field_code") == "inputAudio"), None)
+            assert input_audio_param is None
+
+    def test_create_test_case_resolves_audio_name_to_id(self):
+        """前端用 audio_name 占位，后端 rounds 模式应替换为真实 audio_id"""
+        from backend.controllers.audio_controller import AudioController
+
+        with patch("backend.controllers.audio_controller.db") as mock_db, \
+             patch("backend.controllers.audio_controller.Audio") as mock_audio_cls, \
+             patch("backend.controllers.audio_controller.TestCaseGroup") as mock_group_cls, \
+             patch("backend.controllers.audio_controller.TestCase") as mock_tc_cls, \
+             patch("backend.controllers.audio_controller.Tag") as mock_tag_cls, \
+             patch("backend.utils.algorithm.reference_params_generator.ReferenceParamsGenerator") as mock_gen:
+
+            mock_audio = MagicMock()
+            mock_audio.id = 42
+            mock_audio.name = "test.wav"
+            mock_db.session.get.return_value = mock_audio
+            mock_db.session.no_autoflush = MagicMock(return_value=MagicMock(__enter__=MagicMock(), __exit__=MagicMock()))
+
+            mock_group_cls.query.filter_by.return_value.first.return_value = MagicMock(id="g1")
+            mock_tc = MagicMock()
+            mock_tc.id = "tc1"
+            mock_tc.config = {}
+            mock_tc.algorithm_type = "voice_llm"
+            mock_tc_cls.return_value = mock_tc
+
+            # 前端构建的 rounds 用 audio_name 占位，无 audio_id
+            rounds_config = [
+                {
+                    "roundNumber": 1,
+                    "audios": [{"audio_name": "test.wav", "play_order": 0}],
+                    "algorithmParams": [],
+                }
+            ]
+
+            AudioController._create_test_case_from_audio(
+                audio_id=42,
+                test_types=["api"],
+                audio_tags=[],
+                rounds_config=rounds_config,
+                algorithm_type="voice_llm",
+            )
+
+            _, kwargs = mock_tc_cls.call_args
+            config = kwargs.get("config", {})
+            rounds = config["rounds"]
+            # audio_name 应被替换为 audio_id
+            assert rounds[0]["audios"][0]["audio_id"] == 42
+            # inputAudio 不再自动填入（音频在 round.audios 里）
+            ap_list = rounds[0]["algorithmParams"]
+            input_audio_param = next((p for p in ap_list if p.get("field_code") == "inputAudio"), None)
+            assert input_audio_param is None
 
     def test_inherit_tags_false_skips_tag_inheritance(self):
         """inherit_tags=False 时不继承标签"""

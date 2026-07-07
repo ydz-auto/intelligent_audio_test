@@ -129,7 +129,18 @@ class E2EExecutor(BaseExecutor):
             self._initialize_devices(device_info_list, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
             
             # 声纹注册（循环前一次性执行）
-            voiceprint_config = case_config.get('voiceprint_config', {})
+            # 从第一轮 algorithmParams 组装 voiceprint_config
+            from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
+            first_round_algo_params = {}
+            if rounds and isinstance(rounds[0], dict):
+                first_round_algo_params = _normalize_algorithm_params(rounds[0].get('algorithmParams', []))
+            voiceprint_config = {
+                'enabled': first_round_algo_params.get('voiceprintEnabled', False),
+                'audio_id': first_round_algo_params.get('voiceprintAudioId'),
+                'playback_device_id': first_round_algo_params.get('voiceprintPlaybackDeviceId'),
+                'spl': first_round_algo_params.get('voiceprintSpl', 70.0),
+                'wait_time': first_round_algo_params.get('voiceprintWaitTime', 5.0),
+            }
             if voiceprint_config.get('enabled'):
                 if not playback_orchestrator.play_voiceprint(voiceprint_config, device_info_list, task_id):
                     self._log(level='ERROR', content='声纹注册失败，中止测试', task_id=task_id, test_case_id=test_case_id)
@@ -163,7 +174,12 @@ class E2EExecutor(BaseExecutor):
                 
                 # 环境设备设置（导轨等，setup 自动保存状态）
                 env_states = self._setup_env_devices_for_round(round_algo_params, task_id)
-                
+
+                # 被测设备音量设置（volumeLevel 透传给设备驱动，播放前设置、播放后恢复）
+                volume_states = self._setup_device_volume_for_round(
+                    round_algo_params, device_info_list, task_id, test_case_id=test_case_id
+                )
+
                 # 通过 PlaybackOrchestrator 统一播放本轮音频（主讲人 + 噪声 + 干扰人）
                 play_result = playback_orchestrator.play_round(
                     round_config=round_config,
@@ -178,6 +194,7 @@ class E2EExecutor(BaseExecutor):
                         content=f"第 {round_number} 轮音频播放失败，跳过",
                         task_id=task_id, test_case_id=test_case_id,
                     )
+                    self._teardown_device_volume_for_round(volume_states, device_info_list, task_id)
                     self._teardown_env_devices_for_round(env_states, task_id)
                     continue
                 

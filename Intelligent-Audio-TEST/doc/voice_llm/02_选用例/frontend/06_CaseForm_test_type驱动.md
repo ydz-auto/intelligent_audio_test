@@ -73,9 +73,6 @@ watch(() => props.formData.algorithmType, async (newType) => {
         <el-tag :type="testType === 'api' ? 'success' : 'warning'">
           {{ testType === 'api' ? 'API 测试' : 'E2E 测试' }}
         </el-tag>
-        <el-link v-if="formData.related_case_id" @click="openRelatedCase">
-          查看关联{{ testType === 'api' ? 'E2E' : 'API' }}用例
-        </el-link>
       </el-form-item>
     </el-card>
 

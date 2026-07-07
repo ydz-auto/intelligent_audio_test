@@ -142,7 +142,6 @@ class TestCase(db.Model):
     group_id = Column(String(50), ForeignKey('test_case_groups.id'), comment='所属分组ID')
     algorithm_type = Column(String(50), comment='关联算法类型 (如: translation, asr, speaker_recognition, tts)')
     test_type = Column(String(10), nullable=False, default='api', index=True, comment='测试类型 (api/e2e)')
-    related_case_id = Column(String(50), nullable=True, comment='关联的对应类型用例ID (API用例关联E2E用例，反之亦然)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')

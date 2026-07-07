@@ -17,7 +17,6 @@ interface Props {
     audioType?: string
     createTestCase?: boolean
     testTypes?: ('api' | 'e2e')[]
-    translationDirectionId?: string | number
     playbackDeviceId?: string | number
     spl?: number
     noiseAudioId?: string | number
@@ -39,7 +38,6 @@ interface Props {
   playbackDeviceOptions?: Array<{ label: string; value: string | number }>
   deviceOptions?: Array<{ label: string; value: string | number }>
   algorithmOptions?: Array<{ label: string; value: string }>
-  showTranslationDirection?: boolean
   showTagsInput?: boolean
 }
 
@@ -48,7 +46,6 @@ const props = withDefaults(defineProps<Props>(), {
   playbackDeviceOptions: () => [],
   deviceOptions: () => [],
   algorithmOptions: () => [],
-  showTranslationDirection: true,
   showTagsInput: true,
   tags: ''
 })
@@ -99,8 +96,7 @@ watch(() => uploadConfig.value.audioType, (newType) => {
       algorithmType: '',
       algorithmParams: [],
       apiDimensions: [],
-      e2eDimensions: [],
-      translationDirectionId: ''
+      e2eDimensions: []
     }
   }
 })
@@ -108,8 +104,6 @@ watch(() => uploadConfig.value.audioType, (newType) => {
 const {
   audioTypeOptions: computedAudioTypeOptions,
   hasAudioType,
-  hasTranslationDirection,
-  computedTranslationOptions,
   testTypeOptions,
   filteredDimensions,
   e2eFilteredDimensions,
@@ -123,7 +117,6 @@ const {
   e2eDimensionSearchQuery,
   updateDimensionFilter
 } = useTestCaseConfig({
-  translationDirectionOptions: props.translationDirectionOptions,
   audioTypeOptions: props.audioTypeOptions.length > 0 ? props.audioTypeOptions : undefined
 })
 
@@ -300,7 +293,7 @@ const clearNoiseAudio = () => {
       v-model="uploadConfig.algorithmType"
       v-model:algorithm-relations="uploadConfig.algorithmRelations"
       :initial-params="algorithmParams"
-      :show-params="showTestCaseConfig"
+      :show-params="false"
       :single="true"
       @params-change="handleAlgorithmParamsChange"
       @dimensions-change="handleDimensionsChange"
@@ -336,22 +329,6 @@ const clearNoiseAudio = () => {
     
     <!-- 测试用例配置（仅在勾选生成测试用例时显示） -->
     <template v-if="showTestCaseConfig">
-      <!-- 翻译方向 -->
-      <div class="options-grid" v-if="showTranslationDirection && hasTranslationDirection">
-        <div class="option-item">
-          <label>翻译方向</label>
-          <select
-            v-model="uploadConfig.translationDirectionId"
-            class="form-input custom-select"
-          >
-            <option value="">请选择</option>
-            <option v-for="opt in computedTranslationOptions" :key="opt.value" :value="opt.value">
-              {{ opt.label }}
-            </option>
-          </select>
-        </div>
-      </div>
-      
       <!-- 测试类型选择 -->
       <div class="options-grid">
         <div class="option-item full-width">
@@ -429,68 +406,6 @@ const clearNoiseAudio = () => {
           <span>E2E测试配置</span>
         </div>
         <div class="options-grid">
-          <div class="option-item">
-            <label>干声播放设备 <span class="required">*</span></label>
-            <select
-              v-model="uploadConfig.playbackDeviceId"
-              class="form-input custom-select"
-            >
-              <option value="">请选择</option>
-              <option v-for="opt in playbackDeviceOptions" :key="opt.value" :value="opt.value">
-                {{ opt.label }}
-              </option>
-            </select>
-            <p class="option-hint error" v-if="!uploadConfig.playbackDeviceId">请选择播放设备</p>
-          </div>
-          
-          <div class="option-item">
-            <label>干声声压级 (SPL)</label>
-            <input 
-              type="number" 
-              class="form-input"
-              v-model.number="uploadConfig.spl"
-              min="30" 
-              max="120" 
-              step="0.1"
-            >
-            <p class="option-hint">建议值：65-75 dB</p>
-          </div>
-          
-          <div class="option-item">
-            <label>噪声文件</label>
-            <div class="audio-select-wrapper">
-              <button 
-                type="button" 
-                class="btn btn-secondary audio-select-btn"
-                @click="openNoiseSelectModal"
-              >
-                <i class="fas fa-music btn-icon"></i>
-                {{ uploadConfig.noiseAudioName ? uploadConfig.noiseAudioName : '选择噪声文件' }}
-              </button>
-              <button 
-                v-if="uploadConfig.noiseAudioId"
-                type="button"
-                class="btn btn-text clear-btn"
-                @click="clearNoiseAudio"
-              >
-                清除
-              </button>
-            </div>
-          </div>
-          
-          <div class="option-item">
-            <label>噪声声压级 (SPL)</label>
-            <input 
-              type="number" 
-              class="form-input"
-              v-model.number="uploadConfig.noiseSpl"
-              min="30" 
-              max="120" 
-              step="0.1"
-            >
-            <p class="option-hint">建议值：55-65 dB</p>
-          </div>
-          
           <div class="option-item full-width">
             <label>E2E测试评估维度 <span class="required">*</span></label>
             <div class="dimension-toolbar">
@@ -525,8 +440,11 @@ const clearNoiseAudio = () => {
             <p class="option-hint error" v-if="!hasE2eDimensions">请至少选择一个评估维度</p>
           </div>
         </div>
-        
 
+        <div class="config-hint">
+          <i class="fas fa-info-circle"></i>
+          <span>播放设备、声压级、噪声等参数将在用例编辑页面的轮次配置中填写</span>
+        </div>
       </div>
     </template>
 
@@ -658,6 +576,23 @@ const clearNoiseAudio = () => {
 
 .option-hint.error {
   color: var(--error-color);
+}
+
+.config-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #f0f7ff;
+  border: 1px solid #d0e3ff;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #1e40af;
+}
+
+.config-hint i {
+  color: #3b82f6;
 }
 
 .audio-select-wrapper {

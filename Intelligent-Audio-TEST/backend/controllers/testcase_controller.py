@@ -285,7 +285,6 @@ class TestCaseController:
                     group_id=tc.group_id,
                     group_name=tc.group.name if tc.group else None,
                     type=tc_test_type,
-                    related_case_id=tc.related_case_id,
                     tags=[tag.name for tag in tc.tags],
                     config=tc.config.copy() if tc.config else {},
                     algorithm_type=tc.algorithm_type,
@@ -397,7 +396,6 @@ class TestCaseController:
                     "groupId": tc.group_id,
                     "groupName": tc.group.name if tc.group else None,
                     "type": tc.test_type or 'api',
-                    "relatedCaseId": tc.related_case_id,
                     "tags": [t.name for t in tc.tags],
                     "config": tc.config.copy() if tc.config else {},
                     "algorithmType": tc.algorithm_type,
@@ -493,7 +491,6 @@ class TestCaseController:
             group_name=tc.group.name if tc.group else None,
             group={"id": tc.group.id, "name": tc.group.name} if tc.group else None,
             type=tc_test_type,
-            related_case_id=tc.related_case_id,
             config=config,
             algorithm_type=tc.algorithm_type,
             tags=[tag.name for tag in tc.tags],
@@ -619,7 +616,6 @@ class TestCaseController:
                 config=merged_config,
                 algorithm_type=algorithm_type,
                 test_type=test_type_val,
-                related_case_id=data.related_case_id
             )
             db.session.add(new_tc)
 
@@ -846,7 +842,6 @@ class TestCaseController:
                 config=tc.config.copy() if tc.config else {},
                 algorithm_type=tc.algorithm_type,
                 test_type=tc.test_type or 'api',
-                related_case_id=None  # 复制时不继承关联
             )
             db.session.add(new_tc)
 
@@ -1065,7 +1060,6 @@ class TestCaseController:
                             config=tc.config.copy() if tc.config else {},
                             algorithm_type=tc.algorithm_type,
                             test_type=tc.test_type or 'api',
-                            related_case_id=None
                         )
                         db.session.add(new_tc)
                         for tag in tc.tags:
@@ -1087,10 +1081,9 @@ class TestCaseController:
                             config=tc.config.copy() if tc.config else {},
                             algorithm_type=tc.algorithm_type,
                             test_type=tc.test_type or 'api',
-                            related_case_id=None
                         )
                         db.session.add(new_tc)
-                        
+
                         for tag in tc.tags:
                             new_tc.tags.append(tag)
                         
@@ -1130,7 +1123,6 @@ class TestCaseController:
                         config=tc.config.copy() if tc.config else {},
                         algorithm_type=tc.algorithm_type,
                         test_type=tc.test_type or 'api',
-                        related_case_id=None
                     )
                     db.session.add(new_tc)
                     for tag in tc.tags:

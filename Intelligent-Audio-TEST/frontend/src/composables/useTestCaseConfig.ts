@@ -14,11 +14,6 @@ export interface TestTypeOption {
   value: 'api' | 'e2e'
 }
 
-export interface TranslationDirectionOption {
-  label: string
-  value: string | number
-}
-
 export interface GroupNameTypeOption {
   label: string
   value: 'root' | 'folder' | 'custom'
@@ -30,7 +25,6 @@ export interface AudioTypeOption {
 }
 
 export interface UseTestCaseConfigOptions {
-  translationDirectionOptions?: TranslationDirectionOption[]
   defaultSpl?: number
   audioTypeOptions?: AudioTypeOption[]
   dimensionFilterIds?: number[]
@@ -38,7 +32,6 @@ export interface UseTestCaseConfigOptions {
 
 export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
   const {
-    translationDirectionOptions: initialTranslationOptions = [],
     defaultSpl = 65.0,
     audioTypeOptions: initialAudioTypeOptions = [],
     dimensionFilterIds: initialDimensionFilterIds = []
@@ -50,9 +43,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
   const e2eDimensionSearchQuery = ref('')
   const dimensionsLoading = ref(false)
   const dimensionsError = ref('')
-
-  const translationDirectionOptions = ref<TranslationDirectionOption[]>(initialTranslationOptions)
-  const hasTranslationDirection = computed(() => translationDirectionOptions.value.length > 0)
 
   const audioTypeOptions = ref<AudioTypeOption[]>(initialAudioTypeOptions.length > 0 ? initialAudioTypeOptions : [
     { label: '干声', value: 'dry' },
@@ -163,9 +153,6 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
     dimensionsLoading,
     dimensionsError,
     updateDimensionFilter,
-    translationDirectionOptions,
-    hasTranslationDirection,
-    computedTranslationOptions: translationDirectionOptions,
     audioTypeOptions,
     hasAudioType,
     groupNameTypeOptions,
@@ -192,7 +179,6 @@ export function createDefaultUploadConfig() {
     groupNameType: 'root' as 'root' | 'folder' | 'custom',
     inheritTags: true,
     createTestCase: false,
-    translationDirectionId: '' as string | number,
     customGroupName: '',
     audioType: 'dry' as string,
     playbackDeviceId: null as string | number | null,

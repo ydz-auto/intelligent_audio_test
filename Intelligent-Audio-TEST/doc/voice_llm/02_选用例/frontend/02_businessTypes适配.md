@@ -20,7 +20,6 @@ interface TestCase {
   }
 
   test_type: 'api' | 'e2e'
-  related_case_id?: string
 
   // 废弃列（过渡期保留）
   // reference_params → 文件 + config.rounds[].referenceParamsPath

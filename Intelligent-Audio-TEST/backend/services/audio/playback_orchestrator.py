@@ -1,4 +1,4 @@
-﻿"""
+"""
 PlaybackOrchestrator - 音频播放编排器
 
 统一处理主讲人、噪声、干扰人等音频类型的配置构建、设备绑定、
@@ -96,9 +96,12 @@ class PlaybackOrchestrator:
                 noise_audio_info, noise_devices, device_info_list
             )
 
-            # 5. 构建干扰人 audio_to_play 配置
+            # 5. 构建干扰人 audio_to_play 配置（从 algorithmParams 读取）
+            from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
+            round_algo_params = _normalize_algorithm_params(round_config.get('algorithmParams', []))
+            interferers = round_algo_params.get('interferers', [])
             interferer_configs = self._build_interferer_configs(
-                task_id, round_config.get('interferers', []), device_info_list
+                task_id, interferers, device_info_list
             )
 
             # 6. 构建时间轴（主讲人 + speaker 感知）

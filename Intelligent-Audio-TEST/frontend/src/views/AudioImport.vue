@@ -1,4 +1,4 @@
-﻿<!-- MVC role: View -->
+<!-- MVC role: View -->
 <template>
   <div class="audio-import-view">
     <!-- 页面标题 -->
@@ -64,11 +64,14 @@
           :server-folder-tree="serverFolderTree"
           :folder-loading="folderLoading"
           :expanded-folder-paths="expandedFolderPaths"
+          :is-folder-all-selected-fn="isFolderAllSelected"
+          :is-folder-partial-selected-fn="isFolderPartialSelected"
           @view-change="switchView"
           @search="searchAudios"
           @filterChange="filterAudios"
           @toggleTag="toggleTag"
           @selectionChange="toggleAudioSelection"
+          @toggle-folder-selection="toggleFolderSelection"
           @toggleSelectAll="toggleSelectAll"
           @selectCurrentPage="selectCurrentPage"
           @selectAllPages="selectAllPages"
@@ -157,6 +160,25 @@
       @close="showAudioPlayerModal = false"
     />
 
+    <!-- 用例生成提示 -->
+    <div v-if="showTestCaseGeneratedTip" class="test-case-generated-tip">
+      <div class="tip-content">
+        <i class="fas fa-check-circle tip-icon"></i>
+        <div class="tip-text">
+          <span class="tip-title">已生成 {{ testCaseGeneratedCount }} 个草稿用例</span>
+          <span class="tip-desc">用例参数（播放设备、声压级、噪声等）请在用例管理页面完善</span>
+        </div>
+        <div class="tip-actions">
+          <button class="btn btn-primary btn-sm" @click="goToTestCaseManager">
+            <i class="fas fa-edit"></i> 去编辑
+          </button>
+          <button class="btn btn-text btn-sm" @click="showTestCaseGeneratedTip = false">
+            稍后
+          </button>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -236,8 +258,11 @@ const {
   searchAudios: originalSearchAudios,
   filterAudios: originalFilterAudios,
   toggleTag: toggleTag,
-  toggleSelectAll: toggleSelectAll, 
-  toggleAudioSelection: toggleAudioSelection, 
+  toggleSelectAll: toggleSelectAll,
+  toggleAudioSelection: toggleAudioSelection,
+  toggleFolderSelection: toggleFolderSelection,
+  isFolderAllSelected: isFolderAllSelected,
+  isFolderPartialSelected: isFolderPartialSelected,
   selectCurrentPage: selectCurrentPage,
   selectAllPages: selectAllPages,
   showSelectAllOptions: showSelectAllOptions,
@@ -286,7 +311,10 @@ const {
   audioTitle: audioTitle,
   currentPreviewAudioId,
   currentPreviewAudioType,
-  pathBasename: pathBasename
+  pathBasename: pathBasename,
+  testCaseGeneratedCount,
+  showTestCaseGeneratedTip,
+  goToTestCaseManager
 } = useAudioImport();
 
 const { pendingAction, consumeAction } = useUploadState();
@@ -399,4 +427,60 @@ const formattedAudios = computed(() => {
 
 <style scoped>
 @import './AudioImportLogic/audioimport.css';
+
+.test-case-generated-tip {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 380px;
+  max-width: 480px;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.tip-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+}
+
+.tip-icon {
+  font-size: 24px;
+  color: #10b981;
+  flex-shrink: 0;
+}
+
+.tip-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tip-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.tip-desc {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.tip-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
 </style>

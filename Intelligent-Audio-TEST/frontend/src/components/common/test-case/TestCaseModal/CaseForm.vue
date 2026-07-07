@@ -116,15 +116,6 @@
           </button>
         </div>
       </div>
-      <div class="form-row" v-if="localFormData.related_case_id">
-        <div class="form-group">
-          <label>关联用例</label>
-          <div class="related-case-info">
-            <i class="fas fa-link"></i>
-            <span>关联 {{ localFormData.test_type === 'api' ? 'E2E' : 'API' }} 用例 ID: {{ localFormData.related_case_id }}</span>
-          </div>
-        </div>
-      </div>
     </div>
 
     <!-- ===== 轮次配置编辑器（替换旧的音频/噪声/维度三大区块） ===== -->
@@ -134,7 +125,6 @@
         v-model="localFormData.config.rounds"
         :test-type="localFormData.test_type || 'api'"
         :case-algorithm-params="caseAlgorithmParams"
-        :api-input-params="apiInputParams"
         :algorithm-type="localFormData.algorithmType"
         :algorithm-form-schema="algorithmFormSchema"
         @update:model-value="handleRoundsUpdate"
@@ -239,7 +229,6 @@ function handleAudioSelectRequest(audioType: 'dry' | 'noise', callback: (audios:
 
 // ---- 算法参数定义（从 AlgorithmSelector 获取） ----
 const caseAlgorithmParams = ref<any[]>([]);
-const apiInputParams = ref<any[]>([]);
 const algorithmFormSchema = ref<any>(null);
 
 function handleAlgorithmParamsChange(params: any) {
@@ -247,9 +236,6 @@ function handleAlgorithmParamsChange(params: any) {
   // 如果返回了 case_algorithm_params，保存到 ref
   if (params?.caseAlgorithmParams) {
     caseAlgorithmParams.value = params.caseAlgorithmParams;
-  }
-  if (params?.apiInputParams) {
-    apiInputParams.value = params.apiInputParams;
   }
   if (params?.algorithmFormSchema !== undefined) {
     algorithmFormSchema.value = params.algorithmFormSchema;
@@ -585,15 +571,12 @@ onMounted(async () => {
 async function loadAlgorithmParamsForLockedMode(algoType: string) {
   if (!algoType) return;
   try {
-    const [schema, algoDef, caseParams] = await Promise.all([
+    const [schema, caseParams] = await Promise.all([
       algorithmApi.getFormSchema(algoType),
-      algorithmApi.getDefinition(algoType).catch(() => null),
       fetchCaseAlgorithmParams(algoType)
     ]);
     algorithmFormSchema.value = schema;
     caseAlgorithmParams.value = caseParams || [];
-    const apiParams = (algoDef as any)?.api_params || [];
-    apiInputParams.value = apiParams.filter((p: any) => p.direction === 'input');
   } catch (e) {
     console.error('[CaseForm] 加载算法参数失败:', e);
   }

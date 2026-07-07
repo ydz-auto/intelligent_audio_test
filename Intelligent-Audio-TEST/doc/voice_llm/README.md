@@ -44,7 +44,7 @@ doc/voice_llm/
 ├── 02_选用例/                                         # === 第 2 步：选用例（22个文档）===
 │   ├── 00_步骤总览.md                                   # 双记录架构 + 扁平化配置
 │   ├── backend/                                       # -- 后端 --
-│   │   ├── 01_TestCase模型新增字段.md                   # test_type + related_case_id
+│   │   ├── 01_TestCase模型新增字段.md                   # test_type
 │   │   ├── 03_Config_JSON扁平化设计.md                  # API/E2E 各自独立 config 结构
 │   │   ├── 04_testcase_Schema新类型.md                  # RoundConfig/VoiceprintConfig 等
 │   │   ├── 05_testcase_controller双记录CRUD.md          # 创建/更新/查询适配双记录
@@ -143,7 +143,7 @@ doc/voice_llm/
 
 | 编号 | 所属步骤 | 路径 | 功能说明 |
 |------|---------|------|---------|
-| 01 | 02_选用例 | `02_选用例/backend/01_TestCase模型新增字段.md` | test_type + related_case_id |
+| 01 | 02_选用例 | `02_选用例/backend/01_TestCase模型新增字段.md` | test_type |
 | 02 | 01_选算法 | `01_选算法/backend/02_CaseAlgorithmParam_scope字段.md` | scope: common/api/e2e |
 | 03 | 02_选用例 | `02_选用例/backend/03_Config_JSON扁平化设计.md` | 参数驱动 config 结构（algorithmParams 统一存储） |
 | 04 | 02_选用例 | `02_选用例/backend/04_testcase_Schema新类型.md` | RoundConfigItem Schema（参数驱动版） |
@@ -282,7 +282,7 @@ doc/voice_llm/
 
 | 层 | 路径 | 说明 |
 |----|------|------|
-| 后端 | `02_选用例/backend/01_TestCase模型新增字段` | test_type + related_case_id |
+| 后端 | `02_选用例/backend/01_TestCase模型新增字段` | test_type |
 | 后端 | `02_选用例/backend/03_Config_JSON扁平化设计` | API/E2E 各自独立 config 结构 |
 | 后端 | `02_选用例/backend/04_testcase_Schema新类型` | RoundConfig/VoiceprintConfig 等 |
 | 后端 | `02_选用例/backend/05_testcase_controller双记录CRUD` | 创建/更新/查询适配双记录 |
@@ -496,7 +496,7 @@ graph TD
 |------|------|
 | voice_llm | 语音交互大模型，本次改造新增的测试算法类型 |
 | test_type | 测试类型标识，取值 `api` 或 `e2e`，标记用例所属的测试通道 |
-| 双记录架构 | E2E 用例创建时同时生成 API 记录，通过 `related_case_id` 互指；API 用例也可独立存在（单条记录） |
+| 双记录架构 | E2E 用例创建时同时生成 API 记录，两条独立记录；API 用例也可独立存在（单条记录） |
 | Config 扁平化 | API 和 E2E 用例各自存储扁平的 config JSON，不再嵌套 `{api:{}, e2e:{}}` 结构 |
 | 参数驱动 | 用例表单字段由 `case_algorithm_params` 表定义驱动，DynamicForm 动态渲染，不硬编码 |
 | scope | CaseAlgorithmParam 的适用范围标记：`common`（通用）/ `api` / `e2e` |

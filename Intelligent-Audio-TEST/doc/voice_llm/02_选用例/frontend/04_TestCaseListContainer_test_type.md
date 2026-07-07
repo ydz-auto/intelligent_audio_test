@@ -76,26 +76,7 @@ const filteredTestCases = computed(() => {
 </el-table-column>
 ```
 
-### 3. 关联用例快捷跳转
-
-当用例有 `related_case_id` 时，显示"查看关联用例"链接：
-
-```vue
-<el-table-column label="关联用例" width="120">
-  <template #default="{ row }">
-    <el-link
-      v-if="row.related_case_id"
-      type="primary"
-      @click="navigateToRelatedCase(row.related_case_id)"
-    >
-      {{ getRelatedCaseName(row.related_case_id) }}
-    </el-link>
-    <span v-else class="text-gray-400">—</span>
-  </template>
-</el-table-column>
-```
-
-### 4. GroupStat 展示
+### 3. GroupStat 展示
 
 分组统计信息中增加 API/E2E 数量：
 
@@ -107,7 +88,7 @@ const filteredTestCases = computed(() => {
 </div>
 ```
 
-### 5. 创建用例时传递 test_type
+### 4. 创建用例时传递 test_type
 
 `openAddModal` emit 增加 `test_type` 参数，让新建用例时预选测试类型：
 

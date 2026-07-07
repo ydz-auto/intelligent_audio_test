@@ -58,8 +58,7 @@ async function fetchCasesByGroup(groupName: string, options?: {
 async function addTestCase(data: TestCaseFormData) {
   const payload = {
     ...data,
-    test_type: data.test_type,            // 传递 test_type
-    related_case_id: data.related_case_id // 传递关联用例ID
+    test_type: data.test_type            // 传递 test_type
   }
   const response = await testcasesApi.create(payload)
   upsertTestCaseLocal(response.data)
@@ -78,13 +77,12 @@ async function updateTestCase(id: string | number, data: Partial<TestCaseFormDat
 async function deleteTestCase(id: string | number) {
   await testcasesApi.delete(id)
   removeTestCaseLocal(id)
-  // 注意：不级联删除关联用例，仅清除 related_case_id 引用
 }
 
 // 复制用例
 async function copyTestCase(id: string | number) {
   const response = await testcasesApi.copy(id)
-  // 复制会生成新的 test_type 和 related_case_id
+  // 复制会生成新的 test_type
   upsertTestCaseLocal(response.data)
   return response.data
 }

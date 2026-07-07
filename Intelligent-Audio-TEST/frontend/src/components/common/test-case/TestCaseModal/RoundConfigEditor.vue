@@ -39,7 +39,6 @@
         <AlgoParamsStep
           v-if="currentRound"
           :round="currentRound"
-          :api-input-params="apiInputParams || []"
           :case-algorithm-params="caseAlgorithmParams || []"
           :algorithm-form-schema="algorithmFormSchema"
           :test-type="effectiveTestType"
@@ -116,7 +115,6 @@ const props = defineProps<{
   modelValue?: RoundConfigItem[]
   testType?: 'api' | 'e2e'
   caseAlgorithmParams?: any[]
-  apiInputParams?: any[]
   algorithmType?: string
   algorithmFormSchema?: any
 }>()
@@ -277,7 +275,7 @@ function scrollToStep(stepId: string) {
 // ---- Round validation ----
 function isRoundValid(round: RoundConfigItem): boolean {
   const audios = round.audios || []
-  return audios.some((a: any) => a.audioId && a.audioId.trim() !== '')
+  return audios.some((a: any) => a.audioId != null && String(a.audioId).trim() !== '')
 }
 
 function emitUpdate() {

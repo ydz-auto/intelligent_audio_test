@@ -1,32 +1,38 @@
-﻿<template>
+<template>
   <div class="audio-list-component">
     <!-- 卡片头部 -->
     <div class="card-header">
       <h3 class="card-title">音频文件列表</h3>
       <div class="card-actions">
         <slot name="header-actions"></slot>
-        <div class="view-toggle">
-          <div 
-            class="btn btn-secondary" 
-            :class="{ active: viewMode === 'list' }" 
+        <div class="view-toggle" role="group" aria-label="视图切换">
+          <button type="button"
+            class="btn btn-secondary"
+            :class="{ active: viewMode === 'list' }"
             @click="switchView('list')"
+            :aria-pressed="viewMode === 'list'"
+            title="列表视图"
           >
             <i class="fas fa-list"></i>
-          </div>
-          <div 
-            class="btn btn-secondary" 
-            :class="{ active: viewMode === 'folder' }" 
+          </button>
+          <button type="button"
+            class="btn btn-secondary"
+            :class="{ active: viewMode === 'folder' }"
             @click="switchView('folder')"
+            :aria-pressed="viewMode === 'folder'"
+            title="文件夹视图"
           >
             <i class="fas fa-folder"></i>
-          </div>
-          <div 
-            class="btn btn-secondary" 
-            :class="{ active: viewMode === 'diagnostics' }" 
+          </button>
+          <button type="button"
+            class="btn btn-secondary"
+            :class="{ active: viewMode === 'diagnostics' }"
             @click="switchView('diagnostics')"
+            :aria-pressed="viewMode === 'diagnostics'"
+            title="诊断视图"
           >
             <i class="fas fa-exclamation-triangle"></i>
-          </div>
+          </button>
         </div>
       </div>
     </div>
@@ -317,11 +323,13 @@
             :folder="activeFolderTree"
             :enable-selection="enableSelection"
             :is-selected-fn="isSelected"
-            :is-folder-open-fn="isFolderOpen"
+            :is-folder-all-selected-fn="props.isFolderAllSelectedFn"
+            :is-folder-partial-selected-fn="props.isFolderPartialSelectedFn"
             @toggle-folder="toggleFolder"
             @expand-folder="(path: string) => emit('expand-folder', path)"
             :expanded-paths="expandedFolderPaths"
             @toggle-audio-selection="toggleAudioSelection"
+            @toggle-folder-selection="(folder: any) => emit('toggle-folder-selection', folder)"
             @preview="previewAudio"
             @edit="editMetadata"
             @delete="deleteAudio"
@@ -392,7 +400,7 @@
     </div>
     
     <!-- 分页组件 -->
-    <div class="pagination-container" v-if="props.totalAudios > 0">
+    <div class="pagination-container" v-if="props.totalAudios > 0 && viewMode === 'list'">
       <PaginationComponent
         :total-items="props.totalAudios"
         :page-size="props.pageSize"
@@ -407,7 +415,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { buildFolderTree, isFolderOpen as checkFolderOpen, toggleFolder as toggleFolderState, extractAllTags, filterAudios as filterAudiosUtil } from '../../utils/audioUtils';
+import { buildFolderTree, extractAllTags, filterAudios as filterAudiosUtil } from '../../utils/audioUtils';
 import { useTagFilter, type TagFilterState } from '../../composables/useTagFilter';
 import FolderNodeComponent from './FolderNodeComponent.vue';
 import PaginationComponent from './PaginationComponent.vue';
@@ -456,6 +464,8 @@ const props = defineProps<{
   serverFolderTree?: any;
   folderLoading?: boolean;
   expandedFolderPaths?: Set<string>;
+  isFolderAllSelectedFn?: (folder: any) => boolean;
+  isFolderPartialSelectedFn?: (folder: any) => boolean;
 }>();
 
 const emit = defineEmits<{
@@ -478,6 +488,7 @@ const emit = defineEmits<{
   (e: 'view-change', mode: string): void;
   (e: 'toggleTag', tag: string, mode?: 'or' | 'and'): void;
   (e: 'expand-folder', folderPath: string): void;
+  (e: 'toggle-folder-selection', folder: any): void;
 }>();
 
 const viewMode = ref<'list' | 'folder' | 'diagnostics'>(props.viewMode ?? 'list');
@@ -639,8 +650,6 @@ const activeFolderTree = computed(() => {
   return folderTree.value;
 });
 
-const expandedFolders = ref<Set<string>>(new Set(['音频文件']));
-
 const MAX_VISIBLE_TAGS = 8;
 const expandedTags = ref<Record<string | number, boolean>>({});
 
@@ -713,12 +722,9 @@ const applyFilters = () => {
 // 直接使用props.audios，因为它已经是在父组件中过滤过的音频列表
 const filteredAudios = computed(() => props.audios);
 
-const isFolderOpen = (folder: FolderNode) => {
-  return checkFolderOpen(folder, expandedFolders.value);
-};
-
+// 文件夹展开/折叠由父组件通过 expandedFolderPaths prop 控制
 const toggleFolder = (folder: FolderNode) => {
-  toggleFolderState(folder, expandedFolders.value);
+  emit('expand-folder', folder.path ?? '');
 };
 
 const handleAudioSelect = (audio: AudioItem) => {
@@ -865,6 +871,12 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
+  font: inherit;
+}
+
+.view-toggle .btn:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .view-toggle .btn:hover {

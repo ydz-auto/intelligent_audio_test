@@ -271,6 +271,10 @@ class ReferenceParamsGenerator:
         merge_mode = getattr(ref_param, 'merge_mode', None) or 'join'
         record_test_type = config.get('_record_test_type', 'api')
         
+        # 兜底：field_path 为空但 code 非空时，按 segments[].<code> 取值
+        if not field_path and code and param_type == 'text':
+            field_path = f'segments[].{code}'
+        
         log_not_emit('DEBUG', 'reference_params_generator', 
             f'_generate_single_param: code={code}, param_type={param_type}, annotation_code={annotation_code}, annotation_format={annotation_format}, field_path={field_path}, merge_mode={merge_mode}, record_test_type={record_test_type}', 
             category='algorithm')
@@ -905,11 +909,11 @@ def _extract_field_from_audios(config: Dict, field_path: str, merge_mode: str = 
     preload_context = config.get('_preload_context', {})
     annotation_map = preload_context.get('annotation_map', {})
     
-    is_segment_field = '[].' in field_path
-    if is_segment_field:
-        seg_key = field_path.split('[].')[1]
-    else:
-        seg_key = None
+    # field_path 不含 '[]' 时，自动补 'segments[].' 前缀（标注统一存为 segments 结构）
+    if '[]' not in field_path:
+        field_path = f'segments[].{field_path}'
+    is_segment_field = True
+    seg_key = field_path.split('[].')[1] if '[].' in field_path else None
     
     def _get_annotations_for_audio(audio_id: int, code: str = None, fmt: str = None) -> List:
         if annotation_map and audio_id in annotation_map:
@@ -953,14 +957,15 @@ def _extract_field_from_audios(config: Dict, field_path: str, merge_mode: str = 
             if is_segment_field:
                 segments = ann.data.get('segments', [])
                 for seg in segments:
-                    val = seg.get(seg_key)
+                    val = seg.get(seg_key) if seg_key else None
                     if val is not None:
                         collected_values.append(val)
             else:
+                # 兜底：顶层取值（理论上不会走到，field_path 已自动补 segments[]. 前缀）
                 val = ann.data.get(field_path)
                 if val is not None:
                     collected_values.append(val)
-                    break  # 每个音频只取第一个匹配标注的值
+                    break
         
         if merge_mode == 'first' and collected_values:
             break

@@ -72,11 +72,12 @@ class TestCaseUploadConfig(APIModel):
     字段全部 optional，不传时由 _create_test_case_from_audio 降级为平面 config。
     """
     rounds: Optional[List[Dict[str, Any]]] = Field(None, alias='rounds', validation_alias='rounds')
-    dimensions: Optional[List[Dict]] = Field(None, alias='dimensions', validation_alias='dimensions')
+    # dimensions 接受 dict 或 list，由 _create_test_case_from_audio 统一处理
+    dimensions: Optional[Any] = Field(None, alias='dimensions', validation_alias='dimensions')
     group_name: Optional[str] = Field(None, alias='groupName', validation_alias='groupName')
     inherit_tags: Optional[bool] = Field(True, alias='inheritTags', validation_alias='inheritTags')
-    # 算法参数（每轮可独立配置，也可在此统一设置）
-    algorithm_params: Optional[List[AlgorithmParamItem]] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
+    # 算法参数：接受 list（标准 [{field_code, field_value}]）或 dict（{field_code: field_value}），由 controller 归一化
+    algorithm_params: Optional[Any] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
 
 
 class MergeChunksRequest(APIModel):
@@ -84,14 +85,16 @@ class MergeChunksRequest(APIModel):
     task_id: str = Field(..., alias='taskId', validation_alias='taskId')
     create_test_case: Optional[bool] = Field(False, alias='createTestCase', validation_alias='createTestCase')
     test_types: Optional[List[str]] = Field(default_factory=lambda: ['api'], alias='testTypes', validation_alias='testTypes')
-    dimensions: Optional[Dict] = Field(default_factory=dict, alias='dimensions', validation_alias='dimensions')
+    # dimensions 接受 dict 或 list，由 _create_test_case_from_audio 统一处理
+    dimensions: Optional[Any] = Field(default_factory=dict, alias='dimensions', validation_alias='dimensions')
     default_playback_device_id: Optional[int] = Field(None, alias='defaultPlaybackDeviceId', validation_alias='defaultPlaybackDeviceId')
     default_spl: Optional[float] = Field(65.0, alias='defaultSpl', validation_alias='defaultSpl')
     noise_spl: Optional[float] = Field(60.0, alias='noiseSpl', validation_alias='noiseSpl')
     noise_audio_id: Optional[int] = Field(None, alias='noiseAudioId', validation_alias='noiseAudioId')
     test_case_group_name: Optional[str] = Field(None, alias='testCaseGroupName', validation_alias='testCaseGroupName')
     algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
-    algorithm_params: Optional[List[AlgorithmParamItem]] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
+    # algorithm_params 接受 list 或 dict，由 controller 归一化
+    algorithm_params: Optional[Any] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
     algorithm_relations: Optional[List[AudioAlgorithmRelationItem]] = Field(None, alias='algorithmRelations', validation_alias='algorithmRelations')
     description: Optional[str] = Field('', alias='description', validation_alias='description')
     tags: Optional[List[str]] = Field(default_factory=list, alias='tags', validation_alias='tags')
@@ -111,9 +114,34 @@ class MergeChunksRequest(APIModel):
     test_case_config: Optional[TestCaseUploadConfig] = Field(None, alias='testCaseConfig', validation_alias='testCaseConfig')
 
     def get_algorithm_params_dict(self) -> Optional[List[Dict[str, Any]]]:
+        """归一化算法参数为 [{field_code, field_value}] 列表格式。
+
+        接受两种输入：
+        - list: [{field_code, field_value}, ...] 或 [AlgorithmParamItem, ...]
+        - dict: {field_code: field_value, ...}
+        """
         if not self.algorithm_params:
             return None
-        return [p.model_dump() for p in self.algorithm_params]
+        ap = self.algorithm_params
+        # dict 格式：{field_code: field_value}
+        if isinstance(ap, dict):
+            return [{'field_code': k, 'field_value': v} for k, v in ap.items()]
+        # list 格式
+        if isinstance(ap, list):
+            result = []
+            for item in ap:
+                if hasattr(item, 'model_dump'):
+                    result.append(item.model_dump())
+                elif isinstance(item, dict):
+                    # 兼容 {field_code, field_value} 和 {fieldCode, fieldValue}
+                    fc = item.get('field_code') or item.get('fieldCode')
+                    fv = item.get('field_value', item.get('fieldValue'))
+                    if fc is not None:
+                        result.append({'field_code': fc, 'field_value': fv})
+                    else:
+                        result.append(item)
+            return result if result else None
+        return None
 
 
 class URLImportRequest(APIModel):

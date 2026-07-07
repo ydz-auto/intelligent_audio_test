@@ -1,4 +1,5 @@
 from flask import request, current_app
+from sqlalchemy import cast, String
 from backend.models.models import PlaybackDevice
 from backend.models.database import db
 from backend.controllers.log_controller import LogController
@@ -250,7 +251,7 @@ class PlaybackController:
             from backend.models.models import TestCase
             usage_count = TestCase.query.filter(
                 TestCase.deleted == False,
-                TestCase.config.contains(f'"playback_device_id": "{device_id}"')
+                cast(TestCase.config, String).like(f'%"playback_device_id": "{device_id}"%')
             ).count()
             if usage_count > 0:
                 return error_response(f"无法删除：该设备正被 {usage_count} 个测试用例配置引用，请先修改相关配置", 400)

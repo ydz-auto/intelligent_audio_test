@@ -94,7 +94,6 @@ async function handleUpload() {
     }
     const created = await testcasesApi.create(caseData)
   }
-  // 更新 related_case_id 互指
 }
 ```
 

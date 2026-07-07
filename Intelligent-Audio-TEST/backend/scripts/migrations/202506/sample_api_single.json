@@ -1,0 +1,14 @@
+{
+  "txt": [
+    {
+      "path": "sample_api_single_0.wav",
+      "caseId": 1001,
+      "content": "",
+      "query": "请播放斐波那契数列前10项对应的音频片段",
+      "correctAnswer": "1 1 2 3 5 8 13 21 34 55",
+      "correctnessType": "exact",
+      "text": " ",
+      "inputText": "请播放斐波那契数列前10项"
+    }
+  ]
+}

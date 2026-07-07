@@ -26,6 +26,7 @@ export interface RoundConfig {
   roundNumber: number
   audios: RoundAudioConfig[]
   annotation_file?: string
+  algorithmParams?: any[]
 }
 
 export interface TestCaseConfig {

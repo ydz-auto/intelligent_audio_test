@@ -473,12 +473,20 @@ export const parseAnnotationFormat = (content: string, format: string): {
       }
       
       if (data.text && typeof data.text === 'string') {
+        // 收集裸对象中的未知字段，平铺到 segment 中（支持 {query, text, ...} 这种格式）
+        const segExtra: Record<string, any> = {};
+        for (const k of Object.keys(data)) {
+          if (!KNOWN_SEG_KEYS.has(k) && !KNOWN_TOP_KEYS.has(k)) {
+            segExtra[k] = data[k];
+          }
+        }
         result.segments.push({
           speaker: '',
           start: 0,
           end: 0,
           text: data.text,
-          confidence: 1.0
+          confidence: 1.0,
+          ...segExtra
         });
       } else {
         const txtList = data.txt || [];
@@ -602,6 +610,89 @@ export const parseAnnotationFormat = (content: string, format: string): {
     result.code = 'diarization';
     result.type = 'diarization';
   }
-  
+
+  return result;
+};
+
+/**
+ * 从标注 JSON 按用例参数配置提取参数值
+ *
+ * 遍历 caseParams 配置，用 annotation_code 找标注，用 field_path 从标注 data 取值。
+ * 与后端 CaseParameterExtractor.extract_params_from_annotations 逻辑一致，
+ * 但放在前端以便用户上传时预览/修改解析结果。
+ *
+ * @param annotations 上传音频时的标注数组 [{code, data, ...}]
+ * @param caseParams  CaseAlgorithmParam 配置数组 [{param_code, annotation_code, field_path, ...}]
+ * @param algorithmType 算法类型（annotation_code 为空时默认用此值）
+ * @returns [{field_code, field_value}] 格式的参数列表（不含 inputAudio，音频在 round.audios 里）
+ */
+export const extractParamsFromAnnotations = (
+  annotations: Array<{ code?: string; data?: any }>,
+  caseParams: Array<{ param_code: string; annotation_code?: string | null; field_path?: string | null }>,
+  algorithmType: string
+): Array<{ field_code: string; field_value: any }> => {
+  if (!annotations?.length || !caseParams?.length || !algorithmType) return [];
+
+  const result: Array<{ field_code: string; field_value: any }> = [];
+
+  for (const param of caseParams) {
+    const paramCode = param.param_code;
+    if (!paramCode) continue;
+
+
+    const annCode = param.annotation_code || algorithmType;
+    const fieldPath = param.field_path || paramCode;
+
+    // 用 annotation_code 找标注
+    let matched = annotations.filter(a => a.code === annCode);
+    if (matched.length === 0) {
+      // 匹配不到则尝试所有标注
+      matched = annotations;
+    }
+
+    // 从标注 data 按 field_path 取值
+    let value: any = undefined;
+    for (const ann of matched) {
+      if (!ann.data) continue;
+      const data = ann.data;
+      if (typeof data === 'string') {
+        value = data;
+        break;
+      }
+      if (data && typeof data === 'object') {
+        // field_path 支持 'segments[].field' 格式
+        if (fieldPath.includes('[].')) {
+          const parts = fieldPath.split('[].');
+          const arrKey = parts[0];
+          const fieldKey = parts[1] || null;
+          const arr = data[arrKey];
+          if (Array.isArray(arr) && fieldKey) {
+            const collected = arr
+              .filter((seg: any) => seg && typeof seg === 'object' && seg[fieldKey] !== undefined && seg[fieldKey] !== null)
+              .map((seg: any) => seg[fieldKey]);
+            if (collected.length > 0) {
+              value = collected.length === 1 ? collected[0] : collected;
+              break;
+            }
+          }
+        } else {
+          if (fieldPath in data) {
+            value = data[fieldPath];
+            break;
+          }
+          // 尝试 text 字段作为 fallback
+          if (fieldPath === paramCode && 'text' in data) {
+            value = data.text;
+            break;
+          }
+        }
+      }
+    }
+
+    if (value !== undefined && value !== null) {
+      result.push({ field_code: paramCode, field_value: value });
+    }
+  }
+
   return result;
 };

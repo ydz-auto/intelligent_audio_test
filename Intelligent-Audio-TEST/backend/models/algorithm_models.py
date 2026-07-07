@@ -388,6 +388,8 @@ class CaseAlgorithmParam(db.Model):
     max_value = Column(Float, nullable=True, comment='最大值 (slider/number)')
     step = Column(Float, nullable=True, comment='步长 (slider/number)')
     unit = Column(String(20), nullable=True, comment='单位显示 (如 cm, dB, s)')
+    annotation_code = Column(String(100), nullable=True, comment='关联的音频标注代码，默认同 param_code')
+    field_path = Column(String(255), nullable=True, comment='标注数据字段路径，默认同 param_code')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
@@ -415,7 +417,9 @@ class CaseAlgorithmParam(db.Model):
             'min_value': self.min_value,
             'max_value': self.max_value,
             'step': self.step,
-            'unit': self.unit
+            'unit': self.unit,
+            'annotation_code': self.annotation_code,
+            'field_path': self.field_path
         }
 
     def _parse_json(self, json_str):

@@ -86,7 +86,6 @@ export function useTestCaseCard() {
       tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
       config: normalized as TestCaseFormData['config'],
-      translationDirectionId: testCase.translationDirectionId,
       algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
       test_type: testCaseType as 'api' | 'e2e'
     };

@@ -40,7 +40,7 @@
 
 - **主后端是纯编排器**：只负责任务调度、状态管理、结果存储
 - **评估计算外置**：所有评估（WER/LLM Judge）由外部评估微服务完成，主后端通过异步任务协议（create_task → poll get_status → get_final_result）与之通信
-- **双记录架构**：每个逻辑测试用例拆分为两条独立数据库记录（test_type='api' 和 test_type='e2e'），通过 related_case_id 关联
+- **双记录架构**：每个逻辑测试用例拆分为两条独立数据库记录（test_type='api' 和 test_type='e2e'）
 
 ---
 
@@ -69,12 +69,9 @@ class TestCase(db.Model):
     # ... 现有字段不变 ...
     test_type = Column(String(10), nullable=False, default='api',
                        comment='测试类型: api / e2e')
-    related_case_id = Column(String(50), nullable=True,
-                             comment='关联的另一类型用例ID（API↔E2E互相关联）')
 ```
 
 - `test_type`：区分此记录是 API 测试配置还是 E2E 测试配置
-- `related_case_id`：指向对应的另一类型记录（API 记录指向其 E2E 记录，反之亦然）
 - 旧数据全部迁移，不设 `test_type=null` 兼容逻辑
 
 ### 2.2 CaseAlgorithmParam 扩展
@@ -263,7 +260,6 @@ class CaseAlgorithmParam(db.Model):
 - 列表显示 `test_type` 列（API / E2E 标签）
 - 筛选条件增加 `test_type` 下拉（全部 / API / E2E）
 - 新建用例时选择 `test_type`，创建一条记录
-- 若 `related_case_id` 有值，列表行显示「关联用例」快捷跳转链接
 
 ### 3.2 用例编辑表单（CaseForm.vue）
 
@@ -368,7 +364,6 @@ export interface RoundEvaluationConfig {
 export interface TestCaseFormData {
   // ... 现有基础字段不变 ...
   test_type: 'api' | 'e2e';           // 新增
-  related_case_id?: string;            // 新增
   config: {
     audios: AudioConfig[];
     dimensions: DimensionConfig[];     // 改为扁平数组（不再是 {api, e2e}）
@@ -940,19 +935,15 @@ self._evaluate_result(
 ```sql
 -- Step 1: 添加新字段
 ALTER TABLE test_cases ADD COLUMN test_type VARCHAR(10) DEFAULT NULL;
-ALTER TABLE test_cases ADD COLUMN related_case_id VARCHAR(50) DEFAULT NULL;
 ALTER TABLE case_algorithm_params ADD COLUMN scope VARCHAR(10) NOT NULL DEFAULT 'common';
 
 -- Step 2: 拆分现有记录
 -- 对于每条现有记录，生成两条新记录（API + E2E）
 -- 具体逻辑在 Python 迁移脚本中实现，因为需要处理 JSON config 拆分
 
--- Step 3: 更新关联
--- 将 related_case_id 互相指向
+-- Step 3: 删除旧记录（或标记 deleted=true）
 
--- Step 4: 删除旧记录（或标记 deleted=true）
-
--- Step 5: 清理
+-- Step 4: 清理
 -- 移除 config.dimensions.api / config.dimensions.e2e 嵌套结构
 -- 改为扁平 config.dimensions 数组
 ```
@@ -1006,13 +997,9 @@ def migrate_test_cases():
             group_id=old_case.group_id,
         )
         
-        # 互相关联
-        api_case.related_case_id = e2e_case.id
-        e2e_case.related_case_id = api_case.id
-        
         db.session.add(api_case)
         db.session.add(e2e_case)
-        
+
         # 标记旧记录为已删除
         old_case.deleted = True
     
@@ -1036,7 +1023,7 @@ def migrate_test_cases():
 
 | 文件 | 改动类型 | 说明 |
 |------|---------|------|
-| `backend/models/models.py` | 修改 | TestCase 新增 test_type, related_case_id 字段 |
+| `backend/models/models.py` | 修改 | TestCase 新增 test_type 字段 |
 | `backend/models/algorithm_models.py` | 修改 | CaseAlgorithmParam 新增 scope 字段 |
 | `backend/schemas/testcase.py` | 修改 | 新增 voice_llm 相关 schema（RoundConfig 等） |
 | `backend/utils/api_executor.py` | **大改** | 新增多轮会话循环、会话管理、轮次结果聚合；删除 test_type 过滤 |
@@ -1045,7 +1032,7 @@ def migrate_test_cases():
 | `backend/utils/evaluation_service.py` | 修改 | 支持 llm_judge 维度分发、单轮评估 |
 | `backend/algorithm/field_mapper.py` | 修改 | 新增 voice_llm 字段映射 |
 | `backend/algorithm/case_parameter_extractor.py` | 修改 | 支持 voice_llm 评估参数提取 |
-| `backend/controllers/testcase_controller.py` | 修改 | 创建/更新用例时处理 test_type + related_case_id |
+| `backend/controllers/testcase_controller.py` | 修改 | 创建/更新用例时处理 test_type |
 | `backend/device_driver/` | 新增 | 新增导轨控制器 rail_controller.py |
 | `migrations/` | 新增 | 数据库迁移脚本 |
 

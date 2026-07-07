@@ -141,13 +141,11 @@ export interface TestCaseFormData {
     description?: string;
     type?: string;
     test_type?: 'api' | 'e2e';
-    related_case_id?: string | number | null;
     config?: import('../../components/common/test-case/TestCaseModal/types').TestCaseConfig;
     groupId?: string | number;
     group?: string;
     tags?: string[];
     tagsInput?: string;
-    translationDirectionId?: string | number | null;
     algorithmType?: string;
 }
 

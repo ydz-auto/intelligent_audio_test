@@ -36,7 +36,6 @@ export interface TestCase {
   type?: string;
   testType?: string;
   test_type?: 'api' | 'e2e';
-  related_case_id?: string | number | null;
   config?: TestCaseConfig;
 }
 
@@ -192,7 +191,7 @@ export interface TestCaseConfig {
 }
 
 /**
- * 表单数据 — 包含 test_type 和 related_case_id
+ * 表单数据 — 包含 test_type
  */
 export interface TestCaseFormData {
   id?: string | number;
@@ -206,8 +205,6 @@ export interface TestCaseFormData {
   tags?: string[];
   tagsInput?: string;
   test_type?: 'api' | 'e2e';
-  related_case_id?: string | number | null;
-  translationDirectionId?: string | number | null;
   algorithmType?: string;
   algorithm_type?: string;
   config: TestCaseConfig;

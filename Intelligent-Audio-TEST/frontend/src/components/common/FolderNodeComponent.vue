@@ -1,6 +1,14 @@
-﻿<template>
+<template>
   <div class="folder-node">
     <div class="folder-header" @click="handleToggle">
+      <input
+        v-if="enableSelection && (folder.files?.length || folder.file_count || folderHasFiles)"
+        type="checkbox"
+        class="folder-checkbox"
+        :checked="isFolderAllSelected"
+        :indeterminate.prop="isFolderPartialSelected"
+        @click.stop="handleFolderSelectionClick"
+      >
       <i class="fas" :class="{ 'fa-folder-open': isOpen, 'fa-folder': !isOpen }"></i>
       <span class="folder-name">{{ folder.name }}</span>
       <span class="folder-stats">
@@ -18,9 +26,12 @@
             :enable-selection="enableSelection"
             :is-selected-fn="isSelectedFn"
             :expanded-paths="expandedPaths"
+            :is-folder-all-selected-fn="isFolderAllSelectedFn"
+            :is-folder-partial-selected-fn="isFolderPartialSelectedFn"
             @toggle-folder="(f: any) => $emit('toggleFolder', f)"
             @expand-folder="(path: string) => $emit('expandFolder', path)"
             @toggle-audio-selection="(id: string | number) => $emit('toggleAudioSelection', id)"
+            @toggle-folder-selection="(f: any) => $emit('toggleFolderSelection', f)"
             @preview="(id: string | number) => $emit('preview', id)"
             @edit="(id: string | number) => $emit('edit', id)"
             @delete="(id: string | number) => $emit('delete', id)"
@@ -155,7 +166,7 @@ interface FolderNode {
   folders: FolderNode[];
 }
 
-const VIRTUAL_THRESHOLD = 100;
+const VIRTUAL_THRESHOLD = 40;
 const ITEM_HEIGHT = 48;
 const BUFFER = 10;
 const VISIBLE_HEIGHT = 500;
@@ -165,12 +176,15 @@ const props = defineProps<{
   enableSelection: boolean;
   isSelectedFn: (id: string | number) => boolean;
   expandedPaths?: Set<string>;
+  isFolderAllSelectedFn?: (folder: any) => boolean;
+  isFolderPartialSelectedFn?: (folder: any) => boolean;
 }>();
 
 const emit = defineEmits<{
   (e: 'toggleFolder', folder: FolderNode): void;
   (e: 'expandFolder', path: string): void;
   (e: 'toggleAudioSelection', id: string | number): void;
+  (e: 'toggleFolderSelection', folder: any): void;
   (e: 'preview', id: string | number): void;
   (e: 'edit', id: string | number): void;
   (e: 'delete', id: string | number): void;
@@ -186,6 +200,52 @@ const isOpen = computed(() => {
   }
   return localOpen.value;
 });
+
+// 递归判断该文件夹（含子文件夹）是否含有文件
+const folderHasFiles = computed(() => {
+  function hasFiles(node: any): boolean {
+    if (Array.isArray(node?.files) && node.files.length > 0) return true;
+    if (Array.isArray(node?.folders)) {
+      return node.folders.some((c: any) => hasFiles(c));
+    }
+    return false;
+  }
+  return hasFiles(props.folder) || (props.folder.file_count ?? 0) > 0;
+});
+
+const isFolderAllSelected = computed(() => {
+  if (props.isFolderAllSelectedFn) {
+    try { return props.isFolderAllSelectedFn(props.folder); } catch { return false; }
+  }
+  return false;
+});
+
+const isFolderPartialSelected = computed(() => {
+  if (props.isFolderPartialSelectedFn) {
+    try { return props.isFolderPartialSelectedFn(props.folder); } catch { return false; }
+  }
+  return false;
+});
+
+async function handleFolderSelectionClick(event: Event) {
+  event.stopPropagation();
+  // 如果文件夹未展开且文件未加载（file_count > 0 但 files 为空），先懒加载再勾选
+  const fileCount = props.folder.file_count ?? 0;
+  const loadedFiles = props.folder.files?.length ?? 0;
+  if (!isOpen.value && fileCount > 0 && loadedFiles === 0) {
+    emit('expandFolder', props.folder.path ?? '');
+    // 轮询等待懒加载完成，最长等 3 秒
+    const start = Date.now();
+    await new Promise<void>((resolve) => {
+      const check = () => {
+        if ((props.folder.files?.length ?? 0) > 0 || Date.now() - start > 3000) resolve();
+        else setTimeout(check, 50);
+      };
+      check();
+    });
+  }
+  emit('toggleFolderSelection', props.folder);
+}
 
 const totalHeight = computed(() => {
   return (props.folder.files?.length || 0) * ITEM_HEIGHT;
@@ -442,6 +502,15 @@ function getTypeLabel(type: string): string {
   cursor: pointer;
   width: 16px;
   height: 16px;
+}
+
+.folder-checkbox {
+  accent-color: var(--primary-color, #4a90d9);
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 .folder-loading {

@@ -114,7 +114,6 @@ class TestCaseSchema(Schema):
     id = fields.String()
     name = fields.String()
     test_type = fields.String()
-    related_case_id = fields.String(allow_none=True)
     config = fields.Nested(TestCaseConfig)
 
     # 废弃列（过渡期保留，新数据不再写入）

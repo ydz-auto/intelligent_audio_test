@@ -48,7 +48,7 @@ defineEmits<{
 
 function isRoundValid(round: RoundConfigItem): boolean {
   const audios = round.audios || []
-  return audios.some((a: any) => a.audioId && a.audioId.trim() !== '')
+  return audios.some((a: any) => a.audioId != null && String(a.audioId).trim() !== '')
 }
 
 function getRoundSummary(round: RoundConfigItem): string {

@@ -2011,27 +2011,43 @@ class APIExecutor(BaseExecutor):
                               audio=None, case_name=''):
         round_algo_params = round_config.get('algorithmParams', [])
 
+        # 从 algorithmParams 读用例参数（inputText 等），不再读 inputAudio
         input_text = ''
-        input_audio_path = ''
         for param in round_algo_params:
             fc = param.get('field_code', '')
             fv = param.get('field_value', '')
             if fc == 'inputText':
                 input_text = fv
-            elif fc == 'inputAudio':
-                input_audio_path = fv
 
-        audio_id = round_config.get('audioId')
-        if audio_id and not input_audio_path:
-            from backend.models.models import Audio
-            from backend.models.database import db
-            local_db_session = db.session()
-            try:
-                audio_obj = local_db_session.query(Audio).get(audio_id)
-                if audio_obj:
-                    input_audio_path = audio_obj.file_path
-            finally:
-                local_db_session.close()
+        # 音频路径从 round_config.audios 列表获取（首个音频）
+        input_audio_path = ''
+        audios = round_config.get('audios', [])
+        if isinstance(audios, list) and audios:
+            first_audio = audios[0] if isinstance(audios[0], dict) else {}
+            audio_id = first_audio.get('audio_id') or first_audio.get('audioId')
+            if audio_id:
+                from backend.models.models import Audio
+                from backend.models.database import db
+                local_db_session = db.session()
+                try:
+                    audio_obj = local_db_session.query(Audio).get(audio_id)
+                    if audio_obj:
+                        input_audio_path = audio_obj.file_path
+                finally:
+                    local_db_session.close()
+        else:
+            # 兼容旧配置：round_config.audioId
+            audio_id = round_config.get('audioId')
+            if audio_id:
+                from backend.models.models import Audio
+                from backend.models.database import db
+                local_db_session = db.session()
+                try:
+                    audio_obj = local_db_session.query(Audio).get(audio_id)
+                    if audio_obj:
+                        input_audio_path = audio_obj.file_path
+                finally:
+                    local_db_session.close()
 
         context = {
             'session_id': session.session_id,
