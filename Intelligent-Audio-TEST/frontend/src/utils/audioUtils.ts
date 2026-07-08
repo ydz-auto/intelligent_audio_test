@@ -451,19 +451,11 @@ export const parseAnnotationFormat = (content: string, format: string): {
       }
       
       result.raw_data = data;
-      
-      if (data.name) {
-        result.name = data.name;
-      }
-      
+
       if (data.code) {
         result.code = data.code;
       }
-      
-      if (data.type) {
-        result.type = data.type;
-      }
-      
+
       if (data.source_language) {
         result.source_language = data.source_language;
       }
@@ -472,26 +464,11 @@ export const parseAnnotationFormat = (content: string, format: string): {
         result.target_language = data.target_language;
       }
       
-      if (data.text && typeof data.text === 'string') {
-        // 收集裸对象中的未知字段，平铺到 segment 中（支持 {query, text, ...} 这种格式）
-        const segExtra: Record<string, any> = {};
-        for (const k of Object.keys(data)) {
-          if (!KNOWN_SEG_KEYS.has(k) && !KNOWN_TOP_KEYS.has(k)) {
-            segExtra[k] = data[k];
-          }
-        }
-        result.segments.push({
-          speaker: '',
-          start: 0,
-          end: 0,
-          text: data.text,
-          confidence: 1.0,
-          ...segExtra
-        });
-      } else {
-        const txtList = data.txt || [];
+      if (Array.isArray(data.txt) && data.txt.length > 0) {
+        // {txt: [...]} 分支：多段标注
+        const txtList = data.txt;
         for (const item of txtList) {
-          if (item && typeof item === 'object' && (item.speaker || item.text || item.start !== undefined)) {
+          if (item && typeof item === 'object') {
             // 收集 txt 项中的未知字段，平铺到 segment 中
             const segExtra: Record<string, any> = {};
             for (const k of Object.keys(item)) {
@@ -509,6 +486,32 @@ export const parseAnnotationFormat = (content: string, format: string): {
             });
           }
         }
+        // txt 模式下 data 只保留元数据 + segments
+        data.txt = undefined;
+        data.segments = result.segments;
+      } else {
+        // 平铺 JSON 分支：{query, text, correctAnswer, ...} → 包装成 segments，清除顶层业务字段
+        const segExtra: Record<string, any> = {};
+        for (const k of Object.keys(data)) {
+          if (!KNOWN_SEG_KEYS.has(k) && !KNOWN_TOP_KEYS.has(k)) {
+            segExtra[k] = data[k];
+          }
+        }
+        result.segments.push({
+          speaker: '',
+          start: 0,
+          end: 0,
+          text: data.text || '',
+          confidence: 1.0,
+          ...segExtra
+        });
+        // 清除 data 顶层的业务字段（已移入 segments），避免 data 与 segments 重复
+        for (const k of Object.keys(data)) {
+          if (!KNOWN_TOP_KEYS.has(k) && k !== 'segments') {
+            delete data[k];
+          }
+        }
+        data.segments = result.segments;
       }
       
       if (data.annotations && Array.isArray(data.annotations)) {
@@ -544,8 +547,6 @@ export const parseAnnotationFormat = (content: string, format: string): {
             }
           }
           if (annSegments.length > 0) {
-            const annName = ann.name || ann.code || 'asr'
-            const annType = ann.type || determineAnnotationType(annName)
             // 收集 annotation 中的未知字段（排除已处理的 txt/text）
             const annExtra: Record<string, any> = {};
             for (const k of Object.keys(ann)) {
@@ -554,9 +555,7 @@ export const parseAnnotationFormat = (content: string, format: string): {
               }
             }
             result.annotations.push({
-              name: annName,
-              code: ann.code || ann.name || 'asr',
-              type: annType,
+              code: ann.code || 'asr',
               source_language: ann.source_language || '',
               target_language: ann.target_language || '',
               segments: annSegments,
@@ -628,20 +627,23 @@ export const parseAnnotationFormat = (content: string, format: string): {
  */
 export const extractParamsFromAnnotations = (
   annotations: Array<{ code?: string; data?: any }>,
-  caseParams: Array<{ param_code: string; annotation_code?: string | null; field_path?: string | null }>,
+  caseParams: Array<Record<string, any>>,
   algorithmType: string
 ): Array<{ field_code: string; field_value: any }> => {
   if (!annotations?.length || !caseParams?.length || !algorithmType) return [];
 
+  // API 返回驼峰（paramCode/fieldPath/annotationCode），兼容下划线
+  const get = (obj: any, camel: string, snake?: string) =>
+    obj[camel] ?? (snake ? obj[snake] : undefined);
+
   const result: Array<{ field_code: string; field_value: any }> = [];
 
   for (const param of caseParams) {
-    const paramCode = param.param_code;
+    const paramCode = get(param, 'paramCode', 'param_code');
     if (!paramCode) continue;
 
-
-    const annCode = param.annotation_code || algorithmType;
-    const fieldPath = param.field_path || paramCode;
+    const annCode = get(param, 'annotationCode', 'annotation_code') || algorithmType;
+    const fieldPath = get(param, 'fieldPath', 'field_path') || paramCode;
 
     // 用 annotation_code 找标注
     let matched = annotations.filter(a => a.code === annCode);
@@ -660,16 +662,28 @@ export const extractParamsFromAnnotations = (
         break;
       }
       if (data && typeof data === 'object') {
-        // field_path 支持 'segments[].field' 格式
-        if (fieldPath.includes('[].')) {
-          const parts = fieldPath.split('[].');
+        // field_path 支持 'segments[].field' 格式；不含 '[]' 时自动补 'segments[].' 前缀进 segments 取值
+        const effectivePath = fieldPath.includes('[]') ? fieldPath : `segments[].${fieldPath}`;
+        if (effectivePath.includes('[].')) {
+          const parts = effectivePath.split('[].');
           const arrKey = parts[0];
           const fieldKey = parts[1] || null;
           const arr = data[arrKey];
           if (Array.isArray(arr) && fieldKey) {
+            // 兼容驼峰/下划线：标注 segment 的 key 可能是任一形式
+            const getField = (seg: any, key: string) => {
+              if (seg[key] !== undefined) return seg[key];
+              // 驼峰转下划线
+              const snake = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+              if (snake !== key && seg[snake] !== undefined) return seg[snake];
+              // 下划线转驼峰
+              const camel = snake.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+              if (camel !== key && seg[camel] !== undefined) return seg[camel];
+              return undefined;
+            };
             const collected = arr
-              .filter((seg: any) => seg && typeof seg === 'object' && seg[fieldKey] !== undefined && seg[fieldKey] !== null)
-              .map((seg: any) => seg[fieldKey]);
+              .filter((seg: any) => seg && typeof seg === 'object' && getField(seg, fieldKey) !== undefined && getField(seg, fieldKey) !== null)
+              .map((seg: any) => getField(seg, fieldKey));
             if (collected.length > 0) {
               value = collected.length === 1 ? collected[0] : collected;
               break;

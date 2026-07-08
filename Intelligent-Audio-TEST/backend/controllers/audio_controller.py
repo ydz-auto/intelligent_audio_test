@@ -709,8 +709,8 @@ class AudioController:
             if os.path.exists(temp_file_path) and temp_file_path != wav_file_path:
                 retry_file_operation(os.remove, temp_file_path)
             
-            # 更新文件路径为WAV文件
-            file_path = wav_file_path
+            # 更新文件路径为WAV文件（统一用正斜杠，避免 Windows 反斜杠导致后续查询/拼接问题）
+            file_path = wav_file_path.replace('\\', '/')
             # 更新文件名为WAV文件名
             original_filename = wav_filename
             
@@ -1086,7 +1086,14 @@ class AudioController:
 
             # 多轮上传配置
             tc_config = validated.test_case_config
-            rounds_config = tc_config.rounds if tc_config else None
+            # rounds 经 pydantic RoundConfigItem 归一化 key 后转回 dict，
+            # 保证后端代码拿到的 rounds 是蛇形 key 的 dict 列表
+            rounds_config = None
+            if tc_config and tc_config.rounds:
+                rounds_config = [
+                    r.model_dump(exclude_none=True, by_alias=False)
+                    for r in tc_config.rounds
+                ]
             tc_group_name = tc_config.group_name if tc_config else None
             tc_inherit_tags = tc_config.inherit_tags if tc_config is not None else True
             # test_case_config 优先级高于顶层 test_case_group_name / inherit_tags
@@ -1139,6 +1146,12 @@ class AudioController:
                     
                     # 如果是秒传且需要创建测试用例
                     if create_test_case:
+                        # 秒传场景也要持久化标注（同 code 覆盖旧记录），并构造 raw_annotations 供用例参数提取
+                        raw_annotations_data = AudioController._persist_annotations_and_raw(
+                            existing_audio.id,
+                            validated.annotations,
+                            algorithm_type,
+                        )
                         test_case_id = AudioController._create_test_case_from_audio(
                             existing_audio.id,
                             test_types,
@@ -1153,6 +1166,7 @@ class AudioController:
                             algorithm_params_dict,
                             rounds_config=rounds_config,
                             inherit_tags=tc_inherit_tags,
+                            raw_annotations=raw_annotations_data,
                         )
                         
                         # 提交测试用例创建
@@ -1167,7 +1181,13 @@ class AudioController:
                             "instant_upload": True
                         }, "秒传成功，测试用例已创建")
                     else:
-                        # 秒传但不需要创建测试用例
+                        # 秒传但不需要创建测试用例，也要持久化标注（同 code 覆盖旧记录）
+                        AudioController._persist_annotations_and_raw(
+                            existing_audio.id,
+                            validated.annotations,
+                            algorithm_type,
+                        )
+                        db.session.commit()
                         return success_response({
                             "file_id": file_id,
                             "audio_id": existing_audio.id,
@@ -1220,8 +1240,8 @@ class AudioController:
                 if os.path.exists(final_path) and final_path != wav_file_path:
                     retry_file_operation(os.remove, final_path)
                 
-                # 更新文件路径为WAV文件
-                final_path = wav_file_path
+                # 更新文件路径为WAV文件（统一用正斜杠）
+                final_path = wav_file_path.replace('\\', '/')
                 # 更新文件名为WAV文件名
                 upload_file.filename = wav_filename
                 upload_file.original_filename = wav_filename
@@ -1323,61 +1343,12 @@ class AudioController:
                     
                     audio_tags.append(tag.name)
                 
-                # 处理标注信息（支持 JSON/RTTM/STM 格式）
-                annotations_from_request = validated.annotations
-                raw_annotations_data = []
-
-                if annotations_from_request:
-                    # 查询用例参数字段列表，用于从标注数据中剔除（标注表只保留参考参数 + 元数据）
-                    case_param_fields = set()
-                    if algorithm_type:
-                        from backend.models.algorithm_models import CaseAlgorithmParam
-                        case_params = CaseAlgorithmParam.query.filter_by(
-                            algorithm_type=algorithm_type, deleted=False
-                        ).all()
-                        for p in case_params:
-                            fp = p.field_path or p.param_code
-                            if fp and '[]' in fp:
-                                seg_key = fp.split('[].')[1] if '[].' in fp else fp
-                                case_param_fields.add(seg_key)
-                            else:
-                                case_param_fields.add(fp)
-
-                    raw_annotations_data = []
-                    for ann in annotations_from_request:
-                        ann_format = ann.get('format', 'json')
-                        ann_data = ann.get('data', {})
-                        ann_code = ann.get('code', '')
-                        ann_source_lang = ann.get('source_language', '')
-                        ann_target_lang = ann.get('target_language', '')
-
-                        # 保留原始标注数据（未剔除用例参数），用于创建用例时提取用例参数
-                        raw_annotations_data.append({
-                            'code': ann_code,
-                            'data': ann_data
-                        })
-
-                        # 从标注数据中剔除用例参数字段（只保留参考参数 + 元数据）
-                        if case_param_fields and isinstance(ann_data, dict):
-                            import copy as _copy
-                            ann_data = _copy.deepcopy(ann_data)
-                            segments = ann_data.get('segments', [])
-                            if isinstance(segments, list):
-                                for seg in segments:
-                                    if isinstance(seg, dict):
-                                        for field_key in list(seg.keys()):
-                                            if field_key in case_param_fields:
-                                                del seg[field_key]
-
-                        audio_annotation = AudioAnnotation(
-                            audio_id=new_audio.id,
-                            format=ann_format,
-                            code=ann_code,
-                            data=ann_data,
-                            source_language=ann_source_lang,
-                            target_language=ann_target_lang
-                        )
-                        db.session.add(audio_annotation)
+                # 处理标注信息（支持 JSON/RTTM/STM 格式），持久化并构造 raw_annotations
+                raw_annotations_data = AudioController._persist_annotations_and_raw(
+                    new_audio.id,
+                    validated.annotations,
+                    algorithm_type,
+                )
                 
                 # 处理音频算法关联
                 algorithm_relations = validated.algorithm_relations
@@ -1534,16 +1505,92 @@ class AudioController:
         if mode == "single_round_multi_audio":
             # 所有音频合并为一轮
             audios = [_make_audio_config(item, idx) for idx, item in enumerate(files)]
-            return [{"roundNumber": 1, "audios": audios}]
+            return [{"round_number": 1, "audios": audios}]
         else:
             # multi_round: 每音频一轮
             rounds = []
             for idx, item in enumerate(files):
                 rounds.append({
-                    "roundNumber": idx + 1,
+                    "round_number": idx + 1,
                     "audios": [_make_audio_config(item, 0)],
                 })
             return rounds
+
+    # 内部辅助方法：持久化音频标注，返回 raw_annotations_data（未剔除用例参数）供用例参数提取使用
+    @staticmethod
+    def _persist_annotations_and_raw(audio_id, annotations_from_request, algorithm_type):
+        """把请求里的 annotations 写入 audio_annotations 表（同 code 覆盖旧记录），返回 raw_annotations_data。
+
+        - 入库的 data 已剔除用例参数字段（只保留参考参数 + 元数据）
+        - raw_annotations_data 保留完整原始标注，供 _create_test_case_from_audio 提取用例参数
+        """
+        from backend.models.models import AudioAnnotation
+        # 查用例参数字段列表，用于从标注数据中剔除（标注表只保留参考参数 + 元数据）
+        case_param_fields = set()
+        if algorithm_type:
+            from backend.models.algorithm_models import CaseAlgorithmParam
+            case_params = CaseAlgorithmParam.query.filter_by(
+                algorithm_type=algorithm_type, deleted=False
+            ).all()
+            for p in case_params:
+                fp = p.field_path or p.param_code
+                if fp and '[]' in fp:
+                    seg_key = fp.split('[].')[1] if '[].' in fp else fp
+                    case_param_fields.add(seg_key)
+                else:
+                    case_param_fields.add(fp)
+
+        raw_annotations_data = []
+        for ann in annotations_from_request or []:
+            ann_format = ann.get('format', 'json')
+            ann_data = ann.get('data', {}) or {}
+            ann_code = ann.get('code', '')
+            ann_source_lang = ann.get('source_language', '')
+            ann_target_lang = ann.get('target_language', '')
+
+            # 保留原始标注数据（未剔除用例参数），用于创建用例时提取用例参数
+            raw_annotations_data.append({
+                'code': ann_code,
+                'data': ann_data,
+            })
+
+            # 从标注数据中剔除用例参数字段（只保留参考参数 + 元数据）
+            if case_param_fields and isinstance(ann_data, dict):
+                import copy as _copy
+                ann_data_clean = _copy.deepcopy(ann_data)
+                segments = ann_data_clean.get('segments', [])
+                if isinstance(segments, list):
+                    for seg in segments:
+                        if isinstance(seg, dict):
+                            for field_key in list(seg.keys()):
+                                if field_key in case_param_fields:
+                                    del seg[field_key]
+                ann_data = ann_data_clean
+
+            # 秒传/重新上传时，同 audio_id + code 的旧标注先软删再写新记录
+            existing = AudioAnnotation.query.filter_by(
+                audio_id=audio_id, code=ann_code, deleted=False
+            ).first()
+            if existing:
+                existing.deleted = True
+                db.session.flush()
+
+            audio_annotation = AudioAnnotation(
+                audio_id=audio_id,
+                format=ann_format,
+                code=ann_code,
+                data=ann_data,
+                source_language=ann_source_lang,
+                target_language=ann_target_lang
+            )
+            db.session.add(audio_annotation)
+
+        # flush 确保 annotation 写入数据库，后续 _create_test_case_from_audio
+        # 调 apply_to_config → _preload_audio_data 时能查到这些 annotation
+        if annotations_from_request:
+            db.session.flush()
+
+        return raw_annotations_data or None
 
     # 内部辅助方法：从音频创建测试用例
     @staticmethod
@@ -1620,7 +1667,8 @@ class AudioController:
                 # ===== 构建 config =====
                 # 统一走 rounds 架构，前端始终构建 rounds_config
                 if rounds_config:
-                    # 前端已构建 rounds 并按 round 分发 algorithmParams（含从标注解析的参数）
+                    # 前端已构建 rounds 并按 round 分发 algorithm_params（含从标注解析的参数）
+                    # NamingRequest 已把所有 key 转成 snake_case，后端统一用蛇形访问
                     # 后端只需把 audio_name 替换为真实的 audio_id
                     rounds_resolved = copy.deepcopy(rounds_config)
                 else:
@@ -1646,12 +1694,14 @@ class AudioController:
                                     if fc:
                                         round_algorithm_params.append({'field_code': fc, 'field_value': fv})
                     rounds_resolved = [{
-                        "roundNumber": 1,
+                        "round_number": 1,
                         "audios": [audio_config],
-                        "algorithmParams": round_algorithm_params,
+                        "algorithm_params": round_algorithm_params,
                     }]
 
                 # 把 audio_name 替换为真实的 audio_id
+                # 前端构建 rounds 时音频还没上传完，只能用文件名占位；
+                # 后端在合并完成后知道 audio_id，直接填进所有没有 audio_id 的 audio_item
                 for round_item in rounds_resolved:
                     if not isinstance(round_item, dict):
                         continue
@@ -1659,14 +1709,80 @@ class AudioController:
                     if not isinstance(audios, list):
                         round_item['audios'] = []
                         audios = []
-                    if not isinstance(round_item.get('algorithmParams'), list):
-                        round_item['algorithmParams'] = []
+                    if not isinstance(round_item.get('algorithm_params'), list):
+                        round_item['algorithm_params'] = []
                     for audio_item in audios:
                         if not isinstance(audio_item, dict):
                             continue
-                        if audio_item.get('audio_name') and not audio_item.get('audio_id'):
-                            if audio_item['audio_name'] == audio.name:
-                                audio_item['audio_id'] = audio_id
+                        if not audio_item.get('audio_id'):
+                            audio_item['audio_id'] = audio_id
+
+                # 从标注 JSON 提取 spl 和 playback_device_name，注入到每个 audio_item
+                # 标注 segment 里可写 spl / playback_device_name / playback_device_id
+                # playback_device_name 通过查表换成 playback_device_id
+                # 四种模式都适用：单轮单音频、单轮多音频、多轮每轮单音频、多轮每轮多音频
+                if raw_annotations:
+                    # 预查设备名→ID 映射（避免循环里重复查库）
+                    from backend.models.models import PlaybackDevice as _PlaybackDevice
+                    dev_name_to_id = {}
+                    all_devs = _PlaybackDevice.query.filter_by(is_deleted=0).all()
+                    for d in all_devs:
+                        dev_name_to_id.setdefault(d.name, d.id)
+
+                    for round_item in rounds_resolved:
+                        if not isinstance(round_item, dict):
+                            continue
+                        for audio_item in round_item.get('audios', []):
+                            if not isinstance(audio_item, dict):
+                                continue
+                            need_spl = audio_item.get('spl') is None
+                            need_dev = not audio_item.get('playback_device_id')
+                            if not need_spl and not need_dev:
+                                continue
+                            for ann in raw_annotations:
+                                data = ann.get('data')
+                                if not isinstance(data, dict):
+                                    continue
+                                segments = data.get('segments', [])
+                                if not isinstance(segments, list):
+                                    continue
+                                for seg in segments:
+                                    if not isinstance(seg, dict):
+                                        continue
+                                    if need_spl and audio_item.get('spl') is None:
+                                        v = seg.get('spl')
+                                        if v is not None:
+                                            try:
+                                                audio_item['spl'] = float(v)
+                                            except (TypeError, ValueError):
+                                                audio_item['spl'] = v
+                                            need_spl = False
+                                    if need_dev and not audio_item.get('playback_device_id'):
+                                        # 优先用 playback_device_name 查表
+                                        dev_name = (
+                                            seg.get('playback_device_name')
+                                            or seg.get('playbackDeviceName')
+                                        )
+                                        if dev_name and dev_name in dev_name_to_id:
+                                            audio_item['playback_device_id'] = dev_name_to_id[dev_name]
+                                            need_dev = False
+                                        # 也支持直接写 playback_device_id
+                                        elif not dev_name:
+                                            v = seg.get('playback_device_id') or seg.get('playbackDeviceId')
+                                            if v:
+                                                audio_item['playback_device_id'] = v
+                                                need_dev = False
+                                    if not need_spl and not need_dev:
+                                        break
+                                if not need_spl and not need_dev:
+                                    break
+                        # 兜底：e2e 且仍缺 playback_device_id，用默认设备
+                        if tt == 'e2e':
+                            for audio_item in round_item.get('audios', []):
+                                if isinstance(audio_item, dict) and not audio_item.get('playback_device_id'):
+                                    audio_item['playback_device_id'] = effective_playback_device_id
+                                if isinstance(audio_item, dict) and audio_item.get('spl') is None:
+                                    audio_item['spl'] = spl if spl else 65.0
 
                 # 后端按 test_type + scope 从原始标注提取用例参数（不依赖前端提取）
                 if algorithm_type and raw_annotations:
@@ -1720,11 +1836,19 @@ class AudioController:
                                             parts = effective_fp.split('[].')
                                             arr_key = parts[0]
                                             field_key = parts[1] if len(parts) > 1 else None
+                                            # NamingRequest 已把驼峰转成下划线，尝试两种 key
+                                            def _get_seg_field(seg, key):
+                                                if seg.get(key) is not None:
+                                                    return seg.get(key)
+                                                # 尝试驼峰转下划线
+                                                import re
+                                                snake = re.sub(r'([A-Z])', r'_\1', key).lower()
+                                                return seg.get(snake)
                                             arr = data.get(arr_key, [])
                                             if isinstance(arr, list) and field_key:
                                                 collected = [
-                                                    seg.get(field_key) for seg in arr
-                                                    if isinstance(seg, dict) and seg.get(field_key) is not None
+                                                    _get_seg_field(seg, field_key) for seg in arr
+                                                    if isinstance(seg, dict) and _get_seg_field(seg, field_key) is not None
                                                 ]
                                                 if collected:
                                                     value = collected[0] if len(collected) == 1 else collected
@@ -1736,14 +1860,14 @@ class AudioController:
                                         'field_code': param_code,
                                         'field_value': value
                                     })
-                            # 合并到 round.algorithmParams（前端传来的优先，后端提取的补缺）
+                            # 合并到 round.algorithm_params（前端传来的优先，后端提取的补缺）
                             existing_codes = set(
                                 p.get('field_code') or p.get('fieldCode')
-                                for p in round_item.get('algorithmParams', [])
+                                for p in round_item.get('algorithm_params', [])
                             )
                             for p in extracted_params:
                                 if p['field_code'] not in existing_codes:
-                                    round_item.setdefault('algorithmParams', []).append(p)
+                                    round_item.setdefault('algorithm_params', []).append(p)
                                     existing_codes.add(p['field_code'])
 
                 config = {
@@ -1757,12 +1881,19 @@ class AudioController:
                         "audio_id": noise_audio_id,
                         "spl": noise_spl if noise_spl else 60.0
                     }
-                # 评估维度
+                # 评估维度：按当前 test_type 过滤
+                # 前端给每条 dimension 加了 test_type 标记（'api'/'e2e'），
+                # 没有 test_type 的视为通用维度，所有 test_type 都收
                 if dimensions_data:
+                    raw_dims = []
                     if isinstance(dimensions_data, dict):
-                        config["dimensions"] = dimensions_data.get('dimensions', [])
+                        raw_dims = dimensions_data.get('dimensions', [])
                     elif isinstance(dimensions_data, list):
-                        config["dimensions"] = dimensions_data
+                        raw_dims = dimensions_data
+                    config["dimensions"] = [
+                        d for d in raw_dims
+                        if not isinstance(d, dict) or not d.get('test_type') or d.get('test_type') == tt
+                    ]
                 else:
                     config["dimensions"] = []
 
@@ -1892,8 +2023,8 @@ class AudioController:
             audio_seg = AudioSegment.from_file(old_path)
             audio_seg.export(new_path, format=target_format)
 
-            # 3. 更新数据库记录 (或创建新记录，此处选择更新当前记录并保留旧文件元数据参考)
-            audio.file_path = new_path
+            # 3. 更新数据库记录 (统一用正斜杠存储 file_path)
+            audio.file_path = new_path.replace('\\', '/')
             audio.format = target_format
             audio.size = os.path.getsize(new_path)
             audio.updated_at = datetime.now(timezone(timedelta(hours=8)))

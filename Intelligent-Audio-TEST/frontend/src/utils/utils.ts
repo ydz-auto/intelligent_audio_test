@@ -1,5 +1,30 @@
 import type { TestCaseFormData } from '../shared/types';
 
+/**
+ * AlgorithmSelector 会把 schema 定义（caseAlgorithmParams / algorithmFormSchema）塞进 params 对象，
+ * 这些不是参数值，传给后端会产生垃圾数据。此函数把 params 归一化为 [{field_code, field_value}] 并剔除 schema。
+ * 接受对象、数组两种输入，返回数组。
+ */
+export function stripAlgorithmParamSchema(params: any): any[] {
+  if (!params) return [];
+  const SCHEMA_KEYS = new Set(['caseAlgorithmParams', 'algorithmFormSchema']);
+  if (Array.isArray(params)) {
+    return params
+      .filter((p: any) => !SCHEMA_KEYS.has(p.field_code ?? p.fieldCode))
+      .map((p: any) => ({
+        field_code: p.field_code ?? p.fieldCode,
+        field_value: p.field_value ?? p.fieldValue
+      }))
+      .filter((p: any) => p.field_code);
+  }
+  if (typeof params === 'object') {
+    return Object.entries(params)
+      .filter(([k]) => !SCHEMA_KEYS.has(k))
+      .map(([fieldCode, fieldValue]) => ({ field_code: fieldCode, field_value: fieldValue }));
+  }
+  return [];
+}
+
 export function formatDate(date: string | Date | null | undefined, format: string = 'YYYY-MM-DD HH:mm:ss'): string {
   if (!date) return '';
   

@@ -150,6 +150,8 @@ const algorithmOptions = ref<AlgorithmOption[]>([])
 const selectedAlgorithms = ref<AlgorithmRelation[]>([...props.algorithmRelations])
 const algorithmFormSchema = ref<any>(null)
 const algorithmParams = ref<Record<string, any>>({ ...props.initialParams })
+// 记录最近一次应用的 initialParams 快照，避免 paramsChange 回流触发循环请求
+let lastAppliedInitialParams = ''
 const dynamicFormRef = ref<InstanceType<typeof DynamicForm> | null>(null)
 const showDropdown = ref(false)
 const searchQuery = ref('')
@@ -321,6 +323,29 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
     return
   }
 
+  // showParams=false 场景（如音频上传）：不需要表单 schema 和默认值，
+  // 用例参数应从标注 JSON 提取，不需要表单预填。只拉维度。
+  if (!props.showParams) {
+    algorithmFormSchema.value = null
+    caseAlgorithmParamsDef.value = []
+    algorithmParams.value = {}
+    emit('paramsChange', {})
+    try {
+      const dimensionsData = await getAssociatedDimensions(algorithmType)
+      if (dimensionsData) {
+        const dimensions = dimensionsData.dimensions || []
+        const dimensionIds = dimensionsData.dimension_ids || []
+        emit('dimensionsChange', dimensions, dimensionIds)
+      } else {
+        emit('dimensionsChange', [], [])
+      }
+    } catch (error) {
+      console.error('加载关联评估维度失败:', error)
+      emit('dimensionsChange', [], [])
+    }
+    return
+  }
+
   const savedParams = { ...algorithmParams.value }
 
   try {
@@ -332,7 +357,7 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
     caseAlgorithmParamsDef.value = caseParamsDef
 
     const newParams: Record<string, any> = {}
-    
+
     if (schema?.fields) {
       schema.fields.forEach((field: any) => {
         const fieldCode = field.fieldCode
@@ -342,14 +367,14 @@ async function loadAlgorithmFormSchema(algorithmType: string) {
           newParams[fieldCode] = field.defaultValue
         }
       })
-      
+
       for (const [key, value] of Object.entries(savedParams)) {
         if (newParams[key] === undefined) {
           newParams[key] = value
         }
       }
     }
-    
+
     algorithmParams.value = newParams
     emit('paramsChange', {
       ...algorithmParams.value,
@@ -410,11 +435,14 @@ watch(() => props.algorithmRelations, (newValue) => {
 }, { deep: true })
 
 watch(() => props.initialParams, (newValue) => {
-  if (newValue && Object.keys(newValue).length > 0) {
-    algorithmParams.value = { ...newValue }
-    if (primaryAlgorithmType.value) {
-      loadAlgorithmFormSchema(primaryAlgorithmType.value)
-    }
+  if (!newValue || Object.keys(newValue).length === 0) return
+  // 内容未变化时跳过，避免 paramsChange 回流触发循环请求
+  const snapshot = JSON.stringify(newValue)
+  if (snapshot === lastAppliedInitialParams) return
+  lastAppliedInitialParams = snapshot
+  algorithmParams.value = { ...newValue }
+  if (primaryAlgorithmType.value) {
+    loadAlgorithmFormSchema(primaryAlgorithmType.value)
   }
 }, { deep: true })
 

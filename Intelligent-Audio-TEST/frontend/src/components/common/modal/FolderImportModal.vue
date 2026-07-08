@@ -546,22 +546,17 @@ const handleImport = async () => {
         if (parsedData.annotations && parsedData.annotations.length > 0) {
           const annotationsList = parsedData.annotations.map(ann => ({
             format: format,
-            name: ann.name || ann.code || 'asr',
-            code: ann.code || ann.name || 'asr',
-            type: ann.type || determineAnnotationType(ann.name || ann.code || 'asr'),
+            code: ann.code || 'asr',
             data: { segments: ann.segments, ...(ann.extra_fields || {}) },
             source_language: ann.source_language || '',
             target_language: ann.target_language || ''
           }))
           annotationDataMap.set(baseKey, annotationsList)
         } else if (parsedData.segments && parsedData.segments.length > 0) {
-          const annotationCode = parsedData.code || parsedData.name || determineAnnotationName(annFile.name, format)
-          const type = parsedData.type || determineAnnotationType(parsedData.name || parsedData.code || 'asr')
+          const annotationCode = parsedData.code || determineAnnotationName(annFile.name, format)
           annotationDataMap.set(baseKey, [{
             format: format,
-            name: annotationCode,
             code: annotationCode,
-            type: type,
             data: { segments: parsedData.segments, ...(parsedData.extra_fields || {}) },
             source_language: parsedData.source_language || '',
             target_language: parsedData.target_language || ''

@@ -156,7 +156,7 @@ watch([showApiConfig, showE2eConfig], ([api, e2e]) => {
 }, { immediate: true })
 
 const noiseSelectModalVisible = ref(false)
-const algorithmParams = ref<any[]>([])
+const algorithmParams = ref<any>({})
 const associatedDimensionIds = ref<number[]>([])
 const algorithmRelations = ref<AlgorithmRelationItem[]>([])
 

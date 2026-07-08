@@ -350,12 +350,9 @@ const processFiles = (files) => {
         if (annData && annData.annotations && annData.annotations.length > 0) {
             for (const ann of annData.annotations) {
                 const code = uploadConfig.value.algorithmType || determineAnnotationName(audioFileName, annData.format)
-                const type = ann.type || determineAnnotationType(ann.name || ann.code || 'asr')
                 annotations.push({
                     format: annData.format,
-                    name: code,
                     code: code,
-                    type: type,
                     data: { segments: ann.segments, ...(ann.extra_fields || {}) },
                     source_language: ann.source_language || '',
                     target_language: ann.target_language || ''
@@ -363,12 +360,9 @@ const processFiles = (files) => {
             }
         } else if (annData && annData.segments && annData.segments.length > 0) {
             const annotationCodeVal = uploadConfig.value.algorithmType || determineAnnotationName(audioFileName, annData.format)
-            const type = annData.type || determineAnnotationType(annData.name || annData.code || 'asr')
             annotations.push({
                 format: annData.format,
-                name: annotationCodeVal,
                 code: annotationCodeVal,
-                type: type,
                 data: { segments: annData.segments, ...(annData.extra_fields || {}) },
                 source_language: annData.source_language || '',
                 target_language: annData.target_language || ''
@@ -376,9 +370,7 @@ const processFiles = (files) => {
         } else if (markerText) {
             annotations.push({
                 format: 'text',
-                name: 'asr',
                 code: 'asr',
-                type: 'asr',
                 data: { text: markerText },
                 source_language: '',
                 target_language: ''

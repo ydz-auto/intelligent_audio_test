@@ -19,6 +19,16 @@ class TestCaseAudioConfigItem(APIModel):
     playback_device_id: Optional[Union[int, str]] = Field(None, alias='playbackDeviceId', validation_alias=AliasChoices('playback_device_id', 'playbackDeviceId'))
     play_order: Optional[int] = Field(None, alias='playOrder', validation_alias=AliasChoices('play_order', 'playOrder'))
 
+    @field_validator('spl', mode='before')
+    @classmethod
+    def _empty_spl_to_none(cls, v):
+        if v == '' or v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
 
 class TestCaseBackgroundNoiseItem(APIModel):
     audio_id: Optional[Union[int, str]] = Field(None, alias='audioId', validation_alias=AliasChoices('audio_id', 'audioId'))

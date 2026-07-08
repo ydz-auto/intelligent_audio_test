@@ -5,7 +5,7 @@ from pydantic import Field
 
 from backend.schemas.base import APIModel
 from backend.schemas.common import PaginatedData
-from backend.schemas.testcase import AlgorithmParamItem
+from backend.schemas.testcase import AlgorithmParamItem, RoundConfigItem
 
 
 class TagListData(APIModel):
@@ -71,7 +71,7 @@ class TestCaseUploadConfig(APIModel):
 
     字段全部 optional，不传时由 _create_test_case_from_audio 降级为平面 config。
     """
-    rounds: Optional[List[Dict[str, Any]]] = Field(None, alias='rounds', validation_alias='rounds')
+    rounds: Optional[List[RoundConfigItem]] = Field(None, alias='rounds', validation_alias='rounds')
     # dimensions 接受 dict 或 list，由 _create_test_case_from_audio 统一处理
     dimensions: Optional[Any] = Field(None, alias='dimensions', validation_alias='dimensions')
     group_name: Optional[str] = Field(None, alias='groupName', validation_alias='groupName')

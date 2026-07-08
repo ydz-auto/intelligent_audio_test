@@ -143,6 +143,8 @@ const algorithms = ref<AlgorithmDefinition[]>([])
 const loading = ref(false)
 const selectedAlgorithm = ref<AlgorithmDefinition | null>(null)
 const formSchemas = ref<Map<string, FormSchema>>(new Map())
+// 用例专属参数缓存，避免循环 watch 触发的重复请求
+const caseParamCache = ref<Map<string, any[]>>(new Map())
 
 export function getAlgorithmIcon(groupName?: string): string {
   const iconMap: Record<string, string> = {
@@ -334,11 +336,13 @@ export function useAlgorithmConfig() {
 
   async function getCaseAlgorithmParams(algorithmType: string): Promise<any[]> {
     if (!algorithmType) return []
+    // 命中缓存直接返回，避免循环 watch 导致的重复请求
+    if (caseParamCache.value.has(algorithmType)) {
+      return caseParamCache.value.get(algorithmType) || []
+    }
     try {
       const result = await algorithmApi.getCaseParams(algorithmType)
-      const params = result?.parameters || []
-      // Transform camelCase to snake_case for compatibility
-      return params.map((p: any) => ({
+      const params = (result?.parameters || []).map((p: any) => ({
         ...p,
         param_code: p.paramCode || p.param_code,
         param_name: p.paramName || p.param_name,
@@ -347,6 +351,8 @@ export function useAlgorithmConfig() {
         help_text: p.helpText || p.help_text,
         ui_order: p.uiOrder ?? p.ui_order,
       }))
+      caseParamCache.value.set(algorithmType, params)
+      return params
     } catch (error) {
       console.error('获取用例参数定义失败:', error)
       return []
@@ -355,6 +361,7 @@ export function useAlgorithmConfig() {
 
   function clearFormSchemaCache() {
     formSchemas.value.clear()
+    caseParamCache.value.clear()
   }
 
   return {

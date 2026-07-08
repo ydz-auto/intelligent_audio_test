@@ -9,6 +9,7 @@ import { useUploadState } from '../../composables/useUploadState';
 import { useTagFilter } from '../../composables/useTagFilter';
 import { useFolderSelection } from '../../composables/useFolderSelection';
 import { extractAudioFiles, buildTestCaseConfig, groupAudioFilesByLeafFolder, type TestCaseConfig } from '../../utils/folderParser';
+import { stripAlgorithmParamSchema } from '../../utils/utils';
 import type { 
   AudioInfo, 
   AudioUploadFile, 
@@ -212,22 +213,16 @@ export function useAudioImport() {
    * 从标注 JSON 按用例参数配置提取参数，合并到 normalizedAlgorithmParams
    * 前端解析，用户可预览/修改解析结果。后端不再做解析。
    */
+  // AlgorithmSelector 会把 schema 定义（caseAlgorithmParams / algorithmFormSchema）塞进 params 对象，
+  // 这些不是参数值，归一化时必须剔除，避免当成参数传给后端
+
   async function resolveAlgorithmParamsFromAnnotations(
     algorithmType: string | undefined,
     annotations: any[] | undefined,
     existingParams: any[] | undefined
   ): Promise<any[]> {
-    // 基础参数：把现有 params 归一化为 [{field_code, field_value}]
-    let result: any[] = [];
-    if (existingParams && typeof existingParams === 'object' && !Array.isArray(existingParams)) {
-      result = Object.entries(existingParams).map(([fieldCode, fieldValue]) => ({ field_code: fieldCode, field_value: fieldValue }));
-    } else if (Array.isArray(existingParams)) {
-      // 兼容 {fieldCode, fieldValue} 和 {field_code, field_value} 两种命名
-      result = existingParams.map(p => ({
-        field_code: p.field_code ?? p.fieldCode,
-        field_value: p.field_value ?? p.fieldValue
-      })).filter(p => p.field_code);
-    }
+    // 基础参数：把现有 params 归一化为 [{field_code, field_value}]，剔除 schema 定义
+    let result: any[] = stripAlgorithmParamSchema(existingParams);
 
     if (!algorithmType || !annotations || annotations.length === 0) return result;
 
@@ -249,12 +244,20 @@ export function useAudioImport() {
     // 从标注 JSON 提取参数
     const extracted = extractParamsFromAnnotations(annotations, caseParams, algorithmType);
 
-    // 合并：提取到的参数不覆盖已有值
-    const existingCodes = new Set(result.map(p => p.field_code));
+    // 合并：提取到的非 null 值覆盖已有的 null/undefined 值；已有的真实值保留；没有的追加
     for (const p of extracted) {
-      if (p.field_code && !existingCodes.has(p.field_code)) {
+      if (!p.field_code) continue;
+      const idx = result.findIndex(r => r.field_code === p.field_code);
+      if (idx === -1) {
+        // 没有该参数，追加
         result.push(p);
+      } else if (result[idx].field_value === null || result[idx].field_value === undefined) {
+        // 已有但是 null/undefined，用提取到的值覆盖（提取到的非空值才有意义）
+        if (p.field_value !== null && p.field_value !== undefined) {
+          result[idx].field_value = p.field_value;
+        }
       }
+      // 已有非空值则保留，不覆盖
     }
 
     return result;
@@ -1110,9 +1113,11 @@ export function useAudioImport() {
           if (options?.groupNameType !== undefined) uploadOptions.groupNameType = options.groupNameType;
           if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
+          // 合并 API/E2E/通用维度，给每条加 test_type 标记来源
+          // 不去重：API 和 E2E 选同一维度是合理的，后端按 test_type 分发到对应用例
           uploadOptions.dimensions = [
-            ...(options?.apiDimensions || []),
-            ...(options?.e2eDimensions || []),
+            ...(options?.apiDimensions || []).map((d: any) => ({ ...d, test_type: 'api' })),
+            ...(options?.e2eDimensions || []).map((d: any) => ({ ...d, test_type: 'e2e' })),
             ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
           ];
           if (options?.noiseAudioId !== undefined) uploadOptions.noiseAudioId = options.noiseAudioId;
@@ -1207,7 +1212,7 @@ export function useAudioImport() {
           rounds: allRounds,
           group_name: folderGroupMappings ? Object.values(folderGroupMappings)[0] : undefined,
           inherit_tags: uploadOptions.inheritTags,
-          algorithm_params: uploadOptions.algorithmParams
+          algorithm_params: stripAlgorithmParamSchema(uploadOptions.algorithmParams)
         }
       }
     }
@@ -2137,9 +2142,11 @@ export function useAudioImport() {
           if (options?.groupNameType !== undefined) uploadOptions.groupNameType = options.groupNameType;
           if (options?.customGroupName !== undefined) uploadOptions.customGroupName = options.customGroupName;
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
+          // 合并 API/E2E/通用维度，给每条加 test_type 标记来源
+          // 不去重：API 和 E2E 选同一维度是合理的，后端按 test_type 分发到对应用例
           uploadOptions.dimensions = [
-            ...(options?.apiDimensions || []),
-            ...(options?.e2eDimensions || []),
+            ...(options?.apiDimensions || []).map((d: any) => ({ ...d, test_type: 'api' })),
+            ...(options?.e2eDimensions || []).map((d: any) => ({ ...d, test_type: 'e2e' })),
             ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
           ];
           if (options?.noiseAudioId !== undefined) uploadOptions.noiseAudioId = options.noiseAudioId;

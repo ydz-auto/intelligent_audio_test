@@ -1,3 +1,5 @@
+import { stripAlgorithmParamSchema } from './utils';
+
 /**
  * 文件夹解析工具：解析文件夹结构，判定轮次模式，构建 rounds 配置。
  *
@@ -20,6 +22,8 @@ export interface AudioFileInfo {
 export interface RoundAudioConfig {
   audio_name: string
   play_order: number
+  spl?: number
+  playback_device_id?: string
 }
 
 export interface RoundConfig {
@@ -142,6 +146,11 @@ export function buildRoundsConfig(
       audio_name: audio.name,
       play_order: playOrder
     }
+    // spl 为有效数字时才写入（空字符串/undefined 不传，后端从标注提取）
+    if (spl != null && spl !== '' && !isNaN(Number(spl))) {
+      cfg.spl = Number(spl)
+    }
+    if (playbackDeviceId) cfg.playback_device_id = playbackDeviceId
     return cfg
   }
 
@@ -218,10 +227,14 @@ export function buildTestCaseConfig(
     options.playbackDeviceId
   )
 
+  // AlgorithmSelector 会把 schema 定义（caseAlgorithmParams / algorithmFormSchema）塞进 params，
+  // 这里剔除，避免 schema 被当成参数值传给后端
+  const normalizedParams = stripAlgorithmParamSchema(options.algorithmParams)
+
   return {
     rounds: rounds.length > 0 ? rounds : undefined,
     group_name: options.groupName,
     inherit_tags: options.inheritTags ?? true,
-    algorithm_params: options.algorithmParams
+    algorithm_params: normalizedParams.length > 0 ? normalizedParams : undefined
   }
 }

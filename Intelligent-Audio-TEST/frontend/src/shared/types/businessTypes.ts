@@ -106,7 +106,8 @@ export interface AudioUploadOptions {
     /** @deprecated 已移到 CaseForm 的 RoundConfigEditor 里配置 */
     noiseSpl?: number;
     inheritTags?: boolean;
-    dimensions?: EvaluationDimensionsConfig;
+    /** 评估维度数组，每条可带 test_type 标记属于 api/e2e */
+    dimensions?: SelectedEvaluationDimension[];
     algorithmType?: string;
     algorithmRelations?: Array<{
         algorithmType: string;
@@ -127,6 +128,8 @@ export interface SelectedEvaluationDimension {
     name: string;
     weight?: number;
     threshold?: number;
+    /** 标记该维度属于哪种 test_type，'api' / 'e2e'，未标记则通用 */
+    test_type?: 'api' | 'e2e';
 }
 
 export interface EvaluationDimensionsConfig {

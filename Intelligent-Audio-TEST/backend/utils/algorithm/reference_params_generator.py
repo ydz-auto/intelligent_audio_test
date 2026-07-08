@@ -147,8 +147,8 @@ class ReferenceParamsGenerator:
         config = test_case.config or {}
         config = config.copy()
         
-        # 注入该 round 的 algorithmParams
-        ap = round_data.get('algorithmParams')
+        # 注入该 round 的 algorithm_params
+        ap = round_data.get('algorithm_params')
         if ap:
             config['algorithm_params'] = ap
         
@@ -162,7 +162,7 @@ class ReferenceParamsGenerator:
         round_audios = config['audios']
         audio_ids = [item.get('audio_id') for item in round_audios if item.get('audio_id')]
         
-        round_number = round_data.get('roundNumber', '?')
+        round_number = round_data.get('round_number', '?')
         log_not_emit('DEBUG', 'reference_params_generator',
                      f'Generating reference params for round {round_number}, algorithm_type: {algorithm_type}, audio_ids: {audio_ids}',
                      category='algorithm')
@@ -366,7 +366,7 @@ class ReferenceParamsGenerator:
             if not isinstance(round_item, dict):
                 continue
             
-            round_number = round_item.get('roundNumber', 1)
+            round_number = round_item.get('round_number', 1)
             
             # 为该 round 独立生成 reference params
             round_params = cls.generate_for_round(test_case, round_item)
@@ -384,7 +384,7 @@ class ReferenceParamsGenerator:
             try:
                 with open(filepath, 'w', encoding='utf-8') as f:
                     json.dump(round_params, f, ensure_ascii=False, indent=2)
-                round_item['referenceParamsPath'] = filepath
+                round_item['reference_params_path'] = filepath
                 total_params += len(round_params)
                 log_not_emit('DEBUG', 'reference_params_generator',
                              f'round {round_number}: written {len(round_params)} params to {filepath}', category='algorithm')
@@ -418,7 +418,7 @@ class ReferenceParamsGenerator:
         
         target_round = None
         for round_item in rounds:
-            if isinstance(round_item, dict) and round_item.get('roundNumber') == round_number:
+            if isinstance(round_item, dict) and round_item.get('round_number') == round_number:
                 target_round = round_item
                 break
         
@@ -447,7 +447,7 @@ class ReferenceParamsGenerator:
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(round_params, f, ensure_ascii=False, indent=2)
-            target_round['referenceParamsPath'] = filepath
+            target_round['reference_params_path'] = filepath
             test_case.config = config
             log_not_emit('INFO', 'reference_params_generator',
                          f'on_audio_associated: round {round_number} written {len(round_params)} params to {filepath}', category='algorithm')
@@ -528,7 +528,7 @@ class ReferenceParamsGenerator:
         for round_item in rounds:
             if not isinstance(round_item, dict):
                 continue
-            ref_path = round_item.get('referenceParamsPath')
+            ref_path = round_item.get('reference_params_path') or round_item.get('referenceParamsPath')
             if ref_path:
                 round_refs = cls.load_from_file(ref_path)
                 if round_refs:

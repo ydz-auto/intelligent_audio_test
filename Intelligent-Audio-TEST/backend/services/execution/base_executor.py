@@ -585,7 +585,7 @@ class BaseExecutor:
             all_reference_params = []
             for round_item in case_config.get('rounds', []):
                 if isinstance(round_item, dict):
-                    ref_path = round_item.get('referenceParamsPath')
+                    ref_path = round_item.get('reference_params_path') or round_item.get('referenceParamsPath')
                     if ref_path:
                         round_refs = ReferenceParamsGenerator.load_from_file(ref_path)
                         if round_refs:

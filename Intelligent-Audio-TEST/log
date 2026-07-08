@@ -1,999 +1,1176 @@
-我来审计标签管理页面的代码。先探索代码库结构，找到相关文件。
-        
-            
-toolName: no_need_execute
-            
-status: no_need_execute
-          
-          
-我将开始在指定工作目录中搜索"标签管理"相关的所有文件。首先并行执行多个搜索策略来快速定位相关文件。
-        
-            
-toolName: view_folder
-            
-status: success
-          
-c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST
-          
-
-        
-            
-toolName: file_search
-            
-status: success
-          
-file_pattern: **/*tag*
-          
-
-        
-            
-toolName: file_search
-            
-status: success
-          
-file_pattern: **/*Tag*
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: 标签管理
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: TagManagement
-          
-已找到大量相关文件。现在继续深入搜索前端API调用、Store、类型定义以及后端路由和模型定义。
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: .
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: class |def |route
-          
-已找到核心文件。现在并行读取关键文件以了解其具体作用。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\tag_controller.py
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\views\TagManagement.vue
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\composables\useTagFilter.ts
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: class Tag|class.*Tag|tag|Tag
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签|register_blueprint|url_prefix
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-已获取核心文件内容。现在继续读取前端模态窗组件、后端Schema定义、样式文件和迁移脚本等剩余关键文件。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\TagEditModal.vue
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\TagCategoryModal.vue
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\BatchTagsModal.vue
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmTag.vue
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\report\CaseTagComparisonComponent.vue
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: Tag|tag|标签
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\scripts\migrations\202505\migrate_tag_category.py
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\scripts\migrations\202505\migrate_add_tag_category_metric_data.py
-          
-已获取大部分关键信息。最后再检查几个辅助文件以确保搜索完整。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\assets\styles\components\tag.css
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\assets\styles\api-test\tag-stats.css
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: TAG|tag|Tag|标签
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: Tag|tag
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: TAG|tag|Tag|标签
-          
-最后检查审计文档和后端报告中标签相关的引用。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\docs\tag-management-audit.md
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag|Tag|标签
-          
-搜索已完成。以下是"标签管理"（Tag Management）相关所有文件的完整路径列表及作用说明。
-
----
-
-## 标签管理相关文件完整清单
-
-### 一、后端 - 核心标签管理
-
-#### 1. 路由层（Blueprint）
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\blueprints\tag_bp.py`**
-标签管理的 Flask Blueprint，定义了所有标签和标签分类的 HTTP 路由。包含：
-- 标签分类的 CRUD：`GET/POST /categories`、`GET/PUT/DELETE /categories/<id>`
-- 标签的 CRUD：`GET/POST /tags`、`GET/PUT/DELETE /tags/<id>`
-- 标签名列表：`GET /tags/names`
-- 按分类分组查询：`GET /tags/by-category`
-- 批量更新分类：`PUT /tags/batch-category`
-
-#### 2. 控制器层（Controller）
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\tag_controller.py`**
-标签管理的核心业务逻辑，包含两个控制器类：
-- `TagCategoryController`：标签分类的增删改查，含分页、关键词搜索（带 LIKE 转义）、标签数量统计（子查询 JOIN 避免 N+1）、删除前检查是否有关联标签
-- `TagController`：标签的增删改查，含分页搜索、按分类筛选、创建/更新时校验分类存在性、删除前检查是否被用例/音频/设备/任务引用、批量更新分类（限制100条）
-
-#### 3. 数据模型层（Model）
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\models\models.py`**
-定义了标签相关的全部数据库模型（第84-475行）：
-- `TagCategory`（第86行）：标签分类模型，表名 `tag_categories`，含 name、description、color、sort_order 字段
-- `Tag`（第102行）：通用标签模型，表名 `tags`，含 name、description、color、category_id 外键
-- `TestCaseTag`（第179行）：测试用例-标签关联模型，表名 `test_case_tags`
-- `DeviceTag`（第248行）：设备-标签关联模型，表名 `device_tags`
-- `AudioTag`（第327行）：音频-标签关联模型，表名 `audio_tags`
-- `TaskTag`（第465行）：任务-标签关联模型，表名 `task_tags`
-- `TestCase`、`Audio`、`Task` 模型中通过 `tags = relationship('Tag', secondary=...)` 建立多对多关系
-- 报告模型中含 `tag_metric_data`、`tag_category_metric_data`、`all_case_tags` 等 JSON 字段（第643、688、713-714行）
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\models\__init__.py`**
-模型包初始化文件，导出 `Tag`、`TagCategory`、`TestCaseTag`、`AudioTag`、`DeviceTag`、`TaskTag` 等模型类。
-
-#### 4. Schema 层（数据验证/序列化）
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\schemas\testcase.py`**
-定义了标签相关的 Pydantic Schema（第157-222行）：
-- `TagListData`：标签名列表数据
-- `TagCategoryItem`：标签分类项（含 tagCount）
-- `TagCategoryListData`：分类列表数据
-- `TagCategoryCreateSchema` / `TagCategoryUpdateSchema`：分类创建/更新 schema
-- `TagItem`：标签项（含 categoryId、categoryName）
-- `TagDetailListData`：标签详情列表数据
-- `TagCreateSchema` / `TagUpdateSchema`：标签创建/更新 schema
-- `TestCaseExportTagItem`：测试用例导出时的标签项
-- 测试用例 schema 中含 `tags` 字段（第97、125、267、282-283、397、466-469、494行）
-
-#### 5. 应用注册
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\app.py`**
-在第272行导入 `tag_bp`，第291行注册 Blueprint：`app.register_blueprint(tag_bp, url_prefix='/api/v1/tags')`
-
----
-
-### 二、后端 - 其他模块中的标签引用
-
-#### 6. 其他 Blueprint 中的标签路由
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\blueprints\testcase_bp.py`**
-第50-52行，定义 `GET /testcases/tags` 路由，调用 `TestCaseController.get_tags()` 获取测试用例关联的标签列表。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\blueprints\audio_bp.py`**
-第26-28行，定义 `GET /audios/tags` 路由，调用 `AudioController.get_all_tags()` 获取音频关联的标签列表。
-
-#### 7. 其他 Schema 中的标签字段
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\schemas\report.py`**
-报告 Schema 中的标签相关定义：
-- `ReportTagMetricTagGroup`（第34行）：标签指标分组
-- `ReportTagMetricByResource`（第42行）：按资源的标签指标
-- `ReportTagCategoryMetric`（第47行）：标签分类指标
-- `ReportTagCategoryMetricByResource`（第54行）：按资源的标签分类指标
-- 报告数据中含 `allCaseTags`、`tagMetricData`、`allTags`、`includeUntagged` 等字段
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\schemas\audio.py`**
-音频 Schema 中的 `tags` 字段（第43、96、108、129、146行），含 `inheritTags`（继承标签）选项。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\schemas\task.py`**
-任务 Schema 中的 `tags` 字段（第52、92行）和 `tagStats`（标签统计，第138行）。
-
-#### 8. 其他 Controller 中的标签逻辑
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\testcase_controller.py`**
-测试用例控制器，包含标签相关方法（如 `get_tags()` 获取用例标签）。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\audio_controller.py`**
-音频控制器，包含 `get_all_tags()` 方法。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\report_controller.py`**
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\report_controller_base.py`**
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\report_controller_compare.py`**
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\report_controller_secondary.py`**
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\report_controller_task.py`**
-报告控制器系列，处理报告中的标签指标数据（`tag_metric_data`、`tag_category_metric_data`）和按标签筛选功能。
-
-#### 9. 工具层
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\report_utils.py`** 和 **`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\report\report_utils.py`**
-报告工具函数，处理标签统计和指标计算。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\report_query_builder.py`** 和 **`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\report\report_query_builder.py`**
-报告查询构建器，构建按标签筛选的 SQL 查询。
-
----
-
-### 三、后端 - 数据库迁移脚本
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\scripts\migrations\202505\migrate_tag_category.py`**
-迁移脚本：创建 `tag_categories` 表，为 `tags` 表添加 `category_id` 外键，迁移现有标签数据。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\scripts\migrations\202505\migrate_add_tag_category_metric_data.py`**
-迁移脚本：为 `report_detail_data` 表添加 `tag_category_metric_data` JSONB 字段。
-
----
-
-### 四、前端 - 核心标签管理
-
-#### 10. 页面视图
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\views\TagManagement.vue`**
-标签管理主页面（878行）。采用左右分栏布局：
-- 左侧：标签分类列表（侧边栏），支持搜索、分页滚动加载、新建/编辑/删除分类
-- 右侧：标签网格展示，支持按分类筛选、搜索、分页滚动加载、新建/编辑/删除标签
-- 通过 `api.tags.*` 调用后端 API，通过 `useModalControl` 打开模态窗
-
-#### 11. 路由与导航
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\router\index.ts`**
-第20行定义路由：`{ path: '/TagManagement', name: 'tagManagement', component: () => import('../views/TagManagement.vue') }`
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\App.vue`**
-第66-68行，侧边栏导航中包含"标签管理"链接，指向 `/TagManagement`，使用 `fa-tags` 图标。
-
-#### 12. API 调用层
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\utils\api.ts`**
-标签 API 定义（第1315-1405行）：
-- `TagCategory` 接口（第1315行）：id、name、description、color、sortOrder、tagCount
-- `TagItem` 接口（第1326行）：id、name、description、color、categoryId、categoryName
-- `tagsApi` 对象（第1337行）：包含 `getCategories`、`getCategory`、`createCategory`、`updateCategory`、`deleteCategory`、`getTags`、`getTagNames`、`getTagsByCategory`、`getTag`、`createTag`、`updateTag`、`deleteTag`、`batchUpdateCategory` 方法
-- 第1405行将 `tagsApi` 挂载为 `api.tags`
-- 另含 `getAllTags`（第636行，音频标签）和 `getTags`（第813行，用例标签）
-
-#### 13. 组合式函数（Composable）
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\composables\useTagFilter.ts`**
-标签筛选组合式函数（144行）。提供标签的多模式筛选逻辑：
-- 支持 `and`/`or` 两种筛选模式
-- `handleTagClick`：点击标签时在 未选 -> and -> or -> 取消 间循环切换
-- `addTag`、`removeTag`、`toggleTag`、`clearTags`、`setTagMode`、`setTagsFromProps` 等方法
-- 返回 `selectedTags` 和 `tagModes` 状态
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\composables\modalRegistration.ts`**
-模态窗注册文件（第22-24行导入标签模态窗组件，第252-271行注册）：
-- `BATCH_TAGS` -> `BatchTagsModal`（标题"批量管理标签"）
-- `TAG_CATEGORY` -> `TagCategoryModal`（标题"标签分类"）
-- `TAG_EDIT` -> `TagEditModal`（标题"标签"）
-
-#### 14. 类型定义
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\shared\types\index.ts`**
-- 第70-72行：`MODAL_TYPES` 中定义 `BATCH_TAGS`、`TAG_CATEGORY`、`TAG_EDIT` 三种模态窗类型
-- 第132-133、167行：用例相关接口中的 `tags` 字段
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\shared\types\businessTypes.ts`**
-- 第133行：`Tag` 接口定义
-- 第17、42、95、103、149行：多个业务类型中的 `tags` 字段
-- 第350-358、388行：报告标签指标相关类型（`ReportTagMetricTagGroup`、`ReportTagMetricByResource`）
-
----
-
-### 五、前端 - 标签相关组件
-
-#### 15. 模态窗组件
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\TagEditModal.vue`**
-标签编辑/创建模态窗。表单包含：标签名称（必填，最长50字）、所属分类（下拉选择）、描述（最长500字）、颜色选择器。调用 `api.tags.createTag` / `api.tags.updateTag`。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\TagCategoryModal.vue`**
-标签分类编辑/创建模态窗。表单包含：分类名称（必填，最长50字）、描述（最长500字）、颜色选择器、排序值。调用 `api.tags.createCategory` / `api.tags.updateCategory`。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\BatchTagsModal.vue`**
-批量标签操作模态窗。支持三种操作：添加标签、移除标签、修改标签名字。包含已有标签的分页选择器。
-
-#### 16. 报告中的标签组件
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\report\CaseTagComparisonComponent.vue`**
-报告中的"按用例标签对比"组件。提供标签筛选器（搜索、分页、多选），按标签分组对比展示测试结果指标。
-
-#### 17. 其他标签展示组件
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\algorithm\AlgorithmTag.vue`**
-算法标签展示组件（非标签管理功能，而是用标签样式展示算法类型，如翻译、ASR、说话人等）。支持最多显示数量限制和"+N"折叠。
-
----
-
-### 六、前端 - 样式文件
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\assets\styles\components\tag.css`**
-标签组件的通用样式，定义 `.tag` 基础样式、`.tag-task`、`.tag:hover` 等，符合 UI 设计规范。
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\assets\styles\api-test\tag-stats.css`**
-API 测试页面中标签统计区域的样式，定义 `.tag-stats-section`、`.tag-stats-container`、`.tag-stat-card` 等样式。
-
----
-
-### 七、文档
-
-**`c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\docs\tag-management-audit.md`**
-标签管理页面审计与修复文档。记录了 SQL 注入风险修复、API 路由注册错误修复、并发竞态条件处理、N+1 查询性能优化、批量操作上限、前端错误处理改进、搜索防抖、图标统一等问题及修复详情。
-
----
-
-### 八、前端 - 其他引用标签的文件（非标签管理核心，但使用标签功能）
-
-以下文件在各自业务逻辑中引用了标签功能（如筛选、展示、导出等），属于标签的使用方而非标签管理本身：
-
-- **`frontend\src\store\testCaseStore.ts`** - 测试用例 Store，处理用例标签
-- **`frontend\src\views\TestCaseManagerLogic\testCaseManager.ts`** - 用例管理逻辑
-- **`frontend\src\views\TasksLogic\tasks.ts`** - 任务管理逻辑
-- **`frontend\src\views\EvaluationLogic\evaluation.ts`** - 评估页面逻辑
-- **`frontend\src\views\AudioImportLogic\audioImport.ts`** - 音频导入逻辑
-- **`frontend\src\views\APITestLogic\apiTest.ts`** - API 测试逻辑
-- **`frontend\src\services\reportService.ts`** - 报告服务，处理标签指标数据
-- **`frontend\src\utils\filterUtils.ts`** - 筛选工具函数
-- **`frontend\src\composables\useTestCaseManagement.ts`** / **`useTestCaseConfig.ts`** / **`useTestCaseCard.ts`** / **`useTaskProgress.ts`** / **`useE2eView.ts`** / **`useE2eTest.ts`** / **`useApiTest.ts`** / **`useAudioList.ts`** - 各组合式函数中引用标签
-- **`frontend\src\components\common\test-case\TestCaseModal\types.ts`** / **`useAudioConfig.ts`** - 测试用例模态窗中的标签类型
-- **`frontend\src\utils\sanitize.ts`** / **`fieldNaming.ts`** / **`audioUtils.ts`** - 工具函数中的标签处理
-
----
-
-### 总结
-
-标签管理系统采用前后端分离架构，核心文件共 **20 个**（后端 10 个 + 前端 10 个），另有约 **20 个**文件在其他业务模块中引用标签功能。系统支持：
-- 标签分类管理（CRUD + 排序 + 颜色）
-- 标签管理（CRUD + 分类 + 颜色 + 批量操作）
-- 多实体关联（测试用例、音频、设备、任务均可打标签）
-- 报告中的标签指标统计与按标签对比分析
-- 前端标签筛选（and/or 模式）
-        
-          
-找到了相关文件。现在让我读取核心文件来定位 CRUD 问题。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\blueprints\tag_bp.py
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\controllers\tag_controller.py
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\views\TagManagement.vue
-          
-现在让我检查前端 API 层和模态窗相关代码，确认 CRUD 调用链是否完整。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\utils\api.ts
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\shared\types\index.ts
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\composables\modalRegistration.ts
-          
-让我检查 `useModal` 组合式函数和两个标签模态窗组件。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\composables\useModal.ts
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\TagEditModal.vue
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\TagCategoryModal.vue
-          
-我需要找到模态窗容器组件，看看它如何连接组件的 emit 事件到 modal manager 的 resolve/reject。
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: getActiveModals|activeModals
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: @confirm|@cancel|resolve|reject
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\GlobalModalContainer.vue
-          
-让我检查 API 请求函数和字段命名转换，以及 ModalConfirm 组件。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\utils\api.ts
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\utils\fieldNaming.ts
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\components\common\modal\ModalConfirm.vue
-          
-让我找到 `request` 函数的定义，确认是否有字段命名转换。
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: ^(export )?(async )?function request|^const request
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\utils\api.ts
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\utils\api.ts
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: applyResponseInterceptors|applyRequestInterceptors|interceptor
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\frontend\src\utils\api.ts
-          
-让我检查后端响应格式和 Pydantic schema 配置。
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\utils\response.py
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\schemas\testcase.py
-          
-让我检查 `APIModel` 基类的配置。
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: class APIModel
-          
-
-        
-            
-toolName: view_files
-            
-status: success
-          
-            
-filePath: c:\S2TT\auto_test\ver8\main\intelligent_audio_test\Intelligent-Audio-TEST\backend\schemas\base.py
-          
-让我确认 Blueprint 注册和路由是否正确。
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: tag_bp
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: apiBaseUrl
-          
-
-        
-            
-toolName: search_by_regex
-            
-status: success
-          
-query: API_CONFIG|baseUrl
-          
-审计完成。以下是标签管理页面的问题清单：
-
----
-
-## 审计结果
-
-### BUG 1（致命）：Update 操作必定失败 — Schema 强制要求 body 中的 `id`
-
-[TagCategoryUpdateSchema](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/schemas/testcase.py#L184-L189) 和 [TagUpdateSchema](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/schemas/testcase.py#L215-L220) 都将 `id` 定义为**必填字段**：
-
-```python
-class TagCategoryUpdateSchema(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')  # ... = 必填
-    ...
-
-class TagUpdateSchema(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')  # ... = 必填
-    ...
-```
-
-但前端 [TagEditModal.vue#L104-L108](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/components/common/modal/TagEditModal.vue#L99-L116) 和 [TagCategoryModal.vue#L100-L105](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/components/common/modal/TagCategoryModal.vue#L95-L120) 发送的 data 中**不包含 `id`**，`id` 只在 URL 路径中：
-
-```typescript
-// TagEditModal.vue
-const data = {
-    name: form.value.name.trim(),
-    description: form.value.description.trim(),
-    color: form.value.color,
-    categoryId: form.value.categoryId
-    // 没有 id！
-};
-result = await api.tags.updateTag(props.tag.id, data); // id 在 URL 里
-```
-
-后端 [tag_controller.py#L155-L158](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/backend/controllers/tag_controller.py#L155-L158) 执行 `TagCategoryUpdateSchema.model_validate(request.get_json())` 时，因缺少 `id` 直接抛出验证错误，返回 `"请求数据验证失败"`。
-
-**结果：编辑标签、编辑分类 100% 失败。**
-
----
-
-### BUG 2（致命）：取消操作仍会执行 — Cancel 用了 resolve 而非 reject
-
-[GlobalModalContainer.vue#L48-L53](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/components/common/modal/GlobalModalContainer.vue#L48-L53) 中，`@cancel` 事件调用的是 `modalItem.resolve(false)` 而不是 `modalItem.reject()`：
-
-```javascript
-@cancel="(data: any) => {
-    if (isNativeEvent(data)) return;
-    modalItem.resolve(false);  // ← 应该是 reject()
-    handleClose(modalId);
-}"
-```
-
-而 [TagManagement.vue](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/views/TagManagement.vue#L380-L445) 中删除确认用的是 `.then()` / `.catch()` 模式：
-
-```javascript
-open(MODAL_TYPES.DELETE_CONFIRM, { ... }).then(async () => {
-    // 用户点"取消"时，resolve(false) 触发 then 而非 catch
-    await api.tags.deleteTag(tag.id);  // ← 取消了仍然执行删除！
-    showNotification('标签删除成功', 'success');
-}).catch(() => {
-    // 用户取消 — 永远不会走到这里
-});
-```
-
-**结果：用户点"取消"删除确认，标签仍会被删除。** 同理，新建/编辑取消后会显示"成功"通知。
-
----
-
-### BUG 3（严重）：模态窗 API 错误被静默吞掉
-
-[TagEditModal.vue#L119-L123](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/components/common/modal/TagEditModal.vue#L119-L123) 和 [TagCategoryModal.vue#L115-L119](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/components/common/modal/TagCategoryModal.vue#L115-L119)：
-
-```typescript
-} catch (e: any) {
-    console.error('保存标签失败:', e);
-    // 没有向用户展示错误！没有 emit('cancel')！
-} finally {
-    saving.value = false;
+{
+    "fileId": "e22f5226-16c4-4ffb-b63c-1057d83421be",
+    "taskId": "aef18210-4e59-499b-8ff6-20f5af3b01f9",
+    "audioType": "dry",
+    "createTestCase": true,
+    "tags": [],
+    "description": "",
+    "testTypes": [
+        "api",
+        "e2e"
+    ],
+    "playbackDeviceId": null,
+    "spl": "",
+    "groupNameType": "",
+    "customGroupName": "",
+    "inheritTags": true,
+    "dimensions": [
+        {
+            "id": 59,
+            "name": "LLM语义评分",
+            "weight": 50,
+            "threshold": 80,
+            "test_type": "api"
+        },
+        {
+            "id": 59,
+            "name": "LLM语义评分",
+            "weight": 50,
+            "threshold": 80,
+            "test_type": "e2e"
+        }
+    ],
+    "noiseAudioId": null,
+    "noiseSpl": 60,
+    "asrText": "",
+    "translations": [],
+    "annotations": [
+        {
+            "format": "json",
+            "code": "voice_llm",
+            "data": {
+                "segments": [
+                    {
+                        "speaker": "",
+                        "start": 0,
+                        "end": 0,
+                        "text": " ",
+                        "confidence": 1,
+                        "path": "sample_single_round_0.wav",
+                        "caseId": 1001,
+                        "content": "",
+                        "query": "请播放斐波那契数列前10项对应的音频片段",
+                        "correctAnswer": "1 1 2 3 5 8 13 21 34 55",
+                        "correctnessType": "exact",
+                        "railDistance": 80,
+                        "volumeLevel": 60,
+                        "interferers": [],
+                        "voiceprintEnabled": false,
+                        "voiceprintSpl": 70,
+                        "voiceprintWaitTime": 5,
+                        "inputText": "请播放斐波那契数列前10项"
+                    }
+                ]
+            },
+            "source_language": "",
+            "target_language": "",
+            "name": "voice_llm"
+        }
+    ],
+    "algorithmType": "voice_llm",
+    "algorithmRelations": [
+        {
+            "algorithmType": "voice_llm",
+            "isPrimary": true,
+            "weight": 1
+        }
+    ],
+    "algorithmParams": [
+        {
+            "field_code": "interferers",
+            "field_value": "[]"
+        },
+        {
+            "field_code": "promptAudioId",
+            "field_value": null
+        },
+        {
+            "field_code": "railDistance",
+            "field_value": null
+        },
+        {
+            "field_code": "volumeLevel",
+            "field_value": null
+        },
+        {
+            "field_code": "voiceprintEnabled",
+            "field_value": "false"
+        },
+        {
+            "field_code": "voiceprintAudioId",
+            "field_value": null
+        },
+        {
+            "field_code": "voiceprintPlaybackDeviceId",
+            "field_value": null
+        },
+        {
+            "field_code": "voiceprintSpl",
+            "field_value": "70.0"
+        },
+        {
+            "field_code": "voiceprintWaitTime",
+            "field_value": "5.0"
+        },
+        {
+            "field_code": "inputText",
+            "field_value": null
+        },
+        {
+            "field_code": "caseAlgorithmParams",
+            "field_value": [
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": [],
+                    "fieldPath": "interferers",
+                    "helpText": "干扰人配置列表，支持多路独立干扰",
+                    "hidden": false,
+                    "id": 9,
+                    "label": "干扰人",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "interferers",
+                    "paramName": "干扰人列表",
+                    "paramType": "json",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": null,
+                    "uiOrder": 20,
+                    "unit": null,
+                    "param_code": "interferers",
+                    "param_name": "干扰人列表",
+                    "param_type": "json",
+                    "default_value": [],
+                    "help_text": "干扰人配置列表，支持多路独立干扰",
+                    "ui_order": 20
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "promptAudioId",
+                    "helpText": "在干声播放之前播放的引导音频",
+                    "hidden": false,
+                    "id": 8,
+                    "label": "Prompt 音频",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "promptAudioId",
+                    "paramName": "Prompt 音频",
+                    "paramType": "audio_select",
+                    "required": true,
+                    "scope": "common",
+                    "step": null,
+                    "uiOrder": 30,
+                    "unit": null,
+                    "param_code": "promptAudioId",
+                    "param_name": "Prompt 音频",
+                    "param_type": "audio_select",
+                    "help_text": "在干声播放之前播放的引导音频",
+                    "ui_order": 30
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "railDistance",
+                    "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
+                    "hidden": false,
+                    "id": 10,
+                    "label": "导轨距离",
+                    "maxValue": 200,
+                    "minValue": 10,
+                    "paramCode": "railDistance",
+                    "paramName": "导轨距离(cm)",
+                    "paramType": "slider",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": 5,
+                    "uiOrder": 40,
+                    "unit": "cm",
+                    "param_code": "railDistance",
+                    "param_name": "导轨距离(cm)",
+                    "param_type": "slider",
+                    "help_text": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
+                    "ui_order": 40
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "volumeLevel",
+                    "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
+                    "hidden": false,
+                    "id": 11,
+                    "label": "设备音量",
+                    "maxValue": 100,
+                    "minValue": 0,
+                    "paramCode": "volumeLevel",
+                    "paramName": "被测设备音量",
+                    "paramType": "slider",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": 1,
+                    "uiOrder": 41,
+                    "unit": null,
+                    "param_code": "volumeLevel",
+                    "param_name": "被测设备音量",
+                    "param_type": "slider",
+                    "help_text": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
+                    "ui_order": 41
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": false,
+                    "fieldPath": "voiceprintEnabled",
+                    "helpText": "是否在本轮播放声纹注册音频",
+                    "hidden": false,
+                    "id": 12,
+                    "label": "声纹注册",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "voiceprintEnabled",
+                    "paramName": "声纹注册",
+                    "paramType": "switch",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": null,
+                    "uiOrder": 50,
+                    "unit": null,
+                    "param_code": "voiceprintEnabled",
+                    "param_name": "声纹注册",
+                    "param_type": "switch",
+                    "default_value": false,
+                    "help_text": "是否在本轮播放声纹注册音频",
+                    "ui_order": 50
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "voiceprintAudioId",
+                    "helpText": "声纹注册音频文件",
+                    "hidden": false,
+                    "id": 13,
+                    "label": "声纹音频",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "voiceprintAudioId",
+                    "paramName": "声纹注册音频",
+                    "paramType": "audio_select",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": null,
+                    "uiOrder": 51,
+                    "unit": null,
+                    "param_code": "voiceprintAudioId",
+                    "param_name": "声纹注册音频",
+                    "param_type": "audio_select",
+                    "help_text": "声纹注册音频文件",
+                    "ui_order": 51
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "voiceprintPlaybackDeviceId",
+                    "helpText": "声纹注册音频播放设备",
+                    "hidden": false,
+                    "id": 14,
+                    "label": "播放设备",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "voiceprintPlaybackDeviceId",
+                    "paramName": "声纹播放设备",
+                    "paramType": "device_select",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": null,
+                    "uiOrder": 52,
+                    "unit": null,
+                    "param_code": "voiceprintPlaybackDeviceId",
+                    "param_name": "声纹播放设备",
+                    "param_type": "device_select",
+                    "help_text": "声纹注册音频播放设备",
+                    "ui_order": 52
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": 70,
+                    "fieldPath": "voiceprintSpl",
+                    "helpText": "声纹注册音频播放声压级",
+                    "hidden": false,
+                    "id": 15,
+                    "label": "声压级",
+                    "maxValue": 100,
+                    "minValue": 20,
+                    "paramCode": "voiceprintSpl",
+                    "paramName": "声纹播放声压级",
+                    "paramType": "number",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": 1,
+                    "uiOrder": 53,
+                    "unit": "dB",
+                    "param_code": "voiceprintSpl",
+                    "param_name": "声纹播放声压级",
+                    "param_type": "number",
+                    "default_value": 70,
+                    "help_text": "声纹注册音频播放声压级",
+                    "ui_order": 53
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": 5,
+                    "fieldPath": "voiceprintWaitTime",
+                    "helpText": "声纹注册后等待时间",
+                    "hidden": false,
+                    "id": 16,
+                    "label": "等待时间",
+                    "maxValue": 60,
+                    "minValue": 0,
+                    "paramCode": "voiceprintWaitTime",
+                    "paramName": "声纹等待时间(秒)",
+                    "paramType": "number",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": 1,
+                    "uiOrder": 54,
+                    "unit": "s",
+                    "param_code": "voiceprintWaitTime",
+                    "param_name": "声纹等待时间(秒)",
+                    "param_type": "number",
+                    "default_value": 5,
+                    "help_text": "声纹注册后等待时间",
+                    "ui_order": 54
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "query",
+                    "helpText": "发送给 API 的文本内容（可与输入音频共存）",
+                    "hidden": false,
+                    "id": 19,
+                    "label": "输入文本",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "inputText",
+                    "paramName": "输入文本",
+                    "paramType": "text",
+                    "required": false,
+                    "scope": "api",
+                    "step": null,
+                    "uiOrder": 70,
+                    "unit": null,
+                    "param_code": "inputText",
+                    "param_name": "输入文本",
+                    "param_type": "text",
+                    "help_text": "发送给 API 的文本内容（可与输入音频共存）",
+                    "ui_order": 70
+                }
+            ]
+        },
+        {
+            "field_code": "algorithmFormSchema",
+            "field_value": {
+                "algorithmName": "Voice LLM",
+                "algorithmType": "voice_llm",
+                "description": "语音大模型交互测试",
+                "fields": [
+                    {
+                        "component": "code-editor",
+                        "defaultValue": "[]",
+                        "fieldCode": "interferers",
+                        "fieldName": "干扰人列表",
+                        "fieldType": "json",
+                        "helpText": "干扰人配置列表，支持多路独立干扰",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 20
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": null,
+                        "fieldCode": "promptAudioId",
+                        "fieldName": "Prompt 音频",
+                        "fieldType": "audio_select",
+                        "helpText": "在干声播放之前播放的引导音频",
+                        "hidden": false,
+                        "required": true,
+                        "scope": "common",
+                        "uiOrder": 30
+                    },
+                    {
+                        "component": "slider",
+                        "defaultValue": null,
+                        "fieldCode": "railDistance",
+                        "fieldName": "导轨距离(cm)",
+                        "fieldType": "slider",
+                        "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 40
+                    },
+                    {
+                        "component": "slider",
+                        "defaultValue": null,
+                        "fieldCode": "volumeLevel",
+                        "fieldName": "被测设备音量",
+                        "fieldType": "slider",
+                        "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 41
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": "false",
+                        "fieldCode": "voiceprintEnabled",
+                        "fieldName": "声纹注册",
+                        "fieldType": "switch",
+                        "helpText": "是否在本轮播放声纹注册音频",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 50
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": null,
+                        "fieldCode": "voiceprintAudioId",
+                        "fieldName": "声纹注册音频",
+                        "fieldType": "audio_select",
+                        "helpText": "声纹注册音频文件",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 51
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": null,
+                        "fieldCode": "voiceprintPlaybackDeviceId",
+                        "fieldName": "声纹播放设备",
+                        "fieldType": "device_select",
+                        "helpText": "声纹注册音频播放设备",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 52
+                    },
+                    {
+                        "component": "input-number",
+                        "defaultValue": "70.0",
+                        "fieldCode": "voiceprintSpl",
+                        "fieldName": "声纹播放声压级",
+                        "fieldType": "number",
+                        "helpText": "声纹注册音频播放声压级",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 53
+                    },
+                    {
+                        "component": "input-number",
+                        "defaultValue": "5.0",
+                        "fieldCode": "voiceprintWaitTime",
+                        "fieldName": "声纹等待时间(秒)",
+                        "fieldType": "number",
+                        "helpText": "声纹注册后等待时间",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 54
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": null,
+                        "fieldCode": "inputText",
+                        "fieldName": "输入文本",
+                        "fieldType": "text",
+                        "helpText": "发送给 API 的文本内容（可与输入音频共存）",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "api",
+                        "uiOrder": 70
+                    }
+                ],
+                "groups": [
+                    {
+                        "fields": [
+                            {
+                                "component": "code-editor",
+                                "defaultValue": "[]",
+                                "fieldCode": "interferers",
+                                "fieldName": "干扰人列表",
+                                "fieldType": "json",
+                                "helpText": "干扰人配置列表，支持多路独立干扰",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 20
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": null,
+                                "fieldCode": "promptAudioId",
+                                "fieldName": "Prompt 音频",
+                                "fieldType": "audio_select",
+                                "helpText": "在干声播放之前播放的引导音频",
+                                "hidden": false,
+                                "required": true,
+                                "scope": "common",
+                                "uiOrder": 30
+                            },
+                            {
+                                "component": "slider",
+                                "defaultValue": null,
+                                "fieldCode": "railDistance",
+                                "fieldName": "导轨距离(cm)",
+                                "fieldType": "slider",
+                                "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 40
+                            },
+                            {
+                                "component": "slider",
+                                "defaultValue": null,
+                                "fieldCode": "volumeLevel",
+                                "fieldName": "被测设备音量",
+                                "fieldType": "slider",
+                                "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 41
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": "false",
+                                "fieldCode": "voiceprintEnabled",
+                                "fieldName": "声纹注册",
+                                "fieldType": "switch",
+                                "helpText": "是否在本轮播放声纹注册音频",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 50
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": null,
+                                "fieldCode": "voiceprintAudioId",
+                                "fieldName": "声纹注册音频",
+                                "fieldType": "audio_select",
+                                "helpText": "声纹注册音频文件",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 51
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": null,
+                                "fieldCode": "voiceprintPlaybackDeviceId",
+                                "fieldName": "声纹播放设备",
+                                "fieldType": "device_select",
+                                "helpText": "声纹注册音频播放设备",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 52
+                            },
+                            {
+                                "component": "input-number",
+                                "defaultValue": "70.0",
+                                "fieldCode": "voiceprintSpl",
+                                "fieldName": "声纹播放声压级",
+                                "fieldType": "number",
+                                "helpText": "声纹注册音频播放声压级",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 53
+                            },
+                            {
+                                "component": "input-number",
+                                "defaultValue": "5.0",
+                                "fieldCode": "voiceprintWaitTime",
+                                "fieldName": "声纹等待时间(秒)",
+                                "fieldType": "number",
+                                "helpText": "声纹注册后等待时间",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 54
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": null,
+                                "fieldCode": "inputText",
+                                "fieldName": "输入文本",
+                                "fieldType": "text",
+                                "helpText": "发送给 API 的文本内容（可与输入音频共存）",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "api",
+                                "uiOrder": 70
+                            }
+                        ],
+                        "label": "基础参数",
+                        "name": "basic"
+                    }
+                ]
+            }
+        }
+    ],
+    "testCaseConfig": {
+        "rounds": [
+            {
+                "roundNumber": 1,
+                "audios": [
+                    {
+                        "audio_name": "2026144010.wav",
+                        "play_order": 0
+                    }
+                ],
+                "algorithmParams": []
+            }
+        ],
+        "inherit_tags": true,
+        "algorithm_params": {
+            "interferers": "[]",
+            "promptAudioId": null,
+            "railDistance": null,
+            "volumeLevel": null,
+            "voiceprintEnabled": "false",
+            "voiceprintAudioId": null,
+            "voiceprintPlaybackDeviceId": null,
+            "voiceprintSpl": "70.0",
+            "voiceprintWaitTime": "5.0",
+            "inputText": null,
+            "caseAlgorithmParams": [
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": [],
+                    "fieldPath": "interferers",
+                    "helpText": "干扰人配置列表，支持多路独立干扰",
+                    "hidden": false,
+                    "id": 9,
+                    "label": "干扰人",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "interferers",
+                    "paramName": "干扰人列表",
+                    "paramType": "json",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": null,
+                    "uiOrder": 20,
+                    "unit": null,
+                    "param_code": "interferers",
+                    "param_name": "干扰人列表",
+                    "param_type": "json",
+                    "default_value": [],
+                    "help_text": "干扰人配置列表，支持多路独立干扰",
+                    "ui_order": 20
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "promptAudioId",
+                    "helpText": "在干声播放之前播放的引导音频",
+                    "hidden": false,
+                    "id": 8,
+                    "label": "Prompt 音频",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "promptAudioId",
+                    "paramName": "Prompt 音频",
+                    "paramType": "audio_select",
+                    "required": true,
+                    "scope": "common",
+                    "step": null,
+                    "uiOrder": 30,
+                    "unit": null,
+                    "param_code": "promptAudioId",
+                    "param_name": "Prompt 音频",
+                    "param_type": "audio_select",
+                    "help_text": "在干声播放之前播放的引导音频",
+                    "ui_order": 30
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "railDistance",
+                    "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
+                    "hidden": false,
+                    "id": 10,
+                    "label": "导轨距离",
+                    "maxValue": 200,
+                    "minValue": 10,
+                    "paramCode": "railDistance",
+                    "paramName": "导轨距离(cm)",
+                    "paramType": "slider",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": 5,
+                    "uiOrder": 40,
+                    "unit": "cm",
+                    "param_code": "railDistance",
+                    "param_name": "导轨距离(cm)",
+                    "param_type": "slider",
+                    "help_text": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
+                    "ui_order": 40
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "volumeLevel",
+                    "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
+                    "hidden": false,
+                    "id": 11,
+                    "label": "设备音量",
+                    "maxValue": 100,
+                    "minValue": 0,
+                    "paramCode": "volumeLevel",
+                    "paramName": "被测设备音量",
+                    "paramType": "slider",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": 1,
+                    "uiOrder": 41,
+                    "unit": null,
+                    "param_code": "volumeLevel",
+                    "param_name": "被测设备音量",
+                    "param_type": "slider",
+                    "help_text": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
+                    "ui_order": 41
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": false,
+                    "fieldPath": "voiceprintEnabled",
+                    "helpText": "是否在本轮播放声纹注册音频",
+                    "hidden": false,
+                    "id": 12,
+                    "label": "声纹注册",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "voiceprintEnabled",
+                    "paramName": "声纹注册",
+                    "paramType": "switch",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": null,
+                    "uiOrder": 50,
+                    "unit": null,
+                    "param_code": "voiceprintEnabled",
+                    "param_name": "声纹注册",
+                    "param_type": "switch",
+                    "default_value": false,
+                    "help_text": "是否在本轮播放声纹注册音频",
+                    "ui_order": 50
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "voiceprintAudioId",
+                    "helpText": "声纹注册音频文件",
+                    "hidden": false,
+                    "id": 13,
+                    "label": "声纹音频",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "voiceprintAudioId",
+                    "paramName": "声纹注册音频",
+                    "paramType": "audio_select",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": null,
+                    "uiOrder": 51,
+                    "unit": null,
+                    "param_code": "voiceprintAudioId",
+                    "param_name": "声纹注册音频",
+                    "param_type": "audio_select",
+                    "help_text": "声纹注册音频文件",
+                    "ui_order": 51
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "voiceprintPlaybackDeviceId",
+                    "helpText": "声纹注册音频播放设备",
+                    "hidden": false,
+                    "id": 14,
+                    "label": "播放设备",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "voiceprintPlaybackDeviceId",
+                    "paramName": "声纹播放设备",
+                    "paramType": "device_select",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": null,
+                    "uiOrder": 52,
+                    "unit": null,
+                    "param_code": "voiceprintPlaybackDeviceId",
+                    "param_name": "声纹播放设备",
+                    "param_type": "device_select",
+                    "help_text": "声纹注册音频播放设备",
+                    "ui_order": 52
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": 70,
+                    "fieldPath": "voiceprintSpl",
+                    "helpText": "声纹注册音频播放声压级",
+                    "hidden": false,
+                    "id": 15,
+                    "label": "声压级",
+                    "maxValue": 100,
+                    "minValue": 20,
+                    "paramCode": "voiceprintSpl",
+                    "paramName": "声纹播放声压级",
+                    "paramType": "number",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": 1,
+                    "uiOrder": 53,
+                    "unit": "dB",
+                    "param_code": "voiceprintSpl",
+                    "param_name": "声纹播放声压级",
+                    "param_type": "number",
+                    "default_value": 70,
+                    "help_text": "声纹注册音频播放声压级",
+                    "ui_order": 53
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": 5,
+                    "fieldPath": "voiceprintWaitTime",
+                    "helpText": "声纹注册后等待时间",
+                    "hidden": false,
+                    "id": 16,
+                    "label": "等待时间",
+                    "maxValue": 60,
+                    "minValue": 0,
+                    "paramCode": "voiceprintWaitTime",
+                    "paramName": "声纹等待时间(秒)",
+                    "paramType": "number",
+                    "required": false,
+                    "scope": "e2e",
+                    "step": 1,
+                    "uiOrder": 54,
+                    "unit": "s",
+                    "param_code": "voiceprintWaitTime",
+                    "param_name": "声纹等待时间(秒)",
+                    "param_type": "number",
+                    "default_value": 5,
+                    "help_text": "声纹注册后等待时间",
+                    "ui_order": 54
+                },
+                {
+                    "algorithmType": "voice_llm",
+                    "annotationCode": "voice_llm",
+                    "defaultValue": null,
+                    "fieldPath": "query",
+                    "helpText": "发送给 API 的文本内容（可与输入音频共存）",
+                    "hidden": false,
+                    "id": 19,
+                    "label": "输入文本",
+                    "maxValue": null,
+                    "minValue": null,
+                    "paramCode": "inputText",
+                    "paramName": "输入文本",
+                    "paramType": "text",
+                    "required": false,
+                    "scope": "api",
+                    "step": null,
+                    "uiOrder": 70,
+                    "unit": null,
+                    "param_code": "inputText",
+                    "param_name": "输入文本",
+                    "param_type": "text",
+                    "help_text": "发送给 API 的文本内容（可与输入音频共存）",
+                    "ui_order": 70
+                }
+            ],
+            "algorithmFormSchema": {
+                "algorithmName": "Voice LLM",
+                "algorithmType": "voice_llm",
+                "description": "语音大模型交互测试",
+                "fields": [
+                    {
+                        "component": "code-editor",
+                        "defaultValue": "[]",
+                        "fieldCode": "interferers",
+                        "fieldName": "干扰人列表",
+                        "fieldType": "json",
+                        "helpText": "干扰人配置列表，支持多路独立干扰",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 20
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": null,
+                        "fieldCode": "promptAudioId",
+                        "fieldName": "Prompt 音频",
+                        "fieldType": "audio_select",
+                        "helpText": "在干声播放之前播放的引导音频",
+                        "hidden": false,
+                        "required": true,
+                        "scope": "common",
+                        "uiOrder": 30
+                    },
+                    {
+                        "component": "slider",
+                        "defaultValue": null,
+                        "fieldCode": "railDistance",
+                        "fieldName": "导轨距离(cm)",
+                        "fieldType": "slider",
+                        "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 40
+                    },
+                    {
+                        "component": "slider",
+                        "defaultValue": null,
+                        "fieldCode": "volumeLevel",
+                        "fieldName": "被测设备音量",
+                        "fieldType": "slider",
+                        "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 41
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": "false",
+                        "fieldCode": "voiceprintEnabled",
+                        "fieldName": "声纹注册",
+                        "fieldType": "switch",
+                        "helpText": "是否在本轮播放声纹注册音频",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 50
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": null,
+                        "fieldCode": "voiceprintAudioId",
+                        "fieldName": "声纹注册音频",
+                        "fieldType": "audio_select",
+                        "helpText": "声纹注册音频文件",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 51
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": null,
+                        "fieldCode": "voiceprintPlaybackDeviceId",
+                        "fieldName": "声纹播放设备",
+                        "fieldType": "device_select",
+                        "helpText": "声纹注册音频播放设备",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 52
+                    },
+                    {
+                        "component": "input-number",
+                        "defaultValue": "70.0",
+                        "fieldCode": "voiceprintSpl",
+                        "fieldName": "声纹播放声压级",
+                        "fieldType": "number",
+                        "helpText": "声纹注册音频播放声压级",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 53
+                    },
+                    {
+                        "component": "input-number",
+                        "defaultValue": "5.0",
+                        "fieldCode": "voiceprintWaitTime",
+                        "fieldName": "声纹等待时间(秒)",
+                        "fieldType": "number",
+                        "helpText": "声纹注册后等待时间",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "e2e",
+                        "uiOrder": 54
+                    },
+                    {
+                        "component": "input",
+                        "defaultValue": null,
+                        "fieldCode": "inputText",
+                        "fieldName": "输入文本",
+                        "fieldType": "text",
+                        "helpText": "发送给 API 的文本内容（可与输入音频共存）",
+                        "hidden": false,
+                        "required": false,
+                        "scope": "api",
+                        "uiOrder": 70
+                    }
+                ],
+                "groups": [
+                    {
+                        "fields": [
+                            {
+                                "component": "code-editor",
+                                "defaultValue": "[]",
+                                "fieldCode": "interferers",
+                                "fieldName": "干扰人列表",
+                                "fieldType": "json",
+                                "helpText": "干扰人配置列表，支持多路独立干扰",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 20
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": null,
+                                "fieldCode": "promptAudioId",
+                                "fieldName": "Prompt 音频",
+                                "fieldType": "audio_select",
+                                "helpText": "在干声播放之前播放的引导音频",
+                                "hidden": false,
+                                "required": true,
+                                "scope": "common",
+                                "uiOrder": 30
+                            },
+                            {
+                                "component": "slider",
+                                "defaultValue": null,
+                                "fieldCode": "railDistance",
+                                "fieldName": "导轨距离(cm)",
+                                "fieldType": "slider",
+                                "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 40
+                            },
+                            {
+                                "component": "slider",
+                                "defaultValue": null,
+                                "fieldCode": "volumeLevel",
+                                "fieldName": "被测设备音量",
+                                "fieldType": "slider",
+                                "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 41
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": "false",
+                                "fieldCode": "voiceprintEnabled",
+                                "fieldName": "声纹注册",
+                                "fieldType": "switch",
+                                "helpText": "是否在本轮播放声纹注册音频",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 50
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": null,
+                                "fieldCode": "voiceprintAudioId",
+                                "fieldName": "声纹注册音频",
+                                "fieldType": "audio_select",
+                                "helpText": "声纹注册音频文件",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 51
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": null,
+                                "fieldCode": "voiceprintPlaybackDeviceId",
+                                "fieldName": "声纹播放设备",
+                                "fieldType": "device_select",
+                                "helpText": "声纹注册音频播放设备",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 52
+                            },
+                            {
+                                "component": "input-number",
+                                "defaultValue": "70.0",
+                                "fieldCode": "voiceprintSpl",
+                                "fieldName": "声纹播放声压级",
+                                "fieldType": "number",
+                                "helpText": "声纹注册音频播放声压级",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 53
+                            },
+                            {
+                                "component": "input-number",
+                                "defaultValue": "5.0",
+                                "fieldCode": "voiceprintWaitTime",
+                                "fieldName": "声纹等待时间(秒)",
+                                "fieldType": "number",
+                                "helpText": "声纹注册后等待时间",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "e2e",
+                                "uiOrder": 54
+                            },
+                            {
+                                "component": "input",
+                                "defaultValue": null,
+                                "fieldCode": "inputText",
+                                "fieldName": "输入文本",
+                                "fieldType": "text",
+                                "helpText": "发送给 API 的文本内容（可与输入音频共存）",
+                                "hidden": false,
+                                "required": false,
+                                "scope": "api",
+                                "uiOrder": 70
+                            }
+                        ],
+                        "label": "基础参数",
+                        "name": "basic"
+                    }
+                ]
+            }
+        }
+    },
+    "promptDeviceId": null
 }
-```
-
-当 API 调用失败（如 BUG 1 的验证错误），错误只打印到 console，用户看不到任何反馈，模态窗保持打开状态但按钮恢复可点击，看起来就像"什么都没发生"。
-
-**结果：用户无法感知操作失败的原因，体验上等同于"CRUD 不了"。**
-
----
-
-### BUG 4（中等）：删除确认弹窗传错 prop 名
-
-[TagManagement.vue#L386-L388](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/views/TagManagement.vue#L386-L388) 传的是 `message`：
-
-```javascript
-open(MODAL_TYPES.DELETE_CONFIRM, {
-    title: '删除标签',
-    message: `确定删除标签「${tag.name}」吗？`  // ← 错
-})
-```
-
-但 [ModalConfirm.vue#L40-L44](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/components/common/modal/ModalConfirm.vue#L40-L44) 的 prop 是 `content`：
-
-```javascript
-content: {
-    type: String,
-    default: '确定要执行此操作吗？'
-}
-```
-
-**结果：删除确认弹窗永远显示默认文案"确定要执行此操作吗？"，而非具体标签名。**
-
----
-
-### BUG 5（轻微）：未分类标签计数错误
-
-[TagManagement.vue#L220-L222](file:///c:/S2TT/auto_test/ver8/main/intelligent_audio_test/Intelligent-Audio-TEST/frontend/src/views/TagManagement.vue#L220-L222)：
-
-```javascript
-const uncategorizedCount = computed(() => {
-  return tagTotal.value - tags.value.filter(t => t.categoryId).length;
-});
-```
-
-`tags.value` 只是当前分页的数据，`tagTotal` 是总数。用"总数 - 当前页有分类的标签数"得到的不是未分类标签的数量。
-
----
-
-## 修复方案
-
-需要我修复这些 bug 吗？核心修复点：
-
-1. **BUG 1**：将 `TagCategoryUpdateSchema` 和 `TagUpdateSchema` 的 `id` 字段改为 `Optional`（或移除，因为 `id` 已从 URL 获取）
-2. **BUG 2**：`GlobalModalContainer.vue` 的 `@cancel` 改为 `modalItem.reject()` 
-3. **BUG 3**：模态窗组件 catch 中向用户显示错误通知
-4. **BUG 4**：`TagManagement.vue` 中 `message:` 改为 `content:`
-5. **BUG 5**：修正未分类计数逻辑
