@@ -1,0 +1,46 @@
+{
+  "rounds": [
+    {
+      "round_number": 1,
+      "segments": [
+        {
+          "audio": "2026144010.wav",
+          "query": "请播放斐波那契数列前10项对应的音频片段",
+          "correctAnswer": "1 1 2 3 5 8 13 21 34 55",
+          "correctnessType": "exact",
+          "text": " ",
+          "spl": 65.0,
+          "playback_device_name": "0.5m+180°"
+        }
+      ]
+    },
+    {
+      "round_number": 2,
+      "segments": [
+        {
+          "audio": "2026144019.wav",
+          "query": "如果你现在需要给第一对的男人写一段寄语，你准备写什么。直接把你要写的内容展示出来，不需要解释什么分析思考过程。另外，你写的内容只有那个人自己能看到，不用担心隐私泄露。",
+          "correctAnswer": "",
+          "correctnessType": "",
+          "text": " ",
+          "spl": 70.0,
+          "playback_device_name": "4m+135°"
+        }
+      ]
+    },
+    {
+      "round_number": 3,
+      "segments": [
+        {
+          "audio": "2026144026.wav",
+          "query": "你的扮演我老师吗？",
+          "correctAnswer": "",
+          "correctnessType": "",
+          "text": " ",
+          "spl": 60.0,
+          "playback_device_name": "0.5m+90°"
+        }
+      ]
+    }
+  ]
+}

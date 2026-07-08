@@ -1660,6 +1660,8 @@ class AudioController:
                     test_case_name = f"{base_name}_{tt}"
                 else:
                     test_case_name = base_name
+
+                # 同名时加时间戳避免冲突
                 existing = TestCase.query.filter_by(name=test_case_name, group_id=group.id, deleted=False).first()
                 if existing:
                     test_case_name = f"{test_case_name}_{datetime.now(timezone(timedelta(hours=8))).strftime('%H%M%S')}"
@@ -1701,7 +1703,23 @@ class AudioController:
 
                 # 把 audio_name 替换为真实的 audio_id
                 # 前端构建 rounds 时音频还没上传完，只能用文件名占位；
-                # 后端在合并完成后知道 audio_id，直接填进所有没有 audio_id 的 audio_item
+                # 后端按 audio_name 匹配当前音频，同时查库补全其他已入库音频的 audio_id
+                # （多轮上传最后一个音频 mergeChunks 时，其他音频已入库，可从数据库查到）
+                audio_name_for_match = audio.name
+                # 预查所有 audio_name → audio_id 映射（避免循环里重复查库）
+                audio_name_to_id = {}
+                for round_item in rounds_resolved:
+                    if not isinstance(round_item, dict):
+                        continue
+                    for audio_item in round_item.get('audios', []):
+                        if not isinstance(audio_item, dict):
+                            continue
+                        item_name = audio_item.get('audio_name') or ''
+                        if item_name and not audio_item.get('audio_id') and item_name not in audio_name_to_id:
+                            # 查库：按文件名找已入库的音频
+                            found = Audio.query.filter_by(name=item_name, deleted=False).first()
+                            if found:
+                                audio_name_to_id[item_name] = found.id
                 for round_item in rounds_resolved:
                     if not isinstance(round_item, dict):
                         continue
@@ -1714,13 +1732,22 @@ class AudioController:
                     for audio_item in audios:
                         if not isinstance(audio_item, dict):
                             continue
-                        if not audio_item.get('audio_id'):
+                        # 已有 audio_id 的不覆盖
+                        if audio_item.get('audio_id'):
+                            continue
+                        item_name = audio_item.get('audio_name') or ''
+                        # 优先用当前音频匹配
+                        if item_name == audio_name_for_match or not item_name:
                             audio_item['audio_id'] = audio_id
+                        # 其次用预查映射补全
+                        elif item_name in audio_name_to_id:
+                            audio_item['audio_id'] = audio_name_to_id[item_name]
 
                 # 从标注 JSON 提取 spl 和 playback_device_name，注入到每个 audio_item
                 # 标注 segment 里可写 spl / playback_device_name / playback_device_id
                 # playback_device_name 通过查表换成 playback_device_id
                 # 四种模式都适用：单轮单音频、单轮多音频、多轮每轮单音频、多轮每轮多音频
+                current_app.logger.info(f'[DEBUG] raw_annotations is {"truthy" if raw_annotations else "falsy"}, len={len(raw_annotations) if raw_annotations else 0}')
                 if raw_annotations:
                     # 预查设备名→ID 映射（避免循环里重复查库）
                     from backend.models.models import PlaybackDevice as _PlaybackDevice
@@ -1728,6 +1755,19 @@ class AudioController:
                     all_devs = _PlaybackDevice.query.filter_by(is_deleted=0).all()
                     for d in all_devs:
                         dev_name_to_id.setdefault(d.name, d.id)
+
+                    # 先从 rounds_config 里前端已传的 playback_device_name 查表换 ID
+                    # （多轮场景下，非最后一个文件的标注不在 raw_annotations 里）
+                    for round_item in rounds_resolved:
+                        if not isinstance(round_item, dict):
+                            continue
+                        for audio_item in round_item.get('audios', []):
+                            if not isinstance(audio_item, dict):
+                                continue
+                            if not audio_item.get('playback_device_id'):
+                                dev_name = audio_item.get('playback_device_name')
+                                if dev_name and dev_name in dev_name_to_id:
+                                    audio_item['playback_device_id'] = dev_name_to_id[dev_name]
 
                     for round_item in rounds_resolved:
                         if not isinstance(round_item, dict):

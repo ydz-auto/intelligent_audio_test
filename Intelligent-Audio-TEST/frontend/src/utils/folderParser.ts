@@ -90,7 +90,10 @@ export function groupAudioFilesByLeafFolder(
 
 /**
  * 查找与最子级文件夹同名的标注文件
- * 标注文件位于最子级文件夹的父级目录
+ * 标注文件位置（按优先级匹配）：
+ *   1. 最子级文件夹的父级目录下（如 root/folder1/round_a/audio1.wav → root/folder1/round_a.json）
+ *   2. 最子级文件夹内部（如 root/folder1/round_a/audio1.wav → root/folder1/round_a/round_a.json）
+ *   3. 与音频同级目录（无文件夹结构时，如 root/audio1.wav → root/audio1.json）
  */
 export function findAnnotationForLeafFolder(
   leafFolder: string,
@@ -98,6 +101,7 @@ export function findAnnotationForLeafFolder(
 ): File | null {
   const annotationExts = ['json', 'jsonl', 'rttm', 'stm', 'txt']
 
+  // 第一轮：匹配父级目录下的同名标注文件
   for (const file of allFiles) {
     const relativePath = (file as any).webkitRelativePath || file.name
     const parts = relativePath.split('/').filter(Boolean)
@@ -106,7 +110,23 @@ export function findAnnotationForLeafFolder(
     const fileName = parts[parts.length - 1]
     const fileNameWithoutExt = fileName.replace(/\.[^.]+$/, '')
 
-    // 检查是否与最子级文件夹同名
+    if (fileNameWithoutExt === leafFolder) {
+      const ext = fileName.split('.').pop()?.toLowerCase() || ''
+      if (annotationExts.includes(ext)) {
+        return file
+      }
+    }
+  }
+
+  // 第二轮：匹配最子级文件夹内部或与音频同级的同名标注文件
+  for (const file of allFiles) {
+    const relativePath = (file as any).webkitRelativePath || file.name
+    const parts = relativePath.split('/').filter(Boolean)
+    if (parts.length === 0) continue
+
+    const fileName = parts[parts.length - 1]
+    const fileNameWithoutExt = fileName.replace(/\.[^.]+$/, '')
+
     if (fileNameWithoutExt === leafFolder) {
       const ext = fileName.split('.').pop()?.toLowerCase() || ''
       if (annotationExts.includes(ext)) {

@@ -17,6 +17,7 @@ class TestCaseAudioConfigItem(APIModel):
     audio_name: Optional[str] = Field(None, alias='audioName', validation_alias='audioName')
     spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
     playback_device_id: Optional[Union[int, str]] = Field(None, alias='playbackDeviceId', validation_alias=AliasChoices('playback_device_id', 'playbackDeviceId'))
+    playback_device_name: Optional[str] = Field(None, alias='playbackDeviceName', validation_alias=AliasChoices('playback_device_name', 'playbackDeviceName'))
     play_order: Optional[int] = Field(None, alias='playOrder', validation_alias=AliasChoices('play_order', 'playOrder'))
 
     @field_validator('spl', mode='before')

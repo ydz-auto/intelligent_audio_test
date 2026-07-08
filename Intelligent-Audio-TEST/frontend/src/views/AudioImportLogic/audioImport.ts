@@ -1170,7 +1170,7 @@ export function useAudioImport() {
     }
   }
 
-  async function startUploadProcess(files: any[], folderGroupMappings?: Record<string, string>) {
+  async function startUploadProcess(files: any[], folderGroupMappings?: Record<string, string>, unifiedRounds?: any[]) {
     if (files.length === 0) return;
 
     uploadStatus.value = 'preparing';
@@ -1214,6 +1214,12 @@ export function useAudioImport() {
           inherit_tags: uploadOptions.inheritTags,
           algorithm_params: stripAlgorithmParamSchema(uploadOptions.algorithmParams)
         }
+        // 从统一标注文件（如 group1.json）提取的 rounds 结构覆盖 folderParser 自动推断的 rounds
+        // unifiedRounds 由 FolderImportModal.vue 解析统一标注文件后传入
+        if (unifiedRounds && unifiedRounds.length > 0) {
+          testCaseConfig.rounds = unifiedRounds
+        }
+        console.log('[audioImport] testCaseConfig.rounds:', JSON.stringify(testCaseConfig.rounds, null, 2))
       }
     }
 
@@ -1313,9 +1319,23 @@ export function useAudioImport() {
       uploadStatus.value = 'uploading';
       updateOverallProgress();
 
+      // 多轮上传时，只有最后一个音频 mergeChunks 才创建用例
+      // 之前的音频只入库（createTestCase=false），最后一次时后端从数据库按 audio_name 查到所有 audio_id
+      const hasRoundsConfig = !!testCaseConfig?.rounds?.length
+      const pendingTasks = tasks.filter(t => t.status !== 'failed')
+      const totalPending = pendingTasks.length
+
+      let processedIndex = 0
       for (const fileTask of tasks) {
         if ((uploadStatus.value as string) === 'paused' || (uploadStatus.value as string) === 'stopped') break;
-        
+
+        // 判断是否最后一个待处理文件（多轮场景下只有最后一个才创建用例）
+        const isFinalMerge = hasRoundsConfig && (processedIndex === totalPending - 1)
+        // 非最后一个且是多轮场景时，createTestCase 设为 false
+        const effectiveOptions = (hasRoundsConfig && !isFinalMerge)
+          ? { ...uploadOptions, createTestCase: false }
+          : uploadOptions
+
         // 秒传的文件 total_chunks = 0，仍然需要处理测试用例创建
         if (fileTask.status === 'completed' && fileTask.totalChunks === 0) {
           fileTask.status = 'uploading';
@@ -1323,7 +1343,7 @@ export function useAudioImport() {
           
           try {
             // 秒传时也需要调用 merge 来处理测试用例创建
-            await processMergeForExistingFile(taskId, fileTask, uploadOptions, testCaseConfig);
+            await processMergeForExistingFile(taskId, fileTask, effectiveOptions, testCaseConfig);
             fileTask.status = 'completed';
             task.completedFiles = (task.completedFiles || 0) + 1;
             saveLocalTask(task);
@@ -1335,6 +1355,7 @@ export function useAudioImport() {
             saveLocalTask(task);
           }
           updateOverallProgress();
+          processedIndex++
           continue;
         }
         
@@ -1346,7 +1367,7 @@ export function useAudioImport() {
         currentUploadingFile.value = fileTask.name;
         
         try {
-          await uploadFileChunks(taskId, fileTask, uploadOptions, testCaseConfig);
+          await uploadFileChunks(taskId, fileTask, effectiveOptions, testCaseConfig);
           fileTask.status = 'completed';
           fileTask.progress = 100;
           task.completedFiles = (task.completedFiles || 0) + 1;
@@ -1359,6 +1380,7 @@ export function useAudioImport() {
           saveLocalTask(task);
         }
         updateOverallProgress();
+        processedIndex++
       }
 
       uploadStatus.value = (task.failedFiles || 0) > 0 ? 'failed' : 'completed';
@@ -1425,8 +1447,21 @@ export function useAudioImport() {
     if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== 200 && mergeResponse.code !== 201) {
       throw new Error(mergeResponse.message || 'Failed to process existing file');
     }
-    
+
     fileTask.audioId = mergeResponse.data?.audioId;
+    // 用秒传返回的真实 audioId 更新 tcConfig.rounds 里匹配 audio_name 的 audio_id
+    // 这样最后一个文件 mergeChunks 时，前几个音频的 audio_id 已就绪
+    if (tcConfig?.rounds && fileTask.audioId) {
+      const realName = mergeResponse.data?.name || fileTask.name;
+      for (const r of tcConfig.rounds) {
+        if (!r.audios) continue;
+        for (const a of r.audios) {
+          if (a.audio_name === fileTask.name || a.audio_name === realName) {
+            a.audio_id = fileTask.audioId;
+          }
+        }
+      }
+    }
   }
 
   async function uploadFileChunks(taskId: string, fileTask: AudioUploadFile, options: any = uploadOptions, tcConfig?: TestCaseConfig) {
@@ -1495,8 +1530,20 @@ export function useAudioImport() {
     if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== 200 && mergeResponse.code !== 201) {
       throw new Error(mergeResponse.message || 'Failed to merge chunks');
     }
-    
+
     fileTask.audioId = mergeResponse.data?.audioId;
+    // 用 merge 返回的真实 audioId 更新 tcConfig.rounds 里匹配 audio_name 的 audio_id
+    if (tcConfig?.rounds && fileTask.audioId) {
+      const realName = mergeResponse.data?.name || fileTask.name;
+      for (const r of tcConfig.rounds) {
+        if (!r.audios) continue;
+        for (const a of r.audios) {
+          if (a.audio_name === fileTask.name || a.audio_name === realName) {
+            a.audio_id = fileTask.audioId;
+          }
+        }
+      }
+    }
   }
 
   function updateOverallProgress() {
@@ -2157,7 +2204,7 @@ export function useAudioImport() {
           if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
           
           selectedFilesForUpload.value = data.files;
-          await startUploadProcess(data.files, data.folderGroupMappings);
+          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRounds);
         }
       }
     });
