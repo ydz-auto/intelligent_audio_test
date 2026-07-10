@@ -338,7 +338,6 @@ const selectedAudiosDuration = computed(() => {
 });
 
 const handleClose = () => {
-  modalManager.closeAll()
   emit('close');
 };
 
