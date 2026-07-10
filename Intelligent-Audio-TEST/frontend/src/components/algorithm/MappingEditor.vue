@@ -328,7 +328,7 @@ async function autoSaveMapping(record: any, index: number) {
   
   const mappingData = {
     algorithm_type: props.algorithmType,
-    source_type: record.source || 'api',
+    source_type: record.source || props.componentType,
     source: record.source,
     source_param: record.source_param,
     source_direction: record.source_direction || 'output',

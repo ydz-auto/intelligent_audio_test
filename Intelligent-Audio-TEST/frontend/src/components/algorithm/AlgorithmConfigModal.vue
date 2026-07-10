@@ -1068,6 +1068,8 @@ async function saveAlgorithm() {
       await algorithmApi.updateDefinition(formState.type, bodyData)
     } else {
       await algorithmApi.createDefinition(bodyData)
+      // 新建模式下参考参数无法随 createDefinition 保存，算法创建成功后统一补存
+      await savePendingReferenceParams()
     }
     emit('success')
     emit('update:visible', false)
@@ -1401,19 +1403,25 @@ async function handleReferenceParamBlur(param: any, index: number) {
   }, 1000)
 }
 
+function buildReferenceParamData(p: any) {
+  return {
+    code: p.code,
+    name: p.name,
+    type: p.type,
+    annotation_code: p.annotation_code || p.code,
+    annotation_format: p.annotation_format || null,
+    field_path: p.field_path || null,
+    merge_mode: p.merge_mode || 'join',
+    help_text: p.help_text
+  }
+}
+
 async function autoSaveReferenceParams(param: any, index: number) {
+  // 新建模式下算法定义尚未创建，参考参数受外键约束无法提前自动保存，统一留待 saveAlgorithm 创建后补存
+  if (effectiveMode.value !== 'edit') return
   if (!formState.type || !param.code) return
   try {
-    const bodyData = {
-        code: param.code,
-        name: param.name,
-        type: param.type,
-        annotation_code: param.annotation_code || param.code,
-        annotation_format: param.annotation_format || null,
-        field_path: param.field_path || null,
-        merge_mode: param.merge_mode || 'join',
-        help_text: param.help_text
-      }
+    const bodyData = buildReferenceParamData(param)
     let result
     if (param.id) {
       result = await algorithmApi.updateReferenceParam(param.id, formState.type, bodyData)
@@ -1423,6 +1431,19 @@ async function autoSaveReferenceParams(param: any, index: number) {
     }
   } catch (error) {
     console.error('自动保存参考参数失败:', error)
+  }
+}
+
+async function savePendingReferenceParams() {
+  // 新建模式下，参考参数此前被跳过（算法定义未创建）；算法创建成功后统一补存
+  for (const p of formState.reference_params as any[]) {
+    if (p.id || !p.code) continue
+    try {
+      const res = await algorithmApi.createReferenceParam({ ...buildReferenceParamData(p), algorithm_type: formState.type })
+      p.id = res.id
+    } catch (e) {
+      console.error('保存参考参数失败:', e)
+    }
   }
 }
 
