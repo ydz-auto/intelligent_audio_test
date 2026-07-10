@@ -303,8 +303,8 @@ class EvaluationResultProcessor:
                         res_finished = True
                         res_failed = False
                         for dim in dims:
-                            # 如果有任何维度还在 pending 或 running，说明这个 TestResult 还没完成
-                            if dim.evaluation_status in ['pending', 'running']:
+                            # 如果有任何维度还在进行中，说明这个 TestResult 还没完成
+                            if dim.evaluation_status in ['pending', 'running', 'queued', 'calculating']:
                                 res_finished = False
                                 break
                             # 如果有任何维度评估失败，这个 TestResult 就是失败的
@@ -578,10 +578,10 @@ class EvaluationResultProcessor:
                     if not dimensions:
                         return True
                     
-                    # 检查是否所有维度都已经不是 pending 状态
+                    # 检查是否所有维度都已经不是进行中状态
                     all_completed = True
                     for dim in dimensions:
-                        if dim.evaluation_status == 'pending':
+                        if dim.evaluation_status in ['pending', 'running', 'queued', 'calculating']:
                             all_completed = False
                             break
                     
@@ -761,7 +761,8 @@ class EvaluationResultProcessor:
             return
 
         result_data = test_result.algorithm_result
-        if isinstance(result_data, str):
+        # 循环反序列化，处理可能的双重序列化旧数据
+        while isinstance(result_data, str):
             try:
                 result_data = json.loads(result_data)
             except (json.JSONDecodeError, TypeError):
@@ -770,4 +771,4 @@ class EvaluationResultProcessor:
             result_data = {}
 
         result_data['aggregated'] = aggregated
-        test_result.algorithm_result = json.dumps(result_data, ensure_ascii=False)
+        test_result.algorithm_result = result_data

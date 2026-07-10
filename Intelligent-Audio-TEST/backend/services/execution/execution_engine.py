@@ -544,7 +544,11 @@ class ExecutionEngine:
                     task.status = 'stopped'
                     task.completed_at = datetime.now(self.utc_plus_8)
                     
-                    cases = local_db_session.query(TaskCase).filter_by(task_id=task_id).all()
+                    # 只处理未完成的用例（执行中、排队中、待执行），保留已完成用例的状态
+                    cases = local_db_session.query(TaskCase).filter(
+                        TaskCase.task_id == task_id,
+                        ~TaskCase.status.in_(['completed', 'failed', 'skipped'])
+                    ).all()
                     for tc in cases:
                         tc.status = 'skipped'
                         tc.execution_status = 'stopped'
@@ -824,7 +828,7 @@ class ExecutionEngine:
                                 # 检查是否有正在评估的用例（评估可能在执行完成后才开始）
                                 evaluating_count = local_db_session.query(TaskCase).filter(
                                     TaskCase.task_id == task_id,
-                                    TaskCase.evaluation_status.in_(['running', 'calculating'])
+                                    TaskCase.evaluation_status.in_(['running', 'calculating', 'queued', 'pending'])
                                 ).count()
                                 
                                 if in_progress_count > 0 or evaluating_count > 0:
@@ -1123,7 +1127,16 @@ class ExecutionEngine:
 
                         # 如果所有测试用例都已处理完成，提前更新任务状态
                         if all_processed_cases == all_cases and running_cases == 0:
-                            if all_cases > 0:
+                            # 检查是否还有用例在评估中
+                            evaluating_cases = local_db_session.query(TaskCase).filter(
+                                TaskCase.task_id == task_id,
+                                TaskCase.evaluation_status.in_(['running', 'calculating', 'queued', 'pending'])
+                            ).count()
+
+                            if evaluating_cases > 0:
+                                # 还有用例在评估中，设为 evaluating 过渡态
+                                task.status = 'evaluating'
+                            elif all_cases > 0:
                                 if failed_cases > 0:
                                     task.status = 'failed'
                                 else:
@@ -1262,7 +1275,7 @@ class ExecutionEngine:
                                 # 检查是否还有用例在评估中
                                 evaluating_cases = local_db_session.query(TaskCase).filter(
                                     TaskCase.task_id == task_id,
-                                    TaskCase.evaluation_status.in_(['running', 'queued', 'pending'])
+                                    TaskCase.evaluation_status.in_(['running', 'calculating', 'queued', 'pending'])
                                 ).count()
                                 
                                 if evaluating_cases > 0:

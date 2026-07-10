@@ -24,9 +24,9 @@ interface TestCaseFormData {
 }
 ```
 
-## 改造方案（轮次为顶层）
+## 改造方案（结构性配置 + 独立列参数）
 
-config 简化为 `{ rounds, dimensions }`，每一轮完全自包含。
+config 只承载结构性配置（rounds/dimensions 等）。算法参数和参考参数回归 `test_cases` 表独立列（按轮分组）。
 
 ### 1. AudioConfig 移除 testType
 
@@ -50,21 +50,30 @@ interface BackgroundNoiseConfig {
 }
 ```
 
-### 3. RoundConfigItem — 轮次配置（核心接口，参数驱动）
+### 3. RoundConfigItem — 轮次配置（核心接口，只含结构性字段）
 
-> **设计原则：参数驱动，不硬编码**
+> **设计原则：结构性配置与参数分离**
 >
-> RoundConfigItem 只保留结构性字段。所有算法相关配置统一存储在 `algorithmParams` 中，
-> 由 `case_algorithm_params` 表定义驱动，DynamicForm 动态渲染。
->
-> **输入方式**：不再使用互斥单选 `inputType`。
-> 单轮支持多种输入共存——由 `algorithm_api_params` (direction=input) 定义决定，
-> 输入值同样存储在 `algorithmParams` 中（field_code = param_code）。
+> RoundConfigItem 只保留结构性字段。算法参数和参考参数不在 config.rounds[] 中，
+> 分别存 `test_cases.algorithm_params` 和 `test_cases.reference_params` 独立列（按轮分组）。
+> 算法参数由 `case_algorithm_params` 表定义驱动，DynamicForm 动态渲染。
 
 ```ts
 interface AlgorithmParamItem {
   field_code: string
   field_value: any
+}
+
+interface RoundAlgorithmParams {
+  // test_cases.algorithm_params 列的元素（按轮分组）
+  round_number: number
+  params: AlgorithmParamItem[]
+}
+
+interface RoundReferenceParams {
+  // test_cases.reference_params 列的元素（按轮分组）
+  round_number: number
+  reference_params_path: string
 }
 
 interface RoundConfigItem {
@@ -74,33 +83,9 @@ interface RoundConfigItem {
   backgroundNoise?: BackgroundNoiseConfig  // E2E 基础环境配置（轮次顶层）
   evaluation?: RoundEvaluationConfig   // 本轮评估配置
 
-  // === 算法参数（统一存储，由 case_algorithm_params 定义驱动） ===
-  // [{field_code, field_value}] 数组格式
-  // 包含：
-  //   - 输入字段（来自 algorithm_api_params direction=input）
-  //     例: {field_code:'inputText', field_value:'今天天气怎么样'}
-  //         {field_code:'inputAudio', field_value:'audio_001'}（多种输入共存）
-  //   - 用例级配置（来自 case_algorithm_params）
-  //     例: {field_code:'railDistance', field_value:'50'}
-  //         {field_code:'voiceprintEnabled', field_value:'true'}
-  //         {field_code:'interferers', field_value:'[...]'}
-  algorithmParams: AlgorithmParamItem[]
-
-  // === 参考字段（系统自动生成，只读） ===
-  referenceParamsPath?: string         // 参考参数文件路径
-
-  // === 废弃字段，全部移入 algorithmParams ===
-  // inputType      → 移除（多种输入共存，由 algorithm_api_params 定义）
-  // inputText      → {field_code:'inputText', field_value:...}
-  // inputAudioId   → {field_code:'inputAudio', field_value:...}
-  // audioId        → {field_code:'inputAudio', field_value:...}
-  // waitTime       → {field_code:'waitTime', field_value:...}
-  // railDistance    → {field_code:'railDistance', field_value:...}
-  // volumeLevel     → {field_code:'volumeLevel', field_value:...}
-  // voiceprintRegistration → {field_code:'voiceprintEnabled', ...}
-  // promptAudioId   → {field_code:'promptAudioId', field_value:...}
-  // interferers     → {field_code:'interferers', field_value:...}
-  // referenceParams → referenceParamsPath（文件路径）
+  // 算法参数和参考参数不在 config.rounds[] 中：
+  // - algorithm_params → test_cases.algorithm_params 独立列（按轮分组 [{round_number, params}]）
+  // - reference_params → test_cases.reference_params 独立列（按轮分组 [{round_number, reference_params_path}]）
 }
 ```
 
@@ -108,7 +93,7 @@ interface RoundConfigItem {
 
 > 以下接口不再直接作为 RoundConfigItem 的子字段，而是作为 DynamicForm 复杂 param_type
 > 的子编辑器数据结构。例如 `param_type=interferer_list` 的编辑器内部使用 `InterfererConfigItem`，
-> 值存储在 `algorithmParams` 中 field_code='interferers' 的 field_value 中。
+> 值存储在 `test_cases.algorithm_params` 列对应轮的 params 中 field_code='interferers' 的 field_value 中。
 
 ```ts
 interface VoiceprintConfig {
@@ -130,7 +115,7 @@ interface InterfererConfigItem {
 
 interface RoundEvaluationConfig {
   enabled: boolean
-  dimensions: DimensionConfig[]
+  dimensions: DimensionConfig[]  // 单轮维度
 }
 
 interface InterruptionConfig {
@@ -139,14 +124,15 @@ interface InterruptionConfig {
 }
 ```
 
-### 5. TestCaseConfig — config 为 rounds + dimensions
+### 5. TestCaseConfig — config 只含结构性配置
 
 ```ts
 interface TestCaseConfig {
   rounds: RoundConfigItem[]
-  dimensions: DimensionConfig[]
-  // 废弃：audios, backgroundNoise, voiceprintRegistration,
-  // interferers, roundEvaluation, railDistance, volumeLevel, promptAudioId, interruption
+  dimensions: DimensionConfig[]      // 多轮维度（用例级，跨轮聚合）
+  background_noise?: BackgroundNoiseConfig  // 用例级背景噪声（可选，轮级优先）
+  source_audio?: string
+  auto_generated?: boolean
 }
 ```
 
@@ -162,6 +148,9 @@ interface TestCaseFormData {
   algorithmType?: string
   test_type: 'api' | 'e2e'
   config: TestCaseConfig
+  // 独立列（按轮分组）
+  algorithm_params?: RoundAlgorithmParams[]
+  reference_params?: RoundReferenceParams[]
 }
 ```
 
@@ -170,49 +159,42 @@ interface TestCaseFormData {
 ```ts
 interface TestCase {
   test_type: 'api' | 'e2e'
-  config: TestCaseConfig
-  // 废弃列：reference_params → 文件+rounds[].referenceParamsPath
-  // 废弃列：algorithm_params → rounds[].algorithmParams
+  config: TestCaseConfig  // 只含结构性配置
+  // 独立列（保留，按轮分组）
+  algorithm_params?: RoundAlgorithmParams[]
+  reference_params?: RoundReferenceParams[]
 }
 ```
 
-## 废弃字段汇总
+## 独立列存储说明
 
-### config 顶层废弃
+### test_cases.algorithm_params 列（按轮分组）
 
-| 字段 | 原位置 | 新位置 |
-|------|--------|--------|
-| `config.audios` | config 顶层 | `rounds[].audios` |
-| `config.dimensions` | config 顶层 | `rounds[].evaluation.dimensions` |
-| `config.roundEvaluation` | config 顶层 | `rounds[].evaluation` |
-| `reference_params` | TestCase 列 | `rounds[].referenceParamsPath`（文件路径） |
-| `algorithm_params` | TestCase 列 | `rounds[].algorithmParams` |
+```ts
+// [{round_number, params:[{field_code, field_value}]}]
+// 包含：
+//   - 输入字段（来自 algorithm_api_params direction=input）
+//     例: {field_code:'inputText', field_value:'今天天气怎么样'}
+//         {field_code:'inputAudio', field_value:'audio_001'}（多种输入共存）
+//   - 用例级配置（来自 case_algorithm_params）
+//     例: {field_code:'railDistance', field_value:'50'}
+//         {field_code:'voiceprintEnabled', field_value:'true'}
+//         {field_code:'interferers', field_value:'[...]'}
+```
 
-### RoundConfigItem 废弃字段（参数驱动改造）
+### test_cases.reference_params 列（按轮分组）
 
-> 以下字段从 RoundConfigItem 接口移除，统一由 `case_algorithm_params` 表定义驱动，
-> 值存储在 `rounds[].algorithmParams` 中（`{field_code, field_value}` 格式）。
-
-| 字段 | 原位置 | 新位置 | 对应 field_code |
-|------|--------|--------|----------------|
-| `inputType` | RoundConfigItem | **移除**（多种输入共存） | — |
-| `inputText` | RoundConfigItem | algorithmParams | `inputText` |
-| `inputAudioId` | RoundConfigItem | algorithmParams | `inputAudio` |
-| `audioId` | RoundConfigItem | algorithmParams | `inputAudio` |
-| `waitTime` | RoundConfigItem | algorithmParams | `waitTime` |
-| `railDistance` | RoundConfigItem | algorithmParams | `railDistance` |
-| `volumeLevel` | RoundConfigItem | algorithmParams | `volumeLevel` |
-| `voiceprintRegistration` | RoundConfigItem | algorithmParams | `voiceprintEnabled` + `voiceprintAudioId` + ... |
-| `promptAudioId` | RoundConfigItem | algorithmParams | `promptAudioId` |
-| `interferers` | RoundConfigItem | algorithmParams | `interferers` |
-| `referenceParams` | RoundConfigItem | referenceParamsPath | — |
+```ts
+// [{round_number, reference_params_path}]
+// 参考参数内容仍存文件，独立列只存路径
+```
 
 ## 不变部分
 
 - `TestCaseGroup`、`TestCaseGroupItem` — 不变
 - `PlaybackDevice`、`ImportPreviewItem` — 不变
 - `AssociatedDimension`、`AlgorithmOption` — 不变
-- `DimensionConfig` — 不变（在每轮 evaluation.dimensions 中使用）
+- `DimensionConfig` — 不变（在单轮 evaluation.dimensions 和多轮 dimensions 中使用）
 
 ## 引用关系
 

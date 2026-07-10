@@ -7,7 +7,10 @@ export const TASK_STATUS_MAP: Record<string, string> = {
   'stopped': '已停止',
   'queued': '排队中',
   'skipped': '已跳过',
-  'merged': '已合并'
+  'merged': '已合并',
+  'evaluating': '评估中',
+  'reevaluate_queued': '重新评估排队中',
+  'reevaluating': '重新评估中'
 } as const;
 
 export const REPORT_TYPE_MAP: Record<string, string> = {

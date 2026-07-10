@@ -1,4 +1,4 @@
-const executionStatusMap: Record<string, string> = {'pending': 'pending', 'queued': 'queued', 'running': 'in_progress', 'evaluating': 'evaluating', 'completed': 'completed', 'stopped': 'stopped', 'failed': 'failed'};
+const executionStatusMap: Record<string, string> = {'pending': 'pending', 'queued': 'queued', 'running': 'in_progress', 'evaluating': 'evaluating', 'completed': 'completed', 'stopped': 'stopped', 'failed': 'failed', 'reevaluate_queued': 'reevaluate_queued', 'reevaluating': 'reevaluating'};
 
 const evaluationStatusMap: Record<string, string> = {'pending': 'pending', 'queued': 'queued', 'running': 'calculating', 'completed': 'completed', 'stopped': 'stopped', 'calculating': 'calculating', 'failed': 'failed'};
 
@@ -55,7 +55,7 @@ export function transformTestCaseStatus(testCaseProgress: TestCaseProgress): Tra
     } else if (evaluationStatus === 'completed') {
       finalStatus = resultStatus;
     } else if (evaluationStatus === 'pending') {
-      finalStatus = 'in_progress';
+      finalStatus = 'evaluating';
     } else {
       finalStatus = 'calculating';
     }
@@ -76,30 +76,34 @@ export function transformTaskStatus(status: string): string {
 
 export function getStatusText(status: string): string {
   const statusTextMap: Record<string, string> = {
-    'pending': '等待中', 
-    'queued': '排队中', 
-    'in_progress': '执行中', 
-    'completed': '已完成', 
-    'stopped': '已停止', 
-    'failed': '失败', 
+    'pending': '等待中',
+    'queued': '排队中',
+    'in_progress': '执行中',
+    'completed': '已完成',
+    'stopped': '已停止',
+    'failed': '失败',
     'calculating': '评估中',
-    'evaluating': '评估中'
+    'evaluating': '评估中',
+    'reevaluate_queued': '重新评估排队中',
+    'reevaluating': '重新评估中'
   };
-  
+
   return statusTextMap[status] || status;
 }
 
 export function getStatusType(status: string): string {
   const statusTypeMap: Record<string, string> = {
-    'pending': 'info', 
-    'queued': 'warning', 
-    'in_progress': 'primary', 
-    'completed': 'success', 
-    'stopped': 'warning', 
-    'failed': 'danger', 
+    'pending': 'info',
+    'queued': 'warning',
+    'in_progress': 'primary',
+    'completed': 'success',
+    'stopped': 'warning',
+    'failed': 'danger',
     'calculating': 'warning',
-    'evaluating': 'warning'
+    'evaluating': 'warning',
+    'reevaluate_queued': 'warning',
+    'reevaluating': 'primary'
   };
-  
+
   return statusTypeMap[status] || 'info';
 }

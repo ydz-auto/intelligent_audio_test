@@ -8,13 +8,15 @@
 
 **位置变更**：从 CaseForm 顶层移入 RoundConfigEditor 的每轮内部，作为 DynamicForm 的子编辑器（param_type=interferer_list）。每轮可独立配置不同的干扰人。
 
-**数据绑定变更**：v-model 绑定到 `algorithmParams` 中 field_code='interferers' 的 field_value，而不是 `round.interferers`。
+**数据绑定变更**：v-model 绑定到 `test_cases.algorithm_params 独立列`（按轮分组，对应轮的 params 中）中 field_code='interferers' 的 field_value，而不是 `round.interferers`。
+
+> **设计说明**：算法参数不再存于 `config.rounds[]` 中，而是独立存储在 `test_cases.algorithm_params` 列。该列结构为 `[{round_number, params:[{field_code, field_value}]}]`，按轮分组。干扰人配置存放在对应轮的 params 中 field_code='interferers' 的 field_value 中。`config.rounds[]` 只保留结构性字段（roundNumber/audios/backgroundNoise/evaluation）。
 
 ## Props / Events
 
 ```ts
 interface Props {
-  modelValue: AlgorithmParamItem[]     // round.algorithmParams 数组
+  modelValue: AlgorithmParamItem[]     // algorithm_params 独立列中对应轮的 params 数组
   fieldCode: string                     // 'interferers'
 }
 
@@ -85,7 +87,7 @@ interface Emits {
 > - `loop=true` → 循环播放，本轮结束时 `stop_task_audio()` 停止
 > - `loop=false` → 播放一次后自然结束（与干声行为一致）
 
-## algorithmParams 读写逻辑
+## algorithm_params 读写逻辑
 
 ```ts
 function getAlgoParamValue(params: AlgorithmParamItem[], fieldCode: string, default?: any): any {
@@ -138,9 +140,10 @@ function removeInterferer(index: number) {
 
 ```vue
 <!-- 在 DynamicForm 内部，param_type=interferer_list 时渲染 -->
+<!-- v-model 绑定 algorithm_params 独立列中对应轮的 params 数组 -->
 <template v-if="testType === 'e2e'">
   <InterfererConfigEditor
-    v-model="round.algorithmParams"
+    v-model="currentRoundParams"
     field-code="interferers"
   />
 </template>
@@ -150,7 +153,49 @@ function removeInterferer(index: number) {
 
 | 旧位置 | 新位置 |
 |--------|--------|
-| `config.interferers` | `config.rounds[].algorithmParams` 中（field_code=interferers） |
+| `config.interferers` | `test_cases.algorithm_params 独立列`（按轮分组，对应轮的 params 中，field_code=interferers） |
+
+### algorithm_params 独立列结构示例
+
+```json
+// test_cases.algorithm_params 列（按轮分组）
+[
+  {
+    "round_number": 1,
+    "params": [
+      {
+        "field_code": "interferers",
+        "field_value": [
+          {
+            "id": "interferer_001",
+            "audioId": "audio_002",
+            "playbackDeviceId": "device_02",
+            "spl": 65,
+            "startDelay": 0,
+            "loop": true
+          },
+          {
+            "id": "interferer_002",
+            "audioId": "audio_003",
+            "playbackDeviceId": "device_03",
+            "spl": 60,
+            "startDelay": 5,
+            "loop": false
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "round_number": 2,
+    "params": [
+      { "field_code": "interferers", "field_value": [] }
+    ]
+  }
+]
+```
+
+> 注意：`config.rounds[]` 只保留结构性字段（roundNumber/audios/backgroundNoise/evaluation），不再包含算法参数。干扰人配置整体作为 field_code='interferers' 的 field_value 存储。
 
 ## 引用关系
 

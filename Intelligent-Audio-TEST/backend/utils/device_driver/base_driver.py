@@ -147,6 +147,41 @@ class BaseDeviceDriver:
         """
         return True
 
+    def extract_results_from_archive(self, task_id=None, test_case_id=None, device_sn=None, **kwargs):
+        """从存档文件提取设备输出结果
+
+        当设备结果不是实时获取、而是先拉取存档文件再解析时，
+        子类可重写此方法实现非实时结果的提取逻辑。
+
+        Args:
+            task_id: 任务ID
+            test_case_id: 用例ID
+            device_sn: 设备序列号
+            **kwargs: 其他参数
+
+        Returns:
+            list: 结果列表，每项为包含 result_type / success / message 等字段的 dict；
+                  默认返回空列表表示无需存档提取
+        """
+        return []
+
+    def teardown(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+        """用例结束后清理设备状态（与 initialize 对称）
+
+        在每轮循环结束或整个用例结束时调用，用于退出功能页面、
+        停止录音、关闭 APP 等资源释放操作。
+
+        Args:
+            device_sn: 设备序列号
+            task_id: 任务ID
+            test_case_id: 测试用例ID
+            **kwargs: 其他参数
+
+        Returns:
+            bool: 是否清理成功
+        """
+        return True
+
     def set_volume(self, device_sn, level: int) -> bool:
         """设置设备系统音量(0-100)，默认不操作
         
@@ -215,4 +250,33 @@ class BaseDeviceDriver:
                     self._log(level='INFO', content=f"Task stopped during {operation_name} operation")
                     return True
         
+        return False
+
+    def _wait_for_condition(self, condition_fn, timeout=30, interval=1.0, operation_name=""):
+        """等待条件满足，带超时和停止检查
+
+        Args:
+            condition_fn: 无参可调用对象，返回 True 表示条件满足
+            timeout: 最大等待秒数
+            interval: 轮询间隔秒数
+            operation_name: 操作名称（用于日志）
+
+        Returns:
+            bool: True 表示条件满足，False 表示超时或被停止
+        """
+        import time
+        start = time.time()
+        while time.time() - start < timeout:
+            if self._check_stop(operation_name):
+                return False
+            try:
+                if condition_fn():
+                    return True
+            except Exception:
+                pass
+            time.sleep(interval)
+        self._log(
+            level='WARNING',
+            content=f"等待条件超时: {operation_name or 'condition'}, timeout={timeout}s"
+        )
         return False

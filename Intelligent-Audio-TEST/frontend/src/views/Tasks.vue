@@ -261,7 +261,7 @@
               { id: 'pause', label: '暂停', icon: 'fa-pause', type: 'secondary', show: (task: any) => task.status === 'running', disabled: (task: any) => isControlling.has(task.id) },
               { id: 'resume', label: '继续', icon: 'fa-play', type: 'secondary', show: (task: any) => ['paused', 'stopped'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => ['running', 'paused', 'queued'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'retry', label: '重试', icon: 'fa-redo', type: 'success', show: (task: any) => ['pending', 'failed'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'retry', label: '重新执行', icon: 'fa-redo', type: 'success', show: (task: any) => ['pending', 'failed', 'completed', 'stopped'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => ['completed', 'failed', 'stopped', 'paused', 'skipped', 'merged'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.has(task.id) }
             ]"

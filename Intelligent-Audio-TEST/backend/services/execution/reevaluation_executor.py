@@ -1,3 +1,4 @@
+import json
 import threading
 from backend.models.models import Task, TaskCase, TestResult, TestResultDimension
 from backend.models.database import db
@@ -136,6 +137,14 @@ class ReevaluationExecutor:
                             continue
 
                         algo_result = result.algorithm_result or {}
+                        # 循环反序列化，处理可能的双重序列化旧数据
+                        while isinstance(algo_result, str):
+                            try:
+                                algo_result = json.loads(algo_result)
+                            except (json.JSONDecodeError, ValueError):
+                                algo_result = {}
+                        if not isinstance(algo_result, dict):
+                            algo_result = {}
                         full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
                         reference_params = full_data.get(
                             'adjusted_reference_params', []
@@ -175,6 +184,14 @@ class ReevaluationExecutor:
                             continue
 
                         algo_result = result.algorithm_result or {}
+                        # 循环反序列化，处理可能的双重序列化旧数据
+                        while isinstance(algo_result, str):
+                            try:
+                                algo_result = json.loads(algo_result)
+                            except (json.JSONDecodeError, ValueError):
+                                algo_result = {}
+                        if not isinstance(algo_result, dict):
+                            algo_result = {}
                         full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
                         reference_params = full_data.get(
                             'adjusted_reference_params', []
@@ -201,6 +218,19 @@ class ReevaluationExecutor:
                                  task_id=task_id)
                     success = True
                     return
+
+                # 将不满足重新评估条件的用例的评估状态标记为已完成，避免状态不一致
+                reevaluated_case_ids = {c['test_case_id'] for c in cases_to_reevaluate}
+                skipped_tc_rels = db.session.query(TaskCase).filter(
+                    TaskCase.task_id == task_id,
+                    ~TaskCase.test_case_id.in_(reevaluated_case_ids),
+                    TaskCase.execution_status == 'completed',
+                    TaskCase.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
+                ).all()
+                for tc_rel in skipped_tc_rels:
+                    tc_rel.evaluation_status = 'completed'
+                if skipped_tc_rels:
+                    db.session.commit()
 
                 from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
 
@@ -270,6 +300,14 @@ class ReevaluationExecutor:
         API 多轮结构: rounds[].round_evaluation, roundNumber (1-indexed)
         E2E 多轮结构: rounds[].evaluation, round (0-indexed)
         """
+        # 循环反序列化，处理可能的双重序列化旧数据
+        while isinstance(algorithm_result, str):
+            try:
+                algorithm_result = json.loads(algorithm_result)
+            except (json.JSONDecodeError, ValueError):
+                algorithm_result = {}
+        if not isinstance(algorithm_result, dict):
+            algorithm_result = {}
         rounds = algorithm_result.get('rounds', [])
         is_e2e = test_type == 'e2e'
 
@@ -284,6 +322,9 @@ class ReevaluationExecutor:
         ).first()
         if tc_rel:
             tc_rel.evaluation_status = 'queued'
+            # 重置 status 为 pending，评估完成后由 update_task_case_status 统一设置最终状态
+            if tc_rel.status not in ['stopped', 'skipped']:
+                tc_rel.status = 'pending'
         db.session.commit()
 
         from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
@@ -352,6 +393,14 @@ class ReevaluationExecutor:
 
     def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, test_type, algorithm_type):
         """重新评估单轮结果（现有逻辑）"""
+        # 循环反序列化，处理可能的双重序列化旧数据
+        while isinstance(algorithm_result, str):
+            try:
+                algorithm_result = json.loads(algorithm_result)
+            except (json.JSONDecodeError, ValueError):
+                algorithm_result = {}
+        if not isinstance(algorithm_result, dict):
+            algorithm_result = {}
         db.session.query(TestResultDimension).filter_by(
             test_result_id=result_id
         ).delete()
@@ -362,6 +411,9 @@ class ReevaluationExecutor:
         ).first()
         if tc_rel:
             tc_rel.evaluation_status = 'queued'
+            # 重置 status 为 pending，评估完成后由 update_task_case_status 统一设置最终状态
+            if tc_rel.status not in ['stopped', 'skipped']:
+                tc_rel.status = 'pending'
 
         from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
         from backend.models.models import TestCase
@@ -402,6 +454,14 @@ class ReevaluationExecutor:
 
     def _compute_and_store_api_aggregated(self, result_id, algorithm_result):
         """API 结果没有顶层 aggregated，从 rounds 的 round_evaluation 中计算"""
+        # 循环反序列化，处理可能的双重序列化旧数据
+        while isinstance(algorithm_result, str):
+            try:
+                algorithm_result = json.loads(algorithm_result)
+            except (json.JSONDecodeError, ValueError):
+                algorithm_result = {}
+        if not isinstance(algorithm_result, dict):
+            algorithm_result = {}
         rounds = algorithm_result.get('rounds', [])
         if not rounds:
             return

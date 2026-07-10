@@ -8,13 +8,15 @@
 
 **位置变更**：从 CaseForm 顶层移入 RoundConfigEditor 的每轮内部，作为 DynamicForm 的子编辑器（param_type=voiceprint_editor）。每轮可独立配置不同的声纹注册。
 
-**数据绑定变更**：v-model 绑定到 `algorithmParams` 中 field_code='voiceprintEnabled' 的 field_value，而不是 `round.voiceprintRegistration`。
+**数据绑定变更**：v-model 绑定到 `test_cases.algorithm_params 独立列`（按轮分组，对应轮的 params 中）中 field_code='voiceprintEnabled' 的 field_value，而不是 `round.voiceprintRegistration`。
+
+> **设计说明**：算法参数不再存于 `config.rounds[]` 中，而是独立存储在 `test_cases.algorithm_params` 列。该列结构为 `[{round_number, params:[{field_code, field_value}]}]`，按轮分组。声纹配置（voiceprintEnabled/voiceprintAudioId/voiceprintPlaybackDeviceId/voiceprintSpl/voiceprintWaitTime）存放在对应轮的 params 中。`config.rounds[]` 只保留结构性字段（roundNumber/audios/backgroundNoise/evaluation）。
 
 ## Props / Events
 
 ```ts
 interface Props {
-  modelValue: AlgorithmParamItem[]     // round.algorithmParams 数组
+  modelValue: AlgorithmParamItem[]     // algorithm_params 独立列中对应轮的 params 数组
   fieldCode: string                     // 'voiceprintEnabled' 等
 }
 
@@ -77,7 +79,7 @@ interface Emits {
 </template>
 ```
 
-## algorithmParams 读写逻辑
+## algorithm_params 读写逻辑
 
 ```ts
 function getAlgoParamValue(params: AlgorithmParamItem[], fieldCode: string, default?: any): any {
@@ -136,9 +138,10 @@ E2E test_type 时渲染（通用能力，不绑定算法类型）。作为 **Dyn
 
 ```vue
 <!-- 在 DynamicForm 内部，param_type=voiceprint_editor 时渲染 -->
+<!-- v-model 绑定 algorithm_params 独立列中对应轮的 params 数组 -->
 <template v-if="testType === 'e2e'">
   <VoiceprintConfigEditor
-    v-model="round.algorithmParams"
+    v-model="currentRoundParams"
     field-code="voiceprintEnabled"
   />
 </template>
@@ -148,7 +151,33 @@ E2E test_type 时渲染（通用能力，不绑定算法类型）。作为 **Dyn
 
 | 旧位置 | 新位置 |
 |--------|--------|
-| `config.voiceprintRegistration` | `config.rounds[].algorithmParams` 中（field_code=voiceprintEnabled/voiceprintAudioId/...） |
+| `config.voiceprintRegistration` | `test_cases.algorithm_params 独立列`（按轮分组，对应轮的 params 中，field_code=voiceprintEnabled/voiceprintAudioId/...） |
+
+### algorithm_params 独立列结构示例
+
+```json
+// test_cases.algorithm_params 列（按轮分组）
+[
+  {
+    "round_number": 1,
+    "params": [
+      { "field_code": "voiceprintEnabled", "field_value": true },
+      { "field_code": "voiceprintAudioId", "field_value": "audio_001" },
+      { "field_code": "voiceprintPlaybackDeviceId", "field_value": "device_01" },
+      { "field_code": "voiceprintSpl", "field_value": 70 },
+      { "field_code": "voiceprintWaitTime", "field_value": 5 }
+    ]
+  },
+  {
+    "round_number": 2,
+    "params": [
+      { "field_code": "voiceprintEnabled", "field_value": false }
+    ]
+  }
+]
+```
+
+> 注意：`config.rounds[]` 只保留结构性字段（roundNumber/audios/backgroundNoise/evaluation），不再包含算法参数。
 
 ## 引用关系
 

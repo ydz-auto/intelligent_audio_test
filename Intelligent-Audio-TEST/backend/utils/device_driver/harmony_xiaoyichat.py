@@ -70,8 +70,9 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception:
             self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
             return False
-        # 开启录屏
-        self._record_file_name = f"{test_case_id}.mp4"
+        # 开启录屏（文件名含轮次号，避免多轮冲突）
+        round_number = kwargs.get('round_number', 0)
+        self._record_file_name = f"{test_case_id}_r{round_number}.mp4"
         self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY,
                         '--ps', 'CustomizedFileName', self._record_file_name)
         self._log(level='INFO', content=f"启动录屏: {self._record_file_name}", task_id=task_id,
@@ -81,11 +82,15 @@ class Xiaoyilivechat(HarmonyDriver):
 
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
-        # 等待小艺回复结束（"正在听…"出现表示回复完毕）
-        while not driver.find_component(By.text('说话可打断')):
-            time.sleep(1)
-        while not driver.find_component(By.text('正在听…')):
-            time.sleep(1)
+        # 等待小艺回复结束（带超时和停止检查）
+        self._wait_for_condition(
+            lambda: driver.find_component(By.text('说话可打断')),
+            timeout=60, interval=1, operation_name="post_process_说话可打断"
+        )
+        self._wait_for_condition(
+            lambda: driver.find_component(By.text('正在听…')),
+            timeout=60, interval=1, operation_name="post_process_正在听"
+        )
         # 停止录屏
         self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY)
         self._log(level='INFO', content="停止录屏", task_id=task_id, test_case_id=test_case_id)
@@ -99,13 +104,13 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception as e:
             self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
         driver.wait(5)
-        # 提取聊天文本，未识别到则返回 None
+        # 提取聊天文本，取最后一条（本轮），未识别到则返回 None
         question_components = driver.find_all_components(By.xpath(
             '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Row/Text'))
-        self.question_text = question_components[0].getText() if question_components else None
+        self.question_text = question_components[-1].getText() if question_components else None
         answer_components = driver.find_all_components(By.xpath(
             '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Column/Column/Stack/Stack/Stack/Row/Column/__Common__/Column/List/ListItem/Stack/__Common__/Stack/Text'))
-        self.answer_text = answer_components[0].getText() if answer_components else None
+        self.answer_text = answer_components[-1].getText() if answer_components else None
 
         return True
 

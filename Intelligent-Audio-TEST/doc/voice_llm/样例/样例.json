@@ -10,7 +10,14 @@
           "correctnessType": "exact",
           "text": " ",
           "spl": 65.0,
-          "playback_device_name": "0.5m+180°"
+          "playback_device_name": "0.5m+180°",
+          "rail_distance": 80,
+          "volume_level": 60,
+          "interferers": [],
+          "voiceprint_enabled": false,
+          "voiceprint_spl": 70.0,
+          "voiceprint_wait_time": 5.0,
+          "input_text": "请播放斐波那契数列前10项"
         }
       ]
     },
@@ -24,7 +31,14 @@
           "correctnessType": "",
           "text": " ",
           "spl": 70.0,
-          "playback_device_name": "4m+135°"
+          "playback_device_name": "4m+135°",
+          "rail_distance": 80,
+          "volume_level": 60,
+          "interferers": [],
+          "voiceprint_enabled": false,
+          "voiceprint_spl": 70.0,
+          "voiceprint_wait_time": 5.0,
+          "input_text": "如果你现在需要给第一对的男人写一段寄语"
         }
       ]
     },
@@ -38,7 +52,14 @@
           "correctnessType": "",
           "text": " ",
           "spl": 60.0,
-          "playback_device_name": "0.5m+90°"
+          "playback_device_name": "0.5m+90°",
+          "rail_distance": 80,
+          "volume_level": 60,
+          "interferers": [],
+          "voiceprint_enabled": false,
+          "voiceprint_spl": 70.0,
+          "voiceprint_wait_time": 5.0,
+          "input_text": "你的扮演我老师吗"
         }
       ]
     }

@@ -1,10 +1,10 @@
-# 02_businessTypes 适配（轮次为顶层）
+# 02_businessTypes 适配（结构性配置 + 独立列参数）
 
 > 文件：`frontend/src/shared/types/businessTypes.ts`
 
 ## 改造方案
 
-### 1. TestCase.config 简化（config 只剩 rounds + dimensions）
+### 1. TestCase.config 简化（config 只含结构性配置）
 
 ```ts
 interface TestCase {
@@ -14,20 +14,21 @@ interface TestCase {
 
   config: {
     rounds: RoundConfigItem[]
-    dimensions: DimensionConfig[]
-    // 废弃：audios, backgroundNoise, voiceprintRegistration,
-    // interferers, roundEvaluation, railDistance, volumeLevel, promptAudioId, interruption
+    dimensions: DimensionConfig[]          // 多轮维度
+    background_noise?: BackgroundNoiseConfig  // 用例级
+    source_audio?: string
+    auto_generated?: boolean
   }
 
   test_type: 'api' | 'e2e'
 
-  // 废弃列（过渡期保留）
-  // reference_params → 文件 + config.rounds[].referenceParamsPath
-  // algorithm_params → config.rounds[].algorithmParams
+  // 独立列（保留，按轮分组）
+  algorithm_params?: RoundAlgorithmParams[]
+  reference_params?: RoundReferenceParams[]
 }
 ```
 
-### 2. RoundConfigItem（完整结构）
+### 2. RoundConfigItem（只含结构性字段）
 
 ```ts
 interface AlgorithmParamItem {
@@ -35,28 +36,39 @@ interface AlgorithmParamItem {
   field_value: any
 }
 
+interface RoundAlgorithmParams {
+  // test_cases.algorithm_params 列的元素（按轮分组）
+  round_number: number
+  params: AlgorithmParamItem[]
+}
+
+interface RoundReferenceParams {
+  // test_cases.reference_params 列的元素（按轮分组）
+  round_number: number
+  reference_params_path: string
+}
+
 interface RoundConfigItem {
   roundNumber: number
   audios?: AudioConfig[]
   backgroundNoise?: BackgroundNoiseConfig
-
   evaluation?: RoundEvaluationConfig
-
-  referenceParamsPath?: string
-  algorithmParams?: AlgorithmParamItem[]
+  // 算法参数和参考参数不在 config.rounds[] 中：
+  // - algorithm_params → test_cases.algorithm_params 独立列（按轮分组）
+  // - reference_params → test_cases.reference_params 独立列（按轮分组）
 }
 ```
 
 > **说明**：
 > - 无 `inputType` 字段（已废弃，多种输入共存）
-> - `inputText`/`inputAudioId`/`audioId` 移入 `algorithmParams`（field_code = inputText/inputAudio）
-> - `waitTime` 移入 `algorithmParams`（field_code = waitTime）
-> - `railDistance`/`volumeLevel` 移入 `algorithmParams`（field_code = railDistance/volumeLevel）
-> - `voiceprintRegistration` 移入 `algorithmParams`（field_code = voiceprintEnabled 等）
-> - `promptAudioId` 移入 `algorithmParams`（field_code = promptAudioId）
-> - `interferers` 移入 `algorithmParams`（field_code = interferers）
+> - `inputText`/`inputAudioId`/`audioId` 在 `algorithm_params` 独立列对应轮的 params 中（field_code = inputText/inputAudio）
+> - `waitTime` 在 `algorithm_params` 独立列对应轮的 params 中（field_code = waitTime）
+> - `railDistance`/`volumeLevel` 在 `algorithm_params` 独立列对应轮的 params 中（field_code = railDistance/volumeLevel）
+> - `voiceprintRegistration` 在 `algorithm_params` 独立列对应轮的 params 中（field_code = voiceprintEnabled 等）
+> - `promptAudioId` 在 `algorithm_params` 独立列对应轮的 params 中（field_code = promptAudioId）
+> - `interferers` 在 `algorithm_params` 独立列对应轮的 params 中（field_code = interferers）
 > - `backgroundNoise` 保留在轮次顶层（E2E 基础环境配置）
-> - `algorithmParams` 格式为 `[{field_code, field_value}]` 数组，由 `case_algorithm_params` 表驱动
+> - `algorithm_params` 独立列格式为 `[{round_number, params:[{field_code, field_value}]}]`，由 `case_algorithm_params` 表驱动
 
 ### 3. AudioConfig 适配
 
@@ -64,7 +76,7 @@ interface RoundConfigItem {
 
 ### 4. EvaluationDimensionsConfig 废弃
 
-用例级评测维度不再存在。每轮自带 `evaluation.dimensions`。
+用例级评测维度不再存在。每轮自带 `evaluation.dimensions`（单轮维度），`config.dimensions` 存多轮维度。
 
 ### 5. Task 接口适配
 

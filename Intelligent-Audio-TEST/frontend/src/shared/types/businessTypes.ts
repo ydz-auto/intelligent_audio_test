@@ -1,7 +1,7 @@
 import type { TestCaseConfig, RoundAlgorithmParams, RoundReferenceParams } from '../../components/common/test-case/TestCaseModal/types';
 
 export type TaskType = 'api' | 'e2e' | 'playback' | 'evaluation' | 'report' | 'task' | 'execution' | 'comparison' | 'performance' | 'stress' | 'audio_import';
-export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused' | 'stopped' | 'queued' | 'skipped';
+export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused' | 'stopped' | 'queued' | 'skipped' | 'evaluating' | 'reevaluate_queued' | 'reevaluating';
 
 export interface Task {
     id: string | number;

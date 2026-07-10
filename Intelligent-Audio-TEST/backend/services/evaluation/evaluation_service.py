@@ -3,6 +3,7 @@ import traceback
 import queue
 import threading
 import json
+from datetime import datetime, timezone, timedelta
 from threading import Lock
 from backend.models.models import Dimension, TestResultDimension, TestCase, TaskCase, Task
 from backend.models.database import db
@@ -437,7 +438,8 @@ class EvaluationService:
         Returns:
             dict: 单轮扁平数据，若轮次不存在返回 None
         """
-        if isinstance(algorithm_result, str):
+        # 循环反序列化，处理可能的双重序列化旧数据
+        while isinstance(algorithm_result, str):
             try:
                 algorithm_result = json.loads(algorithm_result)
             except (json.JSONDecodeError, TypeError):
@@ -1041,9 +1043,19 @@ class EvaluationService:
                 if task:
                     task.completed_cases = completed_cases
                     task.failed_cases = failed_cases
-                    
+
+                    # 当任务处于评估过渡态时，检查是否所有用例都已完成评估
                     if task.status == 'evaluating':
-                        task.status = 'completed'
+                        # 检查是否还有未完成评估的用例
+                        pending_eval_count = local_db_session.query(TaskCase).filter(
+                            TaskCase.task_id == task_id,
+                            TaskCase.evaluation_status.in_(['running', 'calculating', 'queued', 'pending'])
+                        ).count()
+                        if pending_eval_count == 0:
+                            # 所有用例评估完成，更新任务最终状态
+                            task.status = 'failed' if failed_cases > 0 else 'completed'
+                            if task.status in ['completed', 'failed']:
+                                task.completed_at = datetime.now(timezone(timedelta(hours=8)))
                     
                     local_db_session.commit()
                     

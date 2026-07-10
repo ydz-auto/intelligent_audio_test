@@ -1,3 +1,4 @@
+import json
 from flask import request, current_app
 from backend.models.models import Task, Tag, TaskCase, TaskDevice, TaskAPI, TestCase, TestResult, TestResultDimension, Log, Dimension
 from backend.models.database import db
@@ -125,6 +126,14 @@ class TaskController:
                     continue
 
                 algo_result = result.algorithm_result or {}
+                # 循环反序列化，处理可能的双重序列化旧数据
+                while isinstance(algo_result, str):
+                    try:
+                        algo_result = json.loads(algo_result)
+                    except (json.JSONDecodeError, ValueError):
+                        algo_result = {}
+                if not isinstance(algo_result, dict):
+                    algo_result = {}
                 full_data = load_full_result_data(
                     result.result_data,
                     getattr(result, 'result_data_path', None)
