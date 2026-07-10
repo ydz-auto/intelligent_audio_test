@@ -175,6 +175,8 @@ class E2EExecutor(BaseExecutor):
             all_round_results = []
             last_adjusted_ref_params = None
             execution_success = True
+            # rounds_data: 增量构建的 algorithm_result.rounds[]，每轮采集后追加并更新 DB
+            rounds_data = []
 
             for round_idx, round_config in enumerate(rounds):
                 if not isinstance(round_config, dict):
@@ -222,6 +224,14 @@ class E2EExecutor(BaseExecutor):
                     )
                     self._teardown_env_devices_for_round(env_states, task_id)
                     execution_success = False
+                    # 占位：保证 rounds_data 索引对齐
+                    rounds_data.append({
+                        'round': round_idx,
+                        'input': {},
+                        'output': {},
+                        'latency': None,
+                        'evaluation': {},
+                    })
                     continue
 
                 # post_process（音量恢复由驱动内部管理）
@@ -274,18 +284,56 @@ class E2EExecutor(BaseExecutor):
                         algorithm_type=algorithm_type, test_case_id=test_case_id
                     )
 
-                    # 构建本轮 algo_result 并提交评估
-                    round_algo_result = {}
+                    # 构建本轮 round_data 并追加到 rounds_data
+                    case_rounds = case_config.get('rounds', [])
+                    round_cfg = case_rounds[round_idx] if round_idx < len(case_rounds) else {}
+                    audios = round_cfg.get('audios', [])
+                    first_audio = audios[0] if audios else {}
+                    audio_name = first_audio.get('audio_name') or first_audio.get('name', '')
+                    audio_path = first_audio.get('audio_path') or first_audio.get('path', '')
+
+                    round_output = {}
                     mapped_output_keys = get_field_mapper().get_mapped_device_output_field_keys(algorithm_type)
                     for key in mapped_output_keys:
                         if primary.get(key):
-                            round_algo_result[key] = primary[key]
+                            round_output[key] = primary[key]
 
+                    latency = primary.get('response_time') or primary.get('latency')
+
+                    round_data = {
+                        'round': round_idx,
+                        'input': {
+                            'audio_name': audio_name,
+                            'audio_path': audio_path,
+                            'type': 'audio',
+                        },
+                        'output': round_output,
+                        'latency': latency,
+                        'evaluation': {},
+                    }
+                    rounds_data.append(round_data)
+
+                    # 增量更新 TestResult.algorithm_result（含 rounds[]），供评估服务提取单轮数据
+                    current_algo_result = {
+                        'test_type': 'e2e',
+                        'algorithm_type': algorithm_type,
+                        'total_rounds': len(rounds),
+                        'rounds': rounds_data,
+                        'aggregated': {},
+                    }
+                    self._update_test_result(
+                        result_id=result_id,
+                        algo_result=current_algo_result,
+                        execution_status='running',
+                        task_id=task_id,
+                    )
+
+                    # 提交单轮评估（传入完整 algo_result，evaluate_case 内部提取 rounds[round_idx]）
                     self._evaluate_result(
                         task_id=task_id,
                         result_id=result_id,
                         test_case_id=test_case_id,
-                        algo_result=round_algo_result,
+                        algo_result=current_algo_result,
                         case_config=case_config or {},
                         case_reference_params=case_reference_params,
                         algorithm_type=algorithm_type,
@@ -330,7 +378,50 @@ class E2EExecutor(BaseExecutor):
                 self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
                 return False
 
-            # ── 循环后：更新 TestResult 的最终 algo_result 与状态 ──
+            # ── 循环后：构建最终 algo_result 并更新 TestResult ──
+            final_algo_result = self._build_e2e_algorithm_result(task_id, all_round_results, case_config, algorithm_type)
+
+            latency_values = []
+            for r in all_round_results:
+                lat = r.get('response_time') or r.get('latency')
+                if lat is not None:
+                    try:
+                        latency_values.append(float(lat))
+                    except (ValueError, TypeError):
+                        pass
+            avg_response_time = round(sum(latency_values) / len(latency_values), 4) if latency_values else 0
+
+            self._update_test_result(
+                result_id=result_id,
+                algo_result=final_algo_result,
+                execution_status='completed' if execution_success else 'failed',
+                response_time=avg_response_time,
+                error_message=None if execution_success else "多轮测试存在失败轮次",
+                task_id=task_id,
+            )
+
+            # ── 整体评估：对所有轮次的顶层 dimensions 配置提交 round_number=None 评估 ──
+            # case_config.dimensions 是用例级整体评估维度（与 rounds[].evaluation.dimensions 区分）
+            if execution_success and case_config and case_config.get('dimensions'):
+                self._log(
+                    level='INFO',
+                    content=f"提交整体评估: result_id={result_id}, dimensions={json.dumps(case_config.get('dimensions'), ensure_ascii=False)[:200]}",
+                    task_id=task_id, test_case_id=test_case_id,
+                )
+                self._evaluate_result(
+                    task_id=task_id,
+                    result_id=result_id,
+                    test_case_id=test_case_id,
+                    algo_result=final_algo_result,
+                    case_config=case_config or {},
+                    case_reference_params=case_reference_params,
+                    algorithm_type=algorithm_type,
+                    test_type='e2e',
+                    case_algorithm_params=data.get('case_algorithm_params'),
+                    round_number=None  # 整体评估
+                )
+
+            # ── 更新 TaskCase 状态 ──
             success = self._process_results(
                 task_id, case_name, tc_rel_id, test_case_id, all_round_results, case_config,
                 case_reference_params=case_reference_params,
@@ -720,54 +811,17 @@ class E2EExecutor(BaseExecutor):
             kwargs.update(extra_params)
 
             if is_multi_round:
-                # 多轮场景：评估已在循环内提交，此处仅更新 TestResult 与 TaskCase 状态
+                # 多轮场景：algo_result 和 TestResult 已在循环后更新，整体评估已提交
+                # 此处仅更新 TaskCase 状态
                 execution_success = precomputed_execution_success if precomputed_execution_success is not None else all(
                     r.get('raw_results', {}).get('success', False) for r in all_results
                 )
 
-                algo_result = self._build_e2e_algorithm_result(task_id, all_results, case_config, algorithm_type)
-
-                latency_values = []
-                for r in all_results:
-                    lat = r.get('response_time') or r.get('latency')
-                    if lat is not None:
-                        try:
-                            latency_values.append(float(lat))
-                        except (ValueError, TypeError):
-                            pass
-                avg_response_time = round(sum(latency_values) / len(latency_values), 4) if latency_values else 0
-
-                # 更新预创建的 TestResult
                 result_id = precreated_result_id
-                if result_id:
-                    self._update_test_result(
-                        result_id=result_id,
-                        algo_result=algo_result,
-                        execution_status='completed' if execution_success else 'failed',
-                        response_time=avg_response_time,
-                        error_message=None if execution_success else "多轮测试存在失败轮次",
-                        task_id=task_id,
-                    )
-                else:
-                    # 兜底：若未预创建（旧路径），则保存新记录
-                    first_result = all_results[0] if all_results else {}
-                    device_id = first_result.get('device_id')
-                    result_id = self._save_result(
-                        task_id=task_id,
-                        test_case_id=test_case_id,
-                        result_data={'multi_round': True, 'total_rounds': algo_result.get('total_rounds', 0)},
-                        algo_result=algo_result,
-                        algorithm_type=algorithm_type,
-                        device_id=device_id,
-                        api_id=None,
-                        execution_status='completed' if execution_success else 'failed',
-                        response_time=avg_response_time,
-                        error_message=None if execution_success else "多轮测试存在失败轮次"
-                    )
 
                 self._log(
                     level='DEBUG',
-                    content=f"[_process_results] 多轮结果更新 result_id={result_id}, total_rounds={algo_result.get('total_rounds')}, execution_success={execution_success}",
+                    content=f"[_process_results] 多轮 TaskCase 状态更新: result_id={result_id}, execution_success={execution_success}",
                     task_id=task_id,
                     test_case_id=test_case_id
                 )

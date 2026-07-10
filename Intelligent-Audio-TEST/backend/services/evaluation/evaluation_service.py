@@ -422,15 +422,64 @@ class EvaluationService:
                 except Exception as e:
                     self._log(level='error', content=f"加载维度配置失败: {str(e)}", category='system')
     
+    def _extract_round_eval_data(self, algorithm_result, round_number):
+        """从多轮 algorithm_result 中提取单轮评估数据
+
+        当 round_number 不为 None 时，从 rounds[round_number] 提取该轮的扁平字段
+        （asr_text 等），供评估端点直接使用。
+
+        Args:
+            algorithm_result: 完整的 algorithm_result（含 rounds[] 结构）
+            round_number: 0-indexed 轮次编号
+
+        Returns:
+            dict: 单轮扁平数据，若轮次不存在返回 None
+        """
+        if isinstance(algorithm_result, str):
+            try:
+                algorithm_result = json.loads(algorithm_result)
+            except (json.JSONDecodeError, TypeError):
+                return None
+
+        if not isinstance(algorithm_result, dict):
+            return None
+
+        rounds = algorithm_result.get('rounds', [])
+        if not rounds or round_number >= len(rounds):
+            return None
+
+        round_data = rounds[round_number]
+        output = round_data.get('output', {})
+
+        # 构建扁平结构，把 rounds[i].output 的字段提升到顶层
+        flat = dict(output) if isinstance(output, dict) else {}
+        if 'latency' in round_data:
+            flat['latency'] = round_data['latency']
+
+        return flat
+
     def evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **kwargs):
         field_mapper = get_field_mapper()
         test_type = kwargs.get('test_type', 'api')
         round_number = kwargs.get('round_number')  # 多轮评估: 轮次编号 (None=整体评估, 0-indexed)
-        
+
+        # 多轮场景：round_number 不为 None 时，从 algorithm_result.rounds[i] 提取单轮扁平数据
+        if round_number is not None:
+            extracted = self._extract_round_eval_data(algorithm_result, round_number)
+            if extracted is None:
+                self._log(
+                    level='WARNING',
+                    content=f"轮次 {round_number} 数据不存在，跳过评估",
+                    task_id=task_id, test_case_id=test_case_id
+                )
+                return False
+            # 用单轮扁平数据替换整体结构
+            algorithm_result = extracted
+
         # DEBUG: 记录传入的 result_id 值和类型
         self._log(
             level='DEBUG',
-            content=f"[DEBUG evaluate_case] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, test_case_id={test_case_id}, test_type={test_type}",
+            content=f"[DEBUG evaluate_case] 传入参数: task_id={task_id}, result_id={result_id}, result_id_type={type(result_id)}, test_case_id={test_case_id}, test_type={test_type}, round_number={round_number}",
             task_id=task_id,
             test_case_id=test_case_id
         )
