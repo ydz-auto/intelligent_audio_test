@@ -1,4 +1,4 @@
-from flask import request
+﻿from flask import request
 from backend.models.models import (
     Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase,
     ReportMetricStats, ReportComparisonMatrix, Task, TestResult, TestResultDimension,
@@ -17,6 +17,7 @@ from backend.controllers.report_controller_base import ReportControllerBase
 from backend.controllers.report_controller_task import ReportControllerTask
 from backend.app import socketio
 from datetime import datetime, timedelta, timezone
+from backend.utils.common.query_utils import now_cst
 import json
 import traceback
 import threading
@@ -168,7 +169,7 @@ class ReportControllerSecondary(ReportControllerBase):
             "task_ids": task_ids,
             "task_names": [],
             "matrix": comparison_matrix,
-            "generated_at": datetime.now(timezone(timedelta(hours=8))).isoformat()
+            "generated_at": now_cst().isoformat()
         }
 
     @staticmethod
@@ -422,7 +423,7 @@ class ReportControllerSecondary(ReportControllerBase):
                     task_ids, reports, all_dimensions
                 )
 
-                name = f"二次对比报告_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d%H%M%S')}"
+                name = f"二次对比报告_{now_cst().strftime('%Y%m%d%H%M%S')}"
                 new_report = Report(
                     name=name,
                     type=ReportType.SECONDARY_COMPARISON.value,

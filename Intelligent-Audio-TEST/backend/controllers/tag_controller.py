@@ -1,4 +1,4 @@
-from flask import request
+﻿from flask import request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from backend.models.models import Tag, TagCategory
@@ -16,6 +16,7 @@ from backend.schemas.testcase import (
     TagListData,
 )
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ NAME_MAX_LENGTH = 50
 DESCRIPTION_MAX_LENGTH = 500
 
 def utc8now():
-    return datetime.now(timezone(timedelta(hours=8)))
+    return now_cst()
 
 def escape_like_pattern(pattern: str) -> str:
     return pattern.replace('%', '\\%').replace('_', '\\_')

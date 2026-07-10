@@ -1,4 +1,4 @@
-from flask import request,current_app
+﻿from flask import request,current_app
 from backend.models.models import SPLMapping, PlaybackDevice, Audio, CalibrationHistory
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
@@ -24,6 +24,7 @@ from backend.schemas.spl import (
     StopTestToneRequest,
 )
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 import time
 
 class SPLController:
@@ -361,7 +362,7 @@ class SPLController:
                     elif device.current_spl_mapping_id == mapping.id:
                         device.current_spl_mapping_id = None
 
-            mapping.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            mapping.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "SPL 映射记录更新成功")
         except Exception as e:
@@ -381,12 +382,12 @@ class SPLController:
                 device = db.session.get(PlaybackDevice, mapping.device_id)
                 if device and device.current_spl_mapping_id == mapping.id:
                     device.current_spl_mapping_id = None
-                    device.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    device.updated_at = now_cst()
             
             # 如果存在多设备关联同一映射的情况（虽然目前逻辑是 1:1 或 N:1），也可以通过 query 清理
             PlaybackDevice.query.filter_by(current_spl_mapping_id=mapping.id).update({
                 'current_spl_mapping_id': None,
-                'updated_at': datetime.now(timezone(timedelta(hours=8)))
+                'updated_at': now_cst()
             })
 
             db.session.delete(mapping)
@@ -432,7 +433,7 @@ class SPLController:
             )
             db.session.add(history)
             
-            mapping.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            mapping.updated_at = now_cst()
             db.session.commit()
             
             log_and_emit('info', 'SPL_CALIBRATION', f'校准完成: {mapping.id} - {mapping.name}', category='spl', task_id=None, device_id=mapping.device_id)

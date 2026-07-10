@@ -10,21 +10,10 @@ from backend.utils.common.result_data_store import load_full_result_data
 from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
 from backend.schemas.report import CompareReportsRequest
 from datetime import datetime, timedelta, timezone
+from backend.utils.common.query_utils import now_cst
 import json
 from backend.controllers.report_controller_base import ReportControllerBase
 from backend.schemas.report import ReportIdData
-
-
-def _infer_param_type(param_key: str) -> str:
-    """根据参数键名推断 param_type"""
-    key_lower = param_key.lower()
-    if 'rttm' in key_lower:
-        return 'rttm'
-    if 'stm' in key_lower:
-        return 'stm'
-    if 'audio' in key_lower:
-        return 'audio'
-    return 'text'
 
 
 class ReportControllerCompare(ReportControllerBase):
@@ -188,7 +177,7 @@ class ReportControllerCompare(ReportControllerBase):
                 )
                 case_metrics[resource] = dim_values
             
-            audios_list = ReportControllerCompare._build_audios_list_compare(test_case, report_task_type)
+            audios_list = ReportControllerBase._build_audios_list(test_case, mode='compare')
             
             case_obj = {
                 "id": test_case.id,
@@ -231,7 +220,7 @@ class ReportControllerCompare(ReportControllerBase):
                     # 扁平列表格式，与 task_controller.py 一致
                     for param_key, param_value in combined_data.items():
                         if param_key and param_value is not None:
-                            param_type = _infer_param_type(param_key)
+                            param_type = ReportControllerBase._infer_param_type(param_key)
                             case_obj["algorithm_results"].append({
                                 'device': resource,
                                 'param_code': param_key,
@@ -274,123 +263,6 @@ class ReportControllerCompare(ReportControllerBase):
             }
         
         return reference_params_dict
-
-    @staticmethod
-    def _build_audios_list_compare(test_case, report_task_type):
-        config = test_case.config or {}
-        rounds = config.get('rounds', [])
-        if not rounds:
-            return []
-        
-        audios_list = []
-        
-        # 收集所有轮的设备 ID
-        all_device_ids = set()
-        for round_item in rounds:
-            if not isinstance(round_item, dict):
-                continue
-            for cfg in round_item.get('audios', []):
-                dev_id = cfg.get('device_id')
-                if dev_id:
-                    all_device_ids.add(dev_id)
-        
-        devices = {}
-        if all_device_ids:
-            device_list = Device.query.filter(Device.id.in_(list(all_device_ids))).all()
-            devices = {d.id: d.name for d in device_list}
-        
-        # 双记录架构：所有音频属于记录的 test_type
-        record_test_type = test_case.test_type or 'api'
-        
-        # 按轮次收集音频
-        per_round_dry = []
-        noise_audios = []
-        for round_item in rounds:
-            if not isinstance(round_item, dict):
-                continue
-            round_number = round_item.get('roundNumber', 1)
-            round_dry = []
-            
-            for cfg in round_item.get('audios', []):
-                audio_id = cfg.get('audio_id')
-                if audio_id:
-                    audio = db.session.get(Audio, audio_id)
-                    if audio:
-                        dev_id = cfg.get('device_id')
-                        round_dry.append({
-                            "audio_type": record_test_type,
-                            "id": audio.id,
-                            "filename": audio.original_filename or audio.name,
-                            "duration": audio.duration,
-                            "url": f"/api/v1/audios/{audio.id}/stream",
-                            "spl": cfg.get('spl'),
-                            "play_order": cfg.get('play_order'),
-                            "device_id": dev_id,
-                            "device_name": devices.get(dev_id) if dev_id else None,
-                            "roundNumber": round_number,
-                        })
-            
-            # 噪声
-            background_noise = round_item.get('backgroundNoise') or {}
-            if background_noise.get('audio_id'):
-                noise_audio = db.session.get(Audio, background_noise['audio_id'])
-                if noise_audio:
-                    noise_audios.append({
-                        "audio_type": "noise",
-                        "id": noise_audio.id,
-                        "filename": noise_audio.name,
-                        "duration": noise_audio.duration,
-                        "url": f"/api/v1/audios/{noise_audio.id}/stream",
-                        "noise_spl": background_noise.get('spl'),
-                        "roundNumber": round_number,
-                    })
-            
-            audios_list.extend(round_dry)
-            per_round_dry.append(round_dry)
-        
-        # 每轮内部排序
-        for round_dry in per_round_dry:
-            round_dry.sort(key=lambda x: (x.get('play_order') is None, x.get('play_order') or 999))
-        
-        # 获取 overlap 参数（取首轮配置）
-        first_round = rounds[0] if rounds else {}
-        overlap_config = {
-            'algorithm_params': first_round.get('algorithmParams', {}) if isinstance(first_round, dict) else {}
-        }
-        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
-        overlap_time = CaseParameterExtractor.get_overlap_time(overlap_config) if overlap_config else 0
-        overlap_rate = CaseParameterExtractor.get_overlap_rate(overlap_config) if overlap_config else 0
-        
-        # 按轮次计算 timeline
-        global_offset = 0
-        for round_dry in per_round_dry:
-            prev_end_time = 0
-            for i, audio_item in enumerate(round_dry):
-                duration = audio_item.get('duration') or 0
-                if i == 0:
-                    timeline_start = global_offset
-                else:
-                    if overlap_time and overlap_time > 0:
-                        timeline_start = prev_end_time - overlap_time
-                        if timeline_start < global_offset:
-                            timeline_start = global_offset
-                    elif overlap_rate is not None and overlap_rate > 0:
-                        elapsed = prev_end_time - global_offset
-                        timeline_start = global_offset + elapsed * (1 - overlap_rate)
-                    else:
-                        timeline_start = prev_end_time
-                
-                audio_item['timelineStart'] = round(timeline_start, 3)
-                audio_item['timelineEnd'] = round(timeline_start + duration, 3)
-                prev_end_time = timeline_start + duration
-            global_offset = prev_end_time
-        
-        for noise_item in noise_audios:
-            noise_item['timelineStart'] = 0
-            noise_item['timelineEnd'] = round(noise_item.get('duration') or 0, 3)
-        
-        audios_list.extend(noise_audios)
-        return audios_list
 
     @staticmethod
     def _build_comparison_matrix(results, all_dimensions):
@@ -476,7 +348,7 @@ class ReportControllerCompare(ReportControllerBase):
         task_ids = validated_data.task_ids
         if not task_ids:
             return error_response("缺少必要参数: taskIds")
-        name = validated_data.name or f"对比报告_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d%H%M%S')}"
+        name = validated_data.name or f"对比报告_{now_cst().strftime('%Y%m%d%H%M%S')}"
         description = validated_data.description
 
         try:
@@ -613,7 +485,7 @@ class ReportControllerCompare(ReportControllerBase):
                 "task_names": [t.name for t in tasks],
                 "matrix": comparison_matrix,
                 "weighted_values": task_weighted_values,
-                "generated_at": datetime.now(timezone(timedelta(hours=8))).isoformat()
+                "generated_at": now_cst().isoformat()
             }
 
             new_report = Report(

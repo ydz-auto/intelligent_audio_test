@@ -10,6 +10,7 @@ from backend.utils.common.result_data_store import load_full_result_data
 from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
 from backend.schemas.report import GenerateTaskReportRequest, ReportDetailData as ReportDetailDataSchema, ReportSummarySimplified
 from datetime import datetime, timedelta, timezone
+from backend.utils.common.query_utils import now_cst
 from backend.controllers.report_controller_base import ReportControllerBase
 from backend.app import socketio
 import json
@@ -20,21 +21,6 @@ from concurrent.futures import ThreadPoolExecutor
 _report_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='report_gen')
 _generating_tasks = set()
 _generating_lock = threading.Lock()
-
-
-def _infer_param_type(param_key: str) -> str:
-    """
-    根据参数键名推断 param_type
-    用于报告快照生成时，无需依赖 param_mappings 配置
-    """
-    key_lower = param_key.lower()
-    if 'rttm' in key_lower:
-        return 'rttm'
-    if 'stm' in key_lower:
-        return 'stm'
-    if 'audio' in key_lower:
-        return 'audio'
-    return 'text'
 
 
 class ReportControllerTask(ReportControllerBase):
@@ -192,7 +178,7 @@ class ReportControllerTask(ReportControllerBase):
             resource_metrics_map = {}
             test_type = 'api' if case_results and case_results[0].api_id else 'e2e'
             
-            audios_list = ReportControllerTask._build_audios_list(test_case)
+            audios_list = ReportControllerBase._build_audios_list(test_case, mode='task')
             reference_params_dict = ReportControllerTask._get_reference_params(test_case, case_results, test_type)
             
             for result in case_results:
@@ -270,7 +256,7 @@ class ReportControllerTask(ReportControllerBase):
                     # 扁平列表格式，与 task_controller.py 一致
                     for param_key, param_value in combined_data.items():
                         if param_key and param_value is not None:
-                            param_type = _infer_param_type(param_key)
+                            param_type = ReportControllerBase._infer_param_type(param_key)
                             case_obj["algorithm_results"].append({
                                 'device': resource,
                                 'param_code': param_key,
@@ -282,137 +268,6 @@ class ReportControllerTask(ReportControllerBase):
             cases.append(case_obj)
         
         return cases
-
-    @staticmethod
-    def _build_audios_list(test_case):
-        audios_list = []
-        if not test_case.config:
-            return audios_list
-        
-        config = test_case.config
-        rounds = config.get('rounds', [])
-        if not rounds:
-            return audios_list
-        
-        # 收集所有轮的设备 ID
-        all_device_ids = set()
-        for round_item in rounds:
-            if not isinstance(round_item, dict):
-                continue
-            for audio_cfg in round_item.get('audios', []):
-                dev_id = audio_cfg.get('playback_device_id')
-                if dev_id and dev_id != '':
-                    all_device_ids.add(dev_id)
-            bg_noise = round_item.get('backgroundNoise') or {}
-            noise_dev = bg_noise.get('playback_device_id')
-            if noise_dev and noise_dev != '':
-                all_device_ids.add(noise_dev)
-        
-        devices = {}
-        if all_device_ids:
-            from backend.models.models import PlaybackDevice
-            device_list = PlaybackDevice.query.filter(PlaybackDevice.id.in_(list(all_device_ids))).all()
-            devices = {d.id: d.name for d in device_list}
-        
-        tc_test_type = test_case.test_type or 'api'
-        
-        # 按轮次收集音频，每个 audio 带 roundNumber
-        per_round_dry = []
-        noise_audios = []
-        for round_item in rounds:
-            if not isinstance(round_item, dict):
-                continue
-            round_number = round_item.get('roundNumber', 1)
-            round_dry = []
-            
-            for audio_cfg in round_item.get('audios', []):
-                audio_id = audio_cfg.get('audio_id')
-                if audio_id:
-                    audio = db.session.get(Audio, audio_id)
-                    if audio:
-                        dev_id = audio_cfg.get('playback_device_id')
-                        if dev_id == '':
-                            dev_id = None
-                        audio_item = {
-                            "testType": tc_test_type,
-                            "id": audio.id,
-                            "filename": audio.original_filename or audio.name,
-                            "duration": audio.duration,
-                            "url": f"/api/audios/play/{audio.id}",
-                            "spl": audio_cfg.get('spl'),
-                            "playOrder": audio_cfg.get('play_order'),
-                            "playbackDeviceId": dev_id,
-                            "playbackDeviceName": devices.get(dev_id) if dev_id else None,
-                            "label": audio_cfg.get('label'),
-                            "roundNumber": round_number,
-                        }
-                        audios_list.append(audio_item)
-                        round_dry.append(audio_item)
-            
-            # 噪声
-            background_noise = round_item.get('backgroundNoise') or {}
-            if background_noise.get('audio_id'):
-                noise_audio = db.session.get(Audio, background_noise['audio_id'])
-                if noise_audio:
-                    noise_audios.append({
-                        "testType": "noise",
-                        "id": noise_audio.id,
-                        "filename": noise_audio.name,
-                        "duration": noise_audio.duration,
-                        "url": f"/api/audios/play/{noise_audio.id}",
-                        "spl": background_noise.get('spl'),
-                        "playOrder": None,
-                        "playbackDeviceId": None,
-                        "playbackDeviceName": None,
-                        "label": None,
-                        "roundNumber": round_number,
-                    })
-            
-            per_round_dry.append(round_dry)
-        
-        # 每轮内部排序
-        for round_dry in per_round_dry:
-            round_dry.sort(key=lambda x: (x.get('playOrder') is None, x.get('playOrder') or 999))
-        
-        # 获取 overlap 参数（取首轮配置）
-        first_round = rounds[0] if rounds else {}
-        overlap_config = {
-            'algorithm_params': first_round.get('algorithmParams', {}) if isinstance(first_round, dict) else {}
-        }
-        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
-        overlap_time = CaseParameterExtractor.get_overlap_time(overlap_config) if overlap_config else 0
-        overlap_rate = CaseParameterExtractor.get_overlap_rate(overlap_config) if overlap_config else 0
-        
-        # 按轮次计算 timeline
-        global_offset = 0
-        for round_dry in per_round_dry:
-            prev_end_time = 0
-            for i, audio_item in enumerate(round_dry):
-                duration = audio_item.get('duration') or 0
-                if i == 0:
-                    timeline_start = global_offset
-                else:
-                    if overlap_time and overlap_time > 0:
-                        timeline_start = prev_end_time - overlap_time
-                        if timeline_start < global_offset:
-                            timeline_start = global_offset
-                    elif overlap_rate is not None and overlap_rate > 0:
-                        elapsed = prev_end_time - global_offset
-                        timeline_start = global_offset + elapsed * (1 - overlap_rate)
-                    else:
-                        timeline_start = prev_end_time
-                
-                audio_item['timelineStart'] = round(timeline_start, 3)
-                audio_item['timelineEnd'] = round(timeline_start + duration, 3)
-                prev_end_time = timeline_start + duration
-            global_offset = prev_end_time
-        
-        for noise_item in noise_audios:
-            noise_item['timelineStart'] = 0
-            noise_item['timelineEnd'] = round(noise_item.get('duration') or 0, 3)
-        
-        audios_list.extend(noise_audios)
-        return audios_list
 
     @staticmethod
     def _get_reference_params(test_case, case_results, test_type):
@@ -744,7 +599,7 @@ class ReportControllerTask(ReportControllerBase):
                     return
 
                 if not name:
-                    name = f"任务报告_{task.name}_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d%H%M%S')}"
+                    name = f"任务报告_{task.name}_{now_cst().strftime('%Y%m%d%H%M%S')}"
 
                 source_task_ids = ReportControllerTask._get_source_task_ids(task)
                 task_ids_for_query = source_task_ids if source_task_ids else [task_id]

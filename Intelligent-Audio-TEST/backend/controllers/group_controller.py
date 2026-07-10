@@ -1,4 +1,4 @@
-from flask import request
+﻿from flask import request
 from backend.models.models import TestCaseGroup, TestCase
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
@@ -6,6 +6,7 @@ from backend.schemas.group import GroupItem, GroupListData, GroupCreateRequest, 
 from sqlalchemy import func
 import uuid
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 
 class GroupController:
     # 获取所有用例分组（支持分页）
@@ -120,7 +121,7 @@ class GroupController:
             if validated_data.algorithm_type is not None:
                 group.algorithm_type = validated_data.algorithm_type
             
-            group.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            group.updated_at = now_cst()
             db.session.commit()
             return success_response(StringIdData(id=group_id), "分组信息更新成功")
         except Exception as e:

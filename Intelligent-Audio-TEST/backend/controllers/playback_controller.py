@@ -1,4 +1,4 @@
-from flask import request, current_app
+﻿from flask import request, current_app
 from sqlalchemy import cast, String
 from backend.models.models import PlaybackDevice
 from backend.models.database import db
@@ -10,7 +10,9 @@ from backend.schemas.common import IdData, StatusData
 from backend.schemas.playback import PlaybackDeviceItem, PlaybackDeviceListData, PlaybackScanItem, PlaybackStatusItem, PlaybackTestData
 from backend.schemas.playback import PlaybackCreateSchema, PlaybackUpdateSchema, PlaybackTestSchema, PlaybackAssociateSplSchema
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 import threading
+import logging
 import os
 
 # 导入全局app实例，用于在线程中创建应用上下文
@@ -175,7 +177,7 @@ class PlaybackController:
                     existing_device.sample_rate = validated_data.sample_rate
                     existing_device.description = validated_data.description
                     existing_device.status = validated_data.status
-                    existing_device.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    existing_device.updated_at = now_cst()
                     
                     db.session.commit()
                     return success_response(IdData(id=existing_device.id), "已恢复已删除的播放设备", http_code=201)
@@ -232,7 +234,7 @@ class PlaybackController:
                 if json_key in validated_dict:
                     setattr(device, attr_name, validated_dict[json_key])
             
-            device.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            device.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "播放设备信息更新成功")
         except Exception as e:
@@ -258,7 +260,7 @@ class PlaybackController:
 
             # 逻辑删除
             device.is_deleted = 1
-            device.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            device.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "播放设备已删除 (逻辑删除)")
         except Exception as e:
@@ -296,7 +298,7 @@ class PlaybackController:
 
         try:
             device.current_spl_mapping_id = spl_mapping_id
-            device.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            device.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "SPL 映射关联成功")
         except Exception as e:
@@ -394,7 +396,6 @@ class PlaybackController:
             )
         except Exception as e:
             db.session.rollback()
-            import logging
             logging.error(f"Device test error: {str(e)}", exc_info=True)
             return error_response(f"测试播放失败: {str(e)}")
 
@@ -435,7 +436,6 @@ class PlaybackController:
             return success_response(StatusData(id=device.id, status="online"), "测试音播放已停止")
         except Exception as e:
             db.session.rollback()
-            import logging
             logging.error(f"Stop device test error: {str(e)}", exc_info=True)
             return error_response(f"停止测试失败: {str(e)}")
     
@@ -460,7 +460,7 @@ class PlaybackController:
             physical_devices = audio_service.get_all_physical_devices()
             
             results = []
-            current_time = datetime.now(timezone(timedelta(hours=8)))
+            current_time = now_cst()
             
             # 创建一个字典，用于存储每个设备应该更新的状态
             device_status_map = {}
@@ -529,12 +529,10 @@ class PlaybackController:
                     db.session.commit()
                 except Exception as commit_error:
                     db.session.rollback()
-                    import logging
                     logging.error(f"提交设备状态更新时出错: {str(commit_error)}", exc_info=True)
             
             return success_response(results, "设备状态检查完成")
         except Exception as e:
             db.session.rollback()
-            import logging
             logging.error(f"检查设备状态时出错: {str(e)}", exc_info=True)
             return error_response(str(e))

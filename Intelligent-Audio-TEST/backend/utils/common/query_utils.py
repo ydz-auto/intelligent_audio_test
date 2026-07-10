@@ -1,5 +1,13 @@
 import re
 from typing import Optional
+from datetime import datetime, timedelta, timezone
+
+# 中国标准时区 UTC+8
+_CST = timezone(timedelta(hours=8))
+
+def now_cst() -> datetime:
+    """返回当前中国标准时间（UTC+8）"""
+    return datetime.now(_CST)
 
 def escape_like_pattern(pattern: str, escape_char: str = '\\') -> str:
     """

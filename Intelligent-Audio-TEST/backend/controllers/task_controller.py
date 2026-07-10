@@ -1,4 +1,5 @@
-import json
+﻿import json
+import logging
 from flask import request, current_app
 from backend.models.models import Task, Tag, TaskCase, TaskDevice, TaskAPI, TestCase, TestResult, TestResultDimension, Log, Dimension
 from backend.models.database import db
@@ -28,6 +29,7 @@ from backend.schemas.task import (
     TaskMergeRequest,
 )
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 from sqlalchemy import and_, or_
 
 class TaskController:
@@ -432,7 +434,6 @@ class TaskController:
             from backend.controllers.report_controller_task import ReportControllerTask
             audios_list = ReportControllerTask._build_audios_list(case_info) if case_info else []
         except Exception as e:
-            import logging
             logging.getLogger(__name__).warning(f"构建音频列表失败: {e}")
             audios_list = []
         
@@ -443,7 +444,6 @@ class TaskController:
                 case_info, results, test_type if case_info and case_info.config else 'api'
             )
         except Exception as e:
-            import logging
             logging.getLogger(__name__).warning(f"构建 reference_params 失败: {e}")
             reference_params = {}
         
@@ -475,7 +475,6 @@ class TaskController:
                             'value': combined_data[param_key]
                         })
         except Exception as e:
-            import logging
             logging.getLogger(__name__).warning(f"构建 algorithm_results 失败: {e}")
         
         # 8. 构建 devices 列表和 metric_configs
@@ -543,7 +542,6 @@ class TaskController:
                         if device_audios:
                             result_audios[resource] = device_audios
         except Exception as e:
-            import logging
             logging.getLogger(__name__).warning(f"构建 field_mapping 失败: {e}")
         
         # 构建响应数据
@@ -673,7 +671,7 @@ class TaskController:
                 failed_cases=task.failed_cases,
                 progress=round(task.completed_cases / task.total_cases * 100, 2) if task.total_cases > 0 else 0,
                 current_case=current_case_data,
-                updated_at=datetime.now(timezone(timedelta(hours=8))).isoformat(),
+                updated_at=now_cst().isoformat(),
             )
         )
 
@@ -1066,7 +1064,7 @@ class TaskController:
 
             # 重新计算总数
             task.total_cases = TaskCase.query.filter_by(task_id=task_id).count()
-            task.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            task.updated_at = now_cst()
             db.session.commit()
             return success_response(
                 TaskUpdateCasesData(task_id=str(task.id), total_count=task.total_cases),
@@ -1207,7 +1205,7 @@ class TaskController:
                         output,
                         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                         as_attachment=True,
-                        download_name=f"tasks_export_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d%H%M%S')}.xlsx"
+                        download_name=f"tasks_export_{now_cst().strftime('%Y%m%d%H%M%S')}.xlsx"
                     )
                 
                 if format_ == 'pdf':
@@ -1263,7 +1261,7 @@ class TaskController:
                         output,
                         mimetype='application/pdf',
                         as_attachment=True,
-                        download_name=f"tasks_export_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d%H%M%S')}.pdf"
+                        download_name=f"tasks_export_{now_cst().strftime('%Y%m%d%H%M%S')}.pdf"
                     )
                 
                 return success_response(export_data, "数据准备就绪")

@@ -1,4 +1,4 @@
-import os
+﻿import os
 from flask import request, send_file, current_app
 from backend.models.models import TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice
 from backend.models.database import db
@@ -33,8 +33,10 @@ from backend.utils.algorithm.reference_params_generator import ReferenceParamsGe
 import uuid
 import json
 import io
+import logging
 import pandas as pd
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 
 class TestCaseController:
     @staticmethod
@@ -869,7 +871,7 @@ class TestCaseController:
                 if TestCaseController._has_overlap_param_changed(old_params, new_params):
                     need_refresh_reference = True
             
-            tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            tc.updated_at = now_cst()
             
             if need_refresh_reference:
                 TestCaseController.refresh_reference_texts(tc)
@@ -893,7 +895,7 @@ class TestCaseController:
 
         try:
             tc.deleted = True
-            tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            tc.updated_at = now_cst()
             db.session.commit()
 
             from backend.utils.report.stats_cache import refresh_stats_cache
@@ -1237,12 +1239,10 @@ class TestCaseController:
                     # 不再写入 config.rounds[].algorithmParams，改为独立列
                     tc.algorithm_params = [{'round_number': 1, 'params': [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]}]
                     tc.config = tc_config
-                    tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    tc.updated_at = now_cst()
                     updated_count += 1
                 message = f"已成功更新 {updated_count} 个用例的专属参数"
             elif action == 'update_playback_devices':
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"[update_playback_devices] 开始处理, ids: {ids}, playback_devices: {req_data.playback_devices}")
                 
                 playback_devices = req_data.playback_devices
@@ -1274,15 +1274,13 @@ class TestCaseController:
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
                         logger.debug(f"[update_playback_devices] 更新后 config: {tc.config}")
-                    tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    tc.updated_at = now_cst()
                     db.session.add(tc)
                     updated_count += 1
                 
                 logger.info(f"[update_playback_devices] 更新完成，共更新 {updated_count} 个用例")
                 message = f"已成功更新 {updated_count} 个用例的播放设备"
             elif action == 'update_spl':
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"[update_spl] 开始处理, ids: {ids}, spl_data: {req_data.spl}")
                 
                 spl_data = req_data.spl
@@ -1312,15 +1310,13 @@ class TestCaseController:
                         tc.config = config
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
-                    tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    tc.updated_at = now_cst()
                     db.session.add(tc)
                     updated_count += 1
                 
                 logger.info(f"[update_spl] 更新完成，共更新 {updated_count} 个用例")
                 message = f"已成功更新 {updated_count} 个用例的声压"
             elif action == 'update_dimensions':
-                import logging
-                logger = logging.getLogger(__name__)
                 dimensions_data = req_data.dimensions
                 logger.info(f"[update_dimensions] 开始处理, ids: {ids}, dimensions: {dimensions_data}")
 
@@ -1360,15 +1356,13 @@ class TestCaseController:
                         tc.config = config
                         import sqlalchemy.orm.attributes
                         sqlalchemy.orm.attributes.flag_modified(tc, 'config')
-                    tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    tc.updated_at = now_cst()
                     db.session.add(tc)
                     updated_count += 1
                 
                 logger.info(f"[update_dimensions] 更新完成，共更新 {updated_count} 个用例")
                 message = f"已成功更新 {updated_count} 个用例的评价维度"
             elif action == 'update_noise':
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"[update_noise] 开始处理, ids: {ids}")
 
                 audio_id = req_data.noise_audio_id
@@ -1408,15 +1402,13 @@ class TestCaseController:
                     sqlalchemy.orm.attributes.flag_modified(tc, 'config')
                     logger.info(f"[update_noise] 更新用例 {tc.id} noise config")
 
-                    tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    tc.updated_at = now_cst()
                     db.session.add(tc)
                     updated_count += 1
 
                 logger.info(f"[update_noise] 更新完成，共更新 {updated_count} 个用例")
                 message = f"已成功更新 {updated_count} 个用例的噪声配置"
             elif action == 'auto_generate_name':
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"[auto_generate_name] 开始处理, ids: {ids}")
 
                 test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
@@ -1428,15 +1420,13 @@ class TestCaseController:
                     if tag_names:
                         tc.name = '-'.join(tag_names)
                         logger.info(f"[auto_generate_name] 用例 {tc.id} 新名称: {tc.name}")
-                    tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    tc.updated_at = now_cst()
                     db.session.add(tc)
                     updated_count += 1
 
                 logger.info(f"[auto_generate_name] 更新完成，共更新 {updated_count} 个用例")
                 message = f"已成功为 {updated_count} 个用例自动生成名称"
             elif action == 'add_tags':
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"[add_tags] 开始处理, ids: {ids}, tags: {req_data.tags}")
 
                 tags_to_add = req_data.tags or []
@@ -1456,15 +1446,13 @@ class TestCaseController:
                                 tag = Tag(name=tag_name)
                                 db.session.add(tag)
                             tc.tags.append(tag)
-                    tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    tc.updated_at = now_cst()
                     db.session.add(tc)
                     updated_count += 1
 
                 logger.info(f"[add_tags] 更新完成，共更新 {updated_count} 个用例")
                 message = f"已成功为 {updated_count} 个用例添加标签"
             elif action == 'remove_tags':
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"[remove_tags] 开始处理, ids: {ids}, tags: {req_data.tags}")
 
                 tags_to_remove = req_data.tags or []
@@ -1478,15 +1466,13 @@ class TestCaseController:
                 for tc in test_cases:
                     tags_to_remove_set = set(tags_to_remove)
                     tc.tags = [tag for tag in tc.tags if tag.name not in tags_to_remove_set]
-                    tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    tc.updated_at = now_cst()
                     db.session.add(tc)
                     updated_count += 1
 
                 logger.info(f"[remove_tags] 更新完成，共更新 {updated_count} 个用例")
                 message = f"已成功为 {updated_count} 个用例移除标签"
             elif action == 'rename_tag':
-                import logging
-                logger = logging.getLogger(__name__)
                 old_tag_name = req_data.old_tag_name
                 new_tag_name = req_data.new_tag_name
                 logger.info(f"[rename_tag] 开始处理, old_tag: {old_tag_name}, new_tag: {new_tag_name}")
@@ -1506,14 +1492,12 @@ class TestCaseController:
                     return error_response(f"标签名 {new_tag_name} 已存在")
 
                 old_tag.name = new_tag_name
-                old_tag.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                old_tag.updated_at = now_cst()
                 db.session.add(old_tag)
 
                 logger.info(f"[rename_tag] 标签 {old_tag_name} 已重命名为 {new_tag_name}")
                 message = f"已成功将标签 {old_tag_name} 重命名为 {new_tag_name}"
             elif action == 'refresh_reference':
-                import logging
-                logger = logging.getLogger(__name__)
                 logger.info(f"[refresh_reference] 开始处理, ids: {ids}")
 
                 test_cases = TestCase.query.filter(
@@ -1538,7 +1522,7 @@ class TestCaseController:
                     for tc in test_cases:
                         try:
                             TestCaseController.refresh_reference_texts(tc)
-                            tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                            tc.updated_at = now_cst()
                             db.session.add(tc)
                             updated_count += 1
                         except Exception as e:
@@ -1755,7 +1739,7 @@ class TestCaseController:
             if format_type == 'json':
                 export_result = {
                     "test_cases": export_data,
-                    "exported_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),
+                    "exported_at": now_cst().isoformat(),
                     "total_count": len(export_data)
                 }
                 return success_response(

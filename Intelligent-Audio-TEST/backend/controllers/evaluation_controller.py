@@ -1,4 +1,4 @@
-import requests
+﻿import requests
 import time
 import json
 import pandas as pd
@@ -32,6 +32,7 @@ from backend.schemas.evaluation import (
     TaskReevaluateResult,
 )
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 import re
 
 
@@ -230,7 +231,7 @@ class EvaluationController:
             if req.icon is not None:
                 cat.icon = req.icon
 
-            cat.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            cat.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "分类更新成功")
         except Exception as e:
@@ -734,7 +735,7 @@ class EvaluationController:
                     current_api_settings = dim.api_settings or {}
                     dim.api_settings = _sync_body_template(current_api_settings, updated_param_codes)
 
-            dim.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            dim.updated_at = now_cst()
 
             if dim.dimension_type == 'main':
                 sub_dimensions = Dimension.query.filter(
@@ -751,7 +752,7 @@ class EvaluationController:
                         sub_dim.api_settings = dim.api_settings
                     if not sub_dim.task_type_code:
                         sub_dim.task_type_code = dim.task_type_code
-                    sub_dim.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    sub_dim.updated_at = now_cst()
 
             db.session.commit()
 
@@ -804,7 +805,7 @@ class EvaluationController:
 
         try:
             dim.deleted = True
-            dim.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            dim.updated_at = now_cst()
             db.session.commit()
 
             from backend.utils.report.stats_cache import refresh_stats_cache
@@ -1122,7 +1123,7 @@ class EvaluationController:
                                                                                                  dim.score_unit)
                         dim.rule = rule
                         dim.api_settings = api_settings
-                        dim.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                        dim.updated_at = now_cst()
                         update_count += 1
                 else:
                     new_dim = Dimension(

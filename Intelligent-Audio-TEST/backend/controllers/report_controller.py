@@ -1,4 +1,4 @@
-from flask import request, send_file, Response, stream_with_context, jsonify
+﻿from flask import request, send_file, Response, stream_with_context, jsonify
 from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response, format_response
@@ -11,6 +11,7 @@ from backend.schemas.report import (
     GetCaseAveragesRequest
 )
 from datetime import datetime, timedelta, timezone
+from backend.utils.common.query_utils import now_cst
 from sqlalchemy import or_
 from sqlalchemy.orm import joinedload
 import json
@@ -163,7 +164,7 @@ class ReportController(ReportControllerBase):
                     if 'case_type_stats' in normalized_incoming:
                         metric_stats_record.case_type_stats = json.dumps(normalized_incoming['case_type_stats'], ensure_ascii=False)
 
-            report.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            report.updated_at = now_cst()
             db.session.commit()
 
             def to_json(val):
@@ -224,7 +225,7 @@ class ReportController(ReportControllerBase):
             return error_response("未找到测试报告", 404)
         try:
             report.status = ReportStatus.PUBLISHED.value
-            report.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            report.updated_at = now_cst()
             db.session.commit()
             return success_response({"id": report.id, "status": report.status}, "报告已发布")
         except Exception as e:
@@ -317,7 +318,7 @@ class ReportController(ReportControllerBase):
                     df.to_excel(writer, index=False, sheet_name='报告')
                 output.seek(0)
                 
-                filename = f"reports_export_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d')}.xlsx"
+                filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.xlsx"
                 return send_file(
                     output,
                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -355,7 +356,7 @@ class ReportController(ReportControllerBase):
                 doc.build(elements)
                 output.seek(0)
                 
-                filename = f"reports_export_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d')}.pdf"
+                filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.pdf"
                 return send_file(
                     output,
                     mimetype='application/pdf',
@@ -373,7 +374,7 @@ class ReportController(ReportControllerBase):
                         csv_row = [f'"{r}"' if ',' in str(r) else str(r) for r in csv_row]
                         yield (",".join(csv_row) + "\n").encode('utf-8-sig')
 
-                filename = f"reports_export_{datetime.now(timezone(timedelta(hours=8))).strftime('%Y%m%d')}.csv"
+                filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.csv"
                 return Response(
                     stream_with_context(generate()),
                     mimetype='text/csv',

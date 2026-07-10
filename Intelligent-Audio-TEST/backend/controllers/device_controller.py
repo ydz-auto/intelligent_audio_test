@@ -1,4 +1,4 @@
-from flask import request, current_app
+﻿from flask import request, current_app
 from backend.models.models import Device, DeviceTag, TaskDevice
 from backend.models.database import db
 from backend.controllers.log_controller import LogController
@@ -20,6 +20,7 @@ from backend.schemas.device import (
     DeviceHealthCheckRequest,
 )
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 import time
 import random
 
@@ -354,7 +355,7 @@ class DeviceController:
                             if online_device['serial'] == serial_number:
                                 # 如果设备在线，更新状态
                                 new_device.status = 'online'
-                                new_device.last_online_at = datetime.now(timezone(timedelta(hours=8)))
+                                new_device.last_online_at = now_cst()
                                 db.session.commit()
                                 break
             except Exception as scan_error:
@@ -384,7 +385,7 @@ class DeviceController:
             for key, value in validated_dict.items():
                 setattr(device, key, value)
             
-            device.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            device.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "设备信息更新成功")
         except Exception as e:
@@ -409,7 +410,7 @@ class DeviceController:
             
             # 逻辑删除
             device.deleted = True
-            device.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            device.updated_at = now_cst()
             db.session.commit()
 
             from backend.utils.report.stats_cache import refresh_stats_cache
@@ -482,7 +483,7 @@ class DeviceController:
             
             device.status = 'online' if is_online else 'offline'
             if is_online:
-                device.last_online_at = datetime.now(timezone(timedelta(hours=8)))
+                device.last_online_at = now_cst()
             
             db.session.commit()
             

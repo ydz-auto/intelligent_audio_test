@@ -1,4 +1,4 @@
-import requests
+﻿import requests
 import time
 import websocket
 from urllib.parse import urlparse
@@ -10,6 +10,7 @@ from backend.utils.web.response import success_response, error_response
 from backend.schemas.api import ApiEndpointItem, ApiHealthCheckData, ApiItem, ApiListData, ApiCreateInput, ApiUpdateInput
 from backend.schemas.common import IdData
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 
 class APIController:
     @staticmethod
@@ -367,7 +368,7 @@ class APIController:
                     })
                 api.api_endpoints = new_api_endpoints
             
-            api.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            api.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "API配置更新成功")
         except Exception as e:
@@ -395,7 +396,7 @@ class APIController:
                 return error_response(f"无法删除：以下正在运行的任务正在使用此 API: {', '.join(task_names)}。请先停止任务。", code=202)
 
             api.deleted = True
-            api.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            api.updated_at = now_cst()
             db.session.commit()
 
             from backend.utils.report.stats_cache import refresh_stats_cache
@@ -541,7 +542,7 @@ class APIController:
             new_status = 'online' if overall_status else 'offline'
             if api.status != new_status:
                 api.status = new_status
-                api.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                api.updated_at = now_cst()
                 db.session.commit()
             
             # 6. 构建响应
@@ -574,7 +575,7 @@ class APIController:
             # 更新API状态为offline
             if api.status != 'offline':
                 api.status = 'offline'
-                api.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                api.updated_at = now_cst()
                 db.session.commit()
             
             return success_response(

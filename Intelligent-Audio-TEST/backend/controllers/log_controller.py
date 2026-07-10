@@ -1,4 +1,4 @@
-import os
+﻿import os
 import pandas as pd
 import json
 import glob
@@ -8,6 +8,7 @@ from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.schemas.log import LogItem, LogListData, LogRefreshData, LogRefreshRequest, LogMarkRequest, LogClearRequest, LogExportRequest, LogArchiveRequest, LogArchiveStatus, LogArchiveResult
 from datetime import datetime, timezone, timedelta
+from backend.utils.common.query_utils import now_cst
 from sqlalchemy import func, or_
 from flask_socketio import emit
 from backend.config.config import Config
@@ -383,7 +384,7 @@ class LogController:
             
             total_logs = db.session.query(func.count(Log.id)).scalar() or 0
             
-            cutoff_date = datetime.now(timezone(timedelta(hours=8))) - timedelta(days=7)
+            cutoff_date = now_cst() - timedelta(days=7)
             hot_logs = db.session.query(func.count(Log.id)).filter(Log.time >= cutoff_date).scalar() or 0
             cold_logs = total_logs - hot_logs
             
@@ -471,7 +472,7 @@ class LogController:
         req = LogArchiveRequest.model_validate(request.get_json() or {})
         
         try:
-            cutoff_date = datetime.now(timezone(timedelta(hours=8))) - timedelta(days=req.days)
+            cutoff_date = now_cst() - timedelta(days=req.days)
             
             cold_logs_query = Log.query.filter(Log.time < cutoff_date)
             cold_count = cold_logs_query.count()
