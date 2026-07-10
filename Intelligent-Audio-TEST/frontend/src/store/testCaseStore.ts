@@ -871,22 +871,37 @@ export const useTestCaseStore = defineStore('testCase', () => {
     try {
       error.value = null;
       let groupId: string | number;
-      
+
       if (typeof idOrName === 'string') {
         const groupEntry = Object.entries(fullGroupsMap.value).find(([_, group]) => group.name === idOrName);
-        if (!groupEntry) {
-          throw new Error(`未找到名为 "${idOrName}" 的分组`);
+        if (groupEntry) {
+          groupId = groupEntry[0];
+        } else {
+          // fullGroupsMap 为空时（如按 algorithm_type 过滤后分组不匹配），从后端查找
+          try {
+            const resp = await testcasesApi.getGroups({ page: 1, perPage: 1000 });
+            const found = resp?.items?.find((g: any) => g.name === idOrName);
+            if (found) {
+              groupId = found.id;
+            } else {
+              throw new Error(`未找到名为 "${idOrName}" 的分组`);
+            }
+          } catch {
+            throw new Error(`未找到名为 "${idOrName}" 的分组`);
+          }
         }
-        groupId = groupEntry[0];
       } else {
         groupId = idOrName;
       }
-      
+
       await testcasesApi.updateGroup(groupId, data);
-      
+
       if (fullGroupsMap.value[groupId.toString()]) {
         fullGroupsMap.value[groupId.toString()].name = data.name;
         fullGroupsMap.value[groupId.toString()].description = data.description;
+        if (data.algorithmType !== undefined) {
+          fullGroupsMap.value[groupId.toString()].algorithmType = data.algorithmType;
+        }
       }
       organizeTestCasesByGroup();
       return true;
@@ -899,17 +914,29 @@ export const useTestCaseStore = defineStore('testCase', () => {
     try {
       error.value = null;
       let groupId: string | number;
-      
+
       if (typeof idOrName === 'string') {
         const groupEntry = Object.entries(fullGroupsMap.value).find(([_, group]) => group.name === idOrName);
-        if (!groupEntry) {
-          throw new Error(`未找到名为 "${idOrName}" 的分组`);
+        if (groupEntry) {
+          groupId = groupEntry[0];
+        } else {
+          // fullGroupsMap 为空时，从后端查找
+          try {
+            const resp = await testcasesApi.getGroups({ page: 1, perPage: 1000 });
+            const found = resp?.items?.find((g: any) => g.name === idOrName);
+            if (found) {
+              groupId = found.id;
+            } else {
+              throw new Error(`未找到名为 "${idOrName}" 的分组`);
+            }
+          } catch {
+            throw new Error(`未找到名为 "${idOrName}" 的分组`);
+          }
         }
-        groupId = groupEntry[0];
       } else {
         groupId = idOrName;
       }
-      
+
       await testcasesApi.deleteGroup(groupId);
       
       delete fullGroupsMap.value[groupId.toString()];

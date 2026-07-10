@@ -118,7 +118,7 @@ function handleConfirm() {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 10001;
+  z-index: calc(var(--z-index-modal-top, 13000) + 2);
 }
 
 .modal-container {

@@ -109,7 +109,7 @@ const handlePreview = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 10000;
+  z-index: calc(var(--z-index-modal-top, 13000) + 2);
   animation: fadeIn 0.3s ease;
   opacity: 1 !important;
   visibility: visible !important;

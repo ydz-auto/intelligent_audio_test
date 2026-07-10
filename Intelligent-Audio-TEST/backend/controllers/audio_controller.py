@@ -10,6 +10,7 @@ from sqlalchemy import cast, String, func
 from backend.models.models import Audio, Tag, AudioAnnotation, AudioTag, TestCase, TestCaseGroup, PlaybackDevice, UploadTask, UploadFile, UploadChunk
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
+from backend.utils.web.log_handler import log_not_emit
 from backend.utils.common.task_utils import has_running_e2e_tasks
 from backend.schemas.audio import (
     AudioIdsData,
@@ -1618,6 +1619,8 @@ class AudioController:
         else:
             test_types = [tt.strip() if isinstance(tt, str) else tt for tt in test_types]
 
+        print(f'[DEBUG_ENTER] _create_test_case_from_audio called, audio_id={audio_id}, test_types={test_types}, rounds_config={rounds_config}', flush=True)
+
         audio = db.session.get(Audio, audio_id)
         if not audio:
             return None
@@ -1668,10 +1671,8 @@ class AudioController:
 
                 # ===== 构建 config =====
                 # 统一走 rounds 架构，前端始终构建 rounds_config
+                # 新设计：algorithm_params 和 reference_params 不在 config.rounds[] 中，存独立列
                 if rounds_config:
-                    # 前端已构建 rounds 并按 round 分发 algorithm_params（含从标注解析的参数）
-                    # NamingRequest 已把所有 key 转成 snake_case，后端统一用蛇形访问
-                    # 后端只需把 audio_name 替换为真实的 audio_id
                     rounds_resolved = copy.deepcopy(rounds_config)
                 else:
                     # 兜底：前端未传 rounds_config 时构建最小 rounds
@@ -1682,24 +1683,60 @@ class AudioController:
                     }
                     if tt == 'e2e':
                         audio_config["playback_device_id"] = effective_playback_device_id
-                    round_algorithm_params = []
-                    if algorithm_params:
-                        if isinstance(algorithm_params, dict):
-                            round_algorithm_params = [
-                                {'field_code': fc, 'field_value': fv} for fc, fv in algorithm_params.items()
-                            ]
-                        elif isinstance(algorithm_params, list):
-                            for p in algorithm_params:
+                    rounds_resolved = [{
+                        "round_number": 1,
+                        "audios": [audio_config],
+                    }]
+
+                # 从 rounds_resolved 中剥离 algorithm_params 到独立列
+                algo_params_col = []
+                import json as _json
+                print(f'[DEBUG_STRIP] rounds_resolved before strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', flush=True)
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_STRIP] rounds_resolved before strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', category='audio')
+                for round_item in rounds_resolved:
+                    if not isinstance(round_item, dict):
+                        continue
+                    rn = round_item.get('round_number', 1)
+                    # 剥离 algorithm_params / algorithmParams
+                    round_ap = round_item.pop('algorithm_params', None) or round_item.pop('algorithmParams', None)
+                    if round_ap:
+                        params_list = []
+                        if isinstance(round_ap, dict):
+                            params_list = [{'field_code': k, 'field_value': v} for k, v in round_ap.items()]
+                        elif isinstance(round_ap, list):
+                            for p in round_ap:
                                 if isinstance(p, dict):
                                     fc = p.get('field_code') or p.get('fieldCode')
                                     fv = p.get('field_value', p.get('fieldValue'))
                                     if fc:
-                                        round_algorithm_params.append({'field_code': fc, 'field_value': fv})
-                    rounds_resolved = [{
-                        "round_number": 1,
-                        "audios": [audio_config],
-                        "algorithm_params": round_algorithm_params,
-                    }]
+                                        params_list.append({'field_code': fc, 'field_value': fv})
+                        if params_list:
+                            algo_params_col.append({'round_number': rn, 'params': params_list})
+                    # 剥离 reference_params_path / referenceParamsPath（不应在 config 中）
+                    round_item.pop('reference_params_path', None)
+                    round_item.pop('referenceParamsPath', None)
+
+                print(f'[DEBUG_STRIP] rounds_resolved after strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', flush=True)
+                print(f'[DEBUG_STRIP] algo_params_col: {_json.dumps(algo_params_col, ensure_ascii=False)[:500]}', flush=True)
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_STRIP] rounds_resolved after strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', category='audio')
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_STRIP] algo_params_col: {_json.dumps(algo_params_col, ensure_ascii=False)[:500]}', category='audio')
+
+                # 兜底：前端传了平面 algorithm_params 但没 rounds_config 时
+                if not algo_params_col and algorithm_params:
+                    round_algorithm_params = []
+                    if isinstance(algorithm_params, dict):
+                        round_algorithm_params = [
+                            {'field_code': fc, 'field_value': fv} for fc, fv in algorithm_params.items()
+                        ]
+                    elif isinstance(algorithm_params, list):
+                        for p in algorithm_params:
+                            if isinstance(p, dict):
+                                fc = p.get('field_code') or p.get('fieldCode')
+                                fv = p.get('field_value', p.get('fieldValue'))
+                                if fc:
+                                    round_algorithm_params.append({'field_code': fc, 'field_value': fv})
+                    if round_algorithm_params:
+                        algo_params_col = [{'round_number': 1, 'params': round_algorithm_params}]
 
                 # 把 audio_name 替换为真实的 audio_id
                 # 前端构建 rounds 时音频还没上传完，只能用文件名占位；
@@ -1727,8 +1764,7 @@ class AudioController:
                     if not isinstance(audios, list):
                         round_item['audios'] = []
                         audios = []
-                    if not isinstance(round_item.get('algorithm_params'), list):
-                        round_item['algorithm_params'] = []
+                    # algorithm_params 已剥离到独立列，不再写回 rounds
                     for audio_item in audios:
                         if not isinstance(audio_item, dict):
                             continue
@@ -1900,14 +1936,23 @@ class AudioController:
                                         'field_code': param_code,
                                         'field_value': value
                                     })
-                            # 合并到 round.algorithm_params（前端传来的优先，后端提取的补缺）
+                            # 合并到 algo_params_col 中对应轮（前端传来的优先，后端提取的补缺）
+                            round_number = round_item.get('round_number', 1)
+                            # 找到 algo_params_col 中对应轮的记录
+                            round_ap_entry = None
+                            for entry in algo_params_col:
+                                if entry.get('round_number') == round_number:
+                                    round_ap_entry = entry
+                                    break
+                            if not round_ap_entry:
+                                round_ap_entry = {'round_number': round_number, 'params': []}
+                                algo_params_col.append(round_ap_entry)
                             existing_codes = set(
-                                p.get('field_code') or p.get('fieldCode')
-                                for p in round_item.get('algorithm_params', [])
+                                p.get('field_code') for p in round_ap_entry.get('params', [])
                             )
                             for p in extracted_params:
                                 if p['field_code'] not in existing_codes:
-                                    round_item.setdefault('algorithm_params', []).append(p)
+                                    round_ap_entry.setdefault('params', []).append(p)
                                     existing_codes.add(p['field_code'])
 
                 config = {
@@ -1915,6 +1960,8 @@ class AudioController:
                     "auto_generated": True,
                     "rounds": rounds_resolved,
                 }
+                print(f'[DEBUG_CONFIG] config rounds: {_json.dumps(config["rounds"], ensure_ascii=False)[:500]}', flush=True)
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_CONFIG] config rounds: {_json.dumps(config["rounds"], ensure_ascii=False)[:500]}', category='audio')
                 # 噪声配置
                 if (noise_spl and noise_spl > 0) or noise_audio_id:
                     config["background_noise"] = {
@@ -1947,10 +1994,14 @@ class AudioController:
                     group_id=group.id,
                     test_type=tt,
                     algorithm_type=algorithm_type,
-                    config=config
+                    config=config,
+                    algorithm_params=algo_params_col if algo_params_col else None
                 )
                 db.session.add(new_tc)
-
+                print(f'[DEBUG_TC] tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}', flush=True)
+                print(f'[DEBUG_TC] config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', flush=True)
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_TC] tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}', category='audio')
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_TC] config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', category='audio')
                 # 继承音频的标签（受 inherit_tags 开关控制）
                 if inherit_tags:
                     for tag_name in audio_tags:
@@ -1961,6 +2012,12 @@ class AudioController:
                 # 同步生成参考参数（rounds 模式和平面模式都会真正生成文件）
                 from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
                 ReferenceParamsGenerator.apply_to_config(new_tc)
+                print(f'[DEBUG_AFTER_APPLY] new_tc.algorithm_params={_json.dumps(new_tc.algorithm_params, ensure_ascii=False)[:300] if new_tc.algorithm_params else "None"}', flush=True)
+                print(f'[DEBUG_AFTER_APPLY] new_tc.reference_params={_json.dumps(new_tc.reference_params, ensure_ascii=False)[:300] if new_tc.reference_params else "None"}', flush=True)
+                print(f'[DEBUG_AFTER_APPLY] config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', flush=True)
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_AFTER_APPLY] new_tc.algorithm_params={_json.dumps(new_tc.algorithm_params, ensure_ascii=False)[:300] if new_tc.algorithm_params else "None"}', category='audio')
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_AFTER_APPLY] new_tc.reference_params={_json.dumps(new_tc.reference_params, ensure_ascii=False)[:300] if new_tc.reference_params else "None"}', category='audio')
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_AFTER_APPLY] config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', category='audio')
 
                 created_tc_ids.append(tc_id)
 

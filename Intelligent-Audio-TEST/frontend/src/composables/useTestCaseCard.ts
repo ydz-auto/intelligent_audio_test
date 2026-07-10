@@ -87,8 +87,12 @@ export function useTestCaseCard() {
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
       config: normalized as TestCaseFormData['config'],
       algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
-      test_type: testCaseType as 'api' | 'e2e'
-    };
+      test_type: testCaseType as 'api' | 'e2e',
+      // 新设计：algorithm_params 独立列（后端返回驼峰 algorithmParams）
+      algorithm_params: Array.isArray((testCase as any).algorithmParams || (testCase as any).algorithm_params)
+        ? ((testCase as any).algorithmParams || (testCase as any).algorithm_params)
+        : [],
+    } as TestCaseFormData;
     
     try {
       const result = await modalControl.open(MODAL_TYPES.TEST_CASE_RELATED, {
@@ -116,7 +120,22 @@ export function useTestCaseCard() {
       description: '',
       algorithmType: ''
     };
-    
+
+    // 从后端加载分组的完整信息（包括 algorithmType）
+    try {
+      const resp = await testcasesApi.getGroups({ page: 1, perPage: 1000 });
+      const found = resp?.items?.find((g: any) => g.name === groupName);
+      if (found) {
+        groupFormData.value = {
+          name: found.name || groupName,
+          description: found.description || '',
+          algorithmType: found.algorithmType || ''
+        };
+      }
+    } catch (e) {
+      console.warn('[useTestCaseCard] 加载分组信息失败:', e);
+    }
+
     try {
       const result = await modalControl.open(MODAL_TYPES.TEST_GROUP, {
         visible: true,
@@ -125,7 +144,7 @@ export function useTestCaseCard() {
         title: '编辑分组',
         width: '500px'
       });
-      
+
       if (result) {
         await handleModalSave(result);
       }

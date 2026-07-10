@@ -576,26 +576,58 @@ class BaseExecutor:
             field_mapper = get_field_mapper()
             case_fields = field_mapper.get_case_fields(algorithm_type)
             
-            # 从 rounds 中提取参数
-            first_round = case_config.get('rounds', [{}])[0] if case_config.get('rounds') else {}
-            case_algorithm_params = first_round.get('algorithmParams', {}) if isinstance(first_round, dict) else {}
+            # 从独立列读取算法参数（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
+            # 兼容旧数据：如果独立列为空，从 config.rounds[].algorithmParams 读取
+            from backend.utils.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
+            algorithm_params_col = getattr(case, 'algorithm_params', None)
             
-            # reference_params 从文件加载（所有 rounds 的参考参数合并）
-            from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
-            all_reference_params = []
-            for round_item in case_config.get('rounds', []):
+            # 把按轮分组的 algorithm_params 注入到每个 round_config 里（兼容下游读取）
+            # 下游 executor 仍用 round_config.get('algorithmParams') 读取
+            case_config = case_config.copy() if case_config else {}
+            rounds = case_config.get('rounds', [])
+            for round_item in rounds:
                 if isinstance(round_item, dict):
-                    ref_path = round_item.get('reference_params_path') or round_item.get('referenceParamsPath')
-                    if ref_path:
-                        round_refs = ReferenceParamsGenerator.load_from_file(ref_path)
-                        if round_refs:
-                            all_reference_params.extend(round_refs)
+                    rn = round_item.get('round_number') or round_item.get('roundNumber') or 1
+                    # 优先从独立列按轮取
+                    round_params = _get_round_algo_params(algorithm_params_col, rn)
+                    if round_params:
+                        round_item['algorithmParams'] = round_params
+                    # 兼容旧数据：如果独立列没有，round 里已有的 algorithmParams 保持不变
+            
+            # 第一轮算法参数（用于平面参数消费方）
+            first_round = rounds[0] if rounds else {}
+            case_algorithm_params = _normalize_algorithm_params(
+                first_round.get('algorithmParams', {}) if isinstance(first_round, dict) else {}
+            )
+            
+            # reference_params 从独立列读取（按轮分组路径），从文件加载内容
+            from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
+            reference_params_col = getattr(case, 'reference_params', None)
+            all_reference_params = []
+            
+            if reference_params_col and isinstance(reference_params_col, list):
+                # 新设计：从独立列按轮取路径
+                for ref_entry in reference_params_col:
+                    if isinstance(ref_entry, dict):
+                        ref_path = ref_entry.get('reference_params_path')
+                        if ref_path:
+                            round_refs = ReferenceParamsGenerator.load_from_file(ref_path)
+                            if round_refs:
+                                all_reference_params.extend(round_refs)
+            else:
+                # 兼容旧数据：从 config.rounds[].reference_params_path 读取
+                for round_item in rounds:
+                    if isinstance(round_item, dict):
+                        ref_path = round_item.get('reference_params_path') or round_item.get('referenceParamsPath')
+                        if ref_path:
+                            round_refs = ReferenceParamsGenerator.load_from_file(ref_path)
+                            if round_refs:
+                                all_reference_params.extend(round_refs)
             
             case_reference_params = all_reference_params if all_reference_params else {}
             
-            # 将 algorithm_params 注入 config 以便后续使用
+            # 将 algorithm_params 注入 config 以便后续使用（平面格式，兼容下游）
             if case_algorithm_params:
-                case_config = case_config.copy() if case_config else {}
                 case_config['algorithm_params'] = case_algorithm_params
             
             result_data = {

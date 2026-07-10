@@ -127,7 +127,9 @@
         :case-algorithm-params="caseAlgorithmParams"
         :algorithm-type="localFormData.algorithmType"
         :algorithm-form-schema="algorithmFormSchema"
+        :algorithm-params="localFormData.algorithm_params"
         @update:model-value="handleRoundsUpdate"
+        @update:algorithm-params="handleAlgorithmParamsUpdate"
         @open-audio-select="handleAudioSelectRequest"
         @open-device-modal="(audioIndex: number) => emit('openDeviceModal', audioIndex)"
         @open-batch-device-modal="() => emit('openBatchDeviceModal')"
@@ -204,8 +206,10 @@ function createInitialFormData(): TestCaseFormData {
     config: {
       rounds: [{ roundNumber: 1, audios: [] }],
       dimensions: [],
-    }
-  };
+    },
+    // 新设计：algorithm_params 独立列（按轮分组），初始为空数组
+    algorithm_params: [],
+  } as TestCaseFormData;
 }
 
 // ---- test_type 切换 ----
@@ -218,6 +222,12 @@ function switchTestType(type: 'api' | 'e2e') {
 // ---- 轮次更新回调 ----
 function handleRoundsUpdate(rounds: RoundConfigItem[]) {
   localFormData.value.config.rounds = rounds;
+  emitFormData();
+}
+
+// ---- 算法参数独立列更新回调 ----
+function handleAlgorithmParamsUpdate(params: any[]) {
+  localFormData.value.algorithm_params = params;
   emitFormData();
 }
 
@@ -310,13 +320,19 @@ function initFormData() {
     config: raw.config?.rounds ? raw.config : {
       rounds: [{ roundNumber: 1, audios: [] }],
       dimensions: [],
-    }
+    },
+    // 新设计：algorithm_params 作为 test_cases 独立列（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
+    algorithm_params: Array.isArray((raw as any).algorithmParams || (raw as any).algorithm_params)
+      ? ((raw as any).algorithmParams || (raw as any).algorithm_params)
+      : [],
   };
-  const firstRound = localFormData.value.config?.rounds?.[0];
-  const roundAlgoParams = firstRound?.algorithmParams || [];
+  // 从独立列读取第一个 round 的 params，用于 AlgorithmSelector 的 initial-params（单轮编辑器）
+  const groupedAlgParams = localFormData.value.algorithm_params as any[];
+  const firstEntry = groupedAlgParams.find((e: any) => e.round_number === 1) || groupedAlgParams[0];
+  const roundAlgoParams = firstEntry?.params || [];
   algorithmParams.value = Array.isArray(roundAlgoParams)
     ? roundAlgoParams.reduce((acc: Record<string, any>, p: any) => { if (p.field_code) acc[p.field_code] = p.field_value; return acc; }, {})
-    : roundAlgoParams || {};
+    : {};
 }
 
 function emitFormData() {
@@ -330,14 +346,26 @@ function emitFormData() {
  * 将 algorithmParams 中的声纹/干扰人参数同步到后端期望的结构化字段：
  * - voiceprint_config → config.voiceprint_config (case 级别)
  * - interferers → round.interferers (round 级别)
+ *
+ * 新设计：algorithmParams 作为 test_cases 独立列（按轮分组 [{round_number, params:[...]}]）
+ * 这里从 localFormData 上的 algorithmParams 独立列按 round_number 读取对应轮的 params。
+ * 兼容回退：若独立列缺失，则从 round.algorithmParams 读取（子组件编辑期间仍写入 round）。
  */
 function syncStructuredFields() {
   const config = localFormData.value.config;
   if (!config) return;
 
+  // 独立列：按轮分组的 algorithm_params
+  const groupedAlgParams: any[] = Array.isArray((localFormData.value as any).algorithm_params)
+    ? (localFormData.value as any).algorithm_params
+    : [];
+
   const rounds = config.rounds || [];
   for (const round of rounds) {
-    const params = round.algorithmParams || [];
+    const roundNumber = round.roundNumber ?? 1;
+    // 从独立列按 round_number 读取对应轮的 params
+    const entry = groupedAlgParams.find((e: any) => e.round_number === roundNumber);
+    const params = entry?.params || round.algorithmParams || [];
     const getParam = (code: string) => {
       const item = params.find((p: any) => p.field_code === code);
       return item?.field_value;

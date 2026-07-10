@@ -45,6 +45,20 @@
             </div>
             </div>
           </div>
+            <div class="case-id-row">
+              <span
+                class="case-id-badge"
+                :title="idCopied ? '已复制' : '点击复制ID'"
+                @click.stop="copyCaseId"
+                @keydown.enter.prevent.stop="copyCaseId"
+                tabindex="0"
+                role="button"
+                :aria-label="`用例ID: ${testCase.id}, 点击复制`"
+              >
+                <i class="fas fa-copy"></i> 用例ID: {{ testCase.id }}
+                <span class="case-id-copied" v-if="idCopied">已复制</span>
+              </span>
+            </div>
             <div class="case-description">{{ testCase.description || '' }}</div>
             <div v-if="testCase.lastEditTime || testCase.createdAt || testCase.updatedAt" style="margin-bottom: 8px; font-size: 12px; color: var(--text-secondary);">
               <span class="meta-label">最后编辑时间:</span> {{ testCase.lastEditTime || testCase.updatedAt || testCase.createdAt || '未知' }}
@@ -129,6 +143,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useAlgorithmLabels } from '../../../composables/useAlgorithmLabels';
+import { copyToClipboard } from '../../../utils/utils';
 
 const { loadAlgorithms, getAlgorithmLabel } = useAlgorithmLabels();
 
@@ -148,6 +163,8 @@ const emit = defineEmits(['toggle-selection', 'action']);
 
 const isTagsExpanded = ref(false);
 const isConfigExpanded = ref(true);
+const idCopied = ref(false);
+let idCopiedTimer = null;
 
 const truncatedName = computed(() => {
   const name = props.testCase.name;
@@ -159,6 +176,19 @@ const truncatedName = computed(() => {
 
 const toggleSelection = () => {
   emit('toggle-selection', props.testCase.id);
+};
+
+const copyCaseId = async () => {
+  const id = props.testCase?.id;
+  if (id === undefined || id === null) return;
+  const ok = await copyToClipboard(String(id));
+  if (ok) {
+    idCopied.value = true;
+    if (idCopiedTimer) clearTimeout(idCopiedTimer);
+    idCopiedTimer = setTimeout(() => {
+      idCopied.value = false;
+    }, 1500);
+  }
 };
 
 const handleAction = (action) => {
@@ -237,6 +267,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize);
+  if (idCopiedTimer) clearTimeout(idCopiedTimer);
 });
 
 watch(() => props.testCase?.tags, () => {
@@ -364,12 +395,56 @@ const handleResize = () => {
 
 .duration-tag {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
+  background-color: #FF6A00;
+  color: white;
   font-size: 12px;
   font-weight: 500;
-  color: white;
-  background-color: #722ed1;
+  padding: 4px 8px;
+  border-radius: 12px;
+  min-width: 20px;
+  text-align: center;
+}
+
+/* 用例ID徽章 - 点击可复制 */
+.case-id-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.case-id-badge {
+  padding: 2px 10px;
+  background: white;
+  color: #1677ff;
+  border-radius: var(--border-radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.case-id-badge:hover,
+.case-id-badge:focus-visible {
+  background: #f8fafc;
+  color: #1677ff;
+  outline: none;
+}
+
+.case-id-badge:active {
+  transform: translateY(1px);
+}
+
+.case-id-badge .fa-copy {
+  font-size: 10px;
+}
+
+.case-id-copied {
+  color: #16a34a;
+  font-weight: 600;
+  margin-left: 2px;
 }
 </style>
 

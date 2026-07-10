@@ -104,8 +104,8 @@
     <!-- 声纹注册 -->
     <div class="rce-section" v-if="hasVoiceprintParam">
       <VoiceprintConfigEditor
-        :model-value="round.algorithmParams || []"
-        @update:model-value="(v: AlgorithmParamItem[]) => emit('update:round', { ...round, algorithmParams: v })"
+        :model-value="currentAlgoParams"
+        @update:model-value="onAlgoParamsUpdate"
         @open-audio-modal="(cb: (audioId: string) => void) => emit('openAudioSelect', 'noise', (audios: { id: string; name?: string }[]) => { if (audios.length > 0) cb(audios[0].id) })"
         @preview-audio="(audioId: string) => emit('previewAudio', audioId)"
       />
@@ -114,8 +114,8 @@
     <!-- 干扰人 -->
     <div class="rce-section" v-if="hasInterfererParam">
       <InterfererConfigEditor
-        :model-value="round.algorithmParams || []"
-        @update:model-value="(v: AlgorithmParamItem[]) => emit('update:round', { ...round, algorithmParams: v })"
+        :model-value="currentAlgoParams"
+        @update:model-value="onAlgoParamsUpdate"
         @open-audio-modal="(cb: (audioId: string, audioName?: string) => void) => emit('openAudioSelect', 'noise', (audios: { id: string; name?: string }[]) => { if (audios.length > 0) cb(audios[0].id, audios[0].name) })"
         @preview-audio="(audioId: string) => emit('previewAudio', audioId)"
       />
@@ -136,15 +136,34 @@ const props = defineProps<{
   playbackDevices: PlaybackDevice[]
   hasVoiceprintParam: boolean
   hasInterfererParam: boolean
+  /** 当前轮的算法参数（来自独立列 algorithm_params 按轮匹配后的 params 数组） */
+  roundAlgorithmParams?: AlgorithmParamItem[]
 }>()
 
 const emit = defineEmits<{
   'update:round': [value: RoundConfigItem]
+  /** 算法参数更新（独立列格式 params 数组） */
+  'update:round-algo-params': [params: AlgorithmParamItem[]]
   'openAudioSelect': [audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void]
   'previewAudio': [audioId: string]
 }>()
 
 const audioConfig = inject<any>('audioConfig', {})
+
+// 当前轮的算法参数：优先从独立列 roundAlgorithmParams 读取，兼容回退到 round.algorithmParams
+const currentAlgoParams = computed<AlgorithmParamItem[]>(() => {
+  if (props.roundAlgorithmParams && props.roundAlgorithmParams.length > 0) {
+    return props.roundAlgorithmParams
+  }
+  // 兼容回退：子组件编辑期间可能仍写入 round.algorithmParams
+  return (props.round.algorithmParams as AlgorithmParamItem[]) || []
+})
+
+// 算法参数更新：同时通知独立列和 round（兼容）
+function onAlgoParamsUpdate(params: AlgorithmParamItem[]) {
+  emit('update:round-algo-params', params)
+  emit('update:round', { ...props.round, algorithmParams: params })
+}
 
 function getAudioName(audioId: string): string {
   return audioConfig?.getAudioName?.(audioId) || audioId
@@ -175,20 +194,20 @@ function getNormalizedTags(tagsStr: string): string[] {
 }
 
 function getAlgoParam(fieldCode: string, defaultValue?: unknown): unknown {
-  const params = props.round.algorithmParams || []
+  const params = currentAlgoParams.value
   const item = params.find((p) => p.field_code === fieldCode)
   return item?.field_value ?? defaultValue ?? ''
 }
 
 function setAlgoParam(fieldCode: string, value: unknown) {
-  const params = [...(props.round.algorithmParams || [])]
+  const params = [...currentAlgoParams.value]
   const idx = params.findIndex((p) => p.field_code === fieldCode)
   if (idx >= 0) {
     params[idx] = { field_code: fieldCode, field_value: value }
   } else {
     params.push({ field_code: fieldCode, field_value: value })
   }
-  emit('update:round', { ...props.round, algorithmParams: params })
+  onAlgoParamsUpdate(params)
 }
 
 function isTruthy(val: unknown): boolean {

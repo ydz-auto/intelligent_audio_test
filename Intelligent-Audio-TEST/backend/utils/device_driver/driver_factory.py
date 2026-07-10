@@ -1,11 +1,14 @@
 from .android_driver import AndroidDriver
 from .android_plaud import PlaudDriver
+from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .harmony_driver import HarmonyDriver
 from .harmony_translation_driver import (
     XiaoyiFace2FaceDriver,
     XiaoyiSimultaneousInterpretationDriver
 )
 from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
+from .harmony_xiaoyichat import Xiaoyilivechat
+from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
 from .utils import log_and_emit
 
 
@@ -92,6 +95,27 @@ class DeviceDriverFactory:
             '鸿蒙harden小艺慧记专用驱动'
         )
 
+        self.register_specialized_driver(
+            Xiaoyilivechat(),
+            ['xiaoyilivechat', '小艺通话', 'livechat'],
+            'HarmonyOS',
+            '小艺通话聊天专用驱动'
+        )
+
+        self.register_specialized_driver(
+            HarmonyHardenXiaoyi_Input_MethodDriver(),
+            ['input_method', '输入法', 'asr'],
+            'HarmonyOS',
+            '鸿蒙小艺输入法ASR专用驱动'
+        )
+
+        self.register_specialized_driver(
+            DouBaoAndroidAsrDriver(),
+            ['doubao', '豆包', 'asr'],
+            'Android',
+            '豆包Android语音识别专用驱动'
+        )
+
     def register_specialized_driver(self, driver, keywords, system=None, name=None):
         """注册专用驱动"""
         # 设置新注册驱动的模拟模式
@@ -128,9 +152,9 @@ class DeviceDriverFactory:
             if entry['system'] and entry['system'] != system_lower:
                 continue
             
-            for kw in keywords_lower:
-                if kw in entry['keywords']:
-                    return entry['name']
+            # 所有关键字都必须匹配
+            if all(kw in entry['keywords'] for kw in keywords_lower):
+                return entry['name']
         
         return None
 
@@ -169,13 +193,13 @@ class DeviceDriverFactory:
                     if entry['system'] != system_lower and system_lower not in entry['system']:
                         continue
                 
-                for kw in keywords_lower:
-                    if kw in entry['keywords']:
-                        driver = entry['driver']
-                        if device_sn and hasattr(driver, 'set_task_id'):
-                            # 这里可以设置task_id，需要根据实际情况调整
-                            pass
-                        return driver
+                # 所有关键字都必须匹配
+                if all(kw in entry['keywords'] for kw in keywords_lower):
+                    driver = entry['driver']
+                    if device_sn and hasattr(driver, 'set_task_id'):
+                        # 这里可以设置task_id，需要根据实际情况调整
+                        pass
+                    return driver
         
         # 如果没有找到专用驱动，返回基础驱动
         return self.get_driver_by_system(system)

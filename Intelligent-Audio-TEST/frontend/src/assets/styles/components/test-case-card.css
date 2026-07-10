@@ -118,9 +118,9 @@
 /* 用例勾选后高亮样式 */
 .case-card:has(.test-case-checkbox:checked),
 .case-card.card-selected {
-  background-color: rgba(255, 106, 0, 0.05);
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.1);
+  background-color: rgba(255, 106, 0, 0.1) !important;
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.2) !important;
 }
 
 /* 用例卡片头部 */

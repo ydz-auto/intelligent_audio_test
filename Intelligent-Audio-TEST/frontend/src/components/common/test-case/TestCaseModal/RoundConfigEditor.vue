@@ -42,7 +42,9 @@
           :case-algorithm-params="caseAlgorithmParams || []"
           :algorithm-form-schema="algorithmFormSchema"
           :test-type="effectiveTestType"
+          :round-algorithm-params="currentRoundAlgoParams"
           @update:round="updateCurrentRoundData"
+          @update:round-algo-params="handleAlgoParamsUpdate"
           @open-audio-select="handleAudioSelect"
         />
 
@@ -66,7 +68,9 @@
           :playback-devices="playbackDevices"
           :has-voiceprint-param="hasVoiceprintParam"
           :has-interferer-param="hasInterfererParam"
+          :round-algorithm-params="currentRoundAlgoParams"
           @update:round="updateCurrentRoundData"
+          @update:round-algo-params="handleAlgoParamsUpdate"
           @open-audio-select="handleAudioSelect"
           @preview-audio="(audioId: string) => emit('previewAudio', audioId, 'noise')"
         />
@@ -97,8 +101,8 @@
 import { ref, computed, watch, onMounted, inject, nextTick } from 'vue'
 import type {
   RoundConfigItem,
-  AlgorithmParamItem,
   RoundEvaluationConfig,
+  AlgorithmParamItem,
 } from './types'
 import type { Dimension, PlaybackDevice } from '../../../../shared/types'
 import RoundEvaluationEditor from './RoundEvaluationEditor.vue'
@@ -117,10 +121,14 @@ const props = defineProps<{
   caseAlgorithmParams?: any[]
   algorithmType?: string
   algorithmFormSchema?: any
+  /** 按轮分组的算法参数独立列（来自 test_cases.algorithm_params） */
+  algorithmParams?: any[]
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: RoundConfigItem[]]
+  /** 算法参数独立列更新 */
+  'update:algorithmParams': [value: any[]]
   'openAudioSelect': [audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void]
   'openDeviceModal': [audioIndex: number]
   'openBatchDeviceModal': []
@@ -159,6 +167,28 @@ watch(
 const currentRound = computed(() => localRounds.value[activeRoundIndex.value] || null)
 const effectiveTestType = computed(() => props.testType || 'api')
 
+// 当前轮的算法参数（从独立列 algorithmParams 按 round_number 匹配）
+const currentRoundAlgoParams = computed<AlgorithmParamItem[]>(() => {
+  if (!currentRound.value || !props.algorithmParams) return []
+  const rn = currentRound.value.roundNumber ?? 1
+  const entry = props.algorithmParams.find((e: any) => e.round_number === rn)
+  return (entry?.params as AlgorithmParamItem[]) || []
+})
+
+// 子组件更新算法参数 → 写回独立列
+function handleAlgoParamsUpdate(params: AlgorithmParamItem[]) {
+  if (!currentRound.value) return
+  const rn = currentRound.value.roundNumber ?? 1
+  const grouped = Array.isArray(props.algorithmParams) ? [...props.algorithmParams] : []
+  const idx = grouped.findIndex((e: any) => e.round_number === rn)
+  if (idx >= 0) {
+    grouped[idx] = { round_number: rn, params }
+  } else {
+    grouped.push({ round_number: rn, params })
+  }
+  emit('update:algorithmParams', grouped)
+}
+
 // ---- 步骤定义 ----
 const steps = computed(() => {
   const base = [
@@ -190,17 +220,12 @@ const hasInterfererParam = computed(() =>
 )
 
 // ---- 轮次操作 ----
+// 新设计：round 只含结构性字段，algorithmParams 移到 test_cases.algorithm_params 独立列
 function createEmptyRound(number: number): RoundConfigItem {
-  const defaultParams: AlgorithmParamItem[] = []
-  for (const param of (props.caseAlgorithmParams || [])) {
-    if (param.default_value !== undefined && param.default_value !== null && param.default_value !== '') {
-      defaultParams.push({ field_code: param.param_code, field_value: param.default_value })
-    }
-  }
   return {
     roundNumber: number,
     audios: [],
-    algorithmParams: defaultParams,
+    evaluation: { enabled: false, dimensions: [] },
   }
 }
 
@@ -211,7 +236,7 @@ function addRound() {
     const source = localRounds.value[localRounds.value.length - 1]
     const newRound = JSON.parse(JSON.stringify(source))
     newRound.roundNumber = localRounds.value.length + 1
-    delete newRound.referenceParamsPath
+    // 新设计：referenceParamsPath 已移到独立列，round 里不再有此字段，无需删除
     localRounds.value = [...localRounds.value, newRound]
   }
   activeRoundIndex.value = localRounds.value.length - 1
@@ -222,7 +247,7 @@ function copyCurrentRound() {
   if (!currentRound.value) return
   const copy = JSON.parse(JSON.stringify(currentRound.value))
   copy.roundNumber = localRounds.value.length + 1
-  delete copy.referenceParamsPath
+  // 新设计：referenceParamsPath 已移到独立列，round 里不再有此字段，无需删除
   localRounds.value = [...localRounds.value, copy]
   activeRoundIndex.value = localRounds.value.length - 1
   emitUpdate()
@@ -232,9 +257,21 @@ function removeCurrentRound() {
   if (localRounds.value.length <= 1) return
   if (!confirm('确定要删除第 ' + (activeRoundIndex.value + 1) + ' 轮吗？该操作不可撤销。')) return
   const idx = activeRoundIndex.value
+  const deletedRoundNumber = localRounds.value[idx]?.roundNumber
+
+  // 重新编号 rounds
   localRounds.value = localRounds.value
     .filter((_, i) => i !== idx)
     .map((r, i) => ({ ...r, roundNumber: i + 1 }))
+
+  // 同步更新 algorithm_params 独立列：移除被删除轮次的参数，并重新编号 round_number
+  if (Array.isArray(props.algorithmParams) && props.algorithmParams.length > 0) {
+    const updatedAlgParams = props.algorithmParams
+      .filter((e: any) => e.round_number !== deletedRoundNumber)
+      .map((e: any, i: number) => ({ ...e, round_number: i + 1 }))
+    emit('update:algorithmParams', updatedAlgParams)
+  }
+
   activeRoundIndex.value = Math.min(activeRoundIndex.value, localRounds.value.length - 1)
   emitUpdate()
 }

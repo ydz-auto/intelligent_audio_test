@@ -54,6 +54,11 @@ class Xiaoyilivechat(HarmonyDriver):
                 delete_button.click()
                 time.sleep(1)
 
+
+        return True
+
+    def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+        driver = self._get_driver(device_sn)
         # 开启通话聊天
 
         driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type(
@@ -65,11 +70,6 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception:
             self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
             return False
-        return True
-
-    def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        driver = self._get_driver(device_sn)
-
         # 开启录屏
         self._record_file_name = f"{test_case_id}.mp4"
         self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY,

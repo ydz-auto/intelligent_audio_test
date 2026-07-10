@@ -374,8 +374,12 @@ export function useE2eView() {
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
       config: normalized as TestCaseFormData['config'],
       algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
-      test_type: testCaseType as 'api' | 'e2e'
-    }
+      test_type: testCaseType as 'api' | 'e2e',
+      // 新设计：algorithm_params 独立列（后端返回驼峰 algorithmParams）
+      algorithm_params: Array.isArray((testCase as any).algorithmParams || (testCase as any).algorithm_params)
+        ? ((testCase as any).algorithmParams || (testCase as any).algorithm_params)
+        : [],
+    } as TestCaseFormData
     
     try {
       const result = await modalManager.open(MODAL_TYPES.TEST_CASE_RELATED, {
@@ -482,7 +486,7 @@ export function useE2eView() {
     try {
       const result = await handleModalSave(data);
       if (result?.needRefresh) {
-        await initializeE2eTests();
+        await initializeE2eTests(selectedAlgorithmType.value || undefined);
       }
     } catch (error) {
       console.error('保存失败:', error)
@@ -499,7 +503,7 @@ export function useE2eView() {
       if (confirmed) {
         const store = useTestCaseStore();
         await store.deleteGroup(groupName);
-        await initializeE2eTests();
+        await initializeE2eTests(selectedAlgorithmType.value || undefined);
       }
     } catch (error) {
       console.error('删除分组失败:', error)
@@ -514,7 +518,7 @@ export function useE2eView() {
       if (confirmed) {
         const store = useTestCaseStore();
         await store.deleteTestCase(testCase.id);
-        await initializeE2eTests();
+        await initializeE2eTests(selectedAlgorithmType.value || undefined);
       }
     } catch (error) {
       console.error('删除测试用例失败:', error)

@@ -52,14 +52,13 @@ class PlaybackOrchestrator:
     #                           高层 API                                  #
     # ------------------------------------------------------------------ #
 
-    def play_round(self, round_config, device_info_list, task_id,
+    def play_round(self, round_config, task_id,
                    case_config=None, test_case_id=None):
         """
         播放一轮 E2E 测试音频（主讲人 + 噪声 + 干扰人）。
 
         Args:
             round_config: 本轮配置 dict，包含 audios / backgroundNoise / interferers / algorithmParams
-            device_info_list: 可用设备信息列表
             task_id: 任务ID
             case_config: 用例全局配置（用于 fallback 噪声配置）
             test_case_id: 测试用例关联ID
@@ -84,8 +83,9 @@ class PlaybackOrchestrator:
             noise_audio_info, noise_devices = self._build_noise_info(round_config, case_config)
 
             # 3. 构建主讲人 audio_to_play 配置
+            #    playback_device_id 指向 PlaybackDevice 表，_build_dry_configs 内部从 DB 加载
             dry_configs, playback_devices_map = self._build_dry_configs(
-                dry_audios_info, device_info_list
+                dry_audios_info, task_id=task_id
             )
             if not dry_configs:
                 self._log('WARNING', 'play_round: no dry configs built', task_id=task_id)
@@ -93,7 +93,7 @@ class PlaybackOrchestrator:
 
             # 4. 构建噪声 audio_to_play 配置
             noise_configs = self._build_noise_play_configs(
-                noise_audio_info, noise_devices, device_info_list
+                noise_audio_info, noise_devices
             )
 
             # 5. 构建干扰人 audio_to_play 配置（从 algorithmParams 读取）
@@ -101,7 +101,7 @@ class PlaybackOrchestrator:
             round_algo_params = _normalize_algorithm_params(round_config.get('algorithmParams', []))
             interferers = round_algo_params.get('interferers', [])
             interferer_configs = self._build_interferer_configs(
-                task_id, interferers, device_info_list
+                task_id, interferers
             )
 
             # 6. 构建时间轴（主讲人 + speaker 感知）
@@ -200,12 +200,12 @@ class PlaybackOrchestrator:
 
             # 2. 构建主讲人配置
             dry_configs, playback_devices_map = self._build_dry_configs(
-                dry_audios_info, [d for d in dry_devices]
+                dry_audios_info, task_id=task_id
             )
 
             # 3. 构建噪声配置
             noise_configs = self._build_noise_play_configs(
-                noise_audio_info, noise_devices, [d for d in noise_devices] if noise_devices else []
+                noise_audio_info, noise_devices
             )
 
             # 4. 时间轴
@@ -266,13 +266,13 @@ class PlaybackOrchestrator:
             self._log('ERROR', f'preview failed: {e}', task_id=task_id)
             return None
 
-    def play_voiceprint(self, vp_config, device_info_list, task_id):
+    def play_voiceprint(self, vp_config, task_id):
         """
         播放声纹注册音频并等待注册完成。
 
         Args:
-            vp_config: 声纹配置 dict (case_config.voiceprint_config)
-            device_info_list: 可用设备信息列表
+            vp_config: 声纹配置 dict，扁平结构:
+                {enabled, audio_id, playback_device_id, spl, wait_time}
             task_id: 任务ID
 
         Returns:
@@ -283,31 +283,30 @@ class PlaybackOrchestrator:
             return True
 
         from backend.models import db
-        from backend.models.models import Audio
+        from backend.models.models import Audio, PlaybackDevice
 
-        audio_info = vp_config.get('audio', {})
-        device_cfg = vp_config.get('device', {})
-        spl = vp_config.get('spl')
-        wait_time_ms = int(vp_config.get('waitTime', 3000))
+        audio_id = vp_config.get('audio_id')
+        playback_dev_id = vp_config.get('playback_device_id')
+        spl = vp_config.get('spl', 70.0)
+        wait_time_sec = float(vp_config.get('wait_time', 5.0))
 
-        audio_id = audio_info.get('id')
-        device_id = device_cfg.get('id')
-
-        if not audio_id or not device_id:
+        if not audio_id or not playback_dev_id:
             self._log('WARNING',
-                      '声纹注册配置不完整 (缺少 audio.id 或 device.id)，跳过',
+                      '声纹注册配置不完整 (缺少 audio_id 或 playback_device_id)，跳过',
                       task_id=task_id)
             return True
 
-        target_info = next((d for d in device_info_list if d.get('device_id') == device_id), None)
-        if target_info is None:
+        # 从 DB 加载 PlaybackDevice ORM 对象
+        dev_obj = None
+        try:
+            dev_obj = db.session.get(PlaybackDevice, playback_dev_id)
+        except Exception:
+            dev_obj = None
+        if not dev_obj:
             self._log('ERROR',
-                      f'声纹注册设备 (id={device_id}, name={device_cfg.get("name")}) 未找到',
+                      f'声纹注册播放设备 (id={playback_dev_id}) 未找到',
                       task_id=task_id)
             return False
-
-        driver = target_info.get('driver')
-        device_sn = target_info.get('device_sn')
 
         try:
             audio_obj = db.session.get(Audio, audio_id)
@@ -320,20 +319,10 @@ class PlaybackOrchestrator:
                       task_id=task_id)
             return False
 
-        original_volume = None
         try:
-            if driver and device_sn and spl:
-                try:
-                    original_volume = driver.get_volume(device_sn)
-                    driver.set_volume(device_sn, int(spl))
-                    self._log('INFO',
-                              f'声纹注册: 设备 {device_sn} 音量已设为 {spl}',
-                              task_id=task_id)
-                except Exception as e:
-                    self._log('WARNING', f'声纹注册: 音量控制失败: {e}', task_id=task_id)
-
-            device_unique_id = target_info.get('device_unique_id')
-            channel_index = target_info.get('channel_index', 0)
+            device_unique_id = getattr(dev_obj, 'device_unique_id', None)
+            channel_index = getattr(dev_obj, 'channel_index', 0)
+            spl_mapping_id = getattr(dev_obj, 'current_spl_mapping_id', None)
             device_index = (
                 self.audio_service.get_device_index(device_unique_id) if device_unique_id else 0
             )
@@ -343,11 +332,13 @@ class PlaybackOrchestrator:
                           task_id=task_id)
                 return False
 
+            gain = self._resolve_spl_gain(spl_mapping_id, spl)
+
             audio_config = {
                 'file': audio_obj.file_path,
                 'device_index': device_index,
                 'channel': channel_index,
-                'gain': 1.0,
+                'gain': gain,
                 'delay': 0,
                 'is_noise': False,
                 'loop': False,
@@ -355,7 +346,8 @@ class PlaybackOrchestrator:
             }
 
             self._log('INFO',
-                      f'开始声纹注册: 播放 {audio_info.get("name", audio_obj.file_path)}',
+                      f'开始声纹注册: 播放 {audio_obj.name or audio_obj.file_path} '
+                      f'(spl={spl}, gain={gain:.3f})',
                       task_id=task_id)
 
             self.audio_service.play_overlap(
@@ -367,24 +359,17 @@ class PlaybackOrchestrator:
                 loop=False,
             )
 
-            wait_seconds = wait_time_ms / 1000.0
-            time.sleep(wait_seconds)
-
             self._log('INFO',
-                      f'声纹注册完成 (等待 {wait_seconds}s)',
+                      f'声纹注册等待 {wait_time_sec}s',
                       task_id=task_id)
+            time.sleep(wait_time_sec)
+
+            self._log('INFO', '声纹注册完成', task_id=task_id)
             return True
 
         except Exception as e:
             self._log('ERROR', f'声纹注册失败: {e}', task_id=task_id)
             return False
-
-        finally:
-            if original_volume is not None and driver and device_sn:
-                try:
-                    driver.set_volume(device_sn, original_volume)
-                except Exception:
-                    pass
 
     # ------------------------------------------------------------------ #
     #                        内部：配置构建                                 #
@@ -416,9 +401,11 @@ class PlaybackOrchestrator:
         from backend.models import db
         from backend.models.models import Audio, PlaybackDevice
 
-        bg_noise = round_config.get('backgroundNoise') or {}
+        # 兼容 camelCase / snake_case，兼容 round 级 / case 级
+        bg_noise = round_config.get('backgroundNoise') or round_config.get('background_noise') or {}
         if not bg_noise and case_config:
-            bg_noise = (case_config.get('background_noise') or {})
+            bg_noise = (case_config.get('background_noise')
+                        or case_config.get('backgroundNoise') or {})
 
         noise_audio = None
         noise_spl = 0
@@ -435,12 +422,27 @@ class PlaybackOrchestrator:
         for did in device_ids:
             dev = None
             try:
+                # 字符串既可能是主键 ID 也可能是 device_unique_id，先按主键查，再按 unique_id 查
                 if isinstance(did, str):
+                    # 先尝试作为主键 ID 查询（若为纯数字字符串）
+                    try_num = int(did)
+                    dev = db.session.get(PlaybackDevice, try_num)
+                    if dev and getattr(dev, 'is_deleted', 0):
+                        dev = None
+                    if not dev:
+                        dev = PlaybackDevice.query.filter_by(
+                            device_unique_id=did, is_deleted=0
+                        ).first()
+                else:
+                    dev = db.session.get(PlaybackDevice, did)
+            except (ValueError, TypeError):
+                # 非数字字符串，按 device_unique_id 查
+                try:
                     dev = PlaybackDevice.query.filter_by(
                         device_unique_id=did, is_deleted=0
                     ).first()
-                else:
-                    dev = db.session.get(PlaybackDevice, did)
+                except Exception:
+                    dev = None
             except Exception:
                 dev = None
             if dev:
@@ -451,13 +453,18 @@ class PlaybackOrchestrator:
                     noise_audio), noise_devices
         return None, noise_devices
 
-    def _build_dry_configs(self, dry_audios_info, device_info_list_or_objs):
+    def _build_dry_configs(self, dry_audios_info, task_id=None):
         """
         构建主讲人 audio_to_play 配置。
+
+        playback_device_id 指向 PlaybackDevice 表主键，直接从 DB 加载 ORM 对象。
 
         Returns:
             (configs, playback_devices_map)
         """
+        from backend.models import db
+        from backend.models.models import PlaybackDevice
+
         playback_devices_map = {}
         configs = []
 
@@ -470,8 +477,19 @@ class PlaybackOrchestrator:
             if not playback_dev_id:
                 continue
 
-            dev_obj = self._find_device_obj(playback_dev_id, device_info_list_or_objs)
+            # 从 DB 加载 PlaybackDevice ORM 对象
+            dev_obj = None
+            try:
+                dev_obj = db.session.get(PlaybackDevice, playback_dev_id)
+            except Exception:
+                dev_obj = None
             if not dev_obj:
+                self._log(
+                    'WARNING',
+                    f'主讲人音频 (audio_id={audio_config.get("audio_id")}) '
+                    f'播放设备 (id={playback_dev_id}) 未找到，跳过',
+                    task_id=task_id,
+                )
                 continue
 
             dev_id = dev_obj.id if hasattr(dev_obj, 'id') else dev_obj.get('id')
@@ -489,6 +507,12 @@ class PlaybackOrchestrator:
             )
             device_index = self.audio_service.get_device_index(dev_unique_id) if dev_unique_id else None
             if device_index is None:
+                self._log(
+                    'WARNING',
+                    f'主讲人音频 (audio_id={audio_config.get("audio_id")}) '
+                    f'无法获取设备索引 (unique_id={dev_unique_id})，跳过',
+                    task_id=task_id,
+                )
                 continue
 
             gain = self._resolve_spl_gain(spl_mapping_id, audio_config.get('spl', 65.0))
@@ -519,7 +543,7 @@ class PlaybackOrchestrator:
 
         return configs, playback_devices_map
 
-    def _build_noise_play_configs(self, noise_audio_info, noise_devices, device_info_list_or_objs):
+    def _build_noise_play_configs(self, noise_audio_info, noise_devices):
         """构建噪声 audio_to_play 配置列表。"""
         if not noise_audio_info or not noise_devices:
             return []
@@ -564,7 +588,7 @@ class PlaybackOrchestrator:
 
         return configs
 
-    def _build_interferer_configs(self, task_id, interferer_config, device_info_list):
+    def _build_interferer_configs(self, task_id, interferer_config):
         """
         构建干扰人 audio_to_play 配置。
 
@@ -578,7 +602,7 @@ class PlaybackOrchestrator:
             return []
 
         from backend.models import db
-        from backend.models.models import Audio
+        from backend.models.models import Audio, PlaybackDevice
 
         audio_to_play = []
 
@@ -586,10 +610,26 @@ class PlaybackOrchestrator:
             if not isinstance(interferer, dict):
                 continue
 
+            # 兼容两种存储结构：
+            # - 嵌套（前端 syncStructuredFields 生成）：{audio:{id,name}, device:{id}, startDelay, ...}
+            # - 扁平（algorithm_params 独立列原样存储）：{audio_id, audio_name, playback_device_id, start_delay, ...}
             audio_info = interferer.get('audio')
             device_cfg = interferer.get('device')
+            if not audio_info:
+                _aid = interferer.get('audio_id') or interferer.get('audioId')
+                if _aid:
+                    audio_info = {
+                        'id': _aid,
+                        'name': interferer.get('audio_name') or interferer.get('audioName') or '',
+                    }
+            if not device_cfg:
+                _did = interferer.get('playback_device_id') or interferer.get('playbackDeviceId')
+                if _did:
+                    device_cfg = {'id': _did}
+
             spl = interferer.get('spl')
-            start_delay_ms = interferer.get('startDelay', 0)
+            # startDelay 兼容：嵌套结构里是毫秒，扁平结构里是秒
+            start_delay_raw = interferer.get('startDelay', interferer.get('start_delay', 0))
             loop = interferer.get('loop', False)
 
             if not audio_info or not device_cfg:
@@ -600,20 +640,23 @@ class PlaybackOrchestrator:
                 )
                 continue
 
-            device_id = device_cfg.get('id')
-            target_info = next(
-                (d for d in device_info_list if d.get('device_id') == device_id), None
-            )
-            if target_info is None:
+            # device_cfg.id 指向 PlaybackDevice 主键，直接从 DB 加载
+            playback_dev_id = device_cfg.get('id')
+            dev_obj = None
+            try:
+                dev_obj = db.session.get(PlaybackDevice, playback_dev_id)
+            except Exception:
+                dev_obj = None
+            if not dev_obj:
                 self._log(
                     'WARNING',
-                    f'干扰人 {idx} 设备 (id={device_id}, name={device_cfg.get("name")}) 未找到，跳过',
+                    f'干扰人 {idx} 播放设备 (id={playback_dev_id}, name={device_cfg.get("name")}) 未找到，跳过',
                     task_id=task_id,
                 )
                 continue
 
-            device_unique_id = target_info.get('device_unique_id')
-            channel_index = target_info.get('channel_index', 0)
+            device_unique_id = getattr(dev_obj, 'device_unique_id', None)
+            channel_index = getattr(dev_obj, 'channel_index', 0)
             device_index = (
                 self.audio_service.get_device_index(device_unique_id) if device_unique_id else None
             )
@@ -625,7 +668,7 @@ class PlaybackOrchestrator:
                 )
                 continue
 
-            spl_mapping_id = target_info.get('current_spl_mapping_id')
+            spl_mapping_id = getattr(dev_obj, 'current_spl_mapping_id', None)
             gain = self._resolve_spl_gain(spl_mapping_id, spl) if spl_mapping_id and spl else 1.0
 
             file_path = _resolve_audio_file_path(audio_info)
@@ -645,12 +688,19 @@ class PlaybackOrchestrator:
                 )
                 continue
 
+            # 判断单位：嵌套结构（syncStructuredFields）的 startDelay 是毫秒，扁平结构是秒
+            # 启发式：> 100 认为是毫秒，否则是秒
+            if start_delay_raw > 100:
+                delay_s = start_delay_raw / 1000.0
+            else:
+                delay_s = start_delay_raw
+
             audio_to_play.append({
                 'file': file_path,
                 'device_index': device_index,
                 'channel': channel_index,
                 'gain': gain,
-                'delay': start_delay_ms / 1000.0,
+                'delay': delay_s,
                 'loop': bool(loop),
                 'is_noise': False,
                 'type': 'interferer',
@@ -749,22 +799,6 @@ class PlaybackOrchestrator:
             )
 
         return dry_audios_info, noise_audio_info, dry_devices, all_noise_devices
-
-    def _find_device_obj(self, device_id, device_info_list_or_objs):
-        """兼容 dict 列表和 ORM 对象列表，按 ID 查找设备。"""
-        for dev in device_info_list_or_objs or []:
-            if dev is None:
-                continue
-            if isinstance(dev, dict):
-                if dev.get('device_id') == device_id or dev.get('id') == device_id:
-                    return dev
-            else:
-                dev_id = getattr(dev, 'id', None)
-                if dev_id is not None and dev_id == device_id:
-                    return dev
-                if getattr(dev, 'device_id', None) == device_id:
-                    return dev
-        return None
 
     def _resolve_spl_gain(self, spl_mapping_id, target_spl):
         """通过 SPL mapping 把声压级转成软件增益。"""

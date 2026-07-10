@@ -86,6 +86,24 @@ export interface AlgorithmParamItem {
 }
 
 /**
+ * 按轮分组的算法参数 — 对应 test_cases.algorithm_params 列
+ * 每个元素描述某一轮的算法参数集合
+ */
+export interface RoundAlgorithmParams {
+  round_number: number;
+  params: AlgorithmParamItem[];
+}
+
+/**
+ * 按轮分组的参考参数路径 — 对应 test_cases.reference_params 列
+ * 每个元素描述某一轮的参考参数文件路径
+ */
+export interface RoundReferenceParams {
+  round_number: number;
+  reference_params_path: string;
+}
+
+/**
  * 音频配置项 — 轮次内音频
  * testType 已移除，由父级用例的 test_type 决定
  */
@@ -160,16 +178,16 @@ export interface InterruptionConfig {
  * 单轮配置项 — rounds-as-top-level 架构的核心数据结构
  * 对应后端 RoundConfigItem
  *
- * 结构字段（Schema 固定）: roundNumber, audios, backgroundNoise, evaluation, referenceParamsPath
- * 算法参数（表驱动）: algorithmParams [{field_code, field_value}]
+ * 仅保留结构性字段：roundNumber, audios, backgroundNoise, evaluation
+ * 算法参数和参考参数已移至 test_cases 表的独立列：
+ *   - algorithm_params: RoundAlgorithmParams[]
+ *   - reference_params: RoundReferenceParams[]
  */
 export interface RoundConfigItem {
   roundNumber: number;
   audios: AudioConfig[];
   backgroundNoise?: BackgroundNoiseConfig;
   evaluation?: RoundEvaluationConfig;
-  referenceParamsPath?: string;
-  algorithmParams?: AlgorithmParamItem[];
   [key: string]: unknown;
 }
 
@@ -187,6 +205,12 @@ export interface TestCaseConfig {
     spl?: number;
     waitTime?: number;
   };
+  /** 背景噪声音频路径 */
+  background_noise?: string;
+  /** 源音频路径 */
+  source_audio?: string;
+  /** 是否自动生成 */
+  auto_generated?: boolean;
   [key: string]: unknown;
 }
 
@@ -208,6 +232,10 @@ export interface TestCaseFormData {
   algorithmType?: string;
   algorithm_type?: string;
   config: TestCaseConfig;
+  /** 按轮分组的算法参数，独立于 config，对应 test_cases.algorithm_params 列 */
+  algorithm_params?: RoundAlgorithmParams[];
+  /** 按轮分组的参考参数路径，独立于 config，对应 test_cases.reference_params 列 */
+  reference_params?: RoundReferenceParams[];
   _originalGroup?: string;
   _originalGroupId?: string;
 }

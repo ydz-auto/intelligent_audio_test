@@ -278,31 +278,103 @@ export function convertToCamelCase<T extends Record<string, any>>(data: T): Reco
 
 export function convertTestCaseFormData(formData: TestCaseFormData): Record<string, any> {
   const convertedData = {...formData};
-  
+
   if (convertedData.config) {
     convertedData.config = normalizeTestCaseConfig(convertedData.config);
   }
 
-  if (convertedData.algorithmParams && typeof convertedData.algorithmParams === 'object' && !Array.isArray(convertedData.algorithmParams)) {
-    const params = convertedData.algorithmParams as Record<string, any>;
-    convertedData.algorithmParams = Object.entries(params).map(([key, value]) => ({
-      fieldCode: key,
-      fieldValue: value
-    }));
+  // ---- 算法参数独立列：按轮分组 [{round_number, params:[{field_code, field_value}]}] ----
+  // 优先使用顶层 algorithm_params 独立列；若为空，则从 config.rounds[].algorithmParams 兼容提取
+  let groupedAlgParams: any[] = Array.isArray((convertedData as any).algorithm_params)
+    ? (convertedData as any).algorithm_params
+    : [];
+
+  // 兼容旧格式：如果顶层是 algorithmParams（对象或数组），归一化后合并
+  if ((convertedData as any).algorithmParams) {
+    const rawAlgParams = (convertedData as any).algorithmParams;
+    if (!Array.isArray(rawAlgParams) && typeof rawAlgParams === 'object') {
+      // 对象格式 → 单轮 params
+      const params = Object.entries(rawAlgParams).map(([key, value]) => ({
+        field_code: key,
+        field_value: value,
+      }));
+      groupedAlgParams = [{ round_number: 1, params }];
+    }
+    delete (convertedData as any).algorithmParams;
   }
 
-  if (convertedData.referenceParams && typeof convertedData.referenceParams === 'object' && !Array.isArray(convertedData.referenceParams)) {
-    const params = convertedData.referenceParams as Record<string, any>;
-    if (Object.keys(params).length === 0) {
-      delete convertedData.referenceParams;
-    } else {
-      convertedData.referenceParams = Object.entries(params).map(([key, value]) => ({
-        code: key,
-        ...value
-      }));
+  // 从 config.rounds 兼容提取（子组件编辑期间仍写入 round.algorithmParams）
+  const rounds = (convertedData.config as any)?.rounds;
+  if (Array.isArray(rounds)) {
+    for (const round of rounds) {
+      const rn = round.roundNumber ?? 1;
+      const existing = groupedAlgParams.find((e: any) => e.round_number === rn);
+      if (round.algorithmParams && Array.isArray(round.algorithmParams)) {
+        if (existing) {
+          // 独立列已有该轮数据，用 round 上的补充缺失的 field_code
+          for (const p of round.algorithmParams) {
+            if (!existing.params.find((ep: any) => ep.field_code === p.field_code)) {
+              existing.params.push({ field_code: p.field_code, field_value: p.field_value });
+            }
+          }
+        } else {
+          groupedAlgParams.push({
+            round_number: rn,
+            params: round.algorithmParams.map((p: any) => ({
+              field_code: p.field_code,
+              field_value: p.field_value,
+            })),
+          });
+        }
+        // 新设计：round 不含算法参数，从 round 上移除
+        delete round.algorithmParams;
+      }
     }
   }
-  
+  (convertedData as any).algorithm_params = groupedAlgParams;
+
+  // ---- 参考参数独立列：按轮分组 [{round_number, reference_params_path}] ----
+  let groupedRefParams: any[] = Array.isArray((convertedData as any).reference_params)
+    ? (convertedData as any).reference_params
+    : [];
+
+  // 兼容旧格式
+  if ((convertedData as any).referenceParams) {
+    const rawRefParams = (convertedData as any).referenceParams;
+    if (!Array.isArray(rawRefParams) && typeof rawRefParams === 'object') {
+      if (Object.keys(rawRefParams).length === 0) {
+        delete (convertedData as any).referenceParams;
+      } else {
+        groupedRefParams = Object.entries(rawRefParams).map(([key, value]: [string, any]) => ({
+          round_number: Number(key) || 1,
+          reference_params_path: typeof value === 'string' ? value : (value?.reference_params_path ?? ''),
+        }));
+      }
+    }
+    delete (convertedData as any).referenceParams;
+  }
+
+  // 从 config.rounds 兼容提取 referenceParamsPath
+  if (Array.isArray(rounds)) {
+    for (const round of rounds) {
+      const rn = round.roundNumber ?? 1;
+      if (round.referenceParamsPath) {
+        const existing = groupedRefParams.find((e: any) => e.round_number === rn);
+        if (existing) {
+          existing.reference_params_path = round.referenceParamsPath;
+        } else {
+          groupedRefParams.push({ round_number: rn, reference_params_path: round.referenceParamsPath });
+        }
+        delete round.referenceParamsPath;
+      }
+    }
+  }
+  if (groupedRefParams.length > 0) {
+    (convertedData as any).reference_params = groupedRefParams;
+  } else {
+    delete (convertedData as any).reference_params;
+  }
+
   return convertToSnakeCase(convertedData);
 }
 

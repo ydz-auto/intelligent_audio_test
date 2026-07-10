@@ -427,8 +427,12 @@ class ReportControllerTask(ReportControllerBase):
         if adjusted_reference_params:
             config_for_ref = {'reference_params': adjusted_reference_params}
         else:
+            # 优先从独立列读取，兼容旧 config
+            ref_col = getattr(test_case, 'reference_params', None)
+            if ref_col:
+                return ReferenceParamsGenerator.get_reference_params_for_report(ref_col)
             config_for_ref = test_case.config
-        
+
         return ReferenceParamsGenerator.get_reference_params_for_report(config_for_ref)
 
     @staticmethod

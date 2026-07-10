@@ -12,6 +12,8 @@ export type {
   InterfererConfigItem,
   InterruptionConfig,
   RoundConfigItem,
+  RoundAlgorithmParams,
+  RoundReferenceParams,
   TestCaseConfig,
 } from '../../components/common/test-case/TestCaseModal/types';
 
@@ -147,6 +149,10 @@ export interface TestCaseFormData {
     tags?: string[];
     tagsInput?: string;
     algorithmType?: string;
+    /** 按轮分组的算法参数，独立于 config，对应 test_cases.algorithm_params 列 */
+    algorithm_params?: import('../../components/common/test-case/TestCaseModal/types').RoundAlgorithmParams[];
+    /** 按轮分组的参考参数路径，独立于 config，对应 test_cases.reference_params 列 */
+    reference_params?: import('../../components/common/test-case/TestCaseModal/types').RoundReferenceParams[];
 }
 
 export interface GroupFormData {

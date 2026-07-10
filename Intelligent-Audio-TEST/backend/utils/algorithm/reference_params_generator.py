@@ -334,22 +334,25 @@ class ReferenceParamsGenerator:
     @classmethod
     def apply_to_config(cls, test_case) -> None:
         """
-        将生成的参考参数应用到用例配置中
+        将生成的参考参数应用到用例的 reference_params 独立列中
         
         逐轮生成：每个 round 用自己的 audios 独立生成 reference params，
-        写入各自的文件，路径存入 rounds[].referenceParamsPath
+        写入各自的文件，路径存入 test_case.reference_params 独立列（按轮分组）
         
         Args:
             test_case: TestCase 模型对象
             
-        注意: 此方法会直接修改 test_case.config
+        注意: 此方法会修改 test_case.reference_params 独立列，不再修改 test_case.config
         """
         if not test_case:
             log_not_emit('WARNING', 'reference_params_generator', 'apply_to_config called with None test_case', category='algorithm')
             return
         
+        # 仅从 config 读取轮次列表（config 只含结构性字段，不再含 reference_params_path）
         config = test_case.config or {}
         rounds = config.get('rounds', [])
+        import json as _json
+        log_not_emit('INFO', 'reference_params_generator', f'[DEBUG_APPLY] config rounds before apply: {_json.dumps(rounds, ensure_ascii=False)[:500]}', category='algorithm')
         
         if not rounds:
             log_not_emit('WARNING', 'reference_params_generator', 'apply_to_config: no rounds found in config', category='algorithm')
@@ -359,8 +362,12 @@ class ReferenceParamsGenerator:
         
         case_id = getattr(test_case, 'id', '') or str(id(test_case))
         ref_dir = REF_PARAMS_DIR  # 保持相对路径: static\ref_params
-        os.makedirs(ref_dir, exist_ok=True)
+        # 每个用例的多轮参考参数存一个子文件夹，避免所有用例的文件混在一起
+        case_ref_dir = os.path.join(ref_dir, str(case_id))
+        os.makedirs(case_ref_dir, exist_ok=True)
         
+        # 收集每轮的 reference_params 路径，最后赋值到独立列
+        ref_params_list = []
         total_params = 0
         for round_item in rounds:
             if not isinstance(round_item, dict):
@@ -378,13 +385,17 @@ class ReferenceParamsGenerator:
             round_params = normalize_reference_params(round_params)
             
             # 写入该 round 的独立文件
-            filename = f"{case_id}_round_{round_number}.json"
-            filepath = os.path.join(ref_dir, filename)
+            filename = f"round_{round_number}.json"
+            filepath = os.path.join(case_ref_dir, filename)
             
             try:
                 with open(filepath, 'w', encoding='utf-8') as f:
                     json.dump(round_params, f, ensure_ascii=False, indent=2)
-                round_item['reference_params_path'] = filepath
+                # 路径收集到独立列结构，不再写入 config 的 round_item
+                ref_params_list.append({
+                    'round_number': round_number,
+                    'reference_params_path': filepath
+                })
                 total_params += len(round_params)
                 log_not_emit('DEBUG', 'reference_params_generator',
                              f'round {round_number}: written {len(round_params)} params to {filepath}', category='algorithm')
@@ -392,8 +403,11 @@ class ReferenceParamsGenerator:
                 log_not_emit('ERROR', 'reference_params_generator',
                              f'round {round_number}: failed to write {filepath}: {e}', category='algorithm')
         
-        test_case.config = config
-        
+        # 路径写入 reference_params 独立列，不再修改 config
+        test_case.reference_params = ref_params_list
+
+        log_not_emit('INFO', 'reference_params_generator', f'[DEBUG_APPLY] config rounds after apply: {_json.dumps(rounds, ensure_ascii=False)[:500]}', category='algorithm')
+        log_not_emit('INFO', 'reference_params_generator', f'[DEBUG_APPLY] ref_params_list: {_json.dumps(ref_params_list, ensure_ascii=False)[:500]}', category='algorithm')
         log_not_emit('INFO', 'reference_params_generator', f'apply_to_config: {total_params} total params generated across {len(rounds)} round(s)', category='algorithm')
 
     @classmethod
@@ -407,12 +421,13 @@ class ReferenceParamsGenerator:
             test_case: TestCase 模型对象（需含完整 config.rounds）
             round_number: 被关联音频的轮次号
             
-        注意: 此方法会直接修改 test_case.config 中对应 round 的 referenceParamsPath
+        注意: 此方法会修改 test_case.reference_params 独立列中对应轮的记录，不再修改 test_case.config
         """
         if not test_case:
             log_not_emit('WARNING', 'reference_params_generator', 'on_audio_associated called with None test_case', category='algorithm')
             return
         
+        # 从 config 读取轮次列表（仅用于获取 audios 等结构性字段）
         config = test_case.config or {}
         rounds = config.get('rounds', [])
         
@@ -439,16 +454,30 @@ class ReferenceParamsGenerator:
         # 写入文件
         case_id = getattr(test_case, 'id', '') or str(id(test_case))
         ref_dir = REF_PARAMS_DIR
-        os.makedirs(ref_dir, exist_ok=True)
-        
-        filename = f"{case_id}_round_{round_number}.json"
-        filepath = os.path.join(ref_dir, filename)
+        case_ref_dir = os.path.join(ref_dir, str(case_id))
+        os.makedirs(case_ref_dir, exist_ok=True)
+
+        filename = f"round_{round_number}.json"
+        filepath = os.path.join(case_ref_dir, filename)
         
         try:
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(round_params, f, ensure_ascii=False, indent=2)
-            target_round['reference_params_path'] = filepath
-            test_case.config = config
+            # 路径写入 reference_params 独立列中对应轮的记录，不再修改 config 中的 round_item
+            ref_params_col = list(test_case.reference_params or [])
+            found = False
+            for item in ref_params_col:
+                if isinstance(item, dict) and item.get('round_number') == round_number:
+                    item['reference_params_path'] = filepath
+                    found = True
+                    break
+            if not found:
+                # reference_params 列为 None 或没有该轮记录，追加一条
+                ref_params_col.append({
+                    'round_number': round_number,
+                    'reference_params_path': filepath
+                })
+            test_case.reference_params = ref_params_col
             log_not_emit('INFO', 'reference_params_generator',
                          f'on_audio_associated: round {round_number} written {len(round_params)} params to {filepath}', category='algorithm')
         except Exception as e:
@@ -480,18 +509,18 @@ class ReferenceParamsGenerator:
             return []
 
     @classmethod
-    def get_reference_text(cls, config: Dict, code: str) -> str:
+    def get_reference_text(cls, reference_params_col, code: str) -> str:
         """
-        从配置中获取参考文本（从 rounds referenceParamsPath 文件加载）
+        从参考参数独立列获取参考文本（从 reference_params_path 文件加载）
 
         Args:
-            config: 用例配置字典
+            reference_params_col: test_case.reference_params 的值，格式为 [{round_number, reference_params_path}]
             code: 参考参数代码 (如 'asr_reference_text')
 
         Returns:
             参考文本值
         """
-        reference_params = cls.get_all_reference_params(config)
+        reference_params = cls.get_all_reference_params(reference_params_col)
         if not reference_params:
             return ''
 
@@ -503,40 +532,65 @@ class ReferenceParamsGenerator:
         return ''
 
     @classmethod
-    def get_all_reference_params(cls, config: Dict) -> list:
+    def get_all_reference_params(cls, reference_params_col) -> list:
         """
-        获取所有参考参数（从 rounds 的 referenceParamsPath 文件加载）
+        获取所有参考参数（从 reference_params 独立列的 reference_params_path 文件加载）
 
         也支持直接传入 reference_params 列表（报告 adjusted_params 场景）。
 
         Args:
-            config: 用例配置字典
+            reference_params_col: test_case.reference_params 的值，格式为 [{round_number, reference_params_path}]
 
         Returns:
             参考参数列表
         """
-        # 直接传入的 reference_params（报告 adjusted_params 场景）
-        direct_ref = config.get('reference_params')
-        if direct_ref:
-            return normalize_reference_params(direct_ref)
-
-        rounds = config.get('rounds', [])
-        if not rounds:
+        if not reference_params_col:
             return []
 
-        all_refs = []
-        for round_item in rounds:
-            if not isinstance(round_item, dict):
-                continue
-            ref_path = round_item.get('reference_params_path') or round_item.get('referenceParamsPath')
-            if ref_path:
-                round_refs = cls.load_from_file(ref_path)
-                if round_refs:
-                    all_refs.extend(round_refs)
-        return all_refs
+        # 兼容旧调用方：如果传入的是 config dict（有 rounds 键），走旧逻辑从 config.rounds[].reference_params_path 读取
+        if isinstance(reference_params_col, dict):
+            # 直接传入的 reference_params（报告 adjusted_params 场景）
+            direct_ref = reference_params_col.get('reference_params')
+            if direct_ref:
+                return normalize_reference_params(direct_ref)
+
+            rounds = reference_params_col.get('rounds', [])
+            if not rounds:
+                return []
+
+            all_refs = []
+            for round_item in rounds:
+                if not isinstance(round_item, dict):
+                    continue
+                ref_path = round_item.get('reference_params_path') or round_item.get('referenceParamsPath')
+                if ref_path:
+                    round_refs = cls.load_from_file(ref_path)
+                    if round_refs:
+                        all_refs.extend(round_refs)
+            return all_refs
+
+        # 新格式：reference_params_col 是 [{round_number, reference_params_path}] 列表
+        if isinstance(reference_params_col, list):
+            # 兼容直接传入的 reference_params 参数列表（报告 adjusted_params 场景）
+            # 如果列表元素是包含 code 字段的参数字典，视为直接传入的参数列表
+            if reference_params_col and isinstance(reference_params_col[0], dict) and 'code' in reference_params_col[0]:
+                return normalize_reference_params(reference_params_col)
+
+            all_refs = []
+            for item in reference_params_col:
+                if not isinstance(item, dict):
+                    continue
+                ref_path = item.get('reference_params_path') or item.get('referenceParamsPath')
+                if ref_path:
+                    round_refs = cls.load_from_file(ref_path)
+                    if round_refs:
+                        all_refs.extend(round_refs)
+            return all_refs
+
+        return []
 
     @classmethod
-    def get_reference_params_for_report(cls, config: Dict) -> Dict[str, Any]:
+    def get_reference_params_for_report(cls, reference_params_col) -> Dict[str, Any]:
         """
         获取用于报告展示的参考参数字典
 
@@ -550,13 +604,14 @@ class ReferenceParamsGenerator:
         }
 
         Args:
-            config: 用例配置字典
+            reference_params_col: test_case.reference_params 的值，格式为 [{round_number, reference_params_path}]
+            兼容旧调用方：也支持传入 config dict（有 rounds 键）
 
         Returns:
             按 code 分组的参考参数字典
         """
         result = {}
-        reference_params = cls.get_all_reference_params(config)
+        reference_params = cls.get_all_reference_params(reference_params_col)
         
         if not reference_params:
             return result

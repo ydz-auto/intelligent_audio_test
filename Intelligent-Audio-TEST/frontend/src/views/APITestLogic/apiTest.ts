@@ -503,7 +503,7 @@ export function useApiTest() {
       const confirmed = await confirmDeleteGroup(groupName);
       if (confirmed) {
         deleteGroup(groupName);
-        await fetchTestCases();
+        await fetchTestCases({ algorithmType: selectedAlgorithmType.value || undefined });
       }
     } catch (error) {
       console.error('删除分组失败:', error);
@@ -516,7 +516,7 @@ export function useApiTest() {
       const confirmed = await confirmDeleteTestCase(testCase.name);
       if (confirmed) {
         deleteTestCase(testCase.id);
-        await fetchTestCases();
+        await fetchTestCases({ algorithmType: selectedAlgorithmType.value || undefined });
       }
     } catch (error) {
       console.error('删除测试用例失败:', error);
@@ -531,7 +531,7 @@ export function useApiTest() {
   const handleSaveModal = async (data: ModalSaveData) => {
     const result = await handleModalSave(data);
     if (result?.needRefresh) {
-      await fetchTestCases();
+      await fetchTestCases({ algorithmType: selectedAlgorithmType.value || undefined });
     }
   };
 

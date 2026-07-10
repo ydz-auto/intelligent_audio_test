@@ -269,7 +269,12 @@ class DeviceResultReextractor:
                 original_reference_params = None
                 if test_case and test_case.config:
                     from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
-                    original_reference_params = ReferenceParamsGenerator.get_all_reference_params(test_case.config)
+                    # 优先从独立列读取，兼容旧 config
+                    ref_col = getattr(test_case, 'reference_params', None)
+                    if ref_col:
+                        original_reference_params = ReferenceParamsGenerator.get_all_reference_params(ref_col)
+                    else:
+                        original_reference_params = ReferenceParamsGenerator.get_all_reference_params(test_case.config)
                     if original_reference_params:
                         log_and_emit('DEBUG', 'reextractor', f"获取原始 reference_params 成功", task_id=task_id,
                                      test_case_id=test_case_id)

@@ -264,10 +264,11 @@ export function useAudioImport() {
   }
 
   /**
-   * 多轮模式：把当前文件的标注解析参数分发到 tcConfig.rounds 里匹配的 round
-   * - 每个 round 按 audio_name 匹配当前 fileTask
-   * - 匹配到的 round：从 fileTask.annotations 解析参数，合并到 round.algorithmParams
-   * - 单轮多音频模式：多个音频可能匹配同一个 round，参数合并到同一 round
+   * 多轮模式：把当前文件的标注解析参数分发到 tcConfig.algorithm_params（按轮分组）里匹配的 round
+   * - 每个 round 按 audio_name 匹配当前 fileTask（仍从 tcConfig.rounds 读取结构性字段判断归属）
+   * - 匹配到的 round：从 fileTask.annotations 解析参数，合并到 tcConfig.algorithm_params 中对应 round_number 的 entry.params
+   * - 新设计：algorithmParams 不再存于 config.rounds[]，而是作为 test_cases.algorithm_params 独立列，按轮分组
+   * - 单轮多音频模式：多个音频可能匹配同一个 round，参数合并到同一 entry
    */
   async function dispatchParamsToRounds(
     tcConfig: any | undefined,
@@ -296,20 +297,33 @@ export function useAudioImport() {
     // 从当前文件标注解析参数
     const extracted = extractParamsFromAnnotations(annotations, caseParams, algorithmType);
 
-    // 遍历 rounds，把解析结果分发到匹配 audio_name 的 round
+    // 初始化按轮分组的 algorithm_params（独立列，不再写 round.algorithmParams）
+    if (!Array.isArray(tcConfig.algorithm_params)) {
+      tcConfig.algorithm_params = [];
+    }
+
+    // 遍历 rounds，按 audio_name 判断归属，把解析结果分发到匹配 round_number 的 entry.params
     for (const round of tcConfig.rounds) {
       if (!round.audios) continue;
       // 当前 fileTask 是否属于这个 round（按 audio_name 匹配）
       const belongsToRound = round.audios.some((a: any) => a.audio_name === fileTask.name);
       if (!belongsToRound) continue;
 
-      if (!Array.isArray(round.algorithmParams)) {
-        round.algorithmParams = [];
+      const roundNumber = round.roundNumber ?? 1;
+      // 找到匹配 round_number 的 entry
+      let entry = tcConfig.algorithm_params.find((e: any) => e.round_number === roundNumber);
+      if (!entry) {
+        // 没有匹配的 entry，创建一条并追加
+        entry = { round_number: roundNumber, params: [] };
+        tcConfig.algorithm_params.push(entry);
       }
-      const existingCodes = new Set(round.algorithmParams.map((p: any) => p.field_code ?? p.fieldCode));
+      if (!Array.isArray(entry.params)) {
+        entry.params = [];
+      }
+      const existingCodes = new Set(entry.params.map((p: any) => p.field_code ?? p.fieldCode));
       for (const p of extracted) {
         if (p.field_code && !existingCodes.has(p.field_code)) {
-          round.algorithmParams.push(p);
+          entry.params.push(p);
           existingCodes.add(p.field_code);
         }
       }
@@ -1208,11 +1222,19 @@ export function useAudioImport() {
         }
       })
       if (allRounds.length > 0) {
+        // 新设计：algorithm_params 作为 test_cases 独立列，按轮分组格式
+        // [{round_number, params:[{field_code, field_value}]}]
+        // folderParser.buildTestCaseConfig 返回的 algorithm_params 可能是平面格式，
+        // 这里统一包装为按轮分组（第 1 轮）。后端 schema 也兼容旧平面格式，但前端输出新格式。
+        const flatParams = stripAlgorithmParamSchema(uploadOptions.algorithmParams)
+        const groupedParams = Array.isArray(flatParams) && flatParams.length > 0
+          ? [{ round_number: 1, params: flatParams }]
+          : []
         testCaseConfig = {
           rounds: allRounds,
           group_name: folderGroupMappings ? Object.values(folderGroupMappings)[0] : undefined,
           inherit_tags: uploadOptions.inheritTags,
-          algorithm_params: stripAlgorithmParamSchema(uploadOptions.algorithmParams)
+          algorithm_params: groupedParams
         }
         // 从统一标注文件（如 group1.json）提取的 rounds 结构覆盖 folderParser 自动推断的 rounds
         // unifiedRounds 由 FolderImportModal.vue 解析统一标注文件后传入

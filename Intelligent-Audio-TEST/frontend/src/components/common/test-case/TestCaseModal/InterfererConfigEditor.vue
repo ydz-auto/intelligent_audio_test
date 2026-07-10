@@ -201,14 +201,41 @@ function setParam(fieldCode: string, value: unknown) {
 }
 
 // ---- 干扰人列表读写 ----
+// 兼容三种存储格式：
+// - 嵌套结构（{audio:{id,name}, device:{id}, startDelay, ...}）
+// - 扁平 camelCase（{audioId, audioName, playbackDeviceId, startDelay, ...}）
+// - 扁平 snake_case（{audio_id, audio_name, playback_device_id, start_delay, ...}）
+function normalizeInterfererItem(item: any): InterfererConfigItem {
+  if (!item || typeof item !== 'object') return {
+    audioId: '', audioName: '', playbackDeviceId: '', spl: 70, startDelay: 0, loop: true,
+  }
+  // 嵌套结构
+  const audioId = item.audio?.id ?? item.audioId ?? item.audio_id ?? ''
+  const audioName = item.audio?.name ?? item.audioName ?? item.audio_name ?? ''
+  const playbackDeviceId = item.device?.id ?? item.playbackDeviceId ?? item.playback_device_id ?? ''
+  return {
+    audioId: String(audioId),
+    audioName: String(audioName),
+    playbackDeviceId: String(playbackDeviceId),
+    spl: item.spl ?? 70,
+    startDelay: item.startDelay ?? item.start_delay ?? 0,
+    loop: item.loop ?? true,
+  }
+}
+
 const interferers = computed({
   get: (): InterfererConfigItem[] => {
     const raw = getParam('interferers')
     if (!raw) return []
+    let list: any[] = []
     if (typeof raw === 'string') {
-      try { return JSON.parse(raw) } catch { return [] }
+      try { list = JSON.parse(raw) } catch { return [] }
+    } else if (Array.isArray(raw)) {
+      list = raw
+    } else {
+      return []
     }
-    return raw as InterfererConfigItem[]
+    return list.map(normalizeInterfererItem)
   },
   set: (val: InterfererConfigItem[]) => setParam('interferers', val),
 })

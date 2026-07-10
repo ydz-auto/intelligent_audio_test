@@ -1998,11 +1998,14 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
 
 .group-duration-tags .duration-tag {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 11px;
-  font-weight: 500;
-  color: white;
+  padding: 4px 8px !important;
+  border-radius: 12px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: white !important;
+  background-color: #FF6A00 !important;
+  min-width: 20px !important;
+  text-align: center !important;
 }
 
 .group-duration-tags .duration-api {

@@ -25,7 +25,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, watch } from 'vue'
-import type { RoundConfigItem } from '../types'
+import type { RoundConfigItem, AlgorithmParamItem } from '../types'
 import DynamicForm from '../../../../algorithm/DynamicForm.vue'
 
 // 这些类型不在算法参数步骤显示，由其他步骤处理
@@ -59,10 +59,14 @@ const props = defineProps<{
   caseAlgorithmParams: any[]
   algorithmFormSchema?: any
   testType: 'api' | 'e2e'
+  /** 当前轮的算法参数（来自独立列 algorithm_params 按轮匹配后的 params 数组） */
+  roundAlgorithmParams?: AlgorithmParamItem[]
 }>()
 
 const emit = defineEmits<{
   'update:round': [value: RoundConfigItem]
+  /** 算法参数更新（独立列格式 params 数组） */
+  'update:round-algo-params': [params: AlgorithmParamItem[]]
 }>()
 
 onMounted(() => {
@@ -108,9 +112,18 @@ const dynamicSchema = computed(() => {
   return { algorithmType: '', algorithmName: '', groups: [], fields }
 })
 
+// 当前轮的算法参数：优先从独立列 roundAlgorithmParams 读取，兼容回退到 round.algorithmParams
+const currentAlgoParams = computed<AlgorithmParamItem[]>(() => {
+  if (props.roundAlgorithmParams && props.roundAlgorithmParams.length > 0) {
+    return props.roundAlgorithmParams
+  }
+  // 兼容回退：子组件编辑期间可能仍写入 round.algorithmParams
+  return (props.round.algorithmParams as AlgorithmParamItem[]) || []
+})
+
 const initialDict = computed(() => {
   const dict: Record<string, any> = {}
-  const algoParams = props.round.algorithmParams || []
+  const algoParams = currentAlgoParams.value
   const eligibleCodes = new Set(eligibleParams.value.map((p: any) => p.fieldCode || p.param_code))
   for (const p of algoParams) {
     const code = p.field_code
@@ -122,7 +135,8 @@ const initialDict = computed(() => {
 })
 
 function onDynamicFormUpdate(values: Record<string, any>) {
-  const existingParams = [...(props.round.algorithmParams || [])]
+  // 以独立列 params 为基础（若不存在则用 round.algorithmParams 兼容）
+  const existingParams: AlgorithmParamItem[] = [...currentAlgoParams.value]
   const eligibleCodes = new Set(eligibleParams.value.map((p: any) => p.fieldCode || p.param_code))
   for (const [fieldCode, fieldValue] of Object.entries(values)) {
     if (!eligibleCodes.has(fieldCode)) continue
@@ -133,6 +147,9 @@ function onDynamicFormUpdate(values: Record<string, any>) {
       existingParams.push({ field_code: fieldCode, field_value: fieldValue })
     }
   }
+  // 通知父级更新独立列 params
+  emit('update:round-algo-params', existingParams)
+  // 同时写入 round.algorithmParams 保持兼容（CaseForm.syncStructuredFields 兜底）
   emit('update:round', { ...props.round, algorithmParams: existingParams })
 }
 </script>

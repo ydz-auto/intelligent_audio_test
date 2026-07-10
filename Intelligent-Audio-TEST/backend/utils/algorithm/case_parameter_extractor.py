@@ -39,6 +39,23 @@ def _get_algo_param(algorithm_params: Optional[List[Dict]], field_code: str, def
     return default
 
 
+def _get_round_algo_params(algorithm_params_col: list, round_number: int) -> list:
+    """从 test_cases.algorithm_params 列（按轮分组）中读取指定轮的 params
+
+    Args:
+        algorithm_params_col: [{round_number, params:[{field_code, field_value}]}]
+        round_number: 轮次序号
+    Returns:
+        该轮的 params 列表 [{field_code, field_value}]，找不到返回 []
+    """
+    if not algorithm_params_col:
+        return []
+    for item in algorithm_params_col:
+        if item.get('round_number') == round_number:
+            return item.get('params', [])
+    return []
+
+
 def _normalize_algorithm_params(algorithm_params) -> Dict[str, Any]:
     """将 algorithm_params 统一转为 dict 格式 {field_code: field_value}
 
@@ -89,6 +106,27 @@ class CaseParameterExtractor:
         """
         raw = case_config.get('algorithm_params', {})
         return _normalize_algorithm_params(raw)
+
+    @classmethod
+    def get_round_algorithm_params(cls, algorithm_params_col, round_number) -> Dict[str, Any]:
+        """从独立列按轮获取算法参数 dict
+
+        Args:
+            algorithm_params_col: test_cases.algorithm_params 列，按轮分组
+                [{round_number, params:[{field_code, field_value}]}]
+            round_number: 轮次序号
+        Returns:
+            {field_code: field_value}，找不到返回 {}
+        """
+        params_list = _get_round_algo_params(algorithm_params_col, round_number)
+        if not params_list:
+            return {}
+        result = {}
+        for item in params_list:
+            field_code = item.get('field_code')
+            if field_code:
+                result[field_code] = item.get('field_value')
+        return result
 
     @classmethod
     def get_device_params(cls, case_config: Dict) -> Dict[str, Any]:
@@ -200,7 +238,12 @@ class CaseParameterExtractor:
         test_type: str = 'api'
     ) -> Dict[str, Any]:
         """构建评估参数
-        
+
+        兼容两种数据来源：
+        - 新格式：case_config 含 rounds（结构性字段），算法参数/参考参数从独立列
+          algorithm_params_col / reference_params_col 按轮读取（取 rounds[0] 的 round_number）
+        - 旧平面格式：case_config.algorithm_params / case_config.reference_params 直接读取
+
         Args:
             algorithm_type: 算法类型
             case_config: 用例配置
@@ -210,8 +253,29 @@ class CaseParameterExtractor:
             test_type: 测试类型 ('api' 或 'e2e')
         """
         eval_params = {}
-        case_params = _normalize_algorithm_params(case_config.get('algorithm_params', {}))
-        raw_reference_params = case_config.get('reference_params', [])
+        # 新格式：rounds 顶层存在时，从独立列按轮取参数
+        rounds = case_config.get('rounds')
+        algorithm_params_col = case_config.get('algorithm_params_col')
+        reference_params_col = case_config.get('reference_params_col')
+        if rounds and isinstance(rounds, list) and len(rounds) > 0:
+            round_number = rounds[0].get('roundNumber') or rounds[0].get('round_number')
+            # 优先从独立列按轮取
+            if algorithm_params_col is not None:
+                case_params = cls.get_round_algorithm_params(algorithm_params_col, round_number)
+            else:
+                # 兼容：独立列缺失但 round 内仍保留 algorithmParams
+                case_params = _normalize_algorithm_params(rounds[0].get('algorithmParams', []))
+            if reference_params_col is not None:
+                ref_file_data = cls._load_round_ref_file(reference_params_col, round_number)
+                # _load_round_ref_file 返回 dict {code: item}，转为 list 以兼容后续流程
+                raw_reference_params = list(ref_file_data.values()) if ref_file_data else []
+            else:
+                # 兼容：旧平面格式
+                raw_reference_params = case_config.get('reference_params', [])
+        else:
+            # 旧平面格式
+            case_params = _normalize_algorithm_params(case_config.get('algorithm_params', {}))
+            raw_reference_params = case_config.get('reference_params', [])
         reference_params = normalize_reference_params(raw_reference_params, test_type)
         
         log_not_emit('DEBUG', 'case_parameter_extractor',
@@ -345,18 +409,48 @@ class CaseParameterExtractor:
             return {}
 
     @classmethod
+    def _load_round_ref_file(cls, reference_params_col, round_number) -> Dict[str, Any]:
+        """从 reference_params 独立列按轮加载参考参数文件
+
+        Args:
+            reference_params_col: test_cases.reference_params 列，按轮分组
+                [{round_number, reference_params_path}]
+            round_number: 轮次序号
+        Returns:
+            解析后的参考参数 dict，找不到返回 {}
+        """
+        if not reference_params_col:
+            return {}
+        for item in reference_params_col:
+            if item.get('round_number') == round_number:
+                path = item.get('reference_params_path')
+                return cls._load_ref_file(path)
+        return {}
+
+    @classmethod
     def get_round_evaluation_params(
         cls,
         algorithm_type: str,
         round_config: Dict,
+        algorithm_params_col,
+        reference_params_col,
         algorithm_result: Dict[str, Any] = None,
         test_type: str = 'api'
     ) -> Dict[str, Any]:
         """提取单轮评估参数（rounds-as-top-level 架构）
 
+        新设计下算法参数和参考参数从 test_cases 表独立列按轮读取：
+        - algorithm_params_col: [{round_number, params:[{field_code, field_value}]}]
+        - reference_params_col: [{round_number, reference_params_path}]
+
+        兼容旧格式：若 algorithm_params_col 为 None 且 round_config 内含 algorithmParams，
+        则走旧逻辑从 round_config 读取。
+
         Args:
             algorithm_type: 算法类型
-            round_config: 单轮配置 dict（包含 algorithmParams, referenceParamsPath 等）
+            round_config: 单轮配置 dict（含 roundNumber 等结构性字段）
+            algorithm_params_col: 算法参数独立列（按轮分组）
+            reference_params_col: 参考参数独立列（按轮分组）
             algorithm_result: 算法执行结果（可选）
             test_type: 测试类型 ('api' 或 'e2e')
         """
@@ -370,11 +464,25 @@ class CaseParameterExtractor:
                          f'No evaluation mappings for {algorithm_type}', category='algorithm')
             return {}
 
-        algo_params = round_config.get('algorithmParams', [])
+        # 获取轮次序号，兼容 roundNumber / round_number 两种键
+        round_number = round_config.get('roundNumber')
+        if round_number is None:
+            round_number = round_config.get('round_number')
+
+        # 读取算法参数：优先从独立列按轮取，兼容旧格式
+        if algorithm_params_col is not None:
+            algo_params = _get_round_algo_params(algorithm_params_col, round_number)
+        else:
+            # 兼容旧格式：round_config.algorithmParams
+            algo_params = round_config.get('algorithmParams', [])
         algo_dict = _normalize_algorithm_params(algo_params)
 
-        # 加载参考参数文件
-        ref_file_data = cls._load_ref_file(round_config.get('referenceParamsPath'))
+        # 加载参考参数文件：优先从独立列按轮取，兼容旧格式
+        if reference_params_col is not None:
+            ref_file_data = cls._load_round_ref_file(reference_params_col, round_number)
+        else:
+            # 兼容旧格式：round_config.referenceParamsPath
+            ref_file_data = cls._load_ref_file(round_config.get('referenceParamsPath'))
         reference_params_list = list(ref_file_data.values()) if ref_file_data else []
 
         if algorithm_result is None:
@@ -382,7 +490,7 @@ class CaseParameterExtractor:
         adjusted_reference_params = algorithm_result.get('adjusted_reference_params', [])
 
         eval_params = {}
-        eval_params['round_number'] = round_config.get('roundNumber')
+        eval_params['round_number'] = round_number
 
         for m in mappings:
             source = m.get('source', 'api')

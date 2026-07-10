@@ -101,13 +101,44 @@ class TestCaseController:
 
     @staticmethod
     def _get_algo_params_list_from_config(config: dict) -> list:
-        """从 config 中提取 algorithm_params 列表格式"""
-        first_round = config.get('rounds', [{}])[0] if config.get('rounds') else {}
-        if isinstance(first_round, dict):
-            ap_dict = first_round.get('algorithmParams', {})
-            if isinstance(ap_dict, dict):
-                return [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]
+        """从 config 中提取 algorithm_params 列表格式（兼容旧数据）
+
+        新数据：config.rounds[] 不含 algorithmParams，应从独立列读取（见 _get_algo_params_list_from_columns）
+        旧数据：config.rounds[0].algorithmParams 为 dict，转换为 [{field_code, field_value}] 列表
+        """
+        if not config:
+            return []
+        rounds = config.get('rounds', [])
+        if rounds:
+            first_round = rounds[0] if rounds else {}
+            if isinstance(first_round, dict):
+                ap_dict = first_round.get('algorithmParams', {})
+                if isinstance(ap_dict, dict):
+                    return [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]
         return []
+
+    @staticmethod
+    def _get_algo_params_list_from_columns(algorithm_params_col, round_number=1):
+        """从 algorithm_params 独立列按轮获取 [{field_code, field_value}] 列表"""
+        if not algorithm_params_col:
+            return []
+        for item in algorithm_params_col:
+            if isinstance(item, dict) and item.get('round_number') == round_number:
+                return item.get('params', [])
+        return []
+
+    @staticmethod
+    def _get_algorithm_params_dict_for_columns(algorithm_params_col, round_number=1):
+        """从 algorithm_params 独立列按轮获取 dict"""
+        params_list = TestCaseController._get_algo_params_list_from_columns(algorithm_params_col, round_number)
+        result = {}
+        for p in params_list:
+            if not isinstance(p, dict):
+                continue
+            fc = p.get('field_code')
+            if fc:
+                result[fc] = p.get('field_value')
+        return result
 
     @staticmethod
     def _has_rounds(config: dict) -> bool:
@@ -116,27 +147,32 @@ class TestCaseController:
 
     @staticmethod
     def _convert_flat_config_to_rounds(config: dict) -> dict:
-        """将平面格式 config 转换为 rounds-as-top-level 格式"""
+        """将平面格式 config 转换为 rounds-as-top-level 格式
+
+        只构建结构性字段（roundNumber/audios/backgroundNoise/evaluation），
+        不再写入 algorithmParams 和 referenceParamsPath。
+        algorithm_params 由调用方从 schema 获取并赋值给独立列。
+        """
         if TestCaseController._has_rounds(config):
             return config
-        
+
         result = dict(config)
         audios = result.pop('audios', [])
         bg_noise = result.pop('background_noise', None) or result.pop('backgroundNoise', None)
         dimensions = result.pop('dimensions', [])
-        algorithm_params = result.pop('algorithm_params', {})
-        
+
+        # 剥离非结构性字段（algorithm_params 由独立列存储）
+        result.pop('algorithm_params', None)
         for key in ('reference_params', 'referenceParamsPath'):
             result.pop(key, None)
-        
+
         round_data = {
             'roundNumber': 1,
             'audios': audios or [],
             'backgroundNoise': bg_noise,
-            'algorithmParams': algorithm_params or {},
             'evaluation': {'dimensions': dimensions or []},
         }
-        
+
         result['rounds'] = [round_data]
         return result
 
@@ -178,7 +214,11 @@ class TestCaseController:
 
     @staticmethod
     def _get_algorithm_params_dict_for_executor(config: dict) -> dict:
-        """从 rounds[0].algorithmParams 读取"""
+        """从 rounds[0].algorithmParams 读取（兼容旧数据）
+
+        新数据：config.rounds[] 不含 algorithmParams，返回空 dict。
+        调用方应从独立列读取（见 _get_algorithm_params_dict_for_columns）。
+        """
         if not config:
             return {}
         rounds = config.get('rounds', [])
@@ -287,6 +327,8 @@ class TestCaseController:
                     type=tc_test_type,
                     tags=[tag.name for tag in tc.tags],
                     config=tc.config.copy() if tc.config else {},
+                    algorithm_params=tc.algorithm_params,
+                    reference_params=tc.reference_params,
                     algorithm_type=tc.algorithm_type,
                     created_at=tc.created_at.isoformat() if tc.created_at else None,
                     updated_at=tc.updated_at.isoformat() if tc.updated_at else None,
@@ -398,6 +440,8 @@ class TestCaseController:
                     "type": tc.test_type or 'api',
                     "tags": [t.name for t in tc.tags],
                     "config": tc.config.copy() if tc.config else {},
+                    "algorithmParams": tc.algorithm_params,
+                    "referenceParams": tc.reference_params,
                     "algorithmType": tc.algorithm_type,
                     "createdAt": tc.created_at.isoformat() if tc.created_at else None,
                     "updatedAt": tc.updated_at.isoformat() if tc.updated_at else None,
@@ -492,6 +536,8 @@ class TestCaseController:
             group={"id": tc.group.id, "name": tc.group.name} if tc.group else None,
             type=tc_test_type,
             config=config,
+            algorithm_params=getattr(tc, 'algorithm_params', None),
+            reference_params=getattr(tc, 'reference_params', None),
             algorithm_type=tc.algorithm_type,
             tags=[tag.name for tag in tc.tags],
             audios=audios,
@@ -546,6 +592,13 @@ class TestCaseController:
         # 统一为 rounds 格式
         if TestCaseController._has_rounds(config):
             merged_config = config.copy()
+            # 剥离 rounds 里的 algorithmParams 和 referenceParamsPath（新设计存独立列）
+            for round_item in merged_config.get('rounds', []):
+                if isinstance(round_item, dict):
+                    round_item.pop('algorithmParams', None)
+                    round_item.pop('algorithm_params', None)
+                    round_item.pop('referenceParamsPath', None)
+                    round_item.pop('reference_params_path', None)
             # 验证各轮音频配置
             if test_type_val == 'e2e':
                 for rn, round_item in enumerate(merged_config.get('rounds', []), 1):
@@ -596,14 +649,14 @@ class TestCaseController:
             # 转换为 rounds 格式
             merged_config = TestCaseController._convert_flat_config_to_rounds(merged_config)
         
-        # algorithm_params 存入 rounds[].algorithmParams
-        algorithm_params_list = data.get_algorithm_params_dict()
-        if algorithm_params_list:
-            ap_dict = {item['field_code']: item['field_value'] for item in algorithm_params_list if item.get('field_code')}
-            for round_item in merged_config.get('rounds', []):
-                if isinstance(round_item, dict):
-                    round_item['algorithmParams'] = ap_dict
-        
+        # algorithm_params 存入独立列（按轮分组格式 [{round_number, params:[{field_code, field_value}]}]）
+        algo_params_col = data.get_algorithm_params_dict()
+        # 兼容旧平面格式 [{field_code, field_value}]：包装为 round_number=1 的单轮
+        if algo_params_col:
+            first = algo_params_col[0] if isinstance(algo_params_col[0], dict) else {}
+            if 'round_number' not in first and 'params' not in first:
+                algo_params_col = [{'round_number': 1, 'params': algo_params_col}]
+
         algorithm_type = data.algorithm_type
 
         try:
@@ -614,6 +667,7 @@ class TestCaseController:
                 description=data.description,
                 group_id=group_id,
                 config=merged_config,
+                algorithm_params=algo_params_col,
                 algorithm_type=algorithm_type,
                 test_type=test_type_val,
             )
@@ -701,22 +755,42 @@ class TestCaseController:
             if data.config is not None:
                 if TestCaseController._has_rounds(data.config):
                     merged_config = data.config.copy()
+                    # 剥离 rounds 里的 algorithmParams 和 referenceParamsPath（新设计存独立列）
+                    # 同时剥离 interferers（干扰人数据存于 algorithm_params 独立列，避免冗余）
+                    for round_item in merged_config.get('rounds', []):
+                        if isinstance(round_item, dict):
+                            round_item.pop('algorithmParams', None)
+                            round_item.pop('algorithm_params', None)
+                            round_item.pop('referenceParamsPath', None)
+                            round_item.pop('reference_params_path', None)
+                            round_item.pop('interferers', None)
                 else:
                     # 传入平面格式，转换为 rounds
                     merged_config = TestCaseController._convert_flat_config_to_rounds(data.config.copy())
             elif TestCaseController._has_rounds(current_config):
                 merged_config = current_config.copy()
+                # 剥离 rounds 里的 algorithmParams 和 referenceParamsPath（新设计存独立列）
+                # 同时剥离 interferers（干扰人数据存于 algorithm_params 独立列，避免冗余）
+                for round_item in merged_config.get('rounds', []):
+                    if isinstance(round_item, dict):
+                        round_item.pop('algorithmParams', None)
+                        round_item.pop('algorithm_params', None)
+                        round_item.pop('referenceParamsPath', None)
+                        round_item.pop('reference_params_path', None)
+                        round_item.pop('interferers', None)
             else:
                 # 当前配置也是平面格式（不应发生），转换后继续
                 merged_config = TestCaseController._convert_flat_config_to_rounds(current_config.copy())
             
-            # 如果传入了 algorithm_params，更新到所有 rounds 的 algorithmParams 中
-            algorithm_params_list = data.get_algorithm_params_dict()
-            if algorithm_params_list:
-                ap_dict = {item['field_code']: item['field_value'] for item in algorithm_params_list if item.get('field_code')}
-                for round_item in merged_config.get('rounds', []):
-                    if isinstance(round_item, dict):
-                        round_item['algorithmParams'] = ap_dict
+            # algorithm_params 存入独立列（按轮分组格式 [{round_number, params:[{field_code, field_value}]}]）
+            algo_params_col = data.get_algorithm_params_dict()
+            # 兼容旧平面格式 [{field_code, field_value}]：包装为 round_number=1 的单轮
+            if algo_params_col:
+                first = algo_params_col[0] if isinstance(algo_params_col[0], dict) else {}
+                if 'round_number' not in first and 'params' not in first:
+                    algo_params_col = [{'round_number': 1, 'params': algo_params_col}]
+            if algo_params_col is not None:
+                tc.algorithm_params = algo_params_col
             
             # 处理前端传入的平面字段（更新到 rounds[0]）
             bg_noise_audio_id = data.background_noise_id
@@ -785,9 +859,14 @@ class TestCaseController:
                 need_refresh_reference = True
                 tc.algorithm_type = algorithm_type
             
-            if algorithm_params_list:
-                old_params = TestCaseController._get_algo_params_list_from_config(current_config)
-                if TestCaseController._has_overlap_param_changed(old_params, algorithm_params_list):
+            if algo_params_col:
+                # 优先从独立列读旧参数，兼容旧数据从 config 读
+                old_params = TestCaseController._get_algo_params_list_from_columns(tc.algorithm_params, 1)
+                if not old_params:
+                    old_params = TestCaseController._get_algo_params_list_from_config(current_config)
+                # 新参数从按轮分组格式提取 round_number=1
+                new_params = TestCaseController._get_algo_params_list_from_columns(algo_params_col, 1)
+                if TestCaseController._has_overlap_param_changed(old_params, new_params):
                     need_refresh_reference = True
             
             tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
@@ -833,6 +912,7 @@ class TestCaseController:
             return error_response("未找到原始测试用例", 404)
 
         try:
+            import copy as _copy
             new_id = str(uuid.uuid4())
             new_tc = TestCase(
                 id=new_id,
@@ -840,6 +920,8 @@ class TestCaseController:
                 description=tc.description,
                 group_id=tc.group_id,
                 config=tc.config.copy() if tc.config else {},
+                algorithm_params=_copy.deepcopy(tc.algorithm_params) if tc.algorithm_params else None,
+                reference_params=_copy.deepcopy(tc.reference_params) if tc.reference_params else None,
                 algorithm_type=tc.algorithm_type,
                 test_type=tc.test_type or 'api',
             )
@@ -879,7 +961,10 @@ class TestCaseController:
         config = tc.config or {}
         
         # 注入 algorithm_params 到 config
-        algorithm_params = TestCaseController._get_algorithm_params_dict_for_executor(config)
+        # 优先从独立列读，兼容旧数据从 config 读
+        algorithm_params = TestCaseController._get_algorithm_params_dict_for_columns(tc.algorithm_params, 1)
+        if not algorithm_params:
+            algorithm_params = TestCaseController._get_algorithm_params_dict_for_executor(config)
         if algorithm_params:
             config = config.copy() if config else {}
             config['algorithm_params'] = algorithm_params
@@ -1149,9 +1234,8 @@ class TestCaseController:
                     elif isinstance(algorithm_params, dict):
                         ap_dict = algorithm_params
                     tc_config = tc_config.copy()
-                    for round_item in tc_config.get('rounds', []):
-                        if isinstance(round_item, dict):
-                            round_item['algorithmParams'] = ap_dict.copy()
+                    # 不再写入 config.rounds[].algorithmParams，改为独立列
+                    tc.algorithm_params = [{'round_number': 1, 'params': [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]}]
                     tc.config = tc_config
                     tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
                     updated_count += 1
@@ -1663,6 +1747,7 @@ class TestCaseController:
                     "noise_spl": noise_spl,
                     "noise_audio_id": noise_audio_id,
                     "config": config,
+                    "reference_params": tc.reference_params,
                     "raw_config": json.dumps(config, ensure_ascii=False)
                 }
                 export_data.append(case_data)
@@ -1689,8 +1774,14 @@ class TestCaseController:
                 
                 for item in export_data:
                     config_data = item.get('config', {})
-                    asr_ref_text = ReferenceParamsGenerator.get_reference_text(config_data, 'asr_reference_text')
-                    tran_ref_text = ReferenceParamsGenerator.get_reference_text(config_data, 'translation_reference_text')
+                    # 优先从独立列读取，兼容旧 config
+                    ref_col = item.get('reference_params')
+                    if ref_col:
+                        asr_ref_text = ReferenceParamsGenerator.get_reference_text(ref_col, 'asr_reference_text')
+                        tran_ref_text = ReferenceParamsGenerator.get_reference_text(ref_col, 'translation_reference_text')
+                    else:
+                        asr_ref_text = ReferenceParamsGenerator.get_reference_text(config_data, 'asr_reference_text')
+                        tran_ref_text = ReferenceParamsGenerator.get_reference_text(config_data, 'translation_reference_text')
                     flat_item = {
                         "ID": item['id'],
                         "NAME": item['name'],

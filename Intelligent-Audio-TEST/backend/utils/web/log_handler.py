@@ -19,7 +19,7 @@ _global_db_handler = None
 LOG_ARCHIVE_THRESHOLD = 300000
 LOG_HOT_DATA_DAYS = 7
 LOG_ARCHIVE_DIR = 'archives'
-CONSOLE_LOG_MAX_LENGTH = 200
+CONSOLE_LOG_MAX_LENGTH = 20000
 
 def set_socketio(socketio):
     """设置全局 SocketIO 实例"""

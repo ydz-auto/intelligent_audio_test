@@ -1,4 +1,4 @@
-import type { TestCaseConfig } from '../../components/common/test-case/TestCaseModal/types';
+import type { TestCaseConfig, RoundAlgorithmParams, RoundReferenceParams } from '../../components/common/test-case/TestCaseModal/types';
 
 export type TaskType = 'api' | 'e2e' | 'playback' | 'evaluation' | 'report' | 'task' | 'execution' | 'comparison' | 'performance' | 'stress' | 'audio_import';
 export type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'paused' | 'stopped' | 'queued' | 'skipped';
@@ -151,6 +151,10 @@ export interface TestCase {
     testType?: string;
     test_type?: 'api' | 'e2e';
     config?: TestCaseConfig;
+    /** 按轮分组的算法参数，独立列，对应 test_cases.algorithm_params */
+    algorithm_params?: RoundAlgorithmParams[];
+    /** 按轮分组的参考参数路径，独立列，对应 test_cases.reference_params */
+    reference_params?: RoundReferenceParams[];
     groupId?: string | number;
     groupName?: string;
     tags?: string[] | { id: number; name: string }[];
@@ -549,6 +553,7 @@ export interface TestCaseGroup {
     id: string | number;
     name: string;
     description?: string;
+    algorithmType?: string;
     createdAt?: string;
     updatedAt?: string;
 }
