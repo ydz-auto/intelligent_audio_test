@@ -93,6 +93,7 @@ class EndpointWorker:
                             test_case_id=task_data.get('test_case_id')
                         )
                         # 从 queued 改为 running，反映真实执行状态
+                        local_db_session = db.session()
                         try:
                             tc = local_db_session.query(TaskCase).filter_by(
                                 task_id=task_id, test_case_id=task_data.get('test_case_id')
@@ -247,6 +248,7 @@ class EndpointWorker:
         
         try:
             # 标记为calculating：payload已构建完成，即将提交给eval_server计算
+            local_db_session = db.session()
             try:
                 tc = local_db_session.query(TaskCase).filter_by(
                     task_id=task_id, test_case_id=test_case_id

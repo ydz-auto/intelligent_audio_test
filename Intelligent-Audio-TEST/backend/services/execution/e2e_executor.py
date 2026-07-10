@@ -1,16 +1,13 @@
 import json
-import threading
 import time
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from backend.models.models import Audio, PlaybackDevice, Device, TaskCase, TaskDevice, TestResult, TestResultDimension, Dimension, utc8now
-from backend.models.database import db
-from backend.services.audio.audio_engine import audio_service
 from backend.services.audio.playback_orchestrator import playback_orchestrator
-from backend.services.audio.spl_service import spl_service
 from backend.utils.device_driver import device_driver_factory, register_task_events
 from backend.utils.algorithm.field_mapper import get_field_mapper
 from backend.services.execution.base_executor import BaseExecutor
+from backend.services.execution.e2e_device_manager import E2EDeviceManager
+from backend.services.execution.e2e_collector import E2ECollector
+from backend.services.execution.e2e_aggregator import E2EAggregator
 
 E2E_RESULT_COLLECTION_WAIT_TIME = float(os.environ.get('E2E_RESULT_COLLECTION_WAIT_TIME', '3.0'))
 
@@ -19,1050 +16,462 @@ class E2EExecutor(BaseExecutor):
     def __init__(self, execution_engine):
         super().__init__(execution_engine)
         self._playback_timestamps = {}
-        
+        # 委托组件
+        self._device_manager = E2EDeviceManager(self)
+        self._collector = E2ECollector(self)
+        self._aggregator = E2EAggregator(self)
+
     def execute_e2e_case(self, task_id, tc_rel_id):
-        """
-        执行E2E测试用例
-        """
-        # 记录方法开始执行
+        """执行E2E测试用例"""
         self._log(
             level='DEBUG',
             content=f"E2E用例执行方法开始: task_id={task_id}, tc_rel_id={tc_rel_id}",
             task_id=task_id
         )
-        
-        # 验证参数
+
         if not task_id or not tc_rel_id:
             error_msg = "任务ID和测试用例关联ID不能为空"
-            self._log(
-                level='ERROR',
-                content=f"E2E 用例执行失败: {error_msg}",
-                task_id=task_id
-            )
-            # 如果有tc_rel_id，更新状态为失败
+            self._log(level='ERROR', content=f"E2E 用例执行失败: {error_msg}", task_id=task_id)
             if tc_rel_id:
-                self._update_tc_rel_status(
-                    tc_rel_id, 
-                    execution_status='failed',
-                    status='failed',
-                    error_message=error_msg
-                )
+                self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
             return False
-        
-        # 获取基础数据
+
         data_result = self._validate_and_get_data(task_id, tc_rel_id)
         if not data_result['success']:
             error_msg = data_result.get('error', '获取基础数据失败')
-            # 更新状态为失败
-            self._update_tc_rel_status(
-                tc_rel_id, 
-                execution_status='failed',
-                status='failed',
-                error_message=error_msg
-            )
+            self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
             return False
-        
+
         data = data_result['data']
-        
-        # rounds-as-top-level 执行
         return self._execute_e2e_with_rounds(task_id, tc_rel_id, data)
-    
+
     def _execute_e2e_with_rounds(self, task_id, tc_rel_id, data):
-        """
-        新格式执行：支持多轮（rounds）的 E2E 执行
-        每轮独立设置设备环境、播放音频、收集结果
-        """
+        """新格式执行：支持多轮（rounds）的 E2E 执行"""
         case_name = data['case_name']
         case_config = data['case_config']
         case_reference_params = data.get('case_reference_params', [])
         test_case_id = data['test_case_id']
         algorithm_type = data.get('algorithm_type', 'translation')
-        tc_rel_id = data['tc_rel_id']
-        
+
+        # 初始化 case_field_values
         field_mapper = get_field_mapper()
         case_fields = field_mapper.get_case_fields(algorithm_type)
-        
-        case_field_values = {}
-        for config_key in case_fields.keys():
-            case_field_values[config_key] = data.get(config_key)
-        
+        case_field_values = {key: data.get(key) for key in case_fields.keys()}
+
         self.current_case_field_values = case_field_values
         self.current_test_case_id = test_case_id
         self._thread_ctx.current_test_case_id = test_case_id
-        
+
         rounds = case_config.get('rounds', [])
-        
+
         try:
             self._log(
                 level='INFO',
                 content=f"开始执行E2E用例（rounds格式，共{len(rounds)}轮）: {case_name}",
-                task_id=task_id,
-                test_case_id=test_case_id
+                task_id=task_id, test_case_id=test_case_id
             )
-            
+
             self._handle_control(task_id)
             self._update_tc_rel_status(tc_rel_id, execution_status='running')
-            
             stop_event, pause_event = self._get_control_events(task_id)
             register_task_events(task_id, stop_event, pause_event)
-            
-            # ── 循环外：一次性设备准备 ──
-            device_result = self._get_device_info(task_id, case_config)
-            if not device_result['success']:
-                error_msg = f"设备信息获取失败: {device_result.get('error')}"
-                self._log(level='ERROR', content=error_msg, task_id=task_id, test_case_id=test_case_id)
-                self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
-                return False
-            
-            device_info_list = device_result['data']['device_info_list']
-            
-            self.current_extra_params = self._execute_extra_params(algorithm_type, case_field_values, include_format_strings=True)
-            
-            device_driver_factory.register_task_devices(task_id, device_info_list)
-            
-            for info in device_info_list:
-                if info.get("driver"):
-                    info["driver"].set_task_id(task_id)
-                    info["driver"].set_test_case_id(test_case_id)
-                    info["driver"].set_device_id(info["device_id"])
-            
-            self._initialize_devices(device_info_list, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
-            
-            # 声纹注册（循环前一次性执行）
-            # 从第一轮 algorithmParams 组装 voiceprint_config
-            from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
-            first_round_algo_params = {}
-            if rounds and isinstance(rounds[0], dict):
-                first_round_algo_params = _normalize_algorithm_params(rounds[0].get('algorithmParams', []))
-            voiceprint_config = {
-                'enabled': first_round_algo_params.get('voiceprintEnabled', False),
-                'audio_id': first_round_algo_params.get('voiceprintAudioId'),
-                'playback_device_id': first_round_algo_params.get('voiceprintPlaybackDeviceId'),
-                'spl': first_round_algo_params.get('voiceprintSpl', 70.0),
-                'wait_time': first_round_algo_params.get('voiceprintWaitTime', 5.0),
-            }
-            if voiceprint_config.get('enabled'):
-                if not playback_orchestrator.play_voiceprint(voiceprint_config, task_id):
-                    self._log(level='ERROR', content='声纹注册失败，中止测试', task_id=task_id, test_case_id=test_case_id)
-                    self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message='声纹注册失败')
-                    return False
-            
-            # ── 循环外：预先创建 TestResult，获取 result_id 供轮次内评估使用 ──
-            first_device_id = None
-            if device_info_list:
-                first_device_id = device_info_list[0].get('device_id')
 
-            result_id = self._save_result(
-                task_id=task_id,
-                test_case_id=test_case_id,
-                result_data={'multi_round': True, 'total_rounds': len(rounds)},
-                algo_result={'test_type': 'e2e', 'algorithm_type': algorithm_type, 'total_rounds': len(rounds), 'rounds': [], 'aggregated': {}},
-                algorithm_type=algorithm_type,
-                device_id=first_device_id,
-                api_id=None,
-                execution_status='running',
-                response_time=0,
-                error_message=None
+            # ── 阶段一：循环前准备 ──
+            device_info_list, result_id = self._prepare_rounds(
+                task_id, tc_rel_id, data, case_config, algorithm_type,
+                case_field_values, rounds, test_case_id
             )
 
-            self._log(
-                level='DEBUG',
-                content=f"预先创建多轮 TestResult: result_id={result_id}, total_rounds={len(rounds)}",
-                task_id=task_id, test_case_id=test_case_id,
-            )
-
-            # ── 多轮循环 ──
-            all_round_results = []
-            last_adjusted_ref_params = None
-            execution_success = True
-            # rounds_data: 增量构建的 algorithm_result.rounds[]，每轮采集后追加并更新 DB
-            rounds_data = []
-
-            for round_idx, round_config in enumerate(rounds):
-                if not isinstance(round_config, dict):
-                    continue
-
-                round_number = round_config.get('roundNumber', round_idx + 1)
-
-                self.execution_engine.update_case_round_progress(
-                    task_id, tc_rel_id, round_idx, len(rounds)
+            # ── 阶段二：多轮循环 ──
+            all_round_results, rounds_data, execution_success, last_adjusted_ref_params = \
+                self._run_rounds_loop(
+                    task_id, tc_rel_id, data, case_config, case_name,
+                    algorithm_type, test_case_id, rounds,
+                    device_info_list, result_id, case_reference_params
                 )
-
-                self._log(
-                    level='INFO',
-                    content=f"执行第 {round_number} 轮",
-                    task_id=task_id,
-                    test_case_id=test_case_id
-                )
-
-                # 提取本轮算法参数
-                from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
-                round_algo_params = _normalize_algorithm_params(round_config.get('algorithmParams', []))
-
-                # 环境设备设置（导轨等，setup 自动保存状态）
-                env_states = self._setup_env_devices_for_round(round_algo_params, task_id)
-
-                # 设备预处理（启动录音 / 进入待录状态，并初始化播放时间戳）
-                self._pre_process_devices(
-                    device_info_list, task_id,
-                    test_case_id=test_case_id,
-                    extra_params=self.current_extra_params,
-                )
-
-                # 通过 PlaybackOrchestrator 统一播放本轮音频（主讲人 + 噪声 + 干扰人）
-                play_result = playback_orchestrator.play_round(
-                    round_config=round_config,
-                    task_id=task_id,
-                    case_config=case_config,
-                    test_case_id=test_case_id,
-                )
-                if not play_result:
-                    self._log(
-                        level='WARNING',
-                        content=f"第 {round_number} 轮音频播放失败，跳过",
-                        task_id=task_id, test_case_id=test_case_id,
-                    )
-                    self._teardown_env_devices_for_round(env_states, task_id)
-                    execution_success = False
-                    # 占位：保证 rounds_data 索引对齐
-                    rounds_data.append({
-                        'round': round_idx,
-                        'input': {},
-                        'output': {},
-                        'latency': None,
-                        'evaluation': {},
-                    })
-                    continue
-
-                # post_process（音量恢复由驱动内部管理）
-                self._post_process_devices(device_info_list, task_id, test_case_id=test_case_id)
-
-                # 等待结果就绪
-                time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
-
-                # 收集本轮结果
-                collect_result = self._collect_results(
-                    task_id, test_case_id, device_info_list,
-                    algorithm_type=algorithm_type,
-                    case_reference_params=case_reference_params
-                )
-
-                if isinstance(collect_result, tuple):
-                    round_results, adjusted_case_ref_params = collect_result
-                    if adjusted_case_ref_params:
-                        last_adjusted_ref_params = adjusted_case_ref_params
-                else:
-                    round_results = collect_result
-
-                # 为每轮结果标记 round_number，供评估阶段透传 (0-indexed)
-                tagged_results = round_results if isinstance(round_results, list) else [round_results]
-                for r in tagged_results:
-                    r['round_number'] = round_idx
-                all_round_results.extend(tagged_results)
-
-                # ── 轮次内评估：采集完即提交 ──
-                primary = tagged_results[0] if tagged_results else {}
-                if primary:
-                    # 本轮执行成功性
-                    round_success = primary.get('raw_results', {}).get('success', False)
-                    if not round_success:
-                        execution_success = False
-
-                    # 记录用例结果日志
-                    def extract_value(val):
-                        if isinstance(val, dict) and 'value' in val:
-                            return val.get('value', '')
-                        return val
-
-                    ref_fields = {}
-                    for field_key, field_value in self.current_extra_params.items():
-                        if field_value:
-                            ref_fields[field_key] = extract_value(field_value)
-
-                    self._log_case_result(
-                        task_id, case_name, primary, ref_fields,
-                        algorithm_type=algorithm_type, test_case_id=test_case_id
-                    )
-
-                    # 构建本轮 round_data 并追加到 rounds_data
-                    case_rounds = case_config.get('rounds', [])
-                    round_cfg = case_rounds[round_idx] if round_idx < len(case_rounds) else {}
-                    audios = round_cfg.get('audios', [])
-                    first_audio = audios[0] if audios else {}
-                    audio_name = first_audio.get('audio_name') or first_audio.get('name', '')
-                    audio_path = first_audio.get('audio_path') or first_audio.get('path', '')
-
-                    round_output = {}
-                    mapped_output_keys = get_field_mapper().get_mapped_device_output_field_keys(algorithm_type)
-                    for key in mapped_output_keys:
-                        if primary.get(key):
-                            round_output[key] = primary[key]
-
-                    latency = primary.get('response_time') or primary.get('latency')
-
-                    round_data = {
-                        'round': round_idx,
-                        'input': {
-                            'audio_name': audio_name,
-                            'audio_path': audio_path,
-                            'type': 'audio',
-                        },
-                        'output': round_output,
-                        'latency': latency,
-                        'evaluation': {},
-                    }
-                    rounds_data.append(round_data)
-
-                    # 增量更新 TestResult.algorithm_result（含 rounds[]），供评估服务提取单轮数据
-                    current_algo_result = {
-                        'test_type': 'e2e',
-                        'algorithm_type': algorithm_type,
-                        'total_rounds': len(rounds),
-                        'rounds': rounds_data,
-                        'aggregated': {},
-                    }
-                    self._update_test_result(
-                        result_id=result_id,
-                        algo_result=current_algo_result,
-                        execution_status='running',
-                        task_id=task_id,
-                    )
-
-                    # 提交单轮评估（传入完整 algo_result，evaluate_case 内部提取 rounds[round_idx]）
-                    self._evaluate_result(
-                        task_id=task_id,
-                        result_id=result_id,
-                        test_case_id=test_case_id,
-                        algo_result=current_algo_result,
-                        case_config=case_config or {},
-                        case_reference_params=case_reference_params,
-                        algorithm_type=algorithm_type,
-                        test_type='e2e',
-                        case_algorithm_params=data.get('case_algorithm_params'),
-                        round_number=round_idx
-                    )
-
-                # 收集播放时间戳（供后续 offset 计算）
-                audio_timelines = play_result.get('audio_timelines', []) if play_result else []
-                from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
-                overlap_rate = CaseParameterExtractor.get_overlap_rate(case_config) if case_config else 0
-                overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
-                for timeline in audio_timelines:
-                    if timeline.get('is_noise', False):
-                        continue
-                    audio_config = timeline.get('config', {})
-                    audio_obj = timeline.get('audio', {})
-                    audio_id = getattr(audio_obj, 'id', None)
-                    if audio_id:
-                        if task_id not in self._playback_timestamps:
-                            self._playback_timestamps[task_id] = {
-                                'record_start_time': time.time(),
-                                'audio_play_times': [],
-                                'theory_offsets': {},
-                            }
-                        self._playback_timestamps[task_id]['audio_play_times'].append({
-                            'audio_id': audio_id,
-                            'play_order': audio_config.get('play_order', 0),
-                            'actual_time': timeline.get('actual_play_time', time.time()),
-                            'actual_start_offset': timeline.get('start', 0),
-                            'is_overlap': bool(overlap_rate and overlap_rate > 0),
-                            'overlap_rate': overlap_rate,
-                            'overlap_time': overlap_time,
-                        })
-
-                # 环境设备恢复（teardown 自动恢复到 setup 前的状态）
-                self._teardown_env_devices_for_round(env_states, task_id)
 
             if not all_round_results:
                 error_msg = "所有轮次均未产生有效结果"
                 self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
                 return False
 
-            # ── 循环后：构建最终 algo_result 并更新 TestResult ──
-            final_algo_result = self._build_e2e_algorithm_result(task_id, all_round_results, case_config, algorithm_type)
-
-            latency_values = []
-            for r in all_round_results:
-                lat = r.get('response_time') or r.get('latency')
-                if lat is not None:
-                    try:
-                        latency_values.append(float(lat))
-                    except (ValueError, TypeError):
-                        pass
-            avg_response_time = round(sum(latency_values) / len(latency_values), 4) if latency_values else 0
-
-            self._update_test_result(
-                result_id=result_id,
-                algo_result=final_algo_result,
-                execution_status='completed' if execution_success else 'failed',
-                response_time=avg_response_time,
-                error_message=None if execution_success else "多轮测试存在失败轮次",
-                task_id=task_id,
-            )
-
-            # ── 整体评估：对所有轮次的顶层 dimensions 配置提交 round_number=None 评估 ──
-            # case_config.dimensions 是用例级整体评估维度（与 rounds[].evaluation.dimensions 区分）
-            if execution_success and case_config and case_config.get('dimensions'):
-                self._log(
-                    level='INFO',
-                    content=f"提交整体评估: result_id={result_id}, dimensions={json.dumps(case_config.get('dimensions'), ensure_ascii=False)[:200]}",
-                    task_id=task_id, test_case_id=test_case_id,
-                )
-                self._evaluate_result(
-                    task_id=task_id,
-                    result_id=result_id,
-                    test_case_id=test_case_id,
-                    algo_result=final_algo_result,
-                    case_config=case_config or {},
-                    case_reference_params=case_reference_params,
-                    algorithm_type=algorithm_type,
-                    test_type='e2e',
-                    case_algorithm_params=data.get('case_algorithm_params'),
-                    round_number=None  # 整体评估
-                )
-
-            # ── 更新 TaskCase 状态 ──
-            success = self._process_results(
-                task_id, case_name, tc_rel_id, test_case_id, all_round_results, case_config,
-                case_reference_params=case_reference_params,
-                case_algorithm_params=data.get('case_algorithm_params'),
-                algorithm_type=algorithm_type,
-                adjusted_case_reference_params=last_adjusted_ref_params,
-                precreated_result_id=result_id,
-                precomputed_execution_success=execution_success
+            # ── 阶段三：循环后聚合 + 评估 ──
+            success = self._finalize_rounds(
+                task_id, tc_rel_id, data, case_config, case_name,
+                algorithm_type, test_case_id, result_id,
+                all_round_results, execution_success,
+                case_reference_params, last_adjusted_ref_params
             )
 
             return success
         except Exception as e:
             import traceback
-            error_trace = traceback.format_exc()
             error_msg = f"用例执行异常: {str(e)}"
-            self._log(level='ERROR', content=f"用例 {case_name} 执行异常: {str(e)}\n{error_trace}", task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None))
+            self._log(level='ERROR', content=f"用例 {case_name} 执行异常: {str(e)}\n{traceback.format_exc()}",
+                      task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None))
             self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
             return False
-    
 
-    
+    # ──────────────────────────────────────────────────
+    #  阶段一：循环前准备
+    # ──────────────────────────────────────────────────
 
-    
-    def _get_device_info(self, task_id, case_config):
-        local_db_session = db.session()
-        try:
-            task_device_relations = local_db_session.query(TaskDevice).filter_by(task_id=task_id).all()
-            device_ids = [rel.device_id for rel in task_device_relations]
-            if not device_ids:
-                return {'success': False, 'error': "没有可用的测试设备"}
-            devices = local_db_session.query(Device).filter(Device.id.in_(device_ids)).all()
-            
-            
-            device_info_list = []
-            for dev in devices:
-                driver = device_driver_factory.get_driver(dev.system, keywords=dev.keywords)
-                prompt_path, prompt_name = self._get_prompt_audio_info(
-                    dev.needs_prompt_audio, dev.prompt_config
-                )
-                device_info_list.append({
-                    "device_id": dev.id, "device_sn": dev.serial_number or dev.ip,
-                    "device_name": dev.name, "driver": driver,
-                    "prompt_audio_path": prompt_path, "prompt_audio_name": prompt_name,
-                    "needs_prompt_audio": dev.needs_prompt_audio
-                })
+    def _prepare_rounds(self, task_id, tc_rel_id, data, case_config, algorithm_type,
+                        case_field_values, rounds, test_case_id):
+        """设备准备 + 声纹注册 + 预创建 TestResult，返回 (device_info_list, result_id)"""
+        # 设备准备
+        device_result = self._device_manager.get_device_info(task_id, case_config)
+        if not device_result['success']:
+            error_msg = f"设备信息获取失败: {device_result.get('error')}"
+            self._log(level='ERROR', content=error_msg, task_id=task_id, test_case_id=test_case_id)
+            self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
+            raise RuntimeError(error_msg)
 
-            return {'success': True, 'data': {'device_info_list': device_info_list}}
-        finally:
-            local_db_session.close()
-    
-    def _get_prompt_audio_info(self, needs_prompt_audio, prompt_config):
-        """
-        获取提示音频信息 — 直接从 prompt_config 读取音频 ID
-        
-        Args:
-            needs_prompt_audio: 是否需要提示音频
-            prompt_config: 提示音频配置 (JSON: {音频ID} 或 {key: 音频ID})
-            
-        Returns:
-            tuple: (prompt_audio_path, prompt_audio_name)
-        """
-        if not needs_prompt_audio or not prompt_config:
-            return None, None
-        
-        # 直接从 prompt_config 取音频 ID
-        audio_id = None
-        if isinstance(prompt_config, dict):
-            for v in prompt_config.values():
-                if v:
-                    audio_id = v
-                    break
-        elif isinstance(prompt_config, (int, str)):
-            audio_id = prompt_config
-        
-        if not audio_id:
-            return None, None
-        
-        local_db_session = db.session()
-        try:
-            audio = local_db_session.query(Audio).filter(
-                Audio.id == audio_id,
-                Audio.deleted == False,
-                Audio.audio_type == 'prompt'
-            ).first()
-            if audio:
-                return audio.file_path, audio.name
-            return None, None
-        finally:
-            local_db_session.close()
-    
-    def _pre_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
-        extra_params = kwargs.get('extra_params', {})
-        record_start_time = time.time()
-        self._playback_timestamps[task_id] = {
-            'record_start_time': record_start_time,
-            'audio_play_times': [],
-            'theory_offsets': {}
+        device_info_list = device_result['data']['device_info_list']
+        self.current_extra_params = self._execute_extra_params(algorithm_type, case_field_values, include_format_strings=True)
+        device_driver_factory.register_task_devices(task_id, device_info_list)
+
+        for info in device_info_list:
+            if info.get("driver"):
+                info["driver"].set_task_id(task_id)
+                info["driver"].set_test_case_id(test_case_id)
+                info["driver"].set_device_id(info["device_id"])
+
+        self._device_manager.initialize_devices(device_info_list, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
+
+        # 声纹注册
+        self._register_voiceprint(task_id, tc_rel_id, rounds, test_case_id)
+
+        # 预创建 TestResult
+        first_device_id = device_info_list[0].get('device_id') if device_info_list else None
+        result_id = self._save_result(
+            task_id=task_id,
+            test_case_id=test_case_id,
+            result_data={'multi_round': True, 'total_rounds': len(rounds)},
+            algo_result={'test_type': 'e2e', 'algorithm_type': algorithm_type, 'total_rounds': len(rounds), 'rounds': [], 'aggregated': {}},
+            algorithm_type=algorithm_type,
+            device_id=first_device_id,
+            api_id=None,
+            execution_status='running',
+            response_time=0,
+            error_message=None
+        )
+        self._log(
+            level='DEBUG',
+            content=f"预先创建多轮 TestResult: result_id={result_id}, total_rounds={len(rounds)}",
+            task_id=task_id, test_case_id=test_case_id,
+        )
+
+        return device_info_list, result_id
+
+    def _register_voiceprint(self, task_id, tc_rel_id, rounds, test_case_id):
+        """从首轮 algorithmParams 提取声纹配置并执行注册"""
+        from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
+
+        first_round_algo_params = {}
+        if rounds and isinstance(rounds[0], dict):
+            first_round_algo_params = _normalize_algorithm_params(rounds[0].get('algorithmParams', []))
+
+        voiceprint_config = {
+            'enabled': first_round_algo_params.get('voiceprintEnabled', False),
+            'audio_id': first_round_algo_params.get('voiceprintAudioId'),
+            'playback_device_id': first_round_algo_params.get('voiceprintPlaybackDeviceId'),
+            'spl': first_round_algo_params.get('voiceprintSpl', 70.0),
+            'wait_time': first_round_algo_params.get('voiceprintWaitTime', 5.0),
         }
-        pool = self.execution_engine.device_control_pool
-        futures = []
-        for info in device_info_list:
-            if info["driver"]:
-                future = pool.submit(
-                    info["driver"].pre_process, 
-                    info["device_sn"],
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    **extra_params
-                )
-                futures.append(future)
-        for future in futures:
-            try:
-                future.result(timeout=60)
-            except Exception as e:
-                self._log(level='ERROR', content=f"设备预处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
+        if voiceprint_config.get('enabled'):
+            if not playback_orchestrator.play_voiceprint(voiceprint_config, task_id):
+                self._log(level='ERROR', content='声纹注册失败，中止测试', task_id=task_id, test_case_id=test_case_id)
+                self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message='声纹注册失败')
+                raise RuntimeError('声纹注册失败')
 
-    def _post_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
-        extra_params = kwargs.get('extra_params', {})
-        pool = self.execution_engine.device_control_pool
-        futures = []
-        for info in device_info_list:
-            if info["driver"] and hasattr(info["driver"], "post_process"):
-                future = pool.submit(
-                    info["driver"].post_process,
-                    info["device_sn"],
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    **extra_params
-                )
-                futures.append(future)
-        for future in futures:
-            try:
-                future.result(timeout=60)
-            except Exception as e:
-                self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
-    
-    def _play_prompt_audio(self, device_info_list, task_id, device_index, playback_dev, main_gain):
-        prompt_info = next((info for info in device_info_list if info["prompt_audio_path"]), None)
-        if prompt_info:
-            future = audio_service.play_audio(
-                task_id=task_id, file_path=prompt_info["prompt_audio_path"],
-                device_index=device_index, channel_index=playback_dev.channel_index if playback_dev else 0,
-                gain=main_gain, player_type='dry'
-            )
-            try:
-                future.result()
-            except Exception as e:
-                self._log(level='ERROR', content=f"提示音播放失败: {e}", task_id=task_id)
-    
-    def _collect_results(self, task_id, test_case_id, device_info_list, **kwargs):
-        from backend.services.device.device_result_collector import get_device_result_collector
-        
-        algorithm_type = kwargs.get('algorithm_type', 'translation')
-        extra_params = self._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
-        
-        playback_timestamps = self._playback_timestamps.get(task_id)
-        if playback_timestamps:
-            audio_offsets = self._calculate_actual_offset(task_id, playback_timestamps)
-            case_ref_params = kwargs.get('case_reference_params')
-            self._log(level='DEBUG', content=f"[_collect_results] audio_offsets count={len(audio_offsets) if audio_offsets else 0}, case_reference_params={'found' if case_ref_params else 'None'}", task_id=task_id)
-            if audio_offsets:
-                offset_values = [v['offset'] for v in audio_offsets.values()]
-                if offset_values:
-                    actual_offset = offset_values[0]
-                    self._log(level='INFO', content=f"计算实际时间戳偏移: {actual_offset:.3f}s (共{len(audio_offsets)}个播放)", task_id=task_id)
-                    extra_params['playback_time_offsets'] = audio_offsets
-                    extra_params['reference_params'] = case_ref_params
-        
-        collector = get_device_result_collector()
-        
-        def log_callback(level, content, task_id, device_id):
-            self._log(level=level, content=content, task_id=task_id, device_id=device_id)
-        
-        all_results = collector.collect_raw_results(
-            task_id, test_case_id, device_info_list, extra_params, 
-            log_callback=log_callback, **kwargs
-        )
-        
-        adjusted_ref_params = None
-        if all_results and isinstance(all_results, list):
-            for res in all_results:
-                if 'adjusted_reference_params' in res:
-                    result_type = res.get('result_type', 'e2e')
-                    if adjusted_ref_params is None:
-                        adjusted_ref_params = {}
-                    adjusted_ref_params[result_type] = res['adjusted_reference_params']
-        
-        if adjusted_ref_params:
-            self._log(level='DEBUG', content=f"[_collect_results] found adjusted_reference_params: {list(adjusted_ref_params.keys())}", task_id=task_id)
-        
-        self._log(
-            level='DEBUG',
-            content=f"[e2e_executor] before return _collect_results: all_results id={id(all_results)}, raw_keys[0]={list(all_results[0].get('raw_results', {}).keys())[:10] if all_results else 'empty'}",
-            task_id=task_id
-        )
+    # ──────────────────────────────────────────────────
+    #  阶段二：多轮循环
+    # ──────────────────────────────────────────────────
 
-        result_to_return = all_results
-        if adjusted_ref_params:
-            result_to_return = (all_results, adjusted_ref_params)
-        
-        _first = result_to_return[0] if result_to_return else None
-        _first_device = _first[0] if isinstance(_first, list) else _first
-        self._log(
-            level='DEBUG',
-            content=f"[e2e_executor] returning: result_to_return id={id(result_to_return)}, raw_keys[0]={list(_first_device.get('raw_results', {}).keys())[:10] if _first_device else 'empty'}",
-            task_id=task_id
-        )
-        
-        return result_to_return
-    
-    def _calculate_actual_offset(self, task_id, playback_timestamps):
-        record_start_time = playback_timestamps.get('record_start_time')
-        audio_play_times = playback_timestamps.get('audio_play_times', [])
-        
-        if not record_start_time or not audio_play_times:
-            return {}
-        
-        audio_offsets = {}
-        
-        for play_time in audio_play_times:
-            audio_id = play_time.get('audio_id')
-            if not audio_id:
+    def _run_rounds_loop(self, task_id, tc_rel_id, data, case_config, case_name,
+                         algorithm_type, test_case_id, rounds,
+                         device_info_list, result_id, case_reference_params):
+        """执行多轮循环，返回 (all_round_results, rounds_data, execution_success, last_adjusted_ref_params)"""
+        all_round_results = []
+        last_adjusted_ref_params = None
+        execution_success = True
+        rounds_data = []
+
+        for round_idx, round_config in enumerate(rounds):
+            if not isinstance(round_config, dict):
                 continue
-            
-            play_order = play_time.get('play_order', 0)
-            actual_time = play_time.get('actual_time', record_start_time)
-            
-            theory_offset = play_time.get('actual_start_offset', 0.0)
-            
-            actual_offset = actual_time - record_start_time - theory_offset
-            
-            key = f"{audio_id}_{play_order}"
-            audio_offsets[key] = {
-                'audio_id': audio_id,
-                'play_order': play_order,
-                'offset': actual_offset
+
+            round_number = round_config.get('roundNumber', round_idx + 1)
+            self.execution_engine.update_case_round_progress(task_id, tc_rel_id, round_idx, len(rounds))
+            self._log(level='INFO', content=f"执行第 {round_number} 轮", task_id=task_id, test_case_id=test_case_id)
+
+            round_result = self._execute_single_round(
+                task_id, tc_rel_id, data, case_config, case_name,
+                algorithm_type, test_case_id, rounds,
+                device_info_list, result_id, case_reference_params,
+                round_idx, round_config, round_number, rounds_data
+            )
+
+            # 累积结果
+            tagged_results = round_result.get('tagged_results', [])
+            all_round_results.extend(tagged_results)
+            if round_result.get('round_data'):
+                rounds_data.append(round_result['round_data'])
+            if not round_result.get('success', True):
+                execution_success = False
+            if round_result.get('adjusted_ref_params'):
+                last_adjusted_ref_params = round_result['adjusted_ref_params']
+
+        return all_round_results, rounds_data, execution_success, last_adjusted_ref_params
+
+    def _execute_single_round(self, task_id, tc_rel_id, data, case_config, case_name,
+                              algorithm_type, test_case_id, rounds,
+                              device_info_list, result_id, case_reference_params,
+                              round_idx, round_config, round_number, rounds_data):
+        """执行单轮：环境设置 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
+        from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
+        round_algo_params = _normalize_algorithm_params(round_config.get('algorithmParams', []))
+
+        env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
+        self._device_manager.pre_process_devices(
+            device_info_list, task_id, test_case_id=test_case_id,
+            extra_params={**self.current_extra_params, 'round_number': round_idx},
+        )
+
+        play_result = playback_orchestrator.play_round(
+            round_config=round_config, task_id=task_id,
+            case_config=case_config, test_case_id=test_case_id,
+        )
+        if not play_result:
+            self._log(level='WARNING', content=f"第 {round_number} 轮音频播放失败，跳过",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
+                'adjusted_ref_params': None,
             }
-            
-            self._log(
-                level='DEBUG',
-                content=f"时间戳分析: audio_id={audio_id}, play_order={play_order}, record_start={record_start_time:.3f}, actual_play={actual_time:.3f}, theory_offset={theory_offset:.3f}, actual_offset={actual_offset:.3f}",
-                task_id=task_id
+
+        self._device_manager.post_process_devices(device_info_list, task_id, test_case_id=test_case_id)
+        time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
+
+        # 采集结果
+        collect_result = self._collector.collect_results(
+            task_id, test_case_id, device_info_list,
+            algorithm_type=algorithm_type,
+            case_reference_params=case_reference_params
+        )
+        if isinstance(collect_result, tuple):
+            round_results, adjusted_case_ref_params = collect_result
+        else:
+            round_results, adjusted_case_ref_params = collect_result, None
+
+        tagged_results = round_results if isinstance(round_results, list) else [round_results]
+        for r in tagged_results:
+            r['round_number'] = round_idx
+
+        # 轮次内评估
+        primary = tagged_results[0] if tagged_results else {}
+        round_data = None
+        round_success = True
+
+        if primary:
+            round_success = primary.get('raw_results', {}).get('success', False)
+            round_data = self._build_and_submit_round_data(
+                task_id, tc_rel_id, data, case_config, case_name,
+                algorithm_type, test_case_id, rounds,
+                result_id, case_reference_params,
+                round_idx, primary, tagged_results, rounds_data
             )
-        
-        return audio_offsets
-    
-    def _initialize_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
-        algorithm_type = kwargs.get('algorithm_type', 'translation')
-        
-        extra_params = self._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
-        
-        pool = self.execution_engine.device_control_pool
-        results = []
-        lock = threading.Lock()
-        futures = []
-        
-        def init_device(info):
-            ok = False
-            err = None
-            try:
-                if info["driver"]:
-                    ok = info["driver"].initialize(info["device_sn"], task_id=task_id, test_case_id=test_case_id, **extra_params)
-                    if not ok:
-                        err = "Initialize returned False"
-                else:
-                    err = "Driver not available"
-            except Exception as e:
-                err = str(e)
-            with lock:
-                results.append({'success': ok, 'error': err, 'device_name': info["device_name"]})
-        
-        for info in device_info_list:
-            future = pool.submit(init_device, info)
-            futures.append(future)
-        
-        for future in futures:
-            try:
-                future.result(timeout=60)
-            except Exception as e:
-                self._log(level='ERROR', content=f"设备初始化超时或失败: {e}", task_id=task_id, test_case_id=test_case_id)
-        
-        failed = [r for r in results if not r['success']]
-        if failed: raise RuntimeError(f"设备初始化失败: {'; '.join([f'{r.get('device_name')}: {r.get('error')}' for r in failed])}")
 
-    def _setup_env_devices_for_round(self, round_algo_params, task_id):
-        """设置本轮环境设备（导轨等），返回状态列表供 teardown 恢复。
+        # 收集播放时间戳
+        self._collect_playback_timestamps(task_id, play_result, case_config)
 
-        通过 EnvDeviceFactory 创建环境设备实例，调用 setup() 完成 save_state + apply_settings。
-        新增环境设备只需：1) 实现 BaseEnvDevice 子类  2) 注册到工厂  3) 在 _ENV_DEVICE_PARAM_MAP 中添加映射。
-        """
-        from backend.utils.env_device import EnvDeviceFactory
+        self._device_manager.teardown_env_devices_for_round(env_states, task_id)
 
-        _ENV_DEVICE_PARAM_MAP = {
-            'railDistance': ('rail', lambda v: {'distance_cm': float(v)}),
+        return {
+            'success': round_success,
+            'tagged_results': tagged_results,
+            'round_data': round_data,
+            'adjusted_ref_params': adjusted_case_ref_params,
         }
 
-        env_states = []
-        for param_key, (device_type, build_settings) in _ENV_DEVICE_PARAM_MAP.items():
-            value = round_algo_params.get(param_key)
-            if value is None:
-                continue
-            try:
-                dev = EnvDeviceFactory.create(device_type)
-                if dev and dev.is_available():
-                    state = dev.setup(build_settings(value))
-                    env_states.append((dev, state))
-                    self._log(level='INFO', content=f"环境设备 {device_type} 已设置: {param_key}={value}", task_id=task_id)
-            except Exception as e:
-                self._log(level='WARNING', content=f"环境设备 {device_type} 设置失败: {e}", task_id=task_id)
-        return env_states
+    def _build_and_submit_round_data(self, task_id, tc_rel_id, data, case_config, case_name,
+                                     algorithm_type, test_case_id, rounds,
+                                     result_id, case_reference_params,
+                                     round_idx, primary, tagged_results, rounds_data):
+        """构建本轮 round_data，增量更新 TestResult，提交单轮评估，返回 round_data
 
-    def _teardown_env_devices_for_round(self, env_states, task_id):
-        """恢复本轮环境设备到 setup 前的状态。"""
-        for dev, state in env_states:
-            try:
-                dev.teardown(state)
-            except Exception as e:
-                self._log(level='WARNING', content=f"环境设备 {dev.device_type} 恢复失败: {e}", task_id=task_id)
-
-    def _update_test_result(self, result_id, algo_result, execution_status, response_time=0,
-                            error_message=None, task_id=None):
-        """更新已存在的 TestResult 记录（多轮场景：循环前预创建、循环后更新）"""
-        from sqlalchemy import text
-        update_sql = text("""
-            UPDATE test_results
-            SET algorithm_result = :algorithm_result,
-                execution_status = :execution_status,
-                response_time = :response_time,
-                error_message = :error_message
-            WHERE id = :result_id
-        """)
-        params = {
-            'algorithm_result': json.dumps(algo_result, ensure_ascii=False) if algo_result else None,
-            'execution_status': execution_status,
-            'response_time': response_time,
-            'error_message': error_message,
-            'result_id': result_id,
-        }
-        with db.engine.connect() as conn:
-            conn.execute(update_sql, params)
-            conn.commit()
-
-    def _process_results(self, task_id, case_name, tc_rel_id, test_case_id, all_results, case_config=None,
-                        case_reference_params=None, case_algorithm_params=None, adjusted_case_reference_params=None, **kwargs):
-        """处理E2E测试结果 - 使用统一字段映射
-
-        多轮场景下，评估已在循环内按轮次提交，此方法仅负责：
-        1. 构建/更新最终的 algorithm_result 到预创建的 TestResult
-        2. 更新 TaskCase 执行状态
+        Args:
+            rounds_data: 已执行轮次的 round_data 列表（累积），用于构建含全部轮次的 algo_result
         """
-        algorithm_type = kwargs.get('algorithm_type', 'translation')
-        precreated_result_id = kwargs.get('precreated_result_id')
-        precomputed_execution_success = kwargs.get('precomputed_execution_success')
+        ref_fields = self._build_ref_fields(self.current_extra_params)
 
-        if adjusted_case_reference_params:
-            self._log(level='DEBUG', content=f"[_process_results] using adjusted_case_reference_params: type={type(adjusted_case_reference_params)}", task_id=task_id)
-            if isinstance(adjusted_case_reference_params, list):
-                adjusted_ref_dict = {}
-                for item in adjusted_case_reference_params:
-                    if isinstance(item, dict):
-                        code = item.get('code')
-                        if code:
-                            adjusted_ref_dict[code] = item
-                self._log(level='DEBUG', content=f"[_process_results] adjusted_ref_dict keys: {list(adjusted_ref_dict.keys())}", task_id=task_id)
-                case_reference_params = adjusted_ref_dict
-            else:
-                case_reference_params = adjusted_case_reference_params
-
-        is_multi_round = any(r.get('round_number') is not None for r in all_results) if all_results else False
-        self._log(level='DEBUG', content=f"[_process_results] is_multi_round={is_multi_round}", task_id=task_id)
-
-        local_db_session = db.session()
-        try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
-            if not tc_rel: return False
-
-            if not all_results:
-                tc_rel.execution_status = 'failed'
-                tc_rel.evaluation_status = 'failed'
-                tc_rel.status = 'failed'
-                tc_rel.error_message = "没有采集到设备结果"
-                tc_rel.completed_at = utc8now()
-                local_db_session.commit()
-                return False
-
-            extra_params = self._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
-            kwargs.update(extra_params)
-
-            if is_multi_round:
-                # 多轮场景：algo_result 和 TestResult 已在循环后更新，整体评估已提交
-                # 此处仅更新 TaskCase 状态
-                execution_success = precomputed_execution_success if precomputed_execution_success is not None else all(
-                    r.get('raw_results', {}).get('success', False) for r in all_results
-                )
-
-                result_id = precreated_result_id
-
-                self._log(
-                    level='DEBUG',
-                    content=f"[_process_results] 多轮 TaskCase 状态更新: result_id={result_id}, execution_success={execution_success}",
-                    task_id=task_id,
-                    test_case_id=test_case_id
-                )
-
-                # 更新 TaskCase 状态
-                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
-                tc_rel.execution_status = 'completed' if execution_success else 'failed'
-                if not execution_success:
-                    tc_rel.evaluation_status = 'failed'
-                    tc_rel.status = 'failed'
-                    tc_rel.completed_at = utc8now()
-                else:
-                    tc_rel.status = 'pending'
-                local_db_session.commit()
-
-                return execution_success
-            else:
-                result = super()._process_results(
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    all_results=all_results,
-                    case_config=case_config,
-                    case_reference_params=case_reference_params,
-                    algorithm_type=algorithm_type,
-                    device_id_field='device_id',
-                    api_id_field='api_id'
-                )
-                
-                execution_success = result['execution_success']
-                all_eval_items = result['all_eval_items']
-                case_params = result['case_params']
-                
-                # super()._process_results() 同样会调用 db.session().close()，
-                # 重新查询 tc_rel 确保它重新进入 identity map
-                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
-                tc_rel.execution_status = 'completed' if execution_success else 'failed'
-                if not execution_success:
-                    tc_rel.evaluation_status = 'failed'
-                    tc_rel.status = 'failed'
-                    tc_rel.completed_at = utc8now()
-                else:
-                    tc_rel.status = 'pending'
-                    if not all_eval_items:
-                        tc_rel.evaluation_status = 'completed'
-                local_db_session.commit()
-                
-                if execution_success and all_eval_items:
-                    def extract_value(val):
-                        if isinstance(val, dict) and 'value' in val:
-                            return val.get('value', '')
-                        return val
-                    
-                    ref_fields = {}
-                    for field_key, field_value in kwargs.items():
-                        if field_value:
-                            ref_fields[field_key] = extract_value(field_value)
-                    
-                    for item in all_eval_items:
-                        self._log_case_result(task_id, case_name, item['res'], ref_fields, algorithm_type=algorithm_type, test_case_id=item['test_case_id'])
-                    
-                    for item in all_eval_items:
-                        algo_result = item['res']
-                        
-                        self._evaluate_result(
-                            task_id=task_id,
-                            result_id=item['result_id'],
-                            test_case_id=item['test_case_id'],
-                            algo_result=algo_result,
-                            case_config=case_params,
-                            case_reference_params=case_reference_params,
-                            algorithm_type=algorithm_type,
-                            test_type='e2e',
-                            case_algorithm_params=case_algorithm_params,
-                            round_number=item.get('round_number')
-                        )
-                
-                return execution_success
-        finally:
-            local_db_session.close()
-    
-    def _log_case_result(self, task_id, case_name, res, ref_fields, **kwargs):
-        algorithm_type = kwargs.pop('algorithm_type', 'translation')
-        
-        log_content = f"E2E 用例 {case_name}: " + self._get_result_mapper().build_case_result_log(algorithm_type, res, ref_fields, **kwargs)
-        
-        self._log(level='INFO' if res.get('success', False) else 'WARNING', content=log_content, task_id=task_id, test_case_id=kwargs.pop('test_case_id', None), device_id=res.get('device_id'))
-
-    def _build_e2e_algorithm_result(self, task_id, all_round_results, case_config, algorithm_type):
-        rounds_by_index = {}
-        for r in all_round_results:
-            rn = r.get('round_number', 0)
-            if rn not in rounds_by_index:
-                rounds_by_index[rn] = []
-            rounds_by_index[rn].append(r)
+        self._aggregator.log_case_result(
+            task_id, case_name, primary, ref_fields,
+            algorithm_type=algorithm_type, test_case_id=test_case_id
+        )
 
         case_rounds = case_config.get('rounds', [])
-        rounds_list = []
-        latency_values = []
+        round_cfg = case_rounds[round_idx] if round_idx < len(case_rounds) else {}
+        audios = round_cfg.get('audios', [])
+        first_audio = audios[0] if audios else {}
+        audio_name = first_audio.get('audio_name') or first_audio.get('name', '')
+        audio_path = first_audio.get('audio_path') or first_audio.get('path', '')
 
-        for round_idx in sorted(rounds_by_index.keys()):
-            round_results = rounds_by_index[round_idx]
-            primary = round_results[0] if round_results else {}
+        round_output = {}
+        for key in get_field_mapper().get_mapped_device_output_field_keys(algorithm_type):
+            if primary.get(key):
+                round_output[key] = primary[key]
 
-            round_config = case_rounds[round_idx] if round_idx < len(case_rounds) else {}
-            audios = round_config.get('audios', [])
-            first_audio = audios[0] if audios else {}
+        latency = primary.get('response_time') or primary.get('latency')
 
-            audio_name = first_audio.get('audio_name') or first_audio.get('name', '')
-            audio_path = first_audio.get('audio_path') or first_audio.get('path', '')
-
-            asr_text = primary.get('asr_text', '')
-            device_raw = primary.get('raw_results', {})
-
-            latency = primary.get('response_time') or primary.get('latency')
-            if latency is not None:
-                try:
-                    latency_values.append(float(latency))
-                except (ValueError, TypeError):
-                    pass
-
-            wait_time = round_config.get('waitTime', 5000)
-            if wait_time is None:
-                wait_time = 5000
-
-            rounds_list.append({
-                'round': round_idx,
-                'input': {
-                    'audio_name': audio_name,
-                    'audio_path': audio_path,
-                    'type': 'audio',
-                },
-                'output': {
-                    'asr_text': asr_text,
-                    'device_raw': device_raw,
-                },
-                'latency': latency,
-                'wait_time': wait_time,
-                'evaluation': {},
-            })
-
-        avg_latency = None
-        if latency_values:
-            avg_latency = round(sum(latency_values) / len(latency_values), 4)
-
-        aggregated = {
-            'avg_latency': avg_latency,
-            'avg_wer': None,
-            'avg_llm_judge': None,
+        round_data = {
+            'round': round_idx,
+            'input': {'audio_name': audio_name, 'audio_path': audio_path, 'type': 'audio'},
+            'output': round_output,
+            'latency': latency,
+            'evaluation': {},
         }
 
-        result = {
+        # 构建含已执行轮次 + 本轮的 algo_result，使 _extract_round_eval_data(rounds[round_idx]) 能正确索引
+        accumulated_rounds = list(rounds_data) + [round_data]
+        current_algo_result = {
             'test_type': 'e2e',
             'algorithm_type': algorithm_type,
-            'total_rounds': len(rounds_list),
-            'rounds': rounds_list,
-            'aggregated': aggregated,
+            'total_rounds': len(rounds),
+            'rounds': accumulated_rounds,
+            'aggregated': {},
         }
-
-        self._log(
-            level='DEBUG',
-            content=f"[_build_e2e_algorithm_result] 构建 E2E 算法结果: total_rounds={len(rounds_list)}, avg_latency={avg_latency}",
-            task_id=task_id
+        self._aggregator.update_test_result(
+            result_id=result_id, algo_result=current_algo_result,
+            execution_status='running', task_id=task_id,
         )
 
-        return result
+        self._evaluate_result(
+            task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+            algo_result=current_algo_result, case_config=case_config or {},
+            case_reference_params=case_reference_params,
+            algorithm_type=algorithm_type, test_type='e2e',
+            case_algorithm_params=data.get('case_algorithm_params'),
+            round_number=round_idx
+        )
 
-    def _update_algorithm_result_evaluation(self, task_id, result_id):
-        local_db_session = db.session()
-        try:
-            test_result = local_db_session.query(TestResult).filter(
-                TestResult.id == result_id
-            ).first()
-            if not test_result:
-                self._log(level='ERROR', content=f"[_update_algorithm_result_evaluation] TestResult 不存在: result_id={result_id}", task_id=task_id)
-                return
+        return round_data
 
-            algo_result = test_result.algorithm_result
-            if isinstance(algo_result, str):
+    @staticmethod
+    def _build_ref_fields(extra_params):
+        """从 extra_params 提取 ref_fields"""
+        def extract_value(val):
+            if isinstance(val, dict) and 'value' in val:
+                return val.get('value', '')
+            return val
+
+        ref_fields = {}
+        for field_key, field_value in extra_params.items():
+            if field_value:
+                ref_fields[field_key] = extract_value(field_value)
+        return ref_fields
+
+    def _collect_playback_timestamps(self, task_id, play_result, case_config):
+        """从 play_result 的 audio_timelines 收集播放时间戳"""
+        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
+        overlap_rate = CaseParameterExtractor.get_overlap_rate(case_config) if case_config else 0
+        overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
+
+        audio_timelines = play_result.get('audio_timelines', []) if play_result else []
+        for timeline in audio_timelines:
+            if timeline.get('is_noise', False):
+                continue
+            audio_config = timeline.get('config', {})
+            audio_obj = timeline.get('audio', {})
+            audio_id = getattr(audio_obj, 'id', None)
+            if not audio_id:
+                continue
+
+            if task_id not in self._playback_timestamps:
+                self._playback_timestamps[task_id] = {
+                    'record_start_time': time.time(),
+                    'audio_play_times': [],
+                    'theory_offsets': {},
+                }
+            self._playback_timestamps[task_id]['audio_play_times'].append({
+                'audio_id': audio_id,
+                'play_order': audio_config.get('play_order', 0),
+                'actual_time': timeline.get('actual_play_time', time.time()),
+                'actual_start_offset': timeline.get('start', 0),
+                'is_overlap': bool(overlap_rate and overlap_rate > 0),
+                'overlap_rate': overlap_rate,
+                'overlap_time': overlap_time,
+            })
+
+    # ──────────────────────────────────────────────────
+    #  阶段三：循环后聚合 + 评估
+    # ──────────────────────────────────────────────────
+
+    def _finalize_rounds(self, task_id, tc_rel_id, data, case_config, case_name,
+                         algorithm_type, test_case_id, result_id,
+                         all_round_results, execution_success,
+                         case_reference_params, last_adjusted_ref_params):
+        """构建最终 algo_result，提交整体评估，聚合维度分数，更新 TaskCase 状态"""
+        # 构建最终 algo_result
+        final_algo_result = self._aggregator.build_algorithm_result(task_id, all_round_results, case_config, algorithm_type)
+
+        latency_values = []
+        for r in all_round_results:
+            lat = r.get('response_time') or r.get('latency')
+            if lat is not None:
                 try:
-                    algo_result = json.loads(algo_result)
-                except (json.JSONDecodeError, TypeError):
-                    algo_result = {}
-            if not isinstance(algo_result, dict):
-                algo_result = {}
+                    latency_values.append(float(lat))
+                except (ValueError, TypeError):
+                    pass
+        avg_response_time = round(sum(latency_values) / len(latency_values), 4) if latency_values else 0
 
-            dim_results = local_db_session.query(TestResultDimension).filter(
-                TestResultDimension.test_result_id == result_id
-            ).all()
+        self._aggregator.update_test_result(
+            result_id=result_id, algo_result=final_algo_result,
+            execution_status='completed' if execution_success else 'failed',
+            response_time=avg_response_time,
+            error_message=None if execution_success else "多轮测试存在失败轮次",
+            task_id=task_id,
+        )
 
-            round_evals = {}
-            for dr in dim_results:
-                if dr.round_number is None:
-                    continue
-                dim_obj = local_db_session.query(Dimension).get(dr.dimension_id) if dr.dimension_id else None
-                dim_key = dim_obj.name if dim_obj else str(dr.dimension_id)
-                dim_key_lower = dim_key.lower().replace(' ', '_').replace('-', '_')
-                if dr.round_number not in round_evals:
-                    round_evals[dr.round_number] = {}
-                if dr.evaluation_status == 'completed' and dr.score is not None:
-                    round_evals[dr.round_number][dim_key_lower] = dr.score
-
-            rounds_list = algo_result.get('rounds', [])
-            for round_idx, eval_data in round_evals.items():
-                if round_idx < len(rounds_list):
-                    rounds_list[round_idx]['evaluation'] = eval_data
-
-            all_wer = []
-            all_llm_judge = []
-            for rd in rounds_list:
-                ev = rd.get('evaluation', {})
-                if 'wer' in ev and ev['wer'] is not None:
-                    try:
-                        all_wer.append(float(ev['wer']))
-                    except (ValueError, TypeError):
-                        pass
-                if 'llm_judge' in ev and ev['llm_judge'] is not None:
-                    try:
-                        all_llm_judge.append(float(ev['llm_judge']))
-                    except (ValueError, TypeError):
-                        pass
-
-            aggregated = algo_result.get('aggregated', {})
-            aggregated['avg_wer'] = round(sum(all_wer) / len(all_wer), 4) if all_wer else None
-            aggregated['avg_llm_judge'] = round(sum(all_llm_judge) / len(all_llm_judge), 4) if all_llm_judge else None
-
-            algo_result['rounds'] = rounds_list
-            algo_result['aggregated'] = aggregated
-            test_result.algorithm_result = json.dumps(algo_result, ensure_ascii=False)
-            local_db_session.commit()
-
+        # 整体评估
+        if execution_success and case_config and case_config.get('dimensions'):
             self._log(
                 level='INFO',
-                content=f"[_update_algorithm_result_evaluation] 更新完成: result_id={result_id}, avg_wer={aggregated.get('avg_wer')}, avg_llm_judge={aggregated.get('avg_llm_judge')}",
-                task_id=task_id
+                content=f"提交整体评估: result_id={result_id}, dimensions={json.dumps(case_config.get('dimensions'), ensure_ascii=False)[:200]}",
+                task_id=task_id, test_case_id=test_case_id,
             )
-        except Exception as e:
-            local_db_session.rollback()
-            self._log(
-                level='ERROR',
-                content=f"[_update_algorithm_result_evaluation] 更新失败: result_id={result_id}, error={str(e)}",
-                task_id=task_id
+            self._evaluate_result(
+                task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+                algo_result=final_algo_result, case_config=case_config or {},
+                case_reference_params=case_reference_params,
+                algorithm_type=algorithm_type, test_type='e2e',
+                case_algorithm_params=data.get('case_algorithm_params'),
+                round_number=None
             )
-        finally:
-            local_db_session.close()
+
+        # 聚合各轮评估分数到 algo_result
+        self._aggregator.update_algorithm_result_evaluation(task_id, result_id)
+
+        # 更新 TaskCase 状态
+        success = self._aggregator.process_results(
+            task_id, case_name, tc_rel_id, test_case_id, all_round_results, case_config,
+            case_reference_params=case_reference_params,
+            case_algorithm_params=data.get('case_algorithm_params'),
+            algorithm_type=algorithm_type,
+            adjusted_case_reference_params=last_adjusted_ref_params,
+            precreated_result_id=result_id,
+            precomputed_execution_success=execution_success
+        )
+
+        return success
+
+    def _process_results_base(self, **kwargs):
+        """委托到 BaseExecutor._process_results，供 E2EAggregator 调用"""
+        return super()._process_results(**kwargs)
+
+
+
