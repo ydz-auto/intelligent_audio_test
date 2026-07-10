@@ -139,6 +139,16 @@
       />
     </div>
 
+    <!-- ===== 整体评估维度（config.dimensions）===== -->
+    <div v-if="localFormData.config.rounds && localFormData.config.rounds.length > 1" class="form-section overall-eval-section">
+      <OverallEvaluationEditor
+        v-model="localFormData.config.dimensions"
+        :available-dimensions="availableDimensions"
+        :algorithm-type="localFormData.algorithmType"
+        @update:model-value="handleOverallDimensionsUpdate"
+      />
+    </div>
+
       <!-- RoundConfigEditor 已替换旧的音频/噪声/维度配置区块 -->
   </div>
 </template>
@@ -147,6 +157,7 @@
 import { ref, computed, watch, onMounted, inject, nextTick } from 'vue';
 import AlgorithmSelector from '../../AlgorithmSelector.vue';
 import RoundConfigEditor from './RoundConfigEditor.vue';
+import OverallEvaluationEditor from './OverallEvaluationEditor.vue';
 import { useAlgorithmConfig } from '../../../../composables/useAlgorithmConfig';
 import { useAlgorithmLabels } from '../../../../composables/useAlgorithmLabels';
 import { tagsApi, algorithmApi } from '../../../../utils/api';
@@ -176,6 +187,8 @@ const { algorithmOptions: fallbackOptions, loadAlgorithms } = useAlgorithmLabels
 
 const injectedAudioConfig = inject<any>('audioConfig');
 const audioConfig = props.audioConfig || injectedAudioConfig;
+const injectedDimensions = inject<any[]>('availableDimensions', []);
+const availableDimensions = props.dimensionConfig?.availableDimensions || injectedDimensions;
 
 // 当外部传入 testType 时（'api' 或 'e2e'），锁定切换器
 const isTestTypeLocked = computed(() => {
@@ -228,6 +241,12 @@ function handleRoundsUpdate(rounds: RoundConfigItem[]) {
 // ---- 算法参数独立列更新回调 ----
 function handleAlgorithmParamsUpdate(params: any[]) {
   localFormData.value.algorithm_params = params;
+  emitFormData();
+}
+
+// ---- 整体评估维度更新回调 ----
+function handleOverallDimensionsUpdate(dimensions: any[]) {
+  localFormData.value.config.dimensions = dimensions;
   emitFormData();
 }
 
