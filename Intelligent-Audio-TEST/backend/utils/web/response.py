@@ -91,3 +91,42 @@ def format_response(code=ErrorCode.SUCCESS, message="Success", data=None, detail
         "data": data,
         "detail": detail
     }
+
+
+def db_transaction(func):
+    """装饰器：自动处理 try/except/commit/rollback 模式
+
+    被装饰的函数如果正常返回，自动 commit 并返回 success_response(None, message)。
+    如果抛出异常，自动 rollback 并返回 error_response(str(e))。
+
+    用法：
+        @staticmethod
+        @db_transaction
+        def some_action():
+            # ... 业务逻辑 ...
+            return "操作成功"  # 返回 message 字符串即可
+    """
+    import functools
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        from backend.models.database import db
+        try:
+            result = func(*args, **kwargs)
+            # 如果返回的是 response 对象（有 status_code），直接返回
+            if hasattr(result, 'status_code'):
+                return result
+            # 如果返回的是 tuple（response, status_code），直接返回
+            if isinstance(result, tuple) and len(result) == 2 and hasattr(result[0], 'status_code'):
+                return result
+            # 如果返回 dict，直接返回（兼容特殊情况）
+            if isinstance(result, dict):
+                return result
+            # 否则 result 是 message 字符串
+            db.session.commit()
+            return success_response(None, result)
+        except Exception as e:
+            db.session.rollback()
+            return error_response(str(e))
+    return wrapper
+
