@@ -1,1176 +1,414 @@
-{
-    "fileId": "e22f5226-16c4-4ffb-b63c-1057d83421be",
-    "taskId": "aef18210-4e59-499b-8ff6-20f5af3b01f9",
-    "audioType": "dry",
-    "createTestCase": true,
-    "tags": [],
-    "description": "",
-    "testTypes": [
-        "api",
-        "e2e"
-    ],
-    "playbackDeviceId": null,
-    "spl": "",
-    "groupNameType": "",
-    "customGroupName": "",
-    "inheritTags": true,
-    "dimensions": [
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 开始生成进度数据，task_id=336, force=True
+[2026-07-10 16:56:54] - log_worker - DEBUG - Batch saved 1 logs.
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 当前执行用例: 测试用例_2026144026.wav_e2e_154551 (ID: b322c459-e9af-4e2d-ac69-17fc30e906c3)
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 用例统计: pending=0, running=1, completed=0, failed=0
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 任务 336: 开始计算时间预估，已用时间=27.22秒
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 开始计算任务 336 的时间预估，任务类型: e2e
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 任务 336: 总用例数=1
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 任务 336: calculate_time_estimate返回，预计总时长=59秒
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 任务 336: 计算剩余时间=31.78秒
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 任务 336: 预计总时长计算值=59秒, 缓存值=None
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 任务 336: 最终使用的预计总时长=59秒
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 强制更新进度，task_id=336
+[2026-07-10 16:56:54] - log_and_emit - DEBUG - [EventManager] 成功发送 task_progress 事件，task_id=336, progress=0.0%
+[2026-07-10 16:56:54] - log_and_emit - INFO - [Engine] 执行第 1 轮
+[2026-07-10 16:56:54,664] [30056] [DeviceTest] [INFO] [<div class='aw3-container'><div class='aw3' id='rainbowText'>uidriver.touch(5SM0125613000197, BY.type('SymbolGlyph').isBefore(By_unresolved#37).isAfter(By_unresolved#35)) ui_adaptive</div></div>]
+[2026-07-10 16:56:55,595] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.touch(5SM0125613000197, BY.type('SymbolGlyph').isBefore(On#53).isAfter(On#51)) cost: 0.93s</div>]
+[2026-07-10 16:56:55,595] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.wait(5SM0125613000197, 2)</div>]
+[2026-07-10 16:56:55] - log_worker - DEBUG - Batch saved 13 logs.
+[2026-07-10 16:56:57,596] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.wait(5SM0125613000197, 2) cost: 2.0s</div>]
+[2026-07-10 16:56:57,597] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('小艺'))</div>]
+[2026-07-10 16:56:57,668] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('小艺')) cost: 0.07s</div>]
+[2026-07-10 16:56:57] - log_and_emit - DEBUG - [DeviceDriver] 成功进行通话
+[2026-07-10 16:56:57] - log_worker - DEBUG - Batch saved 1 logs.
+[2026-07-10 16:56:57] - log_and_emit - INFO - [DeviceDriver] 启动录屏: b322c459-e9af-4e2d-ac69-17fc30e906c3_r0.mp4
+[2026-07-10 16:56:58] - log_worker - DEBUG - Batch saved 1 logs.
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Cache expired or empty, scanning devices...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] get_device_index: unique_id=Analog (5+6) (2- RME Fireface UCX II) [Ch 2], available_devices=22
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Clean unique_id: 'Analog (5+6) (2- RME Fireface UCX II) [Ch 2]', Normalized: 'analog (5+6) (2- rme fireface ucx ii) [ch 2]'
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Exact matches: 0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying base unique_id: 'Analog (5+6) (2- RME Fireface UCX II)' (normalized: 'analog (5+6) (2- rme fireface ucx ii)')
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying to match with '扬声器' prefix...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying flexible fuzzy matching...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying to match content in parentheses...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Bracket content matches: 4
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] API matches for Windows WDM-KS: 1
+[2026-07-10 16:56:59] - log_and_emit - INFO - [audio_engine] Selected device: Analog (5+6) (Fireface Analog (5+6)) (API: Windows WDM-KS, Index: 32)
+[2026-07-10 16:56:59] - log_worker - DEBUG - Batch saved 1 logs.
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Using cached device list (age: 0.01s)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] get_device_index: unique_id=Analog (5+6) (2- RME Fireface UCX II) [Ch 1], available_devices=22
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Clean unique_id: 'Analog (5+6) (2- RME Fireface UCX II) [Ch 1]', Normalized: 'analog (5+6) (2- rme fireface ucx ii) [ch 1]'
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Exact matches: 0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying base unique_id: 'Analog (5+6) (2- RME Fireface UCX II)' (normalized: 'analog (5+6) (2- rme fireface ucx ii)')
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying to match with '扬声器' prefix...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying flexible fuzzy matching...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying to match content in parentheses...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Bracket content matches: 4
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] API matches for Windows WDM-KS: 1
+[2026-07-10 16:56:59] - log_and_emit - INFO - [audio_engine] Selected device: Analog (5+6) (Fireface Analog (5+6)) (API: Windows WDM-KS, Index: 32)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Using cached device list (age: 0.01s)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] get_device_index: unique_id=Analog (3+4) (2- RME Fireface UCX II) [Ch 2], available_devices=22
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Clean unique_id: 'Analog (3+4) (2- RME Fireface UCX II) [Ch 2]', Normalized: 'analog (3+4) (2- rme fireface ucx ii) [ch 2]'
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Exact matches: 0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying base unique_id: 'Analog (3+4) (2- RME Fireface UCX II)' (normalized: 'analog (3+4) (2- rme fireface ucx ii)')
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying to match with '扬声器' prefix...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying flexible fuzzy matching...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying to match content in parentheses...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Bracket content matches: 4
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] API matches for Windows WDM-KS: 1
+[2026-07-10 16:56:59] - log_and_emit - INFO - [audio_engine] Selected device: Analog (3+4) (Fireface Analog (3+4)) (API: Windows WDM-KS, Index: 30)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Using cached device list (age: 0.02s)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] get_device_index: unique_id=Analog (3+4) (2- RME Fireface UCX II) [Ch 1], available_devices=22
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Clean unique_id: 'Analog (3+4) (2- RME Fireface UCX II) [Ch 1]', Normalized: 'analog (3+4) (2- rme fireface ucx ii) [ch 1]'
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Exact matches: 0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying base unique_id: 'Analog (3+4) (2- RME Fireface UCX II)' (normalized: 'analog (3+4) (2- rme fireface ucx ii)')
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying to match with '扬声器' prefix...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying flexible fuzzy matching...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Trying to match content in parentheses...
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] Bracket content matches: 4
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] API matches for Windows WDM-KS: 1
+[2026-07-10 16:56:59] - log_and_emit - INFO - [audio_engine] Selected device: Analog (3+4) (Fireface Analog (3+4)) (API: Windows WDM-KS, Index: 30)
+[2026-07-10 16:56:59] - log_and_emit - INFO - [playback_orchestrator] 构建了 2 个干扰人音频配置
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [extract_speakers_from_annotations] audio_id=158, speakers=set()
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [build_speakers_map_from_dry_audios] speakers_map={'158': set()}
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [build_audio_timelines] dry_audios_info count=1, overlap_rate=0.0, overlap_time=0.0, speakers_map={'158': set()}
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [build_audio_timelines] audio[0] first, start_time=0, audio_id=158, speakers=set()
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [build_audio_timelines] Result timelines: [('static/audios/样例/2026144026.wav', 0, 1.64)]
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [playback_orchestrator] [play_round] dry=1, noise=1, interferer=2, total=4
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_overlap] CALCULATED: overlap_time=0.0, overlap_rate=0.0, overlap_time_value=0, is_overlap=False, audio_count=4, dry_durations=[1.64]
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [calculate_speaker_aware_audio_delays] ENTRY: overlap_rate=0.0, is_overlap=False, overlap_time=0, speakers_map={'158': set()}
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [calculate_speaker_aware_audio_delays] i=0: first audio, start_time=0, audio_id=158, speakers=set()
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [calculate_speaker_aware_audio_delays] i=0: config_play_order=0, audio_id=158, start_time=0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_overlap] device_audio_map: [('dev32', [('static/audios/样例/2026144026.wav', False, 0), ('C:/S2TT/auto_test/ver8/static/audios/福建/0051.wav', True, 0)]), ('dev30', [('C:/S2TT/auto_test/ver8/static/audios/福建/0050.wav', False, 0), ('C:/S2TT/auto_test/ver8/static/audios/福建/0042.wav', False, 0)])]
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Device 32 ENTRY: total=2, initial_delay=0, offset=0, loop=False, is_overlap=False
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios]   audio[0]: file=static/audios/样例/2026144026.wav, is_noise=False, delay=0, channel=1, gain=0.208113883008419
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios]   audio[1]: file=C:/S2TT/auto_test/ver8/static/audios/福建/0051.wav, is_noise=True, delay=0, channel=0, gain=0.208113883008419
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Device 32: total=2, initial_delay=0, loop=False
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Audio: file=static/audios/样例/2026144026.wav, is_noise=False, delay=0, audio_offset=0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Audio: file=C:/S2TT/auto_test/ver8/static/audios/福建/0051.wav, is_noise=True, delay=0, audio_offset=0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Before play_multi: configs count=2, delays=[0, 0], files=['static/audios/样例/2026144026.wav', 'C:/S2TT/auto_test/ver8/static/audios/福建/0051.wav']
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Device 30 ENTRY: total=2, initial_delay=0, offset=0, loop=False, is_overlap=False
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [playback_orchestrator] [play_round] waiting 1.64s for dry audio to finish
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios]   audio[0]: file=C:/S2TT/auto_test/ver8/static/audios/福建/0050.wav, is_noise=False, delay=0, channel=1, gain=0.31622776601683794
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios]   audio[1]: file=C:/S2TT/auto_test/ver8/static/audios/福建/0042.wav, is_noise=False, delay=0, channel=0, gain=0.31622776601683794
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Device 30: total=2, initial_delay=0, loop=False
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Audio: file=C:/S2TT/auto_test/ver8/static/audios/福建/0050.wav, is_noise=False, delay=0, audio_offset=0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Audio: file=C:/S2TT/auto_test/ver8/static/audios/福建/0042.wav, is_noise=False, delay=0, audio_offset=0
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Before play_multi: configs count=2, delays=[0, 0], files=['C:/S2TT/auto_test/ver8/static/audios/福建/0050.wav', 'C:/S2TT/auto_test/ver8/static/audios/福建/0042.wav']
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] ENTRY: device=32, configs=2, caller=File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] ENTRY: device=30, configs=2, caller=File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Opened audio file: static/audios/样例/2026144026.wav, channel=1, delay=0, is_noise=False, loop=False, rate=16000
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Opened audio file: C:/S2TT/auto_test/ver8/static/audios/福建/0050.wav, channel=1, delay=0, is_noise=False, loop=False, rate=16000
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Opened audio file: C:/S2TT/auto_test/ver8/static/audios/福建/0051.wav, channel=0, delay=0, is_noise=True, loop=False, rate=16000
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] audio_configs count: 2, audio_files count after loop: 2, audio_is_noise=[False, True], audio_delays=[0, 0]
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Audio file info: channels=1, rate=16000
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Opened audio file: C:/S2TT/auto_test/ver8/static/audios/福建/0042.wav, channel=0, delay=0, is_noise=False, loop=False, rate=16000
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] audio_configs count: 2, audio_files count after loop: 2, audio_is_noise=[False, False], audio_delays=[0, 0]
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [calculate_gain_compensation] file=2026144026.wav, current_rms_db=-18.27 dBFS, target=-30 dBFS, gain_db=-11.73 dB, gain_compensation=0.2590 (linear)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Audio file info: channels=1, rate=16000
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [calculate_gain_compensation] file=0050.wav, current_rms_db=-50.57 dBFS, target=-30 dBFS, gain_db=20.57 dB, gain_compensation=10.6826 (linear)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [calculate_gain_compensation] file=0051.wav, current_rms_db=-51.22 dBFS, target=-30 dBFS, gain_db=21.22 dB, gain_compensation=11.5135 (linear)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Device info: device=32, name=Analog (5+6) (Fireface Analog (5+6)), max_channels=2, default_sample_rate=44100
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [calculate_gain_compensation] file=0042.wav, current_rms_db=-50.66 dBFS, target=-30 dBFS, gain_db=20.66 dB, gain_compensation=10.7939 (linear)
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Pre-resampling audio files to target rate 44100, temp_dir=static/audios/temp_resample
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Device info: device=30, name=Analog (3+4) (Fireface Analog (3+4)), max_channels=2, default_sample_rate=44100
+[2026-07-10 16:56:59] - log_and_emit - DEBUG - [audio_engine] [play_multi] Pre-resampling audio files to target rate 44100, temp_dir=static/audios/temp_resample
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [resample_audio_data] Resampled from 16000 to 44100 (up=441, down=160), frames: 26240 -> 72324
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Resampled temp file path: static/audios/temp_resample\resampled_0_29412_17056.wav
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [resample_audio_data] Resampled from 16000 to 44100 (up=441, down=160), frames: 66720 -> 183897
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Resampled temp file path: static/audios/temp_resample\resampled_0_29412_14536.wav
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Pre-resampled audio 0: 16000 -> 44100, frames: 26240 -> 72324
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Pre-resampled audio 0: 16000 -> 44100, frames: 66720 -> 183897
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [resample_audio_data] Resampled from 16000 to 44100 (up=441, down=160), frames: 65280 -> 179928
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Resampled temp file path: static/audios/temp_resample\resampled_1_29412_14536.wav
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [resample_audio_data] Resampled from 16000 to 44100 (up=441, down=160), frames: 99680 -> 274743
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Resampled temp file path: static/audios/temp_resample\resampled_1_29412_17056.wav
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Pre-resampled audio 1: 16000 -> 44100, frames: 65280 -> 179928
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Pre-resampling completed, all files now at rate 44100
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Trying 1 unique configurations: [(2, 44100)]
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Attempting: device=30, ch=2, rate=44100, format=8
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Creating callback: thread=audio_play__1, wave_files_count=2, audio_delays=[0, 0]
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Pre-resampled audio 1: 16000 -> 44100, frames: 99680 -> 274743
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Pre-resampling completed, all files now at rate 44100
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Trying 1 unique configurations: [(2, 44100)]
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Attempting: device=32, ch=2, rate=44100, format=8
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Creating callback: thread=audio_play__0, wave_files_count=2, audio_delays=[0, 0]
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] dry_finished_list initialized with length: 2, wave_files: 2, audio_is_noise_list: [False, True], audio_is_noise_list_len: 2, audio_delays: [0, 0]
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] dry_finished_list initialized with length: 2, wave_files: 2, audio_is_noise_list: [False, False], audio_is_noise_list_len: 2, audio_delays: [0, 0]
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] SUCCESS: device=32, ch=2, rate=44100, format=8
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Stream opened successfully, starting playback
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] SUCCESS: device=30, ch=2, rate=44100, format=8
+[2026-07-10 16:57:00] - log_and_emit - DEBUG - [audio_engine] [play_multi] Stream opened successfully, starting playback
+[2026-07-10 16:57:00] - log_worker - DEBUG - Batch saved 86 logs.
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [stop_task_audio] Called: task_id=336, player_type=None
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [stop_task_audio] task_id_key=336, active_players keys=['336']
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [stop_task_audio] Found active_players[336], keys=['device_32', 'device_30']
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [calculate_speaker_aware_audio_delays] ENTRY: overlap_rate=0.0, is_overlap=False, overlap_time=0.0, speakers_map={'158': set()}
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [calculate_speaker_aware_audio_delays] i=0: first audio, start_time=0, audio_id=158, speakers=set()
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [calculate_speaker_aware_audio_delays] i=0: config_play_order=0, audio_id=158, start_time=0
+[2026-07-10 16:57:01,536] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('说话可打断'))</div>]
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [play_multi] Stop event set, returning paComplete
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [play_multi] Stop event set, returning paComplete
+[2026-07-10 16:57:01,664] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('说话可打断')) cost: 0.127s</div>]
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [play_multi] Deleted resampled temp file: static/audios/temp_resample\resampled_0_29412_14536.wav
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [play_multi] Deleted resampled temp file: static/audios/temp_resample\resampled_0_29412_17056.wav
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [play_multi] Deleted resampled temp file: static/audios/temp_resample\resampled_1_29412_14536.wav
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] Multi audio playback resources released
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Device 30 done
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [play_multi] Deleted resampled temp file: static/audios/temp_resample\resampled_1_29412_17056.wav
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] Multi audio playback resources released
+[2026-07-10 16:57:01] - log_and_emit - DEBUG - [audio_engine] [play_device_audios] Device 32 done
+[2026-07-10 16:57:01] - log_worker - DEBUG - Batch saved 12 logs.
+[2026-07-10 16:57:02,665] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('说话可打断'))</div>]
+[2026-07-10 16:57:02,775] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('说话可打断')) cost: 0.11s</div>]
+[2026-07-10 16:57:03,777] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('说话可打断'))</div>]
+[2026-07-10 16:57:03,893] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('说话可打断')) cost: 0.116s</div>]
+[2026-07-10 16:57:04,895] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('说话可打断'))</div>]
+[2026-07-10 16:57:08,046] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('说话可打断')) cost: 3.151s</div>]
+[2026-07-10 16:57:08,046] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('正在听…'))</div>]
+[2026-07-10 16:57:11,249] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('正在听…')) cost: 3.204s</div>]
+[2026-07-10 16:57:12,250] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('正在听…'))</div>]
+[2026-07-10 16:57:13,420] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.text('正在听…')) cost: 1.17s</div>]
+[2026-07-10 16:57:13] - log_and_emit - INFO - [DeviceDriver] 停止录屏
+[2026-07-10 16:57:13] - log_worker - DEBUG - Batch saved 1 logs.
+[2026-07-10 16:57:18,648] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.type('SymbolGlyph').isBefore(By_unresolved#49).isAfter(By_unresolved#47))</div>]
+[2026-07-10 16:57:18,725] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_component(5SM0125613000197, BY.type('SymbolGlyph').isBefore(On#65).isAfter(On#63)) cost: 0.077s</div>]
+[2026-07-10 16:57:18,892] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.wait(5SM0125613000197, 5)</div>]
+[2026-07-10 16:57:23,893] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.wait(5SM0125613000197, 5) cost: 5.001s</div>]
+[2026-07-10 16:57:23,893] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_all_components(5SM0125613000197, //ListItem//GridRow/GridCol/Row/__Common__/__Common__/Row/Text)</div>]
+[2026-07-10 16:57:23,898] [30056] [Hdc] [INFO] [5SM0125613000197 execute command: hdc shell uitest dumpLayout with timeout 20.0s]
+[2026-07-10 16:57:24,454] [30056] [Hdc] [INFO] [5SM0125613000197 execute command: hdc shell rm /data/local/tmp/layout_524927937985.json with timeout 10.0s]
+[2026-07-10 16:57:24,545] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_all_components(5SM0125613000197, //ListItem//GridRow/GridCol/Row/__Common__/__Common__/Row/Text) cost: 0.652s</div>]
+[2026-07-10 16:57:24] - log_and_emit - DEBUG - [DeviceDriver] question_components count=1
+[2026-07-10 16:57:24] - log_and_emit - DEBUG - [DeviceDriver] question_comp[0] text=你好你好
+[2026-07-10 16:57:24,546] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_all_components(5SM0125613000197, //ListItem//GridRow/GridCol/Row/__Common__/__Common__/Column//Stack/Text)</div>]
+[2026-07-10 16:57:24] - log_worker - DEBUG - Batch saved 1 logs.
+[2026-07-10 16:57:24,548] [30056] [Hdc] [INFO] [5SM0125613000197 execute command: hdc shell uitest dumpLayout with timeout 20.0s]
+[2026-07-10 16:57:25,077] [30056] [Hdc] [INFO] [5SM0125613000197 execute command: hdc shell rm /data/local/tmp/layout_524928579493.json with timeout 10.0s]
+[2026-07-10 16:57:25,180] [30056] [DeviceTest] [INFO] [<div class='aw'>uidriver.find_all_components(5SM0125613000197, //ListItem//GridRow/GridCol/Row/__Common__/__Common__/Column//Stack/Text) cost: 0.633s</div>]
+[2026-07-10 16:57:25] - log_and_emit - DEBUG - [DeviceDriver] answer_components count=1
+[2026-07-10 16:57:25] - log_and_emit - DEBUG - [DeviceDriver] answer_comp[0] text=你好呀，杨德增！今天过得怎么样？有什么想聊的或需要帮忙的吗？我随时在这儿呢。
+[2026-07-10 16:57:25] - log_worker - DEBUG - Batch saved 3 logs.
+[2026-07-10 16:57:28] - log_and_emit - DEBUG - [Engine] [_collect_results] audio_offsets count=0, case_reference_params=found
+[2026-07-10 16:57:28] - log_and_emit - DEBUG - [device_collector] [collect_raw_results] playback_time_offsets=False, reference_params=False
+[2026-07-10 16:57:28] - log_worker - DEBUG - Batch saved 1 logs.
+[2026-07-10 16:57:29] - log_worker - DEBUG - Batch saved 1 logs.
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] raw_results is list, length=1
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] result_item[0] id: 1981777787328, keys: ['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] result_item[0] str[:200]: {'success': True, 'message': 'Success', 'record_path': 'static\\case_result\\336\\b322c459-e9af-4e2d-ac69-17fc30e906c3\\5SM0125613000197\\b322c459-e9af-4e2d-ac69-17fc30e906c3_r0.mp4', 'question': '你好你
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] copied_item[0] id: 1982118816256, keys: ['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] item_res[0][raw_results] id: 1982118816256, keys: ['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] before append item_res[0] id: 1981791371584, raw_results id: 1982118816256
+[2026-07-10 16:57:30] - log_and_emit - WARNING - [device_collector] [calculate_effective_offset_for_single_result] reference_params is empty
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] after append all_results[0] raw_results id: 1982118816256, keys: ['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] FINAL before return: all_results id=1981775713536, count=1
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_collect_results] found adjusted_reference_params: ['default']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [e2e_collector] before return: all_results id=1981780559488, raw_keys[0]=['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [e2e_collector] returning: result_to_return id=1981776997760, raw_keys[0]=['success', 'message', 'record_path', 'question', 'answer']
+DEBUG convert_results ENTRY: all_results id=1981780559488
+DEBUG convert_results ENTRY: raw_results keys = ['success', 'message', 'record_path', 'question', 'answer']
+DEBUG convert_results AFTER DEEPCOPY: all_results id=1982118812992
+DEBUG convert_results AFTER DEEPCOPY: raw_results keys = ['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] convert_results: result_type=default, all_results id=1982118812992, res id=1982118839104, raw_results id=1981781703488, raw_keys=['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] Building field definitions for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] _build_field_definitions START for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] device_params count: 4
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] mappings keys: ['device', 'api', 'case', 'reference', 'evaluation']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] api mappings type: <class 'list'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [device_collector] mapped_fields: ['record_file', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] Building field definitions for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] _build_field_definitions START for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] device_params count: 4
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] mappings keys: ['device', 'api', 'case', 'reference', 'evaluation']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] api mappings type: <class 'list'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] Building field definitions for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] _build_field_definitions START for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] device_params count: 4
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] mappings keys: ['device', 'api', 'case', 'reference', 'evaluation']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] api mappings type: <class 'list'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] convert_device_output: target_key=record_file, source_param=record_path, transform=none, value_is_none=False, device_result_keys=['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] convert_device_output: target_key=question, source_param=question, transform=none, value_is_none=False, device_result_keys=['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] convert_device_output: target_key=answer, source_param=answer, transform=none, value_is_none=False, device_result_keys=['success', 'message', 'record_path', 'question', 'answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] Building field definitions for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] _build_field_definitions START for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] device_params count: 4
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] mappings keys: ['device', 'api', 'case', 'reference', 'evaluation']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] api mappings type: <class 'list'>
+[2026-07-10 16:57:30] - log_and_emit - INFO - [Engine] E2E 用例 测试用例_2026144026.wav_e2e_154551: 设备 小艺通话 执行结果:
+  采集状态: 成功
+  record_file: static\case_result\336\b322c459-e9af-4e2d-ac69-17fc30e906c3\5SM0125613000197\b322c459-e9af-4e2d-ac69...
+  question: 你好你好...
+  answer: 你好呀，杨德增！今天过得怎么样？有什么想聊的或需要帮忙的吗？我随时在这儿呢。...
+
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] Building field definitions for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] _build_field_definitions START for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] device_params count: 4
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] mappings keys: ['device', 'api', 'case', 'reference', 'evaluation']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] api mappings type: <class 'list'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [DEBUG _evaluate_result] 传入参数: task_id=336, result_id=381, result_id_type=<class 'int'>, test_case_id=b322c459-e9af-4e2d-ac69-17fc30e906c3, algorithm_type=voice_llm, test_type=e2e
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_evaluate_result] 开始评估 task_id=336, result_id=381, test_case_id=b322c459-e9af-4e2d-ac69-17fc30e906c3, algorithm_type=voice_llm, test_type=e2e
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_evaluate_result] case_config: {
+  "rounds": [
+    {
+      "round_number": 1,
+      "audios": [
         {
-            "id": 59,
-            "name": "LLM语义评分",
-            "weight": 50,
-            "threshold": 80,
-            "test_type": "api"
-        },
-        {
-            "id": 59,
-            "name": "LLM语义评分",
-            "weight": 50,
-            "threshold": 80,
-            "test_type": "e2e"
+          "audio_id": "158",
+          "playback_device_id": "6",
+          "spl": 65,
+          "play_order": 0
         }
-    ],
-    "noiseAudioId": null,
-    "noiseSpl": 60,
-    "asrText": "",
-    "translations": [],
-    "annotations": [
-        {
-            "format": "json",
-            "code": "voice_llm",
-            "data": {
-                "segments": [
-                    {
-                        "speaker": "",
-                        "start": 0,
-                        "end": 0,
-                        "text": " ",
-                        "confidence": 1,
-                        "path": "sample_single_round_0.wav",
-                        "caseId": 1001,
-                        "content": "",
-                        "query": "请播放斐波那契数列前10项对应的音频片段",
-                        "correctAnswer": "1 1 2 3 5 8 13 21 34 55",
-                        "correctnessType": "exact",
-                        "railDistance": 80,
-                        "volumeLevel": 60,
-                        "interferers": [],
-                        "voiceprintEnabled": false,
-                        "voiceprintSpl": 70,
-                        "voiceprintWaitTime": 5,
-                        "inputText": "请播放斐波那契数列前10项"
-                    }
-                ]
-            },
-            "source_language": "",
-            "target_language": "",
-            "name": "voice_llm"
-        }
-    ],
-    "algorithmType": "voice_llm",
-    "algorithmRelations": [
-        {
-            "algorithmType": "voice_llm",
-            "isPrimary": true,
-            "weight": 1
-        }
-    ],
-    "algorithmParams": [
-        {
-            "field_code": "interferers",
-            "field_value": "[]"
-        },
-        {
-            "field_code": "promptAudioId",
-            "field_value": null
-        },
-        {
-            "field_code": "railDistance",
-            "field_value": null
-        },
-        {
-            "field_code": "volumeLevel",
-            "field_value": null
-        },
-        {
-            "field_code": "voiceprintEnabled",
-            "field_value": "false"
-        },
-        {
-            "field_code": "voiceprintAudioId",
-            "field_value": null
-        },
-        {
-            "field_code": "voiceprintPlaybackDeviceId",
-            "field_value": null
-        },
-        {
-            "field_code": "voiceprintSpl",
-            "field_value": "70.0"
-        },
-        {
-            "field_code": "voiceprintWaitTime",
-            "field_value": "5.0"
-        },
-        {
-            "field_code": "inputText",
-            "field_value": null
-        },
-        {
-            "field_code": "caseAlgorithmParams",
-            "field_value": [
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": [],
-                    "fieldPath": "interferers",
-                    "helpText": "干扰人配置列表，支持多路独立干扰",
-                    "hidden": false,
-                    "id": 9,
-                    "label": "干扰人",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "interferers",
-                    "paramName": "干扰人列表",
-                    "paramType": "json",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": null,
-                    "uiOrder": 20,
-                    "unit": null,
-                    "param_code": "interferers",
-                    "param_name": "干扰人列表",
-                    "param_type": "json",
-                    "default_value": [],
-                    "help_text": "干扰人配置列表，支持多路独立干扰",
-                    "ui_order": 20
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "promptAudioId",
-                    "helpText": "在干声播放之前播放的引导音频",
-                    "hidden": false,
-                    "id": 8,
-                    "label": "Prompt 音频",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "promptAudioId",
-                    "paramName": "Prompt 音频",
-                    "paramType": "audio_select",
-                    "required": true,
-                    "scope": "common",
-                    "step": null,
-                    "uiOrder": 30,
-                    "unit": null,
-                    "param_code": "promptAudioId",
-                    "param_name": "Prompt 音频",
-                    "param_type": "audio_select",
-                    "help_text": "在干声播放之前播放的引导音频",
-                    "ui_order": 30
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "railDistance",
-                    "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
-                    "hidden": false,
-                    "id": 10,
-                    "label": "导轨距离",
-                    "maxValue": 200,
-                    "minValue": 10,
-                    "paramCode": "railDistance",
-                    "paramName": "导轨距离(cm)",
-                    "paramType": "slider",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": 5,
-                    "uiOrder": 40,
-                    "unit": "cm",
-                    "param_code": "railDistance",
-                    "param_name": "导轨距离(cm)",
-                    "param_type": "slider",
-                    "help_text": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
-                    "ui_order": 40
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "volumeLevel",
-                    "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
-                    "hidden": false,
-                    "id": 11,
-                    "label": "设备音量",
-                    "maxValue": 100,
-                    "minValue": 0,
-                    "paramCode": "volumeLevel",
-                    "paramName": "被测设备音量",
-                    "paramType": "slider",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": 1,
-                    "uiOrder": 41,
-                    "unit": null,
-                    "param_code": "volumeLevel",
-                    "param_name": "被测设备音量",
-                    "param_type": "slider",
-                    "help_text": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
-                    "ui_order": 41
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": false,
-                    "fieldPath": "voiceprintEnabled",
-                    "helpText": "是否在本轮播放声纹注册音频",
-                    "hidden": false,
-                    "id": 12,
-                    "label": "声纹注册",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "voiceprintEnabled",
-                    "paramName": "声纹注册",
-                    "paramType": "switch",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": null,
-                    "uiOrder": 50,
-                    "unit": null,
-                    "param_code": "voiceprintEnabled",
-                    "param_name": "声纹注册",
-                    "param_type": "switch",
-                    "default_value": false,
-                    "help_text": "是否在本轮播放声纹注册音频",
-                    "ui_order": 50
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "voiceprintAudioId",
-                    "helpText": "声纹注册音频文件",
-                    "hidden": false,
-                    "id": 13,
-                    "label": "声纹音频",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "voiceprintAudioId",
-                    "paramName": "声纹注册音频",
-                    "paramType": "audio_select",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": null,
-                    "uiOrder": 51,
-                    "unit": null,
-                    "param_code": "voiceprintAudioId",
-                    "param_name": "声纹注册音频",
-                    "param_type": "audio_select",
-                    "help_text": "声纹注册音频文件",
-                    "ui_order": 51
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "voiceprintPlaybackDeviceId",
-                    "helpText": "声纹注册音频播放设备",
-                    "hidden": false,
-                    "id": 14,
-                    "label": "播放设备",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "voiceprintPlaybackDeviceId",
-                    "paramName": "声纹播放设备",
-                    "paramType": "device_select",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": null,
-                    "uiOrder": 52,
-                    "unit": null,
-                    "param_code": "voiceprintPlaybackDeviceId",
-                    "param_name": "声纹播放设备",
-                    "param_type": "device_select",
-                    "help_text": "声纹注册音频播放设备",
-                    "ui_order": 52
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": 70,
-                    "fieldPath": "voiceprintSpl",
-                    "helpText": "声纹注册音频播放声压级",
-                    "hidden": false,
-                    "id": 15,
-                    "label": "声压级",
-                    "maxValue": 100,
-                    "minValue": 20,
-                    "paramCode": "voiceprintSpl",
-                    "paramName": "声纹播放声压级",
-                    "paramType": "number",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": 1,
-                    "uiOrder": 53,
-                    "unit": "dB",
-                    "param_code": "voiceprintSpl",
-                    "param_name": "声纹播放声压级",
-                    "param_type": "number",
-                    "default_value": 70,
-                    "help_text": "声纹注册音频播放声压级",
-                    "ui_order": 53
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": 5,
-                    "fieldPath": "voiceprintWaitTime",
-                    "helpText": "声纹注册后等待时间",
-                    "hidden": false,
-                    "id": 16,
-                    "label": "等待时间",
-                    "maxValue": 60,
-                    "minValue": 0,
-                    "paramCode": "voiceprintWaitTime",
-                    "paramName": "声纹等待时间(秒)",
-                    "paramType": "number",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": 1,
-                    "uiOrder": 54,
-                    "unit": "s",
-                    "param_code": "voiceprintWaitTime",
-                    "param_name": "声纹等待时间(秒)",
-                    "param_type": "number",
-                    "default_value": 5,
-                    "help_text": "声纹注册后等待时间",
-                    "ui_order": 54
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "query",
-                    "helpText": "发送给 API 的文本内容（可与输入音频共存）",
-                    "hidden": false,
-                    "id": 19,
-                    "label": "输入文本",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "inputText",
-                    "paramName": "输入文本",
-                    "paramType": "text",
-                    "required": false,
-                    "scope": "api",
-                    "step": null,
-                    "uiOrder": 70,
-                    "unit": null,
-                    "param_code": "inputText",
-                    "param_name": "输入文本",
-                    "param_type": "text",
-                    "help_text": "发送给 API 的文本内容（可与输入音频共存）",
-                    "ui_order": 70
-                }
-            ]
-        },
-        {
-            "field_code": "algorithmFormSchema",
-            "field_value": {
-                "algorithmName": "Voice LLM",
-                "algorithmType": "voice_llm",
-                "description": "语音大模型交互测试",
-                "fields": [
-                    {
-                        "component": "code-editor",
-                        "defaultValue": "[]",
-                        "fieldCode": "interferers",
-                        "fieldName": "干扰人列表",
-                        "fieldType": "json",
-                        "helpText": "干扰人配置列表，支持多路独立干扰",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 20
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": null,
-                        "fieldCode": "promptAudioId",
-                        "fieldName": "Prompt 音频",
-                        "fieldType": "audio_select",
-                        "helpText": "在干声播放之前播放的引导音频",
-                        "hidden": false,
-                        "required": true,
-                        "scope": "common",
-                        "uiOrder": 30
-                    },
-                    {
-                        "component": "slider",
-                        "defaultValue": null,
-                        "fieldCode": "railDistance",
-                        "fieldName": "导轨距离(cm)",
-                        "fieldType": "slider",
-                        "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 40
-                    },
-                    {
-                        "component": "slider",
-                        "defaultValue": null,
-                        "fieldCode": "volumeLevel",
-                        "fieldName": "被测设备音量",
-                        "fieldType": "slider",
-                        "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 41
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": "false",
-                        "fieldCode": "voiceprintEnabled",
-                        "fieldName": "声纹注册",
-                        "fieldType": "switch",
-                        "helpText": "是否在本轮播放声纹注册音频",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 50
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": null,
-                        "fieldCode": "voiceprintAudioId",
-                        "fieldName": "声纹注册音频",
-                        "fieldType": "audio_select",
-                        "helpText": "声纹注册音频文件",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 51
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": null,
-                        "fieldCode": "voiceprintPlaybackDeviceId",
-                        "fieldName": "声纹播放设备",
-                        "fieldType": "device_select",
-                        "helpText": "声纹注册音频播放设备",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 52
-                    },
-                    {
-                        "component": "input-number",
-                        "defaultValue": "70.0",
-                        "fieldCode": "voiceprintSpl",
-                        "fieldName": "声纹播放声压级",
-                        "fieldType": "number",
-                        "helpText": "声纹注册音频播放声压级",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 53
-                    },
-                    {
-                        "component": "input-number",
-                        "defaultValue": "5.0",
-                        "fieldCode": "voiceprintWaitTime",
-                        "fieldName": "声纹等待时间(秒)",
-                        "fieldType": "number",
-                        "helpText": "声纹注册后等待时间",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 54
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": null,
-                        "fieldCode": "inputText",
-                        "fieldName": "输入文本",
-                        "fieldType": "text",
-                        "helpText": "发送给 API 的文本内容（可与输入音频共存）",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "api",
-                        "uiOrder": 70
-                    }
-                ],
-                "groups": [
-                    {
-                        "fields": [
-                            {
-                                "component": "code-editor",
-                                "defaultValue": "[]",
-                                "fieldCode": "interferers",
-                                "fieldName": "干扰人列表",
-                                "fieldType": "json",
-                                "helpText": "干扰人配置列表，支持多路独立干扰",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 20
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": null,
-                                "fieldCode": "promptAudioId",
-                                "fieldName": "Prompt 音频",
-                                "fieldType": "audio_select",
-                                "helpText": "在干声播放之前播放的引导音频",
-                                "hidden": false,
-                                "required": true,
-                                "scope": "common",
-                                "uiOrder": 30
-                            },
-                            {
-                                "component": "slider",
-                                "defaultValue": null,
-                                "fieldCode": "railDistance",
-                                "fieldName": "导轨距离(cm)",
-                                "fieldType": "slider",
-                                "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 40
-                            },
-                            {
-                                "component": "slider",
-                                "defaultValue": null,
-                                "fieldCode": "volumeLevel",
-                                "fieldName": "被测设备音量",
-                                "fieldType": "slider",
-                                "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 41
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": "false",
-                                "fieldCode": "voiceprintEnabled",
-                                "fieldName": "声纹注册",
-                                "fieldType": "switch",
-                                "helpText": "是否在本轮播放声纹注册音频",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 50
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": null,
-                                "fieldCode": "voiceprintAudioId",
-                                "fieldName": "声纹注册音频",
-                                "fieldType": "audio_select",
-                                "helpText": "声纹注册音频文件",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 51
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": null,
-                                "fieldCode": "voiceprintPlaybackDeviceId",
-                                "fieldName": "声纹播放设备",
-                                "fieldType": "device_select",
-                                "helpText": "声纹注册音频播放设备",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 52
-                            },
-                            {
-                                "component": "input-number",
-                                "defaultValue": "70.0",
-                                "fieldCode": "voiceprintSpl",
-                                "fieldName": "声纹播放声压级",
-                                "fieldType": "number",
-                                "helpText": "声纹注册音频播放声压级",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 53
-                            },
-                            {
-                                "component": "input-number",
-                                "defaultValue": "5.0",
-                                "fieldCode": "voiceprintWaitTime",
-                                "fieldName": "声纹等待时间(秒)",
-                                "fieldType": "number",
-                                "helpText": "声纹注册后等待时间",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 54
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": null,
-                                "fieldCode": "inputText",
-                                "fieldName": "输入文本",
-                                "fieldType": "text",
-                                "helpText": "发送给 API 的文本内容（可与输入音频共存）",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "api",
-                                "uiOrder": 70
-                            }
-                        ],
-                        "label": "基础参数",
-                        "name": "basic"
-                    }
-                ]
-            }
-        }
-    ],
-    "testCaseConfig": {
-        "rounds": [
-            {
-                "roundNumber": 1,
-                "audios": [
-                    {
-                        "audio_name": "2026144010.wav",
-                        "play_order": 0
-                    }
-                ],
-                "algorithmParams": []
-            }
+      ],
+      "background_noise": {
+        "audio_id": "56",
+        "spl": 65,
+        "device_ids": [
+          "5"
         ],
-        "inherit_tags": true,
-        "algorithm_params": {
-            "interferers": "[]",
-            "promptAudioId": null,
-            "railDistance": null,
-            "volumeLevel": null,
-            "voiceprintEnabled": "false",
-            "voiceprintAudioId": null,
-            "voiceprintPlaybackDeviceId": null,
-            "voiceprintSpl": "70.0",
-            "voiceprintWaitTime": "5.0",
-            "inputText": null,
-            "caseAlgorithmParams": [
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": [],
-                    "fieldPath": "interferers",
-                    "helpText": "干扰人配置列表，支持多路独立干扰",
-                    "hidden": false,
-                    "id": 9,
-                    "label": "干扰人",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "interferers",
-                    "paramName": "干扰人列表",
-                    "paramType": "json",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": null,
-                    "uiOrder": 20,
-                    "unit": null,
-                    "param_code": "interferers",
-                    "param_name": "干扰人列表",
-                    "param_type": "json",
-                    "default_value": [],
-                    "help_text": "干扰人配置列表，支持多路独立干扰",
-                    "ui_order": 20
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "promptAudioId",
-                    "helpText": "在干声播放之前播放的引导音频",
-                    "hidden": false,
-                    "id": 8,
-                    "label": "Prompt 音频",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "promptAudioId",
-                    "paramName": "Prompt 音频",
-                    "paramType": "audio_select",
-                    "required": true,
-                    "scope": "common",
-                    "step": null,
-                    "uiOrder": 30,
-                    "unit": null,
-                    "param_code": "promptAudioId",
-                    "param_name": "Prompt 音频",
-                    "param_type": "audio_select",
-                    "help_text": "在干声播放之前播放的引导音频",
-                    "ui_order": 30
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "railDistance",
-                    "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
-                    "hidden": false,
-                    "id": 10,
-                    "label": "导轨距离",
-                    "maxValue": 200,
-                    "minValue": 10,
-                    "paramCode": "railDistance",
-                    "paramName": "导轨距离(cm)",
-                    "paramType": "slider",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": 5,
-                    "uiOrder": 40,
-                    "unit": "cm",
-                    "param_code": "railDistance",
-                    "param_name": "导轨距离(cm)",
-                    "param_type": "slider",
-                    "help_text": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
-                    "ui_order": 40
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "volumeLevel",
-                    "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
-                    "hidden": false,
-                    "id": 11,
-                    "label": "设备音量",
-                    "maxValue": 100,
-                    "minValue": 0,
-                    "paramCode": "volumeLevel",
-                    "paramName": "被测设备音量",
-                    "paramType": "slider",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": 1,
-                    "uiOrder": 41,
-                    "unit": null,
-                    "param_code": "volumeLevel",
-                    "param_name": "被测设备音量",
-                    "param_type": "slider",
-                    "help_text": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
-                    "ui_order": 41
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": false,
-                    "fieldPath": "voiceprintEnabled",
-                    "helpText": "是否在本轮播放声纹注册音频",
-                    "hidden": false,
-                    "id": 12,
-                    "label": "声纹注册",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "voiceprintEnabled",
-                    "paramName": "声纹注册",
-                    "paramType": "switch",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": null,
-                    "uiOrder": 50,
-                    "unit": null,
-                    "param_code": "voiceprintEnabled",
-                    "param_name": "声纹注册",
-                    "param_type": "switch",
-                    "default_value": false,
-                    "help_text": "是否在本轮播放声纹注册音频",
-                    "ui_order": 50
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "voiceprintAudioId",
-                    "helpText": "声纹注册音频文件",
-                    "hidden": false,
-                    "id": 13,
-                    "label": "声纹音频",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "voiceprintAudioId",
-                    "paramName": "声纹注册音频",
-                    "paramType": "audio_select",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": null,
-                    "uiOrder": 51,
-                    "unit": null,
-                    "param_code": "voiceprintAudioId",
-                    "param_name": "声纹注册音频",
-                    "param_type": "audio_select",
-                    "help_text": "声纹注册音频文件",
-                    "ui_order": 51
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "voiceprintPlaybackDeviceId",
-                    "helpText": "声纹注册音频播放设备",
-                    "hidden": false,
-                    "id": 14,
-                    "label": "播放设备",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "voiceprintPlaybackDeviceId",
-                    "paramName": "声纹播放设备",
-                    "paramType": "device_select",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": null,
-                    "uiOrder": 52,
-                    "unit": null,
-                    "param_code": "voiceprintPlaybackDeviceId",
-                    "param_name": "声纹播放设备",
-                    "param_type": "device_select",
-                    "help_text": "声纹注册音频播放设备",
-                    "ui_order": 52
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": 70,
-                    "fieldPath": "voiceprintSpl",
-                    "helpText": "声纹注册音频播放声压级",
-                    "hidden": false,
-                    "id": 15,
-                    "label": "声压级",
-                    "maxValue": 100,
-                    "minValue": 20,
-                    "paramCode": "voiceprintSpl",
-                    "paramName": "声纹播放声压级",
-                    "paramType": "number",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": 1,
-                    "uiOrder": 53,
-                    "unit": "dB",
-                    "param_code": "voiceprintSpl",
-                    "param_name": "声纹播放声压级",
-                    "param_type": "number",
-                    "default_value": 70,
-                    "help_text": "声纹注册音频播放声压级",
-                    "ui_order": 53
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": 5,
-                    "fieldPath": "voiceprintWaitTime",
-                    "helpText": "声纹注册后等待时间",
-                    "hidden": false,
-                    "id": 16,
-                    "label": "等待时间",
-                    "maxValue": 60,
-                    "minValue": 0,
-                    "paramCode": "voiceprintWaitTime",
-                    "paramName": "声纹等待时间(秒)",
-                    "paramType": "number",
-                    "required": false,
-                    "scope": "e2e",
-                    "step": 1,
-                    "uiOrder": 54,
-                    "unit": "s",
-                    "param_code": "voiceprintWaitTime",
-                    "param_name": "声纹等待时间(秒)",
-                    "param_type": "number",
-                    "default_value": 5,
-                    "help_text": "声纹注册后等待时间",
-                    "ui_order": 54
-                },
-                {
-                    "algorithmType": "voice_llm",
-                    "annotationCode": "voice_llm",
-                    "defaultValue": null,
-                    "fieldPath": "query",
-                    "helpText": "发送给 API 的文本内容（可与输入音频共存）",
-                    "hidden": false,
-                    "id": 19,
-                    "label": "输入文本",
-                    "maxValue": null,
-                    "minValue": null,
-                    "paramCode": "inputText",
-                    "paramName": "输入文本",
-                    "paramType": "text",
-                    "required": false,
-                    "scope": "api",
-                    "step": null,
-                    "uiOrder": 70,
-                    "unit": null,
-                    "param_code": "inputText",
-                    "param_name": "输入文本",
-                    "param_type": "text",
-                    "help_text": "发送给 API 的文本内容（可与输入音频共存）",
-                    "ui_order": 70
-                }
-            ],
-            "algorithmFormSchema": {
-                "algorithmName": "Voice LLM",
-                "algorithmType": "voice_llm",
-                "description": "语音大模型交互测试",
-                "fields": [
-                    {
-                        "component": "code-editor",
-                        "defaultValue": "[]",
-                        "fieldCode": "interferers",
-                        "fieldName": "干扰人列表",
-                        "fieldType": "json",
-                        "helpText": "干扰人配置列表，支持多路独立干扰",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 20
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": null,
-                        "fieldCode": "promptAudioId",
-                        "fieldName": "Prompt 音频",
-                        "fieldType": "audio_select",
-                        "helpText": "在干声播放之前播放的引导音频",
-                        "hidden": false,
-                        "required": true,
-                        "scope": "common",
-                        "uiOrder": 30
-                    },
-                    {
-                        "component": "slider",
-                        "defaultValue": null,
-                        "fieldCode": "railDistance",
-                        "fieldName": "导轨距离(cm)",
-                        "fieldType": "slider",
-                        "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 40
-                    },
-                    {
-                        "component": "slider",
-                        "defaultValue": null,
-                        "fieldCode": "volumeLevel",
-                        "fieldName": "被测设备音量",
-                        "fieldType": "slider",
-                        "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 41
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": "false",
-                        "fieldCode": "voiceprintEnabled",
-                        "fieldName": "声纹注册",
-                        "fieldType": "switch",
-                        "helpText": "是否在本轮播放声纹注册音频",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 50
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": null,
-                        "fieldCode": "voiceprintAudioId",
-                        "fieldName": "声纹注册音频",
-                        "fieldType": "audio_select",
-                        "helpText": "声纹注册音频文件",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 51
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": null,
-                        "fieldCode": "voiceprintPlaybackDeviceId",
-                        "fieldName": "声纹播放设备",
-                        "fieldType": "device_select",
-                        "helpText": "声纹注册音频播放设备",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 52
-                    },
-                    {
-                        "component": "input-number",
-                        "defaultValue": "70.0",
-                        "fieldCode": "voiceprintSpl",
-                        "fieldName": "声纹播放声压级",
-                        "fieldType": "number",
-                        "helpText": "声纹注册音频播放声压级",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 53
-                    },
-                    {
-                        "component": "input-number",
-                        "defaultValue": "5.0",
-                        "fieldCode": "voiceprintWaitTime",
-                        "fieldName": "声纹等待时间(秒)",
-                        "fieldType": "number",
-                        "helpText": "声纹注册后等待时间",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "e2e",
-                        "uiOrder": 54
-                    },
-                    {
-                        "component": "input",
-                        "defaultValue": null,
-                        "fieldCode": "inputText",
-                        "fieldName": "输入文本",
-                        "fieldType": "text",
-                        "helpText": "发送给 API 的文本内容（可与输入音频共存）",
-                        "hidden": false,
-                        "required": false,
-                        "scope": "api",
-                        "uiOrder": 70
-                    }
-                ],
-                "groups": [
-                    {
-                        "fields": [
-                            {
-                                "component": "code-editor",
-                                "defaultValue": "[]",
-                                "fieldCode": "interferers",
-                                "fieldName": "干扰人列表",
-                                "fieldType": "json",
-                                "helpText": "干扰人配置列表，支持多路独立干扰",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 20
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": null,
-                                "fieldCode": "promptAudioId",
-                                "fieldName": "Prompt 音频",
-                                "fieldType": "audio_select",
-                                "helpText": "在干声播放之前播放的引导音频",
-                                "hidden": false,
-                                "required": true,
-                                "scope": "common",
-                                "uiOrder": 30
-                            },
-                            {
-                                "component": "slider",
-                                "defaultValue": null,
-                                "fieldCode": "railDistance",
-                                "fieldName": "导轨距离(cm)",
-                                "fieldType": "slider",
-                                "helpText": "导轨距离，本轮结束后自动复位。不填则不控制导轨",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 40
-                            },
-                            {
-                                "component": "slider",
-                                "defaultValue": null,
-                                "fieldCode": "volumeLevel",
-                                "fieldName": "被测设备音量",
-                                "fieldType": "slider",
-                                "helpText": "被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 41
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": "false",
-                                "fieldCode": "voiceprintEnabled",
-                                "fieldName": "声纹注册",
-                                "fieldType": "switch",
-                                "helpText": "是否在本轮播放声纹注册音频",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 50
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": null,
-                                "fieldCode": "voiceprintAudioId",
-                                "fieldName": "声纹注册音频",
-                                "fieldType": "audio_select",
-                                "helpText": "声纹注册音频文件",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 51
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": null,
-                                "fieldCode": "voiceprintPlaybackDeviceId",
-                                "fieldName": "声纹播放设备",
-                                "fieldType": "device_select",
-                                "helpText": "声纹注册音频播放设备",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 52
-                            },
-                            {
-                                "component": "input-number",
-                                "defaultValue": "70.0",
-                                "fieldCode": "voiceprintSpl",
-                                "fieldName": "声纹播放声压级",
-                                "fieldType": "number",
-                                "helpText": "声纹注册音频播放声压级",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 53
-                            },
-                            {
-                                "component": "input-number",
-                                "defaultValue": "5.0",
-                                "fieldCode": "voiceprintWaitTime",
-                                "fieldName": "声纹等待时间(秒)",
-                                "fieldType": "number",
-                                "helpText": "声纹注册后等待时间",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "e2e",
-                                "uiOrder": 54
-                            },
-                            {
-                                "component": "input",
-                                "defaultValue": null,
-                                "fieldCode": "inputText",
-                                "fieldName": "输入文本",
-                                "fieldType": "text",
-                                "helpText": "发送给 API 的文本内容（可与输入音频共存）",
-                                "hidden": false,
-                                "required": false,
-                                "scope": "api",
-                                "uiOrder": 70
-                            }
-                        ],
-                        "label": "基础参数",
-                        "name": "basic"
-                    }
-                ]
-            }
-        }
+        "loop": true
+      },
+      "evaluation": {
+        "dimensions": [
+          {
+            "id": 9,
+            "name": "WER",
+            "threshold": 80,
+      
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_evaluate_result] case_reference_params: [
+  {
+    "code": "correct_answer",
+    "type": "text",
+    "value": "1 1 2 3 5 8 13 21 34 55",
+    "annotation_code": "correct_answer",
+    "annotation_format": "text"
+  }
+]
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_evaluate_result] case_algorithm_params: {
+  "interferers": [
+    {
+      "audio_id": "55",
+      "audio_name": "",
+      "playback_device_id": "4",
+      "spl": 70,
+      "start_delay": 0,
+      "loop": true
     },
-    "promptDeviceId": null
+    {
+      "audio_id": "47",
+      "audio_name": "",
+      "playback_device_id": "3",
+      "spl": 70,
+      "start_delay": 0,
+      "loop": true
+    }
+  ],
+  "railDistance": 80,
+  "volumeLevel": 60,
+  "voiceprintEnabled": false,
+  "voiceprintSpl": 70,
+  "voiceprintWaitTime": 5,
+  "inputText": "你的扮演我老师吗？"
 }
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_evaluate_result] algo_result: {
+  "test_type": "e2e",
+  "algorithm_type": "voice_llm",
+  "total_rounds": 3,
+  "rounds": [
+    {
+      "round": 0,
+      "input": {
+        "audio_name": "",
+        "audio_path": "",
+        "type": "audio"
+      },
+      "output": {
+        "record_file": "static\\case_result\\336\\b322c459-e9af-4e2d-ac69-17fc30e906c3\\5SM0125613000197\\b322c459-e9af-4e2d-ac69-17fc30e906c3_r0.mp4",
+        "question": "你好你好",
+        "answer": "你好呀，杨德增！今天过得怎么样？有什么想聊的或需要帮忙的吗？我随时在这儿呢。"
+      },
+      "latency":
+[2026-07-10 16:57:30] - log_and_emit - INFO - [Evaluation] 开始初始化评估服务
+[2026-07-10 16:57:30] - log_and_emit - INFO - [Evaluation] 已从数据库加载 20 个维度的端点配置
+[2026-07-10 16:57:30] - log_and_emit - INFO - [Evaluation] 初始化线程池，最大工作线程数: 10
+[2026-07-10 16:57:30] - log_and_emit - INFO - [Evaluation] 评估服务初始化完成 (多端点Worker架构)
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_evaluate_result] algorithm_params: {
+  "interferers": [
+    {
+      "audio_id": "55",
+      "audio_name": "",
+      "playback_device_id": "4",
+      "spl": 70,
+      "start_delay": 0,
+      "loop": true
+    },
+    {
+      "audio_id": "47",
+      "audio_name": "",
+      "playback_device_id": "3",
+      "spl": 70,
+      "start_delay": 0,
+      "loop": true
+    }
+  ],
+  "railDistance": 80,
+  "volumeLevel": 60,
+  "voiceprintEnabled": false,
+  "voiceprintSpl": 70,
+  "voiceprintWaitTime": 5,
+  "inputText": "你的扮演我老师吗？"
+}
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_evaluate_result] reference_params: [
+  {
+    "code": "correct_answer",
+    "type": "text",
+    "value": "1 1 2 3 5 8 13 21 34 55",
+    "annotation_code": "correct_answer",
+    "annotation_format": "text"
+  }
+]
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [case_parameter_extractor] Getting algorithm_type: voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [case_parameter_extractor] [_build_evaluation_params] raw_ref_type=list, normalized_count=1, codes=['correct_answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [case_parameter_extractor] [_build_evaluation_params] adjusted_reference_params count: 0
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [reference_params_generator] get_reference_value: test_type=e2e, ref_type=text, algorithm_type=voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [case_parameter_extractor] [get_evaluation_params] source_param=correct_answer, ref_type=text, value={'text': '1 1 2 3 5 8 13 21 34 55', 'json': []}, value_type=<class 'dict'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [reference_params_generator] get_reference_value: test_type=e2e, ref_type=text, algorithm_type=voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [case_parameter_extractor] [get_evaluation_params] source_param=correct_answer, ref_type=text, value={'text': '1 1 2 3 5 8 13 21 34 55', 'json': []}, value_type=<class 'dict'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [case_parameter_extractor] Built evaluation params for voice_llm: ['asr_ref', 'correct_answer']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Engine] [_evaluate_result] 调用评估服务 task_id=336, result_id=381, eval_params={
+  "asr_ref": {
+    "text": "1 1 2 3 5 8 13 21 34 55",
+    "json": []
+  },
+  "correct_answer": {
+    "text": "1 1 2 3 5 8 13 21 34 55",
+    "json": []
+  },
+  "algorithm_type": "voice_llm",
+  "test_type": "e2e",
+  "round_number": 0
+}
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [DEBUG evaluate_case] 传入参数: task_id=336, result_id=381, result_id_type=<class 'int'>, test_case_id=b322c459-e9af-4e2d-ac69-17fc30e906c3, test_type=e2e, round_number=0
+[2026-07-10 16:57:30] - log_and_emit - INFO - [Evaluation] 用例评估请求: TaskID=336, TestCaseID=b322c459-e9af-4e2d-ac69-17fc30e906c3, ResultID=381, TestType=e2e
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] Building field definitions for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] _build_field_definitions START for voice_llm
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] device_params count: 4
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] mappings keys: ['device', 'api', 'case', 'reference', 'evaluation']
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [field_mapper] api mappings type: <class 'list'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [kwargs field_key] field_key=record_file, field_value=None, field_value_type=<class 'NoneType'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [kwargs field_key] field_key=question, field_value=None, field_value_type=<class 'NoneType'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [kwargs field_key] field_key=answer, field_value=None, field_value_type=<class 'NoneType'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [kwargs field_key] field_key=asr_ref, field_value={'text': '1 1 2 3 5 8 13 21 34 55', 'json': []}, field_value_type=<class 'dict'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [kwargs field_key] field_key=query_ref, field_value=None, field_value_type=<class 'NoneType'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [kwargs field_key] field_key=correct_answer, field_value={'text': '1 1 2 3 5 8 13 21 34 55', 'json': []}, field_value_type=<class 'dict'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [kwargs field_key] field_key=query, field_value=None, field_value_type=<class 'NoneType'>
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [ref_texts] final ref_texts={'asr_ref': {'text': '1 1 2 3 5 8 13 21 34 55', 'json': []}, 'correct_answer': {'value': {'text': '1 1 2 3 5 8 13 21 34 55', 'json': []}, 'field_type': 'text'}}
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] 用例 测试用例_2026144026.wav_e2e_154551 的维度配置: [{"id": 59, "name": "LLM语义评分", "threshold": 80, "weight": 50}, {"id": 59, "name": "LLM语义评分", "threshold": 80, "weight": 50}], 提取的维度IDs: [59, 59], 去重后: [59]
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [维度数据] 用例 测试用例_2026144026.wav_e2e_154551 加载的维度列表: [{'id': 59, 'name': 'LLM语义评分', 'task_type_code': 'llm_judge', 'api_url': None, 'api_settings_keys': []}]
+[2026-07-10 16:57:30] - log_and_emit - INFO - [Evaluation] 开始评估 1 个维度，分发到端点队列
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [DEBUG TestResultDimension] 创建前: result_id=381, result_id_type=<class 'int'>, dim_id=59, dim_name=LLM语义评分
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [DEBUG TestResultDimension] 对象属性: test_result_id=381, dimension_id=59
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [DEBUG TestResultDimension] flush后查询: id=775, test_result_id=381
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] [DEBUG TestResultDimension] commit后验证: id=775, test_result_id=381
+[2026-07-10 16:57:30] - log_and_emit - DEBUG - [Evaluation] 创建维度记录: dim_name=LLM语义评分, dim_i

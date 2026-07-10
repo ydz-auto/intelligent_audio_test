@@ -106,10 +106,22 @@ class Xiaoyilivechat(HarmonyDriver):
         driver.wait(5)
         # 提取聊天文本，取最后一条（本轮），未识别到则返回 None
         question_components = driver.find_all_components(By.xpath(
-            '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Row/Text'))
+            '//ListItem//GridRow/GridCol/Row/__Common__/__Common__/Row/Text'))
+        self._log(level='DEBUG', content=f"question_components count={len(question_components) if question_components else 0}",
+                  task_id=task_id, test_case_id=test_case_id)
+        if question_components:
+            for i, comp in enumerate(question_components):
+                self._log(level='DEBUG', content=f"question_comp[{i}] text={comp.getText()}",
+                          task_id=task_id, test_case_id=test_case_id)
         self.question_text = question_components[-1].getText() if question_components else None
         answer_components = driver.find_all_components(By.xpath(
-            '/root/Navigation/NavigationContent/NavDestination/NavDestinationContent/Stack/Stack[1]/Column/Stack/Stack/RelativeContainer/__Common__[2]/Column/Stack/Stack/__Common__/Stack/List/ListItem/Row/Row/Row/GridRow/GridCol/Row/__Common__/__Common__/Column/Column/Stack/Stack/Stack/Row/Column/__Common__/Column/List/ListItem/Stack/__Common__/Stack/Text'))
+            '//ListItem//GridRow/GridCol/Row/__Common__/__Common__/Column//Stack/Text'))
+        self._log(level='DEBUG', content=f"answer_components count={len(answer_components) if answer_components else 0}",
+                  task_id=task_id, test_case_id=test_case_id)
+        if answer_components:
+            for i, comp in enumerate(answer_components):
+                self._log(level='DEBUG', content=f"answer_comp[{i}] text={comp.getText()}",
+                          task_id=task_id, test_case_id=test_case_id)
         self.answer_text = answer_components[-1].getText() if answer_components else None
 
         return True

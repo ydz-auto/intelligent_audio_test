@@ -197,17 +197,25 @@ class DatabaseLogHandler(logging.Handler):
                     Log, db, SessionLocal = self._init_db_components(Log, db, SessionLocal)
                     if Log and SessionLocal and self.flask_app:
                         self._process_batch(batch, Log, SessionLocal)
+
+                    # flush 后 batch 中每条 data 已带上数据库 id，再推送 WebSocket
+                    for data in batch:
+                        if data.get('push_to_websocket'):
+                            self._emit_websocket(data)
+
                     batch = []
                     last_flush = current_time
-                    
+
                     if current_time - self._last_archive_check >= self._archive_check_interval:
                         if Log and SessionLocal:
                             self._check_and_archive(Log, SessionLocal)
                         self._last_archive_check = current_time
-                
-                for data in batch:
-                    if data.get('push_to_websocket'):
-                        self._emit_websocket(data)
+                else:
+                    # batch 还未满/未超时，仍需即时推送 WebSocket（无 db id）
+                    for data in batch:
+                        if data.get('push_to_websocket') and not data.get('_ws_sent'):
+                            self._emit_websocket(data)
+                            data['_ws_sent'] = True
                         
             except Exception as e:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - CRITICAL ERROR - {str(e)}")
@@ -266,7 +274,7 @@ class DatabaseLogHandler(logging.Handler):
     def _process_batch(self, batch, Log, SessionLocal):
         if not Log or not SessionLocal or not self.flask_app:
             return
-        
+
         with self.flask_app.app_context():
             session = SessionLocal()
             try:
@@ -286,6 +294,8 @@ class DatabaseLogHandler(logging.Handler):
                         algorithm_type=data.get('algorithm_type')
                     )
                     session.add(log_entry)
+                    session.flush()
+                    data['id'] = log_entry.id
                 session.commit()
                 if self.enable_console_log:
                     print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DEBUG - Batch saved {len(batch)} logs.")
@@ -307,6 +317,7 @@ class DatabaseLogHandler(logging.Handler):
                 utc_plus_8 = timezone(timedelta(hours=8))
                 log_time = datetime.now(utc_plus_8).strftime('%Y-%m-%d %H:%M:%S')
                 log_payload = {
+                    "id": data.get('id'),
                     "time": log_time,
                     "level": data['level'],
                     "module": data['module'],

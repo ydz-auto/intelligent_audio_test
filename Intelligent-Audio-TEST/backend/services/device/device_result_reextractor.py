@@ -70,10 +70,11 @@ def _calculate_adjusted_reference_params(extracted_result, original_reference_pa
         log_and_emit('INFO', 'reextractor', f"original_reference_params count: {len(original_reference_params)}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
         log_and_emit('DEBUG', 'reextractor', f"original_reference_params[0] keys: {list(original_reference_params[0].keys()) if original_reference_params else 'empty'}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
 
-        collector = DeviceResultCollector()
+        from backend.services.device.timestamp_aligner import TimestampAligner
+        aligner = TimestampAligner()
 
-        # 委托给 collector 的完整对齐流程（包含 max_overlap、gap_pattern、first_timestamp 等策略）
-        alignment_result = collector._calculate_effective_offset_for_single_result(
+        # 委托给 aligner 的完整对齐流程（包含 max_overlap、gap_pattern、first_timestamp 等策略）
+        alignment_result = aligner.calculate_effective_offset_for_single_result(
             extracted_result, original_reference_params, playback_time_offsets or {}, algorithm_type
         )
 
@@ -180,217 +181,26 @@ class DeviceResultReextractor:
             }
         """
         from backend.models.database import db
-        from backend.models.models import TestResult, TaskCase, Device, TestResultDimension, Task, TestCase
+        from backend.models.models import TaskCase
 
         try:
             task = db.session.get(Task, task_id)
             if not task:
-                return {
-                    'success': False,
-                    'message': f'任务 {task_id} 不存在',
-                    'reextracted_cases': []
-                }
+                return {'success': False, 'message': f'任务 {task_id} 不存在', 'reextracted_cases': []}
 
-            task_devices = task.devices
-            if not task_devices:
-                return {
-                    'success': True,
-                    'message': f'任务 {task_id} 没有关联设备',
-                    'reextracted_cases': []
-                }
+            device_map = self._filter_reextractable_devices(task_id, task.devices)
+            if not device_map:
+                return {'success': True, 'message': f'任务 {task_id} 无可重新提取的设备', 'reextracted_cases': []}
 
-            device_map = {d.id: d for d in task_devices}
-
-            from backend.utils.device_driver import device_driver_factory
-            reextractable_device_map = {}
-            for d_id, d in device_map.items():
-                driver = device_driver_factory.get_driver(d.system or '', keywords=d.keywords)
-                if driver and hasattr(driver, 'extract_results_from_archive'):
-                    reextractable_device_map[d_id] = d
-                else:
-                    driver_name = driver.__class__.__name__ if driver else 'None'
-                    log_and_emit('INFO', 'reextractor',
-                                 f"跳过设备 {d.name}(id={d_id}): 驱动 {driver_name} 不支持重新提取",
-                                 task_id=task_id)
-
-            if not reextractable_device_map:
-                return {
-                    'success': True,
-                    'message': f'任务 {task_id} 的所有设备均不支持重新提取',
-                    'reextracted_cases': []
-                }
-
-            device_map = reextractable_device_map
-
-            query = db.session.query(TaskCase).filter(
-                TaskCase.task_id == task_id,
-                TaskCase.execution_status == execution_status
-            )
-
-            if evaluation_status:
-                query = query.filter(TaskCase.evaluation_status == evaluation_status)
-
-            tc_relations = query.all()
-
+            tc_relations = self._query_task_cases(task_id, execution_status, evaluation_status)
             if not tc_relations:
-                return {
-                    'success': True,
-                    'message': f'没有符合条件的用例 (execution_status={execution_status}, evaluation_status={evaluation_status})',
-                    'reextracted_cases': []
-                }
+                return {'success': True, 'message': '没有符合条件的用例', 'reextracted_cases': []}
 
             reextracted_cases = []
-
             for tc_rel in tc_relations:
-                test_case_id = tc_rel.test_case_id
-
-                test_case = db.session.get(TestCase, test_case_id)
-
-                existing_results = db.session.query(TestResult).filter(
-                    TestResult.task_id == task_id,
-                    TestResult.test_case_id == test_case_id
-                ).all()
-
-                existing_result_map = {}
-                for result in existing_results:
-                    if result.device_id:
-                        if result.device_id not in existing_result_map:
-                            existing_result_map[result.device_id] = []
-                        existing_result_map[result.device_id].append(result)
-
-                adjusted_reference_params = None
-                for result in existing_results:
-                    full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
-                    if full_data and isinstance(full_data, dict):
-                        adjusted_reference_params = full_data.get('adjusted_reference_params')
-                        if adjusted_reference_params:
-                            break
-
-                original_reference_params = None
-                if test_case and test_case.config:
-                    from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
-                    # 优先从独立列读取，兼容旧 config
-                    ref_col = getattr(test_case, 'reference_params', None)
-                    if ref_col:
-                        original_reference_params = ReferenceParamsGenerator.get_all_reference_params(ref_col)
-                    else:
-                        original_reference_params = ReferenceParamsGenerator.get_all_reference_params(test_case.config)
-                    if original_reference_params:
-                        log_and_emit('DEBUG', 'reextractor', f"获取原始 reference_params 成功", task_id=task_id,
-                                     test_case_id=test_case_id)
-
-                for device_id, device in device_map.items():
-                    if not device.serial_number:
-                        log_and_emit('WARNING', 'reextractor', f"跳过: 设备无序列号", task_id=task_id,
-                                     test_case_id=test_case_id, device_id=device_id)
-                        continue
-
-                    device_results = existing_result_map.get(device_id, [])
-                    if device_results:
-                        algorithm_type = device_results[0].algorithm_type or 'asr'
-                    else:
-                        algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'asr'
-
-                    extracted_results, driver_type = _extract_device_output_from_archive(
-                        device=device,
-                        task_id=task_id,
-                        test_case_id=test_case_id,
-                        device_sn=device.serial_number
-                    )
-
-                    if not isinstance(extracted_results, list):
-                        log_and_emit('WARNING', 'reextractor', f"跳过: 提取结果格式异常", task_id=task_id,
-                                     test_case_id=test_case_id, device_id=device_id)
-                        continue
-
-                    new_result_ids = []
-
-                    for extracted_result in extracted_results:
-                        if not extracted_result or not extracted_result.get('success'):
-                            continue
-
-                        result_type = extracted_result.get('result_type', 'unknown')
-
-                        converted_result = _convert_device_output_to_algorithm_result(
-                            algorithm_type, extracted_result, driver_type
-                        )
-
-                        result_data_to_save = extracted_result.copy()
-
-                        log_and_emit('INFO', 'reextractor', f"调用 _calculate_adjusted_reference_params: test_case_id={test_case_id}, device_id={device_id}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-                        alignment_result = _calculate_adjusted_reference_params(
-                            extracted_result, original_reference_params,
-                            task_id=task_id, test_case_id=test_case_id, device_id=device_id,
-                            algorithm_type=algorithm_type
-                        )
-                        log_and_emit('INFO', 'reextractor', f"alignment_result: adjusted_params={type(alignment_result.get('adjusted_params')) if alignment_result else 'None'}", task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-
-                        computed_adjusted_params = alignment_result.get('adjusted_params') if alignment_result else None
-                        new_alignment_info = alignment_result.get('alignment_info') if alignment_result else None
-
-                        if computed_adjusted_params:
-                            result_data_to_save['adjusted_reference_params'] = computed_adjusted_params
-                            log_and_emit('INFO', 'reextractor',
-                                         f"重新计算 effective_offset 成功",
-                                         task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-                        elif adjusted_reference_params:
-                            result_data_to_save['adjusted_reference_params'] = adjusted_reference_params
-                            log_and_emit('DEBUG', 'reextractor',
-                                         f"使用旧的 adjusted_reference_params",
-                                         task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-                        else:
-                            result_data_to_save['adjusted_reference_params'] = original_reference_params or []
-                            log_and_emit('DEBUG', 'reextractor',
-                                         f"使用原始 reference_params 作为 adjusted_reference_params",
-                                         task_id=task_id, test_case_id=test_case_id, device_id=device_id)
-
-                        if new_alignment_info:
-                            result_data_to_save['alignment_info'] = new_alignment_info
-
-                        if result_type:
-                            result_data_to_save['result_type'] = result_type
-
-                        new_result_id = self._create_test_result(
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            device_id=device_id,
-                            algorithm_type=algorithm_type,
-                            algo_result=converted_result,
-                            result_data=result_data_to_save
-                        )
-                        new_result_ids.append(new_result_id)
-
-                    old_ids_for_device = []
-                    if device_id in existing_result_map:
-                        old_ids_for_device = [r.id for r in existing_result_map[device_id]]
-
-                    log_and_emit('INFO', 'reextractor', f"获取旧记录: old_ids={old_ids_for_device}", task_id=task_id,
-                                 test_case_id=test_case_id, device_id=device_id)
-
-                    if old_ids_for_device or new_result_ids:
-                        for old_id in old_ids_for_device:
-                            db.session.query(TestResultDimension).filter_by(test_result_id=old_id).delete()
-                            db.session.delete(db.session.get(TestResult, old_id))
-                            log_and_emit('INFO', 'reextractor', f"删除旧记录", task_id=task_id,
-                                         test_case_id=test_case_id, device_id=device_id)
-                        db.session.commit()
-
-                        if new_result_ids:
-                            tc_rel.evaluation_status = 'pending'
-                            db.session.commit()
-
-                            reextracted_cases.append({
-                                'test_case_id': test_case_id,
-                                'device_id': device_id,
-                                'result_types': [er.get('result_type') for er in extracted_results if
-                                                 er and er.get('success')],
-                                'old_result_ids': old_ids_for_device,
-                                'new_result_ids': new_result_ids
-                            })
-
-                            log_and_emit('INFO', 'reextractor',
-                                         f"重新提取成功: 新记录数={len(new_result_ids)}, 旧记录数={len(old_ids_for_device)}",
-                                         task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+                case_result = self._reextract_single_case(task_id, tc_rel, device_map)
+                if case_result:
+                    reextracted_cases.append(case_result)
 
             return {
                 'success': True,
@@ -402,11 +212,193 @@ class DeviceResultReextractor:
             log_and_emit('ERROR', 'reextractor', f"重新提取失败: {str(e)}", task_id=locals().get('task_id'),
                          test_case_id=locals().get('test_case_id'))
             db.session.rollback()
-            return {
-                'success': False,
-                'message': f'重新提取失败: {str(e)}',
-                'reextracted_cases': []
-            }
+            return {'success': False, 'message': f'重新提取失败: {str(e)}', 'reextracted_cases': []}
+
+    def _filter_reextractable_devices(self, task_id, task_devices):
+        """筛选支持重新提取的设备"""
+        from backend.utils.device_driver import device_driver_factory
+
+        if not task_devices:
+            return {}
+
+        device_map = {d.id: d for d in task_devices}
+        reextractable = {}
+        for d_id, d in device_map.items():
+            driver = device_driver_factory.get_driver(d.system or '', keywords=d.keywords)
+            if driver and hasattr(driver, 'extract_results_from_archive'):
+                reextractable[d_id] = d
+            else:
+                driver_name = driver.__class__.__name__ if driver else 'None'
+                log_and_emit('INFO', 'reextractor',
+                             f"跳过设备 {d.name}(id={d_id}): 驱动 {driver_name} 不支持重新提取",
+                             task_id=task_id)
+        return reextractable
+
+    def _query_task_cases(self, task_id, execution_status, evaluation_status):
+        """查询符合条件的用例关联"""
+        from backend.models.database import db
+        from backend.models.models import TaskCase
+
+        query = db.session.query(TaskCase).filter(
+            TaskCase.task_id == task_id,
+            TaskCase.execution_status == execution_status
+        )
+        if evaluation_status:
+            query = query.filter(TaskCase.evaluation_status == evaluation_status)
+        return query.all()
+
+    def _reextract_single_case(self, task_id, tc_rel, device_map):
+        """重新提取单个用例的所有设备结果"""
+        from backend.models.database import db
+        from backend.models.models import TestResult, TestCase
+
+        test_case_id = tc_rel.test_case_id
+        test_case = db.session.get(TestCase, test_case_id)
+
+        existing_results = db.session.query(TestResult).filter(
+            TestResult.task_id == task_id,
+            TestResult.test_case_id == test_case_id
+        ).all()
+
+        existing_result_map = self._build_existing_result_map(existing_results)
+        adjusted_reference_params = self._extract_adjusted_reference_params(existing_results)
+        original_reference_params = self._get_original_reference_params(test_case, task_id, test_case_id)
+
+        case_result = None
+        for device_id, device in device_map.items():
+            if not device.serial_number:
+                log_and_emit('WARNING', 'reextractor', f"跳过: 设备无序列号", task_id=task_id,
+                             test_case_id=test_case_id, device_id=device_id)
+                continue
+
+            device_results = existing_result_map.get(device_id, [])
+            algorithm_type = (device_results[0].algorithm_type if device_results
+                              else (test_case.algorithm_type if test_case and test_case.algorithm_type else 'asr'))
+
+            extracted_results, driver_type = _extract_device_output_from_archive(
+                device=device, task_id=task_id, test_case_id=test_case_id, device_sn=device.serial_number
+            )
+            if not isinstance(extracted_results, list):
+                log_and_emit('WARNING', 'reextractor', f"跳过: 提取结果格式异常", task_id=task_id,
+                             test_case_id=test_case_id, device_id=device_id)
+                continue
+
+            new_result_ids = self._process_extracted_results(
+                task_id, test_case_id, device_id, algorithm_type,
+                extracted_results, driver_type, original_reference_params, adjusted_reference_params
+            )
+
+            old_ids = [r.id for r in existing_result_map.get(device_id, [])]
+            if old_ids or new_result_ids:
+                self._replace_old_results(old_ids, tc_rel, task_id, test_case_id, device_id)
+                if new_result_ids:
+                    case_result = {
+                        'test_case_id': test_case_id,
+                        'device_id': device_id,
+                        'result_types': [er.get('result_type') for er in extracted_results if er and er.get('success')],
+                        'old_result_ids': old_ids,
+                        'new_result_ids': new_result_ids
+                    }
+                    log_and_emit('INFO', 'reextractor',
+                                 f"重新提取成功: 新记录数={len(new_result_ids)}, 旧记录数={len(old_ids)}",
+                                 task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+        return case_result
+
+    def _build_existing_result_map(self, existing_results):
+        """按 device_id 分组已有结果"""
+        result_map = {}
+        for result in existing_results:
+            if result.device_id:
+                result_map.setdefault(result.device_id, []).append(result)
+        return result_map
+
+    def _extract_adjusted_reference_params(self, existing_results):
+        """从已有结果中提取 adjusted_reference_params"""
+        for result in existing_results:
+            full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+            if full_data and isinstance(full_data, dict):
+                adjusted = full_data.get('adjusted_reference_params')
+                if adjusted:
+                    return adjusted
+        return None
+
+    def _get_original_reference_params(self, test_case, task_id, test_case_id):
+        """获取原始参考参数"""
+        if not test_case or not test_case.config:
+            return None
+        from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
+        ref_col = getattr(test_case, 'reference_params', None)
+        if ref_col:
+            params = ReferenceParamsGenerator.get_all_reference_params(ref_col)
+        else:
+            params = ReferenceParamsGenerator.get_all_reference_params(test_case.config)
+        if params:
+            log_and_emit('DEBUG', 'reextractor', f"获取原始 reference_params 成功",
+                         task_id=task_id, test_case_id=test_case_id)
+        return params
+
+    def _process_extracted_results(self, task_id, test_case_id, device_id, algorithm_type,
+                                   extracted_results, driver_type,
+                                   original_reference_params, adjusted_reference_params):
+        """处理提取结果列表，返回 new_result_ids"""
+        new_result_ids = []
+        for extracted_result in extracted_results:
+            if not extracted_result or not extracted_result.get('success'):
+                continue
+
+            result_type = extracted_result.get('result_type', 'unknown')
+            converted_result = _convert_device_output_to_algorithm_result(
+                algorithm_type, extracted_result, driver_type
+            )
+            result_data_to_save = extracted_result.copy()
+
+            alignment_result = _calculate_adjusted_reference_params(
+                extracted_result, original_reference_params,
+                task_id=task_id, test_case_id=test_case_id, device_id=device_id,
+                algorithm_type=algorithm_type
+            )
+
+            computed_adjusted = alignment_result.get('adjusted_params') if alignment_result else None
+            new_alignment_info = alignment_result.get('alignment_info') if alignment_result else None
+
+            if computed_adjusted:
+                result_data_to_save['adjusted_reference_params'] = computed_adjusted
+                log_and_emit('INFO', 'reextractor', f"重新计算 effective_offset 成功",
+                             task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+            elif adjusted_reference_params:
+                result_data_to_save['adjusted_reference_params'] = adjusted_reference_params
+                log_and_emit('DEBUG', 'reextractor', f"使用旧的 adjusted_reference_params",
+                             task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+            else:
+                result_data_to_save['adjusted_reference_params'] = original_reference_params or []
+                log_and_emit('DEBUG', 'reextractor', f"使用原始 reference_params 作为 adjusted_reference_params",
+                             task_id=task_id, test_case_id=test_case_id, device_id=device_id)
+
+            if new_alignment_info:
+                result_data_to_save['alignment_info'] = new_alignment_info
+            if result_type:
+                result_data_to_save['result_type'] = result_type
+
+            new_result_id = self._create_test_result(
+                task_id=task_id, test_case_id=test_case_id, device_id=device_id,
+                algorithm_type=algorithm_type, algo_result=converted_result, result_data=result_data_to_save
+            )
+            new_result_ids.append(new_result_id)
+        return new_result_ids
+
+    def _replace_old_results(self, old_ids, tc_rel, task_id, test_case_id, device_id):
+        """删除旧结果并标记评估状态为 pending"""
+        from backend.models.database import db
+        from backend.models.models import TestResult, TestResultDimension
+
+        for old_id in old_ids:
+            db.session.query(TestResultDimension).filter_by(test_result_id=old_id).delete()
+            db.session.delete(db.session.get(TestResult, old_id))
+            log_and_emit('INFO', 'reextractor', f"删除旧记录", task_id=task_id,
+                         test_case_id=test_case_id, device_id=device_id)
+        db.session.commit()
+        tc_rel.evaluation_status = 'pending'
+        db.session.commit()
 
     def _create_test_result(self, task_id, test_case_id, device_id, algorithm_type,
                             algo_result, result_data, execution_status='completed', response_time=0):

@@ -2,42 +2,36 @@ import os
 import time
 import traceback
 import json
+import random
+import threading
 import requests
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
-from backend.controllers.log_controller import LogController
 from backend.services.evaluation.evaluation_utils import render_body_template
+from backend.services.evaluation.api_request_handler import ApiRequestHandler
+from backend.services.evaluation.payload_builder import PayloadBuilder
+from backend.services.evaluation.evaluation_mixin import EvaluationLoggerMixin, get_endpoint_url, get_endpoint_field
 from backend.utils.common.config_manager import config_manager
 
 
-class evaluationApiClient:
+class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMixin):
     """
     评估API客户端，负责管理端点配置、并发控制和API请求
+
+    继承 ApiRequestHandler（HTTP请求+异步任务流程）和 PayloadBuilder（Payload构建），
+    对外保持原有接口不变。
     """
-    
-    def _log(self, level, content, task_id=None, test_case_id=None, api_id=None, **kwargs):
-        """统一日志记录方法"""
-        LogController.log_and_emit(
-            level=level,
-            module='Evaluation',
-            category=kwargs.pop('category', 'execution'),
-            content=content,
-            task_id=task_id,
-            api_id=api_id,
-            test_case_id=test_case_id,
-            **kwargs
-        )
-    
+
     def __init__(self):
         self.endpoint_semaphores = {}  # 端点信号量 {endpoint: Semaphore}
         self.endpoint_configs = {}  # 端点配置缓存 {endpoint: max_process}
         self.thread_pool = None  # 全局线程池，动态创建
         self.global_lock = Lock()  # 全局锁，用于保护端点资源创建
-        
+
         # 从统一配置文件加载并发配置
         self.max_queue_size = config_manager.get_value('evaluation_service', 'max_queue_size', 100)  # 每个端点的最大队列长度
         self.max_wait_time = config_manager.get_value('evaluation_service', 'max_wait_time', 30)  # 任务在队列中的最大等待时间（秒）
-    
+
     def load_endpoint_configs(self, dimensions):
         """
         从维度数据加载端点配置
@@ -47,15 +41,14 @@ class evaluationApiClient:
             for dim in dimensions:
                 if dim.api_endpoints and isinstance(dim.api_endpoints, list):
                     all_endpoints.extend(dim.api_endpoints)
-            
+
             with self.global_lock:
                 for endpoint_item in all_endpoints:
-                    endpoint_url = endpoint_item.get('url') or endpoint_item.get('endpoint')
+                    endpoint_url = get_endpoint_url(endpoint_item)
                     if endpoint_url:
                         # 如果端点已经存在配置，不覆盖，确保配置的一致性
                         if endpoint_url not in self.endpoint_configs:
-                            # 获取该端点的max_process配置，同时支持驼峰式maxProcess和下划线式max_process，默认值为1
-                            max_process = endpoint_item.get('max_process', endpoint_item.get('maxProcess', 1))
+                            max_process = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', 1)
                             self.endpoint_configs[endpoint_url] = max_process
                             self._log(
                                 level='debug',
@@ -69,7 +62,7 @@ class evaluationApiClient:
                 category='system',
                 content=f'加载端点配置失败: {str(e)} 堆栈信息: {stack_trace}'
             )
-    
+
     def init_thread_pool(self):
         """
         初始化线程池，使用加载的端点配置
@@ -80,10 +73,10 @@ class evaluationApiClient:
                 import sys
                 if hasattr(sys, 'is_finalizing') and sys.is_finalizing():
                     return
-                    
+
                 # 计算总并发数
                 total_concurrent = sum(self.endpoint_configs.values()) if self.endpoint_configs else 10
-                
+
                 # 仅当线程池不存在或已关闭时创建新线程池
                 if self.thread_pool is None or self.thread_pool._shutdown:
                     self.thread_pool = ThreadPoolExecutor(
@@ -102,19 +95,18 @@ class evaluationApiClient:
                 category='system',
                 content=f'初始化线程池失败: {str(e)} 堆栈信息: {stack_trace}'
             )
-    
+
     def _get_or_create_semaphore(self, endpoint, max_process):
         """
         获取或创建端点的信号量
-        
+
         Args:
             endpoint: 端点URL
             max_process: 最大并发数
-            
+
         Returns:
             threading.Semaphore: 端点信号量
         """
-        import threading
         with self.global_lock:
             if endpoint not in self.endpoint_semaphores:
                 self.endpoint_semaphores[endpoint] = threading.Semaphore(max_process)
@@ -124,43 +116,43 @@ class evaluationApiClient:
                     content=f'为端点 {endpoint} 创建信号量，最大并发数: {max_process}'
                 )
             return self.endpoint_semaphores[endpoint]
-    
+
     def acquire_endpoint_slot(self, endpoint, timeout=None):
         """
         获取端点的并发槽位，使用信号量实现
-        
+
         Args:
             endpoint: 端点URL
             timeout: 最大等待时间（秒），None表示使用默认值
-            
+
         Returns:
             bool: 是否成功获取槽位
         """
         wait_timeout = timeout or self.max_wait_time
-        
+
         with self.global_lock:
             if endpoint not in self.endpoint_configs:
                 self.endpoint_configs[endpoint] = 1
-        
+
         max_process = self.endpoint_configs[endpoint]
         semaphore = self._get_or_create_semaphore(endpoint, max_process)
-        
+
         start_time = time.time()
         remaining_time = wait_timeout
-        
+
         while remaining_time > 0:
             try:
                 acquired = semaphore.acquire(blocking=True, timeout=min(0.5, remaining_time))
                 if acquired:
                     return True
-                
+
                 elapsed_time = time.time() - start_time
                 remaining_time = wait_timeout - elapsed_time
             except Exception:
                 return False
-        
+
         return False
-    
+
     def release_endpoint_slot(self, endpoint):
         """
         释放端点的并发槽位
@@ -174,7 +166,7 @@ class evaluationApiClient:
                     category='system',
                     content=f'端点 {endpoint} 信号量释放失败（可能已超过最大值）'
                 )
-    
+
     def select_endpoint(self, endpoints):
         """
         从多个端点中选择一个
@@ -182,219 +174,151 @@ class evaluationApiClient:
         """
         if not endpoints or not isinstance(endpoints, list):
             return None
-        
+
         # 随机选择一个入口
-        import random
         selected = random.choice(endpoints)
         return selected.get('url') or selected.get('endpoint')
-    
-    def make_api_request(self, url, method, headers, payload, timeout=10):
-        """
-        发起API请求，支持GET和POST方法
-        """
-        resp_data = None
-        
-        try:
-            # 创建请求头副本，避免修改原始数据
-            request_headers = headers.copy() if headers else {}
-            
-            if method == 'GET':
-                resp = requests.get(url, params=payload, headers=request_headers, timeout=timeout)
-            else:
-                # 确保POST请求使用正确的Content-Type
-                if 'Content-Type' not in request_headers:
-                    request_headers['Content-Type'] = 'application/json'
-                # 确保POST请求总是有有效的payload，避免JSON解析错误
-                if payload is None:
-                    payload = {}
-                resp = requests.post(url, json=payload, headers=request_headers, timeout=timeout)
-            
-            # 尝试解析JSON响应，无论状态码是什么
-            try:
-                resp_data = resp.json()
-            except json.JSONDecodeError as e:
-                # 非JSON响应，直接返回响应文本
-                resp_data = resp.text
-            
-            if resp.status_code != 200:
-                # 记录错误信息，但仍然返回响应数据，以便后续处理
-                error_msg = f"API 返回错误: {resp.status_code}，请求URL: {url}，请求方法: {method}，请求头: {request_headers}，请求体: {payload}，响应内容: {resp.text}"
-                self._log(
-                    level='ERROR',
-                    category='execution',
-                    content=error_msg
-                )
-                # 将错误信息添加到响应数据中，方便后续处理
-                if isinstance(resp_data, dict):
-                    resp_data['__error__'] = error_msg
-                else:
-                    resp_data = {'__error__': error_msg, '__raw_response__': resp_data}
-        except Exception as e:
-            # 网络错误等异常情况
-            error_msg = str(e)
-            self._log(
-                level='ERROR',
-                category='execution',
-                content=f"API请求异常: {error_msg}"
-            )
-            # 返回异常信息作为响应数据
-            resp_data = {'__error__': error_msg}
-        
-        return resp_data
-    
-    def create_task(self, url, payload, timeout=10, task_id=None):
-        """
-        创建WER/SER计算任务
-        """
-        headers = {'Content-Type': 'application/json'}
-        create_task_url = f"{url}/api/create_task"
-        if task_id:
-            payload = {**payload, 'task_id': task_id}
-        return self.make_api_request(create_task_url, 'POST', headers, payload, timeout)
 
-    def _extract_files_from_payload(self, payload):
+    def _execute_async_api_flow(self, selected_url, payload, dim_info, endpoints, api_url,
+                                task_id, test_case_id, api_id, dim_names):
         """
-        从 payload 中提取 data URI 格式的值，转为文件上传字段。
+        执行异步任务API流程：创建任务 -> 释放槽位 -> 轮询等待 -> 获取结果
 
         Returns:
-            (form_fields, files) 元组
-            - form_fields: 不含 data URI 的标量字段（dict/list 转 JSON 字符串）
-            - files: {field_name: (filename, bytes, content_type)} 字典
+            (resp_data, slot_released) 元组
         """
-        form_fields = {}
-        files = {}
+        # 1. 创建任务
+        create_task_payload = payload.copy() if isinstance(payload, dict) else {}
 
-        for key, value in payload.items():
-            if isinstance(value, str) and value.startswith('data:') and ',' in value:
-                try:
-                    header, data = value.split(',', 1)
-                    mime = header.split(':')[1].split(';')[0] if ':' in header else 'application/octet-stream'
-                    import base64
-                    file_bytes = base64.b64decode(data)
-
-                    ext_map = {
-                        'audio/wav': '.wav', 'audio/x-wav': '.wav',
-                        'audio/mpeg': '.mp3', 'audio/mp3': '.mp3',
-                        'audio/flac': '.flac', 'audio/ogg': '.ogg',
-                        'audio/mp4': '.m4a', 'audio/aac': '.aac',
-                    }
-                    ext = ext_map.get(mime, '.bin')
-                    filename = f"{key}{ext}"
-                    files[key] = (filename, file_bytes, mime)
-                except Exception:
-                    form_fields[key] = value
-            elif isinstance(value, str) and len(value) < 4096 and os.path.isabs(value) and os.path.exists(value):
-                # 是文件路径，读取文件内容用于 multipart 上传
-                try:
-                    with open(value, 'rb') as f:
-                        file_bytes = f.read()
-                    filename = os.path.basename(value)
-                    files[key] = (filename, file_bytes, 'application/octet-stream')
-                except Exception:
-                    form_fields[key] = value
-            elif isinstance(value, (dict, list)):
-                form_fields[key] = json.dumps(value)
+        # 确保包含必需字段
+        if "task_type" not in create_task_payload:
+            if dim_info and dim_info.get('task_type_code'):
+                create_task_payload["task_type"] = dim_info['task_type_code']
             else:
-                form_fields[key] = value
+                create_task_payload["task_type"] = "wer"
 
-        return form_fields, files
+        # 记录创建任务的 Payload
+        self._log(
+            level='DEBUG',
+            category='execution',
+            content=f"创建异步任务 Payload: {str(create_task_payload)}",
+            task_id=task_id,
+            test_case_id=test_case_id,
+            api_id=api_id
+        )
 
-    def create_task_upload(self, url, form_fields, files, timeout=30, task_id=None):
-        """
-        通过 multipart/form-data 创建评估任务（支持文件上传）
-        """
-        create_task_url = f"{url}/api/create_task_upload"
+        # 如果有endpoints且使用api_url，添加endpoints参数用于分布式调度
+        if endpoints and api_url:
+            formatted_endpoints = []
+            for endpoint_item in endpoints:
+                endpoint_url = get_endpoint_url(endpoint_item)
+                if endpoint_url:
+                    formatted_endpoints.append({
+                        "endpoint": endpoint_url,
+                        "name": endpoint_item.get('name', f"worker-{len(formatted_endpoints) + 1}"),
+                        "max_process": get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', 5),
+                        "max_timeout": get_endpoint_field(endpoint_item, 'max_timeout', 'maxTimeout', 30)
+                    })
 
-        if task_id:
-            form_fields['task_id'] = task_id
+            if formatted_endpoints:
+                create_task_payload["endpoints"] = formatted_endpoints
 
-        multipart_files = {}
-        for field_name, (filename, file_bytes, content_type) in files.items():
-            multipart_files[field_name] = (filename, file_bytes, content_type)
+        form_fields, files = self._extract_files_from_payload(create_task_payload)
+        if files:
+            create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id)
+        else:
+            create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
 
-        try:
-            resp = requests.post(create_task_url, data=form_fields, files=multipart_files, timeout=timeout)
-            try:
-                resp_data = resp.json()
-            except json.JSONDecodeError:
-                resp_data = resp.text
+        # 创建任务后立即释放端点槽位，轮询等待不需要占用并发槽位
+        self.release_endpoint_slot(selected_url)
+        self._log(
+            level='DEBUG',
+            category='execution',
+            content=f"任务已创建，释放端点 {selected_url} 并发槽位，开始轮询结果",
+            task_id=task_id,
+            test_case_id=test_case_id,
+            api_id=api_id
+        )
 
-            if resp.status_code != 200:
+        resp_data = None
+
+        if isinstance(create_response, dict) and create_response.get('code') == 0:
+            eval_task_id = create_response.get('data', {}).get('eval_task_id')
+            if eval_task_id:
+                self._log(
+                    level='INFO',
+                    category='execution',
+                    content=f"成功创建异步任务: {eval_task_id}",
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id
+                )
+
+                # 2. 等待任务完成
+                result_response = self.wait_for_task_completion(
+                    selected_url,
+                    eval_task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id,
+                    task_id=task_id
+                )
+
+                if isinstance(result_response, dict):
+                    if result_response.get('code') == 0:
+                        # 任务成功完成，提取结果数据
+                        resp_data = result_response.get('data', {}).get('result', {})
+                        self._log(
+                            level='INFO',
+                            category='execution',
+                            content=f"异步任务 {eval_task_id} 完成，结果: {str(resp_data)}",
+                            task_id=task_id,
+                            test_case_id=test_case_id,
+                            api_id=api_id
+                        )
+                    else:
+                        # 任务失败
+                        error_msg = result_response.get('msg', 'Unknown error')
+                        self._log(
+                            level='ERROR',
+                            category='execution',
+                            content=f"异步任务执行失败: {error_msg}",
+                            task_id=task_id,
+                            test_case_id=test_case_id,
+                            api_id=api_id
+                        )
+                        resp_data = {'__error__': error_msg}
+                else:
+                    resp_data = {'__error__': f"Invalid response format: {str(result_response)}"}
+            else:
+                error_msg = "创建任务失败: 未返回task_id"
                 self._log(
                     level='ERROR',
                     category='execution',
-                    content=f"上传API返回错误: {resp.status_code}, URL: {create_task_url}, 响应: {resp.text}"
+                    content=error_msg,
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id
                 )
-                if isinstance(resp_data, dict):
-                    resp_data['__error__'] = f"HTTP {resp.status_code}"
-                else:
-                    resp_data = {'__error__': f"HTTP {resp.status_code}", '__raw_response__': resp_data}
-
-            return resp_data
-        except Exception as e:
+                resp_data = {'__error__': error_msg}
+        else:
+            error_msg = create_response.get('msg', '创建任务失败') if isinstance(create_response, dict) else str(create_response)
             self._log(
                 level='ERROR',
                 category='execution',
-                content=f"上传API请求异常: {str(e)}"
+                content=f"创建异步任务失败: {error_msg}",
+                task_id=task_id,
+                test_case_id=test_case_id,
+                api_id=api_id
             )
-            return {'__error__': str(e)}
-    
-    def get_task_status(self, url, eval_task_id, timeout=30):
-        """
-        查询评估任务状态
-        """
-        status_url = f"{url}/api/get_status/{eval_task_id}"
-        return self.make_api_request(status_url, 'GET', {}, {}, timeout)
-    
-    def get_task_result(self, url, eval_task_id, timeout=30):
-        """
-        获取评估任务结果
-        """
-        result_url = f"{url}/api/get_final_result/{eval_task_id}"
-        return self.make_api_request(result_url, 'GET', {}, {}, timeout)
-    
-    def wait_for_task_completion(self, url, eval_task_id, max_wait_time=300, poll_interval=5, test_case_id=None, api_id=None, task_id=None):
-        """
-        等待评估任务完成，定期查询状态
-        """
-        self._log('info', f'开始等待评估任务完成: eval_task_id={eval_task_id}, max_wait_time={max_wait_time}秒', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-        
-        start_time = time.time()
-        poll_count = 0
-        
-        while time.time() - start_time < max_wait_time:
-            poll_count += 1
-            status_response = self.get_task_status(url, eval_task_id)
-            
-            if isinstance(status_response, dict) and status_response.get('code') == 0:
-                data = status_response.get('data', {})
-                status = data.get('status', '')
-                elapsed_time = int(time.time() - start_time)
-                
-                if status == 'completed':
-                    self._log('info', f'评估任务完成: eval_task_id={eval_task_id}, 耗时={elapsed_time}秒', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-                    result_response = self.get_task_result(url, eval_task_id)
-                    return result_response
-                elif status == 'failed':
-                    error_msg = data.get('error_msg', 'Task failed')
-                    self._log('error', f'评估任务失败: eval_task_id={eval_task_id}, error={error_msg}', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-                    return {'__error__': error_msg}
-                else:
-                    self._log('info', f'等待评估任务: eval_task_id={eval_task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-            else:
-                self._log('warning', f'查询评估任务状态失败: eval_task_id={eval_task_id}, response={status_response}', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-            
-            time.sleep(poll_interval)
-        
-        timeout_msg = f"评估任务超时: eval_task_id={eval_task_id}, 等待时间超过{max_wait_time}秒"
-        self._log('error', timeout_msg, task_id=task_id, test_case_id=test_case_id, api_id=api_id)
-        return {'__error__': timeout_msg}
-    
+            resp_data = {'__error__': error_msg}
+
+        return resp_data
+
     def make_api_request_with_fallback(self, endpoints, method, headers, payload, task_id, dim_names, api_url=None, test_case_id=None, api_id=None, dim_info=None):
         """
         发起API请求，支持失败时切换到备用端点
         同时支持同步API和异步任务API（WER/SER计算器服务）
-        
+
         Args:
             endpoints: API端点列表
             method: 请求方法
@@ -411,9 +335,9 @@ class evaluationApiClient:
         selected_url = api_url if api_url else self.select_endpoint(endpoints)
         if not selected_url:
             return None, None
-        
+
         resp_data = None
-        
+
         try:
             # 尝试获取端点并发槽位，支持排队等待
             self._log(
@@ -424,7 +348,7 @@ class evaluationApiClient:
                 test_case_id=test_case_id,
                 api_id=api_id
             )
-            
+
             # 使用带超时的acquire_endpoint_slot方法，支持排队等待
             if not self.acquire_endpoint_slot(selected_url):
                 stack_trace = traceback.format_exc()
@@ -437,7 +361,7 @@ class evaluationApiClient:
                     api_id=api_id
                 )
                 return None, None
-            
+
             self._log(
                 level='DEBUG',
                 category='execution',
@@ -446,7 +370,7 @@ class evaluationApiClient:
                 test_case_id=test_case_id,
                 api_id=api_id
             )
-            
+
             slot_released = False
             try:
                 self._log(
@@ -457,10 +381,10 @@ class evaluationApiClient:
                     test_case_id=test_case_id,
                     api_id=api_id
                 )
-                
+
                 # 所有评测任务都需要使用异步任务
                 is_async_api = True
-                
+
                 if is_async_api:
                     # 使用异步任务API流程
                     self._log(
@@ -471,135 +395,16 @@ class evaluationApiClient:
                         test_case_id=test_case_id,
                         api_id=api_id
                     )
-                    
-                    # 1. 创建任务
-                    create_task_payload = payload.copy() if isinstance(payload, dict) else {}
-                    
-                    # 确保包含必需字段，如果 payload 中没有，则尝试从 context 中获取的值（如果有的话）
-                    # 这里的 payload 通常已经是 build_payload 后的结果
-                    if "task_type" not in create_task_payload:
-                        if dim_info and dim_info.get('task_type_code'):
-                            create_task_payload["task_type"] = dim_info['task_type_code']
-                        else:
-                            create_task_payload["task_type"] = "wer"
-                    
-                    # 记录创建任务的 Payload
-                    self._log(
-                        level='DEBUG',
-                        category='execution',
-                        content=f"创建异步任务 Payload: {str(create_task_payload)}",
-                        task_id=task_id,
-                        test_case_id=test_case_id,
-                        api_id=api_id
-                    )
-                    
-                    # 如果有endpoints且使用api_url，添加endpoints参数用于分布式调度
-                    if endpoints and api_url:
-                        formatted_endpoints = []
-                        for endpoint_item in endpoints:
-                            endpoint_url = endpoint_item.get('url') or endpoint_item.get('endpoint')
-                            if endpoint_url:
-                                formatted_endpoints.append({
-                                    "endpoint": endpoint_url,
-                                    "name": endpoint_item.get('name', f"worker-{len(formatted_endpoints) + 1}"),
-                                    "max_process": endpoint_item.get('max_process', endpoint_item.get('maxProcess', 5)),
-                                    "max_timeout": endpoint_item.get('max_timeout', endpoint_item.get('maxTimeout', 30))
-                                })
-                        
-                        if formatted_endpoints:
-                            create_task_payload["endpoints"] = formatted_endpoints
-                    
-                    form_fields, files = self._extract_files_from_payload(create_task_payload)
-                    if files:
-                        create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id)
-                    else:
-                        create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
-                    
-                    # 创建任务后立即释放端点槽位，轮询等待不需要占用并发槽位
-                    self.release_endpoint_slot(selected_url)
-                    self._log(
-                        level='DEBUG',
-                        category='execution',
-                        content=f"任务已创建，释放端点 {selected_url} 并发槽位，开始轮询结果",
-                        task_id=task_id,
-                        test_case_id=test_case_id,
-                        api_id=api_id
+
+                    resp_data = self._execute_async_api_flow(
+                        selected_url, payload, dim_info, endpoints, api_url,
+                        task_id, test_case_id, api_id, dim_names
                     )
                     slot_released = True
-                    
-                    if isinstance(create_response, dict) and create_response.get('code') == 0:
-                        eval_task_id = create_response.get('data', {}).get('eval_task_id')
-                        if eval_task_id:
-                            self._log(
-                                level='INFO',
-                                category='execution',
-                                content=f"成功创建异步任务: {eval_task_id}",
-                                task_id=task_id,
-                                test_case_id=test_case_id,
-                                api_id=api_id
-                            )
-                            
-                            # 2. 等待任务完成
-                            result_response = self.wait_for_task_completion(
-                                selected_url, 
-                                eval_task_id,
-                                test_case_id=test_case_id,
-                                api_id=api_id,
-                                task_id=task_id
-                            )
-                            
-                            if isinstance(result_response, dict):
-                                if result_response.get('code') == 0:
-                                    # 任务成功完成，提取结果数据
-                                    resp_data = result_response.get('data', {}).get('result', {})
-                                    self._log(
-                                        level='INFO',
-                                        category='execution',
-                                        content=f"异步任务 {eval_task_id} 完成，结果: {str(resp_data)}",
-                                        task_id=task_id,
-                                        test_case_id=test_case_id,
-                                        api_id=api_id
-                                    )
-                                else:
-                                    # 任务失败
-                                    error_msg = result_response.get('msg', 'Unknown error')
-                                    self._log(
-                                        level='ERROR',
-                                        category='execution',
-                                        content=f"异步任务执行失败: {error_msg}",
-                                        task_id=task_id,
-                                        test_case_id=test_case_id,
-                                        api_id=api_id
-                                    )
-                                    resp_data = {'__error__': error_msg}
-                            else:
-                                resp_data = {'__error__': f"Invalid response format: {str(result_response)}"}
-                        else:
-                            error_msg = "创建任务失败: 未返回task_id"
-                            self._log(
-                                level='ERROR',
-                                category='execution',
-                                content=error_msg,
-                                task_id=task_id,
-                                test_case_id=test_case_id,
-                                api_id=api_id
-                            )
-                            resp_data = {'__error__': error_msg}
-                    else:
-                        error_msg = create_response.get('msg', '创建任务失败') if isinstance(create_response, dict) else str(create_response)
-                        self._log(
-                            level='ERROR',
-                            category='execution',
-                            content=f"创建异步任务失败: {error_msg}",
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            api_id=api_id
-                        )
-                        resp_data = {'__error__': error_msg}
                 else:
                     # 使用传统同步API
                     resp_data = self.make_api_request(selected_url, method, headers, payload)
-                
+
                 self._log(
                     level='INFO',
                     category='execution',
@@ -629,319 +434,126 @@ class evaluationApiClient:
                 test_case_id=test_case_id,
                 api_id=api_id
             )
-            
+
             # 只有当没有使用api_url时，才尝试其他端点
             if not api_url:
-                for i, endpoint_item in enumerate(endpoints):
-                    # 检查当前端点是否与选中的端点相同，支持两种字段名
-                    endpoint_item_url = endpoint_item.get('url') or endpoint_item.get('endpoint')
-                    if endpoint_item_url == selected_url:
-                        continue
-                    
-                    # 支持两种字段名：'url'（旧）和'endpoint'（新）
-                    fallback_url = endpoint_item.get('url') or endpoint_item.get('endpoint')
-                    if not fallback_url or not fallback_url.startswith(('http://', 'https://')):
-                        self._log(
-                            level='WARNING',
-                            category='execution',
-                            content=f"跳过无效备用端点: {fallback_url}",
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            api_id=api_id
+                selected_url, resp_data = self._try_fallback_endpoints(
+                    endpoints, selected_url, method, headers, payload,
+                    task_id, test_case_id, api_id, dim_names, dim_info
+                )
+
+        return selected_url, resp_data
+
+    def _try_fallback_endpoints(self, endpoints, selected_url, method, headers, payload,
+                                 task_id, test_case_id, api_id, dim_names, dim_info):
+        """
+        尝试备用端点
+
+        Returns:
+            (selected_url, resp_data) 元组
+        """
+        resp_data = None
+
+        for i, endpoint_item in enumerate(endpoints):
+            fallback_url = get_endpoint_url(endpoint_item)
+            if fallback_url == selected_url:
+                continue
+            if not fallback_url or not fallback_url.startswith(('http://', 'https://')):
+                self._log(
+                    level='WARNING',
+                    category='execution',
+                    content=f"跳过无效备用端点: {fallback_url}",
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id
+                )
+                continue
+
+            try:
+                # 尝试获取备用端点的并发槽位，支持排队等待
+                self._log(
+                    level='DEBUG',
+                    category='execution',
+                    content=f"尝试获取备用端点 {fallback_url} 的并发槽位",
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id
+                )
+
+                if not self.acquire_endpoint_slot(fallback_url):
+                    self._log(
+                        level='WARNING',
+                        category='execution',
+                        content=f"备用端点 {fallback_url} 并发数已满，排队超时，跳过该端点",
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
+                    )
+                    continue
+
+                self._log(
+                    level='DEBUG',
+                    category='execution',
+                    content=f"成功获取备用端点 {fallback_url} 的并发槽位",
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id
+                )
+
+                fallback_slot_released = False
+                try:
+                    # 所有评测任务都需要使用异步任务
+                    is_async_api = True
+
+                    if is_async_api:
+                        resp_data = self._execute_async_api_flow(
+                            fallback_url, payload, dim_info, endpoints, None,
+                            task_id, test_case_id, api_id, dim_names
                         )
-                        continue
-                    
-                    try:
-                        # 尝试获取备用端点的并发槽位，支持排队等待
-                        self._log(
-                            level='DEBUG',
-                            category='execution',
-                            content=f"尝试获取备用端点 {fallback_url} 的并发槽位",
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            api_id=api_id
-                        )
-                        
-                        if not self.acquire_endpoint_slot(fallback_url):
+                        fallback_slot_released = True
+
+                        if resp_data and '__error__' not in resp_data:
+                            selected_url = fallback_url
                             self._log(
-                                level='WARNING',
-                                category='execution',
-                                content=f"备用端点 {fallback_url} 并发数已满，排队超时，跳过该端点",
+                                level='INFO',
+                                content=f"切换到备用端点 {fallback_url} 成功，异步任务完成",
                                 task_id=task_id,
                                 test_case_id=test_case_id,
                                 api_id=api_id
                             )
-                            continue
-                        
-                        self._log(
-                            level='DEBUG',
-                            category='execution',
-                            content=f"成功获取备用端点 {fallback_url} 的并发槽位",
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            api_id=api_id
-                        )
-                    
-                        fallback_slot_released = False
-                        try:
-                            # 所有评测任务都需要使用异步任务
-                            is_async_api = True
-                            
-                            if is_async_api:
-                                # 使用异步任务API流程
-                                create_task_payload = payload.copy() if isinstance(payload, dict) else {}
-                                if "task_type" not in create_task_payload:
-                                    if dim_info and dim_info.get('task_type_code'):
-                                        create_task_payload["task_type"] = dim_info['task_type_code']
-                                    else:
-                                        create_task_payload["task_type"] = "wer"
-                                
-                                form_fields, files = self._extract_files_from_payload(create_task_payload)
-                                if files:
-                                    create_response = self.create_task_upload(fallback_url, form_fields, files, task_id=task_id)
-                                else:
-                                    create_response = self.create_task(fallback_url, create_task_payload, task_id=task_id)
-
-                                # 创建任务后立即释放端点槽位
-                                self.release_endpoint_slot(fallback_url)
-                                fallback_slot_released = True
-
-                                if isinstance(create_response, dict) and create_response.get('code') == 0:
-                                    eval_task_id = create_response.get('data', {}).get('eval_task_id')
-                                    if eval_task_id:
-                                        result_response = self.wait_for_task_completion(
-                                            fallback_url, 
-                                            eval_task_id,
-                                            test_case_id=test_case_id,
-                                            api_id=api_id,
-                                            task_id=task_id
-                                        )
-                                        
-                                        if isinstance(result_response, dict):
-                                            if result_response.get('code') == 0:
-                                                resp_data = result_response.get('data', {}).get('result', {})
-                                                selected_url = fallback_url
-                                                self._log(
-                                                    level='INFO',
-                                                    content=f"切换到备用端点 {fallback_url} 成功，异步任务完成",
-                                                    task_id=task_id,
-                                                    test_case_id=test_case_id,
-                                                    api_id=api_id
-                                                )
-                                                break
-                                            else:
-                                                error_msg = result_response.get('msg', 'Unknown error')
-                                                self._log(
-                                                    level='WARNING',
-                                                    content=f"备用端点 {fallback_url} 异步任务失败: {error_msg}",
-                                                    task_id=task_id,
-                                                    test_case_id=test_case_id,
-                                                    api_id=api_id
-                                                )
-                                else:
-                                    self._log(
-                                        level='WARNING',
-                                        content=f"备用端点 {fallback_url} 创建任务失败",
-                                        task_id=task_id,
-                                        test_case_id=test_case_id,
-                                        api_id=api_id
-                                    )
-                            else:
-                                # 使用传统同步API
-                                resp_data = self.make_api_request(fallback_url, method, headers, payload)
-                                selected_url = fallback_url
-                                self._log(
-                                    level='INFO',
-                                    content=f"切换到备用端点 {fallback_url} 成功",
-                                    task_id=task_id,
-                                    test_case_id=test_case_id,
-                                    api_id=api_id
-                                )
-                                break
-                        finally:
-                            if not fallback_slot_released:
-                                self.release_endpoint_slot(fallback_url)
-                    except Exception as fallback_e:
-                        self._log(
-                            level='WARNING',
-                            content=f"备用端点 {fallback_url} 调用失败: {str(fallback_e)}",
-                            task_id=task_id,
-                            test_case_id=test_case_id,
-                            api_id=api_id
-                        )
-                        continue
-        
-        return selected_url, resp_data
-    
-    def _process_field_by_type(self, field_value, field_type):
-        """
-        根据字段类型处理字段值
-        
-        对于 audio/file 类型：读取文件内容并转为 base64 data URI
-        对于其他类型：如果值是文件路径字符串，自动检测并读取文件内容
-        
-        Args:
-            field_value: 字段值
-            field_type: 字段类型 (text, audio, file, reference, score, number等)
-            
-        Returns:
-            处理后的字段值
-        """
-        if isinstance(field_value, dict):
-            actual_value = field_value.get('value')
-            actual_type = field_value.get('field_type', field_type)
-            return self._process_field_by_type(actual_value, actual_type)
-        
-        if field_type in ('audio', 'file'):
-            if not field_value:
-                return None
-            if isinstance(field_value, str):
-                if field_value.startswith('data:') or ',' in field_value[:50]:
-                    return field_value
-                import os
-                if os.path.isfile(field_value):
-                    import base64
-                    try:
-                        with open(field_value, 'rb') as f:
-                            return 'data:audio/wav;base64,' + base64.b64encode(f.read()).decode()
-                    except Exception:
-                        return field_value
-                return field_value
-            return field_value
-        
-        if isinstance(field_value, str) and field_value and not field_value.startswith('data:'):
-            import os
-            if os.path.isfile(field_value):
-                import base64
-                try:
-                    ext = os.path.splitext(field_value)[1].lower()
-                    binary_exts = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac',
-                                   '.pcm', '.opus', '.amr', '.wma', '.webm', '.mp4',
-                                   '.mpg', '.mpeg', '.avi', '.mov', '.mkv'}
-                    with open(field_value, 'rb') as f:
-                        content = f.read()
-                    if ext in binary_exts:
-                        mime = 'audio/wav' if ext == '.wav' else 'audio/' + ext.lstrip('.')
-                        return 'data:' + mime + ';base64,' + base64.b64encode(content).decode()
-                    else:
-                        return content.decode('utf-8', errors='replace')
-                except Exception:
-                    return field_value
-        
-        return field_value
-    
-    def build_payload(self, body_template, context, task_id=None, test_case_id=None, algorithm_type=None):
-        """
-        构建API请求的Payload
-        """
-        processed_context = {}
-
-        special_fields = set()
-        if algorithm_type:
-            from backend.utils.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
-            output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type)
-            for field in output_fields:
-                source_param = field.get('source_param', '')
-                if source_param:
-                    special_fields.add(source_param)
-
-        for k, v in context.items():
-            if special_fields and k in special_fields and isinstance(v, dict) and 'text' in v and 'json' in v:
-                processed_context[k] = v
-            elif isinstance(v, dict) and 'field_type' in v:
-                processed_context[k] = self._process_field_by_type(v, v.get('field_type', 'text'))
-            elif isinstance(v, dict) and 'text' in v:
-                processed_context[k] = v.get('text', '')
-            else:
-                processed_context[k] = v
-        
-        self._log(
-            level='DEBUG',
-            content=f"[build_payload] body_template={body_template}, special_fields={special_fields}, processed_context keys={list(processed_context.keys())}, processed_context values={dict((k, str(v)[:100]) for k, v in processed_context.items())}",
-            task_id=task_id,
-            test_case_id=test_case_id
-        )
-        
-        if body_template:
-            if isinstance(body_template, str):
-                return render_body_template(body_template, processed_context)
-            elif isinstance(body_template, dict):
-                result = {}
-                for k, v in body_template.items():
-                    if k in processed_context:
-                        result[k] = processed_context[k]
-                    elif isinstance(v, str) and v.startswith('{{') and v.endswith('}}'):
-                        placeholder_key = v[2:-2]
-                        if placeholder_key in processed_context:
-                            result[k] = processed_context[placeholder_key]
+                            break
                         else:
-                            result[k] = v
+                            error_msg = resp_data.get('__error__', 'Unknown error') if isinstance(resp_data, dict) else 'Unknown error'
+                            self._log(
+                                level='WARNING',
+                                content=f"备用端点 {fallback_url} 异步任务失败: {error_msg}",
+                                task_id=task_id,
+                                test_case_id=test_case_id,
+                                api_id=api_id
+                            )
                     else:
-                        result[k] = v
-                return result
-        return processed_context
+                        # 使用传统同步API
+                        resp_data = self.make_api_request(fallback_url, method, headers, payload)
+                        selected_url = fallback_url
+                        self._log(
+                            level='INFO',
+                            content=f"切换到备用端点 {fallback_url} 成功",
+                            task_id=task_id,
+                            test_case_id=test_case_id,
+                            api_id=api_id
+                        )
+                        break
+                finally:
+                    if not fallback_slot_released:
+                        self.release_endpoint_slot(fallback_url)
+            except Exception as fallback_e:
+                self._log(
+                    level='WARNING',
+                    content=f"备用端点 {fallback_url} 调用失败: {str(fallback_e)}",
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    api_id=api_id
+                )
+                continue
 
-    def build_llm_judge_payload(self, eval_data, algorithm_result, ref_texts, task_id=None, test_case_id=None):
-        """
-        Build payload for llm_judge evaluation tasks.
-        
-        llm_judge uses a different payload structure than standard WER/SER
-        dimensions, including model config, prompt template, and scoring criteria.
-        
-        Args:
-            eval_data: llm_judge specific data (model, prompt_template, max_tokens, etc.)
-            algorithm_result: The algorithm output to evaluate
-            ref_texts: Reference texts for comparison
-            task_id: Task ID for logging
-            test_case_id: Test case ID for logging
-            
-        Returns:
-            dict: Payload for the eval_server /api/create_task endpoint
-        """
-        model = eval_data.get('model', 'gpt-4')
-        prompt_template = eval_data.get('prompt_template', '')
-        max_tokens = eval_data.get('max_tokens', 1024)
-        temperature = eval_data.get('temperature', 0.1)
-        scoring_criteria = eval_data.get('scoring_criteria', [])
-
-        # Extract hypothesis text from algorithm_result
-        hypothesis = ''
-        if isinstance(algorithm_result, dict):
-            hypothesis = (
-                algorithm_result.get('output_text', '')
-                or algorithm_result.get('asr_text', '')
-                or algorithm_result.get('trans_text', '')
-            )
-
-        # Extract reference text from ref_texts
-        reference = ''
-        if isinstance(ref_texts, dict):
-            for key in ['asr_ref', 'asr_rerference_text', 'stm_ref', 'rttm_ref']:
-                ref = ref_texts.get(key)
-                if ref:
-                    if isinstance(ref, dict):
-                        reference = ref.get('text', '')
-                    else:
-                        reference = str(ref)
-                    break
-
-        payload = {
-            'task_type': 'llm_judge',
-            'hypothesis': hypothesis,
-            'reference': reference,
-            'model': model,
-            'prompt_template': prompt_template,
-            'max_tokens': max_tokens,
-            'temperature': temperature,
-            'scoring_criteria': scoring_criteria,
-            'algorithm_result': algorithm_result,
-        }
-
-        self._log(
-            level='DEBUG',
-            content=f"[build_llm_judge_payload] model={model}, hypothesis_len={len(hypothesis)}, reference_len={len(reference)}, criteria_count={len(scoring_criteria)}",
-            task_id=task_id,
-            test_case_id=test_case_id,
-        )
-
-        return payload
+        return selected_url, resp_data

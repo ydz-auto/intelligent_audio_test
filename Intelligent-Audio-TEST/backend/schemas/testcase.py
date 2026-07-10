@@ -43,6 +43,7 @@ class TestCaseDimensionItem(APIModel):
     name: str = Field(..., alias='name', validation_alias='name')
     weight: Optional[float] = Field(None, alias='weight', validation_alias='weight')
     threshold: Optional[float] = Field(None, alias='threshold', validation_alias='threshold')
+    test_type: Optional[str] = Field(None, alias='testType', validation_alias=AliasChoices('test_type', 'testType'))
 
 
 class RoundConfigItem(APIModel):

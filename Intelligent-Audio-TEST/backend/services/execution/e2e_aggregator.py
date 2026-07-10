@@ -359,7 +359,7 @@ class E2EAggregator:
                       self._executor._get_result_mapper().build_case_result_log(algorithm_type, res, ref_fields, **kwargs)
 
         self._log(
-            level='INFO' if res.get('success', False) else 'WARNING',
+            level='INFO' if res.get('success', res.get('raw_results', {}).get('success', False)) else 'WARNING',
             content=log_content,
             task_id=task_id,
             test_case_id=kwargs.pop('test_case_id', None),

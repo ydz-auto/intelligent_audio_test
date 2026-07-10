@@ -61,17 +61,21 @@ export function useTaskProgress(options: TaskProgressOptions) {
   }
 
   const addLog = (logData: any) => {
-    console.log('[addLog] 收到日志数据:', JSON.stringify(logData, null, 2))
-    
-    const logId = typeof logData.id === 'number' ? logData.id : (Number(logData.id) || Date.now())
-    console.log('[addLog] logId:', logId)
-    
-    const existingLog = logs.value.find(log => log.id === logId)
-    if (existingLog) {
-      console.log('[addLog] 日志已存在，跳过')
+    const logId = typeof logData.id === 'number' ? logData.id : (Number(logData.id) || 0)
+    const content = logData.content || logData.message || ''
+
+    // 主去重：通过数据库 id 匹配
+    if (logId && logs.value.some(log => log.id === logId)) {
       return
     }
-    
+
+    // 后备去重：无 id 时，通过 content + level 匹配最近一条
+    if (!logId && logs.value.some(log =>
+      log.content === content && log.level === (logData.level || 'info')
+    )) {
+      return
+    }
+
     let formattedTime = ''
     if (logData.timestamp) {
       try {
@@ -79,33 +83,26 @@ export function useTaskProgress(options: TaskProgressOptions) {
         if (!isNaN(date.getTime())) {
           formattedTime = date.toLocaleTimeString()
         }
-      } catch (e) {
-        console.error('Failed to format log timestamp:', e)
+      } catch {
+        // ignore
       }
     } else if (logData.time) {
       formattedTime = logData.time
     }
-    
+
     const newLog: Log = {
-      id: logId,
+      id: logId || Date.now(),
       taskId: logData.taskId || currentTaskId.value,
       level: logData.level || 'info',
-      content: logData.content || logData.message || '',
+      content,
       time: formattedTime || new Date().toLocaleTimeString(),
       timestamp: logData.timestamp ? new Date(logData.timestamp).toISOString() : new Date().toISOString(),
       createdAt: new Date().toISOString(),
       testCaseId: logData.testCaseId
     }
-    console.log('[addLog] 准备添加日志:', JSON.stringify(newLog, null, 2))
-    console.log('[addLog] content:', newLog.content)
-    
+
     if (newLog.content) {
-      console.log('[addLog] 添加日志到数组')
-      // 替换整个数组以确保响应式更新
       logs.value = [...logs.value, newLog]
-      console.log('[addLog] logs 数组长度:', logs.value.length)
-    } else {
-      console.log('[addLog] content 为空，跳过添加')
     }
   }
 
@@ -273,9 +270,7 @@ export function useTaskProgress(options: TaskProgressOptions) {
     }
 
     if (progressData.logs && Array.isArray(progressData.logs)) {
-      console.log('[handleTaskProgress] 处理 logs，数量:', progressData.logs.length)
       progressData.logs.forEach((log: any) => {
-        console.log('[handleTaskProgress] 处理日志:', JSON.stringify(log, null, 2))
         addLog(log)
       })
     }
@@ -315,8 +310,6 @@ export function useTaskProgress(options: TaskProgressOptions) {
   }
 
   const taskLogHandler = (data: any) => {
-    console.log('[TaskProgress] 收到 task_log 事件:', data)
-    
     if (String(data.taskId) === String(currentTaskId.value)) {
       addLog(data.log)
     }

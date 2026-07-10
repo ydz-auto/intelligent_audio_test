@@ -242,6 +242,7 @@ class E2EExecutor(BaseExecutor):
         play_result = playback_orchestrator.play_round(
             round_config=round_config, task_id=task_id,
             case_config=case_config, test_case_id=test_case_id,
+            round_number=round_number,
         )
         if not play_result:
             self._log(level='WARNING', content=f"第 {round_number} 轮音频播放失败，跳过",
@@ -272,13 +273,17 @@ class E2EExecutor(BaseExecutor):
         for r in tagged_results:
             r['round_number'] = round_idx
 
+        # 字段映射：将 raw_results 映射为 target 字段（如 output_text、question_text 等）
+        from backend.services.device.device_result_collector import get_device_result_collector
+        tagged_results = get_device_result_collector().convert_results(tagged_results, algorithm_type)
+
         # 轮次内评估
         primary = tagged_results[0] if tagged_results else {}
         round_data = None
         round_success = True
 
         if primary:
-            round_success = primary.get('raw_results', {}).get('success', False)
+            round_success = primary.get('success', primary.get('raw_results', {}).get('success', False))
             round_data = self._build_and_submit_round_data(
                 task_id, tc_rel_id, data, case_config, case_name,
                 algorithm_type, test_case_id, rounds,
@@ -438,10 +443,28 @@ class E2EExecutor(BaseExecutor):
         )
 
         # 整体评估
-        if execution_success and case_config and case_config.get('dimensions'):
+        # 检查是否有评估维度（优先从 rounds[].evaluation.dimensions 读取，兼容顶层 dimensions）
+        _has_dims = False
+        if case_config:
+            rounds = case_config.get('rounds', [])
+            if rounds and isinstance(rounds, list):
+                for round_item in rounds:
+                    if isinstance(round_item, dict):
+                        evaluation = round_item.get('evaluation', {})
+                        if isinstance(evaluation, dict) and evaluation.get('dimensions'):
+                            _has_dims = True
+                            break
+            if not _has_dims and case_config.get('dimensions'):
+                _has_dims = True
+
+        if execution_success and _has_dims:
+            _dims_log = json.dumps(
+                case_config.get('rounds', [{}])[0].get('evaluation', {}).get('dimensions', []),
+                ensure_ascii=False
+            )[:200] if case_config.get('rounds') else json.dumps(case_config.get('dimensions', []), ensure_ascii=False)[:200]
             self._log(
                 level='INFO',
-                content=f"提交整体评估: result_id={result_id}, dimensions={json.dumps(case_config.get('dimensions'), ensure_ascii=False)[:200]}",
+                content=f"提交整体评估: result_id={result_id}, dimensions={_dims_log}",
                 task_id=task_id, test_case_id=test_case_id,
             )
             self._evaluate_result(

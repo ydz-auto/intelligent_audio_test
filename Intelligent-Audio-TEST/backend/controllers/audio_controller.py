@@ -1,4 +1,4 @@
-import os
+﻿import os
 import uuid
 import requests
 import time
@@ -380,7 +380,7 @@ class AudioController:
                 )
             )
         
-        today_start = datetime.now(timezone(timedelta(hours=8))).replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = now_cst().replace(hour=0, minute=0, second=0, microsecond=0)
 
         stats_result = db.session.query(
             db.func.sum(Audio.size),
@@ -798,7 +798,7 @@ class AudioController:
                 uploaded_size=0,
                 status='preparing',
                 # 7天后过期
-                expired_at=datetime.now(timezone(timedelta(hours=8))) + timedelta(days=7)
+                expired_at=now_cst() + timedelta(days=7)
             )
             db.session.add(task)
             db.session.commit()
@@ -991,7 +991,7 @@ class AudioController:
                     # 更新现有分片
                     existing_chunk.chunk_size = chunk_size
                     existing_chunk.status = 'completed'
-                    existing_chunk.updated_at = datetime.now(timezone(timedelta(hours=8)))
+                    existing_chunk.updated_at = now_cst()
                 else:
                     # 创建新分片记录
                     new_chunk = UploadChunk(
@@ -1667,7 +1667,7 @@ class AudioController:
                 # 同名时加时间戳避免冲突
                 existing = TestCase.query.filter_by(name=test_case_name, group_id=group.id, deleted=False).first()
                 if existing:
-                    test_case_name = f"{test_case_name}_{datetime.now(timezone(timedelta(hours=8))).strftime('%H%M%S')}"
+                    test_case_name = f"{test_case_name}_{now_cst().strftime('%H%M%S')}"
 
                 # ===== 构建 config =====
                 # 统一走 rounds 架构，前端始终构建 rounds_config
@@ -1977,12 +1977,41 @@ class AudioController:
                         raw_dims = dimensions_data.get('dimensions', [])
                     elif isinstance(dimensions_data, list):
                         raw_dims = dimensions_data
-                    config["dimensions"] = [
-                        d for d in raw_dims
-                        if not isinstance(d, dict) or not d.get('test_type') or d.get('test_type') == tt
+                    # 统一转换为 dict，确保 pydantic model 也能正确取 test_type
+                    norm_dims = []
+                    for d in raw_dims:
+                        if isinstance(d, dict):
+                            norm_dims.append(d)
+                        elif hasattr(d, 'model_dump'):
+                            norm_dims.append(d.model_dump(by_alias=False, exclude_none=True))
+                        else:
+                            norm_dims.append({'id': d})
+                    filtered_dims = [
+                        d for d in norm_dims
+                        if not d.get('test_type') or d.get('test_type') == tt
                     ]
+                    # 按 id 去重（同一维度可能因 test_type 标记方式不同而重复）
+                    seen_ids = set()
+                    unique_dims = []
+                    for d in filtered_dims:
+                        dim_id = d.get('id')
+                        if dim_id and dim_id not in seen_ids:
+                            seen_ids.add(dim_id)
+                            unique_dims.append(d)
+                    # 写入 rounds[].evaluation.dimensions（与系统其他部分一致）
+                    for round_item in rounds_resolved:
+                        if isinstance(round_item, dict):
+                            if 'evaluation' not in round_item:
+                                round_item['evaluation'] = {}
+                            round_item['evaluation']['dimensions'] = unique_dims
                 else:
-                    config["dimensions"] = []
+                    # 确保 rounds 有 evaluation 结构
+                    for round_item in rounds_resolved:
+                        if isinstance(round_item, dict):
+                            if 'evaluation' not in round_item:
+                                round_item['evaluation'] = {}
+                            if 'dimensions' not in round_item['evaluation']:
+                                round_item['evaluation']['dimensions'] = []
 
                 # 创建测试用例
                 tc_id = str(uuid.uuid4())
@@ -2124,7 +2153,7 @@ class AudioController:
             audio.file_path = new_path.replace('\\', '/')
             audio.format = target_format
             audio.size = os.path.getsize(new_path)
-            audio.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            audio.updated_at = now_cst()
             
             db.session.commit()
             return success_response({
@@ -2198,7 +2227,7 @@ class AudioController:
                     )
                     db.session.add(new_annotation)
 
-            audio.updated_at = datetime.now(timezone(timedelta(hours=8)))
+            audio.updated_at = now_cst()
             db.session.commit()
             return success_response(None, "元数据更新成功")
         except Exception as e:
@@ -2315,7 +2344,7 @@ class AudioController:
                     memory_file,
                     mimetype='application/zip',
                     as_attachment=True,
-                    download_name=f'audios_export_{datetime.now(timezone(timedelta(hours=8))).strftime("%Y%m%d%H%M%S")}.zip'
+                    download_name=f'audios_export_{now_cst().strftime("%Y%m%d%H%M%S")}.zip'
                 )
             elif action == 'tags':
                 tags = validated.tags

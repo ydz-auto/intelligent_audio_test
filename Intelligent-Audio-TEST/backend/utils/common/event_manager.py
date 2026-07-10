@@ -400,6 +400,7 @@ class EventManager:
 
             recent_logs = local_db_session.query(Log).filter_by(task_id=db_task.id).order_by(Log.time.desc()).limit(20).all()
             logs_data = [{
+                "id": l.id,
                 "level": l.level.lower() if l.level else 'info',
                 "message": l.content,
                 "timestamp": int(l.time.timestamp() * 1000) if l.time else int(time.time() * 1000)
