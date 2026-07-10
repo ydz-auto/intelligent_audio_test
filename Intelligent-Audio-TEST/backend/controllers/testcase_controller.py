@@ -1108,441 +1108,512 @@ class TestCaseController:
         audio_service.stop_task_audio_by_pattern("PREVIEW_")
         
         return success_response(TestCaseStopPreviewData(test_case_id=tc_id, status="preview_stopped", message="预览已停止"))
-
     # 批量操作
     @staticmethod
     def batch_action():
+        """批量操作入口：验证请求并分发到对应处理函数"""
         req_data = TestCaseBatchActionRequest.model_validate(request.get_json())
-        
-        ids = req_data.ids
         action = req_data.action
-        
+
+        # action → handler 映射
+        handlers = {
+            'delete': TestCaseController._batch_delete,
+            'move_to_group': TestCaseController._batch_move_to_group,
+            'copy_to_group': TestCaseController._batch_copy_to_group,
+            'copy': TestCaseController._batch_copy,
+            'copy_by_group': TestCaseController._batch_copy_by_group,
+            'update_algorithm_params': TestCaseController._batch_update_algorithm_params,
+            'update_playback_devices': TestCaseController._batch_update_playback_devices,
+            'update_spl': TestCaseController._batch_update_spl,
+            'update_dimensions': TestCaseController._batch_update_dimensions,
+            'update_noise': TestCaseController._batch_update_noise,
+            'auto_generate_name': TestCaseController._batch_auto_generate_name,
+            'add_tags': TestCaseController._batch_add_tags,
+            'remove_tags': TestCaseController._batch_remove_tags,
+            'rename_tag': TestCaseController._batch_rename_tag,
+            'refresh_reference': TestCaseController._batch_refresh_reference,
+        }
+
+        handler = handlers.get(action)
+        if not handler:
+            return error_response(f"不支持的操作类型: {action}")
+
         try:
-            if action == 'delete':
-                TestCase.query.filter(TestCase.id.in_(ids)).update({"deleted": True}, synchronize_session=False)
-                message = f"已成功批量删除 {len(ids)} 个用例"
-            elif action == 'move_to_group':
-                target_group_id = req_data.target_group_id
-                if not target_group_id:
-                    return error_response("移动操作需要 'target_group_id'")
-                TestCase.query.filter(TestCase.id.in_(ids)).update({"group_id": target_group_id}, synchronize_session=False)
-                message = f"已成功将 {len(ids)} 个用例移动至目标分组"
-            elif action == 'copy_to_group':
-                target_group_id = req_data.target_group_id
-                if not target_group_id:
-                    return error_response("复制到分组操作需要 'target_group_id'")
-                target_group = TestCaseGroup.query.filter_by(id=target_group_id).first()
-                if not target_group:
-                    return error_response(f"未找到目标分组: {target_group_id}")
-                copied_count = 0
-                for tc_id in ids:
-                    tc = TestCase.query.filter_by(id=tc_id, deleted=False).first()
-                    if tc:
-                        new_id = str(uuid.uuid4())
-                        new_tc = TestCase(
-                            id=new_id,
-                            name=tc.name,
-                            description=tc.description,
-                            group_id=target_group_id,
-                            config=tc.config.copy() if tc.config else {},
-                            algorithm_type=tc.algorithm_type,
-                            test_type=tc.test_type or 'api',
-                        )
-                        db.session.add(new_tc)
-                        for tag in tc.tags:
-                            new_tc.tags.append(tag)
-                        TestCaseController.refresh_reference_texts(new_tc)
-                        copied_count += 1
-                message = f"已成功复制 {copied_count} 个用例到分组 '{target_group.name}'"
-            elif action == 'copy':
-                copied_count = 0
-                for tc_id in ids:
-                    tc = TestCase.query.filter_by(id=tc_id, deleted=False).first()
-                    if tc:
-                        new_id = str(uuid.uuid4())
-                        new_tc = TestCase(
-                            id=new_id,
-                            name=f"{tc.name}_copy",
-                            description=tc.description,
-                            group_id=tc.group_id,
-                            config=tc.config.copy() if tc.config else {},
-                            algorithm_type=tc.algorithm_type,
-                            test_type=tc.test_type or 'api',
-                        )
-                        db.session.add(new_tc)
+            result = handler(req_data)
+            # handler 返回 dict 表示提前返回（如异步任务提交）
+            if isinstance(result, dict):
+                return result
+            # handler 返回 tuple (response_obj, skip_commit) 表示提前返回错误
+            if isinstance(result, tuple) and len(result) == 2 and hasattr(result[0], 'status_code'):
+                return result[0]
+            # handler 返回 response 对象直接返回
+            if hasattr(result, 'status_code'):
+                return result
+            # 否则 result 是 message 字符串
+            message = result
 
-                        for tag in tc.tags:
-                            new_tc.tags.append(tag)
-                        
-                        TestCaseController.refresh_reference_texts(new_tc)
-                        
-                        copied_count += 1
-                message = f"已成功批量复制 {copied_count} 个用例"
-            elif action == 'copy_by_group':
-                group_name = req_data.group_name
-                if not group_name:
-                    return error_response("复制分组操作需要 'group_name'")
-                source_group = TestCaseGroup.query.filter_by(name=group_name).first()
-                if not source_group:
-                    return error_response(f"未找到分组: {group_name}")
-                
-                new_group_name = f"{group_name}_copy"
-                existing_group = TestCaseGroup.query.filter_by(name=new_group_name).first()
-                if existing_group:
-                    new_group = existing_group
-                else:
-                    new_group = TestCaseGroup(
-                        id=str(uuid.uuid4()),
-                        name=new_group_name,
-                        description=source_group.description
-                    )
-                    db.session.add(new_group)
-                
-                test_cases = TestCase.query.filter_by(group_id=source_group.id, deleted=False).all()
-                copied_count = 0
-                for tc in test_cases:
-                    new_id = str(uuid.uuid4())
-                    new_tc = TestCase(
-                        id=new_id,
-                        name=tc.name,
-                        description=tc.description,
-                        group_id=new_group.id,
-                        config=tc.config.copy() if tc.config else {},
-                        algorithm_type=tc.algorithm_type,
-                        test_type=tc.test_type or 'api',
-                    )
-                    db.session.add(new_tc)
-                    for tag in tc.tags:
-                        new_tc.tags.append(tag)
-                    TestCaseController.refresh_reference_texts(new_tc)
-                    copied_count += 1
-                message = f"已成功复制分组 '{new_group_name}' 的 {copied_count} 个用例"
-            elif action == 'update_algorithm_params':
-                algorithm_params = req_data.algorithm_params
-                if algorithm_params is None:
-                    return error_response("更新用例专属参数需要 'algorithm_params'")
-                test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
-                updated_count = 0
-                for tc in test_cases:
-                    tc_config = tc.config or {}
-                    ap_dict = {}
-                    if isinstance(algorithm_params, list):
-                        for item in algorithm_params:
-                            if isinstance(item, dict):
-                                code = item.get('field_code') or item.get('fieldCode', '')
-                                value = item.get('field_value') or item.get('fieldValue', '')
-                                if code:
-                                    ap_dict[code] = value
-                    elif isinstance(algorithm_params, dict):
-                        ap_dict = algorithm_params
-                    tc_config = tc_config.copy()
-                    # 不再写入 config.rounds[].algorithmParams，改为独立列
-                    tc.algorithm_params = [{'round_number': 1, 'params': [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]}]
-                    tc.config = tc_config
-                    tc.updated_at = now_cst()
-                    updated_count += 1
-                message = f"已成功更新 {updated_count} 个用例的专属参数"
-            elif action == 'update_playback_devices':
-                logger.info(f"[update_playback_devices] 开始处理, ids: {ids}, playback_devices: {req_data.playback_devices}")
-                
-                playback_devices = req_data.playback_devices
-                if playback_devices is None:
-                    logger.error("[update_playback_devices] 缺少 playback_devices 参数")
-                    return error_response("更新播放设备需要 'playback_devices'")
-                
-                test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
-                logger.info(f"[update_playback_devices] 查询到 {len(test_cases)} 个用例")
-                
-                updated_count = 0
-                for tc in test_cases:
-                    # 新双记录架构：只有 E2E 记录需要更新播放设备
-                    if (tc.test_type or 'api') != 'e2e':
-                        continue
-                    logger.debug(f"[update_playback_devices] 处理用例 {tc.id}, config: {tc.config}")
-                    if tc.config:
-                        config = tc.config.copy()
-                        device_id = playback_devices.get('deviceId') or playback_devices.get('device_id')
-                        
-                        # 更新 rounds[].audios[].playback_device_id
-                        for round_item in config.get('rounds', []):
-                            if isinstance(round_item, dict):
-                                for idx, audio_config in enumerate(round_item.get('audios', [])):
-                                    logger.debug(f"[update_playback_devices] 更新用例 {tc.id} round audio[{idx}] 的 playback_device_id 为 {device_id}")
-                                    if device_id is not None:
-                                        audio_config['playback_device_id'] = device_id
-                        tc.config = config
-                        import sqlalchemy.orm.attributes
-                        sqlalchemy.orm.attributes.flag_modified(tc, 'config')
-                        logger.debug(f"[update_playback_devices] 更新后 config: {tc.config}")
-                    tc.updated_at = now_cst()
-                    db.session.add(tc)
-                    updated_count += 1
-                
-                logger.info(f"[update_playback_devices] 更新完成，共更新 {updated_count} 个用例")
-                message = f"已成功更新 {updated_count} 个用例的播放设备"
-            elif action == 'update_spl':
-                logger.info(f"[update_spl] 开始处理, ids: {ids}, spl_data: {req_data.spl}")
-                
-                spl_data = req_data.spl
-                if spl_data is None:
-                    logger.error("[update_spl] 缺少 spl 参数")
-                    return error_response("更新声压需要 'spl'")
-                
-                test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
-                logger.info(f"[update_spl] 查询到 {len(test_cases)} 个用例")
-                
-                updated_count = 0
-                for tc in test_cases:
-                    # 新双记录架构：只有 E2E 记录需要更新声压
-                    if (tc.test_type or 'api') != 'e2e':
-                        continue
-                    logger.debug(f"[update_spl] 处理用例 {tc.id}, config: {tc.config}")
-                    if tc.config:
-                        config = tc.config.copy()
-                        
-                        # 更新 rounds[].audios[].spl
-                        for round_item in config.get('rounds', []):
-                            if isinstance(round_item, dict):
-                                for audio_config in round_item.get('audios', []):
-                                    if spl_data.get('value') is not None:
-                                        audio_config['spl'] = spl_data['value']
-                                        logger.debug(f"[update_spl] 更新用例 {tc.id} 的 spl 为 {spl_data['value']}")
-                        tc.config = config
-                        import sqlalchemy.orm.attributes
-                        sqlalchemy.orm.attributes.flag_modified(tc, 'config')
-                    tc.updated_at = now_cst()
-                    db.session.add(tc)
-                    updated_count += 1
-                
-                logger.info(f"[update_spl] 更新完成，共更新 {updated_count} 个用例")
-                message = f"已成功更新 {updated_count} 个用例的声压"
-            elif action == 'update_dimensions':
-                dimensions_data = req_data.dimensions
-                logger.info(f"[update_dimensions] 开始处理, ids: {ids}, dimensions: {dimensions_data}")
-
-                if dimensions_data is None:
-                    logger.error("[update_dimensions] 缺少 dimensions 参数")
-                    return error_response("更新评价维度需要 'dimensions'")
-
-                test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
-                logger.info(f"[update_dimensions] 查询到 {len(test_cases)} 个用例")
-
-                updated_count = 0
-                for tc in test_cases:
-                    if tc.config:
-                        config = tc.config.copy()
-
-                        # 新双记录架构：直接存储扁平维度数组
-                        new_dim_list = []
-                        for dim in dimensions_data:
-                            dim_id = dim.get('id')
-                            dim_name = dim.get('name', '')
-                            dim_weight = dim.get('weight', 50)
-                            dim_threshold = dim.get('threshold', 60)
-                            new_dim_list.append({
-                                'id': dim_id,
-                                'name': dim_name,
-                                'weight': dim_weight,
-                                'threshold': dim_threshold
-                            })
-                            logger.debug(f"[update_dimensions] 用例 {tc.id} 设置维度 {dim_id}")
-
-                        # 写入 rounds[].evaluation.dimensions
-                        for round_item in config.get('rounds', []):
-                            if isinstance(round_item, dict):
-                                if 'evaluation' not in round_item:
-                                    round_item['evaluation'] = {}
-                                round_item['evaluation']['dimensions'] = new_dim_list
-                        tc.config = config
-                        import sqlalchemy.orm.attributes
-                        sqlalchemy.orm.attributes.flag_modified(tc, 'config')
-                    tc.updated_at = now_cst()
-                    db.session.add(tc)
-                    updated_count += 1
-                
-                logger.info(f"[update_dimensions] 更新完成，共更新 {updated_count} 个用例")
-                message = f"已成功更新 {updated_count} 个用例的评价维度"
-            elif action == 'update_noise':
-                logger.info(f"[update_noise] 开始处理, ids: {ids}")
-
-                audio_id = req_data.noise_audio_id
-                spl = req_data.noise_spl
-                device_ids = req_data.noise_device_ids or []
-
-                logger.info(f"[update_noise] audio_id: {audio_id}, spl: {spl}, device_ids: {device_ids}")
-
-                test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
-                logger.info(f"[update_noise] 查询到 {len(test_cases)} 个用例")
-
-                updated_count = 0
-                for tc in test_cases:
-                    # 新双记录架构：噪声配置只适用于 E2E 记录
-                    if (tc.test_type or 'api') != 'e2e':
-                        continue
-                    logger.info(f"[update_noise] 处理用例 {tc.id}, 当前 config: {tc.config}")
-                    if tc.config is None:
-                        config = {}
-                    else:
-                        config = tc.config.copy()
-
-                    # 更新 rounds[].backgroundNoise
-                    for round_item in config.get('rounds', []):
-                        if isinstance(round_item, dict):
-                            if 'backgroundNoise' not in round_item:
-                                round_item['backgroundNoise'] = {'audio_id': '', 'spl': 0, 'device_ids': []}
-                            if audio_id is not None:
-                                round_item['backgroundNoise']['audio_id'] = audio_id
-                            if spl is not None:
-                                round_item['backgroundNoise']['spl'] = spl
-                            if device_ids is not None:
-                                round_item['backgroundNoise']['device_ids'] = device_ids
-
-                    tc.config = config
-                    import sqlalchemy.orm.attributes
-                    sqlalchemy.orm.attributes.flag_modified(tc, 'config')
-                    logger.info(f"[update_noise] 更新用例 {tc.id} noise config")
-
-                    tc.updated_at = now_cst()
-                    db.session.add(tc)
-                    updated_count += 1
-
-                logger.info(f"[update_noise] 更新完成，共更新 {updated_count} 个用例")
-                message = f"已成功更新 {updated_count} 个用例的噪声配置"
-            elif action == 'auto_generate_name':
-                logger.info(f"[auto_generate_name] 开始处理, ids: {ids}")
-
-                test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
-                logger.info(f"[auto_generate_name] 查询到 {len(test_cases)} 个用例")
-
-                updated_count = 0
-                for tc in test_cases:
-                    tag_names = sorted([tag.name for tag in tc.tags if len(tag.name) <= 25], key=lambda x: len(x))
-                    if tag_names:
-                        tc.name = '-'.join(tag_names)
-                        logger.info(f"[auto_generate_name] 用例 {tc.id} 新名称: {tc.name}")
-                    tc.updated_at = now_cst()
-                    db.session.add(tc)
-                    updated_count += 1
-
-                logger.info(f"[auto_generate_name] 更新完成，共更新 {updated_count} 个用例")
-                message = f"已成功为 {updated_count} 个用例自动生成名称"
-            elif action == 'add_tags':
-                logger.info(f"[add_tags] 开始处理, ids: {ids}, tags: {req_data.tags}")
-
-                tags_to_add = req_data.tags or []
-                if not tags_to_add:
-                    return error_response("添加标签需要 'tags' 参数")
-
-                test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
-                logger.info(f"[add_tags] 查询到 {len(test_cases)} 个用例")
-
-                updated_count = 0
-                for tc in test_cases:
-                    existing_tag_names = {tag.name for tag in tc.tags}
-                    for tag_name in tags_to_add:
-                        if tag_name not in existing_tag_names:
-                            tag = Tag.query.filter_by(name=tag_name).first()
-                            if not tag:
-                                tag = Tag(name=tag_name)
-                                db.session.add(tag)
-                            tc.tags.append(tag)
-                    tc.updated_at = now_cst()
-                    db.session.add(tc)
-                    updated_count += 1
-
-                logger.info(f"[add_tags] 更新完成，共更新 {updated_count} 个用例")
-                message = f"已成功为 {updated_count} 个用例添加标签"
-            elif action == 'remove_tags':
-                logger.info(f"[remove_tags] 开始处理, ids: {ids}, tags: {req_data.tags}")
-
-                tags_to_remove = req_data.tags or []
-                if not tags_to_remove:
-                    return error_response("移除标签需要 'tags' 参数")
-
-                test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
-                logger.info(f"[remove_tags] 查询到 {len(test_cases)} 个用例")
-
-                updated_count = 0
-                for tc in test_cases:
-                    tags_to_remove_set = set(tags_to_remove)
-                    tc.tags = [tag for tag in tc.tags if tag.name not in tags_to_remove_set]
-                    tc.updated_at = now_cst()
-                    db.session.add(tc)
-                    updated_count += 1
-
-                logger.info(f"[remove_tags] 更新完成，共更新 {updated_count} 个用例")
-                message = f"已成功为 {updated_count} 个用例移除标签"
-            elif action == 'rename_tag':
-                old_tag_name = req_data.old_tag_name
-                new_tag_name = req_data.new_tag_name
-                logger.info(f"[rename_tag] 开始处理, old_tag: {old_tag_name}, new_tag: {new_tag_name}")
-
-                if not old_tag_name or not new_tag_name:
-                    return error_response("重命名标签需要 'old_tag_name' 和 'new_tag_name' 参数")
-
-                if old_tag_name == new_tag_name:
-                    return error_response("新标签名不能与原标签名相同")
-
-                old_tag = Tag.query.filter_by(name=old_tag_name).first()
-                if not old_tag:
-                    return error_response(f"未找到标签: {old_tag_name}")
-
-                new_tag_exists = Tag.query.filter_by(name=new_tag_name).first()
-                if new_tag_exists:
-                    return error_response(f"标签名 {new_tag_name} 已存在")
-
-                old_tag.name = new_tag_name
-                old_tag.updated_at = now_cst()
-                db.session.add(old_tag)
-
-                logger.info(f"[rename_tag] 标签 {old_tag_name} 已重命名为 {new_tag_name}")
-                message = f"已成功将标签 {old_tag_name} 重命名为 {new_tag_name}"
-            elif action == 'refresh_reference':
-                logger.info(f"[refresh_reference] 开始处理, ids: {ids}")
-
-                test_cases = TestCase.query.filter(
-                    TestCase.id.in_(ids),
-                    TestCase.deleted == False
-                ).all()
-                logger.info(f"[refresh_reference] 查询到 {len(test_cases)} 个用例")
-
-                if len(ids) > 50:
-                    from backend.utils.common.reference_refresh_task import submit_reference_refresh_task
-
-                    task_id = submit_reference_refresh_task(ids)
-                    logger.info(f"[refresh_reference] 异步任务已提交: {task_id}")
-
-                    return {
-                        'success': True,
-                        'task_id': task_id,
-                        'message': f'已提交异步刷新任务，预计处理 {len(test_cases)} 个用例'
-                    }
-                else:
-                    updated_count = 0
-                    for tc in test_cases:
-                        try:
-                            TestCaseController.refresh_reference_texts(tc)
-                            tc.updated_at = now_cst()
-                            db.session.add(tc)
-                            updated_count += 1
-                        except Exception as e:
-                            logger.error(f"[refresh_reference] 处理用例 {tc.id} 失败: {e}")
-
-                    db.session.commit()
-                    logger.info(f"[refresh_reference] 更新完成，共更新 {updated_count} 个用例")
-                    message = f"已成功刷新 {updated_count} 个用例的参考参数"
-            else:
-                return error_response(f"不支持的操作类型: {action}")
-            
             db.session.commit()
-            
             from backend.utils.report.stats_cache import refresh_stats_cache
             refresh_stats_cache()
-            
             return success_response(None, message)
         except Exception as e:
             db.session.rollback()
             return error_response(str(e))
+
+    @staticmethod
+    def _batch_delete(req_data):
+        """批量删除用例"""
+        ids = req_data.ids
+        TestCase.query.filter(TestCase.id.in_(ids)).update({"deleted": True}, synchronize_session=False)
+        return f"已成功批量删除 {len(ids)} 个用例"
+
+    @staticmethod
+    def _batch_move_to_group(req_data):
+        """批量移动到分组"""
+        ids = req_data.ids
+        target_group_id = req_data.target_group_id
+        if not target_group_id:
+            return error_response("移动操作需要 'target_group_id'")
+        TestCase.query.filter(TestCase.id.in_(ids)).update({"group_id": target_group_id}, synchronize_session=False)
+        return f"已成功将 {len(ids)} 个用例移动至目标分组"
+
+    @staticmethod
+    def _batch_copy_to_group(req_data):
+        """复制到指定分组"""
+        ids = req_data.ids
+        target_group_id = req_data.target_group_id
+        if not target_group_id:
+            return error_response("复制到分组操作需要 'target_group_id'")
+        target_group = TestCaseGroup.query.filter_by(id=target_group_id).first()
+        if not target_group:
+            return error_response(f"未找到目标分组: {target_group_id}")
+        copied_count = 0
+        for tc_id in ids:
+            tc = TestCase.query.filter_by(id=tc_id, deleted=False).first()
+            if tc:
+                new_id = str(uuid.uuid4())
+                new_tc = TestCase(
+                    id=new_id,
+                    name=tc.name,
+                    description=tc.description,
+                    group_id=target_group_id,
+                    config=tc.config.copy() if tc.config else {},
+                    algorithm_type=tc.algorithm_type,
+                    test_type=tc.test_type or 'api',
+                )
+                db.session.add(new_tc)
+                for tag in tc.tags:
+                    new_tc.tags.append(tag)
+                TestCaseController.refresh_reference_texts(new_tc)
+                copied_count += 1
+        return f"已成功复制 {copied_count} 个用例到分组 '{target_group.name}'"
+
+    @staticmethod
+    def _batch_copy(req_data):
+        """批量复制用例"""
+        ids = req_data.ids
+        copied_count = 0
+        for tc_id in ids:
+            tc = TestCase.query.filter_by(id=tc_id, deleted=False).first()
+            if tc:
+                new_id = str(uuid.uuid4())
+                new_tc = TestCase(
+                    id=new_id,
+                    name=f"{tc.name}_copy",
+                    description=tc.description,
+                    group_id=tc.group_id,
+                    config=tc.config.copy() if tc.config else {},
+                    algorithm_type=tc.algorithm_type,
+                    test_type=tc.test_type or 'api',
+                )
+                db.session.add(new_tc)
+                for tag in tc.tags:
+                    new_tc.tags.append(tag)
+                TestCaseController.refresh_reference_texts(new_tc)
+                copied_count += 1
+        return f"已成功批量复制 {copied_count} 个用例"
+
+    @staticmethod
+    def _batch_copy_by_group(req_data):
+        """按分组复制用例"""
+        group_name = req_data.group_name
+        if not group_name:
+            return error_response("复制分组操作需要 'group_name'")
+        source_group = TestCaseGroup.query.filter_by(name=group_name).first()
+        if not source_group:
+            return error_response(f"未找到分组: {group_name}")
+
+        new_group_name = f"{group_name}_copy"
+        existing_group = TestCaseGroup.query.filter_by(name=new_group_name).first()
+        if existing_group:
+            new_group = existing_group
+        else:
+            new_group = TestCaseGroup(
+                id=str(uuid.uuid4()),
+                name=new_group_name,
+                description=source_group.description
+            )
+            db.session.add(new_group)
+
+        test_cases = TestCase.query.filter_by(group_id=source_group.id, deleted=False).all()
+        copied_count = 0
+        for tc in test_cases:
+            new_id = str(uuid.uuid4())
+            new_tc = TestCase(
+                id=new_id,
+                name=tc.name,
+                description=tc.description,
+                group_id=new_group.id,
+                config=tc.config.copy() if tc.config else {},
+                algorithm_type=tc.algorithm_type,
+                test_type=tc.test_type or 'api',
+            )
+            db.session.add(new_tc)
+            for tag in tc.tags:
+                new_tc.tags.append(tag)
+            TestCaseController.refresh_reference_texts(new_tc)
+            copied_count += 1
+        return f"已成功复制分组 '{new_group_name}' 的 {copied_count} 个用例"
+
+    @staticmethod
+    def _batch_update_algorithm_params(req_data):
+        """批量更新用例专属参数"""
+        ids = req_data.ids
+        algorithm_params = req_data.algorithm_params
+        if algorithm_params is None:
+            return error_response("更新用例专属参数需要 'algorithm_params'")
+        test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
+        updated_count = 0
+        for tc in test_cases:
+            tc_config = tc.config or {}
+            ap_dict = {}
+            if isinstance(algorithm_params, list):
+                for item in algorithm_params:
+                    if isinstance(item, dict):
+                        code = item.get('field_code') or item.get('fieldCode', '')
+                        value = item.get('field_value') or item.get('fieldValue', '')
+                        if code:
+                            ap_dict[code] = value
+            elif isinstance(algorithm_params, dict):
+                ap_dict = algorithm_params
+            tc_config = tc_config.copy()
+            tc.algorithm_params = [{'round_number': 1, 'params': [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]}]
+            tc.config = tc_config
+            tc.updated_at = now_cst()
+            updated_count += 1
+        return f"已成功更新 {updated_count} 个用例的专属参数"
+
+    @staticmethod
+    def _batch_update_playback_devices(req_data):
+        """批量更新播放设备"""
+        import sqlalchemy.orm.attributes
+        ids = req_data.ids
+        logger.info(f"[update_playback_devices] 开始处理, ids: {ids}, playback_devices: {req_data.playback_devices}")
+
+        playback_devices = req_data.playback_devices
+        if playback_devices is None:
+            logger.error("[update_playback_devices] 缺少 playback_devices 参数")
+            return error_response("更新播放设备需要 'playback_devices'")
+
+        test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
+        logger.info(f"[update_playback_devices] 查询到 {len(test_cases)} 个用例")
+
+        updated_count = 0
+        for tc in test_cases:
+            if (tc.test_type or 'api') != 'e2e':
+                continue
+            logger.debug(f"[update_playback_devices] 处理用例 {tc.id}, config: {tc.config}")
+            if tc.config:
+                config = tc.config.copy()
+                device_id = playback_devices.get('deviceId') or playback_devices.get('device_id')
+                for round_item in config.get('rounds', []):
+                    if isinstance(round_item, dict):
+                        for idx, audio_config in enumerate(round_item.get('audios', [])):
+                            logger.debug(f"[update_playback_devices] 更新用例 {tc.id} round audio[{idx}] 的 playback_device_id 为 {device_id}")
+                            if device_id is not None:
+                                audio_config['playback_device_id'] = device_id
+                tc.config = config
+                sqlalchemy.orm.attributes.flag_modified(tc, 'config')
+                logger.debug(f"[update_playback_devices] 更新后 config: {tc.config}")
+            tc.updated_at = now_cst()
+            db.session.add(tc)
+            updated_count += 1
+
+        logger.info(f"[update_playback_devices] 更新完成，共更新 {updated_count} 个用例")
+        return f"已成功更新 {updated_count} 个用例的播放设备"
+
+    @staticmethod
+    def _batch_update_spl(req_data):
+        """批量更新声压"""
+        import sqlalchemy.orm.attributes
+        ids = req_data.ids
+        logger.info(f"[update_spl] 开始处理, ids: {ids}, spl_data: {req_data.spl}")
+
+        spl_data = req_data.spl
+        if spl_data is None:
+            logger.error("[update_spl] 缺少 spl 参数")
+            return error_response("更新声压需要 'spl'")
+
+        test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
+        logger.info(f"[update_spl] 查询到 {len(test_cases)} 个用例")
+
+        updated_count = 0
+        for tc in test_cases:
+            if (tc.test_type or 'api') != 'e2e':
+                continue
+            logger.debug(f"[update_spl] 处理用例 {tc.id}, config: {tc.config}")
+            if tc.config:
+                config = tc.config.copy()
+                for round_item in config.get('rounds', []):
+                    if isinstance(round_item, dict):
+                        for audio_config in round_item.get('audios', []):
+                            if spl_data.get('value') is not None:
+                                audio_config['spl'] = spl_data['value']
+                                logger.debug(f"[update_spl] 更新用例 {tc.id} 的 spl 为 {spl_data['value']}")
+                tc.config = config
+                sqlalchemy.orm.attributes.flag_modified(tc, 'config')
+            tc.updated_at = now_cst()
+            db.session.add(tc)
+            updated_count += 1
+
+        logger.info(f"[update_spl] 更新完成，共更新 {updated_count} 个用例")
+        return f"已成功更新 {updated_count} 个用例的声压"
+
+    @staticmethod
+    def _batch_update_dimensions(req_data):
+        """批量更新评价维度"""
+        import sqlalchemy.orm.attributes
+        ids = req_data.ids
+        dimensions_data = req_data.dimensions
+        logger.info(f"[update_dimensions] 开始处理, ids: {ids}, dimensions: {dimensions_data}")
+
+        if dimensions_data is None:
+            logger.error("[update_dimensions] 缺少 dimensions 参数")
+            return error_response("更新评价维度需要 'dimensions'")
+
+        test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
+        logger.info(f"[update_dimensions] 查询到 {len(test_cases)} 个用例")
+
+        updated_count = 0
+        for tc in test_cases:
+            if tc.config:
+                config = tc.config.copy()
+                new_dim_list = []
+                for dim in dimensions_data:
+                    dim_id = dim.get('id')
+                    dim_name = dim.get('name', '')
+                    dim_weight = dim.get('weight', 50)
+                    dim_threshold = dim.get('threshold', 60)
+                    new_dim_list.append({
+                        'id': dim_id,
+                        'name': dim_name,
+                        'weight': dim_weight,
+                        'threshold': dim_threshold
+                    })
+                    logger.debug(f"[update_dimensions] 用例 {tc.id} 设置维度 {dim_id}")
+
+                for round_item in config.get('rounds', []):
+                    if isinstance(round_item, dict):
+                        if 'evaluation' not in round_item:
+                            round_item['evaluation'] = {}
+                        round_item['evaluation']['dimensions'] = new_dim_list
+                tc.config = config
+                sqlalchemy.orm.attributes.flag_modified(tc, 'config')
+            tc.updated_at = now_cst()
+            db.session.add(tc)
+            updated_count += 1
+
+        logger.info(f"[update_dimensions] 更新完成，共更新 {updated_count} 个用例")
+        return f"已成功更新 {updated_count} 个用例的评价维度"
+
+    @staticmethod
+    def _batch_update_noise(req_data):
+        """批量更新噪声配置"""
+        import sqlalchemy.orm.attributes
+        ids = req_data.ids
+        logger.info(f"[update_noise] 开始处理, ids: {ids}")
+
+        audio_id = req_data.noise_audio_id
+        spl = req_data.noise_spl
+        device_ids = req_data.noise_device_ids or []
+
+        logger.info(f"[update_noise] audio_id: {audio_id}, spl: {spl}, device_ids: {device_ids}")
+
+        test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
+        logger.info(f"[update_noise] 查询到 {len(test_cases)} 个用例")
+
+        updated_count = 0
+        for tc in test_cases:
+            if (tc.test_type or 'api') != 'e2e':
+                continue
+            logger.info(f"[update_noise] 处理用例 {tc.id}, 当前 config: {tc.config}")
+            if tc.config is None:
+                config = {}
+            else:
+                config = tc.config.copy()
+
+            for round_item in config.get('rounds', []):
+                if isinstance(round_item, dict):
+                    if 'backgroundNoise' not in round_item:
+                        round_item['backgroundNoise'] = {'audio_id': '', 'spl': 0, 'device_ids': []}
+                    if audio_id is not None:
+                        round_item['backgroundNoise']['audio_id'] = audio_id
+                    if spl is not None:
+                        round_item['backgroundNoise']['spl'] = spl
+                    if device_ids is not None:
+                        round_item['backgroundNoise']['device_ids'] = device_ids
+
+            tc.config = config
+            sqlalchemy.orm.attributes.flag_modified(tc, 'config')
+            logger.info(f"[update_noise] 更新用例 {tc.id} noise config")
+
+            tc.updated_at = now_cst()
+            db.session.add(tc)
+            updated_count += 1
+
+        logger.info(f"[update_noise] 更新完成，共更新 {updated_count} 个用例")
+        return f"已成功更新 {updated_count} 个用例的噪声配置"
+
+    @staticmethod
+    def _batch_auto_generate_name(req_data):
+        """批量自动生成名称"""
+        ids = req_data.ids
+        logger.info(f"[auto_generate_name] 开始处理, ids: {ids}")
+
+        test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
+        logger.info(f"[auto_generate_name] 查询到 {len(test_cases)} 个用例")
+
+        updated_count = 0
+        for tc in test_cases:
+            tag_names = sorted([tag.name for tag in tc.tags if len(tag.name) <= 25], key=lambda x: len(x))
+            if tag_names:
+                tc.name = '-'.join(tag_names)
+                logger.info(f"[auto_generate_name] 用例 {tc.id} 新名称: {tc.name}")
+            tc.updated_at = now_cst()
+            db.session.add(tc)
+            updated_count += 1
+
+        logger.info(f"[auto_generate_name] 更新完成，共更新 {updated_count} 个用例")
+        return f"已成功为 {updated_count} 个用例自动生成名称"
+
+    @staticmethod
+    def _batch_add_tags(req_data):
+        """批量添加标签"""
+        ids = req_data.ids
+        logger.info(f"[add_tags] 开始处理, ids: {ids}, tags: {req_data.tags}")
+
+        tags_to_add = req_data.tags or []
+        if not tags_to_add:
+            return error_response("添加标签需要 'tags' 参数")
+
+        test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
+        logger.info(f"[add_tags] 查询到 {len(test_cases)} 个用例")
+
+        updated_count = 0
+        for tc in test_cases:
+            existing_tag_names = {tag.name for tag in tc.tags}
+            for tag_name in tags_to_add:
+                if tag_name not in existing_tag_names:
+                    tag = Tag.query.filter_by(name=tag_name).first()
+                    if not tag:
+                        tag = Tag(name=tag_name)
+                        db.session.add(tag)
+                    tc.tags.append(tag)
+            tc.updated_at = now_cst()
+            db.session.add(tc)
+            updated_count += 1
+
+        logger.info(f"[add_tags] 更新完成，共更新 {updated_count} 个用例")
+        return f"已成功为 {updated_count} 个用例添加标签"
+
+    @staticmethod
+    def _batch_remove_tags(req_data):
+        """批量移除标签"""
+        ids = req_data.ids
+        logger.info(f"[remove_tags] 开始处理, ids: {ids}, tags: {req_data.tags}")
+
+        tags_to_remove = req_data.tags or []
+        if not tags_to_remove:
+            return error_response("移除标签需要 'tags' 参数")
+
+        test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
+        logger.info(f"[remove_tags] 查询到 {len(test_cases)} 个用例")
+
+        updated_count = 0
+        for tc in test_cases:
+            tags_to_remove_set = set(tags_to_remove)
+            tc.tags = [tag for tag in tc.tags if tag.name not in tags_to_remove_set]
+            tc.updated_at = now_cst()
+            db.session.add(tc)
+            updated_count += 1
+
+        logger.info(f"[remove_tags] 更新完成，共更新 {updated_count} 个用例")
+        return f"已成功为 {updated_count} 个用例移除标签"
+
+    @staticmethod
+    def _batch_rename_tag(req_data):
+        """重命名标签"""
+        old_tag_name = req_data.old_tag_name
+        new_tag_name = req_data.new_tag_name
+        logger.info(f"[rename_tag] 开始处理, old_tag: {old_tag_name}, new_tag: {new_tag_name}")
+
+        if not old_tag_name or not new_tag_name:
+            return error_response("重命名标签需要 'old_tag_name' 和 'new_tag_name' 参数")
+
+        if old_tag_name == new_tag_name:
+            return error_response("新标签名不能与原标签名相同")
+
+        old_tag = Tag.query.filter_by(name=old_tag_name).first()
+        if not old_tag:
+            return error_response(f"未找到标签: {old_tag_name}")
+
+        new_tag_exists = Tag.query.filter_by(name=new_tag_name).first()
+        if new_tag_exists:
+            return error_response(f"标签名 {new_tag_name} 已存在")
+
+        old_tag.name = new_tag_name
+        old_tag.updated_at = now_cst()
+        db.session.add(old_tag)
+
+        logger.info(f"[rename_tag] 标签 {old_tag_name} 已重命名为 {new_tag_name}")
+        return f"已成功将标签 {old_tag_name} 重命名为 {new_tag_name}"
+
+    @staticmethod
+    def _batch_refresh_reference(req_data):
+        """刷新参考参数"""
+        ids = req_data.ids
+        logger.info(f"[refresh_reference] 开始处理, ids: {ids}")
+
+        test_cases = TestCase.query.filter(
+            TestCase.id.in_(ids),
+            TestCase.deleted == False
+        ).all()
+        logger.info(f"[refresh_reference] 查询到 {len(test_cases)} 个用例")
+
+        if len(ids) > 50:
+            from backend.utils.common.reference_refresh_task import submit_reference_refresh_task
+            task_id = submit_reference_refresh_task(ids)
+            logger.info(f"[refresh_reference] 异步任务已提交: {task_id}")
+            # 返回 dict，batch_action 会直接返回（跳过 commit）
+            return {
+                'success': True,
+                'task_id': task_id,
+                'message': f'已提交异步刷新任务，预计处理 {len(test_cases)} 个用例'
+            }
+        else:
+            updated_count = 0
+            for tc in test_cases:
+                try:
+                    TestCaseController.refresh_reference_texts(tc)
+                    tc.updated_at = now_cst()
+                    db.session.add(tc)
+                    updated_count += 1
+                except Exception as e:
+                    logger.error(f"[refresh_reference] 处理用例 {tc.id} 失败: {e}")
+
+            db.session.commit()
+            logger.info(f"[refresh_reference] 更新完成，共更新 {updated_count} 个用例")
+            return f"已成功刷新 {updated_count} 个用例的参考参数"
 
     # 获取统计信息
     @staticmethod
