@@ -171,7 +171,6 @@ function setParam(fieldCode: string, value: unknown) {
   } else {
     params.push({ field_code: fieldCode, field_value: value })
   }
-  console.log('[VoiceprintConfigEditor] setParam:', fieldCode, value, 'emitting:', params)
   emit('update:modelValue', params)
 }
 
@@ -189,20 +188,36 @@ const voiceprintPlaybackDeviceId = computed(() => String(getParam('voiceprintPla
 const voiceprintSpl = computed(() => Number(getParam('voiceprintSpl', 70)))
 const voiceprintWaitTime = computed(() => Number(getParam('voiceprintWaitTime', 5)))
 
+// 在本地副本上批量设置多个参数后一次性 emit（避免连续 setParam 时 props 未异步更新导致互相覆盖）
+function setParamsBatch(updates: Record<string, unknown>) {
+  const params = [...(props.modelValue ?? [])]
+  for (const [fieldCode, value] of Object.entries(updates)) {
+    const idx = params.findIndex((p) => p.field_code === fieldCode)
+    if (idx >= 0) {
+      params[idx] = { field_code: fieldCode, field_value: value }
+    } else {
+      params.push({ field_code: fieldCode, field_value: value })
+    }
+  }
+  emit('update:modelValue', params)
+}
+
 function addVoiceprint() {
-  console.log('[VoiceprintConfigEditor] addVoiceprint called, modelValue:', props.modelValue)
-  setParam('voiceprintEnabled', true)
-  setParam('voiceprintSpl', 70)
-  setParam('voiceprintWaitTime', 5)
-  console.log('[VoiceprintConfigEditor] after setParam, modelValue:', props.modelValue)
+  setParamsBatch({
+    voiceprintEnabled: true,
+    voiceprintSpl: 70,
+    voiceprintWaitTime: 5,
+  })
 }
 
 function removeVoiceprint() {
-  setParam('voiceprintEnabled', false)
-  setParam('voiceprintAudioId', '')
-  setParam('voiceprintPlaybackDeviceId', '')
-  setParam('voiceprintSpl', '')
-  setParam('voiceprintWaitTime', '')
+  setParamsBatch({
+    voiceprintEnabled: false,
+    voiceprintAudioId: '',
+    voiceprintPlaybackDeviceId: '',
+    voiceprintSpl: '',
+    voiceprintWaitTime: '',
+  })
 }
 
 function openAudioModal() {

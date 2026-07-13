@@ -287,7 +287,7 @@
     
     <AudioPreviewModal
       :visible="showAudioPreviewModal"
-      :audio-id="currentTestCaseId"
+      :audio-id="currentTestCaseCaseId"
       :audio-type="'dry'"
       :playback-devices="playbackDevices.filter((d: PlaybackDevice) => d.deviceType === 'dry')"
       @close="handleAudioPreviewModalClose"
