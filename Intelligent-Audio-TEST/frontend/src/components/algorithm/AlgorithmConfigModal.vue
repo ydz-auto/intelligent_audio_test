@@ -546,6 +546,7 @@ import BasicModal from '../common/modal/BasicModal.vue'
 import MappingEditor from './MappingEditor.vue'
 import { useModalControl, MODAL_TYPES } from '../../composables/useModal'
 import { useDimensions } from '../../composables/useDimensions'
+import { useAlgorithmConfig } from '../../composables/useAlgorithmConfig'
 import { algorithmApi, evaluationApi } from '../../utils/api'
 
 const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string; default_value?: string; help_text?: string; min_value?: number; max_value?: number; step?: number; unit?: string}> = {
@@ -700,6 +701,7 @@ const emit = defineEmits<{
 }>()
 
 const modalControl = useModalControl()
+const { clearFormSchemaCache } = useAlgorithmConfig()
 
 const formTabs = [
   { key: 'basic', label: '基本信息' },
@@ -1071,6 +1073,8 @@ async function saveAlgorithm() {
       // 新建模式下参考参数无法随 createDefinition 保存，算法创建成功后统一补存
       await savePendingReferenceParams()
     }
+    // 清除算法参数缓存，确保用例页面能获取最新参数定义
+    clearFormSchemaCache()
     emit('success')
     emit('update:visible', false)
     loadAlgorithms()
