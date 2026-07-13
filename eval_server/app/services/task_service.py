@@ -95,16 +95,24 @@ class TaskService:
             )
         elif task_type == 'llm_judge':
             from .llm_judge_calculator import evaluate_with_llm
+            # 收集所有额外参数（包括音频文件路径等），透传给 calculator
+            extra_kwargs = {
+                k: v for k, v in task_params.items()
+                if k not in ('hypothesis', 'reference', 'model', 'prompt',
+                             'max_tokens', 'temperature', 'scoring_criteria',
+                             'source_lang', 'target_lang')
+            }
             return evaluate_with_llm(
                 hypothesis=task_params.get('hypothesis', ''),
                 reference=task_params.get('reference', ''),
                 model=task_params.get('model', 'gpt-4'),
-                prompt_template=task_params.get('prompt_template', ''),
+                prompt=task_params.get('prompt', ''),
                 max_tokens=task_params.get('max_tokens', 1024),
                 temperature=task_params.get('temperature', 0.1),
                 scoring_criteria=task_params.get('scoring_criteria'),
                 source_lang=task_params.get('source_lang', 'zh'),
                 target_lang=task_params.get('target_lang', 'en'),
+                **extra_kwargs,
             )
         else:
             raise ValueError(f"Unknown task type: {task_type}")

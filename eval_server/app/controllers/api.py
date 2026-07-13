@@ -139,7 +139,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         if missing:
             return error_response(f"Missing required fields for der: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
     elif task_type == 'llm_judge':
-        required_fields = ['hypothesis', 'reference', 'model', 'prompt_template']
+        required_fields = ['hypothesis', 'reference', 'model', 'prompt']
         missing = [f for f in required_fields if not task_params.get(f)]
         if missing:
             return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)

@@ -5,8 +5,8 @@ from urllib.parse import urlparse
 from flask import request
 from backend.models.models import API
 from backend.models.database import db
-from backend.controllers.log_controller import LogController
 from backend.utils.web.response import success_response, error_response
+from backend.utils.web.log_handler import log_not_emit
 from backend.schemas.api import ApiEndpointItem, ApiHealthCheckData, ApiItem, ApiListData, ApiCreateInput, ApiUpdateInput
 from backend.schemas.common import IdData
 from datetime import datetime, timezone, timedelta
@@ -16,11 +16,12 @@ class APIController:
     @staticmethod
     def _log(level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='API', **kwargs):
         """统一日志记录方法"""
-        LogController.log_and_emit(
+        log_not_emit(
             level=level,
             module=module,
-            category=category,
             content=content,
+            category=category,
+            source='backend',
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,

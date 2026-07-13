@@ -1,7 +1,7 @@
 import threading
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
-from backend.controllers.log_controller import LogController
+from backend.utils.web.log_handler import log_and_emit
 from backend.utils.algorithm.field_mapper import get_field_mapper
 from backend.utils.algorithm.algorithm_config_loader import get_config_loader
 from backend.models.database import db
@@ -46,11 +46,12 @@ class BaseExecutor:
         """统一日志记录方法"""
         final_test_case_id = test_case_id or getattr(self._thread_ctx, 'current_test_case_id', None) or self.current_test_case_id
         
-        LogController.log_and_emit(
+        log_and_emit(
             level=level,
             module='Engine',
-            category=category,
             content=content,
+            category=category,
+            source='backend',
             task_id=task_id,
             test_case_id=final_test_case_id,
             device_id=device_id,

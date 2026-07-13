@@ -10,7 +10,7 @@
 所有函数接收 audio_service 和 log_fn 参数，不依赖 PlaybackOrchestrator 实例。
 """
 
-from backend.services.audio.audio_engine import log_and_emit
+from backend.services.audio.audio_engine import log_not_emit
 
 
 def _resolve_audio_file_path(audio_info, audio_obj=None):
@@ -495,4 +495,4 @@ def extract_overlap_time(case_config):
 
 
 def _log(level, content, task_id=None, **kwargs):
-    log_and_emit(level, 'playback_orchestrator', content, task_id=task_id, category='audio')
+    log_not_emit(level, 'playback_orchestrator', content, task_id=task_id, category='audio')

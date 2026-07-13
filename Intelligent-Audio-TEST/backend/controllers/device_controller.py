@@ -1,8 +1,8 @@
 ﻿from flask import request, current_app
 from backend.models.models import Device, DeviceTag, TaskDevice
 from backend.models.database import db
-from backend.controllers.log_controller import LogController
 from backend.utils.web.response import success_response, error_response
+from backend.utils.web.log_handler import log_not_emit
 from backend.utils.device_driver import device_driver_factory
 from backend.schemas.common import IdData
 from backend.schemas.device import (
@@ -28,15 +28,15 @@ class DeviceController:
     @staticmethod
     def _log(level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='TestDevice', **kwargs):
         """统一日志记录方法"""
-        LogController.log_and_emit(
+        log_not_emit(
             level=level,
             module=module,
-            category=category,
             content=content,
+            category=category,
+            source='backend',
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,
-            source='backend',
             **kwargs
         )
 
@@ -360,7 +360,7 @@ class DeviceController:
                                 break
             except Exception as scan_error:
                 # 扫描失败不影响设备创建，只记录日志
-                print(f"扫描设备状态失败: {scan_error}")
+                log_not_emit('ERROR', 'device_controller', f'扫描设备状态失败: {scan_error}', category='device')
             
             return success_response(IdData(id=new_device.id), "设备注册成功", code=0, http_code=201)
         except Exception as e:
@@ -545,7 +545,7 @@ class DeviceController:
                     harmony_driver._mock_mode = original_mock_mode
             
         except Exception as e:
-            print(f"扫描设备详细信息时出错: {e}")
+            log_not_emit('ERROR', 'device_controller', f'扫描设备详细信息时出错: {e}', category='device')
         
         # 如果没有扫描到任何设备，且处于 mock 模式，返回 mock 数据作为备用
         if not all_devices and device_driver_factory.get_mock_mode():

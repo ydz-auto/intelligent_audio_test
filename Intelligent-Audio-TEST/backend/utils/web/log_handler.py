@@ -311,7 +311,23 @@ class DatabaseLogHandler(logging.Handler):
             hasattr(self.socketio_instance, 'server') and
             self.socketio_instance.server is not None
         )
-        
+
+        if not is_ws_ready:
+            # 尝试从全局获取 socketio 实例
+            global _cached_socketio
+            if _cached_socketio:
+                self.socketio_instance = _cached_socketio
+            elif self.flask_app:
+                try:
+                    self.socketio_instance = self.flask_app.extensions.get('socketio')
+                except Exception:
+                    pass
+            is_ws_ready = (
+                self.socketio_instance and
+                hasattr(self.socketio_instance, 'server') and
+                self.socketio_instance.server is not None
+            )
+
         if is_ws_ready:
             try:
                 utc_plus_8 = timezone(timedelta(hours=8))
@@ -324,12 +340,14 @@ class DatabaseLogHandler(logging.Handler):
                     "content": data['content'],
                     "mark": ""
                 }
-                
+
                 self.socketio_instance.emit('logs', {'type': 'LOG_BATCH', 'data': [log_payload]}, namespace='/ws/logs')
                 if data.get('task_id'):
-                    self.socketio_instance.emit('task_log', {'taskId': data['task_id'], 'log': log_payload})
+                    self.socketio_instance.emit('task_log', {'taskId': str(data['task_id']), 'log': log_payload})
             except Exception as ws_error:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WS ERROR - {str(ws_error)}")
+        else:
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WARN - WebSocket not ready, socketio_instance is None")
     
     def _check_and_archive(self, Log, SessionLocal):
         if not Log or not SessionLocal or not self.flask_app:

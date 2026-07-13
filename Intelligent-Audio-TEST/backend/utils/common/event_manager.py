@@ -2,22 +2,22 @@ import time
 from datetime import datetime, timezone, timedelta
 from backend.models.models import Task, TaskCase, TestCase, Log, TestResult, TestResultDimension, Audio
 from backend.models.database import db
-from backend.controllers.log_controller import LogController
+from backend.utils.web.log_handler import log_and_emit
 from backend.app import socketio
 
 class EventManager:
     def _log(self, level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='EventManager', **kwargs):
         kwargs_to_use = kwargs.copy()
         kwargs_to_use.pop('source', None)
-        LogController.log_and_emit(
+        log_and_emit(
             level=level,
             module=module,
-            category=category,
             content=content,
+            category=category,
+            source='backend',
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,
-            source='backend',
             **kwargs_to_use
         )
 

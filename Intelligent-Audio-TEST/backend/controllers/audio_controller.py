@@ -3,6 +3,7 @@ import uuid
 import requests
 import time
 import shutil
+import logging
 from flask import request, send_file, Response, current_app
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
@@ -31,6 +32,8 @@ from pydantic import ValidationError
 from datetime import datetime, timedelta, timezone
 from backend.utils.common.query_utils import now_cst
 from pydub import AudioSegment
+
+logger = logging.getLogger(__name__)
 
 # 辅助函数：重试文件操作，解决 Windows 下的文件占用问题
 def retry_file_operation(func, *args, **kwargs):
@@ -877,7 +880,7 @@ class AudioController:
                                 status = 'completed'
                                 total_chunks = 0
                         except Exception as e:
-                            print(f"MD5查询失败: {str(e)}")
+                            logger.warning(f"MD5查询失败: {str(e)}")
                     
                     # 创建上传文件记录
                     upload_file = UploadFile(
@@ -1250,7 +1253,7 @@ class AudioController:
                 
             except Exception as e:
                 # 如果转换失败，保留原始文件但标记格式
-                print(f"[WARN] 音频转换失败，将保留原始格式: {str(e)}")
+                logger.warning(f"音频转换失败，将保留原始格式: {str(e)}")
                 sample_rate = 44100
                 bits_per_sample = 16
             
@@ -1278,7 +1281,7 @@ class AudioController:
                     
             except Exception as e:
                 # ffmpeg不可用或元数据提取失败，使用默认值继续
-                print(f"[INFO] 音频元数据提取失败，使用默认值: {str(e)}")
+                logger.info(f"音频元数据提取失败，使用默认值: {str(e)}")
                 # 保留合并后的文件，不删除，继续使用默认元数据
             
             # 获取源语言（从算法参数中提取）
@@ -1620,7 +1623,7 @@ class AudioController:
         else:
             test_types = [tt.strip() if isinstance(tt, str) else tt for tt in test_types]
 
-        print(f'[DEBUG_ENTER] _create_test_case_from_audio called, audio_id={audio_id}, test_types={test_types}, rounds_config={rounds_config}', flush=True)
+        logger.debug(f'_create_test_case_from_audio called, audio_id={audio_id}, test_types={test_types}, rounds_config={rounds_config}')
 
         audio = db.session.get(Audio, audio_id)
         if not audio:
@@ -1692,7 +1695,7 @@ class AudioController:
                 # 从 rounds_resolved 中剥离 algorithm_params 到独立列
                 algo_params_col = []
                 import json as _json
-                print(f'[DEBUG_STRIP] rounds_resolved before strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', flush=True)
+                logger.debug(f'rounds_resolved before strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}')
                 log_not_emit('INFO', 'audio_controller', f'[DEBUG_STRIP] rounds_resolved before strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', category='audio')
                 for round_item in rounds_resolved:
                     if not isinstance(round_item, dict):
@@ -1717,8 +1720,8 @@ class AudioController:
                     round_item.pop('reference_params_path', None)
                     round_item.pop('referenceParamsPath', None)
 
-                print(f'[DEBUG_STRIP] rounds_resolved after strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', flush=True)
-                print(f'[DEBUG_STRIP] algo_params_col: {_json.dumps(algo_params_col, ensure_ascii=False)[:500]}', flush=True)
+                logger.debug(f'rounds_resolved after strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}')
+                logger.debug(f'algo_params_col: {_json.dumps(algo_params_col, ensure_ascii=False)[:500]}')
                 log_not_emit('INFO', 'audio_controller', f'[DEBUG_STRIP] rounds_resolved after strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', category='audio')
                 log_not_emit('INFO', 'audio_controller', f'[DEBUG_STRIP] algo_params_col: {_json.dumps(algo_params_col, ensure_ascii=False)[:500]}', category='audio')
 
@@ -1784,7 +1787,7 @@ class AudioController:
                 # 标注 segment 里可写 spl / playback_device_name / playback_device_id
                 # playback_device_name 通过查表换成 playback_device_id
                 # 四种模式都适用：单轮单音频、单轮多音频、多轮每轮单音频、多轮每轮多音频
-                current_app.logger.info(f'[DEBUG] raw_annotations is {"truthy" if raw_annotations else "falsy"}, len={len(raw_annotations) if raw_annotations else 0}')
+                logger.info(f'raw_annotations is {"truthy" if raw_annotations else "falsy"}, len={len(raw_annotations) if raw_annotations else 0}')
                 if raw_annotations:
                     # 预查设备名→ID 映射（避免循环里重复查库）
                     from backend.models.models import PlaybackDevice as _PlaybackDevice
@@ -1961,7 +1964,7 @@ class AudioController:
                     "auto_generated": True,
                     "rounds": rounds_resolved,
                 }
-                print(f'[DEBUG_CONFIG] config rounds: {_json.dumps(config["rounds"], ensure_ascii=False)[:500]}', flush=True)
+                logger.debug(f'config rounds: {_json.dumps(config["rounds"], ensure_ascii=False)[:500]}')
                 log_not_emit('INFO', 'audio_controller', f'[DEBUG_CONFIG] config rounds: {_json.dumps(config["rounds"], ensure_ascii=False)[:500]}', category='audio')
                 # 噪声配置
                 if (noise_spl and noise_spl > 0) or noise_audio_id:
@@ -2028,10 +2031,8 @@ class AudioController:
                     algorithm_params=algo_params_col if algo_params_col else None
                 )
                 db.session.add(new_tc)
-                print(f'[DEBUG_TC] tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}', flush=True)
-                print(f'[DEBUG_TC] config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', flush=True)
-                log_not_emit('INFO', 'audio_controller', f'[DEBUG_TC] tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}', category='audio')
-                log_not_emit('INFO', 'audio_controller', f'[DEBUG_TC] config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', category='audio')
+                log_not_emit('DEBUG', 'audio_controller', f'tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}', category='audio')
+                log_not_emit('DEBUG', 'audio_controller', f'config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', category='audio')
                 # 继承音频的标签（受 inherit_tags 开关控制）
                 if inherit_tags:
                     for tag_name in audio_tags:
@@ -2042,12 +2043,9 @@ class AudioController:
                 # 同步生成参考参数（rounds 模式和平面模式都会真正生成文件）
                 from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
                 ReferenceParamsGenerator.apply_to_config(new_tc)
-                print(f'[DEBUG_AFTER_APPLY] new_tc.algorithm_params={_json.dumps(new_tc.algorithm_params, ensure_ascii=False)[:300] if new_tc.algorithm_params else "None"}', flush=True)
-                print(f'[DEBUG_AFTER_APPLY] new_tc.reference_params={_json.dumps(new_tc.reference_params, ensure_ascii=False)[:300] if new_tc.reference_params else "None"}', flush=True)
-                print(f'[DEBUG_AFTER_APPLY] config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', flush=True)
-                log_not_emit('INFO', 'audio_controller', f'[DEBUG_AFTER_APPLY] new_tc.algorithm_params={_json.dumps(new_tc.algorithm_params, ensure_ascii=False)[:300] if new_tc.algorithm_params else "None"}', category='audio')
-                log_not_emit('INFO', 'audio_controller', f'[DEBUG_AFTER_APPLY] new_tc.reference_params={_json.dumps(new_tc.reference_params, ensure_ascii=False)[:300] if new_tc.reference_params else "None"}', category='audio')
-                log_not_emit('INFO', 'audio_controller', f'[DEBUG_AFTER_APPLY] config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', category='audio')
+                log_not_emit('DEBUG', 'audio_controller', f'new_tc.algorithm_params={_json.dumps(new_tc.algorithm_params, ensure_ascii=False)[:300] if new_tc.algorithm_params else "None"}', category='audio')
+                log_not_emit('DEBUG', 'audio_controller', f'new_tc.reference_params={_json.dumps(new_tc.reference_params, ensure_ascii=False)[:300] if new_tc.reference_params else "None"}', category='audio')
+                log_not_emit('DEBUG', 'audio_controller', f'config.rounds[0] keys={list(config["rounds"][0].keys()) if config.get("rounds") else "no rounds"}', category='audio')
 
                 created_tc_ids.append(tc_id)
 

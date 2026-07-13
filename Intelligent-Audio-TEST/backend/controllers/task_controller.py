@@ -5,6 +5,7 @@ from backend.models.models import Task, Tag, TaskCase, TaskDevice, TaskAPI, Test
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response, convert_keys_to_camel
 from backend.utils.web.error_codes import ErrorCode
+from backend.utils.web.log_handler import log_not_emit
 from backend.services.execution.execution_engine import execution_engine
 from backend.utils.common.result_data_store import load_full_result_data
 from backend.schemas.common import IdData, TaskStatusData
@@ -177,9 +178,7 @@ class TaskController:
                 import traceback
                 tc.evaluation_status = 'failed'
                 tc.error_message = f'重新评估触发失败: {str(e)}'
-                print(f"[WARN] 触发重新评估失败: task_id={task_id}, "
-                      f"test_case_id={test_case_id}, error={str(e)}, "
-                      f"traceback={traceback.format_exc()}")
+                log_not_emit('WARN', 'task_controller', f'触发重新评估失败: task_id={task_id}, test_case_id={test_case_id}, error={str(e)}, traceback={traceback.format_exc()}', category='task')
 
         db.session.commit()
 

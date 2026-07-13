@@ -13,6 +13,7 @@ llm_judge 输入参数：
 - query: 用户提问（对应 reference query）
 - question: 设备识别的用户提问（对应 device question）
 - answer: 设备回答（对应 device answer）
+- prompt: 评估提示词（映射到 eval_server 的 prompt）
 
 使用方法：
     cd Intelligent-Audio-TEST
@@ -26,6 +27,7 @@ llm_judge 输入参数：
 
 import sys
 import os
+import json
 from sqlalchemy import create_engine, text
 
 POSTGRES_URI = os.environ.get(
@@ -51,7 +53,44 @@ def seed_llm_judge_dimension():
         if existing_dim:
             dim_id = existing_dim[0]
             print(f"  - llm_judge 维度已存在 (id={dim_id})，跳过")
+
+            # 更新已有维度的 api_settings，确保 body_template 包含 prompt 字段映射
+            default_api_settings = json.dumps({
+                'method': 'POST',
+                'headers': {'Content-Type': 'application/json'},
+                'body_template': {
+                    'hypothesis': '{{answer}}',
+                    'reference': '{{correct_answer}}',
+                    'model': '{{model}}',
+                    'prompt': '{{prompt}}',
+                    'record_file': '{{record_file}}',
+                    'query': '{{query}}',
+                    'question': '{{question}}'
+                }
+            }, ensure_ascii=False)
+            conn.execute(text(
+                "UPDATE dimensions SET api_settings = :settings, updated_at = NOW() "
+                "WHERE id = :did"
+            ), {'settings': default_api_settings, 'did': dim_id})
+            print(f"  + 已更新 llm_judge 维度 api_settings (body_template 含 prompt 映射)")
         else:
+            # 默认 body_template：将维度输入参数映射到 eval_server 期望的字段名
+            # eval_server llm_judge 要求：hypothesis, reference, model, prompt
+            # 其中 record_file 作为音频文件透传（字段名保持不变，eval_server 会自动检测文件路径）
+            default_api_settings = json.dumps({
+                'method': 'POST',
+                'headers': {'Content-Type': 'application/json'},
+                'body_template': {
+                    'hypothesis': '{{answer}}',
+                    'reference': '{{correct_answer}}',
+                    'model': '{{model}}',
+                    'prompt': '{{prompt}}',
+                    'record_file': '{{record_file}}',
+                    'query': '{{query}}',
+                    'question': '{{question}}'
+                }
+            }, ensure_ascii=False)
+
             result = conn.execute(text(
                 "INSERT INTO dimensions "
                 "  (name, keywords, dimension_type, task_type_code, description, "
@@ -70,7 +109,7 @@ def seed_llm_judge_dimension():
                 "RETURNING id"
             ), {
                 'rule': '{}',
-                'api_settings': '{}'
+                'api_settings': default_api_settings
             })
             dim_id = result.fetchone()[0]
             print(f"  + llm_judge 维度已插入 (id={dim_id})")
@@ -99,6 +138,9 @@ def seed_llm_judge_dimension():
             ('answer', '设备回答', '设备回答', 'text', 'input',
              None, None, None, True,
              False, None, '设备/被测系统的回答文本', 50),
+            ('prompt', '评估提示词', '评估提示词', 'text', 'input',
+             None, None, None, False,
+             False, None, 'LLM Judge 评估提示词模板，可含 {hypothesis} 和 {reference} 占位符', 55),
             # 输出字段：LLM 评分结果
             ('llm_judge_score', 'LLM评分', 'LLM评分', 'number', 'output',
              'llm_judge_score', 'value', 'main', True,
@@ -233,11 +275,11 @@ if __name__ == '__main__':
     print()
     print("此脚本将注册：")
     print("1. llm_judge 评估维度（dimensions）")
-    print("2. 8 个维度输入/输出参数（evaluation_dimension_params）")
+    print("2. 9 个维度输入/输出参数（evaluation_dimension_params）")
     print("3. voice_llm → llm_judge 关联（algorithm_dimension_relations）")
-    print("4. 5 条参数映射（device/reference → llm_judge 输入）")
+    print("4. 5 条参数映射（device/reference → llm_judge 输入）+ prompt 参数")
     print()
-    print("llm_judge 输入：record_file, correct_answer, query, question, answer")
+    print("llm_judge 输入：record_file, correct_answer, query, question, answer, prompt")
     print("llm_judge 输出：llm_judge_score, criteria_scores, reasoning")
     print()
     print("脚本可重复执行（幂等）")

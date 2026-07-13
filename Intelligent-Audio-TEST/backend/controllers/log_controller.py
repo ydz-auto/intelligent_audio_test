@@ -1,4 +1,4 @@
-﻿import os
+import os
 import pandas as pd
 import json
 import glob
@@ -6,6 +6,7 @@ from flask import request, send_file
 from backend.models.models import Log
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
+from backend.utils.web.log_handler import log_not_emit
 from backend.schemas.log import LogItem, LogListData, LogRefreshData, LogRefreshRequest, LogMarkRequest, LogClearRequest, LogExportRequest, LogArchiveRequest, LogArchiveStatus, LogArchiveResult
 from datetime import datetime, timezone, timedelta
 from backend.utils.common.query_utils import now_cst
@@ -115,7 +116,7 @@ class LogController:
                 )
             )
         except Exception as e:
-            print(f"Error in get_logs: {str(e)}")
+            log_not_emit('ERROR', 'log_controller', f'Error in get_logs: {str(e)}', category='system')
             import traceback
             traceback.print_exc()
             return error_response(f"获取日志失败: {str(e)}", code=500)
@@ -190,7 +191,7 @@ class LogController:
             
             return success_response(log_stats)
         except Exception as e:
-            print(f"Error in get_stats: {str(e)}")
+            log_not_emit('ERROR', 'log_controller', f'Error in get_stats: {str(e)}', category='system')
             import traceback
             traceback.print_exc()
             return error_response(f"获取日志统计失败: {str(e)}", code=500)
@@ -325,32 +326,21 @@ class LogController:
     def handle_connect():
         """处理 WebSocket 连接"""
         # 可以添加 JWT 校验逻辑
-        print("Client connected to Log WebSocket")
+        log_not_emit('INFO', 'log_controller', 'Client connected to Log WebSocket', category='system')
         emit('status', {'type': 'STATUS', 'data': {'isMonitoring': True, 'message': 'Connected to Log Server'}})
 
     @staticmethod
     def handle_disconnect():
         """处理 WebSocket 断开连接"""
-        print("Client disconnected from Log WebSocket")
+        log_not_emit('INFO', 'log_controller', 'Client disconnected from Log WebSocket', category='system')
 
     @staticmethod
     def handle_set_filter(data):
         """设置日志过滤配置"""
         # data: { "levels": ["error"], "modules": ["TASK"] }
         # 实际应用中，过滤器状态应保存在 session 或连接上下文中
-        print(f"Filter updated: {data}")
+        log_not_emit('INFO', 'log_controller', f'Filter updated: {data}', category='system')
         emit('status', {'type': 'FILTER_APPLIED', 'data': data})
-
-    @staticmethod
-    def log_and_emit(level, module, content, category='system', source='backend', task_id=None, device_id=None, api_id=None, test_case_id=None, **kwargs):
-        try:
-            from backend.utils.web.log_handler import log_and_emit as handler_log_and_emit
-            handler_log_and_emit(level, module, content, category, source, task_id, device_id, api_id, test_case_id, **kwargs)
-        except Exception as e:
-            import sys
-            print(f"Error in log_controller.log_and_emit: {str(e)}", file=sys.stderr)
-            import traceback
-            traceback.print_exc(file=sys.stderr)
 
     @staticmethod
     def get_archive_status():

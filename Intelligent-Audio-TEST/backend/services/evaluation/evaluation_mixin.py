@@ -2,18 +2,19 @@
 评估服务通用混入（Mixin）和工具函数，消除各模块间的重复代码
 """
 import json
-from backend.controllers.log_controller import LogController
+from backend.utils.web.log_handler import log_and_emit
 
 
 class EvaluationLoggerMixin:
     """统一日志记录混入，所有评估模块继承此类即可获得 _log 方法"""
 
     def _log(self, level, content, task_id=None, test_case_id=None, api_id=None, **kwargs):
-        LogController.log_and_emit(
+        log_and_emit(
             level=level,
             module='Evaluation',
-            category=kwargs.pop('category', 'execution'),
             content=content,
+            category=kwargs.pop('category', 'execution'),
+            source='backend',
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,

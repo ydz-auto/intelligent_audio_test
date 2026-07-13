@@ -3,7 +3,7 @@ from flask import request, send_file, current_app
 from backend.models.models import TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
-from backend.utils.web.log_handler import log_and_emit
+from backend.utils.web.log_handler import log_not_emit
 from backend.utils.common.task_utils import has_running_e2e_tasks
 from sqlalchemy.orm import joinedload
 
@@ -44,11 +44,12 @@ class TestCaseController:
     @staticmethod
     def _log(level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='TestCase', **kwargs):
         """统一日志记录方法"""
-        log_and_emit(
+        log_not_emit(
             level=level,
             module=module,
-            category=category,
             content=content,
+            category=category,
+            source='backend',
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,
@@ -522,14 +523,10 @@ class TestCaseController:
 
         # Debug logging
         import json as json_debug
-        print(f'[DEBUG get_one] tc.id={tc.id}')
-        print(f'[DEBUG get_one] config type={type(config)}')
-        print(f'[DEBUG get_one] config is None: {config is None}')
-        print(f'[DEBUG get_one] config == {{}}: {config == {}}')
+        log_not_emit('DEBUG', 'testcase_controller', f'get_one: tc.id={tc.id}, config type={type(config)}, is None={config is None}, is empty={config == {}}', category='testcase')
         if isinstance(config, dict):
-            print(f'[DEBUG get_one] config keys={list(config.keys())}')
-            print(f'[DEBUG get_one] config JSON={json_debug.dumps(config, ensure_ascii=False)[:300]}')
-        
+            log_not_emit('DEBUG', 'testcase_controller', f'get_one: config keys={list(config.keys())}, JSON={json_debug.dumps(config, ensure_ascii=False)[:300]}', category='testcase')
+
         # Create TestCaseDetailData and check config
         detail_data = TestCaseDetailData(
             id=tc.id,
@@ -552,8 +549,8 @@ class TestCaseController:
         )
         
         dumped = detail_data.model_dump(by_alias=True)
-        print(f'[DEBUG get_one] dumped config={json_debug.dumps(dumped.get("config"), ensure_ascii=False)[:300]}')
-        
+        log_not_emit('DEBUG', 'testcase_controller', f'get_one: dumped config={json_debug.dumps(dumped.get("config"), ensure_ascii=False)[:300]}', category='testcase')
+
         return success_response(detail_data)
 
     # 创建测试用例

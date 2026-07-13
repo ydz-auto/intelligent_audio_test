@@ -1,8 +1,9 @@
-﻿from flask import request,current_app
+from flask import request,current_app
 from backend.models.models import SPLMapping, PlaybackDevice, Audio, CalibrationHistory
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.utils.web.error_codes import ErrorCode
+from backend.utils.web.log_handler import log_not_emit
 from backend.utils.common.task_utils import has_running_e2e_tasks
 from backend.schemas.common import IdData
 from backend.schemas.spl import (
@@ -142,10 +143,8 @@ class SPLController:
         try:
             calibration_data = req_data.calibration_data
             calibration_status = req_data.calibration_status
-            
-            print(f"[DEBUG] 创建映射 - calibration_data: {calibration_data}")
-            print(f"[DEBUG] 创建映射 - calibration_status: {calibration_status}")
-            print(f"[DEBUG] 创建映射 - data: {req_data}")
+
+            log_not_emit('DEBUG', 'spl_controller', f'创建映射 - calibration_data: {calibration_data}, calibration_status: {calibration_status}, data: {req_data}', category='spl')
             
             if calibration_data and isinstance(calibration_data, dict) and 'points' in calibration_data:
                 valid_points = []
@@ -217,7 +216,7 @@ class SPLController:
                 device = db.session.get(PlaybackDevice, device_id)
                 if device:
                     device.current_spl_mapping_id = new_mapping.id
-                    print(f"[DEBUG] 创建设备 {device_id} 的映射关联: current_spl_mapping_id = {new_mapping.id}")
+                    log_not_emit('DEBUG', 'spl_controller', f'创建设备 {device_id} 的映射关联: current_spl_mapping_id = {new_mapping.id}', category='spl')
             
             db.session.commit()
             return success_response(IdData(id=new_mapping.id), "SPL 映射记录创建成功", http_code=201)

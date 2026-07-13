@@ -546,6 +546,7 @@ class EvaluationService(EvaluationLoggerMixin):
                                     round_number, field_mapper, ref_texts):
         """将维度按端点分组并异步提交评估任务"""
         endpoint_groups = {}
+        no_endpoint_groups = []  # 没有配置评估端点的维度，需标记失败避免任务卡死
 
         for dim_data in dimension_data_list:
             dim_id = dim_data['id']
@@ -562,6 +563,15 @@ class EvaluationService(EvaluationLoggerMixin):
                 endpoint_url = api_url
 
             if not endpoint_url:
+                self._log(
+                    level='ERROR',
+                    content=f"维度 {dim_data.get('name')} (id={dim_id}) 没有配置评估端点(api_url=None, api_endpoints为空)，无法提交评估任务",
+                    task_id=task_id,
+                    test_case_id=test_case_id
+                )
+                dimension_result_id = dimension_result_map.get(dim_id)
+                if dimension_result_id:
+                    no_endpoint_groups.append((dim_data, dimension_result_id))
                 continue
 
             group_key = (endpoint_url, task_type_code)
@@ -571,6 +581,23 @@ class EvaluationService(EvaluationLoggerMixin):
             dimension_result_id = dimension_result_map.get(dim_id)
             if dimension_result_id:
                 endpoint_groups[group_key].append((dim_data, dimension_result_id))
+
+        # 处理无端点的维度：标记为失败并更新用例/任务状态，避免任务卡死在评估中
+        if no_endpoint_groups:
+            self._log(
+                level='ERROR',
+                content=f"共 {len(no_endpoint_groups)} 个维度因缺少评估端点而失败: {[item[0]['name'] for item in no_endpoint_groups]}",
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
+            self.result_processor.update_all_dimensions_in_group_failed(
+                group_items=no_endpoint_groups,
+                error_message='维度未配置评估端点(api_url为空)，无法执行评估',
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
+            # 更新任务统计并唤醒等待线程，让执行引擎继续推进
+            self._post_evaluate_updates(task_id, test_case_id)
 
         # 异步提交评估任务，不等待完成
         for group_key, group_items in endpoint_groups.items():

@@ -3,22 +3,31 @@
 
 Uses a large language model (e.g., GPT-4) to semantically score dialog outputs,
 evaluating accuracy, fluency, relevance, and other configurable criteria.
+
+Supports multimodal evaluation: when audio file paths are provided in the
+parameters, the audio is encoded as base64 data URI and sent to the LLM API
+as image_url content (OpenAI multimodal format).
 """
 
 import json
 import re
+import os
+import base64
 import requests
 from typing import Optional
 
 
 LLM_DEFAULT_TIMEOUT = 120
 
+# 音频文件扩展名集合
+_AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.pcm', '.opus', '.amr', '.wma'}
+
 
 def evaluate_with_llm(
     hypothesis: str,
     reference: str,
     model: str = 'gpt-4',
-    prompt_template: str = '',
+    prompt: str = '',
     max_tokens: int = 1024,
     temperature: float = 0.1,
     scoring_criteria: Optional[list] = None,
@@ -33,12 +42,14 @@ def evaluate_with_llm(
         hypothesis: System output text to evaluate
         reference: Ground truth reference text
         model: LLM model name
-        prompt_template: Custom evaluation prompt template
+        prompt: Custom evaluation prompt (can contain {hypothesis} and {reference} placeholders)
         max_tokens: Max output tokens
         temperature: Sampling temperature
         scoring_criteria: List of scoring criterion names
         source_lang: Source language code
         target_lang: Target language code
+        **kwargs: Additional parameters, may include audio file paths
+                  (e.g. record_file, audio_path, etc.)
 
     Returns:
         {
@@ -51,10 +62,13 @@ def evaluate_with_llm(
             "target_lang": "en"
         }
     """
-    prompt = _build_evaluation_prompt(
+    # 从 kwargs 中提取音频文件路径
+    audio_paths = _extract_audio_paths(kwargs)
+
+    prompt_text = _build_evaluation_prompt(
         hypothesis=hypothesis,
         reference=reference,
-        prompt_template=prompt_template,
+        custom_prompt=prompt,
         scoring_criteria=scoring_criteria,
         source_lang=source_lang,
         target_lang=target_lang,
@@ -62,9 +76,10 @@ def evaluate_with_llm(
 
     response = _call_llm_api(
         model=model,
-        prompt=prompt,
+        prompt=prompt_text,
         max_tokens=max_tokens,
         temperature=temperature,
+        audio_paths=audio_paths,
     )
 
     result = _parse_llm_response(response)
@@ -76,14 +91,30 @@ def evaluate_with_llm(
     return result
 
 
-def _build_evaluation_prompt(hypothesis, reference, prompt_template,
+def _extract_audio_paths(kwargs):
+    """从 kwargs 中提取音频文件路径（文件存在且扩展名为音频类型）"""
+    audio_paths = []
+    for key, value in kwargs.items():
+        if not isinstance(value, str) or not value:
+            continue
+        ext = os.path.splitext(value)[1].lower()
+        if ext in _AUDIO_EXTS and os.path.isfile(value):
+            audio_paths.append(value)
+    return audio_paths
+
+
+def _build_evaluation_prompt(hypothesis, reference, custom_prompt,
                               scoring_criteria, source_lang, target_lang):
     """Build the LLM evaluation prompt."""
-    if prompt_template:
-        return prompt_template.format(
-            hypothesis=hypothesis,
-            reference=reference,
-        )
+    if custom_prompt:
+        try:
+            return custom_prompt.format(
+                hypothesis=hypothesis,
+                reference=reference,
+            )
+        except (KeyError, IndexError):
+            # 模板中可能没有占位符，直接使用
+            return custom_prompt
 
     criteria_text = ''
     if scoring_criteria:
@@ -119,8 +150,27 @@ Respond in the following JSON format:
 Only respond with the JSON, no additional text."""
 
 
-def _call_llm_api(model, prompt, max_tokens, temperature):
-    """Call the LLM API (OpenAI-compatible format)."""
+def _encode_audio_to_data_uri(file_path):
+    """将音频文件编码为 base64 data URI"""
+    ext = os.path.splitext(file_path)[1].lower()
+    mime_map = {
+        '.wav': 'audio/wav', '.mp3': 'audio/mpeg',
+        '.flac': 'audio/flac', '.ogg': 'audio/ogg',
+        '.m4a': 'audio/mp4', '.aac': 'audio/aac',
+        '.pcm': 'audio/pcm', '.opus': 'audio/opus',
+        '.amr': 'audio/amr', '.wma': 'audio/x-ms-wma',
+    }
+    mime = mime_map.get(ext, 'application/octet-stream')
+    with open(file_path, 'rb') as f:
+        encoded = base64.b64encode(f.read()).decode()
+    return f'data:{mime};base64,{encoded}'
+
+
+def _call_llm_api(model, prompt, max_tokens, temperature, audio_paths=None):
+    """Call the LLM API (OpenAI-compatible format).
+
+    当 audio_paths 非空时，构建多模态消息（text + audio）。
+    """
     from ..config import config
 
     llm_config = getattr(config, 'LLM_JUDGE', {})
@@ -136,11 +186,24 @@ def _call_llm_api(model, prompt, max_tokens, temperature):
         'Content-Type': 'application/json',
     }
 
+    # 构建 user message content：纯文本或多模态
+    if audio_paths:
+        # 多模态：文本 + 音频 data URI
+        user_content = [{'type': 'text', 'text': prompt}]
+        for audio_path in audio_paths:
+            data_uri = _encode_audio_to_data_uri(audio_path)
+            user_content.append({
+                'type': 'image_url',
+                'image_url': {'url': data_uri},
+            })
+    else:
+        user_content = prompt
+
     payload = {
         'model': model,
         'messages': [
             {'role': 'system', 'content': 'You are a precise evaluator.'},
-            {'role': 'user', 'content': prompt},
+            {'role': 'user', 'content': user_content},
         ],
         'max_tokens': max_tokens,
         'temperature': temperature,

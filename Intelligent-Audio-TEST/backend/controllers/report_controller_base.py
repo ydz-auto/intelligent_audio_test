@@ -2,6 +2,7 @@ from flask import request, send_file, current_app
 from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, ReportComparisonMatrix, Task, Audio
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
+from backend.utils.web.log_handler import log_not_emit
 from backend.utils.report.report_utils import ReportUtils
 from backend.utils.common.query_utils import escape_like_pattern, sanitize_keyword, normalize_sort_field, normalize_sort_order, now_cst
 from backend.utils.common.result_data_store import load_full_result_data
@@ -218,7 +219,7 @@ class ReportControllerBase:
         dim_values = {}
         
         if all_dimensions is None:
-            print(f"ERROR: all_dimensions is None in extract_dimension_values for result {result_id}")
+            log_not_emit('ERROR', 'report_controller_base', f'all_dimensions is None in extract_dimension_values for result {result_id}', category='report')
             return dim_values
 
         if dim_results_map is not None:

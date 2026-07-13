@@ -2,8 +2,8 @@ from flask import request, current_app
 from sqlalchemy import cast, String
 from backend.models.models import PlaybackDevice
 from backend.models.database import db
-from backend.controllers.log_controller import LogController
 from backend.utils.web.response import success_response, error_response
+from backend.utils.web.log_handler import log_not_emit
 from backend.services.audio.audio_engine import AudioService
 from backend.utils.common.task_utils import has_running_e2e_tasks
 from backend.schemas.common import IdData, StatusData
@@ -29,11 +29,12 @@ class PlaybackController:
     @staticmethod
     def _log(level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='Playback', **kwargs):
         """统一日志记录方法"""
-        LogController.log_and_emit(
+        log_not_emit(
             level=level,
             module=module,
-            category=category,
             content=content,
+            category=category,
+            source='backend',
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,
@@ -477,7 +478,7 @@ class PlaybackController:
                     physical_device_info[normalized] = dev['device_index']
             
             physical_device_ids = set(physical_device_info.keys())
-            print(f"Physical devices: {physical_device_ids}")
+            log_not_emit('DEBUG', 'playback_controller', f'Physical devices: {physical_device_ids}', category='playback')
             
             # 遍历所有设备，检查是否在线
             for device in devices:
@@ -488,13 +489,12 @@ class PlaybackController:
                 # 如果精确匹配失败，尝试规范化匹配
                 if not is_online:
                     normalized_id = normalize_unique_id(device_unique_id)
-                    print(f"Trying normalized match: {normalized_id}")
+                    log_not_emit('DEBUG', 'playback_controller', f'Trying normalized match: {normalized_id}', category='playback')
                     is_online = normalized_id in physical_device_ids
                     if is_online:
                         device_unique_id = normalized_id
                 
-                print(f"Checking device: {device.device_unique_id}")
-                print(f"Is online: {is_online}")
+                log_not_emit('DEBUG', 'playback_controller', f'Checking device: {device.device_unique_id}, is online: {is_online}', category='playback')
                 
                 # 获取设备索引（仅当设备在线时）
                 device_index = physical_device_info.get(device_unique_id)

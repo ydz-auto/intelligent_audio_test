@@ -19,7 +19,7 @@ from backend.services.audio.audio_engine import (
     build_speakers_map_from_dry_audios,
     get_audio_configs_for_offset,
     calculate_speaker_aware_audio_delays,
-    log_and_emit,
+    log_not_emit,
 )
 from backend.services.audio.playback_config_builder import (
     resolve_dry_audios,
@@ -405,7 +405,7 @@ class PlaybackOrchestrator:
         return extract_overlap_time(case_config)
 
     def _log(self, level, content, task_id=None, **kwargs):
-        log_and_emit(level, 'playback_orchestrator', content, task_id=task_id, category='audio')
+        log_not_emit(level, 'playback_orchestrator', content, task_id=task_id, category='audio')
 
 
 # 模块级单例

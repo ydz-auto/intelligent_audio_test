@@ -79,3 +79,45 @@ coverage/
 # Tooling / agent artifacts
 .codegraph/
 CLAUDE.md
+.qoder/
+
+# Runtime data - eval_server
+eval_server/app/database/tasks/
+eval_server/app/database/uploads/
+eval_server/app/database/endpoints.json
+
+# Runtime data - test results & ref params
+Intelligent-Audio-TEST/static/ref_params/
+Intelligent-Audio-TEST/static/case_result/
+Intelligent-Audio-TEST/backend/static/case_result/
+
+# Temp files
+Intelligent-Audio-TEST/tmp_hypium/
+Intelligent-Audio-TEST/backend/tmp_hypium/
+Intelligent-Audio-TEST/static/audios/chunks/
+
+# Screenshots
+*.png
+!Intelligent-Audio-TEST/frontend/**/*.png
+
+# Test scripts (not part of production code)
+eval_server/test_upload.py
+Intelligent-Audio-TEST/test_rounds.py
+Intelligent-Audio-TEST/backend/_check_tc.py
+Intelligent-Audio-TEST/open_browser.py
+
+# Large media files (use Git LFS if needed)
+*.mp4
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aac
+*.pcm
+*.opus
+*.amr
+*.wma
+
+# Log file (binary log)
+Intelligent-Audio-TEST/log
