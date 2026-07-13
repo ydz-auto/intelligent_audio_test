@@ -371,6 +371,21 @@ def _update_case_params(algo_type: str, params: List[Dict]):
                             continue
                         setattr(dup, field, param_data[field])
                 continue
+            # 软删除的同名参数 → 复活而非新建（避免唯一约束冲突）
+            soft_dup = CaseAlgorithmParam.query.filter_by(
+                algorithm_type=algo_type, param_code=pc, deleted=True
+            ).first()
+            if soft_dup:
+                soft_dup.deleted = False
+                for field in ['param_name', 'label', 'param_type', 'required',
+                              'default_value',
+                              'help_text', 'ui_order', 'hidden', 'scope',
+                              'min_value', 'max_value', 'step', 'unit']:
+                    if field in param_data and param_data[field] is not None:
+                        if field == 'scope' and param_data[field] not in valid_scopes:
+                            continue
+                        setattr(soft_dup, field, param_data[field])
+                continue
             param = CaseAlgorithmParam(
                 algorithm_type=algo_type,
                 param_code=pc,
@@ -791,6 +806,34 @@ def create_case_param():
     ).first()
     if existing:
         return error_response(f"Case parameter '{req.param_code}' already exists for algorithm '{req.algorithm_type}'")
+
+    # 软删除的同名参数 → 复活而非新建（避免唯一约束冲突）
+    soft_deleted = CaseAlgorithmParam.query.filter_by(
+        algorithm_type=req.algorithm_type,
+        param_code=req.param_code,
+        deleted=True
+    ).first()
+    if soft_deleted:
+        soft_deleted.deleted = False
+        updatable_fields = {
+            'param_name': req.param_name,
+            'param_type': req.param_type,
+            'required': req.required,
+            'default_value': req.default_value,
+            'help_text': req.help_text,
+            'ui_order': req.ui_order,
+            'hidden': req.hidden,
+            'scope': req.scope,
+            'min_value': req.min_value,
+            'max_value': req.max_value,
+            'step': req.step,
+            'unit': req.unit,
+        }
+        for field, value in updatable_fields.items():
+            if value is not None:
+                setattr(soft_deleted, field, value)
+        db.session.commit()
+        return success_response(soft_deleted.to_dict(), 'Case parameter revived')
 
     param = CaseAlgorithmParam(
         algorithm_type=req.algorithm_type,
