@@ -20,11 +20,36 @@
         @update:model-value="onDynamicFormUpdate"
       />
     </div>
+
+    <!-- Prompt 音频（audio_select 类型，DynamicForm 不支持，单独渲染） -->
+    <div v-if="promptAudioField" class="rce-section">
+      <div class="rce-sub-title">
+        <i class="fas fa-music"></i>
+        {{ promptAudioField.param_name || promptAudioField.fieldName || 'Prompt 音频' }}
+      </div>
+      <div v-if="promptAudioId" class="rce-audio-card">
+        <div class="rce-audio-card-info">
+          <i class="fas fa-music rce-audio-card-icon"></i>
+          <span class="rce-audio-card-name" :title="getAudioName(promptAudioId)">{{ getAudioName(promptAudioId) }}</span>
+        </div>
+        <div class="rce-audio-card-actions">
+          <button type="button" class="btn btn-sm btn-outline-primary" @click="openPromptAudioSelect">
+            <i class="fas fa-exchange-alt"></i> 更换
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-danger" @click="setPromptAudio('')">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+      <div v-else class="rce-audio-empty" @click="openPromptAudioSelect">
+        <i class="fas fa-plus-circle"></i> 选择 Prompt 音频
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, watch, inject } from 'vue'
 import type { RoundConfigItem, AlgorithmParamItem } from '../types'
 import DynamicForm from '../../../../algorithm/DynamicForm.vue'
 
@@ -42,8 +67,6 @@ const EXCLUDED_CODES = new Set([
   'voiceprintPlaybackDeviceId',
   'voiceprintSpl',
   'voiceprintWaitTime',
-  'overlap_rate',
-  'overlap_time',
 ])
 
 const PARAM_TYPE_TO_COMPONENT: Record<string, string> = {
@@ -67,6 +90,8 @@ const emit = defineEmits<{
   'update:round': [value: RoundConfigItem]
   /** 算法参数更新（独立列格式 params 数组） */
   'update:round-algo-params': [params: AlgorithmParamItem[]]
+  /** 打开音频选择弹窗（audio_select 类型参数使用） */
+  'open-audio-select': [audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void]
 }>()
 
 onMounted(() => {
@@ -120,6 +145,40 @@ const currentAlgoParams = computed<AlgorithmParamItem[]>(() => {
   // 兼容回退：子组件编辑期间可能仍写入 round.algorithmParams
   return (props.round.algorithmParams as AlgorithmParamItem[]) || []
 })
+
+// ---- Prompt 音频（audio_select 类型，DynamicForm 不支持，单独渲染） ----
+const audioConfig = inject<any>('audioConfig', {})
+const PROMPT_AUDIO_CODE = 'promptAudioId'
+// 是否配置了 Prompt 音频参数（来自 schema 或 caseAlgorithmParams）
+const promptAudioField = computed(() => {
+  const all = props.algorithmFormSchema?.fields
+    ? props.algorithmFormSchema.fields
+    : (props.caseAlgorithmParams || [])
+  return all.find((p: any) => (p.fieldCode || p.param_code) === PROMPT_AUDIO_CODE) || null
+})
+const promptAudioId = computed(() => {
+  const item = currentAlgoParams.value.find((p) => p.field_code === PROMPT_AUDIO_CODE)
+  return item?.field_value ? String(item.field_value) : ''
+})
+function getAudioName(audioId: string) {
+  return audioConfig?.getAudioName?.(audioId) || audioId || ''
+}
+function setPromptAudio(audioId: string) {
+  const params = [...currentAlgoParams.value]
+  const idx = params.findIndex((p) => p.field_code === PROMPT_AUDIO_CODE)
+  if (idx >= 0) {
+    params[idx] = { field_code: PROMPT_AUDIO_CODE, field_value: audioId }
+  } else {
+    params.push({ field_code: PROMPT_AUDIO_CODE, field_value: audioId })
+  }
+  emit('update:round-algo-params', params)
+  emit('update:round', { ...props.round, algorithmParams: params })
+}
+function openPromptAudioSelect() {
+  emit('open-audio-select', 'dry', (audios: { id: string; name?: string }[]) => {
+    if (audios.length > 0) setPromptAudio(String(audios[0].id))
+  })
+}
 
 const initialDict = computed(() => {
   const dict: Record<string, any> = {}
@@ -191,4 +250,39 @@ function onDynamicFormUpdate(values: Record<string, any>) {
   gap: 6px;
 }
 .rce-sub-title i { font-size: 12px; color: var(--text-light, #999); }
+
+.rce-audio-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  background: #f8f9ff;
+}
+.rce-audio-card-info { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rce-audio-card-icon { color: #6366f1; font-size: 12px; }
+.rce-audio-card-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rce-audio-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.rce-audio-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  border: 1px dashed #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #999;
+  font-size: 13px;
+}
+.rce-audio-empty:hover { border-color: #6366f1; color: #6366f1; background: #f8f9ff; }
 </style>
