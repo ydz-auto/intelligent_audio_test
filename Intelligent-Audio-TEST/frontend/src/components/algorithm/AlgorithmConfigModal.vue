@@ -593,8 +593,11 @@ function toggleBundle(bundleKey: string) {
   const codes = new Set(formState.case_params.map((p: any) => p.param_code))
   const hasAll = bundle.params.every((code) => codes.has(code))
   if (hasAll) {
-    // 删除该 bundle 的所有参数
+    // 取消勾选：从 DB 删除该 bundle 的所有参数，并从 formState 移除
+    const removed = formState.case_params.filter((p: any) => bundle.params.includes(p.param_code))
     formState.case_params = formState.case_params.filter((p: any) => !bundle.params.includes(p.param_code))
+    // 已入库的参数立即调用 DELETE，未入库的（无 id）无需处理
+    deleteCaseParams(removed)
   } else {
     // 添加缺失的参数
     for (const code of bundle.params) {
@@ -620,9 +623,25 @@ function toggleBundle(bundleKey: string) {
         })
       }
     }
+    // 触发保存（新建未入库的参数）
+    saveCaseParams()
   }
-  // 触发保存
-  saveCaseParams()
+}
+
+// 批量删除已入库的用例参数（取消功能特性快捷开关时调用）
+async function deleteCaseParams(params: any[]) {
+  if (!formState.type) return
+  for (const p of params) {
+    if (p.id) {
+      try {
+        await algorithmApi.deleteCaseParam(p.id)
+      } catch (e) {
+        console.error('[toggleBundle] 删除参数失败:', p.param_code, e)
+      }
+    }
+  }
+  // 清除算法参数缓存，确保用例页面能获取最新参数
+  clearFormSchemaCache()
 }
 
 async function saveCaseParams() {
