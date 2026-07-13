@@ -1,4 +1,4 @@
-﻿import os
+import os
 from flask import request, send_file, current_app
 from backend.models.models import TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice
 from backend.models.database import db
@@ -196,17 +196,31 @@ class TestCaseController:
 
     @staticmethod
     def _collect_dimensions(config: dict) -> list:
-        """从 config 中提取评测维度（从 rounds[0].evaluation.dimensions）"""
+        """从 config 中提取评测维度
+        合并 rounds[].evaluation.dimensions（单轮维度）和 config.dimensions（多轮维度）
+        """
         if not config:
             return []
+        result = []
+        seen_ids = set()
         rounds = config.get('rounds', [])
         if rounds:
-            first_round = rounds[0] if rounds else {}
-            if isinstance(first_round, dict):
-                evaluation = first_round.get('evaluation', {})
-                if isinstance(evaluation, dict):
-                    return evaluation.get('dimensions', [])
-        return []
+            for round_item in rounds:
+                if isinstance(round_item, dict):
+                    evaluation = round_item.get('evaluation', {})
+                    if isinstance(evaluation, dict):
+                        for d in evaluation.get('dimensions', []):
+                            dim_id = d.get('id') if isinstance(d, dict) else d
+                            if dim_id and dim_id not in seen_ids:
+                                seen_ids.add(dim_id)
+                                result.append(d)
+        # 合并顶层 config.dimensions（多轮聚合维度）
+        for d in config.get('dimensions', []):
+            dim_id = d.get('id') if isinstance(d, dict) else d
+            if dim_id and dim_id not in seen_ids:
+                seen_ids.add(dim_id)
+                result.append(d)
+        return result
 
     @staticmethod
     def _audios_changed(old_config: dict, new_config: dict) -> bool:

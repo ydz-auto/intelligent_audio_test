@@ -130,6 +130,8 @@ export interface SelectedEvaluationDimension {
     threshold?: number;
     /** 标记该维度属于哪种 test_type，'api' / 'e2e'，未标记则通用 */
     test_type?: 'api' | 'e2e';
+    /** 维度使用范围：'single' = 每轮独立评估，'multi' = 多轮聚合评估。默认 'single' */
+    round_scope?: 'single' | 'multi';
 }
 
 export interface EvaluationDimensionsConfig {

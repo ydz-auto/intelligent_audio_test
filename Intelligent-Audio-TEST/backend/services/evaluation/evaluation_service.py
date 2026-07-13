@@ -286,9 +286,11 @@ class EvaluationService(EvaluationLoggerMixin):
                 )
 
                 test_case_config = test_case.config or {}
-                # 优先从 rounds[].evaluation.dimensions 读取（标准存储位置）
-                # 兼容旧的顶层 dimensions 字段（audio_controller 旧版本写入）
+                # 从 rounds[].evaluation.dimensions 读取单轮维度
+                # 从 config.dimensions 读取多轮聚合维度
+                # 合并两者，使评估服务同时处理单轮和多轮维度
                 dimensions_config = []
+                seen_dim_ids = set()
                 rounds = test_case_config.get('rounds', [])
                 if rounds and isinstance(rounds, list):
                     for round_item in rounds:
@@ -296,11 +298,18 @@ class EvaluationService(EvaluationLoggerMixin):
                             evaluation = round_item.get('evaluation', {})
                             if isinstance(evaluation, dict):
                                 round_dims = evaluation.get('dimensions', [])
-                                if round_dims:
-                                    dimensions_config = round_dims
-                                    break
-                if not dimensions_config:
-                    dimensions_config = test_case_config.get('dimensions', [])
+                                for d in round_dims:
+                                    dim_id = d.get('id') if isinstance(d, dict) else d
+                                    if dim_id and dim_id not in seen_dim_ids:
+                                        seen_dim_ids.add(dim_id)
+                                        dimensions_config.append(d)
+                # 合并顶层 config.dimensions（多轮聚合维度）
+                top_dims = test_case_config.get('dimensions', [])
+                for d in top_dims:
+                    dim_id = d.get('id') if isinstance(d, dict) else d
+                    if dim_id and dim_id not in seen_dim_ids:
+                        seen_dim_ids.add(dim_id)
+                        dimensions_config.append(d)
 
                 return {
                     'test_case': test_case,

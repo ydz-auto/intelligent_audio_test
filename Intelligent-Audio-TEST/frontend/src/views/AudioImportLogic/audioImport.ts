@@ -1129,11 +1129,26 @@ export function useAudioImport() {
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
           // 合并 API/E2E/通用维度，给每条加 test_type 标记来源
           // 不去重：API 和 E2E 选同一维度是合理的，后端按 test_type 分发到对应用例
-          uploadOptions.dimensions = [
-            ...(options?.apiDimensions || []).map((d: any) => ({ ...d, test_type: 'api' })),
-            ...(options?.e2eDimensions || []).map((d: any) => ({ ...d, test_type: 'e2e' })),
-            ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
-          ];
+          // 按 apiScopes/e2eScopes 展开维度副本，每条带 round_scope 标记单轮/多轮
+          {
+            const apiScopes: ('single' | 'multi')[] = (options as any)?.apiScopes || ['single'];
+            const e2eScopes: ('single' | 'multi')[] = (options as any)?.e2eScopes || ['single'];
+            const expandDims = (dims: any[], tt: string, scopes: ('single' | 'multi')[]) => {
+              if (!dims || dims.length === 0) return [];
+              const result: any[] = [];
+              for (const d of dims) {
+                for (const scope of scopes) {
+                  result.push({ ...d, test_type: tt, round_scope: scope });
+                }
+              }
+              return result;
+            };
+            uploadOptions.dimensions = [
+              ...expandDims(options?.apiDimensions || [], 'api', apiScopes),
+              ...expandDims(options?.e2eDimensions || [], 'e2e', e2eScopes),
+              ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
+            ];
+          }
           if (options?.noiseAudioId !== undefined) uploadOptions.noiseAudioId = options.noiseAudioId;
           if (options?.noiseSpl !== undefined) uploadOptions.noiseSpl = options.noiseSpl;
           if (options?.algorithmType !== undefined) uploadOptions.algorithmType = options.algorithmType;
@@ -2213,11 +2228,26 @@ export function useAudioImport() {
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
           // 合并 API/E2E/通用维度，给每条加 test_type 标记来源
           // 不去重：API 和 E2E 选同一维度是合理的，后端按 test_type 分发到对应用例
-          uploadOptions.dimensions = [
-            ...(options?.apiDimensions || []).map((d: any) => ({ ...d, test_type: 'api' })),
-            ...(options?.e2eDimensions || []).map((d: any) => ({ ...d, test_type: 'e2e' })),
-            ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
-          ];
+          // 按 apiScopes/e2eScopes 展开维度副本，每条带 round_scope 标记单轮/多轮
+          {
+            const apiScopes: ('single' | 'multi')[] = (options as any)?.apiScopes || ['single'];
+            const e2eScopes: ('single' | 'multi')[] = (options as any)?.e2eScopes || ['single'];
+            const expandDims = (dims: any[], tt: string, scopes: ('single' | 'multi')[]) => {
+              if (!dims || dims.length === 0) return [];
+              const result: any[] = [];
+              for (const d of dims) {
+                for (const scope of scopes) {
+                  result.push({ ...d, test_type: tt, round_scope: scope });
+                }
+              }
+              return result;
+            };
+            uploadOptions.dimensions = [
+              ...expandDims(options?.apiDimensions || [], 'api', apiScopes),
+              ...expandDims(options?.e2eDimensions || [], 'e2e', e2eScopes),
+              ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
+            ];
+          }
           if (options?.noiseAudioId !== undefined) uploadOptions.noiseAudioId = options.noiseAudioId;
           if (options?.noiseSpl !== undefined) uploadOptions.noiseSpl = options.noiseSpl;
           if (options?.algorithmType !== undefined) uploadOptions.algorithmType = options.algorithmType;

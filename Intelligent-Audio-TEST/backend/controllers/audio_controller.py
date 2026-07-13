@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 import requests
 import time
@@ -1975,6 +1975,8 @@ class AudioController:
                 # 评估维度：按当前 test_type 过滤
                 # 前端给每条 dimension 加了 test_type 标记（'api'/'e2e'），
                 # 没有 test_type 的视为通用维度，所有 test_type 都收
+                # round_scope='single' 的维度写入 rounds[].evaluation.dimensions（每轮独立评估）
+                # round_scope='multi' 的维度写入 config.dimensions（多轮聚合评估）
                 if dimensions_data:
                     raw_dims = []
                     if isinstance(dimensions_data, dict):
@@ -1994,20 +1996,29 @@ class AudioController:
                         d for d in norm_dims
                         if not d.get('test_type') or d.get('test_type') == tt
                     ]
-                    # 按 id 去重（同一维度可能因 test_type 标记方式不同而重复）
-                    seen_ids = set()
+                    # 按 (id, round_scope) 组合去重
+                    # 同一维度可以同时有 single 和 multi 两个 scope，分别写入不同位置
+                    seen_keys = set()
                     unique_dims = []
                     for d in filtered_dims:
                         dim_id = d.get('id')
-                        if dim_id and dim_id not in seen_ids:
-                            seen_ids.add(dim_id)
+                        scope = d.get('round_scope', 'single')
+                        key = (dim_id, scope)
+                        if dim_id and key not in seen_keys:
+                            seen_keys.add(key)
                             unique_dims.append(d)
-                    # 写入 rounds[].evaluation.dimensions（与系统其他部分一致）
+                    # 按 round_scope 分发维度
+                    single_round_dims = [d for d in unique_dims if d.get('round_scope', 'single') == 'single']
+                    multi_round_dims = [d for d in unique_dims if d.get('round_scope') == 'multi']
+                    # 单轮维度写入 rounds[].evaluation.dimensions
                     for round_item in rounds_resolved:
                         if isinstance(round_item, dict):
                             if 'evaluation' not in round_item:
                                 round_item['evaluation'] = {}
-                            round_item['evaluation']['dimensions'] = unique_dims
+                            round_item['evaluation']['dimensions'] = single_round_dims
+                    # 多轮维度写入 config.dimensions（顶层聚合维度）
+                    if multi_round_dims:
+                        config['dimensions'] = multi_round_dims
                 else:
                     # 确保 rounds 有 evaluation 结构
                     for round_item in rounds_resolved:

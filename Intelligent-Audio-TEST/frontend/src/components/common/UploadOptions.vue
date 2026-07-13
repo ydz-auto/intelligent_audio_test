@@ -25,6 +25,13 @@ interface Props {
     inheritTags?: boolean
     apiDimensions?: Array<{ id: string | number; name: string }>
     e2eDimensions?: Array<{ id: string | number; name: string }>
+    /** API 维度使用范围（可多选） */
+    apiScopes?: ('single' | 'multi')[]
+    /** E2E 维度使用范围（可多选） */
+    e2eScopes?: ('single' | 'multi')[]
+    /** @deprecated 旧字段，兼容用 */
+    apiRoundScope?: 'single' | 'multi'
+    e2eRoundScope?: 'single' | 'multi'
     promptDeviceId?: string | number
     algorithmType?: string
     algorithmRelations?: AlgorithmRelationItem[]
@@ -98,6 +105,8 @@ watch(() => uploadConfig.value.audioType, (newType) => {
       apiDimensions: [],
       e2eDimensions: []
     }
+    apiScopes.value = ['single']
+    e2eScopes.value = ['single']
   }
 })
 
@@ -122,6 +131,36 @@ const {
 
 const hasApiDimensions = computed(() => (uploadConfig.value.apiDimensions || []).length > 0)
 const hasE2eDimensions = computed(() => (uploadConfig.value.e2eDimensions || []).length > 0)
+
+// API/E2E 维度的使用范围（可多选：单轮+多轮）
+const apiScopes = ref<('single' | 'multi')[]>(
+  (props.modelValue as any).apiScopes || ['single']
+)
+const e2eScopes = ref<('single' | 'multi')[]>(
+  (props.modelValue as any).e2eScopes || ['single']
+)
+
+const toggleApiScope = (scope: 'single' | 'multi') => {
+  if (apiScopes.value.includes(scope)) {
+    if (apiScopes.value.length > 1) {
+      apiScopes.value = apiScopes.value.filter(s => s !== scope)
+    }
+  } else {
+    apiScopes.value = [...apiScopes.value, scope]
+  }
+  uploadConfig.value = { ...uploadConfig.value, apiScopes: apiScopes.value }
+}
+
+const toggleE2eScope = (scope: 'single' | 'multi') => {
+  if (e2eScopes.value.includes(scope)) {
+    if (e2eScopes.value.length > 1) {
+      e2eScopes.value = e2eScopes.value.filter(s => s !== scope)
+    }
+  } else {
+    e2eScopes.value = [...e2eScopes.value, scope]
+  }
+  uploadConfig.value = { ...uploadConfig.value, e2eScopes: e2eScopes.value }
+}
 
 const setApiDimensions = (dimensions: Array<{ id: string | number; name: string }>) => {
   uploadConfig.value = {
@@ -364,6 +403,21 @@ const clearNoiseAudio = () => {
         <div class="options-grid">
           <div class="option-item full-width">
             <label>API测试评估维度 <span class="required">*</span></label>
+            <!-- 维度使用范围选择 -->
+            <div class="round-scope-selector">
+              <span class="round-scope-label">维度使用范围：</span>
+              <label class="checkbox-label">
+                <input type="checkbox" :checked="apiScopes.includes('single')" @change="toggleApiScope('single')">
+                <span class="checkbox-text">单轮评估</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" :checked="apiScopes.includes('multi')" @change="toggleApiScope('multi')">
+                <span class="checkbox-text">多轮聚合</span>
+              </label>
+              <span class="round-scope-hint" v-if="apiScopes.includes('single') && apiScopes.includes('multi')">每轮独立评估 + 多轮结果聚合</span>
+              <span class="round-scope-hint" v-else-if="apiScopes.includes('single')">每个轮次独立评估该维度</span>
+              <span class="round-scope-hint" v-else>多轮结果聚合后评估该维度</span>
+            </div>
             <div class="dimension-toolbar">
               <input
                 type="text"
@@ -408,6 +462,21 @@ const clearNoiseAudio = () => {
         <div class="options-grid">
           <div class="option-item full-width">
             <label>E2E测试评估维度 <span class="required">*</span></label>
+            <!-- 维度使用范围选择 -->
+            <div class="round-scope-selector">
+              <span class="round-scope-label">维度使用范围：</span>
+              <label class="checkbox-label">
+                <input type="checkbox" :checked="e2eScopes.includes('single')" @change="toggleE2eScope('single')">
+                <span class="checkbox-text">单轮评估</span>
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" :checked="e2eScopes.includes('multi')" @change="toggleE2eScope('multi')">
+                <span class="checkbox-text">多轮聚合</span>
+              </label>
+              <span class="round-scope-hint" v-if="e2eScopes.includes('single') && e2eScopes.includes('multi')">每轮独立评估 + 多轮结果聚合</span>
+              <span class="round-scope-hint" v-else-if="e2eScopes.includes('single')">每个轮次独立评估该维度</span>
+              <span class="round-scope-hint" v-else>多轮结果聚合后评估该维度</span>
+            </div>
             <div class="dimension-toolbar">
               <input
                 type="text"
@@ -465,6 +534,31 @@ const clearNoiseAudio = () => {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.round-scope-selector {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--background-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  margin-bottom: 12px;
+}
+
+.round-scope-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.round-scope-hint {
+  font-size: 12px;
+  color: var(--text-light);
+  margin-left: auto;
 }
 
 .options-grid {

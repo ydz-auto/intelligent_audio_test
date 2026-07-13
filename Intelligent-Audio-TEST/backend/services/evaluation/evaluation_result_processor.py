@@ -245,9 +245,11 @@ class EvaluationResultProcessor(RoundAggregator):
                     test_case = local_db_session.query(TestCase).get(test_case_id)
                     expected_dim_count = 0
                     if test_case and test_case.config:
-                        # 优先从 rounds[].evaluation.dimensions 读取（标准存储位置）
-                        # 兼容旧的顶层 dimensions 字段
+                        # 从 rounds[].evaluation.dimensions 读取单轮维度
+                        # 从 config.dimensions 读取多轮聚合维度
+                        # 合并两者用于统计预期维度总数
                         dim_config = []
+                        seen_ids = set()
                         rounds = test_case.config.get('rounds', [])
                         if rounds and isinstance(rounds, list):
                             for round_item in rounds:
@@ -255,11 +257,17 @@ class EvaluationResultProcessor(RoundAggregator):
                                     evaluation = round_item.get('evaluation', {})
                                     if isinstance(evaluation, dict):
                                         round_dims = evaluation.get('dimensions', [])
-                                        if round_dims:
-                                            dim_config = round_dims
-                                            break
-                        if not dim_config:
-                            dim_config = test_case.config.get('dimensions', [])
+                                        for d in round_dims:
+                                            dim_id = d.get('id') if isinstance(d, dict) else d
+                                            if dim_id and dim_id not in seen_ids:
+                                                seen_ids.add(dim_id)
+                                                dim_config.append(d)
+                        top_dims = test_case.config.get('dimensions', [])
+                        for d in top_dims:
+                            dim_id = d.get('id') if isinstance(d, dict) else d
+                            if dim_id and dim_id not in seen_ids:
+                                seen_ids.add(dim_id)
+                                dim_config.append(d)
                         all_dim_ids = []
 
                         for item in dim_config:

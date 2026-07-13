@@ -7,6 +7,8 @@ export interface SelectedDimension {
   name: string
   weight?: number
   threshold?: number
+  /** 维度使用范围：'single' = 每轮独立评估，'multi' = 多轮聚合评估 */
+  round_scope?: 'single' | 'multi'
 }
 
 export interface TestTypeOption {
@@ -172,6 +174,8 @@ export function createDefaultUploadConfig() {
     testTypes: ['api'] as ('api' | 'e2e')[],
     apiDimensions: [] as SelectedDimension[],
     e2eDimensions: [] as SelectedDimension[],
+    apiScopes: ['single'] as ('single' | 'multi')[],
+    e2eScopes: ['single'] as ('single' | 'multi')[],
     spl: 65.0,
     noiseSpl: 60.0,
     noiseAudioId: null as string | number | null,
