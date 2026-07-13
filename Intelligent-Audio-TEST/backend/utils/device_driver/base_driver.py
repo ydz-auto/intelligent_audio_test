@@ -171,6 +171,9 @@ class BaseDeviceDriver:
         在每轮循环结束或整个用例结束时调用，用于退出功能页面、
         停止录音、关闭 APP 等资源释放操作。
 
+        默认实现：关闭 APP（若子类定义了 app_name 且 driver 提供关闭方法）。
+        子类可覆写以增加更多清理逻辑。
+
         Args:
             device_sn: 设备序列号
             task_id: 任务ID
@@ -180,6 +183,37 @@ class BaseDeviceDriver:
         Returns:
             bool: 是否清理成功
         """
+        app_name = getattr(self, 'app_name', None)
+        if not app_name:
+            return True
+
+        get_driver_fn = getattr(self, '_get_driver', None) or getattr(self, 'get_driver', None)
+        if not callable(get_driver_fn):
+            return True
+
+        driver = None
+        try:
+            driver = get_driver_fn(device_sn)
+        except Exception as e:
+            self._log(level='WARNING', content=f"teardown: 获取 driver 失败: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return False
+
+        if not driver:
+            return True
+
+        # 兼容 HarmonyOS(stop_app) 与 Android(app_stop) 两种命名
+        stop_fn = getattr(driver, 'stop_app', None) or getattr(driver, 'app_stop', None)
+        if callable(stop_fn):
+            try:
+                stop_fn(app_name)
+                self._log(level='DEBUG', content=f"teardown: 已关闭 APP {app_name}",
+                          task_id=task_id, test_case_id=test_case_id)
+            except Exception as e:
+                self._log(level='WARNING', content=f"teardown: 关闭 APP {app_name} 失败: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+                return False
+
         return True
 
     def set_volume(self, device_sn, level: int) -> bool:

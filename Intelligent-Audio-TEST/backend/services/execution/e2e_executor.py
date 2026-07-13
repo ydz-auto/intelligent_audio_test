@@ -64,6 +64,7 @@ class E2EExecutor(BaseExecutor):
 
         rounds = case_config.get('rounds', [])
 
+        device_info_list = None
         try:
             self._log(
                 level='INFO',
@@ -111,6 +112,19 @@ class E2EExecutor(BaseExecutor):
                       task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None))
             self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
             return False
+        finally:
+            # ── 阶段四：设备驱动 teardown（与 initialize 对称）──
+            if device_info_list:
+                try:
+                    self._device_manager.teardown_devices(
+                        device_info_list, task_id, test_case_id=test_case_id
+                    )
+                except Exception as teardown_err:
+                    self._log(
+                        level='WARNING',
+                        content=f"设备 teardown 异常（忽略）: {teardown_err}",
+                        task_id=task_id, test_case_id=test_case_id
+                    )
 
     # ──────────────────────────────────────────────────
     #  阶段一：循环前准备
@@ -443,7 +457,7 @@ class E2EExecutor(BaseExecutor):
         )
 
         # 整体评估
-        # 检查是否有评估维度（优先从 rounds[].evaluation.dimensions 读取，兼容顶层 dimensions）
+        # 检查是否有评估维度（从 rounds[].evaluation.dimensions 读单轮维度，从 config.dimensions 读多轮维度）
         _has_dims = False
         if case_config:
             rounds = case_config.get('rounds', [])

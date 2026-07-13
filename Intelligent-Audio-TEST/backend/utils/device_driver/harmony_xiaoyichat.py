@@ -9,11 +9,9 @@ from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from config.config import Config
 
-_RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
-_RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
-
-
 class Xiaoyilivechat(HarmonyDriver):
+    RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
+    RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
 
     def _hdc_shell(self, device_sn, *args):
         return subprocess.run(
@@ -73,7 +71,7 @@ class Xiaoyilivechat(HarmonyDriver):
         # 开启录屏（文件名含轮次号，避免多轮冲突）
         round_number = kwargs.get('round_number', 0)
         self._record_file_name = f"{test_case_id}_r{round_number}.mp4"
-        self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY,
+        self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY,
                         '--ps', 'CustomizedFileName', self._record_file_name)
         self._log(level='INFO', content=f"启动录屏: {self._record_file_name}", task_id=task_id,
                   test_case_id=test_case_id)
@@ -92,7 +90,7 @@ class Xiaoyilivechat(HarmonyDriver):
             timeout=60, interval=1, operation_name="post_process_正在听"
         )
         # 停止录屏
-        self._hdc_shell(device_sn, 'aa', 'start', '-b', _RECORDER_BUNDLE, '-a', _RECORDER_ABILITY)
+        self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
         self._log(level='INFO', content="停止录屏", task_id=task_id, test_case_id=test_case_id)
         time.sleep(5)
         # 通话挂断
@@ -176,3 +174,49 @@ class Xiaoyilivechat(HarmonyDriver):
                 'answer': ""
             }
             return [result]
+
+    def teardown(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+        """用例结束后清理设备状态（与 initialize 对称）
+
+        做以下清理：
+        1. 确保录屏已停止（兜底，防止 post_process 异常残留）
+        2. 确保通话已挂断（兜底）
+        3. 退出小艺聊天界面，回桌面
+        """
+        # 1. 兜底停止录屏
+        try:
+            self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
+            self._log(level='DEBUG', content="teardown: 兜底停止录屏", task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            self._log(level='WARNING', content=f"teardown: 停止录屏失败: {e}", task_id=task_id, test_case_id=test_case_id)
+
+        driver = self._get_driver(device_sn)
+        if not driver:
+            return True
+
+        # 2. 兜底挂断通话
+        try:
+            hangup_btn = driver.find_component(
+                By.isAfter(By.key('live.tool_bar.hangup_button')).isBefore(By.key('GuideText')).type('SymbolGlyph'))
+            if hangup_btn:
+                hangup_btn.click()
+                self._log(level='DEBUG', content="teardown: 挂断残留通话", task_id=task_id, test_case_id=test_case_id)
+                time.sleep(2)
+        except Exception as e:
+            self._log(level='DEBUG', content=f"teardown: 无残留通话或挂断失败: {e}", task_id=task_id, test_case_id=test_case_id)
+
+        # 3. 回桌面（退出小艺聊天界面）
+        try:
+            driver.press_home(2)
+            time.sleep(1)
+        except Exception as e:
+            self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}", task_id=task_id, test_case_id=test_case_id)
+
+        # 4. 停止小艺 APP（彻底释放）
+        try:
+            driver.stop_app(self.app_name)
+            self._log(level='DEBUG', content="teardown: 已停止小艺 APP", task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            self._log(level='WARNING', content=f"teardown: 停止小艺 APP 失败: {e}", task_id=task_id, test_case_id=test_case_id)
+
+        return True

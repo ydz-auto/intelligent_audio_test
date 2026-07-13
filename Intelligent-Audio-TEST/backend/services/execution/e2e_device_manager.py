@@ -162,6 +162,30 @@ class E2EDeviceManager:
             except Exception as e:
                 self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
+    def teardown_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
+        """并行 teardown 所有设备驱动（与 initialize_devices 对称）
+
+        在多轮循环结束后调用，用于退出功能页面、停止录音、关闭 APP 等资源释放。
+        """
+        extra_params = kwargs.get('extra_params', {})
+        pool = self._executor.execution_engine.device_control_pool
+        futures = []
+        for info in device_info_list:
+            if info["driver"] and hasattr(info["driver"], "teardown"):
+                future = pool.submit(
+                    info["driver"].teardown,
+                    info["device_sn"],
+                    task_id=task_id,
+                    test_case_id=test_case_id,
+                    **extra_params
+                )
+                futures.append(future)
+        for future in futures:
+            try:
+                future.result(timeout=60)
+            except Exception as e:
+                self._log(level='ERROR', content=f"设备 teardown 失败: {e}", task_id=task_id, test_case_id=test_case_id)
+
     def play_prompt_audio(self, device_info_list, task_id, device_index, playback_dev, main_gain):
         """播放提示音频"""
         prompt_info = next((info for info in device_info_list if info["prompt_audio_path"]), None)
