@@ -32,6 +32,8 @@ from datetime import datetime, timezone, timedelta
 from backend.utils.common.query_utils import now_cst
 from sqlalchemy import and_, or_
 
+logger = logging.getLogger(__name__)
+
 class TaskController:
     @staticmethod
     def _cleanup_case_results(task_id, case_ids, preserve_test_result=False):

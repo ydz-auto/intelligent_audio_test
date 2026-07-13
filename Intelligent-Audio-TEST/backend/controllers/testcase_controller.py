@@ -38,6 +38,8 @@ import pandas as pd
 from datetime import datetime, timezone, timedelta
 from backend.utils.common.query_utils import now_cst
 
+logger = logging.getLogger(__name__)
+
 class TestCaseController:
     @staticmethod
     def _log(level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='TestCase', **kwargs):

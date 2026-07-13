@@ -1,4 +1,4 @@
-﻿from flask import request, current_app
+from flask import request, current_app
 from sqlalchemy import cast, String
 from backend.models.models import PlaybackDevice
 from backend.models.database import db
@@ -14,6 +14,8 @@ from backend.utils.common.query_utils import now_cst
 import threading
 import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 # 导入全局app实例，用于在线程中创建应用上下文
 from backend.app import app
