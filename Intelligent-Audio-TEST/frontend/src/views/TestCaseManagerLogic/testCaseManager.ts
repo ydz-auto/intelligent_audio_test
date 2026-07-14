@@ -91,8 +91,18 @@ export function useTestCaseManager() {
     }
   };
 
-  const handleOpenEditModal = (testCase: TestCase) => {
-    openEditTestCaseModal(testCase);
+  const handleOpenEditModal = async (testCase: TestCase) => {
+    const result = await openEditTestCaseModal(testCase);
+    if (result?.needRefresh) {
+      await refreshCurrentView();
+    }
+  };
+
+  const handleOpenAddModal = async (group = '', options?: { algorithmType?: string; testType?: 'api' | 'e2e' }) => {
+    const result = await openAddTestCaseModal(group, options);
+    if (result?.needRefresh) {
+      await refreshCurrentView();
+    }
   };
 
   const handleSaveModal = async (data: ModalSaveData) => {
@@ -119,6 +129,7 @@ export function useTestCaseManager() {
     handleDeleteGroup,
     handleDeleteTestCase,
     openAddTestCaseModal,
+    handleOpenAddModal,
     handleOpenEditModal,
     openCreateGroupModal,
     openEditGroupModal,

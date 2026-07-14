@@ -39,8 +39,8 @@ export function useE2eTest() {
 
   const isE2eTestCase = (caseItem: TestCase): boolean => {
     if (caseItem.deleted) return false;
-    // 优先使用 test_type 字段（voice_llm 新架构）
-    const testType = ((caseItem as any).testType || (caseItem as any).test_type || '').toLowerCase();
+    // 优先使用 test_type 字段（voice_llm 新架构）；后端列表接口返回的字段名为 type
+    const testType = ((caseItem as any).testType || (caseItem as any).test_type || (caseItem as any).type || '').toLowerCase();
     if (testType) return testType === 'e2e' || testType === 'e2e_test';
     // 向后兼容：config 级别检查
     const config = (caseItem.config || {}) as any;

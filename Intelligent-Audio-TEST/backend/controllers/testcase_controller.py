@@ -282,7 +282,7 @@ class TestCaseController:
         query = TestCase.query.options(
             joinedload(TestCase.group),
             joinedload(TestCase.tags)
-        )
+        ).order_by(TestCase.created_at.desc())
         if not include_deleted:
             query = query.filter(TestCase.deleted == False)
 

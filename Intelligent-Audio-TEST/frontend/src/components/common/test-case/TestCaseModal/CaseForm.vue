@@ -15,6 +15,7 @@
         <div class="form-group">
           <label for="caseGroup">所属分组 <span class="required">*</span></label>
           <select id="caseGroup" v-model="localFormData.group" class="form-control" required @change="emitFormData">
+            <option value="" disabled>请选择分组</option>
             <option v-for="group in testCaseGroups" :key="group" :value="group">{{ group }}</option>
             <option value="new-group">+ 新建分组</option>
           </select>

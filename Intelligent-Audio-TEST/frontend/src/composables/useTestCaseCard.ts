@@ -20,7 +20,7 @@ export function useTestCaseCard() {
   
   const initialFormData: TestCaseFormData = {
     name: '',
-    group: '默认分组',
+    group: '',
     description: '',
     tags: [],
     tagsInput: '',
@@ -39,7 +39,7 @@ export function useTestCaseCard() {
     algorithmType: ''
   });
 
-  const openAddTestCaseModal = async (group = '默认分组', options?: { algorithmType?: string; testType?: 'api' | 'e2e' }) => {
+  const openAddTestCaseModal = async (group = '', options?: { algorithmType?: string; testType?: 'api' | 'e2e' }) => {
     console.log('[useTestCaseCard] 调用openAddTestCaseModal，分组:', group, '算法类型:', options?.algorithmType, '测试类型:', options?.testType);
     editingTestCase.value = null;
     const testType = options?.testType || 'e2e';
@@ -60,9 +60,9 @@ export function useTestCaseCard() {
         width: '1800px',
         maxWidth: '98vw'
       });
-      
+
       if (result) {
-        await handleModalSave(result);
+        return await handleModalSave(result);
       }
     } catch (error) {
       console.error('[useTestCaseCard] 打开新增用例模态窗失败:', error);
@@ -104,9 +104,9 @@ export function useTestCaseCard() {
         width: '1800px',
         maxWidth: '98vw'
       });
-      
+
       if (result) {
-        await handleModalSave(result);
+        return await handleModalSave(result);
       }
     } catch (error) {
       console.error('[useTestCaseCard] 打开编辑用例模态窗失败:', error);

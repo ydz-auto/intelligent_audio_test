@@ -19,7 +19,7 @@
       v-model:view-mode="viewMode"
       @delete-group="handleDeleteGroup"
       @delete-test-case="handleDeleteTestCase"
-      @open-add-modal="openAddTestCaseModal"
+      @open-add-modal="handleOpenAddModal"
       @open-edit-modal="handleOpenEditModal"
       @open-create-group-modal="openCreateGroupModal"
       @open-edit-group-modal="openEditGroupModal"
@@ -44,6 +44,7 @@ const {
   handleDeleteGroup,
   handleDeleteTestCase,
   openAddTestCaseModal,
+  handleOpenAddModal,
   handleOpenEditModal,
   openCreateGroupModal,
   openEditGroupModal,
