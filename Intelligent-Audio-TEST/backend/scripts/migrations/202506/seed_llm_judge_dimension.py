@@ -59,8 +59,8 @@ def seed_llm_judge_dimension():
                 'method': 'POST',
                 'headers': {'Content-Type': 'application/json'},
                 'body_template': {
-                    'hypothesis': '{{answer}}',
-                    'reference': '{{correct_answer}}',
+                    'answer': '{{answer}}',
+                    'correct_answer': '{{correct_answer}}',
                     'model': '{{model}}',
                     'prompt': '{{prompt}}',
                     'record_file': '{{record_file}}',
@@ -74,15 +74,15 @@ def seed_llm_judge_dimension():
             ), {'settings': default_api_settings, 'did': dim_id})
             print(f"  + 已更新 llm_judge 维度 api_settings (body_template 含 prompt 映射)")
         else:
-            # 默认 body_template：将维度输入参数映射到 eval_server 期望的字段名
-            # eval_server llm_judge 要求：hypothesis, reference, model, prompt
-            # 其中 record_file 作为音频文件透传（字段名保持不变，eval_server 会自动检测文件路径）
+            # 默认 body_template：字段名与 eval_server 的 evaluate_with_llm 参数一致
+            # answer / correct_answer / question / query / record_file / model / prompt
+            # 其中 record_file 作为音频文件透传（eval_server 会自动检测文件路径）
             default_api_settings = json.dumps({
                 'method': 'POST',
                 'headers': {'Content-Type': 'application/json'},
                 'body_template': {
-                    'hypothesis': '{{answer}}',
-                    'reference': '{{correct_answer}}',
+                    'answer': '{{answer}}',
+                    'correct_answer': '{{correct_answer}}',
                     'model': '{{model}}',
                     'prompt': '{{prompt}}',
                     'record_file': '{{record_file}}',

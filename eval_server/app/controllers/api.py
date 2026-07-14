@@ -139,10 +139,12 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         if missing:
             return error_response(f"Missing required fields for der: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
     elif task_type == 'llm_judge':
-        required_fields = ['hypothesis', 'reference', 'model', 'prompt']
-        missing = [f for f in required_fields if not task_params.get(f)]
-        if missing:
-            return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
+        # 多轮模式：有 rounds 时不需要 answer/correct_answer
+        if not task_params.get('rounds'):
+            required_fields = ['answer', 'correct_answer', 'model', 'prompt']
+            missing = [f for f in required_fields if not task_params.get(f)]
+            if missing:
+                return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
 
     if eval_task_id is None:
         eval_task_id = f"task_{uuid.uuid4().hex}"
@@ -311,6 +313,7 @@ def create_task_upload():
             task_params[key] = request.form[key]
 
     # 处理文件字段
+    uploaded_file_paths = {}  # field_name → 保存后的本地路径
     for field_name, file_storage in request.files.items():
         if not file_storage or not file_storage.filename:
             continue
@@ -330,6 +333,25 @@ def create_task_upload():
             file_path = os.path.join(upload_dir, filename)
             file_storage.save(file_path)
             task_params[field_name] = file_path
+            uploaded_file_paths[field_name] = file_path
+
+    # 解析 rounds JSON 字符串，并把 __MULTIPART__ 占位符替换为上传后的实际路径
+    rounds_str = task_params.get('rounds')
+    if rounds_str and isinstance(rounds_str, str):
+        try:
+            rounds_list = json.loads(rounds_str)
+            if isinstance(rounds_list, list):
+                for rd in rounds_list:
+                    if not isinstance(rd, dict):
+                        continue
+                    rf = rd.get('record_file', '')
+                    if isinstance(rf, str) and rf.startswith('__MULTIPART__:'):
+                        placeholder_key = rf.split(':', 1)[1]
+                        if placeholder_key in uploaded_file_paths:
+                            rd['record_file'] = uploaded_file_paths[placeholder_key]
+                task_params['rounds'] = rounds_list
+        except (json.JSONDecodeError, TypeError):
+            pass  # rounds 不是合法 JSON，保持原样
 
     return _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=caller_task_id, eval_task_id=eval_task_id)
 

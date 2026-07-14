@@ -66,5 +66,9 @@ def render_body_template(body_template, context):
     for k, v in context.items():
         placeholder = "{{" + k + "}}"
         if placeholder in body_str:
-            body_str = body_str.replace(placeholder, str(v))
+            if isinstance(v, (list, dict)):
+                import json as _json
+                body_str = body_str.replace(placeholder, _json.dumps(v, ensure_ascii=False))
+            else:
+                body_str = body_str.replace(placeholder, str(v))
     return json.loads(body_str)

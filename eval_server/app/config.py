@@ -2,6 +2,11 @@ import os
 
 class Config:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+    # 项目根目录（与 Intelligent-Audio-TEST 保持一致）
+    PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+
+    # 静态资源根目录（与主项目共享）
+    STATIC_BASE_PATH = os.environ.get('STATIC_BASE_PATH', os.path.join(PROJECT_ROOT, 'static'))
 
     # 文件存储路径（替代 SQLite）
     DATA_DIR = os.path.join(BASE_DIR, 'database')
@@ -11,8 +16,8 @@ class Config:
     # 上传文件临时目录
     UPLOAD_DIR = os.path.join(DATA_DIR, 'uploads')
 
-    # 日志配置
-    LOG_DIR = os.path.join(BASE_DIR, 'logs')
+    # 日志配置（归档到 static 目录下）
+    LOG_DIR = os.path.join(STATIC_BASE_PATH, 'logs', 'eval_server')
     LOG_FILE = os.path.join(LOG_DIR, 'eval_server.log')
     LOG_MAX_BYTES = 10 * 1024 * 1024   # 10MB
     LOG_BACKUP_COUNT = 30              # 保留 30 个历史文件

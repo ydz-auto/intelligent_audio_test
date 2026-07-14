@@ -375,7 +375,8 @@ class E2EExecutor(BaseExecutor):
             case_reference_params=case_reference_params,
             algorithm_type=algorithm_type, test_type='e2e',
             case_algorithm_params=data.get('case_algorithm_params'),
-            round_number=round_idx
+            round_number=round_idx,
+            reference_params_col=data.get('reference_params_col')
         )
 
         return round_data
@@ -487,7 +488,8 @@ class E2EExecutor(BaseExecutor):
                 case_reference_params=case_reference_params,
                 algorithm_type=algorithm_type, test_type='e2e',
                 case_algorithm_params=data.get('case_algorithm_params'),
-                round_number=None
+                round_number=None,
+                reference_params_col=data.get('reference_params_col')
             )
 
         # 聚合各轮评估分数到 algo_result

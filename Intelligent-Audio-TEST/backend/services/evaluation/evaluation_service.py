@@ -168,22 +168,109 @@ class EvaluationService(EvaluationLoggerMixin):
 
         return flat
 
+    def _build_rounds_list(self, algorithm_result, reference_params_col,
+                            field_mapper, algorithm_type, test_type, task_id, test_case_id):
+        """从 algo_result.rounds 构建 [{reference, hypothesis, ...}, ...] 列表
+
+        遍历 param_mappings，按 source 类型从每轮的 output（device/api）和
+        按轮加载的 reference_params（reference）取值，用 target_param 作为 key。
+        """
+        from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from backend.utils.algorithm.reference_params_generator import (
+            get_reference_value as gen_reference_value,
+        )
+
+        rounds = algorithm_result.get('rounds', [])
+        output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
+        loader = CaseParameterExtractor._get_loader()
+        mappings = loader.get_param_mapping(algorithm_type, 'evaluation')
+
+        if not mappings:
+            self._log(
+                level='WARNING',
+                content=f"[_build_rounds_list] 未找到 {algorithm_type} 的 evaluation param mappings",
+                task_id=task_id, test_case_id=test_case_id
+            )
+            return []
+
+        rounds_list = []
+        for rd in rounds:
+            output = rd.get('output', {})
+            round_number = rd.get('round', 0)
+
+            item = {}
+
+            # 按轮加载 reference_params
+            # algo_result.rounds[].round 是 0-indexed，reference_params_col 用 1-indexed
+            round_ref_data = {}
+            if reference_params_col:
+                round_ref_data = CaseParameterExtractor._load_round_ref_file(
+                    reference_params_col, round_number + 1
+                )
+
+            for m in mappings:
+                source = m.get('source', 'api')
+                source_param = m.get('source_param', '')
+                target_param = m.get('target_param', '')
+                value = None
+
+                if source in ('device', 'api'):
+                    # 从设备输出取
+                    value = output.get(source_param, '')
+                elif source == 'reference':
+                    # 从按轮加载的 reference 取
+                    ref_item = round_ref_data.get(source_param)
+                    if ref_item and isinstance(ref_item, dict):
+                        ref_type = None
+                        for ref_def in loader.get_reference_params(algorithm_type):
+                            if ref_def.get('code') == source_param:
+                                ref_type = ref_def.get('type')
+                                break
+                        value = gen_reference_value(
+                            ref_item, test_type, ref_type,
+                            algorithm_type=algorithm_type,
+                            case_config={}
+                        )
+                elif source == 'case':
+                    # case 参数暂不按轮处理，跳过
+                    pass
+
+                if value is not None:
+                    item[target_param] = value
+
+            rounds_list.append(item)
+
+        self._log(
+            level='DEBUG',
+            content=f"[_build_rounds_list] 构建 rounds 列表: {len(rounds_list)} 轮",
+            task_id=task_id, test_case_id=test_case_id
+        )
+
+        return rounds_list
+
     def evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **kwargs):
         field_mapper = get_field_mapper()
         test_type = kwargs.get('test_type', 'api')
         round_number = kwargs.get('round_number')  # 多轮评估: 轮次编号 (None=整体评估, 0-indexed)
+        reference_params_col = kwargs.pop('reference_params_col', None)
 
-        # 多轮场景：round_number 不为 None 时，从 algorithm_result.rounds[i] 提取单轮扁平数据
-        if round_number is not None:
-            extracted = self._extract_round_eval_data(algorithm_result, round_number)
-            if extracted is None:
-                self._log(
-                    level='WARNING',
-                    content=f"轮次 {round_number} 数据不存在，跳过评估",
-                    task_id=task_id, test_case_id=test_case_id
-                )
-                return False
-            algorithm_result = extracted
+        # 多轮场景：统一构建 rounds 列表（单轮也走此路径，列表只有一个元素）
+        if isinstance(algorithm_result, dict) and algorithm_result.get('rounds'):
+            rounds_list = self._build_rounds_list(
+                algorithm_result, reference_params_col,
+                field_mapper, kwargs.get('algorithm_type', 'translation'),
+                test_type, task_id, test_case_id
+            )
+            if round_number is not None:
+                # 单轮：只取对应轮
+                rounds_list = [rounds_list[round_number]] if round_number < len(rounds_list) else []
+                # 单轮兼容：把 rounds[0] 的字段也提升到 kwargs 顶层，兼容旧 body_template
+                if rounds_list:
+                    for k, v in rounds_list[0].items():
+                        if k not in kwargs:
+                            kwargs[k] = v
+            if rounds_list:
+                kwargs['rounds'] = rounds_list
 
         self._log(
             level='DEBUG',
@@ -248,9 +335,18 @@ class EvaluationService(EvaluationLoggerMixin):
         )
 
         # 分发评估任务
+        rounds_list = kwargs.get('rounds')
+        # 提取单轮兼容的扁平字段（answer, correct_answer 等），传给 task_data
+        flat_eval_fields = {}
+        if isinstance(algorithm_result, dict) and algorithm_result.get('rounds'):
+            for k, v in kwargs.items():
+                if k not in ('test_type', 'round_number', 'algorithm_type',
+                             'reference_params_col', 'rounds'):
+                    flat_eval_fields[k] = v
         self._dispatch_evaluation_tasks(
             dimension_data_list, dimension_result_map, result_id, task_id, test_case_id,
-            algorithm_result, algorithm_type, test_type, round_number, field_mapper, ref_texts
+            algorithm_result, algorithm_type, test_type, round_number, field_mapper, ref_texts,
+            rounds_list, flat_eval_fields
         )
 
         self._log(
@@ -552,7 +648,8 @@ class EvaluationService(EvaluationLoggerMixin):
 
     def _dispatch_evaluation_tasks(self, dimension_data_list, dimension_result_map, result_id, task_id,
                                     test_case_id, algorithm_result, algorithm_type, test_type,
-                                    round_number, field_mapper, ref_texts):
+                                    round_number, field_mapper, ref_texts, rounds_list=None,
+                                    flat_eval_fields=None):
         """将维度按端点分组并异步提交评估任务"""
         endpoint_groups = {}
         no_endpoint_groups = []  # 没有配置评估端点的维度，需标记失败避免任务卡死
@@ -634,7 +731,7 @@ class EvaluationService(EvaluationLoggerMixin):
             task_data = self._build_task_data(
                 task_id, result_id, test_case_id, algorithm_result,
                 representative_dim_data, group_items, algorithm_type, test_type,
-                round_number, field_mapper, ref_texts
+                round_number, field_mapper, ref_texts, rounds_list, flat_eval_fields
             )
 
             with self.api_client.global_lock:
@@ -651,7 +748,8 @@ class EvaluationService(EvaluationLoggerMixin):
 
     def _build_task_data(self, task_id, result_id, test_case_id, algorithm_result,
                          representative_dim_data, group_items, algorithm_type, test_type,
-                         round_number, field_mapper, ref_texts):
+                         round_number, field_mapper, ref_texts, rounds_list=None,
+                         flat_eval_fields=None):
         """构建提交给端点Worker的任务数据"""
         task_data = {
             'task_id': task_id,
@@ -667,6 +765,16 @@ class EvaluationService(EvaluationLoggerMixin):
         # 透传 round_number 到端点Worker (多轮评估场景)
         if round_number is not None:
             task_data['round_number'] = round_number
+
+        # 多轮评估：传 rounds 列表给端点Worker
+        if rounds_list:
+            task_data['rounds'] = rounds_list
+
+        # 单轮兼容：透传扁平字段（answer, correct_answer 等）
+        if flat_eval_fields:
+            for k, v in flat_eval_fields.items():
+                if k not in task_data:
+                    task_data[k] = v
 
         output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
         algo_results = {}

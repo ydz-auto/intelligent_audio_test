@@ -18,6 +18,10 @@ class E2EAggregator:
 
     def build_algorithm_result(self, task_id, all_round_results, case_config, algorithm_type):
         """从多轮原始结果构建 algo_result 结构（rounds[] + aggregated）"""
+        from backend.utils.algorithm.field_mapper import get_field_mapper
+
+        output_field_keys = get_field_mapper().get_mapped_device_output_field_keys(algorithm_type)
+
         rounds_by_index = {}
         for r in all_round_results:
             rn = r.get('round_number', 0)
@@ -40,8 +44,12 @@ class E2EAggregator:
             audio_name = first_audio.get('audio_name') or first_audio.get('name', '')
             audio_path = first_audio.get('audio_path') or first_audio.get('path', '')
 
-            asr_text = primary.get('asr_text', '')
-            device_raw = primary.get('raw_results', {})
+            # 动态提取所有映射后的设备输出字段
+            round_output = {}
+            for key in output_field_keys:
+                val = primary.get(key)
+                if val is not None:
+                    round_output[key] = val
 
             latency = primary.get('response_time') or primary.get('latency')
             if latency is not None:
@@ -61,10 +69,7 @@ class E2EAggregator:
                     'audio_path': audio_path,
                     'type': 'audio',
                 },
-                'output': {
-                    'asr_text': asr_text,
-                    'device_raw': device_raw,
-                },
+                'output': round_output,
                 'latency': latency,
                 'wait_time': wait_time,
                 'evaluation': {},

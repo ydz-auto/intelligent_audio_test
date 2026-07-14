@@ -392,7 +392,8 @@ class BaseExecutor:
     
     def _evaluate_result(self, task_id, result_id, test_case_id, algo_result, case_config=None,
                         case_reference_params=None, algorithm_type='translation', test_type='api',
-                        case_algorithm_params=None, round_number=None):
+                        case_algorithm_params=None, round_number=None,
+                        reference_params_col=None):
         """提交评估 - 通用方法
         
         Args:
@@ -481,7 +482,9 @@ class BaseExecutor:
         full_case_params = {
             'algorithm_type': algorithm_type,
             'algorithm_params': algorithm_params,
-            'reference_params': reference_params
+            'reference_params': reference_params,
+            'reference_params_col': reference_params_col,
+            'rounds': case_config.get('rounds') if case_config else None,
         }
         
         self._log(
@@ -508,6 +511,8 @@ class BaseExecutor:
         eval_params['test_type'] = test_type
         if round_number is not None:
             eval_params['round_number'] = round_number
+        if reference_params_col is not None:
+            eval_params['reference_params_col'] = reference_params_col
         
         self._log(
             level='DEBUG',
@@ -635,6 +640,7 @@ class BaseExecutor:
                 'case_name': case.name,
                 'case_config': case_config,
                 'case_reference_params': case_reference_params,
+                'reference_params_col': reference_params_col if isinstance(reference_params_col, list) else None,
                 'case_algorithm_params': case_algorithm_params,
                 'test_case_id': tc_rel.test_case_id,
                 'tc_rel_id': tc_rel_id,

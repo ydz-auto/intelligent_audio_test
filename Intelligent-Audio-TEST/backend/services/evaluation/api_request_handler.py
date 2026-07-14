@@ -77,50 +77,79 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
     def _extract_files_from_payload(self, payload):
         """
-        从 payload 中提取 data URI 格式的值，转为文件上传字段。
+        从 payload 中提取文件（data URI 或文件路径），转为 multipart 上传字段。
+
+        除了顶层字段，还会递归遍历 rounds 列表里的 record_file 字段，
+        把每轮的音频文件提取出来单独上传，文件名格式为
+        ``rounds_{index}_record_file``。rounds JSON 里对应字段值会被
+        替换为 ``__MULTIPART__:rounds_{index}_record_file`` 占位符，
+        eval_server 侧收到上传文件后会把占位符替换回实际路径。
 
         Returns:
             (form_fields, files) 元组
-            - form_fields: 不含 data URI 的标量字段（dict/list 转 JSON 字符串）
+            - form_fields: 不含文件的标量字段（dict/list 转 JSON 字符串）
             - files: {field_name: (filename, bytes, content_type)} 字典
         """
         form_fields = {}
         files = {}
 
         for key, value in payload.items():
-            if isinstance(value, str) and value.startswith('data:') and ',' in value:
-                try:
-                    header, data = value.split(',', 1)
-                    mime = header.split(':')[1].split(';')[0] if ':' in header else 'application/octet-stream'
-                    import base64
-                    file_bytes = base64.b64decode(data)
-
-                    ext_map = {
-                        'audio/wav': '.wav', 'audio/x-wav': '.wav',
-                        'audio/mpeg': '.mp3', 'audio/mp3': '.mp3',
-                        'audio/flac': '.flac', 'audio/ogg': '.ogg',
-                        'audio/mp4': '.m4a', 'audio/aac': '.aac',
-                    }
-                    ext = ext_map.get(mime, '.bin')
-                    filename = f"{key}{ext}"
-                    files[key] = (filename, file_bytes, mime)
-                except Exception:
-                    form_fields[key] = value
+            if key == 'rounds' and isinstance(value, list):
+                # 深拷贝，避免修改原始 payload
+                rounds_copy = json.loads(json.dumps(value))
+                for idx, rd in enumerate(rounds_copy):
+                    if not isinstance(rd, dict):
+                        continue
+                    rf_value = rd.get('record_file')
+                    if isinstance(rf_value, str) and rf_value:
+                        file_field_name = f'rounds_{idx}_record_file'
+                        extracted = self._extract_single_file(file_field_name, rf_value, files)
+                        if extracted:
+                            rd['record_file'] = f'__MULTIPART__:{file_field_name}'
+                form_fields[key] = json.dumps(rounds_copy)
+            elif isinstance(value, str) and value.startswith('data:') and ',' in value:
+                self._extract_single_file(key, value, files, form_fields_fallback=form_fields, fallback_key=key, fallback_value=value)
             elif isinstance(value, str) and len(value) < 4096 and os.path.isabs(value) and os.path.exists(value):
-                # 是文件路径，读取文件内容用于 multipart 上传
-                try:
-                    with open(value, 'rb') as f:
-                        file_bytes = f.read()
-                    filename = os.path.basename(value)
-                    files[key] = (filename, file_bytes, 'application/octet-stream')
-                except Exception:
-                    form_fields[key] = value
+                self._extract_single_file(key, value, files, form_fields_fallback=form_fields, fallback_key=key, fallback_value=value)
             elif isinstance(value, (dict, list)):
                 form_fields[key] = json.dumps(value)
             else:
                 form_fields[key] = value
 
         return form_fields, files
+
+    @staticmethod
+    def _extract_single_file(field_name, value, files, form_fields_fallback=None, fallback_key=None, fallback_value=None):
+        """提取单个文件到 files 字典。成功返回 True，失败时回退到 form_fields。"""
+        try:
+            if isinstance(value, str) and value.startswith('data:') and ',' in value:
+                header, data = value.split(',', 1)
+                mime = header.split(':')[1].split(';')[0] if ':' in header else 'application/octet-stream'
+                import base64
+                file_bytes = base64.b64decode(data)
+
+                ext_map = {
+                    'audio/wav': '.wav', 'audio/x-wav': '.wav',
+                    'audio/mpeg': '.mp3', 'audio/mp3': '.mp3',
+                    'audio/flac': '.flac', 'audio/ogg': '.ogg',
+                    'audio/mp4': '.m4a', 'audio/aac': '.aac',
+                }
+                ext = ext_map.get(mime, '.bin')
+                filename = f"{field_name}{ext}"
+                files[field_name] = (filename, file_bytes, mime)
+                return True
+            elif isinstance(value, str) and len(value) < 4096 and os.path.isabs(value) and os.path.exists(value):
+                with open(value, 'rb') as f:
+                    file_bytes = f.read()
+                filename = os.path.basename(value)
+                files[field_name] = (filename, file_bytes, 'application/octet-stream')
+                return True
+        except Exception:
+            pass
+        # 回退
+        if form_fields_fallback is not None and fallback_key is not None:
+            form_fields_fallback[fallback_key] = fallback_value
+        return False
 
     def create_task_upload(self, url, form_fields, files, timeout=30, task_id=None):
         """

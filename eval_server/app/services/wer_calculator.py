@@ -584,64 +584,26 @@ def calculate_multi_round_wer(
     target_lang: str = 'en',
     normalize: bool = True,
 ) -> dict:
-    """
-    Multi-round WER aggregation.
+    """多轮 WER：拼接所有轮的 correct_answer 和 answer，算一个整体 WER。
 
     Args:
-        rounds: List of per-round data, each with 'reference' and 'hypothesis' keys.
+        rounds: [{answer, correct_answer, ...}, ...]
+                字段名与 param_mappings 的 target_param 一致。
         source_lang: Source language code.
         target_lang: Target language code.
         normalize: Whether to normalize text before computing.
 
     Returns:
-        Aggregated WER result with per-round breakdown.
+        WER result（与 calculate_wer 相同结构）。
     """
-    per_round = []
-    total_errors = 0
-    total_length = 0
+    ref_text = '\n'.join(r.get('correct_answer', '') for r in rounds)
+    hyp_text = '\n'.join(r.get('answer', '') for r in rounds)
 
-    for idx, round_data in enumerate(rounds):
-        ref = round_data.get('reference', '')
-        hyp = round_data.get('hypothesis', '')
-
-        result = calculate_wer(
-            ref_text=ref,
-            hyp_text=hyp,
-            source_lang=source_lang,
-            target_lang=target_lang,
-            translate_direct=None,
-            normalize=normalize,
-        )
-
-        round_info = {
-            'round': idx,
-            'wer': result.get('wer'),
-            'errors': result.get('errors', 0),
-            'length': result.get('length', 0),
-            'insertions': result.get('insertions', 0),
-            'deletions': result.get('deletions', 0),
-            'substitutions': result.get('substitutions', 0),
-        }
-        per_round.append(round_info)
-
-        total_errors += round_info['errors']
-        total_length += round_info['length']
-
-    weighted_wer = total_errors / total_length if total_length > 0 else 0
-    simple_wer = sum(
-        (r['wer'] for r in per_round if r['wer'] is not None), 0
-    ) / len(per_round) if per_round else 0
-
-    return {
-        'wer': round(weighted_wer, 4),
-        'per_round': per_round,
-        'aggregated': {
-            'total_errors': total_errors,
-            'total_length': total_length,
-            'weighted_wer': round(weighted_wer, 4),
-            'simple_wer': round(simple_wer, 4),
-            'round_count': len(per_round),
-        },
-        'source_lang': source_lang,
-        'target_lang': target_lang,
-    }
+    return calculate_wer(
+        ref_text=ref_text,
+        hyp_text=hyp_text,
+        source_lang=source_lang,
+        target_lang=target_lang,
+        translate_direct=None,
+        normalize=normalize,
+    )

@@ -24,8 +24,12 @@ _AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.pcm', '.opus',
 
 
 def evaluate_with_llm(
-    hypothesis: str,
-    reference: str,
+    answer: str = '',
+    correct_answer: str = '',
+    question: str = '',
+    query: str = '',
+    record_file: str = '',
+    rounds: Optional[list] = None,
     model: str = 'gpt-4',
     prompt: str = '',
     max_tokens: int = 1024,
@@ -35,44 +39,43 @@ def evaluate_with_llm(
     target_lang: str = 'en',
     **kwargs
 ) -> dict:
-    """
-    Use LLM to score the hypothesis against a reference.
+    """Use LLM to score device answer against reference.
+
+    字段名与 param_mappings 的 target_param 一致：
+    - answer: 设备回答
+    - correct_answer: 参考答案
+    - question: 设备识别的问题
+    - query: 参考问题
+    - record_file: 音频文件路径
 
     Args:
-        hypothesis: System output text to evaluate
-        reference: Ground truth reference text
-        model: LLM model name
-        prompt: Custom evaluation prompt (can contain {hypothesis} and {reference} placeholders)
-        max_tokens: Max output tokens
-        temperature: Sampling temperature
-        scoring_criteria: List of scoring criterion names
-        source_lang: Source language code
-        target_lang: Target language code
-        **kwargs: Additional parameters, may include audio file paths
-                  (e.g. record_file, audio_path, etc.)
-
-    Returns:
-        {
-            "llm_judge_score": 4.2,
-            "criteria_scores": {"accuracy": 4.5, "fluency": 4.0, "relevance": 4.0},
-            "reasoning": "...",
-            "model": "gpt-4",
-            "tokens_used": 256,
-            "source_lang": "zh",
-            "target_lang": "en"
-        }
+        rounds: 多轮数据 [{answer, correct_answer, ...}, ...]，有 rounds 时逐轮列给 LLM
     """
     # 从 kwargs 中提取音频文件路径
     audio_paths = _extract_audio_paths(kwargs)
+    if record_file and os.path.isfile(record_file):
+        audio_paths.append(record_file)
 
-    prompt_text = _build_evaluation_prompt(
-        hypothesis=hypothesis,
-        reference=reference,
-        custom_prompt=prompt,
-        scoring_criteria=scoring_criteria,
-        source_lang=source_lang,
-        target_lang=target_lang,
-    )
+    if rounds:
+        # 多轮：逐轮列出，不拼接
+        prompt_text = _build_rounds_prompt(
+            rounds=rounds,
+            custom_prompt=prompt,
+            scoring_criteria=scoring_criteria,
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
+    else:
+        prompt_text = _build_evaluation_prompt(
+            answer=answer,
+            correct_answer=correct_answer,
+            question=question,
+            query=query,
+            custom_prompt=prompt,
+            scoring_criteria=scoring_criteria,
+            source_lang=source_lang,
+            target_lang=target_lang,
+        )
 
     response = _call_llm_api(
         model=model,
@@ -91,6 +94,64 @@ def evaluate_with_llm(
     return result
 
 
+def _build_rounds_prompt(rounds, custom_prompt, scoring_criteria,
+                           source_lang, target_lang):
+    """构建多轮评估 prompt（逐轮列出，不拼接）
+
+    rounds 元素的字段名与 param_mappings 的 target_param 一致：
+    answer / correct_answer / question / query / record_file
+    """
+    dialog_text = ''
+    for idx, rd in enumerate(rounds, 1):
+        answer = rd.get('answer', '')
+        correct_answer = rd.get('correct_answer', '')
+        question = rd.get('question', '')
+        query = rd.get('query', '')
+        dialog_text += (
+            f'Round {idx}:\n'
+            f'  Reference (correct_answer): {correct_answer}\n'
+            f'  Hypothesis (answer): {answer}\n'
+            f'  Question: {question}\n'
+            f'  Query: {query}\n\n'
+        )
+
+    if custom_prompt:
+        try:
+            return custom_prompt.format(dialog=dialog_text)
+        except (KeyError, IndexError):
+            return custom_prompt
+
+    criteria_text = ''
+    if scoring_criteria:
+        for idx, criterion in enumerate(scoring_criteria, 1):
+            criteria_text += f'{idx}. {criterion}\n'
+    else:
+        criteria_text = (
+            '1. Accuracy: How accurately does the answer match the correct_answer?\n'
+            '2. Fluency: How fluent and natural is the answer?\n'
+            '3. Relevance: How relevant is the answer to the question/query?\n'
+        )
+
+    return f"""You are a professional translation/ASR quality evaluator.
+
+Multi-round dialog:
+{dialog_text}
+
+Please evaluate the overall quality on a scale of 1-5 for each criterion:
+{criteria_text}
+
+Respond in the following JSON format:
+{{
+    "scores": {{
+        "criterion_name": score
+    }},
+    "overall_score": average_score,
+    "reasoning": "brief explanation"
+}}
+
+Only respond with the JSON, no additional text."""
+
+
 def _extract_audio_paths(kwargs):
     """从 kwargs 中提取音频文件路径（文件存在且扩展名为音频类型）"""
     audio_paths = []
@@ -103,17 +164,26 @@ def _extract_audio_paths(kwargs):
     return audio_paths
 
 
-def _build_evaluation_prompt(hypothesis, reference, custom_prompt,
-                              scoring_criteria, source_lang, target_lang):
-    """Build the LLM evaluation prompt."""
+def _build_evaluation_prompt(answer, correct_answer, question, query,
+                              custom_prompt, scoring_criteria,
+                              source_lang, target_lang):
+    """Build the LLM evaluation prompt.
+
+    字段名与 param_mappings 的 target_param 一致：
+    answer / correct_answer / question / query
+    """
     if custom_prompt:
         try:
             return custom_prompt.format(
-                hypothesis=hypothesis,
-                reference=reference,
+                answer=answer,
+                correct_answer=correct_answer,
+                question=question,
+                query=query,
+                # 向后兼容：旧模板可能用 hypothesis/reference
+                hypothesis=answer,
+                reference=correct_answer,
             )
         except (KeyError, IndexError):
-            # 模板中可能没有占位符，直接使用
             return custom_prompt
 
     criteria_text = ''
@@ -122,20 +192,23 @@ def _build_evaluation_prompt(hypothesis, reference, custom_prompt,
             criteria_text += f'{idx}. {criterion}\n'
     else:
         criteria_text = (
-            '1. Accuracy: How accurately does the hypothesis match the reference?\n'
-            '2. Fluency: How fluent and natural is the hypothesis?\n'
-            '3. Relevance: How relevant is the hypothesis to the context?\n'
+            '1. Accuracy: How accurately does the answer match the correct_answer?\n'
+            '2. Fluency: How fluent and natural is the answer?\n'
+            '3. Relevance: How relevant is the answer to the question/query?\n'
         )
 
     return f"""You are a professional translation/ASR quality evaluator.
 
-Reference (ground truth):
-{reference}
+Reference (correct_answer):
+{correct_answer}
 
-Hypothesis (system output):
-{hypothesis}
+Hypothesis (answer):
+{answer}
 
-Please evaluate the hypothesis on a scale of 1-5 for each criterion:
+Question: {question}
+Query: {query}
+
+Please evaluate the answer on a scale of 1-5 for each criterion:
 {criteria_text}
 
 Respond in the following JSON format:
