@@ -13,6 +13,7 @@ import json
 import re
 import os
 import base64
+import httpx
 import requests
 from typing import Optional
 
@@ -30,13 +31,13 @@ def evaluate_with_llm(
     query: str = '',
     record_file: str = '',
     rounds: Optional[list] = None,
-    model: str = 'gpt-4',
+    model: str = 'deepseek-r1',
     prompt: str = '',
     max_tokens: int = 1024,
-    temperature: float = 0.1,
+    temperature: float = 0.7,
     scoring_criteria: Optional[list] = None,
-    source_lang: str = 'zh',
-    target_lang: str = 'en',
+    source_lang: str = 'mixed',
+    target_lang: str = 'mixed',
     **kwargs
 ) -> dict:
     """Use LLM to score device answer against reference.
@@ -172,6 +173,12 @@ def _build_evaluation_prompt(answer, correct_answer, question, query,
     字段名与 param_mappings 的 target_param 一致：
     answer / correct_answer / question / query
     """
+    # 优先使用调用方传入的 custom_prompt，其次从配置文件读取
+    if not custom_prompt:
+        from ..config import config
+        llm_config = getattr(config, 'LLM_JUDGE', {})
+        custom_prompt = llm_config.get('prompt_template', '')
+
     if custom_prompt:
         try:
             return custom_prompt.format(
@@ -283,12 +290,12 @@ def _call_llm_api(model, prompt, max_tokens, temperature, audio_paths=None):
         'response_format': {'type': 'json_object'},
     }
 
-    response = requests.post(
-        f'{api_base.rstrip("/")}/chat/completions',
-        headers=headers,
-        json=payload,
-        timeout=timeout,
-    )
+    with httpx.Client(trust_env=False, timeout=timeout) as client:
+        response = client.post(
+            f'{api_base.rstrip("/")}/chat/completions',
+            headers=headers,
+            json=payload,
+        )
 
     response.raise_for_status()
     data = response.json()
@@ -296,6 +303,8 @@ def _call_llm_api(model, prompt, max_tokens, temperature, audio_paths=None):
     return {
         'content': data['choices'][0]['message']['content'],
         'tokens_used': data.get('usage', {}).get('total_tokens', 0),
+        'input_token': data.get('usage', {}).get('prompt_tokens', 0),
+        'output_token': data.get('usage', {}).get('completion_tokens', 0),
     }
 
 
@@ -303,37 +312,30 @@ def _parse_llm_response(response):
     """Parse the LLM scoring response."""
     content = response['content']
 
+    # 尝试直接解析json
     try:
-        result = json.loads(content)
+        parsed = json.loads(content)
+        score = parsed.get('score', '')
+        reason = parsed.get('reason', '')
     except (json.JSONDecodeError, TypeError):
-        json_match = re.search(r'\{.*\}', content, re.DOTALL)
+        # 直接解析失败，用正则提取json部分
+        json_match = re.search(r'\{[^}]+\}', content)
         if json_match:
             try:
-                result = json.loads(json_match.group())
+                parsed = json.loads(json_match.group())
+                score = parsed.get('score', '')
+                reason = parsed.get('reason', '')
             except (json.JSONDecodeError, TypeError):
-                return {
-                    'llm_judge_score': 0,
-                    'criteria_scores': {},
-                    'reasoning': f'Failed to parse LLM response: {content[:200]}',
-                    'tokens_used': response.get('tokens_used', 0),
-                }
+                score = ''
+                reason = content
         else:
-            return {
-                'llm_judge_score': 0,
-                'criteria_scores': {},
-                'reasoning': f'Failed to parse LLM response: {content[:200]}',
-                'tokens_used': response.get('tokens_used', 0),
-            }
-
-    scores = result.get('scores', {})
-    overall = result.get('overall_score')
-
-    if overall is None and scores:
-        overall = sum(scores.values()) / len(scores)
+            score = ''
+            reason = content
 
     return {
-        'llm_judge_score': round(overall or 0, 2),
-        'criteria_scores': {k: round(v, 2) for k, v in scores.items()},
-        'reasoning': result.get('reasoning', ''),
+        'llm_judge_score': score,
+        'reasoning': reason,
         'tokens_used': response.get('tokens_used', 0),
+        'input_token': response.get('input_token', 0),
+        'output_token': response.get('output_token', 0),
     }

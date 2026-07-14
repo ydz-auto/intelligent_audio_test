@@ -1,5 +1,17 @@
 import os
 
+# 加载 .env 文件
+from pathlib import Path
+env_path = Path(__file__).resolve().parent.parent / '.env'
+if env_path.exists():
+    with open(env_path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+
 class Config:
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
     # 项目根目录（与 Intelligent-Audio-TEST 保持一致）
@@ -48,10 +60,22 @@ class Config:
 
     # LLM Judge configuration
     LLM_JUDGE = {
-        'api_base_url': os.environ.get('LLM_JUDGE_API_BASE', ''),
+        'api_base_url': 'https://az.gptplus5.com/v1',
         'api_key': os.environ.get('LLM_JUDGE_API_KEY', ''),
-        'default_model': 'gpt-4',
+        'default_model': 'deepseek-r1',
         'timeout': 120,
+        'prompt_template': (
+            '你是一个严格的语言逻辑专家，你需要结合上下文并逐字逐词分析【用户提问】、【助手回答】与【历史对话】三者之间的逻辑是否正确，你需要按照【评价规则】进行打分，并给出打分理由；\n\n'
+            '【评价规则】\n'
+            '<A>回答时有以下表现之一为1分\n'
+            '逻辑混乱，表达没有条理\n\n'
+            '【当前用户问题】：{query}\n\n'
+            '【当前助手回答】：{hypothesis}\n\n'
+            '输出结果严格按照如下json形式，包含两个参数（score、reason）：\n'
+            '【自动评测开始】\n'
+            '{{"score":"XXX","reason":"XXX"}}\n'
+            '【自动评测结束】'
+        ),
     }
 
 config = Config()
