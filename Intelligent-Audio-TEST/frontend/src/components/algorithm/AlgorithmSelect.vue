@@ -219,7 +219,12 @@ const toggleDropdown = () => {
 const loadAlgorithms = async () => {
   try {
     const result = await algorithmApi.getDefinitions()
-    algorithms.value = result.data || []
+    // 响应经层转为 camelCase，补回 snake_case 别名供分组/读取使用
+    algorithms.value = (result.data || []).map((a: any) => ({
+      ...a,
+      group_id: a.groupId ?? a.group_id,
+      group_name: a.groupName ?? a.group_name,
+    }))
   } catch (error) {
     console.error('加载算法列表失败:', error)
   }

@@ -402,7 +402,7 @@ async function loadGroups() {
     const response = await fetch('/api/v1/algorithm/groups')
     const result = await response.json()
     if (result.success) {
-      groups.value = result.data || []
+      groups.value = result.data?.data || []
     }
   } catch (error) {
     console.error('加载分组列表失败:', error)

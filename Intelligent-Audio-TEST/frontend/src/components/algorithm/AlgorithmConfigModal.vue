@@ -115,12 +115,21 @@
             </div>
             <div class="form-group">
               <label>所属分组 <span class="required">*</span></label>
-              <select class="form-input" v-model="formState.group_id">
+              <select class="form-input" v-model="groupSelectValue">
                 <option :value="null">请选择分组</option>
                 <option v-for="group in groups" :key="group.id" :value="group.id">
                   {{ group.name }}
                 </option>
+                <option :value="NEW_GROUP_SENTINEL">+ 新建分组</option>
               </select>
+              <input
+                v-if="creatingNewGroup"
+                type="text"
+                class="form-input"
+                style="margin-top: 8px;"
+                placeholder="输入新分组名称"
+                v-model="newGroupName"
+              >
             </div>
             <div class="form-group">
               <label>排序</label>
@@ -792,6 +801,24 @@ const formState = reactive({
   reference_params: [] as { code: string; name: string; type: string; annotation_code: string; annotation_format: string; field_path: string; merge_mode: string; help_text: string }[]
 })
 
+// 新建分组支持：选择「+ 新建分组」后展示输入框，保存算法时先创建分组再回填 group_id
+const NEW_GROUP_SENTINEL = '__new_group__'
+const newGroupName = ref('')
+const creatingNewGroup = ref(false)
+
+const groupSelectValue = computed<number | string | null>({
+  get: () => (creatingNewGroup.value ? NEW_GROUP_SENTINEL : formState.group_id),
+  set: (val) => {
+    if (val === NEW_GROUP_SENTINEL) {
+      creatingNewGroup.value = true
+      newGroupName.value = ''
+    } else {
+      creatingNewGroup.value = false
+      formState.group_id = val === null ? null : (Number(val) as number | null)
+    }
+  }
+})
+
 const currentParams = computed(() => {
   if (paramConfigType.value === 'device') {
     return formState.device_params
@@ -1035,6 +1062,8 @@ function resetForm() {
   formState.mappings = { device: [], api: [], evaluation: [] }
   formState.associated_dimensions = []
   formState.reference_params = []
+  creatingNewGroup.value = false
+  newGroupName.value = ''
   activeTab.value = 'basic'
   paramConfigType.value = 'device'
 }
@@ -1057,7 +1086,15 @@ async function handleOk() {
     return
   }
 
-  if (!formState.type || !formState.name || !formState.group_id) {
+  if (!formState.type || !formState.name) {
+    alert('请填写必填字段')
+    return
+  }
+  if (creatingNewGroup.value && !newGroupName.value.trim()) {
+    alert('请填写新分组名称')
+    return
+  }
+  if (!creatingNewGroup.value && !formState.group_id) {
     alert('请填写必填字段')
     return
   }
@@ -1068,7 +1105,16 @@ async function handleOk() {
 async function saveAlgorithm() {
   try {
     formState.status = formState.statusSwitch ? 'online' : 'offline'
-    
+
+    // 若选择了新建分组，先创建分组并回填 group_id
+    if (creatingNewGroup.value) {
+      const newGroup = await algorithmApi.createGroup({ name: newGroupName.value.trim() })
+      await loadGroups()
+      formState.group_id = newGroup.id ?? null
+      creatingNewGroup.value = false
+      newGroupName.value = ''
+    }
+
     const bodyData: any = {
       type: formState.type,
       name: formState.name,
@@ -1150,6 +1196,8 @@ async function handleEdit(record: AlgorithmRecord) {
         }))
       })
       paramConfigType.value = 'device'
+      creatingNewGroup.value = false
+      newGroupName.value = ''
       internalMode.value = 'edit'
     }
   } catch (error) {
