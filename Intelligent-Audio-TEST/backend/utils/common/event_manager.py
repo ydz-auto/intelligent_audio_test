@@ -502,6 +502,11 @@ class EventManager:
                 "usedTime": self._format_duration(elapsed_seconds_for_display) if started_at else "0分钟"
             }
 
+            # 默认值，防止 started_at 为 None 时变量未定义
+            elapsed_seconds = elapsed_seconds_for_display
+            expected_total_seconds = 60
+            expected_complete_time_str = ''
+
             if db_task.started_at:
                 started_at = db_task.started_at
                 if not started_at.tzinfo:

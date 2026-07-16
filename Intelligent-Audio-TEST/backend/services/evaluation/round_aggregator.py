@@ -142,11 +142,11 @@ class RoundAggregator(EvaluationLoggerMixin):
                         aggregated[f'avg_{dim_name}'] = None
 
                 aggregated['round_count'] = len(set(
-                    r['round_number'] for r in dim_results if r['round_number'] is not None
+                    r.round_number for r in dim_results if r.round_number is not None
                 ))
                 aggregated['completed_rounds'] = len(set(
-                    r['round_number'] for r in dim_results
-                    if r['round_number'] is not None and r['evaluation_status'] == 'completed'
+                    r.round_number for r in dim_results
+                    if r.round_number is not None and r.evaluation_status == 'completed'
                 ))
 
                 self._update_algorithm_result_aggregated(local_db_session, result_id, aggregated)

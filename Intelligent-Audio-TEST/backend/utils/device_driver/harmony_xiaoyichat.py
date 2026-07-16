@@ -19,6 +19,38 @@ class Xiaoyilivechat(HarmonyDriver):
             check=False, capture_output=True, text=True, timeout=10
         )
 
+    def _is_recorder_running(self, device_sn):
+        """检查 screenrecorder 服务是否正在运行"""
+        result = self._hdc_shell(device_sn, 'aa', 'dump', '-l')
+        if result.returncode != 0:
+            return False
+        # 服务运行时 dump 输出会包含 bundle 名称
+        return self.RECORDER_BUNDLE in (result.stdout or '')
+
+    def _start_recorder(self, device_sn, file_name=None):
+        """启动录屏服务
+
+        说明: aa dump -l 的输出与录屏服务是否真正在前台运行并非严格对应,
+        用它做二次校验会把已成功启动的录屏误判为"未运行", 从而导致整个用例失败。
+        这里改为以 aa start 命令本身的返回码为准: 命令执行成功即视为启动成功,
+        录屏是否真正生效交给后续 post_process 的等待逻辑兜底。
+        """
+        args = ['aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY]
+        if file_name:
+            args += ['--ps', 'CustomizedFileName', file_name]
+        result = self._hdc_shell(device_sn, *args)
+        return result.returncode == 0
+
+    def _stop_recorder(self, device_sn):
+        """停止录屏服务
+
+        说明: 与 _start_recorder 同理, aa dump -l 的二次校验不可靠,
+        这里直接以 toggle 命令执行成功为准; 真正的兜底放在 teardown 中按
+        _recording 标志位判断, 避免对已停止的录屏再次 toggle 反而打开。
+        """
+        self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
+        return True
+
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         if not super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs):
             return False
@@ -71,9 +103,12 @@ class Xiaoyilivechat(HarmonyDriver):
         # 开启录屏（文件名含轮次号，避免多轮冲突）
         round_number = kwargs.get('round_number', 0)
         self._record_file_name = f"{test_case_id}_r{round_number}.mp4"
-        self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY,
-                        '--ps', 'CustomizedFileName', self._record_file_name)
-        self._log(level='INFO', content=f"启动录屏: {self._record_file_name}", task_id=task_id,
+        if not self._start_recorder(device_sn, file_name=self._record_file_name):
+            self._log(level='ERROR', content=f"启动录屏失败,服务未运行: {self._record_file_name}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return False
+        self._recording = True
+        self._log(level='INFO', content=f"启动录屏成功: {self._record_file_name}", task_id=task_id,
                   test_case_id=test_case_id)
         time.sleep(2)
         return True
@@ -90,8 +125,11 @@ class Xiaoyilivechat(HarmonyDriver):
             timeout=60, interval=1, operation_name="post_process_正在听"
         )
         # 停止录屏
-        self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
-        self._log(level='INFO', content="停止录屏", task_id=task_id, test_case_id=test_case_id)
+        if not self._stop_recorder(device_sn):
+            self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
+        else:
+            self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
+        self._recording = False
         time.sleep(5)
         # 通话挂断
         try:
@@ -183,12 +221,18 @@ class Xiaoyilivechat(HarmonyDriver):
         2. 确保通话已挂断（兜底）
         3. 退出小艺聊天界面，回桌面
         """
-        # 1. 兜底停止录屏
-        try:
-            self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
-            self._log(level='DEBUG', content="teardown: 兜底停止录屏", task_id=task_id, test_case_id=test_case_id)
-        except Exception as e:
-            self._log(level='WARNING', content=f"teardown: 停止录屏失败: {e}", task_id=task_id, test_case_id=test_case_id)
+        # 1. 兜底停止录屏（仅在仍在录屏时执行，避免 toggle 把已停止的录屏又打开）
+        if getattr(self, '_recording', False):
+            try:
+                if not self._stop_recorder(device_sn):
+                    self._log(level='WARNING', content="teardown: 兜底停止录屏失败,服务仍在运行",
+                              task_id=task_id, test_case_id=test_case_id)
+                else:
+                    self._log(level='DEBUG', content="teardown: 兜底停止录屏成功",
+                              task_id=task_id, test_case_id=test_case_id)
+                self._recording = False
+            except Exception as e:
+                self._log(level='WARNING', content=f"teardown: 停止录屏失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
         driver = self._get_driver(device_sn)
         if not driver:

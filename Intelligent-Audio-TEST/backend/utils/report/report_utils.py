@@ -208,6 +208,9 @@ class ReportUtils:
         # 每个 item 是 {dimension_value, api_raw_response, test_result_id}
         category_agg_items = {}
         tag_agg_items = {}
+        # resource 级别累加器（不按 category 分组，与 device_stats 口径一致）
+        resource_accumulator = {}
+        resource_agg_items = {}
 
         # 预加载所有 TestCase，避免循环内 N+1 查询
         test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
@@ -250,7 +253,7 @@ class ReportUtils:
             # 6. 提取维度值
             dim_values = ReportUtils.extract_dimension_values(result.id, all_dimensions, dim_results_map)
             
-            # 7. 更新累加器 (Category & Tags)
+            # 7. 更新累加器 (Category & Tags & Resource)
             # 初始化累加器结构
             if category not in category_accumulator:
                 category_accumulator[category] = {}
@@ -260,6 +263,13 @@ class ReportUtils:
                 category_accumulator[category][resource]['success_rate'] = {'sum': 0, 'count': 0}
             elif 'success_rate' not in category_accumulator[category][resource]:
                  category_accumulator[category][resource]['success_rate'] = {'sum': 0, 'count': 0}
+
+            # resource 级别累加器初始化（不按 category 分组）
+            if resource not in resource_accumulator:
+                resource_accumulator[resource] = {dim.name: {'sum': 0, 'count': 0} for dim in all_dimensions}
+                resource_accumulator[resource]['success_rate'] = {'sum': 0, 'count': 0}
+            elif 'success_rate' not in resource_accumulator[resource]:
+                resource_accumulator[resource]['success_rate'] = {'sum': 0, 'count': 0}
 
             for tag in tags:
                 if tag not in tag_accumulator:
@@ -278,6 +288,8 @@ class ReportUtils:
             # 累加通过率
             category_accumulator[category][resource]['success_rate']['sum'] += success_val
             category_accumulator[category][resource]['success_rate']['count'] += 1
+            resource_accumulator[resource]['success_rate']['sum'] += success_val
+            resource_accumulator[resource]['success_rate']['count'] += 1
             
             for tag in tags:
                 tag_accumulator[tag][resource]['success_rate']['sum'] += success_val
@@ -290,6 +302,11 @@ class ReportUtils:
                     if dim_name in category_accumulator[category][resource]:
                         category_accumulator[category][resource][dim_name]['sum'] += score
                         category_accumulator[category][resource][dim_name]['count'] += 1
+
+                    # Resource（全局，不按 category 分组）
+                    if dim_name in resource_accumulator[resource]:
+                        resource_accumulator[resource][dim_name]['sum'] += score
+                        resource_accumulator[resource][dim_name]['count'] += 1
 
                     # Tag
                     for tag in tags:
@@ -314,11 +331,13 @@ class ReportUtils:
 
                         agg_item = {'dimension_value': score, 'api_raw_response': raw_resp, 'test_result_id': result.id}
                         category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
+                        resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(agg_item)
                         for tag in tags:
                             tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(agg_item)
 
         # 9. 计算平均值 (Metric Data & Tag Metric Data)
-        metric_data = ReportUtils._calculate_averages(category_accumulator)
+        # metric_data 改为 resource 级别全局平均（不按 category 分组，与 device_stats 口径一致）
+        metric_data = ReportUtils._calculate_resource_averages(resource_accumulator)
         tag_metric_data = ReportUtils._calculate_averages(tag_accumulator)
 
         # 9.1 对非 average 维度，用策略类聚合替换简单平均
@@ -328,7 +347,7 @@ class ReportUtils:
             for dim in all_dimensions:
                 if dim.name in custom_agg_dims:
                     dim_name_to_output_params[dim.name] = dim_output_params.get(dim.id, [])
-            ReportUtils._apply_aggregation_strategies(metric_data, category_agg_items, dim_statistic_method, dim_name_to_output_params)
+            ReportUtils._apply_resource_aggregation_strategies(metric_data, resource_agg_items, dim_statistic_method, dim_name_to_output_params)
             ReportUtils._apply_aggregation_strategies(tag_metric_data, tag_agg_items, dim_statistic_method, dim_name_to_output_params)
 
         # 9.5 计算按标签分类统计的数据

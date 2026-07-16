@@ -158,7 +158,7 @@ class E2EDeviceManager:
                 futures.append(future)
         for future in futures:
             try:
-                future.result(timeout=60)
+                future.result(timeout=300)
             except Exception as e:
                 self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
