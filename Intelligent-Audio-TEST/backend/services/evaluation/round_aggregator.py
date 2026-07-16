@@ -97,7 +97,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                     dim_groups[key].append({
                         'round_number': dr.round_number,
                         'score': dr.score,
-                        'raw_value': dr.raw_value,
+                        'raw_value': dr.dimension_value,
                         'evaluation_status': dr.evaluation_status,
                     })
 

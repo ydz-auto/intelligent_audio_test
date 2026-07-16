@@ -102,14 +102,31 @@ class PayloadBuilder(EvaluationLoggerMixin):
             elif isinstance(body_template, dict):
                 result = {}
                 for k, v in body_template.items():
-                    if k in processed_context:
+                    if k == 'rounds' and isinstance(v, list) and len(v) > 0:
+                        # rounds 结构：body_template 里声明了每轮的字段模板
+                        round_template = v[0] if isinstance(v[0], dict) else {}
+                        rounds_data = processed_context.get('rounds', [])
+                        rendered_rounds = []
+                        for rd in rounds_data:
+                            rendered_rd = {}
+                            for rk, rv in round_template.items():
+                                if isinstance(rv, str) and rv.startswith('{{') and rv.endswith('}}'):
+                                    placeholder_key = rv[2:-2]
+                                    rendered_rd[rk] = rd.get(placeholder_key, '')
+                                elif rk in rd:
+                                    rendered_rd[rk] = rd[rk]
+                                else:
+                                    rendered_rd[rk] = rv
+                            rendered_rounds.append(rendered_rd)
+                        result['rounds'] = rendered_rounds
+                    elif k in processed_context:
                         result[k] = processed_context[k]
                     elif isinstance(v, str) and v.startswith('{{') and v.endswith('}}'):
                         placeholder_key = v[2:-2]
                         if placeholder_key in processed_context:
                             result[k] = processed_context[placeholder_key]
                         else:
-                            result[k] = v
+                            result[k] = ''
                     else:
                         result[k] = v
                 return result

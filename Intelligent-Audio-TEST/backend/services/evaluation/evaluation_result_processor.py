@@ -146,7 +146,14 @@ class EvaluationResultProcessor(RoundAggregator):
                 try:
                     test_result_dimension = local_db_session.query(TestResultDimension).get(dimension_result_id)
                     if test_result_dimension:
-                        test_result_dimension.dimension_value = raw_value
+                        # dimension_value 是 double precision 类型，非数值（空字符串、非数字字符串等）会导致 PostgreSQL 类型错误，转为 None
+                        dim_val = None
+                        if raw_value is not None and raw_value != '':
+                            try:
+                                dim_val = float(raw_value)
+                            except (ValueError, TypeError):
+                                dim_val = None
+                        test_result_dimension.dimension_value = dim_val
                         test_result_dimension.score = score
                         test_result_dimension.status = status
                         test_result_dimension.evaluation_status = evaluation_status

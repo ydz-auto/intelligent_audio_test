@@ -105,6 +105,15 @@ eval_server/test_upload.py
 Intelligent-Audio-TEST/test_rounds.py
 Intelligent-Audio-TEST/backend/_check_tc.py
 Intelligent-Audio-TEST/open_browser.py
+Intelligent-Audio-TEST/query_logs.py
+
+# Root-level temp debug scripts
+/check_*.py
+/fix_*.py
+/query_*.py
+/test_*.py
+/debug-*.md
+/utputFormat
 
 # Large media files (use Git LFS if needed)
 *.mp4

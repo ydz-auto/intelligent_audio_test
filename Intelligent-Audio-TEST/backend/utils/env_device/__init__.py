@@ -28,14 +28,20 @@
 from backend.utils.env_device.base_env_device import BaseEnvDevice
 from backend.utils.env_device.env_device_factory import EnvDeviceFactory
 from backend.utils.env_device.rail import RailEnvDevice, SerialRailEnvDevice
+from backend.utils.env_device.modbus_tcp import ModbusTcpEnvDevice
+from backend.utils.env_device.siemens_s7_modbus import SiemensS7ModbusEnvDevice
 
 # 注册内置设备类型到工厂
 EnvDeviceFactory.register('rail', RailEnvDevice)
 EnvDeviceFactory.register('serial_rail', SerialRailEnvDevice)
+EnvDeviceFactory.register('modbus_tcp', ModbusTcpEnvDevice)
+EnvDeviceFactory.register('siemens_s7_modbus', SiemensS7ModbusEnvDevice)
 
 __all__ = [
     'BaseEnvDevice',
     'EnvDeviceFactory',
     'RailEnvDevice',
     'SerialRailEnvDevice',
+    'ModbusTcpEnvDevice',
+    'SiemensS7ModbusEnvDevice',
 ]

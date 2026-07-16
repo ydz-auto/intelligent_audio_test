@@ -47,7 +47,7 @@ def seed_llm_judge_dimension():
 
         existing_dim = conn.execute(text(
             "SELECT id FROM dimensions "
-            "WHERE dimension_type = 'llm_judge' AND deleted = FALSE"
+            "WHERE task_type_code = 'llm_judge' AND deleted = FALSE"
         )).fetchone()
 
         if existing_dim:
@@ -59,35 +59,41 @@ def seed_llm_judge_dimension():
                 'method': 'POST',
                 'headers': {'Content-Type': 'application/json'},
                 'body_template': {
-                    'answer': '{{answer}}',
-                    'correct_answer': '{{correct_answer}}',
                     'model': '{{model}}',
                     'prompt': '{{prompt}}',
-                    'record_file': '{{record_file}}',
-                    'query': '{{query}}',
-                    'question': '{{question}}'
+                    'rounds': [
+                        {
+                            'answer': '{{answer}}',
+                            'correct_answer': '{{correct_answer}}',
+                            'question': '{{question}}',
+                            'query': '{{query}}',
+                            'record_file': '{{record_file}}'
+                        }
+                    ]
                 }
             }, ensure_ascii=False)
             conn.execute(text(
                 "UPDATE dimensions SET api_settings = :settings, updated_at = NOW() "
                 "WHERE id = :did"
             ), {'settings': default_api_settings, 'did': dim_id})
-            print(f"  + 已更新 llm_judge 维度 api_settings (body_template 含 prompt 映射)")
+            print(f"  + 已更新 llm_judge 维度 api_settings (body_template 含 rounds 结构)")
         else:
-            # 默认 body_template：字段名与 eval_server 的 evaluate_with_llm 参数一致
-            # answer / correct_answer / question / query / record_file / model / prompt
-            # 其中 record_file 作为音频文件透传（eval_server 会自动检测文件路径）
+            # 默认 body_template：rounds 外放维度级配置，rounds 内放数据字段
             default_api_settings = json.dumps({
                 'method': 'POST',
                 'headers': {'Content-Type': 'application/json'},
                 'body_template': {
-                    'answer': '{{answer}}',
-                    'correct_answer': '{{correct_answer}}',
                     'model': '{{model}}',
                     'prompt': '{{prompt}}',
-                    'record_file': '{{record_file}}',
-                    'query': '{{query}}',
-                    'question': '{{question}}'
+                    'rounds': [
+                        {
+                            'answer': '{{answer}}',
+                            'correct_answer': '{{correct_answer}}',
+                            'question': '{{question}}',
+                            'query': '{{query}}',
+                            'record_file': '{{record_file}}'
+                        }
+                    ]
                 }
             }, ensure_ascii=False)
 
@@ -99,7 +105,7 @@ def seed_llm_judge_dimension():
                 "   api_status, score_unit, statistic_method, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
-                "  ('LLM语义评分', 'llm_judge,语义,评分', 'llm_judge', 'llm_judge', "
+                "  ('LLM语义评分', 'llm_judge,语义,评分', 'main', 'llm_judge', "
                 "   '使用大语言模型对对话输出进行语义级评分，评估准确性、流畅度、相关性', "
                 "   'auto', 1, 0.0, 5.0, 2, "
                 "   1, 120, "

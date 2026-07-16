@@ -19,6 +19,7 @@ _global_db_handler = None
 LOG_ARCHIVE_THRESHOLD = 300000
 LOG_HOT_DATA_DAYS = 7
 LOG_ARCHIVE_DIR = 'archives'
+LOG_ARCHIVE_RETENTION_DAYS = 90  # 归档文件保留90天（约3个月），过期自动删除
 CONSOLE_LOG_MAX_LENGTH = 20000
 
 def set_socketio(socketio):
@@ -362,6 +363,9 @@ class DatabaseLogHandler(logging.Handler):
                     if total_count > LOG_ARCHIVE_THRESHOLD:
                         print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Log count {total_count} exceeds threshold {LOG_ARCHIVE_THRESHOLD}, starting archive...")
                         self._archive_old_logs(Log, SessionLocal, session, total_count)
+
+                    # 清理过期归档文件（每次归档检查时都执行）
+                    self._clean_expired_archives()
                 finally:
                     session.close()
         except Exception as e:
@@ -369,21 +373,21 @@ class DatabaseLogHandler(logging.Handler):
     
     def _archive_old_logs(self, Log, SessionLocal, session, total_count):
         cutoff_date = datetime.now(timezone(timedelta(hours=8))) - timedelta(days=LOG_HOT_DATA_DAYS)
-        
+
         archive_dir = os.path.join(os.getcwd(), LOG_ARCHIVE_DIR)
         if not os.path.exists(archive_dir):
             os.makedirs(archive_dir)
-        
-        task_dir = os.path.join(archive_dir, 'tasks')
-        case_dir = os.path.join(archive_dir, 'cases')
-        other_dir = os.path.join(archive_dir, 'other')
-        
-        for d in [task_dir, case_dir, other_dir]:
+
+        tasks_base = os.path.join(archive_dir, 'tasks')
+        cases_base = os.path.join(archive_dir, 'cases')
+        system_dir = os.path.join(archive_dir, 'system')
+
+        for d in [tasks_base, cases_base, system_dir]:
             if not os.path.exists(d):
                 os.makedirs(d)
-        
+
         old_logs = session.query(Log).filter(Log.time < cutoff_date).order_by(Log.time.asc()).limit(100000).all()
-        
+
         if not old_logs:
             delete_count = total_count - LOG_ARCHIVE_THRESHOLD
             if delete_count > 0:
@@ -393,11 +397,14 @@ class DatabaseLogHandler(logging.Handler):
                 session.commit()
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Deleted {len(log_ids)} oldest logs (no archive needed).")
             return
-        
+
+        # 分组：task_logs[task_id]['_task' | case_id] = [log_data, ...]
+        # case_logs[case_id] = [log_data, ...]  （无 task_id 的用例日志）
+        # system_logs = [log_data, ...]
         task_logs = {}
         case_logs = {}
-        other_logs = []
-        
+        system_logs = []
+
         for log in old_logs:
             log_data = {
                 'id': log.id,
@@ -416,64 +423,107 @@ class DatabaseLogHandler(logging.Handler):
                 'algorithm_type': log.algorithm_type,
                 'created_at': log.created_at.isoformat() if log.created_at else None
             }
-            
-            if log.task_id:
-                if log.task_id not in task_logs:
-                    task_logs[log.task_id] = []
-                task_logs[log.task_id].append(log_data)
-            elif log.test_case_id:
-                if log.test_case_id not in case_logs:
-                    case_logs[log.test_case_id] = []
-                case_logs[log.test_case_id].append(log_data)
+
+            tid = log.task_id
+            cid = log.test_case_id
+            if tid:
+                if tid not in task_logs:
+                    task_logs[tid] = {}
+                bucket_key = cid if cid else '_task'
+                if bucket_key not in task_logs[tid]:
+                    task_logs[tid][bucket_key] = []
+                task_logs[tid][bucket_key].append(log_data)
+            elif cid:
+                if cid not in case_logs:
+                    case_logs[cid] = []
+                case_logs[cid].append(log_data)
             else:
-                other_logs.append(log_data)
-        
+                system_logs.append(log_data)
+
         archived_count = 0
-        
-        for task_id, logs in task_logs.items():
-            archive_path = os.path.join(task_dir, f"task_{task_id}.json")
-            existing_logs = []
-            if os.path.exists(archive_path):
-                with open(archive_path, 'r', encoding='utf-8') as f:
-                    existing_logs = json.load(f)
-            
-            existing_logs.extend(logs)
-            existing_logs.sort(key=lambda x: x.get('time', '') or '')
-            
-            with open(archive_path, 'w', encoding='utf-8') as f:
-                json.dump(existing_logs, f, ensure_ascii=False, indent=2)
-            archived_count += len(logs)
-        
+        task_count = 0
+        case_count = 0
+
+        # 任务下按用例分级：archives/tasks/task_{id}/_task.json + case_{cid}.json
+        for task_id, buckets in task_logs.items():
+            task_subdir = os.path.join(tasks_base, f"task_{task_id}")
+            if not os.path.exists(task_subdir):
+                os.makedirs(task_subdir)
+            for bucket_key, logs in buckets.items():
+                if bucket_key == '_task':
+                    fname = '_task.jsonl'
+                else:
+                    fname = f"case_{bucket_key}.jsonl"
+                archive_path = os.path.join(task_subdir, fname)
+                with open(archive_path, 'a', encoding='utf-8') as f:
+                    for ld in logs:
+                        f.write(json.dumps(ld, ensure_ascii=False) + '\n')
+                archived_count += len(logs)
+            task_count += 1
+
+        # 无任务的用例日志：archives/cases/case_{id}.jsonl
         for case_id, logs in case_logs.items():
-            archive_path = os.path.join(case_dir, f"case_{case_id}.json")
-            existing_logs = []
-            if os.path.exists(archive_path):
-                with open(archive_path, 'r', encoding='utf-8') as f:
-                    existing_logs = json.load(f)
-            
-            existing_logs.extend(logs)
-            existing_logs.sort(key=lambda x: x.get('time', '') or '')
-            
-            with open(archive_path, 'w', encoding='utf-8') as f:
-                json.dump(existing_logs, f, ensure_ascii=False, indent=2)
+            archive_path = os.path.join(cases_base, f"case_{case_id}.jsonl")
+            with open(archive_path, 'a', encoding='utf-8') as f:
+                for ld in logs:
+                    f.write(json.dumps(ld, ensure_ascii=False) + '\n')
             archived_count += len(logs)
-        
-        if other_logs:
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            archive_path = os.path.join(other_dir, f"other_{timestamp}.json")
-            with open(archive_path, 'w', encoding='utf-8') as f:
-                json.dump(other_logs, f, ensure_ascii=False, indent=2)
-            archived_count += len(other_logs)
-        
+            case_count += 1
+
+        # 系统日志：archives/system/YYYY-MM-DD.log 追加写行格式
+        if system_logs:
+            today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
+            archive_path = os.path.join(system_dir, f"{today}.log")
+            with open(archive_path, 'a', encoding='utf-8') as f:
+                for ld in system_logs:
+                    f.write(json.dumps(ld, ensure_ascii=False) + '\n')
+            archived_count += len(system_logs)
+
         log_ids_to_delete = [log.id for log in old_logs]
         session.query(Log).filter(Log.id.in_(log_ids_to_delete)).delete(synchronize_session=False)
         session.commit()
-        
-        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Archived {archived_count} logs (tasks: {len(task_logs)}, cases: {len(case_logs)}, other: {len(other_logs)})")
-        
+
+        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Archived {archived_count} logs (tasks: {task_count}, orphan cases: {case_count}, system: {len(system_logs)})")
+
         remaining_count = session.query(Log).count()
         if remaining_count > LOG_ARCHIVE_THRESHOLD:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Still {remaining_count} logs, will continue archiving next cycle.")
+
+    def _clean_expired_archives(self):
+        """清理过期归档文件，删除修改时间超过 LOG_ARCHIVE_RETENTION_DAYS 天的文件"""
+        archive_dir = os.path.join(os.getcwd(), LOG_ARCHIVE_DIR)
+        if not os.path.exists(archive_dir):
+            return
+
+        cutoff_time = time.time() - LOG_ARCHIVE_RETENTION_DAYS * 86400
+        deleted_count = 0
+        deleted_size = 0
+
+        for root, dirs, files in os.walk(archive_dir, topdown=False):
+            for fname in files:
+                fpath = os.path.join(root, fname)
+                try:
+                    mtime = os.path.getmtime(fpath)
+                    if mtime < cutoff_time:
+                        fsize = os.path.getsize(fpath)
+                        os.remove(fpath)
+                        deleted_count += 1
+                        deleted_size += fsize
+                except (PermissionError, OSError):
+                    pass
+
+            # 清理空目录（先删子目录再删父目录）
+            for dname in dirs:
+                dpath = os.path.join(root, dname)
+                try:
+                    if not os.listdir(dpath):
+                        os.rmdir(dpath)
+                except (PermissionError, OSError):
+                    pass
+
+        if deleted_count > 0:
+            size_mb = deleted_size / (1024 * 1024)
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Cleaned {deleted_count} expired archive files ({size_mb:.1f}MB), older than {LOG_ARCHIVE_RETENTION_DAYS} days.")
 
     def set_console_log(self, enable):
         self.enable_console_log = enable

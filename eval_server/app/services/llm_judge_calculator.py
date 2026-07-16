@@ -17,7 +17,6 @@ import httpx
 import requests
 from typing import Optional
 
-
 LLM_DEFAULT_TIMEOUT = 120
 
 # 音频文件扩展名集合
@@ -25,20 +24,18 @@ _AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.pcm', '.opus',
 
 
 def evaluate_with_llm(
-    answer: str = '',
-    correct_answer: str = '',
-    question: str = '',
-    query: str = '',
-    record_file: str = '',
-    rounds: Optional[list] = None,
-    model: str = 'deepseek-r1',
-    prompt: str = '',
-    max_tokens: int = 1024,
-    temperature: float = 0.7,
-    scoring_criteria: Optional[list] = None,
-    source_lang: str = 'mixed',
-    target_lang: str = 'mixed',
-    **kwargs
+        answer: str = '',
+        correct_answer: str = '',
+        question: str = '',
+        query: str = '',
+        record_file: str = '',
+        rounds: Optional[list] = None,
+        model: str = 'deepseek-r1',
+        prompt: str = '',
+        max_tokens: int = 1024,
+        temperature: float = 0.7,
+        scoring_criteria: Optional[list] = None,
+        **kwargs
 ) -> dict:
     """Use LLM to score device answer against reference.
 
@@ -63,8 +60,6 @@ def evaluate_with_llm(
             rounds=rounds,
             custom_prompt=prompt,
             scoring_criteria=scoring_criteria,
-            source_lang=source_lang,
-            target_lang=target_lang,
         )
     else:
         prompt_text = _build_evaluation_prompt(
@@ -74,8 +69,6 @@ def evaluate_with_llm(
             query=query,
             custom_prompt=prompt,
             scoring_criteria=scoring_criteria,
-            source_lang=source_lang,
-            target_lang=target_lang,
         )
 
     response = _call_llm_api(
@@ -89,14 +82,11 @@ def evaluate_with_llm(
     result = _parse_llm_response(response)
 
     result['model'] = model
-    result['source_lang'] = source_lang
-    result['target_lang'] = target_lang
 
     return result
 
 
-def _build_rounds_prompt(rounds, custom_prompt, scoring_criteria,
-                           source_lang, target_lang):
+def _build_rounds_prompt(rounds, custom_prompt, scoring_criteria):
     """构建多轮评估 prompt（逐轮列出，不拼接）
 
     rounds 元素的字段名与 param_mappings 的 target_param 一致：
@@ -133,24 +123,16 @@ def _build_rounds_prompt(rounds, custom_prompt, scoring_criteria,
             '3. Relevance: How relevant is the answer to the question/query?\n'
         )
 
-    return f"""You are a professional translation/ASR quality evaluator.
+    return f"""你是一个严格的语言逻辑专家，你需要逐轮分析多轮对话中【参考问题】、【参考答案】与【助手回答】三者之间的逻辑是否正确，给出整体评分和打分理由。
 
-Multi-round dialog:
+多轮对话内容：
 {dialog_text}
 
-Please evaluate the overall quality on a scale of 1-5 for each criterion:
+请按照【评价规则】进行打分：
 {criteria_text}
 
-Respond in the following JSON format:
-{{
-    "scores": {{
-        "criterion_name": score
-    }},
-    "overall_score": average_score,
-    "reasoning": "brief explanation"
-}}
-
-Only respond with the JSON, no additional text."""
+输出结果严格按照如下json形式，包含两个参数（score、reason）：
+{{"score":"1-5的整数评分","reason":"打分理由"}}"""
 
 
 def _extract_audio_paths(kwargs):
@@ -166,8 +148,7 @@ def _extract_audio_paths(kwargs):
 
 
 def _build_evaluation_prompt(answer, correct_answer, question, query,
-                              custom_prompt, scoring_criteria,
-                              source_lang, target_lang):
+                             custom_prompt, scoring_criteria):
     """Build the LLM evaluation prompt.
 
     字段名与 param_mappings 的 target_param 一致：
@@ -186,9 +167,6 @@ def _build_evaluation_prompt(answer, correct_answer, question, query,
                 correct_answer=correct_answer,
                 question=question,
                 query=query,
-                # 向后兼容：旧模板可能用 hypothesis/reference
-                hypothesis=answer,
-                reference=correct_answer,
             )
         except (KeyError, IndexError):
             return custom_prompt

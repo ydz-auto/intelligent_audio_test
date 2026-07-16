@@ -1,4 +1,4 @@
-﻿import requests
+import requests
 import time
 import json
 import pandas as pd
@@ -114,13 +114,13 @@ def _sync_param_mappings(dimension_id, params, direction='output'):
     if not isinstance(params, list):
         return
 
-    # 当前维度已有的映射
-    existing = ParamMapping.query.filter_by(
+    # 当前维度已有的映射（包含软删除的记录，避免唯一约束冲突）
+    all_mappings = ParamMapping.query.filter_by(
         dimension_id=dimension_id,
-        source='evaluation',
-        deleted=False
+        source='evaluation'
     ).all()
-    existing_map = {m.source_param: m for m in existing}
+    active_map = {m.source_param: m for m in all_mappings if not m.deleted}
+    soft_deleted_map = {m.source_param: m for m in all_mappings if m.deleted}
 
     # 提交的 param_code 集合
     submitted_codes = set()
@@ -131,11 +131,20 @@ def _sync_param_mappings(dimension_id, params, direction='output'):
             continue
         submitted_codes.add(param_code)
 
-        if param_code in existing_map:
+        if param_code in active_map:
             # 更新已有映射
-            m = existing_map[param_code]
+            m = active_map[param_code]
             m.target_param = param_code
             m.source_direction = direction
+        elif param_code in soft_deleted_map:
+            # 复活软删除的记录（避免唯一约束冲突）
+            m = soft_deleted_map.pop(param_code)
+            m.deleted = False
+            m.target_param = param_code
+            m.source_direction = direction
+            m.algorithm_type = p.get('algorithm_type', 'evaluation')
+            m.transform_type = 'none'
+            active_map[param_code] = m
         else:
             # 创建新映射
             m = ParamMapping(
@@ -148,9 +157,10 @@ def _sync_param_mappings(dimension_id, params, direction='output'):
                 transform_type='none'
             )
             db.session.add(m)
+            active_map[param_code] = m
 
     # 删除不再提交的映射（软删除）
-    for code, m in existing_map.items():
+    for code, m in active_map.items():
         if code not in submitted_codes:
             m.deleted = True
 
@@ -379,7 +389,7 @@ class EvaluationController:
 
         try:
             validated_data = DimensionCreateInput.model_validate(data)
-            data = validated_data.model_dump(exclude_none=True)
+            data = validated_data.model_dump(exclude_none=True, by_alias=False)
             log_and_emit('DEBUG', 'evaluation', f'DEBUG CREATE data after model_dump: {data}', enable_console_log=True)
         except Exception as e:
             return error_response(f"数据验证失败: {str(e)}")
@@ -540,6 +550,7 @@ class EvaluationController:
                             output_role=outp.get('output_role', 'main'),
                             visible_in_report=outp.get('visible_in_report', True),
                             required=False,
+                            default_value=json.dumps(outp.get('default_value')) if outp.get('default_value') else None,
                             help_text=outp.get('help_text', ''),
                             ui_order=outp.get('ui_order', idx)
                         )
@@ -570,7 +581,7 @@ class EvaluationController:
 
         try:
             validated_data = DimensionUpdateInput.model_validate(data)
-            data = validated_data.model_dump(exclude_none=True)
+            data = validated_data.model_dump(exclude_none=True, by_alias=False)
             log_and_emit('DEBUG', 'evaluation', f'DEBUG UPDATE data after model_dump: {data}', enable_console_log=True)
         except Exception as e:
             return error_response(f"数据验证失败: {str(e)}")
@@ -716,6 +727,7 @@ class EvaluationController:
                             output_role=outp.get('output_role', 'main'),
                             visible_in_report=outp.get('visible_in_report', True),
                             required=False,
+                            default_value=json.dumps(outp.get('default_value')) if outp.get('default_value') else None,
                             help_text=outp.get('help_text', ''),
                             ui_order=outp.get('ui_order', idx)
                         )

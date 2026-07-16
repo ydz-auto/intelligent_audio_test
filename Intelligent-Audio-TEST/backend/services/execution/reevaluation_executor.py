@@ -248,6 +248,7 @@ class ReevaluationExecutor:
                         from backend.models.models import TestCase
                         test_case = db.session.get(TestCase, test_case_id)
                         algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
+                        reference_params_col = getattr(test_case, 'reference_params', None) if test_case else None
 
                         # 检查是否为多轮结果
                         if algorithm_result and 'rounds' in algorithm_result:
@@ -258,6 +259,7 @@ class ReevaluationExecutor:
                                 algorithm_result=algorithm_result,
                                 test_type=test_type,
                                 algorithm_type=algorithm_type,
+                                reference_params_col=reference_params_col,
                             )
                         else:
                             self._reevaluate_single(
@@ -268,6 +270,7 @@ class ReevaluationExecutor:
                                 reference_params=reference_params,
                                 test_type=test_type,
                                 algorithm_type=algorithm_type,
+                                reference_params_col=reference_params_col,
                             )
 
                         log_and_emit('INFO', 'reevaluator',
@@ -294,11 +297,12 @@ class ReevaluationExecutor:
         finally:
             self._on_complete(task_id, success)
 
-    def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type):
+    def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
+                               reference_params_col=None):
         """重新评估多轮结果 — 区分 API 和 E2E
 
-        API 多轮结构: rounds[].round_evaluation, roundNumber (1-indexed)
-        E2E 多轮结构: rounds[].evaluation, round (0-indexed)
+        API 多轮结构: rounds[].round_evaluation, roundNumber (1-indexed) — 逐轮评估
+        E2E 多轮结构: rounds[].evaluation, round (0-indexed) — 一次性评估所有轮
         """
         # 循环反序列化，处理可能的双重序列化旧数据
         while isinstance(algorithm_result, str):
@@ -330,34 +334,22 @@ class ReevaluationExecutor:
         from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
         from backend.models.models import TestCase
 
-        # 逐轮重新评估
-        for round_idx, round_data in enumerate(rounds):
-            # 提取评估数据：API 用 round_evaluation，E2E 用 evaluation
-            if is_e2e:
-                evaluation = round_data.get('evaluation', {})
-                round_number = round_data.get('round', round_idx)  # 0-indexed
-            else:
-                evaluation = round_data.get('round_evaluation', {})
-                # API 的 roundNumber 是 1-indexed，转为 0-indexed
-                round_number = round_data.get('roundNumber', round_idx + 1) - 1
+        test_case = db.session.get(TestCase, test_case_id)
 
-            if not evaluation:
-                continue
-
-            test_case = db.session.get(TestCase, test_case_id)
-
-            # 从本轮的 algorithmParams 读取
+        if is_e2e:
+            # E2E: 一次性评估所有轮（不传 round_number，evaluate_case 构建完整 rounds_list）
             algo_params = {}
             if test_case and test_case.config:
                 config = test_case.config
                 config_rounds = config.get('rounds', [])
-                if round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
-                    algo_params = config_rounds[round_idx].get('algorithmParams', {})
+                if config_rounds and isinstance(config_rounds[0], dict):
+                    algo_params = config_rounds[0].get('algorithmParams', {})
 
             full_case_params = {
                 'algorithm_type': algorithm_type,
                 'algorithm_params': algo_params,
-                'reference_params': round_data.get('reference_params', []),
+                'reference_params': rounds[0].get('reference_params', []) if rounds else [],
+                'reference_params_col': reference_params_col,
             }
 
             try:
@@ -368,30 +360,84 @@ class ReevaluationExecutor:
                 )
                 eval_params['algorithm_type'] = algorithm_type
                 eval_params['test_type'] = test_type
+                if reference_params_col is not None:
+                    eval_params['reference_params_col'] = reference_params_col
 
                 evaluation_service.evaluate_case(
                     task_id=task_id,
                     result_id=result,
                     test_case_id=test_case_id,
                     algorithm_result=algorithm_result,
-                    round_number=round_number,
                     **eval_params,
                 )
 
                 log_and_emit('INFO', 'reevaluator',
-                            f"已提交轮次评估: test_case_id={test_case_id}, round={round_number}",
+                            f"已提交 E2E 多轮评估: test_case_id={test_case_id}, rounds={len(rounds)}",
                             task_id=task_id, test_case_id=test_case_id)
             except Exception as e:
                 import traceback
                 log_and_emit('ERROR', 'reevaluator',
-                            f"轮次重新评估失败: round={round_number}, error={str(e)}, traceback={traceback.format_exc()}",
+                            f"E2E 多轮重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
                             task_id=task_id, test_case_id=test_case_id)
 
-        # API 结果没有顶层 aggregated，需从 rounds 中计算
-        if not is_e2e and not algorithm_result.get('aggregated'):
-            self._compute_and_store_api_aggregated(result, algorithm_result)
+        else:
+            # API: 逐轮评估
+            for round_idx, round_data in enumerate(rounds):
+                evaluation = round_data.get('round_evaluation', {})
+                round_number = round_data.get('roundNumber', round_idx + 1) - 1
 
-    def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, test_type, algorithm_type):
+                if not evaluation:
+                    continue
+
+                algo_params = {}
+                if test_case and test_case.config:
+                    config = test_case.config
+                    config_rounds = config.get('rounds', [])
+                    if round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
+                        algo_params = config_rounds[round_idx].get('algorithmParams', {})
+
+                full_case_params = {
+                    'algorithm_type': algorithm_type,
+                    'algorithm_params': algo_params,
+                    'reference_params': round_data.get('reference_params', []),
+                    'reference_params_col': reference_params_col,
+                }
+
+                try:
+                    eval_params = CaseParameterExtractor.get_evaluation_params(
+                        case_config=full_case_params,
+                        algorithm_result=algorithm_result,
+                        test_type=test_type,
+                    )
+                    eval_params['algorithm_type'] = algorithm_type
+                    eval_params['test_type'] = test_type
+                    if reference_params_col is not None:
+                        eval_params['reference_params_col'] = reference_params_col
+
+                    evaluation_service.evaluate_case(
+                        task_id=task_id,
+                        result_id=result,
+                        test_case_id=test_case_id,
+                        algorithm_result=algorithm_result,
+                        round_number=round_number,
+                        **eval_params,
+                    )
+
+                    log_and_emit('INFO', 'reevaluator',
+                                f"已提交轮次评估: test_case_id={test_case_id}, round={round_number}",
+                                task_id=task_id, test_case_id=test_case_id)
+                except Exception as e:
+                    import traceback
+                    log_and_emit('ERROR', 'reevaluator',
+                                f"轮次重新评估失败: round={round_number}, error={str(e)}, traceback={traceback.format_exc()}",
+                                task_id=task_id, test_case_id=test_case_id)
+
+            # API 结果没有顶层 aggregated，需从 rounds 中计算
+            if not algorithm_result.get('aggregated'):
+                self._compute_and_store_api_aggregated(result, algorithm_result)
+
+    def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, test_type, algorithm_type,
+                           reference_params_col=None):
         """重新评估单轮结果（现有逻辑）"""
         # 循环反序列化，处理可能的双重序列化旧数据
         while isinstance(algorithm_result, str):
@@ -431,7 +477,8 @@ class ReevaluationExecutor:
         full_case_params = {
             'algorithm_type': algorithm_type,
             'algorithm_params': algo_params,
-            'reference_params': reference_params
+            'reference_params': reference_params,
+            'reference_params_col': reference_params_col,
         }
 
         eval_params = CaseParameterExtractor.get_evaluation_params(
@@ -441,6 +488,8 @@ class ReevaluationExecutor:
         )
         eval_params['algorithm_type'] = algorithm_type
         eval_params['test_type'] = test_type
+        if reference_params_col is not None:
+            eval_params['reference_params_col'] = reference_params_col
 
         db.session.commit()
 

@@ -1158,7 +1158,7 @@ export function useAudioImport() {
           if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
           
           selectedFilesForUpload.value = data.files;
-          await startUploadProcess(data.files);
+          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRounds);
         }
       }
     });

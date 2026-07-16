@@ -36,10 +36,15 @@ class SizeTimeRotatingFileHandler(TimedRotatingFileHandler):
         return False
 
     def doRollover(self):
-        """轮转日志文件，Windows 下文件被占用时跳过而非崩溃"""
+        """轮转日志文件，Windows 下文件被占用时重试，仍失败则跳过但不推进轮转时间"""
         try:
             super().doRollover()
         except (PermissionError, OSError):
-            # Windows 下文件可能被其他进程占用，跳过本次轮转
-            # 重置 rolloverAt 避免每条日志都重试
-            self.rolloverAt = time.time() + self.interval
+            # Windows 下文件可能被其他进程占用，重试一次
+            time.sleep(0.1)
+            try:
+                super().doRollover()
+            except (PermissionError, OSError):
+                # 仍然失败：不推进 rolloverAt，让下一条日志重新触发轮转
+                # 这样不会永久丢失当天的分卷
+                pass

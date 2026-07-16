@@ -13,6 +13,7 @@ from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.utils.web.log_handler import log_not_emit
 from backend.utils.common.task_utils import has_running_e2e_tasks
+from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params_to_list
 from backend.schemas.audio import (
     AudioIdsData,
     AudioItem,
@@ -151,39 +152,6 @@ def convert_to_wav(file_path):
     # 返回新的文件名（带.wav扩展名）
     new_filename = f"{filename}.wav"
     return new_wav_path, new_filename, original_sample_rate, original_bits_per_sample
-
-
-def _normalize_algorithm_params(ap):
-    """归一化算法参数为 [{field_code, field_value}] 列表格式。
-
-    接受两种输入：
-    - list: [{field_code, field_value}, ...] 或 [{fieldCode, fieldValue}, ...]
-    - dict: {field_code: field_value, ...}
-    """
-    if not ap:
-        return None
-    if isinstance(ap, dict):
-        return [{'field_code': k, 'field_value': v} for k, v in ap.items()]
-    if isinstance(ap, list):
-        result = []
-        for item in ap:
-            if hasattr(item, 'model_dump'):
-                d = item.model_dump()
-                fc = d.get('field_code') or d.get('fieldCode')
-                fv = d.get('field_value', d.get('fieldValue'))
-                if fc is not None:
-                    result.append({'field_code': fc, 'field_value': fv})
-                else:
-                    result.append(d)
-            elif isinstance(item, dict):
-                fc = item.get('field_code') or item.get('fieldCode')
-                fv = item.get('field_value', item.get('fieldValue'))
-                if fc is not None:
-                    result.append({'field_code': fc, 'field_value': fv})
-                else:
-                    result.append(item)
-        return result if result else None
-    return None
 
 
 class AudioController:
@@ -1106,7 +1074,7 @@ class AudioController:
                 test_case_group_name = tc_group_name
             # 如果 tc_config 有 algorithm_params 且顶层没有，则用 tc_config 的
             if tc_config and tc_config.algorithm_params and not algorithm_params_dict:
-                algorithm_params_dict = _normalize_algorithm_params(tc_config.algorithm_params)
+                algorithm_params_dict = _normalize_algorithm_params_to_list(tc_config.algorithm_params)
             # 如果 tc_config 有 dimensions 且顶层没有，则用 tc_config 的
             if tc_config and tc_config.dimensions and not dimensions_data:
                 dimensions_data = tc_config.dimensions
@@ -1534,6 +1502,21 @@ class AudioController:
         case_param_fields = set()
         if algorithm_type:
             from backend.models.algorithm_models import CaseAlgorithmParam
+            # 查参考参数的 field_path 集合，这些字段不能从标注数据中剔除
+            from backend.models.algorithm_models import AlgorithmReferenceParam
+            ref_field_paths = set()
+            ref_params = AlgorithmReferenceParam.query.filter_by(
+                algorithm_type=algorithm_type, deleted=False
+            ).all()
+            for rp in ref_params:
+                fp = rp.field_path or rp.code
+                if fp:
+                    if '[]' in fp:
+                        seg_key = fp.split('[].')[1] if '[].' in fp else fp
+                        ref_field_paths.add(seg_key)
+                    else:
+                        ref_field_paths.add(fp)
+
             case_params = CaseAlgorithmParam.query.filter_by(
                 algorithm_type=algorithm_type, deleted=False
             ).all()
@@ -1541,9 +1524,12 @@ class AudioController:
                 fp = p.field_path or p.param_code
                 if fp and '[]' in fp:
                     seg_key = fp.split('[].')[1] if '[].' in fp else fp
-                    case_param_fields.add(seg_key)
+                    # 跳过同时作为参考参数的字段，避免把参考参数也从标注中删除
+                    if seg_key not in ref_field_paths:
+                        case_param_fields.add(seg_key)
                 else:
-                    case_param_fields.add(fp)
+                    if fp not in ref_field_paths:
+                        case_param_fields.add(fp)
 
         raw_annotations_data = []
         for ann in annotations_from_request or []:
@@ -1910,9 +1896,9 @@ class AudioController:
                                     if isinstance(data, dict):
                                         # field_path 不含 '[]' 时，自动补 'segments[].' 前缀
                                         effective_fp = field_path
-                                        if '[]' not in effective_fp:
+                                        if 'segments[]' not in effective_fp:
                                             effective_fp = f'segments[].{effective_fp}'
-                                        if '[]' in effective_fp:
+                                        if 'segments[]' in effective_fp:
                                             parts = effective_fp.split('[].')
                                             arr_key = parts[0]
                                             field_key = parts[1] if len(parts) > 1 else None

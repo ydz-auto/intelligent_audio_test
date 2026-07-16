@@ -432,13 +432,13 @@ def seed_voice_llm():
 
         dim_rows = conn.execute(text(
             "SELECT id, name FROM dimensions "
-            "WHERE dimension_type = 'llm_judge' AND deleted = FALSE"
+            "WHERE task_type_code = 'llm_judge' AND deleted = FALSE"
         )).fetchall()
 
         rel_inserted = 0
         rel_skipped = 0
         if not dim_rows:
-            print("  未找到 dimension_type='llm_judge' 的维度，跳过")
+            print("  未找到 task_type_code='llm_judge' 的维度，跳过")
         else:
             for dim_id, dim_name in dim_rows:
                 existing = conn.execute(text(

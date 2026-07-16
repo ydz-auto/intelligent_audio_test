@@ -16,6 +16,7 @@
         <span class="th-type">字段类型</span>
         <span class="th-role">字段角色</span>
         <span class="th-agg">聚合角色</span>
+        <span class="th-default">默认值</span>
         <span class="th-visible">显示</span>
         <span class="th-action">操作</span>
       </div>
@@ -60,6 +61,13 @@
             <option value="numerator">分子</option>
             <option value="denominator">分母</option>
           </select>
+          <input
+            type="text"
+            v-model="field.default_value"
+            placeholder="如: 0 或空"
+            class="default-input"
+            @input="handleChange"
+          />
           <label class="visible-checkbox">
             <input
               type="checkbox"
@@ -115,6 +123,7 @@ function addField() {
     field_type: 'number',
     output_role: 'main',
     agg_role: '',
+    default_value: '',
     visible_in_report: true
   })
   handleChange()
@@ -222,12 +231,14 @@ function handleChange() {
 .th-type { width: 80px; flex-shrink: 0; }
 .th-role { width: 90px; flex-shrink: 0; }
 .th-agg { width: 90px; flex-shrink: 0; }
+.th-default { flex: 1; }
 .th-visible { width: 50px; flex-shrink: 0; text-align: center; }
 .th-action { width: 40px; flex-shrink: 0; }
 
 .key-input,
 .label-input,
-.path-input {
+.path-input,
+.default-input {
   padding: 8px 12px;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
@@ -239,6 +250,7 @@ function handleChange() {
 .key-input { flex: 1; }
 .label-input { flex: 1; }
 .path-input { flex: 1.3; }
+.default-input { flex: 1; }
 
 .type-select,
 .role-select,
@@ -271,6 +283,7 @@ function handleChange() {
 .key-input:focus,
 .label-input:focus,
 .path-input:focus,
+.default-input:focus,
 .type-select:focus,
 .role-select:focus {
   outline: none;

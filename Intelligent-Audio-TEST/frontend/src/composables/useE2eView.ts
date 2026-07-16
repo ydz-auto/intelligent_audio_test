@@ -13,6 +13,7 @@ import { useAlgorithmSelection } from './useAlgorithmSelection'
 import { useTestReport } from './useTestReport'
 import { useTestCaseStore } from '../store/testCaseStore'
 import { type Report, type Log, type TestCase, type TestCaseFormData } from '../shared/types'
+import reportService from '../services/reportService'
 
 export function normalizeSelectedCaseIds(ids: (string | number)[]) {
   const normalizedIds = ids.filter((id): id is string | number => {
@@ -244,16 +245,20 @@ export function useE2eView() {
   const fetchReport = async () => {
     if (!currentTaskId.value) return
     try {
-      // 先调用生成报告接口
-      const generateResponse = await reportsApi.generateTaskReport(currentTaskId.value)
-      console.log('[fetchReport] 生成报告响应:', generateResponse)
-      
-      // 获取新生成的报告
-      const response = await reportsApi.getOne(generateResponse.id)
-      if (response) {
-        report.value = response
-        analysisContent.value = response.analysis || ''
-        reportTables.value = response.tables || []
+      // 使用 reportService.viewTaskReport 统一处理异步报告生成（监听 socket report_generated 事件）
+      const reportData = await reportService.viewTaskReport({
+        id: currentTaskId.value,
+        name: taskName.value || 'E2E测试任务',
+        type: 'e2e',
+        status: 'completed',
+        progress: 100,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      } as any)
+      if (reportData) {
+        report.value = { ...report.value, ...reportData } as any
+        analysisContent.value = (report.value as any)?.analysis || ''
+        reportTables.value = (report.value as any)?.tables || []
       }
     } catch (error) {
       console.error('获取报告失败:', error)

@@ -576,34 +576,3 @@ def calculate_stm_wer(ref_stm, hyp_stm, source_lang, target_lang, translate_dire
             'target_lang': target_lang,
             'translate_direct': translate_direct
         }
-
-
-def calculate_multi_round_wer(
-    rounds: list,
-    source_lang: str = 'zh',
-    target_lang: str = 'en',
-    normalize: bool = True,
-) -> dict:
-    """多轮 WER：拼接所有轮的 correct_answer 和 answer，算一个整体 WER。
-
-    Args:
-        rounds: [{answer, correct_answer, ...}, ...]
-                字段名与 param_mappings 的 target_param 一致。
-        source_lang: Source language code.
-        target_lang: Target language code.
-        normalize: Whether to normalize text before computing.
-
-    Returns:
-        WER result（与 calculate_wer 相同结构）。
-    """
-    ref_text = '\n'.join(r.get('correct_answer', '') for r in rounds)
-    hyp_text = '\n'.join(r.get('answer', '') for r in rounds)
-
-    return calculate_wer(
-        ref_text=ref_text,
-        hyp_text=hyp_text,
-        source_lang=source_lang,
-        target_lang=target_lang,
-        translate_direct=None,
-        normalize=normalize,
-    )

@@ -42,8 +42,14 @@
       
       <div class="api-settings-right">
         <div class="editor-section preview-section">
-          <h4>JSON预览</h4>
-          <pre class="json-preview">{{ previewJson }}</pre>
+          <h4>body_template JSON</h4>
+          <span class="section-hint">rounds 内的字段由左侧表单管理，rounds 外的字段（如 model/prompt）可直接在此编辑</span>
+          <textarea
+            v-model="bodyTemplateJson"
+            class="json-edit"
+            rows="20"
+            @input="parseBodyTemplate"
+          ></textarea>
         </div>
       </div>
     </div>
@@ -51,7 +57,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, computed } from 'vue'
+import { ref, reactive, watch } from 'vue'
 
 const props = defineProps({
   modelValue: {
@@ -76,18 +82,22 @@ const localValue = reactive({
 
 const localInputs = ref([])
 const headersJson = ref('')
+const bodyTemplateJson = ref('')
 
 watch(() => props.modelValue, (newVal) => {
   if (newVal && typeof newVal === 'object') {
     localValue.method = newVal.method || 'POST'
     localValue.headers = newVal.headers ? { ...newVal.headers } : {}
-    localValue.body_template = newVal.body_template ? { ...newVal.body_template } : {}
+    localValue.body_template = newVal.body_template ? JSON.parse(JSON.stringify(newVal.body_template)) : {}
     localValue.timeout = newVal.timeout || 30000
-    
+
     headersJson.value = JSON.stringify(localValue.headers, null, 2)
-    
+    bodyTemplateJson.value = JSON.stringify(localValue.body_template, null, 2)
+
     const bodyTemplate = localValue.body_template || {}
-    const inputKeys = Object.keys(bodyTemplate)
+    // 从 rounds[0] 取输入字段
+    const roundTpl = (bodyTemplate.rounds && bodyTemplate.rounds[0]) || {}
+    const inputKeys = Object.keys(roundTpl)
     if (inputKeys.length > 0) {
       localInputs.value = inputKeys.map(key => ({
         param_code: key,
@@ -110,6 +120,30 @@ function parseHeaders() {
   }
 }
 
+function parseBodyTemplate() {
+  try {
+    const parsed = JSON.parse(bodyTemplateJson.value || '{}')
+    localValue.body_template = parsed
+    // 同步 rounds[0] 的 key 到 localInputs
+    const roundTpl = (parsed.rounds && parsed.rounds[0]) || {}
+    const inputKeys = Object.keys(roundTpl)
+    if (inputKeys.length > 0) {
+      localInputs.value = inputKeys.map(key => ({
+        param_code: key,
+        param_name: '',
+        field_type: 'text',
+        required: true,
+        help_text: ''
+      }))
+    } else {
+      localInputs.value = []
+    }
+    handleChange()
+  } catch (e) {
+    // JSON 解析失败时不做操作，等用户修好
+  }
+}
+
 function addInput() {
   if (!localInputs.value) {
     localInputs.value = []
@@ -127,7 +161,10 @@ function addInput() {
 function removeInput(index) {
   const removedInput = localInputs.value[index]
   if (removedInput && removedInput.param_code) {
-    delete localValue.body_template[removedInput.param_code]
+    const roundTpl = localValue.body_template.rounds?.[0]
+    if (roundTpl) {
+      delete roundTpl[removedInput.param_code]
+    }
   }
   localInputs.value.splice(index, 1)
   handleChange()
@@ -139,28 +176,32 @@ function handleInputChange() {
 }
 
 function syncBodyTemplate() {
+  // 确保 body_template 有 rounds 结构
+  if (!localValue.body_template.rounds) {
+    localValue.body_template.rounds = [{}]
+  }
+  const roundTpl = localValue.body_template.rounds[0]
+
   localInputs.value.forEach(input => {
-    if (input.param_code && !localValue.body_template[input.param_code]) {
-      localValue.body_template[input.param_code] = `{{${input.param_code}}}`
+    if (input.param_code && !roundTpl[input.param_code]) {
+      roundTpl[input.param_code] = `{{${input.param_code}}}`
     }
   })
-  
+
   const inputKeys = new Set(localInputs.value.map(i => i.param_code).filter(k => k))
-  Object.keys(localValue.body_template).forEach(key => {
+  Object.keys(roundTpl).forEach(key => {
     if (!inputKeys.has(key)) {
-      delete localValue.body_template[key]
+      delete roundTpl[key]
     }
   })
+  // 同步 JSON 文本
+  bodyTemplateJson.value = JSON.stringify(localValue.body_template, null, 2)
 }
 
 function handleChange() {
   emit('update:modelValue', { ...localValue })
   emit('change', { ...localValue })
 }
-
-const previewJson = computed(() => {
-  return JSON.stringify(localValue, null, 2)
-})
 </script>
 
 <style scoped>
@@ -467,7 +508,7 @@ const previewJson = computed(() => {
   flex-direction: column;
 }
 
-.json-preview {
+.json-edit {
   background: #1e293b;
   color: #e2e8f0;
   padding: 12px;
@@ -478,6 +519,11 @@ const previewJson = computed(() => {
   margin: 0;
   flex: 1;
   overflow-y: auto;
-  min-height: 0;
+  min-height: 200px;
+  border: 1px solid #334155;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+  line-height: 1.5;
 }
 </style>

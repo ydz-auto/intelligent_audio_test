@@ -199,7 +199,7 @@ class AlgorithmConfigLoader:
 
     def reload_if_changed(self) -> bool:
         """检查数据库配置是否变化，如果变化则重新加载"""
-        from ..models import db
+        from backend.models.database import db
         try:
             with self._reload_lock:
                 latest_reload = db.session.query(
@@ -272,6 +272,7 @@ class AlgorithmConfigLoader:
     def get_param_mapping(self, algorithm_type: str, component_type: str) -> List[Dict[str, Any]]:
         """获取参数映射"""
         if component_type == 'evaluation':
+            self.reload_if_changed()
             return self._get_evaluation_mappings(algorithm_type)
         mappings = self._config_cache.get('mappings', {}).get(algorithm_type, {})
         return mappings.get(component_type, [])

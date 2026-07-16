@@ -140,7 +140,7 @@ class PlaybackOrchestrator:
             )
 
             # 8. 执行播放（同步等待，干声结束后停噪声）
-            threads = self.audio_service.play_overlap(
+            threads, playback_started_events = self.audio_service.play_overlap(
                 task_id=task_id,
                 audio_configs=audio_to_play,
                 overlap_time=overlap_time,
@@ -153,6 +153,9 @@ class PlaybackOrchestrator:
 
             total_duration = max((t.get('end', 0) for t in audio_timelines), default=0)
             if threads and total_duration > 0:
+                # 等待音频真正开始播放（重采样等准备工作完成后）
+                for evt in playback_started_events:
+                    evt.wait(timeout=60)
                 self._log(
                     'DEBUG',
                     f'[play_round {round_tag}] waiting {total_duration}s for dry audio to finish',
@@ -242,7 +245,7 @@ class PlaybackOrchestrator:
                 return None
 
             # 6. 播放（异步）
-            threads = self.audio_service.play_overlap(
+            threads, playback_started_events = self.audio_service.play_overlap(
                 task_id=task_id,
                 audio_configs=audio_to_play,
                 overlap_time=overlap_time,
@@ -255,7 +258,9 @@ class PlaybackOrchestrator:
 
             total_duration = max((t.get('end', 0) for t in audio_timelines), default=0)
 
-            # 7. timeline 加 actual_play_time
+            # 7. timeline 加 actual_play_time（等待播放真正开始后再记录）
+            for evt in playback_started_events:
+                evt.wait(timeout=60)
             actual_play_time = time.time()
             audio_delays = calculate_speaker_aware_audio_delays(
                 audio_to_play, overlap_rate, overlap_time > 0, offset, overlap_time,
@@ -359,7 +364,7 @@ class PlaybackOrchestrator:
                       f'(spl={spl}, gain={gain:.3f})',
                       task_id=task_id)
 
-            self.audio_service.play_overlap(
+            _, playback_started_events = self.audio_service.play_overlap(
                 task_id=task_id,
                 audio_configs=[audio_config],
                 overlap_time=0,
@@ -367,6 +372,10 @@ class PlaybackOrchestrator:
                 offset=0,
                 loop=False,
             )
+
+            # 等待音频真正开始播放后再开始计时
+            for evt in playback_started_events:
+                evt.wait(timeout=60)
 
             self._log('INFO',
                       f'声纹注册等待 {wait_time_sec}s',

@@ -207,7 +207,6 @@ class EvaluationService(EvaluationLoggerMixin):
                 round_ref_data = CaseParameterExtractor._load_round_ref_file(
                     reference_params_col, round_number + 1
                 )
-
             for m in mappings:
                 source = m.get('source', 'api')
                 source_param = m.get('source_param', '')
@@ -215,8 +214,8 @@ class EvaluationService(EvaluationLoggerMixin):
                 value = None
 
                 if source in ('device', 'api'):
-                    # 从设备输出取
-                    value = output.get(source_param, '')
+                    # output 的 key 是 target_param 名（build_algorithm_result 已映射）
+                    value = output.get(target_param, '')
                 elif source == 'reference':
                     # 从按轮加载的 reference 取
                     ref_item = round_ref_data.get(source_param)
@@ -240,12 +239,6 @@ class EvaluationService(EvaluationLoggerMixin):
 
             rounds_list.append(item)
 
-        self._log(
-            level='DEBUG',
-            content=f"[_build_rounds_list] 构建 rounds 列表: {len(rounds_list)} 轮",
-            task_id=task_id, test_case_id=test_case_id
-        )
-
         return rounds_list
 
     def evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **kwargs):
@@ -262,13 +255,8 @@ class EvaluationService(EvaluationLoggerMixin):
                 test_type, task_id, test_case_id
             )
             if round_number is not None:
-                # 单轮：只取对应轮
+                # 指定轮次：只取对应轮
                 rounds_list = [rounds_list[round_number]] if round_number < len(rounds_list) else []
-                # 单轮兼容：把 rounds[0] 的字段也提升到 kwargs 顶层，兼容旧 body_template
-                if rounds_list:
-                    for k, v in rounds_list[0].items():
-                        if k not in kwargs:
-                            kwargs[k] = v
             if rounds_list:
                 kwargs['rounds'] = rounds_list
 
@@ -474,25 +462,33 @@ class EvaluationService(EvaluationLoggerMixin):
                     self._log(level='WARNING', content=f"用例 {test_case.name} 关联的维度都不可用，跳过评估", task_id=task_id, test_case_id=test_case_id)
                     return []
 
-                # 预加载所有维度的 output 参数，避免 N+1 查询
+                # 预加载所有维度的 output 和 input 参数，避免 N+1 查询
                 dim_ids = [dim.id for dim in dimensions]
                 output_param_map = {}
+                input_param_map = {}
                 if dim_ids:
                     from backend.models.algorithm_models import EvaluationDimensionParam
-                    output_params = EvaluationDimensionParam.query.filter(
+                    all_params = EvaluationDimensionParam.query.filter(
                         EvaluationDimensionParam.dimension_id.in_(dim_ids),
-                        EvaluationDimensionParam.param_direction == 'output',
                         EvaluationDimensionParam.deleted == False
                     ).all()
-                    for p in output_params:
-                        output_param_map.setdefault(p.dimension_id, []).append({
-                            'param_code': p.param_code,
-                            'field_path': p.field_path,
-                            'field_type': p.field_type,
-                            'agg_role': p.agg_role,
-                            'output_role': p.output_role,
-                            'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True
-                        })
+                    for p in all_params:
+                        if p.param_direction == 'output':
+                            output_param_map.setdefault(p.dimension_id, []).append({
+                                'param_code': p.param_code,
+                                'field_path': p.field_path,
+                                'field_type': p.field_type,
+                                'agg_role': p.agg_role,
+                                'output_role': p.output_role,
+                                'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True
+                            })
+                        elif p.param_direction == 'input':
+                            input_param_map.setdefault(p.dimension_id, []).append({
+                                'param_code': p.param_code,
+                                'default_value': p.default_value,
+                                'field_type': p.field_type,
+                                'required': p.required
+                            })
 
                 dimension_data_list = []
                 for dim in dimensions:
@@ -511,7 +507,8 @@ class EvaluationService(EvaluationLoggerMixin):
                         'parent_dimension_id': getattr(dim, 'parent_dimension_id', None),
                         'task_type_code': getattr(dim, 'task_type_code', None),
                         'output_field_path': output_field_path,
-                        'output_params': dim_outputs
+                        'output_params': dim_outputs,
+                        'input_params': input_param_map.get(dim.id, [])
                     }
 
                     # 子维度继承父维度的API配置
@@ -779,8 +776,13 @@ class EvaluationService(EvaluationLoggerMixin):
         output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
         algo_results = {}
         if isinstance(algorithm_result, dict):
+            # 多轮结构：output 字段在 rounds[].output 里（key 是 target_param 名）
+            rounds_data = algorithm_result.get('rounds', [])
+            first_output = rounds_data[0].get('output', {}) if rounds_data and isinstance(rounds_data[0], dict) else {}
             for key in output_field_keys:
                 val = algorithm_result.get(key)
+                if val is None and first_output:
+                    val = first_output.get(key)
                 self._log(
                     level='DEBUG',
                     content=f"[task_data algo_results] key={key}, value={val}",

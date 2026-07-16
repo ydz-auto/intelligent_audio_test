@@ -74,6 +74,41 @@ def _normalize_algorithm_params(algorithm_params) -> Dict[str, Any]:
     return {}
 
 
+def _normalize_algorithm_params_to_list(algorithm_params) -> List[Dict]:
+    """将 algorithm_params 统一转为 list 格式 [{field_code, field_value}]
+
+    支持输入:
+    - dict: {field_code: field_value, ...} 转为 list
+    - list of {field_code, field_value}: 标准化后返回
+    - list of {fieldCode, fieldValue}: 驼峰命名转为下划线
+    - pydantic model: 调用 model_dump() 后提取
+    """
+    if not algorithm_params:
+        return []
+    if isinstance(algorithm_params, dict):
+        return [{'field_code': k, 'field_value': v} for k, v in algorithm_params.items()]
+    if isinstance(algorithm_params, list):
+        result = []
+        for item in algorithm_params:
+            if hasattr(item, 'model_dump'):
+                d = item.model_dump()
+                fc = d.get('field_code') or d.get('fieldCode')
+                fv = d.get('field_value', d.get('fieldValue'))
+                if fc is not None:
+                    result.append({'field_code': fc, 'field_value': fv})
+                else:
+                    result.append(d)
+            elif isinstance(item, dict):
+                fc = item.get('field_code') or item.get('fieldCode')
+                fv = item.get('field_value', item.get('fieldValue'))
+                if fc is not None:
+                    result.append({'field_code': fc, 'field_value': fv})
+                else:
+                    result.append(item)
+        return result
+    return []
+
+
 class CaseParameterExtractor:
     """
     用例参数提取器 - 静态类
@@ -221,10 +256,12 @@ class CaseParameterExtractor:
             log_not_emit('WARNING', 'case_parameter_extractor', f'No evaluation mappings found for algorithm: {algorithm_type}', category='algorithm')
             return {}
 
+        log_not_emit('DEBUG', 'case_parameter_extractor', f'get_evaluation_params: algorithm_type={algorithm_type}, mappings_count={len(mappings)}', category='algorithm')
+
         result = cls._build_evaluation_params(
             algorithm_type, case_config, mappings, dimension_ids, algorithm_result, test_type
         )
-        log_not_emit('DEBUG', 'case_parameter_extractor', f'Built evaluation params for {algorithm_type}: {list(result.keys())}', category='algorithm')
+        log_not_emit('DEBUG', 'case_parameter_extractor', f'Built evaluation params for {algorithm_type}: keys={list(result.keys())}', category='algorithm')
         return result
 
     @classmethod
@@ -257,6 +294,7 @@ class CaseParameterExtractor:
         rounds = case_config.get('rounds')
         algorithm_params_col = case_config.get('algorithm_params_col')
         reference_params_col = case_config.get('reference_params_col')
+
         if rounds and isinstance(rounds, list) and len(rounds) > 0:
             round_number = rounds[0].get('roundNumber') or rounds[0].get('round_number')
             # 优先从独立列按轮取
@@ -277,18 +315,11 @@ class CaseParameterExtractor:
             case_params = _normalize_algorithm_params(case_config.get('algorithm_params', {}))
             raw_reference_params = case_config.get('reference_params', [])
         reference_params = normalize_reference_params(raw_reference_params, test_type)
-        
-        log_not_emit('DEBUG', 'case_parameter_extractor',
-                     f'[_build_evaluation_params] raw_ref_type={type(raw_reference_params).__name__}, '
-                     f'normalized_count={len(reference_params)}, '
-                     f'codes={[p.get("code") for p in reference_params]}',
-                     category='algorithm')
 
         if algorithm_result is None:
             algorithm_result = {}
 
         adjusted_reference_params = algorithm_result.get('adjusted_reference_params', [])
-        log_not_emit('DEBUG', 'case_parameter_extractor', f'[_build_evaluation_params] adjusted_reference_params count: {len(adjusted_reference_params) if adjusted_reference_params else 0}', category='algorithm')
 
         for m in mappings:
             source = m.get('source', 'api')
@@ -318,10 +349,15 @@ class CaseParameterExtractor:
                                 )
                                 log_not_emit('DEBUG', 'case_parameter_extractor', f'[get_evaluation_params] source_param={source_param}, ref_type={ref_type}, value={value}, value_type={type(value)}', category='algorithm')
                             break
-            elif source == 'device':
+            elif source in ('device', 'api'):
                 value = algorithm_result.get(source_param)
-            elif source == 'api':
-                value = algorithm_result.get(source_param)
+                # rounds 结构：顶层没有设备输出字段时，从 rounds[0].output 取
+                # output 的 key 是 target_param 名（build_algorithm_result 已映射）
+                if value is None and isinstance(algorithm_result, dict):
+                    rounds_data = algorithm_result.get('rounds', [])
+                    if rounds_data and isinstance(rounds_data[0], dict):
+                        output = rounds_data[0].get('output', {})
+                        value = output.get(target_param)
             elif source == 'adjusted_reference':
                 if adjusted_reference_params:
                     for ref_param in adjusted_reference_params:

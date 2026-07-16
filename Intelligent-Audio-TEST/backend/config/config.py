@@ -84,7 +84,7 @@ def _get_int_env(key, default):
 class Config:
     SECRET_KEY = _get_secret_key()
     BASE_DIR = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-    PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..','..','..'))
+    PROJECT_ROOT = r'C:\S2TT\auto_test\ver8\202604231600\Intelligent-Audio-TEST'
     SQLALCHEMY_DATABASE_URI = _get_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_COMMIT_ON_TEARDOWN = False

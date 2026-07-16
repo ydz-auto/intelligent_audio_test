@@ -161,8 +161,13 @@ class EndpointWorker(EvaluationLoggerMixin):
 
         algo_results = {}
         if isinstance(algorithm_result, dict):
+            # 多轮结构：output 字段在 rounds[].output 里（key 是 target_param 名）
+            rounds_data = algorithm_result.get('rounds', [])
+            first_output = rounds_data[0].get('output', {}) if rounds_data and isinstance(rounds_data[0], dict) else {}
             for key in output_field_keys:
                 val = algorithm_result.get(key)
+                if val is None and first_output:
+                    val = first_output.get(key)
                 self._log(
                     level='DEBUG',
                     content=f"[algo_results] key={key}, value={val}, value_type={type(val)}",
@@ -197,6 +202,18 @@ class EndpointWorker(EvaluationLoggerMixin):
         for key, value in kwargs.items():
             if key not in context:
                 context[key] = value
+
+        # 从维度 input_params 加载维度级配置（model/prompt 等）
+        for inp in representative_dim_data.get('input_params', []):
+            param_code = inp.get('param_code')
+            default_val = inp.get('default_value')
+            if param_code and default_val is not None and param_code not in context:
+                # default_value 是 JSON 格式的字符串，解析后放入 context
+                import json as _json
+                try:
+                    context[param_code] = _json.loads(default_val)
+                except (ValueError, TypeError):
+                    context[param_code] = default_val
 
         endpoints = representative_dim_data.get('api_endpoints', [])
         if not endpoints and representative_dim_data.get('api_url'):

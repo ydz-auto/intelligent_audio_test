@@ -14,6 +14,7 @@
         <span class="th-label">显示标签</span>
         <span class="th-source">字段类型</span>
         <span class="th-required">必填</span>
+        <span class="th-default">默认值</span>
         <span class="th-desc">描述</span>
         <span class="th-action">操作</span>
       </div>
@@ -49,6 +50,13 @@
               @change="handleChange"
             />
           </label>
+          <input
+            type="text"
+            v-model="input.default_value"
+            placeholder="如: 0 或空字符串"
+            class="default-input"
+            @input="handleChange"
+          />
           <input
             type="text"
             v-model="input.help_text"
@@ -102,6 +110,7 @@ function addInput() {
     param_name: '',
     field_type: 'text',
     required: true,
+    default_value: '',
     help_text: ''
   })
   handleChange()
@@ -227,6 +236,10 @@ function handleChange() {
   flex-shrink: 0;
 }
 
+.th-default {
+  flex: 1;
+}
+
 .th-desc {
   flex: 1.5;
 }
@@ -238,6 +251,7 @@ function handleChange() {
 
 .key-input,
 .label-input,
+.default-input,
 .desc-input {
   padding: 8px 12px;
   border: 1px solid #e2e8f0;
@@ -255,6 +269,10 @@ function handleChange() {
   flex: 1.2;
 }
 
+.default-input {
+  flex: 1;
+}
+
 .desc-input {
   flex: 1.5;
 }
@@ -270,6 +288,7 @@ function handleChange() {
 
 .key-input:focus,
 .label-input:focus,
+.default-input:focus,
 .desc-input:focus,
 .source-select:focus {
   outline: none;

@@ -382,7 +382,7 @@ class PyAudioDriver(AudioDriver):
     #                    主入口                                          #
     # ------------------------------------------------------------------ #
 
-    def play_multi(self, audio_configs, device_index=0, stop_event=None, offset=0, loop=False, app=None):
+    def play_multi(self, audio_configs, device_index=0, stop_event=None, offset=0, loop=False, app=None, playback_started_event=None):
         """
         在同一个流中播放多个音频文件
         
@@ -471,6 +471,9 @@ class PyAudioDriver(AudioDriver):
                     return
 
                 log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Stream opened successfully, starting playback", category='audio')
+
+                if playback_started_event:
+                    playback_started_event.set()
 
                 while stream.is_active():
                     if stop_event and stop_event.is_set():

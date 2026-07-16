@@ -37,7 +37,7 @@ class DimensionInput(APIModel):
     name: Optional[str] = Field(None, validation_alias=AliasChoices('name', 'dimensionName', 'dimension_name'))
     description: Optional[str] = Field(None, validation_alias=AliasChoices('description', 'dimensionDescription', 'dimension_description'))
     keywords: Optional[str] = Field(None, validation_alias='keywords')
-    dimension_type: Optional[str] = Field('main', validation_alias=AliasChoices('dimension_type', 'dimensionType'))
+    dimension_type: Optional[str] = Field(None, validation_alias=AliasChoices('dimension_type', 'dimensionType'))
     parent_dimension_id: Optional[int] = Field(None, validation_alias=AliasChoices('parent_dimension_id', 'parentDimensionId'))
     task_type_code: Optional[str] = Field(None, validation_alias=AliasChoices('task_type_code', 'taskTypeCode'))
     category_id: Optional[int] = Field(None, validation_alias=AliasChoices('category_id', 'categoryId'))
@@ -46,6 +46,29 @@ class DimensionInput(APIModel):
     api_settings: Optional[Dict[str, Any]] = Field(None, validation_alias=AliasChoices('api_settings', 'apiSettings'))
     api_status: Optional[str] = Field(None, alias='api_status', validation_alias='apiStatus')
     score_unit: Optional[str] = Field(None, alias='score_unit', validation_alias='scoreUnit')
+    statistic_method: Optional[str] = Field(None, alias='statistic_method', validation_alias='statisticMethod')
+    type: Optional[str] = Field(None, alias='type', validation_alias='type')
+    result_type: Optional[int] = Field(None, alias='result_type', validation_alias='resultType')
+    result_min: Optional[float] = Field(None, alias='result_min', validation_alias='resultMin')
+    result_max: Optional[float] = Field(None, alias='result_max', validation_alias='resultMax')
+    decimal_places: Optional[int] = Field(None, alias='decimal_places', validation_alias='decimalPlaces')
+    weight: Optional[int] = Field(None, alias='weight', validation_alias='weight')
+    estimated_exec_time: Optional[int] = Field(None, alias='estimated_exec_time', validation_alias='estimatedExecTime')
+    rule: Optional[Union[Dict[str, Any], str]] = Field(None, alias='rule', validation_alias='rule')
+    required_inputs: Optional[Any] = Field(None, alias='required_inputs', validation_alias='requiredInputs')
+    output_fields: Optional[Any] = Field(None, alias='output_fields', validation_alias='outputFields')
+    associated_algorithms: Optional[List[Dict[str, Any]]] = Field(None, alias='associated_algorithms', validation_alias='associatedAlgorithms')
+    status: Optional[bool] = Field(None, alias='status', validation_alias='status')
+
+    @field_validator('rule', mode='before')
+    @classmethod
+    def parse_rule(cls, v):
+        return parse_rule_field(v)
+
+
+class DimensionCreateInput(DimensionInput):
+    # 创建时提供默认值
+    dimension_type: Optional[str] = Field('main', validation_alias=AliasChoices('dimension_type', 'dimensionType'))
     statistic_method: Optional[str] = Field('average', alias='statistic_method', validation_alias='statisticMethod')
     type: Optional[str] = Field('auto', alias='type', validation_alias='type')
     result_type: Optional[int] = Field(1, alias='result_type', validation_alias='resultType')
@@ -54,19 +77,9 @@ class DimensionInput(APIModel):
     decimal_places: Optional[int] = Field(2, alias='decimal_places', validation_alias='decimalPlaces')
     weight: Optional[int] = Field(5, alias='weight', validation_alias='weight')
     estimated_exec_time: Optional[int] = Field(5, alias='estimated_exec_time', validation_alias='estimatedExecTime')
-    rule: Optional[Union[Dict[str, Any], str]] = Field(None, alias='rule', validation_alias='rule')
-    required_inputs: Optional[Any] = Field(None, alias='required_inputs', validation_alias='requiredInputs')
-    output_fields: Optional[Any] = Field(None, alias='output_fields', validation_alias='outputFields')
-    associated_algorithms: Optional[List[Dict[str, Any]]] = Field(None, alias='associated_algorithms', validation_alias='associatedAlgorithms')
     status: Optional[bool] = Field(True, alias='status', validation_alias='status')
 
-    @field_validator('rule', mode='before')
-    @classmethod
-    def parse_rule(cls, v):
-        return parse_rule_field(v)
 
-
-DimensionCreateInput = DimensionInput
 DimensionUpdateInput = DimensionInput
 
 

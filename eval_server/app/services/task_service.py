@@ -2,7 +2,7 @@ import threading
 import time
 from datetime import datetime
 from ..models.task import TaskModel
-from .wer_calculator import calculate_wer, calculate_ser, calculate_cpwer, calculate_tcpwer, calculate_stm_wer, calculate_multi_round_wer
+from .wer_calculator import calculate_wer, calculate_ser, calculate_cpwer, calculate_tcpwer, calculate_stm_wer
 from ..config import config
 from ..utils.concurrency import ConcurrencyManager
 from ..utils.decorators import limit_task_concurrency
@@ -28,8 +28,9 @@ class TaskService:
           - collar（默认 0.0；der 任务默认 0.5）
           - skip_overlap（默认 False）
           - 原始字段：asr_ref, asr_result, ref_stm, hyp_stm, rttm_ref/stm_ref, rttm_res/stm_res
-          - rounds（如果存在）
-        llm_judge 的特殊参数由 _prepare_llm_judge_params 单独处理。
+        多轮场景（task_params['rounds'] 非空）会把每轮的同名字段按 \\n 拼接折叠成
+        单轮文本，calculator 无需感知多轮。llm_judge 的特殊参数由
+        _prepare_llm_judge_params 单独处理（不经过此折叠，需保留每轮结构）。
         """
         task_params = task_params or {}
 
@@ -42,23 +43,47 @@ class TaskService:
         # collar 默认值随任务类型不同
         collar_default = 0.5 if task_type == 'der' else 0.0
 
+        # 各指标用到的扁平字段：rounds 模式下按 key 从每轮取值并拼接
+        flat_keys = ('asr_ref', 'asr_result', 'ref_stm', 'hyp_stm',
+                     'rttm_ref', 'stm_ref', 'rttm_res', 'stm_res')
+
+        rounds = task_params.get('rounds')
+        flat = {}
+        if rounds and isinstance(rounds, list):
+            # 多轮：按 key 把每轮的值收集起来，过滤掉空值后用 \n 拼接
+            for k in flat_keys:
+                values = []
+                for rd in rounds:
+                    if isinstance(rd, dict):
+                        v = rd.get(k)
+                        if v is None:
+                            continue
+                        if isinstance(v, dict) and 'text' in v:
+                            v = v['text']
+                        if v != '':
+                            values.append(str(v))
+                flat[k] = '\n'.join(values) if values else None
+        else:
+            # 单轮：直接取扁平字段
+            for k in flat_keys:
+                flat[k] = task_params.get(k)
+
         return {
             'normalize': task_params.get('normalize', False),
             'source_lang': task_params.get('source_lang'),
             'target_lang': task_params.get('target_lang'),
             'translate_direct': translate_direct,
-            'asr_ref': task_params.get('asr_ref'),
-            'asr_result': task_params.get('asr_result'),
-            'ref_stm': task_params.get('ref_stm'),
-            'hyp_stm': task_params.get('hyp_stm'),
-            'rttm_ref': task_params.get('rttm_ref'),
-            'stm_ref': task_params.get('stm_ref'),
-            'rttm_res': task_params.get('rttm_res'),
-            'stm_res': task_params.get('stm_res'),
+            **flat,
             'collar': task_params.get('collar', collar_default),
             'skip_overlap': task_params.get('skip_overlap', False),
-            'rounds': task_params.get('rounds'),
         }
+
+    @staticmethod
+    def _unwrap_value(val):
+        """提取参数值：如果是 {'text': '...', 'json': [...]} 格式则取 text 字段，否则原样返回"""
+        if isinstance(val, dict) and 'text' in val:
+            return val['text']
+        return val
 
     @staticmethod
     def _prepare_llm_judge_params(task_params):
@@ -70,30 +95,46 @@ class TaskService:
         - question: 设备识别的问题
         - query: 参考问题
         - record_file: 音频文件路径
+
+        correct_answer / query 可能是 {'text': '...', 'json': []} 格式（reference_params 生成），
+        需要提取 text 字段转为纯字符串。
         """
         task_params = task_params or {}
         reserved = ('answer', 'correct_answer', 'question', 'query',
                     'record_file', 'model', 'prompt',
                     'max_tokens', 'temperature', 'scoring_criteria',
-                    'source_lang', 'target_lang', 'normalize', 'rounds')
+                    'rounds')
         extra_kwargs = {
             k: v for k, v in task_params.items()
             if k not in reserved
         }
+        from ..config import config
+        llm_config = getattr(config, 'LLM_JUDGE', {})
+        default_model = llm_config.get('default_model', 'gpt-4')
+        default_prompt = llm_config.get('prompt_template', '')
+
+        unwrap = TaskService._unwrap_value
+
+        # rounds 内的字段也需要解包
+        rounds = task_params.get('rounds')
+        if rounds and isinstance(rounds, list):
+            rounds = [
+                {k: unwrap(v) for k, v in rd.items()} if isinstance(rd, dict) else rd
+                for rd in rounds
+            ]
+
         return {
-            'answer': task_params.get('answer', ''),
-            'correct_answer': task_params.get('correct_answer', ''),
-            'question': task_params.get('question', ''),
-            'query': task_params.get('query', ''),
+            'answer': unwrap(task_params.get('answer', '')),
+            'correct_answer': unwrap(task_params.get('correct_answer', '')),
+            'question': unwrap(task_params.get('question', '')),
+            'query': unwrap(task_params.get('query', '')),
             'record_file': task_params.get('record_file', ''),
-            'rounds': task_params.get('rounds'),
-            'model': task_params.get('model', 'gpt-4'),
-            'prompt': task_params.get('prompt', ''),
+            'rounds': rounds,
+            'model': task_params.get('model') or default_model,
+            'prompt': task_params.get('prompt') or default_prompt,
             'max_tokens': task_params.get('max_tokens', 1024),
             'temperature': task_params.get('temperature', 0.1),
             'scoring_criteria': task_params.get('scoring_criteria'),
-            'source_lang': task_params.get('source_lang', 'zh'),
-            'target_lang': task_params.get('target_lang', 'en'),
             'extra_kwargs': extra_kwargs,
         }
 
@@ -108,13 +149,6 @@ class TaskService:
         p = TaskService._prepare_params(task_params, task_type)
 
         if task_type == 'wer':
-            if p['rounds'] is not None:
-                return calculate_multi_round_wer(
-                    rounds=p['rounds'],
-                    source_lang=p['source_lang'],
-                    target_lang=p['target_lang'],
-                    normalize=p['normalize'],
-                )
             return calculate_wer(
                 p['asr_ref'], p['asr_result'],
                 p['source_lang'], p['target_lang'], p['translate_direct'],
@@ -168,8 +202,6 @@ class TaskService:
                 max_tokens=jp['max_tokens'],
                 temperature=jp['temperature'],
                 scoring_criteria=jp['scoring_criteria'],
-                source_lang=jp['source_lang'],
-                target_lang=jp['target_lang'],
                 **jp['extra_kwargs'],
             )
         else:
