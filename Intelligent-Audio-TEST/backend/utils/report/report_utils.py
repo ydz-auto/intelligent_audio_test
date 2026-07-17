@@ -383,6 +383,47 @@ class ReportUtils:
         return result_data
 
     @staticmethod
+    def _calculate_resource_averages(resource_accumulator):
+        """
+        计算 resource 级别全局平均值（不按 category 分组）。
+
+        resource_accumulator 结构: {resource: {dim_name: {sum, count}}}
+        返回结构: {resource: {dim_name: avg}}
+        """
+        result_data = {}
+        for resource, dims in resource_accumulator.items():
+            if resource not in result_data:
+                result_data[resource] = {}
+            for dim_name, stats in dims.items():
+                result_data[resource][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
+        return result_data
+
+    @staticmethod
+    def _apply_resource_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None):
+        """
+        对非 average 维度，用策略类聚合替换简单平均值（resource 级别）。
+
+        agg_items 结构: {dim_name: {resource: [items]}}
+        metric_data 结构: {resource: {dim_name: value}}
+        """
+        if not agg_items:
+            return
+
+        from backend.utils.report.aggregation_strategies import get_strategy
+
+        for dim_name, resources in agg_items.items():
+            method = dim_statistic_method.get(dim_name, 'average')
+            strategy = get_strategy(method)
+            output_params = (dim_output_params or {}).get(dim_name, [])
+
+            for resource, items in resources.items():
+                if not items:
+                    continue
+                agg_val = strategy.aggregate(items, output_params=output_params)
+                if agg_val is not None and resource in metric_data:
+                    metric_data[resource][dim_name] = agg_val
+
+    @staticmethod
     def _apply_aggregation_strategies(metric_data, agg_items, dim_statistic_method, dim_output_params=None):
         """
         对非 average 维度，用策略类聚合替换简单平均值。
@@ -937,7 +978,28 @@ class ReportUtils:
         
         if not isinstance(metric_data, dict):
             return []
-        
+
+        # 新格式: {resource: {metric: value}}（resource 级别全局平均，无 category 分组）
+        # 检测是否为新格式：value 是 dict 且其 value 是 number（不是嵌套 dict）
+        is_resource_flat = all(
+            isinstance(v, dict) and all(not isinstance(vv, dict) for vv in v.values())
+            for v in metric_data.values()
+        )
+
+        if is_resource_flat:
+            out = []
+            for resource in sorted(metric_data.keys(), key=lambda x: str(x)):
+                resource_metrics = metric_data.get(resource)
+                if not isinstance(resource_metrics, dict):
+                    continue
+                metrics = [
+                    {"id": metric_name_to_id.get(k), "metric": k, "value": (0 if v is None else v)}
+                    for k, v in sorted(resource_metrics.items(), key=lambda kv: kv[0])
+                ]
+                out.append({"resource": str(resource), "metrics": metrics})
+            return out
+
+        # 旧格式: {category: {resource: {metric: value}}}
         grouped = {}
         for category_key in sorted(metric_data.keys(), key=lambda x: str(x)):
             category_data = metric_data.get(category_key)
@@ -959,7 +1021,7 @@ class ReportUtils:
                     if value is None:
                         value = 0
                     by_category["metrics"][str(metric)] = value
-        
+
         out = []
         for resource in sorted(grouped.keys(), key=lambda x: str(x)):
             cat_map = grouped[resource]["categories"]

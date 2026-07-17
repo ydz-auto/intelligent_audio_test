@@ -92,7 +92,7 @@ class ReportControllerBase:
         for round_item in rounds:
             if not isinstance(round_item, dict):
                 continue
-            round_number = round_item.get('roundNumber', 1)
+            round_number = round_item.get('roundNumber') or round_item.get('round_number') or 1
             round_dry = []
 
             for audio_cfg in round_item.get('audios', []):

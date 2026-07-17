@@ -68,10 +68,56 @@ const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
 
-// 从 get_one 返回的 metricData (dict格式: {category: {resource: {metric: avg}}}) 跨 category 聚合
+// metricData 格式（后端 flatten_metric_data 输出）:
+//   [{resource: "xxx", metrics: [{id, metric, value}]}]（resource 级别全局平均）
+// 旧格式兼容: {category: {resource: {metric: value}}}（dict）
 const getMetricData = () => {
   return props.reportData?.metricData || props.reportData?.summary?.metricData ||
          props.reportData?.metric_data || props.reportData?.summary?.metric_data || {}
+}
+
+// 把 metricData 归一化成 {resource: {metric: value}} 的 dict 格式
+const getNormalizedMetricData = () => {
+  const raw = getMetricData()
+  // 新格式: list of {resource, metrics}
+  if (Array.isArray(raw)) {
+    const map = {}
+    raw.forEach(item => {
+      if (!item || !item.resource) return
+      const resource = String(item.resource)
+      if (!map[resource]) map[resource] = {}
+      const metrics = item.metrics
+      if (Array.isArray(metrics)) {
+        metrics.forEach(m => {
+          if (!m || !m.metric) return
+          map[resource][String(m.metric)] = m.value
+        })
+      } else if (metrics && typeof metrics === 'object') {
+        Object.entries(metrics).forEach(([k, v]) => {
+          map[resource][k] = v
+        })
+      }
+    })
+    return map
+  }
+  // 旧格式: {category: {resource: {metric: value}}}
+  if (raw && typeof raw === 'object') {
+    const map = {}
+    Object.keys(raw).forEach(category => {
+      const resData = raw[category]
+      if (!resData || typeof resData !== 'object') return
+      Object.keys(resData).forEach(resource => {
+        if (!map[resource]) map[resource] = {}
+        const metrics = resData[resource]
+        if (!metrics || typeof metrics !== 'object') return
+        Object.keys(metrics).forEach(metric => {
+          map[resource][metric] = metrics[metric]
+        })
+      })
+    })
+    return map
+  }
+  return {}
 }
 
 const resourceHeaderMap = computed(() => {
@@ -154,18 +200,14 @@ const actualAllMetrics = computed(() => {
 
   // 如果 allMetrics 为空，从 metricData 中提取维度名
   if (metrics.length === 0) {
-    const metricData = getMetricData()
+    const metricData = getNormalizedMetricData()
     const dimensionSet = new Set()
-    Object.keys(metricData).forEach(category => {
-      const resData = metricData[category]
-      if (!resData || typeof resData !== 'object') return
-      Object.keys(resData).forEach(resourceKey => {
-        const metrics = resData[resourceKey]
-        if (!metrics || typeof metrics !== 'object') return
-        Object.keys(metrics).forEach(dimName => {
-          // 跳过 _raw 后缀的原始数据 key
-          if (!dimName.endsWith('_raw')) dimensionSet.add(dimName)
-        })
+    Object.keys(metricData).forEach(resource => {
+      const metrics = metricData[resource]
+      if (!metrics || typeof metrics !== 'object') return
+      Object.keys(metrics).forEach(dimName => {
+        // 跳过 _raw 后缀的原始数据 key
+        if (!dimName.endsWith('_raw')) dimensionSet.add(dimName)
       })
     })
     metrics = Array.from(dimensionSet).map(dimName => ({ name: dimName, unit: '%' }))
@@ -241,49 +283,45 @@ const formatMetricValue = (metricName, value) => {
   return String(num.toFixed(2))
 }
 
-// 从 metricData (dict格式: {category: {resource: {metric: avg}}}) 跨 category 聚合
-// 返回每个 resource 的每个 metric 的平均值（跨所有 category）
+// 从 metricData 获取指定 resource 的指定 metric 值
+// metricData 已归一化为 {resource: {metric: value}}（resource 级别全局平均）
 const getAverageValue = (metricName, device) => {
-  const metricData = getMetricData()
+  const metricData = getNormalizedMetricData()
   if (!metricData || typeof metricData !== 'object') return 0
 
-  const values = []
-
-  Object.keys(metricData).forEach(category => {
-    const resData = metricData[category]
-    if (!resData || typeof resData !== 'object') return
-
-    // 直接用 device key 查找
-    if (resData[device] && typeof resData[device][metricName] === 'number') {
-      values.push(resData[device][metricName])
-      return
+  const findValue = (resourceKey) => {
+    if (resourceKey && metricData[resourceKey]) {
+      const v = metricData[resourceKey][metricName]
+      if (typeof v === 'number') return v
     }
+    return null
+  }
 
-    // 如果 device 是对象，构建 key 查找
-    if (typeof device === 'object' && device !== null) {
-      const resourceKey = `${device.id}-${device.name}`
-      if (resData[resourceKey] && typeof resData[resourceKey][metricName] === 'number') {
-        values.push(resData[resourceKey][metricName])
-        return
-      }
+  // 1. 直接用 device 字符串查找
+  if (typeof device === 'string') {
+    const v = findValue(device)
+    if (v !== null) return v
+  }
+
+  // 2. 如果 device 是对象，构建 key 查找
+  if (typeof device === 'object' && device !== null) {
+    const resourceKey = `${device.id}-${device.name}`
+    const v = findValue(resourceKey)
+    if (v !== null) return v
+  }
+
+  // 3. 兜底：按名称匹配（去掉ID前缀）
+  const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
+                    (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device)
+  for (const [key, metrics] of Object.entries(metricData)) {
+    if (!metrics || typeof metrics !== 'object') continue
+    const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key
+    if (currentResourceName === deviceName && typeof metrics[metricName] === 'number') {
+      return metrics[metricName]
     }
+  }
 
-    // 兜底：按名称匹配（去掉ID前缀）
-    const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
-                      (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device)
-    for (const [key, metrics] of Object.entries(resData)) {
-      if (!metrics || typeof metrics !== 'object') continue
-      const currentResourceName = key.includes('-') ? key.split('-').slice(1).join('-') : key
-      if (currentResourceName === deviceName && typeof metrics[metricName] === 'number') {
-        values.push(metrics[metricName])
-        break
-      }
-    }
-  })
-
-  if (values.length === 0) return 0
-  const sum = values.reduce((acc, v) => acc + v, 0)
-  return sum / values.length
+  return 0
 }
 </script>
 

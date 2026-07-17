@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 from flask import request, current_app
 from backend.models.models import Task, Tag, TaskCase, TaskDevice, TaskAPI, TestCase, TestResult, TestResultDimension, Log, Dimension
@@ -330,6 +330,55 @@ class TaskController:
         for a in task.apis:
             apis.append(TaskApiBrief(id=a.id, name=a.name, status=a.status))
 
+        # 提前提取 tags，避免 calculate_time_estimate 调用后 task 脱离 session 导致 lazy load 失败
+        tag_names = [tag.name for tag in task.tags]
+
+        # 计算时间字段
+        expected_total_time_str = None
+        expected_complete_time_str = None
+        used_time_str = None
+        try:
+            now = datetime.now(timezone(timedelta(hours=8)))
+            tz_started = task.started_at.replace(tzinfo=timezone(timedelta(hours=8))) if task.started_at and not task.started_at.tzinfo else task.started_at
+
+            if task.started_at:
+                tz_completed = task.completed_at.replace(tzinfo=timezone(timedelta(hours=8))) if task.completed_at and not task.completed_at.tzinfo else task.completed_at
+                if tz_completed:
+                    elapsed_seconds = max(0.0, (tz_completed - tz_started).total_seconds())
+                elif task.status in ('completed', 'failed') and task.updated_at:
+                    # 已结束但 completed_at 缺失时，使用 updated_at 作为结束时间，避免时间持续增长
+                    tz_updated = task.updated_at.replace(tzinfo=timezone(timedelta(hours=8))) if task.updated_at and not task.updated_at.tzinfo else task.updated_at
+                    elapsed_seconds = max(0.0, (tz_updated - tz_started).total_seconds())
+                else:
+                    elapsed_seconds = max(0.0, (now - tz_started).total_seconds())
+
+                def _format_duration(secs):
+                    secs = int(secs)
+                    if secs < 60:
+                        return f"{secs}秒"
+                    elif secs < 3600:
+                        m = secs // 60
+                        s = secs % 60
+                        return f"{m}分钟" + (f"{s}秒" if s > 0 else "")
+                    else:
+                        h = secs // 3600
+                        m = (secs % 3600) // 60
+                        return f"{h}小时" + (f"{m}分钟" if m > 0 else "")
+
+                used_time_str = _format_duration(elapsed_seconds)
+
+                time_estimate = execution_engine.event_manager.calculate_time_estimate(task)
+                estimated_total_seconds = time_estimate.get('expected_total_time', 0) or 0
+                expected_total_time_str = _format_duration(estimated_total_seconds)
+
+                if not tz_completed:
+                    expected_complete_dt = now + timedelta(seconds=estimated_total_seconds)
+                    expected_complete_time_str = expected_complete_dt.strftime('%Y-%m-%d %H:%M:%S')
+                else:
+                    expected_complete_time_str = tz_completed.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"get_one: 计算时间字段失败: {e}")
+
         return success_response(
             TaskDetailData(
                 id=task.id,
@@ -342,12 +391,15 @@ class TaskController:
                 algorithm_params=convert_keys_to_camel(task.algorithm_params) if task.algorithm_params else None,
                 started_at=task.started_at.isoformat() if task.started_at else None,
                 completed_at=task.completed_at.isoformat() if task.completed_at else None,
+                expected_total_time=expected_total_time_str,
+                expected_complete_time=expected_complete_time_str,
+                used_time=used_time_str,
                 total_cases=task.total_cases,
                 case_count=task.total_cases,
                 device_count=len(devices),
                 completed_cases=task.completed_cases,
                 failed_cases=task.failed_cases,
-                tags=[tag.name for tag in task.tags],
+                tags=tag_names,
                 cases=cases,
                 devices=devices,
                 apis=apis,
@@ -403,15 +455,16 @@ class TaskController:
             dim_data = []
             for dim, dim_name in dimensions:
                 dim_data.append({
-                "id": dim.id,
-                "name": dim_name,
-                "value": dim.dimension_value,
-                "score": dim.score,
-                "status": dim.status,
-                "evaluation_status": dim.evaluation_status,
-                "error_message": dim.error_message
-            })
-            
+                    "id": dim.id,
+                    "name": dim_name,
+                    "value": dim.dimension_value,
+                    "score": dim.score,
+                    "status": dim.status,
+                    "evaluation_status": dim.evaluation_status,
+                    "error_message": dim.error_message,
+                    "round_number": getattr(dim, 'round_number', None)
+                })
+
             full_result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
             processed_results.append({
                 "id": result.id,
@@ -467,7 +520,39 @@ class TaskController:
                 combined_data = {**algo_res, **r_data}
                 for field in output_fields:
                     param_key = field.get('target_param') or field.get('source_param')
-                    if param_key and combined_data.get(param_key):
+                    if not param_key or not combined_data.get(param_key):
+                        continue
+                    # voice_llm 多轮：从 rounds 数组里按轮展开 question/answer
+                    if algorithm_type == 'voice_llm' and param_key == 'rounds':
+                        rounds_arr = combined_data.get('rounds') or []
+                        if isinstance(rounds_arr, list):
+                            for r_idx, r_item in enumerate(rounds_arr):
+                                # rounds 里的 round 字段是 0-indexed，展示用 1-indexed
+                                raw_round = r_item.get('roundNumber')
+                                if raw_round is None:
+                                    raw_round = r_item.get('round')
+                                rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
+                                out = r_item.get('output') or {}
+                                for sub_key in ('question', 'answer'):
+                                    val = out.get(sub_key)
+                                    if val:
+                                        algorithm_results.append({
+                                            'device': resource,
+                                            'param_code': f'{sub_key}@round:{rn}',
+                                            'param_type': 'text',
+                                            'label': f'{sub_key} (第{rn}轮)',
+                                            'value': val,
+                                            'round_number': rn,
+                                        })
+                        # rounds 整体作为 json 字段保留
+                        algorithm_results.append({
+                            'device': resource,
+                            'param_code': param_key,
+                            'param_type': field.get('param_type', 'json'),
+                            'label': field.get('dimension_name') or param_key,
+                            'value': combined_data[param_key]
+                        })
+                    else:
                         algorithm_results.append({
                             'device': resource,
                             'param_code': param_key,
@@ -615,9 +700,10 @@ class TaskController:
                     "score": dim.score,
                     "status": dim.status,
                     "evaluation_status": dim.evaluation_status,
-                    "error_message": dim.error_message
+                    "error_message": dim.error_message,
+                    "round_number": getattr(dim, 'round_number', None)
                 })
-            
+
             processed_results.append({
                 "id": result.id,
                 "device_id": result.device_id,

@@ -266,7 +266,18 @@ async function fetchTaskDetails() {
     }
     
     task.value = taskData;
-    
+
+    // 用后端返回的时间字段更新显示
+    if (taskData.expectedTotalTime) {
+      estimatedTime.value = String(taskData.expectedTotalTime);
+    }
+    if (taskData.expectedCompleteTime) {
+      expectedCompleteTime.value = String(taskData.expectedCompleteTime);
+    }
+    if (taskData.usedTime) {
+      elapsedTime.value = String(taskData.usedTime);
+    }
+
     if (taskData.cases && taskData.cases.length > 0) {
       associatedCases.value = taskData.cases.map((tc: any) => {
         const transformed = transformTestCaseStatus(tc);

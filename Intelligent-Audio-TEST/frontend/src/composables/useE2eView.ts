@@ -115,6 +115,7 @@ export function useE2eView() {
     currentTaskId: currentTaskId as any,
     onStopped: () => {
       isExecuting.value = false
+      stopTimeUpdateTimer()
     },
     addLog: (log) => addLog(log)
   })
@@ -136,6 +137,18 @@ export function useE2eView() {
       const minutesStr = String(Math.floor((elapsedSeconds % 3600) / 60)).padStart(2, '0')
       const secondsStr = String(elapsedSeconds % 60).padStart(2, '0')
       taskElapsedTimeDisplay.value = `${hoursStr}:${minutesStr}:${secondsStr}`
+      // 同步更新 elapsedTime，让组件显示已用时长
+      if (elapsedSeconds < 60) {
+        elapsedTime.value = `${elapsedSeconds}秒`
+      } else if (elapsedSeconds < 3600) {
+        const m = Math.floor(elapsedSeconds / 60)
+        const s = elapsedSeconds % 60
+        elapsedTime.value = s > 0 ? `${m}分钟${s}秒` : `${m}分钟`
+      } else {
+        const h = Math.floor(elapsedSeconds / 3600)
+        const m = Math.floor((elapsedSeconds % 3600) / 60)
+        elapsedTime.value = m > 0 ? `${h}小时${m}分钟` : `${h}小时`
+      }
     }, 1000)
   }
 
@@ -160,6 +173,7 @@ export function useE2eView() {
     currentTaskId,
     onCompleted: async (data: any) => {
       isExecuting.value = false
+      stopTimeUpdateTimer()
       await fetchReport()
       if (report.value?.id) {
         router.push({ name: 'reportView', params: { id: report.value.id } })
@@ -169,6 +183,7 @@ export function useE2eView() {
     },
     onFailed: (data: any) => {
       isExecuting.value = false
+      stopTimeUpdateTimer()
       fetchReport()
       if (report.value?.id) {
         router.push({ name: 'reportView', params: { id: report.value.id } })
@@ -340,13 +355,25 @@ export function useE2eView() {
       addLog({ content: '测试任务已创建，正在启动...', level: 'info' })
       const startResponse = await tasksApi.start(response.id)
       console.log('[startTest] 启动任务响应:', startResponse)
-      
+
+      // 设置任务开始时间并启动本地已用时长计时器
+      taskStartTime.value = startResponse.startTime ? new Date(startResponse.startTime) : new Date()
+      startTimeUpdateTimer()
+
       // 更新时间估计数据
-      if (startResponse.expectedTotalTime) {
-        estimatedTime.value = startResponse.expectedTotalTime
+      if (startResponse.expectedTotalTime !== undefined && startResponse.expectedTotalTime !== null) {
+        // 后端返回的是秒数（数字），格式化为可读文本
+        const seconds = Number(startResponse.expectedTotalTime)
+        if (seconds > 0) {
+          if (seconds < 60) estimatedTime.value = `${Math.floor(seconds)}秒`
+          else if (seconds < 3600) estimatedTime.value = `${Math.floor(seconds / 60)}分钟`
+          else estimatedTime.value = `${Math.floor(seconds / 3600)}小时${Math.floor((seconds % 3600) / 60)}分钟`
+        } else {
+          estimatedTime.value = '--'
+        }
       }
-      if (startResponse.expectedCompleteTime) {
-        expectedCompleteTime.value = startResponse.expectedCompleteTime
+      if (startResponse.expectedCompleteTime !== undefined && startResponse.expectedCompleteTime !== null && String(startResponse.expectedCompleteTime).trim() !== '') {
+        expectedCompleteTime.value = String(startResponse.expectedCompleteTime)
       }
       
       addLog({ content: '测试任务已成功启动', level: 'info' })

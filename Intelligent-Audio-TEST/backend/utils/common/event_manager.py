@@ -463,7 +463,24 @@ class EventManager:
             if started_at:
                 if not started_at.tzinfo:
                     started_at = started_at.replace(tzinfo=timezone(timedelta(hours=8)))
-                elapsed_seconds_for_display = max(0.0, (now - started_at).total_seconds())
+                # 任务已结束（completed/failed）时，使用 completed_at - started_at 作为已用时长，
+                # 避免持续推送导致 usedTime 不断增长
+                end_reference = started_at
+                if db_task.completed_at:
+                    completed_at = db_task.completed_at
+                    if not completed_at.tzinfo:
+                        completed_at = completed_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                    end_reference = completed_at
+                elif db_task.status in ('completed', 'failed'):
+                    # 状态已结束但 completed_at 缺失时，退而使用 updatedAt
+                    updated_at = db_task.updated_at
+                    if updated_at:
+                        if not updated_at.tzinfo:
+                            updated_at = updated_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                        end_reference = updated_at
+                else:
+                    end_reference = now
+                elapsed_seconds_for_display = max(0.0, (end_reference - started_at).total_seconds())
             
             actual_total_cases = local_db_session.query(TaskCase).filter_by(task_id=db_task.id).count()
             if actual_total_cases != db_task.total_cases:
@@ -512,7 +529,21 @@ class EventManager:
                 if not started_at.tzinfo:
                     started_at = started_at.replace(tzinfo=timezone(timedelta(hours=8)))
 
-                elapsed_seconds = max(0.0, (now - started_at).total_seconds())
+                # 已结束任务使用 completed_at/updated_at - started_at 作为已用时长，避免持续推送导致增长
+                end_reference = now
+                if db_task.completed_at:
+                    completed_at = db_task.completed_at
+                    if not completed_at.tzinfo:
+                        completed_at = completed_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                    end_reference = completed_at
+                elif db_task.status in ('completed', 'failed'):
+                    updated_at = db_task.updated_at
+                    if updated_at:
+                        if not updated_at.tzinfo:
+                            updated_at = updated_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                        end_reference = updated_at
+
+                elapsed_seconds = max(0.0, (end_reference - started_at).total_seconds())
 
                 self._log(level='DEBUG', content=f"任务 {task_id}: 开始计算时间预估，已用时间={elapsed_seconds:.2f}秒", task_id=task_id)
 

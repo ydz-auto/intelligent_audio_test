@@ -129,17 +129,27 @@ const logLoadingMore = ref(false)
 const logPerPage = 100
 
 // 准备对比数据：按设备分组指标和文本
+// 多轮场景：同一维度名会出现多次（每轮一次 + 可能的整体评估），
+// 用 round_number 区分：NULL=整体评估, 0-indexed=轮次
+// 指标 key 形如 "LLM语义评分" (单轮/整体) 或 "LLM语义评分@round:1" (第2轮) 或 "LLM语义评分@overall" (整体)
 const preparedComparisonData = computed(() => {
   if (!detail.value?.results || !detail.value.devices?.length) return {}
+  // 先判断是否多轮：任一设备有任一维度带 roundNumber（非 NULL）即视为多轮
+  const isMultiRound = detail.value.results.some(r => (r.dimensions || []).some(d => (d.roundNumber ?? d.round_number) !== null && (d.roundNumber ?? d.round_number) !== undefined))
   const data = {}
   detail.value.devices.forEach(device => {
-    const deviceResult = detail.value.results.find(r => r.deviceName === device)
+    const deviceResult = detail.value.results.find(r => (r.deviceName ?? r.device_name) === device)
     const metricsMap = {}
     if (deviceResult?.dimensions) {
       deviceResult.dimensions.forEach(d => {
-        if (d.name) {
-          metricsMap[d.name] = { metric: d.name, value: d.score ?? d.value }
+        if (!d.name) return
+        const rn = d.roundNumber ?? d.round_number
+        let key = d.name
+        if (isMultiRound) {
+          if (rn === null || rn === undefined) key = `${d.name}@overall`
+          else key = `${d.name}@round:${rn + 1}`
         }
+        metricsMap[key] = { metric: d.name, value: d.score ?? d.value, round_number: rn }
       })
     }
     data[device] = {
@@ -206,21 +216,21 @@ const fetchDetail = async () => {
     ])
     
     detail.value = {
-      caseName: detailData.case_name,
-      executionStatus: detailData.execution_status,
-      evaluationStatus: detailData.evaluation_status,
+      caseName: detailData.caseName ?? detailData.case_name,
+      executionStatus: detailData.executionStatus ?? detailData.execution_status,
+      evaluationStatus: detailData.evaluationStatus ?? detailData.evaluation_status,
       duration: detailData.duration,
-      errorMessage: detailData.error_message,
+      errorMessage: detailData.errorMessage ?? detailData.error_message,
       results: resultsData.results || [],
       // 后端返回完整的对比展示数据
-      audioList: detailData.audio_list || [],
-      referenceParams: detailData.reference_params || {},
-      algorithmResults: detailData.algorithm_results || [],
-      algorithmType: detailData.algorithm_type || '',
-      devices: detailData.devices || [],
-      metricConfigs: detailData.metric_configs || [],
-      fieldMapping: detailData.field_mapping || { result: [], reference: [] },
-      resultAudios: detailData.result_audios || {},
+      audioList: detailData.audioList ?? detailData.audio_list ?? [],
+      referenceParams: detailData.referenceParams ?? detailData.reference_params ?? {},
+      algorithmResults: detailData.algorithmResults ?? detailData.algorithm_results ?? [],
+      algorithmType: detailData.algorithmType ?? detailData.algorithm_type ?? '',
+      devices: detailData.devices ?? [],
+      metricConfigs: detailData.metricConfigs ?? detailData.metric_configs ?? [],
+      fieldMapping: detailData.fieldMapping ?? detailData.field_mapping ?? { result: [], reference: [] },
+      resultAudios: detailData.resultAudios ?? detailData.result_audios ?? {},
       logs: []
     }
     

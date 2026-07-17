@@ -192,15 +192,21 @@ const getSegmentStyle = (audio) => {
 };
 
 const getAudioLabel = (audio) => {
-  return audio.label || audio.filename || `音频 ${audio.id || ''}`;
+  const base = audio.label || audio.filename || `音频 ${audio.id || ''}`;
+  // 多轮场景：在标签前加轮次前缀
+  const rn = audio.roundNumber ?? audio.round_number;
+  if (rn !== undefined && rn !== null && rn > 1) return `[第${rn}轮] ${base}`;
+  return base;
 };
 
 const getAudioTooltip = (audio) => {
   const lines = [
     `名称: ${audio.filename || audio.label || '未知'}`,
-    `时间: ${formatTime(audio.timelineStart)} - ${formatTime(audio.timelineEnd)}`,
-    `时长: ${formatDuration(audio.duration)}`,
   ];
+  const rn = audio.roundNumber ?? audio.round_number;
+  if (rn !== undefined && rn !== null) lines.push(`轮次: 第${rn}轮`);
+  lines.push(`时间: ${formatTime(audio.timelineStart)} - ${formatTime(audio.timelineEnd)}`);
+  lines.push(`时长: ${formatDuration(audio.duration)}`);
   if (audio.spl) lines.push(`声压级: ${audio.spl}dB`);
   if (audio.playOrder !== undefined && audio.playOrder !== null) lines.push(`播放顺序: ${audio.playOrder}`);
   if (audio.playbackDeviceName || audio.device_name) lines.push(`设备: ${audio.playbackDeviceName || audio.device_name}`);

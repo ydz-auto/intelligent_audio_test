@@ -469,8 +469,13 @@ const hasExecutionResults = computed(() => {
 
 // 动态参考文本字段
 const referenceTextFields = computed(() => {
-  // 优先使用 fieldMapping
+  // 优先使用 fieldMapping（兼容 camelCase / snake_case）
   const refFields = (props.fieldMapping?.reference || [])
+    .map(f => ({
+      ...f,
+      param_code: f.param_code ?? f.paramCode,
+      param_type: f.param_type ?? f.paramType ?? 'text',
+    }))
     .filter(f => f.param_type === 'text');
   if (refFields.length > 0) {
     const result = [];
@@ -499,19 +504,15 @@ const referenceTextFields = computed(() => {
 
 // 动态结果文本字段
 const resultTextFields = computed(() => {
-  // 优先使用 fieldMapping
-  const fields = (props.fieldMapping?.result || [])
-    .filter(f => f.param_type === 'text');
-  if (fields.length > 0) {
-    return fields.map(f => ({
-      ...f,
-      getValue: (device) => getResultTextValue(device, f.param_code)
-    }));
-  }
+  // 归一化 algorithmResults（兼容 camelCase / snake_case）
+  const algoResults = (props.algorithmResults || []).map(i => ({
+    ...i,
+    param_code: i.param_code ?? i.paramCode,
+    param_type: i.param_type ?? i.paramType,
+    round_number: i.round_number ?? i.roundNumber,
+  }));
 
-  // 回退：从 algorithmResults 数组中提取 text 类型项
-  const algoResults = props.algorithmResults || [];
-  if (!Array.isArray(algoResults)) return [];
+  // 1. 从 algorithmResults 中提取所有 text 类型项（包含 question@round / answer@round）
   const textItems = [];
   const seenCodes = new Set();
   for (const item of algoResults) {
@@ -521,10 +522,37 @@ const resultTextFields = computed(() => {
         param_code: item.param_code,
         label: item.label || item.param_code,
         param_type: 'text',
+        round_number: item.round_number,
         getValue: (device) => getResultTextValue(device, item.param_code)
       });
     }
   }
+
+  // 2. 补充 fieldMapping 里定义的 text 字段（跳过 algorithmResults 已覆盖的）
+  const fmFields = (props.fieldMapping?.result || [])
+    .map(f => ({
+      ...f,
+      param_code: f.param_code ?? f.paramCode,
+      param_type: f.param_type ?? f.paramType ?? 'text',
+    }))
+    .filter(f => f.param_type === 'text');
+  for (const f of fmFields) {
+    if (!seenCodes.has(f.param_code)) {
+      seenCodes.add(f.param_code);
+      textItems.push({
+        ...f,
+        getValue: (device) => getResultTextValue(device, f.param_code)
+      });
+    }
+  }
+
+  // 按轮次排序，question 在前 answer 在后
+  textItems.sort((a, b) => {
+    const ra = a.round_number ?? 0;
+    const rb = b.round_number ?? 0;
+    if (ra !== rb) return ra - rb;
+    return (a.param_code || '').localeCompare(b.param_code || '');
+  });
   return textItems;
 });
 
@@ -536,7 +564,7 @@ const hasResultAudioData = computed(() => {
 const audioListWithTimeline = computed(() => {
   const list = props.audioList || [];
   if (list.length === 0) return [];
-  
+
   // 只做字段归一化，不再自行计算时间轴位置
   // 后端已根据 overlap_rate/overlap_time 计算好 timelineStart/timelineEnd
   return list.map(a => ({
@@ -546,6 +574,7 @@ const audioListWithTimeline = computed(() => {
     testType: a.testType ?? a.test_type ?? a.audio_type ?? 'api',
     playOrder: a.playOrder ?? a.play_order,
     playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
+    roundNumber: a.roundNumber ?? a.round_number ?? a.round ?? 1,
   }));
 });
 
@@ -617,8 +646,29 @@ const allMetricNames = computed(() => {
   Object.values(props.comparisonData).forEach(d => {
     if (d.metrics) Object.keys(d.metrics).forEach(m => names.add(m));
   });
-  return Array.from(names);
+  // 排序：按维度基础名分组，组内按轮次（round:N 升序）在前、整体（@overall）在后
+  return Array.from(names).sort((a, b) => {
+    const parseKey = (k) => {
+      const m = k.match(/^(.*)@(round:(\d+)|overall)$/);
+      if (!m) return { base: k, order: -1, rn: -1 }; // 单轮/无后缀，最前
+      if (m[2] === 'overall') return { base: m[1], order: 1, rn: 9999 };
+      return { base: m[1], order: 0, rn: parseInt(m[3], 10) };
+    };
+    const pa = parseKey(a), pb = parseKey(b);
+    if (pa.base !== pb.base) return pa.base.localeCompare(pb.base, 'zh');
+    if (pa.order !== pb.order) return pa.order - pb.order;
+    return pa.rn - pb.rn;
+  });
 });
+
+// 友好显示指标名：把内部 key 转成带" (第N轮)"/" (整体)"的标签
+const formatMetricLabel = (key) => {
+  const m = key.match(/^(.*)@round:(\d+)$/);
+  if (m) return `${m[1]} (第${m[2]}轮)`;
+  const m2 = key.match(/^(.*)@overall$/);
+  if (m2) return `${m2[1]} (整体)`;
+  return key;
+};
 
 const metricDecimalPlacesMap = computed(() => {
   const map = {}
@@ -641,7 +691,11 @@ const formatMetricForDisplay = (metricName, value) => {
 }
 
 const getMetricRawValue = (device, metricName) => {
-  return props.comparisonData[device]?.metrics?.[metricName] ?? '-'
+  const entry = props.comparisonData[device]?.metrics?.[metricName]
+  if (entry === undefined || entry === null) return '-'
+  // 兼容 { metric, value } 对象和裸值两种格式
+  if (typeof entry === 'object') return entry.value ?? '-'
+  return entry
 }
 
 const getMetricValue = (device, metricName) => {
@@ -674,7 +728,7 @@ const comparisonTableColumns = computed(() => {
 const comparisonTableData = computed(() => {
   return allMetricNames.value.map(metricName => {
     const row = {
-      metricName: metricName
+      metricName: formatMetricLabel(metricName)
     }
 
     props.devices.forEach((device, index) => {
@@ -740,11 +794,16 @@ const getReferenceTextValue = (paramCode) => {
 // 从结果数据中提取文本值（algorithmResults 现在是扁平数组）
 const getResultTextValue = (device, paramCode) => {
   const items = props.algorithmResults || [];
+  const norm = i => ({
+    ...i,
+    param_code: i.param_code ?? i.paramCode,
+    param_type: i.param_type ?? i.paramType,
+  });
   let item;
   if (props.isComparison && device !== 'default') {
-    item = items.find(i => i.device === device && i.param_code === paramCode);
+    item = items.map(norm).find(i => i.device === device && i.param_code === paramCode);
   } else {
-    item = items.find(i => i.param_code === paramCode);
+    item = items.map(norm).find(i => i.param_code === paramCode);
   }
   if (!item || item.value === undefined || item.value === null) return '无数据';
   const data = item.value;
