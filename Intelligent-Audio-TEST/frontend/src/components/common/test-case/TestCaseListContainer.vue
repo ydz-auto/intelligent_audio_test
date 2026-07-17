@@ -243,7 +243,19 @@
           <p class="empty-state-hint">请为测试用例添加标签</p>
         </div>
 
-        <div v-if="!hasMoreGroups && paginatedTags.length > 0" class="all-loaded">
+        <div v-if="isLoadingMore" class="loading-more">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span>加载更多标签...</span>
+        </div>
+
+        <div v-if="hasMoreTags && !isLoadingMore && paginatedTags.length > 0" class="load-more-trigger" ref="loadMoreTriggerRef">
+          <span class="load-more-hint">已显示 {{ paginatedTags.length }} / {{ sortedTags.length }} 个标签</span>
+          <button class="btn btn-secondary btn-sm" @click="loadMoreGroups">
+            <i class="fas fa-chevron-down"></i> 加载更多
+          </button>
+        </div>
+
+        <div v-if="!hasMoreTags && paginatedTags.length > 0" class="all-loaded">
           <span>已加载全部 {{ sortedTags.length }} 个标签</span>
         </div>
       </template>
@@ -870,6 +882,12 @@ const paginatedTags = computed(() => {
   return allTags.slice(0, endIndex);
 });
 
+// 标签视图是否还有更多未展示的标签
+const hasMoreTags = computed(() => paginatedTags.value.length < sortedTags.value.length);
+// 当前视图是否还有更多：分组视图看 hasMoreGroups，标签视图看 hasMoreTags。
+// 滚动加载/IntersectionObserver/loadMoreGroups 共用此判断，避免标签视图永远加载不出第 6 个起标签。
+const hasMore = computed(() => innerViewMode.value === 'tag' ? hasMoreTags.value : hasMoreGroups.value);
+
 const toggleTagCategory = (tagName: string) => {
   expandedTagCategories.value = {
     ...expandedTagCategories.value,
@@ -962,7 +980,7 @@ const resetFilters = () => {
 };
 
 const loadMoreGroups = () => {
-  if (isLoadingMore.value || !hasMoreGroups.value) return;
+  if (isLoadingMore.value || !hasMore.value) return;
   isLoadingMore.value = true;
   setTimeout(() => {
     currentPage.value++;
@@ -973,7 +991,7 @@ const loadMoreGroups = () => {
 const handleScroll = (event: Event) => {
   const target = event.target as HTMLElement;
   const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-  if (scrollBottom < 100 && hasMoreGroups.value && !isLoadingMore.value) {
+  if (scrollBottom < 100 && hasMore.value && !isLoadingMore.value) {
     loadMoreGroups();
   }
 };
@@ -987,7 +1005,7 @@ const setupLoadMoreObserver = () => {
   if (loadMoreObserver) loadMoreObserver.disconnect();
   loadMoreObserver = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
-      if (entry.isIntersecting && hasMoreGroups.value && !isLoadingMore.value) {
+      if (entry.isIntersecting && hasMore.value && !isLoadingMore.value) {
         loadMoreGroups();
       }
     });
@@ -996,8 +1014,9 @@ const setupLoadMoreObserver = () => {
     loadMoreObserver.observe(loadMoreTriggerRef.value);
   }
 };
-// 哨兵是 v-if 元素，每次加载后会重新挂载，需重新观察
-watch([hasMoreGroups, isLoadingMore, () => paginatedGroups.value.length], () => {
+// 哨兵是 v-if 元素，每次加载后会重新挂载，需重新观察；
+// 分组/标签视图切换时哨兵也会换元素，需一并重新观察。
+watch([hasMore, isLoadingMore, () => paginatedGroups.value.length, () => paginatedTags.value.length, innerViewMode], () => {
   nextTick(setupLoadMoreObserver);
 });
 
