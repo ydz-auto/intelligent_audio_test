@@ -186,6 +186,18 @@ export const useTestCaseStore = defineStore('testCase', () => {
         map[id] = { ...group, id, name } as TestCaseGroup;
         return map;
       }, {} as Record<string, TestCaseGroup>);
+
+      // 同步填充 groupsList：TestCaseListContainer 的分组展开/加载更多依赖它按名称查找分组 id 与用例总数，
+      // 否则 fetchCasesByGroup / hasMoreGroupCases / loadMoreCases 全部失效（滚动加载更多用例不可用）。
+      groupsList.value = groupsData.map((group, index) => {
+        const id = group.id?.toString() || `group-${index}`;
+        return {
+          id,
+          name: group.name || `未命名分组-${id}`,
+          description: group.description,
+          testCaseCount: group.test_case_count || 0
+        };
+      });
       
       let testCasesData: TestCase[] = [];
       

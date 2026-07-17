@@ -194,7 +194,7 @@
         <span>加载更多分组...</span>
       </div>
 
-      <div v-if="hasMoreGroups && !isLoadingMore && paginatedGroups.length > 0" class="load-more-trigger">
+      <div v-if="hasMoreGroups && !isLoadingMore && paginatedGroups.length > 0" class="load-more-trigger" ref="loadMoreTriggerRef">
         <span class="load-more-hint">已显示 {{ paginatedGroups.length }} / {{ paginationInfo.totalItems }} 个分组</span>
         <button class="btn btn-secondary btn-sm" @click="loadMoreGroups">
           <i class="fas fa-chevron-down"></i> 加载更多
@@ -309,7 +309,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, shallowRef, triggerRef } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, shallowRef, triggerRef, nextTick } from 'vue';
 import TestCaseCard from './TestCaseCard.vue'
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
@@ -399,6 +399,7 @@ const itemsPerPage = ref(5);
 const isLoadingMore = ref(false);
 const hasMoreGroups = ref(true);
 const listContainerRef = ref<HTMLElement | null>(null);
+const loadMoreTriggerRef = ref<HTMLElement | null>(null);
 
 const showAudioPlayer = ref(false);
 const currentTestCaseCaseId = ref<string | number | null>(null);
@@ -547,6 +548,7 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
 
 onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeyDown);
+  setupLoadMoreObserver();
   await Promise.all([
     loadPlaybackDevices(),
     loadAlgorithmOptions()
@@ -555,6 +557,10 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleGlobalKeyDown);
+  if (loadMoreObserver) {
+    loadMoreObserver.disconnect();
+    loadMoreObserver = null;
+  }
 });
 
 const availableGroups = computed(() => {
@@ -971,6 +977,29 @@ const handleScroll = (event: Event) => {
     loadMoreGroups();
   }
 };
+
+// 滚动加载兜底：页面真正滚动的是外层 MAIN.main-content（overflow:auto），
+// 既不是 window 也不是 .single-column-layout，所以 @scroll 和 window 监听都捕获不到。
+// 用 IntersectionObserver 监听"加载更多"哨兵，进入视口即自动加载，不受滚动容器归属影响。
+let loadMoreObserver: IntersectionObserver | null = null;
+const setupLoadMoreObserver = () => {
+  if (typeof IntersectionObserver === 'undefined') return;
+  if (loadMoreObserver) loadMoreObserver.disconnect();
+  loadMoreObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting && hasMoreGroups.value && !isLoadingMore.value) {
+        loadMoreGroups();
+      }
+    });
+  }, { rootMargin: '100px' });
+  if (loadMoreTriggerRef.value) {
+    loadMoreObserver.observe(loadMoreTriggerRef.value);
+  }
+};
+// 哨兵是 v-if 元素，每次加载后会重新挂载，需重新观察
+watch([hasMoreGroups, isLoadingMore, () => paginatedGroups.value.length], () => {
+  nextTick(setupLoadMoreObserver);
+});
 
 const deleteGroup = (groupName: string) => {
   emit('deleteGroup', groupName);
