@@ -757,7 +757,9 @@ const sortedGroups = computed(() => {
     
     switch (currentSortBy) {
       case 'count':
-        result = (filteredValue[b]?.length || 0) - (filteredValue[a]?.length || 0);
+        // 按分组真实用例总数排序（来自后端 test_case_count），而非已加载数量，
+        // 否则展开分组触发懒加载后已加载数量从 0 跳变，分组会被降序重排到顶部。
+        result = getGroupTotalCount(b) - getGroupTotalCount(a);
         return currentSortOrder === 'asc' ? result * -1 : result;
       case 'name':
         result = a.localeCompare(b, 'zh-CN');
@@ -765,7 +767,7 @@ const sortedGroups = computed(() => {
       case 'createTime':
         const aCases = filteredValue[a] || [];
         const bCases = filteredValue[b] || [];
-        
+
         if (aCases.length === 0 && bCases.length === 0) {
           result = a.localeCompare(b, 'zh-CN');
           return currentSortOrder === 'desc' ? result * -1 : result;
@@ -774,13 +776,13 @@ const sortedGroups = computed(() => {
         } else if (bCases.length === 0) {
           return currentSortOrder === 'asc' ? -1 : 1;
         }
-        
+
         const aTime = aCases[0]?.createdAt ? new Date(aCases[0].createdAt).getTime() : 0;
         const bTime = bCases[0]?.createdAt ? new Date(bCases[0].createdAt).getTime() : 0;
         result = bTime - aTime;
         return currentSortOrder === 'asc' ? result * -1 : result;
       default:
-        result = (filteredValue[b]?.length || 0) - (filteredValue[a]?.length || 0);
+        result = getGroupTotalCount(b) - getGroupTotalCount(a);
         return currentSortOrder === 'asc' ? result * -1 : result;
     }
   });
