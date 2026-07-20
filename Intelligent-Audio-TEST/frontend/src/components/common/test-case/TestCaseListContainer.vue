@@ -909,12 +909,15 @@ const getTestCaseActions = () => {
 const toggleCategory = async (group: string) => {
   const wasExpanded = expandedCategories.value[group];
   expandedCategories.value[group] = !wasExpanded;
-  
+
   if (!wasExpanded) {
     const store = useTestCaseStore();
     const groupInfo = store.groupsList.find(g => g.name === group);
     if (groupInfo && (!store.loadedGroupCases[groupInfo.id] || store.loadedGroupCases[groupInfo.id].length === 0)) {
-      await store.fetchCasesByGroup(groupInfo.id);
+      // 传当前算法过滤值,使拉取的用例与徽标计数(按算法统计)及 filteredTestCases 过滤一致,
+      // 否则拉取的是分组下所有算法用例,经算法过滤后可能为空(显示"已加载 0/N 条")。
+      const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
+      await store.fetchCasesByGroup(groupInfo.id, { algorithmType });
     }
   }
 };

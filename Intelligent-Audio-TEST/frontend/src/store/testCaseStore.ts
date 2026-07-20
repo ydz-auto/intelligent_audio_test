@@ -23,6 +23,7 @@ interface GroupPaginationInfo {
   pages: number;
   perPage: number;
   total: number;
+  algorithmType?: string;
 }
 
 export const useTestCaseStore = defineStore('testCase', () => {
@@ -378,7 +379,8 @@ export const useTestCaseStore = defineStore('testCase', () => {
         page: response?.page || page,
         pages: response?.pages || 1,
         perPage: response?.perPage || perPage,
-        total: response?.total || 0
+        total: response?.total || 0,
+        algorithmType: params.algorithmType
       };
       
       const group = fullGroupsMap.value[groupKey];
@@ -413,12 +415,15 @@ export const useTestCaseStore = defineStore('testCase', () => {
   const loadMoreGroupCases = async (groupId: string | number) => {
     const groupKey = groupId.toString();
     const currentPagination = groupPagination.value[groupKey];
-    
+
     if (!currentPagination || currentPagination.page >= currentPagination.pages) {
       return null;
     }
-    
-    return fetchCasesByGroup(groupId, { page: currentPagination.page + 1 });
+
+    return fetchCasesByGroup(groupId, {
+      page: currentPagination.page + 1,
+      algorithmType: currentPagination.algorithmType
+    });
   };
 
   const isGroupLoading = (groupId: string | number) => {
