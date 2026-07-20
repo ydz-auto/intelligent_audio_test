@@ -13,6 +13,29 @@ class Xiaoyilivechat(HarmonyDriver):
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
 
+    def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
+        """将 mp4 无损转换为 wav（pcm_s16le，44.1kHz，双声道）。
+        成功返回 wav 绝对路径，失败返回 None。"""
+        if not os.path.exists(mp4_path):
+            return None
+        wav_path = os.path.splitext(mp4_path)[0] + '.wav'
+        cmd = [Config.FFMPEG_PATH, '-y', '-i', mp4_path,
+               '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '2', wav_path]
+        try:
+            r = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=300)
+            if r.returncode != 0 or not os.path.exists(wav_path):
+                self._log(level='ERROR',
+                          content=f"mp4转wav失败: {r.stderr[-500:] if r.stderr else ''}",
+                          task_id=task_id, test_case_id=test_case_id)
+                return None
+            self._log(level='INFO', content=f"mp4转wav成功: {wav_path}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return wav_path
+        except Exception as e:
+            self._log(level='ERROR', content=f"mp4转wav异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+
     def _hdc_shell(self, device_sn, *args):
         return subprocess.run(
             ['hdc', '-t', device_sn, 'shell'] + list(args),
@@ -194,10 +217,15 @@ class Xiaoyilivechat(HarmonyDriver):
                     'answer': answer_text or ''
                 }
                 return [result]
+                # mp4 无损转 wav
+                wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
+                print(f"[录屏] mp4 路径: {local_path}")
+                print(f"[录屏] wav 路径: {wav_path}")
             result = {
                 'success': True,
                 'message': 'Success',
                 'record_path': local_path,
+                'wav_path': wav_path or '',
                 'question': question_text,
                 'answer': answer_text
             }
