@@ -195,7 +195,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           id,
           name: group.name || `未命名分组-${id}`,
           description: group.description,
-          testCaseCount: group.test_case_count || 0
+          testCaseCount: group.testCaseCount ?? group.test_case_count ?? 0
         };
       });
       
@@ -304,7 +304,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           id: g.id,
           name: g.name,
           description: g.description,
-          testCaseCount: g.test_case_count || 0
+          testCaseCount: g.testCaseCount ?? g.test_case_count ?? 0
         }));
         
         fullGroupsMap.value = response.items.reduce((map: Record<string, TestCaseGroup>, g: any) => {

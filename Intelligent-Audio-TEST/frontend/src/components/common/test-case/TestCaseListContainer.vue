@@ -132,7 +132,7 @@
                    :checked="groupSelectionStates[group]">
             <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedCategories[group] }"></i>
             <h4 class="category-title">{{ group }}</h4>
-            <span class="category-count">{{ filteredTestCases[group]?.length || 0 }}</span>
+            <span class="category-count">{{ getGroupTotalCount(group) }}</span>
             <span v-if="getGroupDurationStats(group).totalDuration > 0" class="group-duration-tags">
               <span class="duration-tag">{{ formatGroupDuration(getGroupDurationStats(group).totalDuration) }}</span>
             </span>
