@@ -375,7 +375,7 @@ class AudioService:
 
     def _play_device_audios(self, device_index, audio_list_with_delays, initial_delay,
                             offset=0, loop=False, stop_event=None, is_overlap=False, app=None,
-                            playback_started_event=None):
+                            playback_started_event=None, playback_finished_event=None):
         """在单个设备上播放多个音频（线程池任务函数）。"""
         try:
             audio_list = [c for c, d in audio_list_with_delays]
@@ -404,7 +404,7 @@ class AudioService:
                 })
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Before play_multi: configs count={len(multi_configs)}, delays={[c.get('delay') for c in multi_configs]}, files={[c.get('file', '').split('\\\\')[-1] for c in multi_configs]}", category='audio')
-            self.driver.play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event)
+            self.driver.play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event)
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Device {device_index} done")
         except Exception as e:
@@ -432,12 +432,12 @@ class AudioService:
             app: Flask应用实例，用于在后台线程中获取配置
         """
         if not audio_configs or len(audio_configs) < 1:
-            return [], []
+            return [], [], []
 
         dry_audio_files = [c for c in audio_configs
                            if not c.get('is_noise', False) and c.get('type') != 'interferer']
         if not dry_audio_files:
-            return [], []
+            return [], [], []
 
         overlap_time_value = calculate_overlap_time(
             dry_audio_files[0]['file'],
@@ -446,7 +446,7 @@ class AudioService:
         )
 
         if overlap_time_value < 0:
-            return [], []
+            return [], [], []
 
         is_overlap = is_overlap_playback(overlap_time, overlap_rate)
 
@@ -490,6 +490,7 @@ class AudioService:
         # 提交到线程池
         futures = []
         playback_started_events = []
+        playback_finished_events = []
         pool = self._get_audio_pool()
 
         for dev_idx in device_audio_map:
@@ -497,22 +498,25 @@ class AudioService:
 
             device_stop_event = threading.Event()
             playback_started_event = threading.Event()
+            playback_finished_event = threading.Event()
             future = pool.submit(
                 self._play_device_audios,
                 dev_idx, audio_list_with_delays, 0, offset, loop, device_stop_event, is_overlap, app,
-                playback_started_event
+                playback_started_event, playback_finished_event
             )
 
             self.active_players[task_id][f'device_{dev_idx}'] = {
                 "future": future,
                 "stop_event": device_stop_event,
-                "playback_started_event": playback_started_event
+                "playback_started_event": playback_started_event,
+                "playback_finished_event": playback_finished_event,
             }
 
             futures.append(future)
             playback_started_events.append(playback_started_event)
+            playback_finished_events.append(playback_finished_event)
 
-        return futures, playback_started_events
+        return futures, playback_started_events, playback_finished_events
 
     def stop_task_audio(self, task_id, player_type=None):
         log_and_emit('DEBUG', 'audio_engine', f"[stop_task_audio] Called: task_id={task_id}, player_type={player_type}", category='audio')

@@ -240,6 +240,24 @@ class BaseDeviceDriver:
         """
         return -1
 
+    def _extract_playback_timestamps(self, kwargs):
+        """从 kwargs 中提取毫秒级播放起止时间戳（由 e2e_collector 注入）。
+
+        在 get_results() / post_process() 等接收 **kwargs 的方法中调用：
+            info = self._extract_playback_timestamps(kwargs)
+            start_ms = info['start_ms']  # 本轮首个音频播放开始的毫秒时间戳
+            end_ms   = info['end_ms']    # 本轮最后一个音频播放结束的毫秒时间戳
+            detail   = info['detail']    # 每个音频的起止时间戳明细列表
+
+        Returns:
+            dict: 包含 start_ms / end_ms / detail 三键；不存在时对应值为 None。
+        """
+        return {
+            'start_ms': kwargs.get('playback_start_time_ms'),
+            'end_ms': kwargs.get('playback_end_time_ms'),
+            'detail': kwargs.get('playback_timestamps_detail'),
+        }
+
     def _log(self, level='INFO', content='', test_case_id=None, task_id=None, **kwargs):
         """记录日志
         

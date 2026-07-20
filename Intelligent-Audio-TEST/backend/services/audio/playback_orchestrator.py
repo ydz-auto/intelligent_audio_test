@@ -140,7 +140,7 @@ class PlaybackOrchestrator:
             )
 
             # 8. 执行播放（同步等待，干声结束后停噪声）
-            threads, playback_started_events = self.audio_service.play_overlap(
+            threads, playback_started_events, playback_finished_events = self.audio_service.play_overlap(
                 task_id=task_id,
                 audio_configs=audio_to_play,
                 overlap_time=overlap_time,
@@ -152,10 +152,13 @@ class PlaybackOrchestrator:
             )
 
             total_duration = max((t.get('end', 0) for t in audio_timelines), default=0)
+            actual_play_time = None
+            actual_end_time = None
             if threads and total_duration > 0:
                 # 等待音频真正开始播放（重采样等准备工作完成后）
                 for evt in playback_started_events:
                     evt.wait(timeout=60)
+                actual_play_time = time.time()
                 self._log(
                     'DEBUG',
                     f'[play_round {round_tag}] waiting {total_duration}s for dry audio to finish',
@@ -163,9 +166,16 @@ class PlaybackOrchestrator:
                 )
                 time.sleep(total_duration)
                 self.audio_service.stop_task_audio(task_id)
+                # 等待所有设备流真正关闭
+                for evt in playback_finished_events:
+                    evt.wait(timeout=10)
+                actual_end_time = time.time()
 
-            # 9. 给每条 timeline 加上 actual_play_time
-            actual_play_time = time.time()
+            # 9. 给每条 timeline 加上 actual_play_time / actual_end_time（毫秒级时间戳）
+            if actual_play_time is None:
+                actual_play_time = time.time()
+            if actual_end_time is None:
+                actual_end_time = actual_play_time
             audio_delays = calculate_speaker_aware_audio_delays(
                 audio_to_play, overlap_rate, overlap_time > 0, 0, overlap_time,
                 speakers_map=speakers_map,
@@ -175,6 +185,12 @@ class PlaybackOrchestrator:
             for timeline in audio_timelines:
                 play_order = timeline.get('config', {}).get('play_order', 0)
                 timeline['actual_play_time'] = actual_play_time + delay_map.get(play_order, 0)
+                timeline['actual_end_time'] = actual_end_time
+                # 毫秒级时间戳，供设备驱动用于时延统计
+                timeline['playback_start_time_ms'] = int(round(
+                    (actual_play_time + delay_map.get(play_order, 0)) * 1000
+                ))
+                timeline['playback_end_time_ms'] = int(round(actual_end_time * 1000))
 
             return {
                 'audio_timelines': audio_timelines,
@@ -245,7 +261,7 @@ class PlaybackOrchestrator:
                 return None
 
             # 6. 播放（异步）
-            threads, playback_started_events = self.audio_service.play_overlap(
+            threads, playback_started_events, playback_finished_events = self.audio_service.play_overlap(
                 task_id=task_id,
                 audio_configs=audio_to_play,
                 overlap_time=overlap_time,
@@ -262,6 +278,8 @@ class PlaybackOrchestrator:
             for evt in playback_started_events:
                 evt.wait(timeout=60)
             actual_play_time = time.time()
+            # 预览场景为异步播放，不等待 finished；end_time 用 理论值估算
+            actual_end_time = actual_play_time + total_duration
             audio_delays = calculate_speaker_aware_audio_delays(
                 audio_to_play, overlap_rate, overlap_time > 0, offset, overlap_time,
                 speakers_map=speakers_map,
@@ -270,6 +288,11 @@ class PlaybackOrchestrator:
             for timeline in audio_timelines:
                 play_order = timeline.get('config', {}).get('play_order', 0)
                 timeline['actual_play_time'] = actual_play_time + delay_map.get(play_order, 0)
+                timeline['actual_end_time'] = actual_end_time
+                timeline['playback_start_time_ms'] = int(round(
+                    (actual_play_time + delay_map.get(play_order, 0)) * 1000
+                ))
+                timeline['playback_end_time_ms'] = int(round(actual_end_time * 1000))
 
             return {
                 'audio_timelines': audio_timelines,
@@ -364,7 +387,7 @@ class PlaybackOrchestrator:
                       f'(spl={spl}, gain={gain:.3f})',
                       task_id=task_id)
 
-            _, playback_started_events = self.audio_service.play_overlap(
+            _, playback_started_events, _ = self.audio_service.play_overlap(
                 task_id=task_id,
                 audio_configs=[audio_config],
                 overlap_time=0,

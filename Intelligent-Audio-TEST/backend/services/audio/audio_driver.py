@@ -382,10 +382,10 @@ class PyAudioDriver(AudioDriver):
     #                    主入口                                          #
     # ------------------------------------------------------------------ #
 
-    def play_multi(self, audio_configs, device_index=0, stop_event=None, offset=0, loop=False, app=None, playback_started_event=None):
+    def play_multi(self, audio_configs, device_index=0, stop_event=None, offset=0, loop=False, app=None, playback_started_event=None, playback_finished_event=None):
         """
         在同一个流中播放多个音频文件
-        
+
         Args:
             audio_configs: 音频配置列表，每个元素为 dict:
                 {
@@ -399,6 +399,8 @@ class PyAudioDriver(AudioDriver):
             stop_event: 停止事件
             loop: 是否循环播放
             app: Flask应用实例，用于获取配置路径
+            playback_started_event: 播放真正开始事件（流打开后 set）
+            playback_finished_event: 播放完成事件（流结束/停止后 set）
         """
         if not audio_configs or len(audio_configs) < 1:
             return
@@ -487,6 +489,9 @@ class PyAudioDriver(AudioDriver):
                     stream.close()
                 except:
                     pass
+            # 通知播放已完成（无论正常结束还是被停止）
+            if playback_finished_event:
+                playback_finished_event.set()
             for wf in audio_files:
                 try:
                     wf.close()

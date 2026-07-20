@@ -269,7 +269,33 @@ class E2EExecutor(BaseExecutor):
                 'adjusted_ref_params': None,
             }
 
-        self._device_manager.post_process_devices(device_info_list, task_id, test_case_id=test_case_id)
+        # 收集播放时间戳（含毫秒级起止时间），供 post_process / collect_results 传递给设备驱动
+        self._collect_playback_timestamps(task_id, play_result, case_config)
+
+        # 构建含播放时间戳的 extra_params，供设备驱动 post_process / get_results 使用
+        playback_ts = self._playback_timestamps.get(task_id, {})
+        round_start_ms = playback_ts.get('current_round_start_ms')
+        round_end_ms = playback_ts.get('current_round_end_ms')
+        post_extra_params = {**self.current_extra_params, 'round_number': round_idx}
+        if round_start_ms is not None and round_end_ms is not None:
+            post_extra_params['playback_start_time_ms'] = round_start_ms
+            post_extra_params['playback_end_time_ms'] = round_end_ms
+            detail = playback_ts.get('audio_play_times', [])
+            if detail:
+                post_extra_params['playback_timestamps_detail'] = [
+                    {
+                        'audio_id': p.get('audio_id'),
+                        'play_order': p.get('play_order'),
+                        'start_ms': p.get('playback_start_time_ms'),
+                        'end_ms': p.get('playback_end_time_ms'),
+                    }
+                    for p in detail
+                ]
+
+        self._device_manager.post_process_devices(
+            device_info_list, task_id, test_case_id=test_case_id,
+            extra_params=post_extra_params,
+        )
         time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
 
         # 采集结果
@@ -304,9 +330,6 @@ class E2EExecutor(BaseExecutor):
                 result_id, case_reference_params,
                 round_idx, primary, tagged_results, rounds_data
             )
-
-        # 收集播放时间戳
-        self._collect_playback_timestamps(task_id, play_result, case_config)
 
         self._device_manager.teardown_env_devices_for_round(env_states, task_id)
 
@@ -414,6 +437,8 @@ class E2EExecutor(BaseExecutor):
         overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
 
         audio_timelines = play_result.get('audio_timelines', []) if play_result else []
+        round_start_ms = None
+        round_end_ms = None
         for timeline in audio_timelines:
             if timeline.get('is_noise', False):
                 continue
@@ -429,15 +454,28 @@ class E2EExecutor(BaseExecutor):
                     'audio_play_times': [],
                     'theory_offsets': {},
                 }
+            start_ms = timeline.get('playback_start_time_ms')
+            end_ms = timeline.get('playback_end_time_ms')
+            if start_ms is not None and (round_start_ms is None or start_ms < round_start_ms):
+                round_start_ms = start_ms
+            if end_ms is not None and (round_end_ms is None or end_ms > round_end_ms):
+                round_end_ms = end_ms
             self._playback_timestamps[task_id]['audio_play_times'].append({
                 'audio_id': audio_id,
                 'play_order': audio_config.get('play_order', 0),
                 'actual_time': timeline.get('actual_play_time', time.time()),
+                'actual_end_time': timeline.get('actual_end_time'),
+                'playback_start_time_ms': start_ms,
+                'playback_end_time_ms': end_ms,
                 'actual_start_offset': timeline.get('start', 0),
                 'is_overlap': bool(overlap_rate and overlap_rate > 0),
                 'overlap_rate': overlap_rate,
                 'overlap_time': overlap_time,
             })
+        # 记录本轮播放起止时间戳（毫秒），供 collect_results 传递给设备驱动
+        if round_start_ms is not None and round_end_ms is not None:
+            self._playback_timestamps[task_id]['current_round_start_ms'] = round_start_ms
+            self._playback_timestamps[task_id]['current_round_end_ms'] = round_end_ms
 
     # ──────────────────────────────────────────────────
     #  阶段三：循环后聚合 + 评估

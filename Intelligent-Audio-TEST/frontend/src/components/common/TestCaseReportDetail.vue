@@ -469,7 +469,27 @@ const hasExecutionResults = computed(() => {
 
 // 动态参考文本字段
 const referenceTextFields = computed(() => {
-  // 优先使用 fieldMapping（兼容 camelCase / snake_case）
+  const refParams = props.referenceParams || {};
+  const result = [];
+  const seenCodes = new Set();
+
+  // 1. 从 referenceParams 字典里直接提取所有 text 参数（含多轮展开的 code@round:N）
+  for (const [code, data] of Object.entries(refParams)) {
+    if (!data || typeof data !== 'object') continue;
+    if (data.type !== 'text') continue;
+    const text = data.text || data.value || '';
+    if (typeof text !== 'string' || !text.trim()) continue;
+    seenCodes.add(code);
+    result.push({
+      param_code: code,
+      label: data.label || (code.includes('@round:') ? `${code.split('@round:')[0]} (第${code.split('@round:')[1]}轮)` : code),
+      param_type: 'text',
+      round_number: data.round_number,
+      text,
+    });
+  }
+
+  // 2. 补充 fieldMapping 里定义但 referenceParams 未覆盖的 text 字段
   const refFields = (props.fieldMapping?.reference || [])
     .map(f => ({
       ...f,
@@ -477,28 +497,23 @@ const referenceTextFields = computed(() => {
       param_type: f.param_type ?? f.paramType ?? 'text',
     }))
     .filter(f => f.param_type === 'text');
-  if (refFields.length > 0) {
-    const result = [];
-    for (const field of refFields) {
+  for (const field of refFields) {
+    if (!seenCodes.has(field.param_code)) {
       const text = getReferenceTextValue(field.param_code);
       if (text && text.trim() && text !== '无数据') {
+        seenCodes.add(field.param_code);
         result.push({ ...field, text });
       }
     }
-    return result;
   }
 
-  // 回退：从 referenceParams 中提取 text 类型参数
-  const refParams = props.referenceParams || {};
-  const result = [];
-  for (const [code, data] of Object.entries(refParams)) {
-    if (!data || typeof data !== 'object') continue;
-    if (data.type !== 'text') continue;
-    const text = data.text || data.value || '';
-    if (typeof text === 'string' && text.trim()) {
-      result.push({ param_code: code, label: code, param_type: 'text', text });
-    }
-  }
+  // 按轮次排序
+  result.sort((a, b) => {
+    const ra = a.round_number ?? 0;
+    const rb = b.round_number ?? 0;
+    if (ra !== rb) return ra - rb;
+    return (a.param_code || '').localeCompare(b.param_code || '');
+  });
   return result;
 });
 

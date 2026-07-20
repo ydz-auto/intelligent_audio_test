@@ -8,6 +8,7 @@ from hypium.model import UiParam
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from config.config import Config
+from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 
 class Xiaoyilivechat(HarmonyDriver):
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
@@ -138,6 +139,15 @@ class Xiaoyilivechat(HarmonyDriver):
 
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
+        # 打印接收到的播放时间戳（验证链路）
+        ts = self._extract_playback_timestamps(kwargs)
+        self._log(level='INFO',
+                  content=f"[post_process] 播放时间戳 "
+                          f"start={ms_to_utc8_str(ts['start_ms'], MS_FMT)} "
+                          f"end={ms_to_utc8_str(ts['end_ms'], MS_FMT)} "
+                          f"(start_ms={ts['start_ms']} end_ms={ts['end_ms']} "
+                          f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
+                  task_id=task_id, test_case_id=test_case_id)
         # 等待小艺回复结束（带超时和停止检查）
         self._wait_for_condition(
             lambda: driver.find_component(By.text('说话可打断')),
@@ -186,6 +196,15 @@ class Xiaoyilivechat(HarmonyDriver):
         return True
 
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> list:
+        # 打印接收到的播放时间戳（验证链路）
+        ts = self._extract_playback_timestamps(kwargs)
+        self._log(level='INFO',
+                  content=f"[get_results] 播放时间戳 "
+                          f"start={ms_to_utc8_str(ts['start_ms'], MS_FMT)} "
+                          f"end={ms_to_utc8_str(ts['end_ms'], MS_FMT)} "
+                          f"(start_ms={ts['start_ms']} end_ms={ts['end_ms']} "
+                          f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
+                  task_id=task_id, test_case_id=test_case_id)
         record_file_name = getattr(self, '_record_file_name', 'record.mp4')
         question_text = getattr(self, 'question_text', None)
         answer_text = getattr(self, 'answer_text', None)

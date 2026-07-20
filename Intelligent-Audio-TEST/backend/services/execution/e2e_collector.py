@@ -39,6 +39,24 @@ class E2ECollector:
                     )
                     extra_params['playback_time_offsets'] = audio_offsets
                     extra_params['reference_params'] = case_ref_params
+                    # 传递毫秒级播放起止时间戳给设备驱动，供其自行统计时延
+                    round_start_ms = playback_timestamps.get('current_round_start_ms')
+                    round_end_ms = playback_timestamps.get('current_round_end_ms')
+                    if round_start_ms is not None and round_end_ms is not None:
+                        extra_params['playback_start_time_ms'] = round_start_ms
+                        extra_params['playback_end_time_ms'] = round_end_ms
+                        # 本轮每个音频的起止时间戳明细
+                        playback_ts_list = playback_timestamps.get('audio_play_times', [])
+                        if playback_ts_list:
+                            extra_params['playback_timestamps_detail'] = [
+                                {
+                                    'audio_id': p.get('audio_id'),
+                                    'play_order': p.get('play_order'),
+                                    'start_ms': p.get('playback_start_time_ms'),
+                                    'end_ms': p.get('playback_end_time_ms'),
+                                }
+                                for p in playback_ts_list
+                            ]
 
         collector = get_device_result_collector()
 

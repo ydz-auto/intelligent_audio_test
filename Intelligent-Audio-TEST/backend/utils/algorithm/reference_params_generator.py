@@ -566,6 +566,11 @@ class ReferenceParamsGenerator:
                 if ref_path:
                     round_refs = cls.load_from_file(ref_path)
                     if round_refs:
+                        rn = round_item.get('round_number') or round_item.get('roundNumber')
+                        # 给每个参数注入 round_number，便于后续按轮次展示
+                        for p in round_refs:
+                            if isinstance(p, dict) and 'round_number' not in p:
+                                p['round_number'] = rn
                         all_refs.extend(round_refs)
             return all_refs
 
@@ -584,6 +589,10 @@ class ReferenceParamsGenerator:
                 if ref_path:
                     round_refs = cls.load_from_file(ref_path)
                     if round_refs:
+                        rn = item.get('round_number') or item.get('roundNumber')
+                        for p in round_refs:
+                            if isinstance(p, dict) and 'round_number' not in p:
+                                p['round_number'] = rn
                         all_refs.extend(round_refs)
             return all_refs
 
@@ -615,36 +624,51 @@ class ReferenceParamsGenerator:
         
         if not reference_params:
             return result
-        
+
+        # 先按 code 分组，检测是否有多轮
+        by_code = {}
         for param in reference_params:
             if not isinstance(param, dict):
                 continue
-            
             code = param.get('code')
             if not code:
                 continue
-            
-            param_type = param.get('type', 'text')
-            value = param.get('value')
-            
-            param_info = {
-                "code": code,
-                "type": param_type,
-                "value": value,
-            }
-            
-            if param_type in ['rttm', 'stm'] and isinstance(value, dict):
-                param_info["segments"] = value.get('segments', [])
-                param_info["text"] = value.get('text', '')
-                param_info["json"] = value.get('json', '')
-            
-            if param.get('annotation_code'):
-                param_info["annotation_code"] = param.get('annotation_code')
-            if param.get('annotation_format'):
-                param_info["annotation_format"] = param.get('annotation_format')
-            
-            result[code] = param_info
-        
+            by_code.setdefault(code, []).append(param)
+
+        for code, params in by_code.items():
+            # 如果该 code 有多个轮次的参数，按 round_number 展开为 code@round:N
+            has_multi_round = any(p.get('round_number') is not None for p in params) and len(params) > 1
+            for param in params:
+                rn = param.get('round_number')
+                if has_multi_round and rn is not None:
+                    key = f'{code}@round:{rn}'
+                else:
+                    key = code
+
+                param_type = param.get('type', 'text')
+                value = param.get('value')
+
+                param_info = {
+                    "code": code,
+                    "type": param_type,
+                    "value": value,
+                }
+                if rn is not None:
+                    param_info["round_number"] = rn
+                    param_info["label"] = f'{code} (第{rn}轮)'
+
+                if param_type in ['rttm', 'stm'] and isinstance(value, dict):
+                    param_info["segments"] = value.get('segments', [])
+                    param_info["text"] = value.get('text', '')
+                    param_info["json"] = value.get('json', '')
+
+                if param.get('annotation_code'):
+                    param_info["annotation_code"] = param.get('annotation_code')
+                if param.get('annotation_format'):
+                    param_info["annotation_format"] = param.get('annotation_format')
+
+                result[key] = param_info
+
         return result
 
 
