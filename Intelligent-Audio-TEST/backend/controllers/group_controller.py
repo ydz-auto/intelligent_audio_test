@@ -17,28 +17,40 @@ class GroupController:
         algorithm_type = request.args.get('algorithm_type')
         
         query = TestCaseGroup.query
-        
-        if algorithm_type:
-            query = query.filter(TestCaseGroup.algorithm_type == algorithm_type)
-        
-        total = query.count()
-        
-        groups = query.order_by(TestCaseGroup.created_at.desc())
-        groups = groups.paginate(page=page, per_page=per_page, error_out=False)
-        
-        group_ids = [g.id for g in groups.items]
-        
+
         case_counts = {}
-        if group_ids:
+        if algorithm_type:
+            # 按用例级 algorithm_type 统计:分组自身 algorithm_type 可能为空,
+            # 不能用它过滤,否则会漏掉含该算法用例的分组(导致数量徽标恒为 0)。
+            # 只返回含该算法用例的分组,计数为该算法下的用例数。
             counts_query = db.session.query(
                 TestCase.group_id,
                 func.count(TestCase.id)
             ).filter(
-                TestCase.group_id.in_(group_ids),
-                TestCase.deleted == False
+                TestCase.deleted == False,
+                TestCase.algorithm_type == algorithm_type
             ).group_by(TestCase.group_id).all()
-            
+
             case_counts = {str(gid): count for gid, count in counts_query}
+            query = query.filter(TestCaseGroup.id.in_(list(case_counts.keys())))
+
+        total = query.count()
+
+        groups = query.order_by(TestCaseGroup.created_at.desc())
+        groups = groups.paginate(page=page, per_page=per_page, error_out=False)
+
+        if not algorithm_type:
+            group_ids = [g.id for g in groups.items]
+            if group_ids:
+                counts_query = db.session.query(
+                    TestCase.group_id,
+                    func.count(TestCase.id)
+                ).filter(
+                    TestCase.group_id.in_(group_ids),
+                    TestCase.deleted == False
+                ).group_by(TestCase.group_id).all()
+
+                case_counts = {str(gid): count for gid, count in counts_query}
         
         data = []
         for group in groups.items:
