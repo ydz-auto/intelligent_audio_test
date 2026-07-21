@@ -528,17 +528,29 @@ const resultTextFields = computed(() => {
   }));
 
   // 1. 从 algorithmResults 中提取所有 text 类型项（包含 question@round / answer@round）
+  // 排除元数据字段（非用户关心的结果内容）
+  const META_CODES = new Set([
+    'test_type', 'testType',
+    'algorithm_type', 'algorithmType',
+    'total_rounds', 'totalRounds',
+    'aggregated',
+    'multi_round', 'multiRound',
+    'session_id', 'sessionId',
+    'context_mode', 'contextMode',
+    'error',
+  ]);
   const textItems = [];
   const seenCodes = new Set();
   for (const item of algoResults) {
-    if (item.param_type === 'text' && !seenCodes.has(item.param_code)) {
-      seenCodes.add(item.param_code);
+    const code = item.param_code;
+    if (item.param_type === 'text' && code && !META_CODES.has(code) && !code.startsWith('rounds') && !seenCodes.has(code)) {
+      seenCodes.add(code);
       textItems.push({
-        param_code: item.param_code,
-        label: item.label || item.param_code,
+        param_code: code,
+        label: item.label || code,
         param_type: 'text',
         round_number: item.round_number,
-        getValue: (device) => getResultTextValue(device, item.param_code)
+        getValue: (device) => getResultTextValue(device, code)
       });
     }
   }
@@ -550,7 +562,8 @@ const resultTextFields = computed(() => {
       param_code: f.param_code ?? f.paramCode,
       param_type: f.param_type ?? f.paramType ?? 'text',
     }))
-    .filter(f => f.param_type === 'text');
+    .filter(f => f.param_type === 'text'
+      && f.param_code && !META_CODES.has(f.param_code) && !f.param_code.startsWith('rounds'));
   for (const f of fmFields) {
     if (!seenCodes.has(f.param_code)) {
       seenCodes.add(f.param_code);

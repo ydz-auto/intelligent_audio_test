@@ -669,6 +669,13 @@ class ReportControllerBase:
         
         items = []
         for case in paginated.items:
+            # 对 voice_llm 多轮场景做 question/answer 展开 + 参考参数多轮展开
+            raw_algo_results = case.algorithm_results
+            raw_ref_params = case.reference_params
+            expanded_algo = ReportControllerBase._expand_algorithm_results_for_report(
+                raw_algo_results, case.algorithm_type
+            )
+            expanded_ref = ReportControllerBase._expand_reference_params_for_report(raw_ref_params)
             items.append({
                 "id": case.test_case_id,
                 "name": case.name,
@@ -678,8 +685,8 @@ class ReportControllerBase:
                 "metrics": case.metrics or {},
                 "results": case.results or [],
                 "audios": case.audios or [],
-                "referenceParams": case.reference_params,
-                "algorithmResults": case.algorithm_results,
+                "referenceParams": expanded_ref,
+                "algorithmResults": expanded_algo,
                 "algorithmType": case.algorithm_type,
                 "logs": case.logs
             })
@@ -814,6 +821,100 @@ class ReportControllerBase:
             return error_response(f"创建ZIP文件失败: {str(e)}", 500)
 
     @staticmethod
+    def _expand_algorithm_results_for_report(algorithm_results, algorithm_type=None):
+        """
+        报告页 algorithm_results 后处理：
+        对 voice_llm 多轮场景，把 rounds 数组展开成 question@round:N / answer@round:N 文本字段
+        兼容 camelCase / snake_case 字段命名
+        """
+        import logging
+        log = logging.getLogger(__name__)
+        if not isinstance(algorithm_results, list):
+            return algorithm_results
+        # 找到 rounds 字段
+        rounds_item = None
+        for item in algorithm_results:
+            if not isinstance(item, dict):
+                continue
+            code = item.get('paramCode') or item.get('param_code')
+            if code == 'rounds':
+                rounds_item = item
+                break
+        if not rounds_item:
+            log.warning('[expand_algo] no rounds item found, count=%d', len(algorithm_results))
+            return algorithm_results
+        rounds_value = rounds_item.get('value')
+        log.warning('[expand_algo] rounds_item found, value type=%s, is_list=%s, len=%s',
+                    type(rounds_value).__name__, isinstance(rounds_value, list),
+                    len(rounds_value) if isinstance(rounds_value, list) else 'N/A')
+        if not isinstance(rounds_value, list) or not rounds_value:
+            return algorithm_results
+
+        # 构建展开后的新列表：保留非 rounds 字段，rounds 替换为 question@round:N/answer@round:N
+        expanded = []
+        device = rounds_item.get('device', 'default')
+        for item in algorithm_results:
+            if item is rounds_item:
+                continue
+            expanded.append(item)
+
+        for r_idx, r_item in enumerate(rounds_value):
+            if not isinstance(r_item, dict):
+                continue
+            raw_round = r_item.get('roundNumber')
+            if raw_round is None:
+                raw_round = r_item.get('round')
+            rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
+            output = r_item.get('output') or {}
+            for sub_key in ('question', 'answer'):
+                val = output.get(sub_key)
+                if val:
+                    expanded.append({
+                        'device': device,
+                        'param_code': f'{sub_key}@round:{rn}',
+                        'paramCode': f'{sub_key}@round:{rn}',
+                        'param_type': 'text',
+                        'paramType': 'text',
+                        'label': f'{sub_key} (第{rn}轮)',
+                        'value': val,
+                        'round_number': rn,
+                        'roundNumber': rn,
+                    })
+        # rounds 整体保留（标记为 json）
+        rounds_item_copy = dict(rounds_item)
+        rounds_item_copy['param_type'] = 'json'
+        rounds_item_copy['paramType'] = 'json'
+        expanded.append(rounds_item_copy)
+        return expanded
+
+    @staticmethod
+    def _expand_reference_params_for_report(reference_params):
+        """
+        报告页 reference_params 后处理：
+        调用 ReferenceParamsGenerator.get_reference_params_for_report 做多轮展开
+        兼容 reference_params 是字典（已经是报告格式）或 DB 原始列格式
+        """
+        if not reference_params:
+            return {}
+        from backend.utils.algorithm.reference_params_generator import ReferenceParamsGenerator
+        try:
+            # 如果已经是扁平字典格式（code -> {code, type, value}），直接原样返回
+            # 这种格式在老报告 DB 中已存为 {query: {...}, correct_answer: {...}}
+            if isinstance(reference_params, dict):
+                # 判断是否是 reference_params_col 格式（list of {round_number, reference_params_path}）
+                if any(isinstance(v, dict) and ('reference_params_path' in v or 'referenceParamsPath' in v) for v in reference_params.values()):
+                    return ReferenceParamsGenerator.get_reference_params_for_report(reference_params)
+                # 已经是展开后的字典格式（每个 value 是 {code, type, value}）或含 round_number 多轮格式
+                # 直接原样返回
+                return reference_params
+            if isinstance(reference_params, list):
+                return ReferenceParamsGenerator.get_reference_params_for_report(reference_params)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f'_expand_reference_params_for_report failed: {e}', exc_info=True)
+        return reference_params
+
+    @staticmethod
     def search_report_cases(report_id):
         report = db.session.get(Report, report_id)
         if not report:
@@ -877,6 +978,13 @@ class ReportControllerBase:
         
         items = []
         for case in paginated.items:
+            # 对 voice_llm 多轮场景做 question/answer 展开 + 参考参数多轮展开
+            raw_algo_results = case.algorithm_results
+            raw_ref_params = case.reference_params
+            expanded_algo = ReportControllerBase._expand_algorithm_results_for_report(
+                raw_algo_results, case.algorithm_type
+            )
+            expanded_ref = ReportControllerBase._expand_reference_params_for_report(raw_ref_params)
             items.append({
                 "id": case.test_case_id,
                 "name": case.name,
@@ -886,8 +994,8 @@ class ReportControllerBase:
                 "metrics": case.metrics or {},
                 "results": case.results or [],
                 "audios": case.audios or [],
-                "referenceParams": case.reference_params,
-                "algorithmResults": case.algorithm_results,
+                "referenceParams": expanded_ref,
+                "algorithmResults": expanded_algo,
                 "algorithmType": case.algorithm_type,
                 "logs": case.logs
             })
