@@ -13,10 +13,10 @@ voice_llm 算法种子数据
 
 使用方法：
     cd Intelligent-Audio-TEST
-    python -m backend.scripts.migrations.202506.seed_voice_llm
+    python -m backend.scripts.migrations.202606.seed_voice_llm
 
 或直接：
-    python backend/scripts/migrations/202506/seed_voice_llm.py
+    python backend/scripts/migrations/202606/seed_voice_llm.py
 
 注意：此脚本可重复执行（幂等），使用 ON CONFLICT DO NOTHING
 """

@@ -16,8 +16,8 @@ DDL 变更：
   ALTER TABLE test_results ALTER COLUMN result_data SET NOT NULL;
 
 使用方法：
-    python backend/scripts/migrations/202506/add_result_data_path_to_test_results.py
-    python backend/scripts/migrations/202506/add_result_data_path_to_test_results.py --dry-run
+    python backend/scripts/migrations/202606/add_result_data_path_to_test_results.py
+    python backend/scripts/migrations/202606/add_result_data_path_to_test_results.py --dry-run
 """
 
 import os

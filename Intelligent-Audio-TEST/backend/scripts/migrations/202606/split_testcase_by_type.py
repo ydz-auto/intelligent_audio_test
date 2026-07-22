@@ -14,10 +14,10 @@
 
 使用方法：
     cd Intelligent-Audio-TEST
-    python -m backend.scripts.migrations.202506.split_testcase_by_type
+    python -m backend.scripts.migrations.202606.split_testcase_by_type
 
 或直接：
-    python backend/scripts/migrations/202506/split_testcase_by_type.py
+    python backend/scripts/migrations/202606/split_testcase_by_type.py
 
 注意：此脚本可重复执行（幂等），不会重复拆分已迁移的记录
 """
@@ -228,7 +228,7 @@ def migrate_data(conn):
             # 更新原记录为 E2E（保留完整配置）
             conn.execute(text(
                 "UPDATE test_cases SET test_type = 'e2e', "
-                "config = CAST(:config AS jsonb), reference_params = CAST(:ref AS jsonb), "
+                "config = :config, reference_params = :ref, "
                 "updated_at = :now "
                 "WHERE id = :id"
             ), {
@@ -251,8 +251,8 @@ def migrate_data(conn):
                 "(id, name, description, group_id, config, algorithm_type, algorithm_params, "
                 "reference_params, test_type, created_at, updated_at, deleted) "
                 "VALUES "
-                "(:id, :name, :description, :group_id, CAST(:config AS jsonb), :algorithm_type, "
-                "CAST(:algorithm_params AS jsonb), CAST(:reference_params AS jsonb), 'api', "
+                "(:id, :name, :description, :group_id, :config, :algorithm_type, "
+                ":algorithm_params, :reference_params, 'api', "
                 ":now, :now, false)"
             ), {
                 'id': api_id,
@@ -364,7 +364,7 @@ def convert_reference_params(conn):
         sp = conn.begin_nested()
         try:
             conn.execute(text(
-                "UPDATE test_cases SET reference_params = CAST(:params AS jsonb) "
+                "UPDATE test_cases SET reference_params = :params "
                 "WHERE id = :id"
             ), {
                 'params': json.dumps(new_params, ensure_ascii=False),

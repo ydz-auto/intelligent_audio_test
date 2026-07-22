@@ -17,10 +17,10 @@ llm_judge 输入参数：
 
 使用方法：
     cd Intelligent-Audio-TEST
-    python -m backend.scripts.migrations.202506.seed_llm_judge_dimension
+    python -m backend.scripts.migrations.202606.seed_llm_judge_dimension
 
 或直接：
-    python backend/scripts/migrations/202506/seed_llm_judge_dimension.py
+    python backend/scripts/migrations/202606/seed_llm_judge_dimension.py
 
 注意：此脚本可重复执行（幂等）
 """

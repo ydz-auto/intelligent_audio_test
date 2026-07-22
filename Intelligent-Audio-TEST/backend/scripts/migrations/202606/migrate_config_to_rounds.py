@@ -1,13 +1,16 @@
 """
-迁移脚本: config 轮次化 + reference_params 存文件 + algorithm_params 移入 rounds
+迁移脚本: config 轮次化 + reference_params 存文件 + algorithm_params 移入独立列
 ===========================================================================
 
 将 TestCase 从旧结构迁移到"轮次为顶层"新结构：
 
 1. config 从 {audios, dimensions, backgroundNoise, ...} 转为 {rounds: [...]}
-2. reference_params 列 → 写入 JSON 文件，config.rounds[].referenceParamsPath 存路径
-3. algorithm_params 列 → 移入 config.rounds[].algorithmParams
-4. 清空 reference_params 和 algorithm_params 列
+   config 只含结构性字段（rounds/dimensions/background_noise 等）
+2. reference_params 列 → 写入 JSON 文件，reference_params 独立列存路径
+   格式: [{round_number, reference_params_path}]
+3. algorithm_params 列 → 保留在独立列，格式改为按轮分组
+   格式: [{round_number, params:[{field_code, field_value}]}]
+4. config.rounds[] 中不再包含 algorithmParams / referenceParamsPath
 
 可重复执行（幂等），支持 --dry-run 预览。
 
@@ -297,14 +300,21 @@ def migrate(dry_run=False):
                 # 单轮 → 将所有顶层打包为一轮
                 new_rounds = [build_round_from_old_config(config, test_type)]
 
-            # ==== Step 2: algorithm_params 移入每轮（列表格式） ====
+            # ==== Step 2: algorithm_params 保留在独立列，按轮分组 ====
             db_algo_params = algorithm_params_to_list(algo_params_raw)
             legacy_algo_params = _migrate_legacy_fields_to_algo_params(config)
             merged_algo_params = _merge_algo_params(db_algo_params, legacy_algo_params)
+            # 按轮分组格式: [{round_number, params:[{field_code, field_value}]}]
+            algo_params_col = []
             for rd in new_rounds:
-                rd['algorithmParams'] = [p.copy() for p in merged_algo_params]
+                rn = rd.get('roundNumber', 1)
+                algo_params_col.append({
+                    'round_number': rn,
+                    'params': [p.copy() for p in merged_algo_params]
+                })
 
-            # ==== Step 3: reference_params 写入文件 ====
+            # ==== Step 3: reference_params 写入文件，路径存独立列 ====
+            ref_params_col = []
             if ref_params_raw:
                 # ref_params_raw 可能是 list 或 JSON string
                 ref_content = ref_params_raw
@@ -316,14 +326,20 @@ def migrate(dry_run=False):
 
                 if ref_content and isinstance(ref_content, list) and len(ref_content) > 0:
                     for rd in new_rounds:
-                        rn = rd['roundNumber']
+                        rn = rd.get('roundNumber', 1)
                         if not dry_run:
                             filepath = write_ref_file(case_id, rn, ref_content)
-                            rd['referenceParamsPath'] = filepath
+                            ref_params_col.append({
+                                'round_number': rn,
+                                'reference_params_path': filepath
+                            })
                         else:
-                            rd['referenceParamsPath'] = f"[DRY-RUN] {REF_PARAMS_DIR}/{case_id}_round_{rn}.json"
+                            ref_params_col.append({
+                                'round_number': rn,
+                                'reference_params_path': f"[DRY-RUN] {REF_PARAMS_DIR}/{case_id}_round_{rn}.json"
+                            })
 
-            # ==== Step 4: 组装新 config（rounds + dimensions 顶层） ====
+            # ==== Step 4: 组装新 config（rounds + dimensions 顶层，不含 algorithmParams/referenceParamsPath） ====
             new_config = {'rounds': new_rounds}
             # dimensions 提升到 config 顶层（从旧 config.dimensions 或从轮次 evaluation 中提取）
             old_dimensions = config.get('dimensions', [])
@@ -333,18 +349,20 @@ def migrate(dry_run=False):
                 elif isinstance(old_dimensions, list):
                     new_config['dimensions'] = old_dimensions
 
-            # ==== Step 5: 写入数据库 ====
+            # ==== Step 5: 写入数据库（config + 独立列） ====
             if not dry_run:
                 with engine.begin() as conn:
                     conn.execute(text(
                         "UPDATE test_cases SET "
                         "  config = :config, "
-                        "  reference_params = NULL, "
-                        "  algorithm_params = NULL, "
+                        "  algorithm_params = :algo_params, "
+                        "  reference_params = :ref_params, "
                         "  updated_at = :now "
                         "WHERE id = :id"
                     ), {
                         'config': json.dumps(new_config, ensure_ascii=False),
+                        'algo_params': json.dumps(algo_params_col, ensure_ascii=False) if algo_params_col else None,
+                        'ref_params': json.dumps(ref_params_col, ensure_ascii=False) if ref_params_col else None,
                         'now': datetime.now(UTC8),
                         'id': case_id,
                     })

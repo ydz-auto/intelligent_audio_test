@@ -14,8 +14,8 @@ DDL 变更：
   ALTER TABLE test_result_dimensions DROP COLUMN IF EXISTS round_number;
 
 使用方法：
-    python backend/scripts/migrations/202506/add_round_number_to_result_dimensions.py
-    python backend/scripts/migrations/202506/add_round_number_to_result_dimensions.py --dry-run
+    python backend/scripts/migrations/202606/add_round_number_to_result_dimensions.py
+    python backend/scripts/migrations/202606/add_round_number_to_result_dimensions.py --dry-run
 """
 
 import os
