@@ -7,7 +7,7 @@ BASE_URL = "http://localhost:5001"
 def create_task(i):
     payload = {
         "asr_ref": f"参考文本 {i}",
-        "asr_result": f"结果文本 {i}",
+        "asr_hyp": f"结果文本 {i}",
         "task_type": "wer"
     }
     response = requests.post(f"{BASE_URL}/create_task", json=payload)
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     for i in range(2):
         payload = {
             "asr_ref": f"参考文本 SER {i}",
-            "asr_result": f"结果文本 SER {i}",
+            "asr_hyp": f"结果文本 SER {i}",
             "task_type": "ser"
         }
         response = requests.post(f"{BASE_URL}/create_task", json=payload)

@@ -6,7 +6,7 @@ BEGIN TRANSACTION;
 CREATE TABLE IF NOT EXISTS tasks_temp (
     task_id TEXT PRIMARY KEY,
     asr_ref TEXT NOT NULL,
-    asr_result TEXT NOT NULL,
+    asr_hyp TEXT NOT NULL,
     task_type TEXT DEFAULT 'wer',
     source_lang TEXT,
     target_lang TEXT,

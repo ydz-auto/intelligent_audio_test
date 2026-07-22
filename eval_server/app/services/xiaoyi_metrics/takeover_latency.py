@@ -82,13 +82,13 @@ def compute_takeover_latency(first_frame_ms, asr_json_path, end_ms, offset_ms=DE
 
     try:
         with open(asr_json_path, 'r', encoding='utf-8') as f:
-            asr_result = json.load(f)
+            asr_hyp = json.load(f)
     except Exception as e:
         result['message'] = f'读取 ASR JSON 失败: {e}'
         logger.error(result['message'])
         return result
 
-    chunks = asr_result.get('chunks', [])
+    chunks = asr_hyp.get('chunks', [])
     if not chunks:
         result['message'] = 'ASR chunks 为空, 无法定位第一个词'
         logger.warning(result['message'])
@@ -125,14 +125,14 @@ def compute_takeover_latency(first_frame_ms, asr_json_path, end_ms, offset_ms=DE
     return result
 
 
-def compute_takeover_latency_from_raw(first_frame_ms, asr_result, end_ms, offset_ms=DEFAULT_OFFSET_MS):
+def compute_takeover_latency_from_raw(first_frame_ms, asr_hyp, end_ms, offset_ms=DEFAULT_OFFSET_MS):
     """
     与 compute_takeover_latency 相同, 但直接传 ASR 结果对象（不读文件）
 
     Args:
         first_frame_ms: 录屏首帧时刻
-        asr_result (dict): app.utils.PAUSE_JSON.generate_pause_json() 返回过程中使用的 ASR 结果
-                           {text, chunks:[...]}（同样可由 transcribe_and_dump 内部产生）
+        asr_hyp (dict): app.utils.PAUSE_JSON.generate_pause_json() 返回过程中使用的 ASR 结果
+                           {text, chunks:[...]}（由 call_modelscope_asr + parse_result 产生）
         end_ms: 音响结束时刻
         offset_ms: 时延补偿
 
@@ -157,7 +157,7 @@ def compute_takeover_latency_from_raw(first_frame_ms, asr_result, end_ms, offset
         result['message'] = 'end_ms 为 None, 无法计算'
         return result
 
-    chunks = (asr_result or {}).get('chunks', [])
+    chunks = (asr_hyp or {}).get('chunks', [])
     if not chunks:
         result['message'] = 'ASR chunks 为空'
         return result

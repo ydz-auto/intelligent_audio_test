@@ -122,14 +122,14 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
     caller_task_id 为调用方的任务 ID（可选）。
     eval_task_id 可由调用方预先生成（如 create_task_upload 需要先存文件）。
     """
-    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge']
+    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'xiaoyi_metrics']
     if task_type not in SUPPORTED_TASK_TYPES:
         return error_response(f"Unsupported task type: {task_type}. Supported types: {SUPPORTED_TASK_TYPES}", code=CODE_BUSINESS_ERROR)
 
     if task_type in ['wer', 'ser']:
         if 'rounds' not in task_params:
-            if not task_params.get('asr_ref') or not task_params.get('asr_result'):
-                return error_response(f"Missing required fields for {task_type}: asr_ref, asr_result (or 'rounds' for multi-round mode)", code=CODE_VALIDATION_ERROR)
+            if not task_params.get('asr_ref') or not task_params.get('asr_hyp'):
+                return error_response(f"Missing required fields for {task_type}: asr_ref, asr_hyp (or 'rounds' for multi-round mode)", code=CODE_VALIDATION_ERROR)
     elif task_type in ['cpwer', 'tcpwer', 'stm_wer']:
         if not task_params.get('ref_stm') or not task_params.get('hyp_stm'):
             return error_response(f"Missing required fields for {task_type}: ref_stm, hyp_stm", code=CODE_VALIDATION_ERROR)
@@ -146,6 +146,9 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             missing = [f for f in required_fields if not task_params.get(f)]
             if missing:
                 return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'xiaoyi_metrics':
+        if not task_params.get('record_path'):
+            return error_response("Missing required field for xiaoyi_metrics: record_path", code=CODE_VALIDATION_ERROR)
 
     if eval_task_id is None:
         eval_task_id = f"task_{uuid.uuid4().hex}"
@@ -250,7 +253,7 @@ def create_task():
     
     WER/SER 专用参数（纯文本）：
         asr_ref (str): 参考文本（标准答案）
-        asr_result (str): ASR 识别结果（待评估文本）
+        asr_hyp (str): ASR 识别结果（待评估文本）
     
     CPWER/TCPWER/STM_WER 专用参数（STM格式）：
         ref_stm (str): 参考文本的 STM 格式

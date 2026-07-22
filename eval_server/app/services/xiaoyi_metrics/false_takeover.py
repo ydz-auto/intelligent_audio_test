@@ -113,7 +113,7 @@ def compute_false_takeover_from_files(asr_json_path, pause_json_path,
     """
     try:
         with open(asr_json_path, "r", encoding="utf-8") as f:
-            asr_result = json.load(f)
+            asr_hyp = json.load(f)
         with open(pause_json_path, "r", encoding="utf-8") as f:
             pause_intervals = json.load(f)
     except Exception as e:
@@ -127,7 +127,7 @@ def compute_false_takeover_from_files(asr_json_path, pause_json_path,
             'details': [],
         }
 
-    chunks = asr_result.get("chunks", [])
+    chunks = asr_hyp.get("chunks", [])
     res = compute_false_takeover(chunks, pause_intervals,
                                  duration_threshold=duration_threshold,
                                  num_words_threshold=num_words_threshold)

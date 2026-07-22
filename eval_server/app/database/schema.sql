@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS tasks (
     task_id TEXT PRIMARY KEY,
     asr_ref TEXT,
-    asr_result TEXT,
+    asr_hyp TEXT,
     task_type TEXT DEFAULT 'wer',
     source_lang TEXT,
     target_lang TEXT,

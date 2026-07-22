@@ -10,9 +10,10 @@ asr_server.py
 
 部署:
     1. pip install funasr torch fastapi uvicorn python-multipart
-    2. python asr_server.py
-    3. 首次启动会从 ModelScope 下载模型到本地缓存（~3GB），之后直接读本地
-    4. 监听 0.0.0.0:10095，对外提供 /asr 接口
+    2. 配置 .env 文件（参考 .env.example）
+    3. python asr_server.py
+    4. 首次启动会从 ModelScope 下载模型到本地缓存（~3GB），之后直接读本地
+    5. 监听 0.0.0.0:10095，对外提供 /asr 接口
 
 调用方式（测试主机）:
     import requests
@@ -35,6 +36,16 @@ import tempfile
 import time
 from pathlib import Path
 
+# ─── 加载 .env 文件 ───
+_env_path = Path(__file__).resolve().parent / '.env'
+if _env_path.exists():
+    with open(_env_path, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
 # ─── 关闭代理（ModelScope 为国内站点，代理会导致 SSL 握手失败） ───
 for _k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
            "http_proxy", "https_proxy", "all_proxy"):
@@ -45,8 +56,20 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 # ─────────── 配置 ───────────
+# 项目根目录（与 eval_server / Intelligent-Audio-TEST 对齐）
+_BASE_DIR = Path(__file__).resolve().parent.parent
+_STATIC_DIR = _BASE_DIR / 'static'
+
 HOST = os.environ.get("ASR_HOST", "0.0.0.0")
 PORT = int(os.environ.get("ASR_PORT", "10095"))
+
+# 模型缓存目录（默认存到 static/asr_models，避免污染用户主目录）
+ASR_CACHE_DIR = os.environ.get(
+    "ASR_CACHE_DIR",
+    str(_STATIC_DIR / 'asr_models')
+)
+os.environ.setdefault("MODELSCOPE_CACHE", ASR_CACHE_DIR)
+os.makedirs(ASR_CACHE_DIR, exist_ok=True)
 
 ASR_MODELSCOPE_MODEL = os.environ.get(
     "ASR_MODELSCOPE_MODEL",
@@ -76,6 +99,7 @@ def get_model():
     global _model
     if _model is None:
         logger.info(f"加载 ModelScope ASR 模型: {ASR_MODELSCOPE_MODEL}")
+        logger.info(f"模型缓存目录: {ASR_CACHE_DIR}")
         from funasr import AutoModel
         kwargs = dict(model=ASR_MODELSCOPE_MODEL, model_revision="v2.0.4")
         if ASR_VAD_MODEL:

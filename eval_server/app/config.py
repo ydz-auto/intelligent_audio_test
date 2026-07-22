@@ -20,8 +20,8 @@ class Config:
     # 静态资源根目录（与主项目共享）
     STATIC_BASE_PATH = os.environ.get('STATIC_BASE_PATH', os.path.join(PROJECT_ROOT, 'static'))
 
-    # 文件存储路径（替代 SQLite）
-    DATA_DIR = os.path.join(BASE_DIR, 'database')
+    # 文件存储路径（存放到 static 目录下，便于统一访问与归档）
+    DATA_DIR = os.path.join(STATIC_BASE_PATH, 'eval_server')
     TASKS_DIR = os.path.join(DATA_DIR, 'tasks')          # 按日分文件夹
     ENDPOINTS_FILE = os.path.join(DATA_DIR, 'endpoints.json')
 

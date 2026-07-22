@@ -276,7 +276,7 @@ def parse_rttm_from_json(rttm_data):
     return str(rttm_data)
 
 
-def parse_asr_result_from_json(asr_data):
+def parse_asr_hyp_from_json(asr_data):
     """
     从 ASR 结果 JSON 解析文本内容
 

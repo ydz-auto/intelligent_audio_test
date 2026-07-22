@@ -13,11 +13,11 @@ TASK_TYPES = ["wer", "ser"]  # 测试的任务类型
 TEST_DATA = {
     "wer": {
         "asr_ref": "这是一个参考文本，用于测试WER计算。",
-        "asr_result": "这是一个识别结果，用于测试WER计算。"
+        "asr_hyp": "这是一个识别结果，用于测试WER计算。"
     },
     "ser": {
         "asr_ref": "这是第一句话。这是第二句话。这是第三句话。",
-        "asr_result": "这是第一句话。这是第二个句子。这是第三句话。"
+        "asr_hyp": "这是第一句话。这是第二个句子。这是第三句话。"
     }
 }
 
@@ -26,7 +26,7 @@ async def create_task(session, task_type, request_id):
     url = f"{BASE_URL}/api/create_task"
     data = {
         "asr_ref": TEST_DATA[task_type]["asr_ref"],
-        "asr_result": TEST_DATA[task_type]["asr_result"],
+        "asr_hyp": TEST_DATA[task_type]["asr_hyp"],
         "task_type": task_type
     }
     

@@ -5,11 +5,11 @@ import time
 # API端点
 url = 'http://127.0.0.1:5001/api/create_task'
 
-# 测试数据，包含新参数，使用SER任务类型
+# 测试数据，包含新参数
 data = {
-    'asr_ref': '这是第一个测试句子。这是第二个测试句子。',
-    'asr_result': '这是第一个测试句子这是第二个测试句子。',
-    'task_type': 'ser',
+    'asr_ref': '这是一个测试测试文本text',
+    'asr_hyp': '这是一个测试文本text',
+    'task_type': 'wer',
     'source_lang': 'zh',
     'target_lang': 'en',
     'translate_direct': 'zh2en'
@@ -17,7 +17,7 @@ data = {
 
 # 发送POST请求创建任务
 try:
-    print("发送POST请求创建SER任务...")
+    print("发送POST请求创建任务...")
     response = requests.post(url, json=data)
     print(f"状态码: {response.status_code}")
     print(f"响应: {json.dumps(response.json(), indent=2, ensure_ascii=False)}")

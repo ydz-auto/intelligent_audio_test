@@ -12,7 +12,6 @@ ASR 推理部署在独立的 ASR 主机上（asr_server.py），本机只负责�
     ASR_TIMEOUT       请求超时秒数（默认 120）
 """
 import os
-import json
 import logging
 import time
 from pathlib import Path
@@ -51,8 +50,7 @@ def call_modelscope_asr(wav_path, language=None):
             {"text": "识别全文", "chunks": [{"text": "字", "timestamp": [start_s, end_s]}, ...]}
         时间戳单位为秒。
 
-        为兼容老调用方（transcribe_and_dump 里会再调 parse_result），
-        本函数返回 [result] 形式（长度 1 的列表），让 parse_result 能继续工作。
+        为兼容老调用方，本函数返回 [result] 形式（长度 1 的列表），让 parse_result 能继续工作。
     """
     url = f"{ASR_SERVER_URL}/asr"
     logger.info(f"调用远程 ASR: {url}  wav={wav_path}")
@@ -86,27 +84,3 @@ def parse_result(raw_res):
         "text": item.get("text", ""),
         "chunks": item.get("chunks", []),
     }
-
-
-def transcribe_and_dump(wav_path, language=None):
-    """
-    端到端：调用远程 ASR → 解析 → 写 JSON
-
-    输出文件:
-        {wav_path 去扩展名}.json   完整转录结果
-
-    返回: result
-        result: {"text": ..., "chunks": [...]}
-    """
-    logger.info(f"处理: {wav_path}")
-    # 1. 调用远程 ASR 服务
-    raw = call_modelscope_asr(wav_path, language)
-    logger.info("ASR 完成")
-    # 2. 解析 + 写 JSON
-    result = parse_result(raw)
-    out_path = os.path.splitext(wav_path)[0] + ".json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=4, ensure_ascii=False)
-    logger.info(f"已生成: {out_path} ({len(result['chunks'])} words)")
-    logger.info(f"文本: {result['text'][:200]}")
-    return result

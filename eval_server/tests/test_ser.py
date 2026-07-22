@@ -2,12 +2,12 @@ import requests
 import json
 
 # API端点
-url = 'http://127.0.0.1:5001/calculate_wer'
+url = 'http://127.0.0.1:5001/calculate_ser'
 
 # 测试数据
 data = {
-    'asr_ref': '这是一个测试测试文本text',
-    'asr_result': '这是一个测试文本text'
+    'asr_ref': '这是第一个测试句子。这是第二个测试句子。这是第三个测试句子text。',
+    'asr_hyp': '这是第一个测试句子。这是第二个测试句子text。这是第三个测试。'
 }
 
 # 发送POST请求

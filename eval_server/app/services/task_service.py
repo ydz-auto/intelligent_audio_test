@@ -27,7 +27,7 @@ class TaskService:
           - translate_direct（兼容 translate_direct 和 translation_direction 两种 key）
           - collar（默认 0.0；der 任务默认 0.5）
           - skip_overlap（默认 False）
-          - 原始字段：asr_ref, asr_result, ref_stm, hyp_stm, rttm_ref/stm_ref, rttm_res/stm_res
+          - 原始字段：asr_ref, asr_hyp, ref_stm, hyp_stm, rttm_ref/stm_ref, rttm_res/stm_res
         多轮场景（task_params['rounds'] 非空）会把每轮的同名字段按 \\n 拼接折叠成
         单轮文本，calculator 无需感知多轮。llm_judge 的特殊参数由
         _prepare_llm_judge_params 单独处理（不经过此折叠，需保留每轮结构）。
@@ -44,7 +44,7 @@ class TaskService:
         collar_default = 0.5 if task_type == 'der' else 0.0
 
         # 各指标用到的扁平字段：rounds 模式下按 key 从每轮取值并拼接
-        flat_keys = ('asr_ref', 'asr_result', 'ref_stm', 'hyp_stm',
+        flat_keys = ('asr_ref', 'asr_hyp', 'ref_stm', 'hyp_stm',
                      'rttm_ref', 'stm_ref', 'rttm_res', 'stm_res')
 
         rounds = task_params.get('rounds')
@@ -150,13 +150,13 @@ class TaskService:
 
         if task_type == 'wer':
             return calculate_wer(
-                p['asr_ref'], p['asr_result'],
+                p['asr_ref'], p['asr_hyp'],
                 p['source_lang'], p['target_lang'], p['translate_direct'],
                 normalize=p['normalize'],
             )
         elif task_type == 'ser':
             return calculate_ser(
-                p['asr_ref'], p['asr_result'],
+                p['asr_ref'], p['asr_hyp'],
                 p['source_lang'], p['target_lang'], p['translate_direct'],
                 normalize=p['normalize'],
             )
@@ -204,6 +204,9 @@ class TaskService:
                 scoring_criteria=jp['scoring_criteria'],
                 **jp['extra_kwargs'],
             )
+        elif task_type == 'xiaoyi_metrics':
+            from .xiaoyi_metrics import calculate_xiaoyi_metrics
+            return calculate_xiaoyi_metrics(task_params)
         else:
             raise ValueError(f"Unknown task type: {task_type}")
 
