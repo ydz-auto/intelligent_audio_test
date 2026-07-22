@@ -43,6 +43,26 @@ class Xiaoyilivechat(HarmonyDriver):
             check=False, capture_output=True, text=True, timeout=10
         )
 
+    def _list_device_mp4_set(self, device_sn):
+        """获取设备录屏目录下所有 mp4 文件路径集合（用于区分新增文件）"""
+        r = self._hdc_shell(
+            device_sn, 'find', '/storage/media/100/local/files/Photo',
+            '-name', '*.mp4', '-type', 'f'
+        )
+        if r.returncode != 0:
+            return set()
+        return {line.strip() for line in (r.stdout or '').splitlines() if line.strip()}
+
+    def _get_device_file_size(self, device_sn, device_path):
+        """获取设备上指定文件大小（字节），不存在返回 -1"""
+        r = self._hdc_shell(device_sn, 'stat', '-c', '%s', device_path)
+        if r.returncode != 0:
+            return -1
+        try:
+            return int(r.stdout.strip())
+        except Exception:
+            return -1
+
     def _is_recorder_running(self, device_sn):
         """检查 screenrecorder 服务是否正在运行"""
         result = self._hdc_shell(device_sn, 'aa', 'dump', '-l')
@@ -58,12 +78,38 @@ class Xiaoyilivechat(HarmonyDriver):
         用它做二次校验会把已成功启动的录屏误判为"未运行", 从而导致整个用例失败。
         这里改为以 aa start 命令本身的返回码为准: 命令执行成功即视为启动成功,
         录屏是否真正生效交给后续 post_process 的等待逻辑兜底。
+
+        时延测量:
+        - first_frame_ms: 首帧真正写入时刻（轮询文件 size 从 0 变非0）
+          录屏录制的即模型回复内容, first_frame_ms 即模型回复起始时刻
         """
+        # 记录 aa start 前已存在的 mp4 集合
+        existing_paths = self._list_device_mp4_set(device_sn)
+
         args = ['aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY]
         if file_name:
             args += ['--ps', 'CustomizedFileName', file_name]
         result = self._hdc_shell(device_sn, *args)
-        return result.returncode == 0
+        if result.returncode != 0:
+            self._recorder_first_frame_ms = None
+            return False
+
+        # 轮询：发现新文件 + 等待首帧写入（size 从 0 变非0）
+        first_frame_ms = None
+        deadline = int(time.time() * 1000) + 30000  # 30 秒超时
+        while int(time.time() * 1000) < deadline:
+            current_paths = self._list_device_mp4_set(device_sn)
+            new_paths = current_paths - existing_paths
+            if new_paths:
+                new_path = next(iter(new_paths))
+                size = self._get_device_file_size(device_sn, new_path)
+                if size > 0:
+                    first_frame_ms = int(time.time() * 1000)
+                    break
+            time.sleep(0.1)
+
+        self._recorder_first_frame_ms = first_frame_ms
+        return True
 
     def _stop_recorder(self, device_sn):
         """停止录屏服务
@@ -208,6 +254,7 @@ class Xiaoyilivechat(HarmonyDriver):
         record_file_name = getattr(self, '_record_file_name', 'record.mp4')
         question_text = getattr(self, 'question_text', None)
         answer_text = getattr(self, 'answer_text', None)
+        first_frame_ms = getattr(self, '_recorder_first_frame_ms', None)
         try:
             query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
             lines = query.stdout.strip().split('\n')
@@ -232,19 +279,26 @@ class Xiaoyilivechat(HarmonyDriver):
                     'success': False,
                     'message': f'录屏文件拉取失败: {recv_result.stderr}',
                     'record_path': '',
-                    'question': question_text or '',
-                    'answer': answer_text or ''
+                    'wav_path': '',
+                'start_ms': ts['start_ms'],
+                'end_ms': ts['end_ms'],
+                'first_frame_ms': first_frame_ms,
+                'question': question_text or '',
+                'answer': answer_text or ''
                 }
                 return [result]
-                # mp4 无损转 wav
-                wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
-                print(f"[录屏] mp4 路径: {local_path}")
-                print(f"[录屏] wav 路径: {wav_path}")
+            # mp4 无损转 wav
+            wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
+            print(f"[录屏] mp4 路径: {local_path}")
+            print(f"[录屏] wav 路径: {wav_path}")
             result = {
                 'success': True,
                 'message': 'Success',
                 'record_path': local_path,
                 'wav_path': wav_path or '',
+                'start_ms': ts['start_ms'],
+                'end_ms': ts['end_ms'],
+                'first_frame_ms': first_frame_ms,
                 'question': question_text,
                 'answer': answer_text
             }
@@ -255,6 +309,10 @@ class Xiaoyilivechat(HarmonyDriver):
                 'success': False,
                 'message': str(e),
                 'record_path': '',
+                'wav_path': '',
+                'start_ms': ts['start_ms'],
+                'end_ms': ts['end_ms'],
+                'first_frame_ms': first_frame_ms,
                 'question': "",
                 'answer': ""
             }
