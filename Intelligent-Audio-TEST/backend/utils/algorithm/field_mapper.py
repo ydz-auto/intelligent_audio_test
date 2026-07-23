@@ -146,6 +146,8 @@ class FieldMapper:
 
     def _get_param_mappings(self, algorithm_type: str) -> Dict[str, List[Dict[str, Any]]]:
         """获取参数映射"""
+        # 先检查配置是否变化，刷新缓存
+        self._loader.reload_if_changed()
         return {
             'device': self._loader.get_param_mapping(algorithm_type, 'device'),
             'api': self._loader.get_param_mapping(algorithm_type, 'api'),

@@ -184,8 +184,8 @@
     </div>
 
     <!-- 批量更新标注模态窗 -->
-    <div class="modal-overlay" v-if="showBatchAnnotationModal">
-      <div class="modal-container">
+    <div class="modal-overlay" v-if="showBatchAnnotationModal" style="opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; display: flex !important;">
+      <div class="modal-container" @click.stop>
         <div class="modal-header">
           <h3>批量更新标注</h3>
           <div class="modal-close" @click="showBatchAnnotationModal = false">
@@ -338,7 +338,9 @@ const {
   pathBasename: pathBasename,
   testCaseGeneratedCount,
   showTestCaseGeneratedTip,
-  goToTestCaseManager
+  goToTestCaseManager,
+  algorithmOptions: algorithmOptionsSrc,
+  fetchAlgorithmOptions
 } = useAudioImport();
 
 const { pendingAction, consumeAction } = useUploadState();
@@ -438,13 +440,20 @@ const formattedAudios = computed(() => {
 
 // 批量更新标注模态窗
 const showBatchAnnotationModal = ref(false);
-const algorithmOptionsForAnnotation = ref<Array<{ value: string; label: string }>>([]);
+const algorithmOptionsForAnnotation = computed(() =>
+  (Array.isArray(algorithmOptionsSrc?.value) ? algorithmOptionsSrc.value : []).map(a => ({ value: a.value, label: a.name }))
+);
 
-const openBatchAnnotationModal = () => {
+const openBatchAnnotationModal = async () => {
+  try {
+    await fetchAlgorithmOptions();
+  } catch (e) {
+    // 获取算法选项失败，仍打开弹窗
+  }
   showBatchAnnotationModal.value = true;
 };
 
-const handleAnnotationSuccess = (result: { updatedCount: number; failedCount: number; refreshedTestCaseIds: string[] }) => {
+const handleAnnotationSuccess = (_result: { updatedCount: number; failedCount: number; refreshedTestCaseIds: string[] }) => {
   showBatchAnnotationModal.value = false;
   fetchAudios();
 };

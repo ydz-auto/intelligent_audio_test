@@ -200,11 +200,18 @@ class AlgorithmConfigLoader:
     def reload_if_changed(self) -> bool:
         """检查数据库配置是否变化，如果变化则重新加载"""
         from backend.models.database import db
+        from backend.models.algorithm_models import ParamMapping
         try:
             with self._reload_lock:
-                latest_reload = db.session.query(
+                latest_algo = db.session.query(
                     db.func.max(AlgorithmDefinition.updated_at)
                 ).filter_by(deleted=False).scalar()
+
+                latest_mapping = db.session.query(
+                    db.func.max(ParamMapping.updated_at)
+                ).scalar()
+
+                latest_reload = max(filter(None, [latest_algo, latest_mapping]), default=None)
 
                 if latest_reload and self._last_reload_time:
                     if latest_reload > self._last_reload_time:

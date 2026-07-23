@@ -379,7 +379,7 @@ class Xiaoyilivechat(HarmonyDriver):
 
         # 3. 回桌面（退出小艺聊天界面）
         try:
-            driver.press_home(2)
+            driver.press_home()
             time.sleep(1)
         except Exception as e:
             self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}", task_id=task_id, test_case_id=test_case_id)

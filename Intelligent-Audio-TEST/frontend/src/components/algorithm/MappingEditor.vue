@@ -113,6 +113,9 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { algorithmApi } from '../../utils/api'
+import { useNotification } from '../../composables/useNotification'
+
+const { warning, error } = useNotification()
 
 interface Mapping {
   id?: number
@@ -307,9 +310,34 @@ function handleDimensionChange(index: number) {
   }
 }
 
+function checkDuplicateTargetParam(index: number): boolean {
+  const record = props.mappings[index]
+  if (!record || !record.target_param) return true
+
+  // 全局按 target_param 判重，不同维度也不允许同一目标参数代码被多源映射
+  const targetKey = record.target_param
+
+  for (let i = 0; i < props.mappings.length; i++) {
+    if (i === index) continue
+    const other = props.mappings[i]
+    if (!other || !other.target_param) continue
+    if (other.target_param === targetKey) {
+      warning(`目标参数"${record.target_param}"已被其他映射占用，同一目标参数代码禁止被多源参数代码映射`)
+      return false
+    }
+  }
+  return true
+}
+
 function handleTargetChange(index: number) {
   const record = props.mappings[index]
   if (record) {
+    if (!checkDuplicateTargetParam(index)) {
+      // 清空冲突的目标参数，阻止入库
+      record.target_param = ''
+      emit('update', [...props.mappings])
+      return
+    }
     emit('update', [...props.mappings])
     autoSaveMapping(record, index)
   }
@@ -325,7 +353,7 @@ function handleTransformChange(index: number) {
 
 async function autoSaveMapping(record: any, index: number) {
   if (!props.algorithmType) return
-  
+
   const mappingData = {
     algorithm_type: props.algorithmType,
     source_type: record.source || props.componentType,
@@ -338,6 +366,12 @@ async function autoSaveMapping(record: any, index: number) {
   }
 
   if (!mappingData.source_param || !mappingData.target_param) {
+    return
+  }
+
+  // 入库前防御性校验：同一目标参数代码禁止被多源参数代码映射
+  if (!checkDuplicateTargetParam(index)) {
+    error('保存已取消：目标参数代码重复，同一目标参数代码禁止被多源参数代码映射')
     return
   }
 
