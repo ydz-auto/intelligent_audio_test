@@ -357,6 +357,17 @@ def create_task_upload():
         except (json.JSONDecodeError, TypeError):
             pass  # rounds 不是合法 JSON，保持原样
 
+    # xiaoyi_metrics：单轮时把 rounds[0] 里的字段提到顶层，供校验和计算使用
+    # （record_file 已作为文件上传保存到 task_params['record_file']，这里补充其他标量字段）
+    if task_type == 'xiaoyi_metrics':
+        rounds_list = task_params.get('rounds')
+        if isinstance(rounds_list, list) and len(rounds_list) == 1 and isinstance(rounds_list[0], dict):
+            rd = rounds_list[0]
+            for fld in ('record_file', 'pause', 'first_frame_ms', 'end_ms', 'offset_ms'):
+                val = rd.get(fld)
+                if val is not None and val != '' and not task_params.get(fld):
+                    task_params[fld] = val
+
     return _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_id=caller_task_id, eval_task_id=eval_task_id)
 
 @api_bp.route('/status', methods=['GET'])
