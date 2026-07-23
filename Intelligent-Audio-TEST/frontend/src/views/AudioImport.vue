@@ -17,8 +17,12 @@
               上传音频
             </button>
             <button class="btn btn-secondary" @click="batchImportFromFolder">
-              <i class="fas fa-folder-open btn-icon"></i>
-              批量从文件夹导入
+            <i class="fas fa-folder-open btn-icon"></i>
+            批量从文件夹导入
+            </button>
+          <button class="btn btn-secondary" @click="openBatchAnnotationModal">
+            <i class="fas fa-file-import btn-icon"></i>
+            批量更新标注
             </button>
           <button class="btn btn-secondary" @click="batchDelete" :disabled="selectedAudios.length === 0">
             <i class="fas fa-trash btn-icon">
@@ -179,6 +183,25 @@
       </div>
     </div>
 
+    <!-- 批量更新标注模态窗 -->
+    <div class="modal-overlay" v-if="showBatchAnnotationModal">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3>批量更新标注</h3>
+          <div class="modal-close" @click="showBatchAnnotationModal = false">
+            <i class="fas fa-times"></i>
+          </div>
+        </div>
+        <div class="modal-body">
+          <BatchAnnotationModal
+            :algorithm-options="algorithmOptionsForAnnotation"
+            @close="showBatchAnnotationModal = false"
+            @success="handleAnnotationSuccess"
+          />
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -199,6 +222,7 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
 import AudioListComponent from '../components/common/AudioListComponent.vue';
 import UploadProgressCard from '../components/common/UploadProgressCard.vue';
 import AudioPlayerModal from '../components/common/AudioPlayerModal.vue';
+import BatchAnnotationModal from '../components/common/modal/BatchAnnotationModal.vue';
 import { useAudioImport } from './AudioImportLogic/audioImport';
 import { useUploadState } from '../composables/useUploadState';
 import { formatAudioData } from '../utils/audioUtils';
@@ -411,6 +435,19 @@ const formattedAudios = computed(() => {
 
   // 音频类型过滤器，用于AudioListComponent
   const audioTypeFilter = ref('all');
+
+// 批量更新标注模态窗
+const showBatchAnnotationModal = ref(false);
+const algorithmOptionsForAnnotation = ref<Array<{ value: string; label: string }>>([]);
+
+const openBatchAnnotationModal = () => {
+  showBatchAnnotationModal.value = true;
+};
+
+const handleAnnotationSuccess = (result: { updatedCount: number; failedCount: number; refreshedTestCaseIds: string[] }) => {
+  showBatchAnnotationModal.value = false;
+  fetchAudios();
+};
 
 // 播放设备选择模态窗状态
 

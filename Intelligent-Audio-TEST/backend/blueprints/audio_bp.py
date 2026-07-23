@@ -15,6 +15,10 @@ def get_all_ids():
 def get_by_ids():
     return AudioController.get_by_ids()
 
+@audio_bp.route('/by-md5', methods=['POST'])
+def get_by_md5():
+    return AudioController.get_by_md5()
+
 @audio_bp.route('/<audio_id>', methods=['GET'])
 def get_one(audio_id):
     return AudioController.get_one(audio_id)
@@ -42,6 +46,10 @@ def convert(audio_id):
 @audio_bp.route('/<audio_id>/metadata', methods=['PUT'])
 def update_metadata(audio_id):
     return AudioController.update_metadata(audio_id)
+
+@audio_bp.route('/batch/annotations', methods=['POST'])
+def batch_update_annotations():
+    return AudioController.batch_update_annotations()
 
 @audio_bp.route('/batch-action', methods=['POST'])
 def batch_action():

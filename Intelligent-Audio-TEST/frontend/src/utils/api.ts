@@ -623,6 +623,10 @@ export const audiosApi = {
     return request('POST', '/audios/by-ids', { ids }, options);
   },
 
+  async getByMd5(md5List: string[], options: RequestOptions = {}) {
+    return request('POST', '/audios/by-md5', { md5_list: md5List }, options);
+  },
+
   async getAllTags(options: RequestOptions = {}) {
     return request('GET', '/audios/tags', null, options);
   },
@@ -645,6 +649,10 @@ export const audiosApi = {
 
   async updateMetadata(id: string | number, metadata: any, options: RequestOptions = {}) {
     return request('PUT', `/audios/${id}/metadata`, metadata, options);
+  },
+
+  async batchUpdateAnnotations(data: any, options: RequestOptions = {}) {
+    return request('POST', '/audios/batch/annotations', data, options);
   },
 
   async preview(id: string | number, previewData: any = {}, options: RequestOptions = {}) {

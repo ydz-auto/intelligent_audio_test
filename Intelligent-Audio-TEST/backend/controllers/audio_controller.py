@@ -21,6 +21,7 @@ from backend.schemas.audio import (
     AudioListStats,
     BatchActionRequest,
     BatchPlaybackRequest,
+    BatchUpdateAnnotationsRequest,
     ConvertFormatRequest,
     InitUploadTaskRequest,
     MergeChunksRequest,
@@ -507,6 +508,35 @@ class AudioController:
             )
         
         return success_response(results)
+
+    # 按 MD5 批量查询音频（用于批量更新标注时匹配）
+    @staticmethod
+    def get_by_md5():
+        if not request.is_json:
+            return error_response("请求必须是 JSON 格式")
+
+        data = request.get_json() or {}
+        md5_list = data.get('md5_list', [])
+
+        if not md5_list:
+            return success_response({})
+
+        if not isinstance(md5_list, list):
+            return error_response("md5_list 必须是数组")
+
+        audios = Audio.query.filter(
+            Audio.md5.in_(md5_list),
+            Audio.deleted == False
+        ).all()
+
+        result = {}
+        for audio in audios:
+            result[audio.md5] = {
+                'id': audio.id,
+                'name': audio.name,
+            }
+
+        return success_response(result)
 
     # 获取所有音频ID列表（用于全选功能）
     @staticmethod
@@ -2229,6 +2259,241 @@ class AudioController:
         except Exception as e:
             db.session.rollback()
             return error_response(str(e))
+
+    # 批量更新标注
+    @staticmethod
+    def batch_update_annotations():
+        """批量更新音频标注，可选刷新关联测试用例的参数和参考参数。
+
+        前端按文件名匹配已入库音频，构建 [{audio_id, annotations}] 列表提交。
+        后端逐个写标注（同 code 覆盖），然后按 audio_id 反查 TestCase 刷新。
+        """
+        data = request.get_json()
+        if not data:
+            return error_response("请求体不能为空")
+
+        try:
+            validated = BatchUpdateAnnotationsRequest.model_validate(data)
+        except ValidationError as e:
+            return error_response(f"参数验证失败: {e}")
+
+        if not validated.items:
+            return error_response("标注列表不能为空")
+
+        algorithm_type = validated.algorithm_type
+        refresh_test_cases = validated.refresh_test_cases
+
+        updated_audio_ids = []
+        updated_count = 0
+        failed_count = 0
+        refreshed_tc_ids = []
+
+        try:
+            for item in validated.items:
+                audio_id = item.audio_id
+                annotations = item.annotations
+                if not annotations:
+                    continue
+
+                audio = db.session.get(Audio, audio_id)
+                if not audio:
+                    failed_count += 1
+                    continue
+
+                # 复用已有的持久化逻辑：写标注 + 返回 raw_annotations
+                AudioController._persist_annotations_and_raw(
+                    audio_id, annotations, algorithm_type
+                )
+                updated_audio_ids.append(audio_id)
+                updated_count += 1
+
+            db.session.flush()
+
+            # 刷新关联测试用例
+            if refresh_test_cases and updated_audio_ids:
+                refreshed_tc_ids = AudioController._refresh_test_cases_for_audios(
+                    updated_audio_ids, algorithm_type
+                )
+
+            db.session.commit()
+
+            return success_response({
+                "updated_count": updated_count,
+                "failed_count": failed_count,
+                "refreshed_test_case_ids": refreshed_tc_ids,
+            }, f"批量更新标注成功，更新 {updated_count} 个音频，刷新 {len(refreshed_tc_ids)} 个用例")
+        except Exception as e:
+            db.session.rollback()
+            import traceback
+            from backend.utils.web.log_handler import log_and_emit
+            log_and_emit(
+                level='error',
+                module='audio_controller',
+                content=f'批量更新标注失败: {str(e)}\n{traceback.format_exc()}',
+                category='audio',
+            )
+            return error_response(str(e))
+
+    @staticmethod
+    def _refresh_test_cases_for_audios(audio_ids, algorithm_type=None):
+        """按 audio_id 反查 config.rounds[].audios[].audio_id 关联的 TestCase，
+        重新提取用例参数并刷新参考参数。
+
+        Returns: 刷新的 TestCase id 列表
+        """
+        import json as _json
+        from backend.models.algorithm_models import CaseAlgorithmParam
+
+        # 查所有未删除的 TestCase，过滤出 config.rounds 中包含目标 audio_id 的
+        all_tcs = TestCase.query.filter_by(deleted=False).all()
+        target_ids = set(audio_ids)
+        affected_tcs = []
+
+        for tc in all_tcs:
+            config = tc.config or {}
+            rounds = config.get('rounds', [])
+            if not isinstance(rounds, list):
+                continue
+            found = False
+            for round_item in rounds:
+                if not isinstance(round_item, dict):
+                    continue
+                for audio_item in round_item.get('audios', []):
+                    if isinstance(audio_item, dict) and audio_item.get('audio_id') in target_ids:
+                        found = True
+                        break
+                if found:
+                    break
+            if found:
+                affected_tcs.append(tc)
+
+        if not affected_tcs:
+            return []
+
+        refreshed_ids = []
+        for tc in affected_tcs:
+            tc_algo_type = algorithm_type or tc.algorithm_type
+            # 重新提取用例参数
+            if tc_algo_type:
+                case_params_list = CaseAlgorithmParam.query.filter_by(
+                    algorithm_type=tc_algo_type, deleted=False
+                ).all()
+                tc_test_type = tc.test_type or 'api'
+                scoped_params = [
+                    p for p in case_params_list
+                    if p.scope == 'common' or p.scope == tc_test_type
+                ]
+
+                if scoped_params:
+                    # 收集该用例所有轮的 audio_id → annotation 映射
+                    config = tc.config or {}
+                    rounds = config.get('rounds', [])
+                    algo_params_col = tc.algorithm_params or []
+
+                    for round_item in rounds:
+                        if not isinstance(round_item, dict):
+                            continue
+                        round_number = round_item.get('round_number', 1)
+                        round_audios = round_item.get('audios', [])
+                        if not isinstance(round_audios, list):
+                            continue
+
+                        round_audio_ids = [
+                            a.get('audio_id') for a in round_audios
+                            if isinstance(a, dict) and a.get('audio_id')
+                        ]
+                        if not round_audio_ids:
+                            continue
+
+                        # 从数据库查这些音频的最新标注
+                        raw_anns = []
+                        for aid in round_audio_ids:
+                            anns = AudioAnnotation.query.filter_by(
+                                audio_id=aid, deleted=False
+                            ).all()
+                            for ann in anns:
+                                raw_anns.append({
+                                    'code': ann.code,
+                                    'data': ann.data,
+                                })
+
+                        if not raw_anns:
+                            continue
+
+                        # 提取参数（复用 _create_test_case_from_audio 中的逻辑）
+                        extracted_params = []
+                        for param in scoped_params:
+                            param_code = param.param_code
+                            field_path = param.field_path or param_code
+                            ann_code = param.annotation_code or tc_algo_type
+                            matched_anns = [a for a in raw_anns if a.get('code') == ann_code]
+                            if not matched_anns:
+                                matched_anns = raw_anns
+                            value = None
+                            for ann in matched_anns:
+                                a_data = ann.get('data')
+                                if a_data is None:
+                                    continue
+                                if isinstance(a_data, str):
+                                    value = a_data
+                                    break
+                                if isinstance(a_data, dict):
+                                    effective_fp = field_path
+                                    if 'segments[]' not in effective_fp:
+                                        effective_fp = f'segments[].{effective_fp}'
+                                    if 'segments[]' in effective_fp:
+                                        parts = effective_fp.split('[].')
+                                        arr_key = parts[0]
+                                        field_key = parts[1] if len(parts) > 1 else None
+                                        def _get_seg_field(seg, key):
+                                            if seg.get(key) is not None:
+                                                return seg.get(key)
+                                            import re
+                                            snake = re.sub(r'([A-Z])', r'_\1', key).lower()
+                                            return seg.get(snake)
+                                        arr = a_data.get(arr_key, [])
+                                        if isinstance(arr, list) and field_key:
+                                            collected = [
+                                                _get_seg_field(seg, field_key) for seg in arr
+                                                if isinstance(seg, dict) and _get_seg_field(seg, field_key) is not None
+                                            ]
+                                            if collected:
+                                                value = collected[0] if len(collected) == 1 else collected
+                                                break
+                            if value is not None:
+                                extracted_params.append({
+                                    'field_code': param_code,
+                                    'field_value': value
+                                })
+
+                        # 合并到 algo_params_col 中对应轮（保留已有参数，补缺新提取的）
+                        round_ap_entry = None
+                        for entry in algo_params_col:
+                            if entry.get('round_number') == round_number:
+                                round_ap_entry = entry
+                                break
+                        if not round_ap_entry:
+                            round_ap_entry = {'round_number': round_number, 'params': []}
+                            algo_params_col.append(round_ap_entry)
+                        existing_codes = set(
+                            p.get('field_code') for p in round_ap_entry.get('params', [])
+                        )
+                        for p in extracted_params:
+                            if p['field_code'] not in existing_codes:
+                                round_ap_entry.setdefault('params', []).append(p)
+                                existing_codes.add(p['field_code'])
+
+                    tc.algorithm_params = algo_params_col
+
+            # 刷新参考参数
+            try:
+                from backend.controllers.testcase_controller import TestCaseController
+                TestCaseController.refresh_reference_texts(tc)
+                refreshed_ids.append(tc.id)
+            except Exception as e:
+                logger.warning(f'刷新用例 {tc.id} 参考参数失败: {e}')
+
+        return refreshed_ids
 
     # 批量操作
     @staticmethod

@@ -1362,12 +1362,18 @@ export function useAudioImport() {
       const pendingTasks = tasks.filter(t => t.status !== 'failed')
       const totalPending = pendingTasks.length
 
-      let processedIndex = 0
+      // 追踪 pendingTasks 中已处理的个数，用于准确判断是否最后一个
+      let processedPending = 0
       for (const fileTask of tasks) {
         if ((uploadStatus.value as string) === 'paused' || (uploadStatus.value as string) === 'stopped') break;
 
+        // 跳过已失败文件（不参与 pendingTasks 序列）
+        if (fileTask.status === 'failed') {
+          continue;
+        }
+
         // 判断是否最后一个待处理文件（多轮场景下只有最后一个才创建用例）
-        const isFinalMerge = hasRoundsConfig && (processedIndex === totalPending - 1)
+        const isFinalMerge = hasRoundsConfig && (processedPending === totalPending - 1)
         // 非最后一个且是多轮场景时，createTestCase 设为 false
         const effectiveOptions = (hasRoundsConfig && !isFinalMerge)
           ? { ...uploadOptions, createTestCase: false }
@@ -1377,7 +1383,7 @@ export function useAudioImport() {
         if (fileTask.status === 'completed' && fileTask.totalChunks === 0) {
           fileTask.status = 'uploading';
           currentUploadingFile.value = fileTask.name;
-          
+
           try {
             // 秒传时也需要调用 merge 来处理测试用例创建
             await processMergeForExistingFile(taskId, fileTask, effectiveOptions, testCaseConfig);
@@ -1392,17 +1398,18 @@ export function useAudioImport() {
             saveLocalTask(task);
           }
           updateOverallProgress();
-          processedIndex++
+          processedPending++
           continue;
         }
-        
-        if (fileTask.status === 'completed' || fileTask.status === 'failed') {
+
+        // 跳过已完成文件（秒传文件已在上方处理，其他 completed 文件不参与 pending 序列）
+        if (fileTask.status === 'completed') {
           continue;
         }
 
         fileTask.status = 'uploading';
         currentUploadingFile.value = fileTask.name;
-        
+
         try {
           await uploadFileChunks(taskId, fileTask, effectiveOptions, testCaseConfig);
           fileTask.status = 'completed';
@@ -1417,7 +1424,7 @@ export function useAudioImport() {
           saveLocalTask(task);
         }
         updateOverallProgress();
-        processedIndex++
+        processedPending++
       }
 
       uploadStatus.value = (task.failedFiles || 0) > 0 ? 'failed' : 'completed';

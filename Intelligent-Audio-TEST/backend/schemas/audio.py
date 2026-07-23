@@ -189,3 +189,14 @@ class UpdateAudioAlgorithmsRequest(APIModel):
 class BatchUpdateAudioAlgorithmsRequest(APIModel):
     audio_ids: List[int] = Field(..., alias='audioIds', validation_alias='audioIds')
     algorithms: List[AudioAlgorithmRelationItem] = Field(..., alias='algorithms', validation_alias='algorithms')
+
+
+class BatchAnnotationItem(APIModel):
+    audio_id: int = Field(..., alias='audioId', validation_alias='audioId')
+    annotations: List[Dict] = Field(default_factory=list, alias='annotations', validation_alias='annotations')
+
+
+class BatchUpdateAnnotationsRequest(APIModel):
+    items: List[BatchAnnotationItem] = Field(default_factory=list, alias='items', validation_alias='items')
+    algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
+    refresh_test_cases: Optional[bool] = Field(True, alias='refreshTestCases', validation_alias='refreshTestCases')
