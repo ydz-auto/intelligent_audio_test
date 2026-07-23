@@ -58,7 +58,7 @@ DIMENSIONS = [
         'statistic_method': 'average',
         'params': [
             # ─── 输入参数 ───
-            ('record_path', '录音文件', '录音文件', 'audio', 'input',
+            ('record_file', '录音文件', '录音文件', 'audio', 'input',
              None, None, None, False,
              False, None, 'wav 录音文件路径(eval_server 调用 asr_server.py /asr 接口获取 ASR 结果)', 10),
             ('pause', '停顿区间', '停顿区间', 'json', 'input',

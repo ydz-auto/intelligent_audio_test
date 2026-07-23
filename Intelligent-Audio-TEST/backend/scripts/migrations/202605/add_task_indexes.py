@@ -3,7 +3,7 @@
 独立脚本，不依赖 backend 模块
 
 运行方式：
-python backend/scripts/migrations/202505/add_task_indexes.py
+python backend/scripts/migrations/202605/add_task_indexes.py
 
 或直接执行 SQL：
 psql -U intelligent_audio_test -d intelligent_audio_test -c "

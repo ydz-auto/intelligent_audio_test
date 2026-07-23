@@ -3,7 +3,7 @@
 解决历史报告页面加载慢的问题
 
 运行方式：
-python backend/scripts/migrations/202505/split_report_json_fields.py
+python backend/scripts/migrations/202605/split_report_json_fields.py
 
 或直接执行 SQL：
 psql -U intelligent_audio_test -d intelligent_audio_test -c "

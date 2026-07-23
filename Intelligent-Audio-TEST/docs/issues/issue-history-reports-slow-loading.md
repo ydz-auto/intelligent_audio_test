@@ -162,7 +162,7 @@ CREATE TABLE report_comparison_matrix (
 ### 运行迁移脚本
 
 ```bash
-python backend/scripts/migrations/202505/split_report_json_fields.py
+python backend/scripts/migrations/202605/split_report_json_fields.py
 ```
 
 ### 迁移脚本执行内容
