@@ -43,6 +43,11 @@ export function useDimensions() {
 
         for (const dim of items) {
           if (!dim?.id || !dim?.name) continue
+          // 从 required_inputs 推导 requiresAudio 标记
+          const reqInputs = (dim as any).required_inputs
+          if (Array.isArray(reqInputs)) {
+            (dim as any).requiresAudio = reqInputs.some((p: any) => p?.field_type === 'audio' && p?.param_direction === 'input')
+          }
           if (!byId.has(dim.id)) {
             byId.set(dim.id, dim)
             allDimensions.push(dim)
@@ -66,6 +71,12 @@ export function useDimensions() {
     try {
       const res = await evaluationApi.getOptions({ algorithm_type: algorithmType })
       const dimensions = res?.dimensions || []
+      // 映射后端 requires_audio → requiresAudio
+      for (const dim of dimensions) {
+        if ((dim as any).requires_audio !== undefined) {
+          (dim as any).requiresAudio = (dim as any).requires_audio
+        }
+      }
       return dimensions
     } finally {
       isLoading.value = false

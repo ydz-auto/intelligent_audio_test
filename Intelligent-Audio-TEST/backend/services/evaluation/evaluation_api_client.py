@@ -180,7 +180,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         return selected.get('url') or selected.get('endpoint')
 
     def _execute_async_api_flow(self, selected_url, payload, dim_info, endpoints, api_url,
-                                task_id, test_case_id, api_id, dim_names):
+                                task_id, test_case_id, api_id, dim_names, audio_field_names=None):
         """
         执行异步任务API流程：创建任务 -> 释放槽位 -> 轮询等待 -> 获取结果
 
@@ -223,7 +223,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             if formatted_endpoints:
                 create_task_payload["endpoints"] = formatted_endpoints
 
-        form_fields, files = self._extract_files_from_payload(create_task_payload)
+        form_fields, files = self._extract_files_from_payload(create_task_payload, audio_field_names=audio_field_names)
         if files:
             create_response = self.create_task_upload(selected_url, form_fields, files, task_id=task_id)
         else:
@@ -314,7 +314,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
         return resp_data
 
-    def make_api_request_with_fallback(self, endpoints, method, headers, payload, task_id, dim_names, api_url=None, test_case_id=None, api_id=None, dim_info=None):
+    def make_api_request_with_fallback(self, endpoints, method, headers, payload, task_id, dim_names, api_url=None, test_case_id=None, api_id=None, dim_info=None, audio_field_names=None):
         """
         发起API请求，支持失败时切换到备用端点
         同时支持同步API和异步任务API（WER/SER计算器服务）
@@ -398,7 +398,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
                     resp_data = self._execute_async_api_flow(
                         selected_url, payload, dim_info, endpoints, api_url,
-                        task_id, test_case_id, api_id, dim_names
+                        task_id, test_case_id, api_id, dim_names,
+                        audio_field_names=audio_field_names
                     )
                     slot_released = True
                 else:
@@ -439,13 +440,14 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             if not api_url:
                 selected_url, resp_data = self._try_fallback_endpoints(
                     endpoints, selected_url, method, headers, payload,
-                    task_id, test_case_id, api_id, dim_names, dim_info
+                    task_id, test_case_id, api_id, dim_names, dim_info,
+                    audio_field_names=audio_field_names
                 )
 
         return selected_url, resp_data
 
     def _try_fallback_endpoints(self, endpoints, selected_url, method, headers, payload,
-                                 task_id, test_case_id, api_id, dim_names, dim_info):
+                                 task_id, test_case_id, api_id, dim_names, dim_info, audio_field_names=None):
         """
         尝试备用端点
 
@@ -508,7 +510,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                     if is_async_api:
                         resp_data = self._execute_async_api_flow(
                             fallback_url, payload, dim_info, endpoints, None,
-                            task_id, test_case_id, api_id, dim_names
+                            task_id, test_case_id, api_id, dim_names,
+                            audio_field_names=audio_field_names
                         )
                         fallback_slot_released = True
 

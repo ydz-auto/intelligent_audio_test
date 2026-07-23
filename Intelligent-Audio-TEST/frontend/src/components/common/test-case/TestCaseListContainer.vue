@@ -527,9 +527,10 @@ const checkTestCaseConfig = (testCase: TestCase) => {
   });
 
   // In dual-record architecture, test_type is at the record level
-  const recordTestType = (testCase as any).test_type || (testCase as any).testType || 'api';
+  // 后端列表接口返回字段名为 type，兼容 test_type / testType
+  const recordTestType = ((testCase as any).test_type || (testCase as any).testType || (testCase as any).type || 'api').toLowerCase();
   const isApi = recordTestType === 'api';
-  const isE2e = recordTestType === 'e2e';
+  const isE2e = recordTestType === 'e2e' || recordTestType === 'e2e_test';
 
   const hasAPIConfig = isApi && allAudios.length > 0;
   const hasE2eConfig = isE2e && allAudios.length > 0;
@@ -1484,8 +1485,11 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   switch (actionEvent.action.id) {
     case 'preview': {
       const config = testCase.config || {};
-      const hasAudioConfig = config.audios && config.audios.length > 0;
-      
+      // 兼容新格式 config.rounds[].audios 与旧格式 config.audios
+      const rounds = config.rounds || [];
+      const hasRoundsAudios = rounds.some((r: any) => Array.isArray(r.audios) && r.audios.length > 0);
+      const hasAudioConfig = hasRoundsAudios || (config.audios && config.audios.length > 0);
+
       if (hasAudioConfig) {
         try {
           const { hasAPIConfig, hasE2eConfig } = checkTestCaseConfig(testCase);

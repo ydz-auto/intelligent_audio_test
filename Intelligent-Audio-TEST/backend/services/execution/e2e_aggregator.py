@@ -45,22 +45,36 @@ class E2EAggregator:
             audio_name = first_audio.get('audio_name') or first_audio.get('name', '')
             audio_path = first_audio.get('audio_path') or first_audio.get('path', '')
 
-            # 动态提取所有映射后的设备输出字段
-            # 用 source_param 从 primary 取值，用 target_param 作为 output 的 key
+            # primary 中已包含映射后的 target 字段（由 convert_results 写入），直接用 target 取值
+            # 同时保留维度专属 key（target__dim_N），供评估阶段按维度取值
             round_output = {}
             if isinstance(mapped_output_fields, list):
                 for f in mapped_output_fields:
                     target = f.get('code')
-                    src = f.get('source_param', target)
-                    val = primary.get(src)
+                    dim_id = f.get('dimension_id')
+                    # 维度专属 key
+                    if dim_id is not None:
+                        dim_key = f'{target}__dim_{dim_id}'
+                        dim_val = primary.get(dim_key)
+                        if dim_val is not None:
+                            round_output[dim_key] = dim_val
+                    # 通用 key（第一个有效值优先）
+                    val = primary.get(target)
                     if val is not None:
-                        round_output[target] = val
+                        if target not in round_output or not round_output[target]:
+                            round_output[target] = val
             else:
                 for target, f in mapped_output_fields.items():
-                    src = f.get('source_param', target)
-                    val = primary.get(src)
+                    dim_id = f.get('dimension_id') if isinstance(f, dict) else None
+                    if dim_id is not None:
+                        dim_key = f'{target}__dim_{dim_id}'
+                        dim_val = primary.get(dim_key)
+                        if dim_val is not None:
+                            round_output[dim_key] = dim_val
+                    val = primary.get(target)
                     if val is not None:
-                        round_output[target] = val
+                        if target not in round_output or not round_output[target]:
+                            round_output[target] = val
 
             latency = primary.get('response_time') or primary.get('latency')
             if latency is not None:
@@ -137,6 +151,16 @@ class E2EAggregator:
                     algo_result = json.loads(algo_result)
                 except (json.JSONDecodeError, TypeError):
                     algo_result = {}
+
+            # DEBUG: 检查 record_file 是否存在
+            _rounds_debug = algo_result.get('rounds', []) if isinstance(algo_result, dict) else []
+            _output_keys_debug = [list(r.get('output', {}).keys()) for r in _rounds_debug] if isinstance(_rounds_debug, list) else []
+            _rf_debug = [r.get('output', {}).get('record_file', '<MISSING>') for r in _rounds_debug] if isinstance(_rounds_debug, list) else []
+            self._log(
+                level='DEBUG',
+                content=f"[update_algorithm_result_evaluation READ] result_id={result_id}, rounds_count={len(_rounds_debug)}, output_keys={_output_keys_debug}, record_file={_rf_debug}",
+                task_id=task_id
+            )
             if not isinstance(algo_result, dict):
                 algo_result = {}
 
@@ -182,6 +206,13 @@ class E2EAggregator:
 
             algo_result['rounds'] = rounds_list
             algo_result['aggregated'] = aggregated
+            # DEBUG: 写回前检查 record_file
+            _rf_write_dbg = [r.get('output', {}).get('record_file', '<MISSING>') for r in rounds_list]
+            self._log(
+                level='DEBUG',
+                content=f"[update_algorithm_result_evaluation WRITE] result_id={result_id}, record_file={_rf_write_dbg}",
+                task_id=task_id
+            )
             test_result.algorithm_result = algo_result
             local_db_session.commit()
 
@@ -201,16 +232,27 @@ class E2EAggregator:
             local_db_session.close()
 
     def update_test_result(self, result_id, algo_result, execution_status, response_time=0,
-                           error_message=None, task_id=None):
+                           error_message=None, task_id=None, result_data_path=None):
         """更新已存在的 TestResult 记录"""
-        update_sql = text("""
-            UPDATE test_results
-            SET algorithm_result = :algorithm_result,
-                execution_status = :execution_status,
-                response_time = :response_time,
-                error_message = :error_message
-            WHERE id = :result_id
-        """)
+        if result_data_path is not None:
+            update_sql = text("""
+                UPDATE test_results
+                SET algorithm_result = :algorithm_result,
+                    execution_status = :execution_status,
+                    response_time = :response_time,
+                    error_message = :error_message,
+                    result_data_path = :result_data_path
+                WHERE id = :result_id
+            """)
+        else:
+            update_sql = text("""
+                UPDATE test_results
+                SET algorithm_result = :algorithm_result,
+                    execution_status = :execution_status,
+                    response_time = :response_time,
+                    error_message = :error_message
+                WHERE id = :result_id
+            """)
         params = {
             'algorithm_result': json.dumps(algo_result, ensure_ascii=False) if algo_result else None,
             'execution_status': execution_status,
@@ -218,6 +260,17 @@ class E2EAggregator:
             'error_message': error_message,
             'result_id': result_id,
         }
+        if result_data_path is not None:
+            params['result_data_path'] = result_data_path
+        # DEBUG: 记录写入前的 algo_result 状态
+        _rounds_dbg = algo_result.get('rounds', []) if isinstance(algo_result, dict) else []
+        _out_keys_dbg = [list(r.get('output', {}).keys()) for r in _rounds_dbg]
+        _rf_dbg = [r.get('output', {}).get('record_file', '<MISSING>') for r in _rounds_dbg]
+        self._log(
+            level='DEBUG',
+            content=f"[update_test_result] result_id={result_id}, exec_status={execution_status}, output_keys={_out_keys_dbg}, record_file={_rf_dbg}, has_path={result_data_path is not None}",
+            task_id=task_id
+        )
         with db.engine.connect() as conn:
             conn.execute(update_sql, params)
             conn.commit()

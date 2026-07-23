@@ -223,6 +223,52 @@ class TestCaseController:
         return result
 
     @staticmethod
+    def _validate_multi_round_audio_dimensions(config: dict):
+        """校验整体评估(config.dimensions)不能配置需要音频文件的维度
+        
+        整体评估在所有轮次执行完成后触发，无法传递音频文件。
+        只检查 config.dimensions（整体评估维度），不检查 rounds[].evaluation.dimensions（单轮维度）。
+        多轮时，rounds[].evaluation.dimensions（单轮评估）允许配置音频维度。
+        """
+        if not config:
+            return None
+        rounds = config.get('rounds', [])
+        if not isinstance(rounds, list) or len(rounds) <= 1:
+            return None  # 单轮不限制
+
+        # 只收集 config.dimensions（整体评估维度），不收集 rounds[].evaluation.dimensions
+        overall_dims = config.get('dimensions', [])
+        dim_ids = set()
+        for d in overall_dims:
+            dim_id = d.get('id') if isinstance(d, dict) else d
+            if dim_id:
+                dim_ids.add(dim_id)
+        if not dim_ids:
+            return None
+
+        # 查询这些维度是否有 field_type='audio' 的输入参数
+        from backend.models.algorithm_models import EvaluationDimensionParam
+        audio_dims = db.session.query(
+            EvaluationDimensionParam.dimension_id,
+            EvaluationDimensionParam.param_code
+        ).filter(
+            EvaluationDimensionParam.dimension_id.in_(dim_ids),
+            EvaluationDimensionParam.field_type == 'audio',
+            EvaluationDimensionParam.param_direction == 'input',
+            EvaluationDimensionParam.deleted == False
+        ).all()
+
+        if audio_dims:
+            # 查维度名
+            dim_map = {d.id: d.name for d in Dimension.query.filter(Dimension.id.in_([ad[0] for ad in audio_dims])).all()}
+            dim_names = [dim_map.get(ad[0], f"ID:{ad[0]}") for ad in audio_dims]
+            param_codes = [ad[1] for ad in audio_dims]
+            return (f"整体评估维度不支持需要传递音频文件的维度。"
+                    f"维度 {', '.join(dim_names)} 包含音频参数({', '.join(param_codes)})，"
+                    f"请在单轮评估中配置该维度，或从整体评估中移除。")
+        return None
+
+    @staticmethod
     def _audios_changed(old_config: dict, new_config: dict) -> bool:
         """比较两个 config 中的音频配置是否发生变化"""
         old_audios = TestCaseController._collect_audios(old_config)
@@ -664,6 +710,11 @@ class TestCaseController:
             # 转换为 rounds 格式
             merged_config = TestCaseController._convert_flat_config_to_rounds(merged_config)
         
+        # 多轮用例校验：不支持需要传递音频文件的维度
+        audio_dim_error = TestCaseController._validate_multi_round_audio_dimensions(merged_config)
+        if audio_dim_error:
+            return error_response(audio_dim_error)
+
         # algorithm_params 存入独立列（按轮分组格式 [{round_number, params:[{field_code, field_value}]}]）
         algo_params_col = data.get_algorithm_params_dict()
         # 兼容旧平面格式 [{field_code, field_value}]：包装为 round_number=1 的单轮
@@ -862,6 +913,11 @@ class TestCaseController:
                         db.session.add(tag)
                     tc.tags.append(tag)
             
+            # 多轮用例校验：不支持需要传递音频文件的维度
+            audio_dim_error = TestCaseController._validate_multi_round_audio_dimensions(merged_config)
+            if audio_dim_error:
+                return error_response(audio_dim_error)
+
             tc.config = merged_config
             
             algorithm_type = data.algorithm_type

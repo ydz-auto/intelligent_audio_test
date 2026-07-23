@@ -397,6 +397,24 @@ class FieldMapper:
             return [f.get('code') for f in output_fields]
         return list(output_fields.keys())
 
+    def get_dimension_mapped_device_output_fields(self, algorithm_type: str, dimension_id: int) -> List[Dict]:
+        """获取指定维度的设备输出字段映射（按维度分组）"""
+        output_fields = self.get_mapped_device_output_fields(algorithm_type)
+        if not isinstance(output_fields, list):
+            return []
+        # 按 dimension_id 过滤；dimension_id 为 None 的全局映射也保留
+        result = []
+        for f in output_fields:
+            f_dim = f.get('dimension_id')
+            if f_dim == dimension_id or f_dim is None:
+                result.append(f)
+        return result
+
+    def get_dimension_mapped_device_output_field_keys(self, algorithm_type: str, dimension_id: int) -> List[str]:
+        """获取指定维度的设备输出字段键列表"""
+        output_fields = self.get_dimension_mapped_device_output_fields(algorithm_type, dimension_id)
+        return [f.get('code') for f in output_fields]
+
     def get_device_output_field_codes_by_type(self, algorithm_type: str, param_type: str) -> List[str]:
         """根据 param_type 获取设备输出字段代码列表
 
@@ -673,20 +691,29 @@ class FieldMapper:
                 target_key = field_def.get('code')
                 source_param = field_def.get('source_param', target_key)
                 transform = field_def.get('transform', 'none')
+                dim_id = field_def.get('dimension_id')
                 value = device_result.get(source_param)
-                log_not_emit('DEBUG', 'field_mapper', f'convert_device_output: target_key={target_key}, source_param={source_param}, transform={transform}, value_is_none={value is None}, device_result_keys={list(device_result.keys())[:10]}', category='algorithm')
+                log_not_emit('DEBUG', 'field_mapper', f'convert_device_output: target_key={target_key}, source_param={source_param}, transform={transform}, dim_id={dim_id}, value_is_none={value is None}, device_result_keys={list(device_result.keys())[:10]}', category='algorithm')
                 if value is not None:
+                    # 多对一映射：同一 target_key 有多条映射时，按维度分别存储
+                    # target_key 相同但 dimension_id 不同时，用 target_key + '__dim_' + dim_id 区分
+                    store_key = target_key
+                    if dim_id is not None:
+                        store_key = f'{target_key}__dim_{dim_id}'
                     if transform != 'none':
-                        log_not_emit('DEBUG', 'field_mapper', f'Transform check: source_param={source_param}, target_key={target_key}, transform={transform}, in_transforms={transform in self._transforms}', category='algorithm')
+                        log_not_emit('DEBUG', 'field_mapper', f'Transform check: source_param={source_param}, target_key={store_key}, transform={transform}, in_transforms={transform in self._transforms}', category='algorithm')
                     if transform != 'none' and transform in self._transforms:
                         try:
-                            result[target_key] = self._transforms[transform](value)
-                            log_not_emit('DEBUG', 'field_mapper', f'Transform applied: {source_param} -> {target_key} ({transform})', category='algorithm')
+                            result[store_key] = self._transforms[transform](value)
+                            log_not_emit('DEBUG', 'field_mapper', f'Transform applied: {source_param} -> {store_key} ({transform})', category='algorithm')
                         except Exception as e:
-                            log_not_emit('WARNING', 'field_mapper', f'Transform error for {target_key} ({transform}): {e}', category='algorithm')
-                            result[target_key] = value
+                            log_not_emit('WARNING', 'field_mapper', f'Transform error for {store_key} ({transform}): {e}', category='algorithm')
+                            result[store_key] = value
                     else:
-                        result[target_key] = value
+                        result[store_key] = value
+                    # 同时保留 target_key 指向第一个有效值（兼容旧逻辑）
+                    if target_key not in result or not result[target_key]:
+                        result[target_key] = result[store_key]
         elif orig_output_fields:
             for field_key, field_def in orig_output_fields.items():
                 source_param = field_def.get('code')

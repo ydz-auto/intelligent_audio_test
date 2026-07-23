@@ -14,18 +14,18 @@
             <div class="radio-group">
               <label class="radio-item">
                 <input type="radio" value="frontend" v-model="previewConfig.playbackMode">
-                <span>前端扬声器播放</span>
+                <span>浏览器播放</span>
               </label>
               <label class="radio-item">
                 <input type="radio" value="backend" v-model="previewConfig.playbackMode">
-                <span>后端扬声器播放</span>
+                <span>实验室播放</span>
               </label>
             </div>
             <p class="mode-description" v-if="previewConfig.playbackMode === 'frontend'">
               <i class="fas fa-info-circle"></i> 音频将通过浏览器前端直接播放
             </p>
             <p class="mode-description" v-else>
-              <i class="fas fa-info-circle"></i> 音频将通过用例配置中的播放设备在后端播放
+              <i class="fas fa-info-circle"></i> 音频将通过用例配置中的播放设备在实验室播放
             </p>
           </div>
         </div>

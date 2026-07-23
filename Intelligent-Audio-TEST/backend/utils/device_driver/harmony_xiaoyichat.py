@@ -255,6 +255,11 @@ class Xiaoyilivechat(HarmonyDriver):
         question_text = getattr(self, 'question_text', None)
         answer_text = getattr(self, 'answer_text', None)
         first_frame_ms = getattr(self, '_recorder_first_frame_ms', None)
+        wav_path = None
+        query = None
+        device_path = ''
+        local_path = ''
+        recv_result = None
         try:
             query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
             lines = query.stdout.strip().split('\n')
@@ -304,17 +309,35 @@ class Xiaoyilivechat(HarmonyDriver):
             }
             return [result]
         except Exception as e:
-            self._log(level='ERROR', content=f"获取录屏文件失败: {e}", task_id=task_id, test_case_id=test_case_id)
+            import traceback
+            tb = traceback.format_exc()
+            # 收集异常发生时已拿到的关键上下文，便于定位失败点
+            query_out = query.stdout if query else '<query未执行>'
+            query_err = query.stderr if query else ''
+            recv_err = recv_result.stderr if recv_result else '<recv未执行>'
+            self._log(level='ERROR',
+                      content=(f"获取录屏文件失败: {e}\n"
+                               f"  record_file_name={record_file_name}\n"
+                               f"  device_path={device_path!r}\n"
+                               f"  local_path={local_path!r}\n"
+                               f"  query.stdout={query_out!r}\n"
+                               f"  query.stderr={query_err!r}\n"
+                               f"  recv.stderr={recv_err!r}\n"
+                               f"  traceback:\n{tb}"),
+                      task_id=task_id, test_case_id=test_case_id)
             result = {
                 'success': False,
-                'message': str(e),
-                'record_path': '',
+                'message': (f"获取录屏文件失败: {e} | "
+                            f"device_path={device_path!r} | "
+                            f"query_stdout={query_out!r} | "
+                            f"recv_stderr={recv_err!r}"),
+                'record_path': local_path,
                 'wav_path': '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,
-                'question': "",
-                'answer': ""
+                'question': question_text or '',
+                'answer': answer_text or ''
             }
             return [result]
 

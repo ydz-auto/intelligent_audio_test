@@ -363,22 +363,35 @@ class E2EExecutor(BaseExecutor):
         audio_name = first_audio.get('audio_name') or first_audio.get('name', '')
         audio_path = first_audio.get('audio_path') or first_audio.get('path', '')
 
-        # 用 source_param 从 primary 取值，用 target_param 作为 output 的 key
+        # primary 中已包含映射后的 target 字段（由 convert_results 写入），直接用 target 取值
+        # 同时保留维度专属 key（target__dim_N），供评估阶段按维度取值
         mapped_output_fields = get_field_mapper().get_mapped_device_output_fields(algorithm_type)
         round_output = {}
         if isinstance(mapped_output_fields, list):
             for f in mapped_output_fields:
                 target = f.get('code')
-                src = f.get('source_param', target)
-                val = primary.get(src)
+                dim_id = f.get('dimension_id')
+                if dim_id is not None:
+                    dim_key = f'{target}__dim_{dim_id}'
+                    dim_val = primary.get(dim_key)
+                    if dim_val is not None:
+                        round_output[dim_key] = dim_val
+                val = primary.get(target)
                 if val is not None:
-                    round_output[target] = val
+                    if target not in round_output or not round_output[target]:
+                        round_output[target] = val
         else:
             for target, f in mapped_output_fields.items():
-                src = f.get('source_param', target)
-                val = primary.get(src)
+                dim_id = f.get('dimension_id') if isinstance(f, dict) else None
+                if dim_id is not None:
+                    dim_key = f'{target}__dim_{dim_id}'
+                    dim_val = primary.get(dim_key)
+                    if dim_val is not None:
+                        round_output[dim_key] = dim_val
+                val = primary.get(target)
                 if val is not None:
-                    round_output[target] = val
+                    if target not in round_output or not round_output[target]:
+                        round_output[target] = val
 
         latency = primary.get('response_time') or primary.get('latency')
 
@@ -402,6 +415,12 @@ class E2EExecutor(BaseExecutor):
         self._aggregator.update_test_result(
             result_id=result_id, algo_result=current_algo_result,
             execution_status='running', task_id=task_id,
+        )
+        # DEBUG: 记录单轮写入后的 record_file 状态
+        self._log(
+            level='DEBUG',
+            content=f"[_build_and_submit_round_data] round_idx={round_idx}, round_output_keys={list(round_output.keys())}, record_file={round_output.get('record_file', '<MISSING>')}",
+            task_id=task_id, test_case_id=test_case_id,
         )
 
         self._evaluate_result(
@@ -489,6 +508,20 @@ class E2EExecutor(BaseExecutor):
         # 构建最终 algo_result
         final_algo_result = self._aggregator.build_algorithm_result(task_id, all_round_results, case_config, algorithm_type)
 
+        # 持久化 raw_results 到文件，供重新评估时重新映射字段
+        from backend.utils.common.result_data_store import write_result_data_file
+        import copy
+        result_data_to_save = {
+            'multi_round': True,
+            'total_rounds': len(all_round_results),
+            'raw_results_list': copy.deepcopy(all_round_results),
+        }
+        # 调整后的参考参数也一并存储
+        if last_adjusted_ref_params:
+            result_data_to_save['adjusted_reference_params'] = last_adjusted_ref_params
+        device_sn = all_round_results[0].get('device_sn', '') if all_round_results else ''
+        result_data_path = write_result_data_file(task_id, test_case_id, device_sn, result_data_to_save)
+
         latency_values = []
         for r in all_round_results:
             lat = r.get('response_time') or r.get('latency')
@@ -505,6 +538,14 @@ class E2EExecutor(BaseExecutor):
             response_time=avg_response_time,
             error_message=None if execution_success else "多轮测试存在失败轮次",
             task_id=task_id,
+            result_data_path=result_data_path or None,
+        )
+        # DEBUG: 确认 finalize 写入的 record_file 和 result_data_path
+        _final_out = final_algo_result.get('rounds', [{}])[0].get('output', {})
+        self._log(
+            level='DEBUG',
+            content=f"[_finalize_rounds] result_id={result_id}, result_data_path={result_data_path!r}, output_keys={list(_final_out.keys())}, record_file={_final_out.get('record_file', '<MISSING>')!r}",
+            task_id=task_id, test_case_id=test_case_id,
         )
 
         # 整体评估

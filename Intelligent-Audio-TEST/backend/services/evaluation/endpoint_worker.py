@@ -134,7 +134,10 @@ class EndpointWorker(EvaluationLoggerMixin):
                            representative_dim_data, group_items, algorithm_type='translation',
                            test_type='api', **kwargs):
         field_mapper = get_field_mapper()
-        output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
+        # 按维度获取映射字段（多对一映射时不同维度可能映射不同 source）
+        dim_id = representative_dim_data.get('id')
+        output_field_keys = field_mapper.get_dimension_mapped_device_output_field_keys(algorithm_type, dim_id) \
+            if dim_id else field_mapper.get_mapped_device_output_field_keys(algorithm_type)
 
         self._log(
             level='DEBUG',
@@ -165,12 +168,18 @@ class EndpointWorker(EvaluationLoggerMixin):
             rounds_data = algorithm_result.get('rounds', [])
             first_output = rounds_data[0].get('output', {}) if rounds_data and isinstance(rounds_data[0], dict) else {}
             for key in output_field_keys:
-                val = algorithm_result.get(key)
+                # 按维度优先取 dim 专属 key，回退到通用 key
+                dim_key = f'{key}__dim_{dim_id}' if dim_id else None
+                val = None
+                if dim_key and first_output:
+                    val = first_output.get(dim_key)
+                if val is None:
+                    val = algorithm_result.get(key)
                 if val is None and first_output:
                     val = first_output.get(key)
                 self._log(
                     level='DEBUG',
-                    content=f"[algo_results] key={key}, value={val}, value_type={type(val)}",
+                    content=f"[algo_results] key={key}, dim_key={dim_key}, value={val}, value_type={type(val)}",
                     task_id=task_id,
                     test_case_id=test_case_id
                 )
@@ -235,6 +244,18 @@ class EndpointWorker(EvaluationLoggerMixin):
 
         payload = self.eval_service.api_client.build_payload(body_template, context, task_id=task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
 
+        # 从维度 input_params 提取 field_type='audio' 的字段名集合
+        audio_field_names = {
+            inp.get('param_code') for inp in representative_dim_data.get('input_params', [])
+            if inp.get('field_type') == 'audio' and inp.get('param_code')
+        }
+        self._log(
+            level='DEBUG',
+            content=f"[audio_field_names] input_params={representative_dim_data.get('input_params', [])}, audio_field_names={audio_field_names}",
+            task_id=task_id,
+            test_case_id=test_case_id
+        )
+
         dim_info = {
             'dimension_type': representative_dim_data.get('dimension_type', 'main'),
             'parent_dimension_id': representative_dim_data.get('parent_dimension_id'),
@@ -264,7 +285,8 @@ class EndpointWorker(EvaluationLoggerMixin):
                 dim_names=dim_names,
                 api_url=representative_dim_data.get('api_url'),
                 test_case_id=test_case_id,
-                dim_info=dim_info
+                dim_info=dim_info,
+                audio_field_names=audio_field_names
             )
 
             if resp_data and '__error__' not in resp_data:

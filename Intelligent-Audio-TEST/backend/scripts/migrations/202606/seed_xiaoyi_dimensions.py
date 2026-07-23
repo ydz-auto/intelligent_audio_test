@@ -129,7 +129,7 @@ DIMENSIONS = [
         # pause 从 reference 映射
         # ASR 结果由 eval_server 内部调用 asr_server.py 获取，通过返回值传递，三个子指标共享
         'param_mappings': [
-            ('device', 'output', 'record_path', 'record_path', 'none'),
+            ('device', 'output', 'record_path', 'record_file', 'none'),
             ('reference', 'output', 'pause', 'pause', 'none'),
             ('device', 'output', 'first_frame_ms', 'first_frame_ms', 'none'),
             ('device', 'output', 'end_ms', 'end_ms', 'none'),

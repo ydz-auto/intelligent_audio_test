@@ -150,6 +150,48 @@ class ReevaluationExecutor:
                             'adjusted_reference_params', []
                         ) if full_data else []
 
+                        # DEBUG: 重新评估读取状态
+                        _rr_out = algo_result.get('rounds', [{}])[0].get('output', {}) if isinstance(algo_result, dict) else {}
+                        log_and_emit('DEBUG', 'reevaluator',
+                                     f"[reevaluate READ] result_id={result.id}, result_data_path={getattr(result, 'result_data_path', None)!r}, full_data_keys={list(full_data.keys()) if full_data else 'None'}, output_record_file={_rr_out.get('record_file', '<MISSING>')!r}",
+                                     task_id=task_id, test_case_id=result.test_case_id)
+
+                        # 从文件恢复 raw_results，重新映射字段（修复多对一映射字段丢失问题）
+                        raw_results_list = full_data.get('raw_results_list') if full_data else None
+                        if raw_results_list:
+                            from backend.services.device.device_result_collector import get_device_result_collector
+                            from backend.models.models import TestCase
+                            test_case = db.session.get(TestCase, result.test_case_id)
+                            algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
+                            collector = get_device_result_collector()
+                            remapped_results = collector.convert_results(
+                                [dict(r, raw_results=r.get('raw_results', {})) for r in raw_results_list],
+                                algorithm_type
+                            )
+                            # 用重新映射的字段更新 algo_result.rounds[].output
+                            rounds_in_algo = algo_result.get('rounds', [])
+                            for ri, remapped in enumerate(remapped_results):
+                                if ri < len(rounds_in_algo):
+                                    from backend.utils.algorithm.field_mapper import get_field_mapper
+                                    fm = get_field_mapper()
+                                    mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
+                                    round_output = rounds_in_algo[ri].setdefault('output', {})
+                                    if isinstance(mapped_fields, list):
+                                        for f in mapped_fields:
+                                            target = f.get('code')
+                                            dim_id = f.get('dimension_id')
+                                            # 维度专属 key
+                                            if dim_id is not None:
+                                                dim_key = f'{target}__dim_{dim_id}'
+                                                dim_val = remapped.get(dim_key)
+                                                if dim_val is not None:
+                                                    round_output[dim_key] = dim_val
+                                            # 通用 key
+                                            val = remapped.get(target)
+                                            if val is not None:
+                                                if target not in round_output or not round_output[target]:
+                                                    round_output[target] = val
+
                         tc_rel = db.session.query(TaskCase).filter_by(
                             task_id=task_id,
                             test_case_id=result.test_case_id
@@ -196,6 +238,48 @@ class ReevaluationExecutor:
                         reference_params = full_data.get(
                             'adjusted_reference_params', []
                         ) if full_data else []
+
+                        # DEBUG: 重新评估读取状态
+                        _rr_out = algo_result.get('rounds', [{}])[0].get('output', {}) if isinstance(algo_result, dict) else {}
+                        log_and_emit('DEBUG', 'reevaluator',
+                                     f"[reevaluate READ] result_id={result.id}, result_data_path={getattr(result, 'result_data_path', None)!r}, full_data_keys={list(full_data.keys()) if full_data else 'None'}, output_record_file={_rr_out.get('record_file', '<MISSING>')!r}",
+                                     task_id=task_id, test_case_id=result.test_case_id)
+
+                        # 从文件恢复 raw_results，重新映射字段（修复多对一映射字段丢失问题）
+                        raw_results_list = full_data.get('raw_results_list') if full_data else None
+                        if raw_results_list:
+                            from backend.services.device.device_result_collector import get_device_result_collector
+                            from backend.models.models import TestCase
+                            test_case = db.session.get(TestCase, result.test_case_id)
+                            algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
+                            collector = get_device_result_collector()
+                            remapped_results = collector.convert_results(
+                                [dict(r, raw_results=r.get('raw_results', {})) for r in raw_results_list],
+                                algorithm_type
+                            )
+                            # 用重新映射的字段更新 algo_result.rounds[].output
+                            rounds_in_algo = algo_result.get('rounds', [])
+                            for ri, remapped in enumerate(remapped_results):
+                                if ri < len(rounds_in_algo):
+                                    from backend.utils.algorithm.field_mapper import get_field_mapper
+                                    fm = get_field_mapper()
+                                    mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
+                                    round_output = rounds_in_algo[ri].setdefault('output', {})
+                                    if isinstance(mapped_fields, list):
+                                        for f in mapped_fields:
+                                            target = f.get('code')
+                                            dim_id = f.get('dimension_id')
+                                            # 维度专属 key
+                                            if dim_id is not None:
+                                                dim_key = f'{target}__dim_{dim_id}'
+                                                dim_val = remapped.get(dim_key)
+                                                if dim_val is not None:
+                                                    round_output[dim_key] = dim_val
+                                            # 通用 key
+                                            val = remapped.get(target)
+                                            if val is not None:
+                                                if target not in round_output or not round_output[target]:
+                                                    round_output[target] = val
                         result_type = full_data.get(
                             'result_type', 'unknown'
                         ) if full_data else 'unknown'

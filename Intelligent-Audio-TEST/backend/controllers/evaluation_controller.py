@@ -278,6 +278,20 @@ class EvaluationController:
             else:
                 return success_response({'dimensions': []})
         dimensions = query.order_by(Dimension.id).all()
+
+        # 查询哪些维度需要音频文件参数（field_type='audio' 的输入参数）
+        dim_ids = [d.id for d in dimensions]
+        audio_dim_ids = set()
+        if dim_ids:
+            from backend.models.algorithm_models import EvaluationDimensionParam
+            audio_params = EvaluationDimensionParam.query.filter(
+                EvaluationDimensionParam.dimension_id.in_(dim_ids),
+                EvaluationDimensionParam.field_type == 'audio',
+                EvaluationDimensionParam.param_direction == 'input',
+                EvaluationDimensionParam.deleted == False
+            ).all()
+            audio_dim_ids = {p.dimension_id for p in audio_params}
+
         return success_response({
             'dimensions': [
                 {
@@ -287,7 +301,8 @@ class EvaluationController:
                     'type': d.type,
                     'dimension_type': d.dimension_type,
                     'category_id': d.category_id,
-                    'task_type_code': d.task_type_code
+                    'task_type_code': d.task_type_code,
+                    'requires_audio': d.id in audio_dim_ids
                 }
                 for d in dimensions
             ]

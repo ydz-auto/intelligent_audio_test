@@ -237,6 +237,7 @@ export interface Dimension {
     estimatedExecTime?: number;
     rule?: any;
     requiredInputs?: string;
+    requiresAudio?: boolean;
     associatedAlgorithms?: AlgorithmAssociation[];
     status?: string;
     createdAt?: string;

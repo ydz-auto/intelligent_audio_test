@@ -205,7 +205,7 @@ class HarmonyDriver(BaseDeviceDriver):
             try:
                 driver.swipe_to_home()
             except:
-                driver.press_home(2)
+                driver.press_home()
             time.sleep(2)
 
             driver.stop_app(self.app_name)
@@ -320,23 +320,21 @@ class HarmonyDriver(BaseDeviceDriver):
                 if self._check_stop("close_popups"):
                     return False
 
-                try:
-                    elements = safe_find_components(By.textContains(keyword), 10)
-                    if elements:
-                        self._log(level='DEBUG',
-                                  content=f"Found popup with keyword '{keyword}' on HarmonyOS, trying to close...")
-                        for btn_text in close_buttons:
-                            try:
-                                btn = driver.find_component(By.text(btn_text))
-                                if btn and hasattr(btn, 'click'):
-                                    btn.click()
-                                    time.sleep(0.5)
-                                    break
-                            except Exception:
-                                continue
-                except Exception as e:
-                    self._log(level='DEBUG', content=f"Error checking keyword '{keyword}' on HarmonyOS: {e}")
+                elements = safe_find_components(By.text(keyword, MatchPattern.CONTAINS), 10)
+                if not elements:
                     continue
+                self._log(level='DEBUG',
+                          content=f"Found popup with keyword '{keyword}' on HarmonyOS, trying to close...")
+                for btn_text in close_buttons:
+                    try:
+                        btn = driver.find_component(By.text(btn_text))
+                        if btn and hasattr(btn, 'click'):
+                            btn.click()
+                            time.sleep(0.5)
+                            break
+                    except Exception as e:
+                        self._log(level='DEBUG', content=f"Error clicking button '{btn_text}' on HarmonyOS: {e}")
+                        continue
 
             self._log(level='INFO', content=f"Popup check completed for HarmonyOS device {device_sn}")
             return True

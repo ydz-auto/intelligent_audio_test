@@ -38,11 +38,13 @@
           v-for="dim in filteredDimensions"
           :key="dim.id"
           class="eval-chip"
-          :class="{ active: isDimSelected(dim) }"
+          :class="{ active: isDimSelected(dim), disabled: (dim as any).requiresAudio }"
+          :title="(dim as any).requiresAudio ? '该维度需要音频文件，不支持多轮聚合评估' : ''"
           @click="toggleDim(dim)"
         >
           <i :class="isDimSelected(dim) ? 'fas fa-check' : 'fas fa-plus'"></i>
           {{ dim.name }}
+          <i v-if="(dim as any).requiresAudio" class="fas fa-music" style="margin-left: 2px; font-size: 9px;"></i>
         </div>
       </div>
 
@@ -185,6 +187,10 @@ function isDimSelected(dim: Dimension): boolean {
 }
 
 function toggleDim(dim: Dimension) {
+  // 多轮聚合评估不支持需要音频文件的维度
+  if ((dim as any).requiresAudio) {
+    return
+  }
   const idx = localDimensions.value.findIndex(
     (d) => d.id === dim.id || d.name === dim.name
   )
@@ -391,6 +397,15 @@ watch(enabled, () => {
   border-color: #FF6A00;
   color: #FF6A00;
   font-weight: 600;
+}
+.eval-chip.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+.eval-chip.disabled:hover {
+  border-color: #E5E7EB;
+  color: #999;
 }
 .eval-chip i {
   font-size: 10px;
