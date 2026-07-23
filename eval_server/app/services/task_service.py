@@ -206,6 +206,12 @@ class TaskService:
             )
         elif task_type == 'xiaoyi_metrics':
             from .xiaoyi_metrics import calculate_xiaoyi_metrics
+            import json as _json
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                f"[xiaoyi_metrics] 调用接口: TaskService.calculate, task_type={task_type}, "
+                f"task_params={_json.dumps(task_params, ensure_ascii=False, default=str)}"
+            )
             return calculate_xiaoyi_metrics(task_params)
         else:
             raise ValueError(f"Unknown task type: {task_type}")

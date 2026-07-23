@@ -23,7 +23,7 @@ def calculate_xiaoyi_metrics(task_params):
 
     Args:
         task_params (dict): 包含以下字段
-            - record_path (str): wav 录音文件路径
+            - record_file (str): wav 录音文件路径
             - pause (list): 停顿区间数据
             - first_frame_ms (int|None): 录屏首帧时刻
             - end_ms (int|None): 音频结束时刻
@@ -39,9 +39,11 @@ def calculate_xiaoyi_metrics(task_params):
     import json as _json
     from ..utils.asr_adapator import call_modelscope_asr, parse_result
 
-    wav_path = task_params.get('record_path') or task_params.get('wav_path')
+    logger.info(f"[xiaoyi_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
+
+    wav_path = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path')
     if not wav_path:
-        raise ValueError("xiaoyi_metrics: 缺少 record_path 或 wav_path")
+        raise ValueError("xiaoyi_metrics: 缺少 record_file")
 
     # 1. 调一次 ASR，三个维度共享（不写文件，通过返回值传递）
     raw = call_modelscope_asr(wav_path)

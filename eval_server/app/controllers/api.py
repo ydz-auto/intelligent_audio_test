@@ -147,8 +147,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             if missing:
                 return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
     elif task_type == 'xiaoyi_metrics':
-        if not task_params.get('record_path'):
-            return error_response("Missing required field for xiaoyi_metrics: record_path", code=CODE_VALIDATION_ERROR)
+        if not task_params.get('record_file'):
+            return error_response("Missing required field for xiaoyi_metrics: record_file", code=CODE_VALIDATION_ERROR)
 
     if eval_task_id is None:
         eval_task_id = f"task_{uuid.uuid4().hex}"
