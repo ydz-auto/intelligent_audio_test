@@ -194,7 +194,6 @@
         </div>
         <div class="modal-body">
           <BatchAnnotationModal
-            :algorithm-options="algorithmOptionsForAnnotation"
             @close="showBatchAnnotationModal = false"
             @success="handleAnnotationSuccess"
           />
@@ -338,9 +337,7 @@ const {
   pathBasename: pathBasename,
   testCaseGeneratedCount,
   showTestCaseGeneratedTip,
-  goToTestCaseManager,
-  algorithmOptions: algorithmOptionsSrc,
-  fetchAlgorithmOptions
+  goToTestCaseManager
 } = useAudioImport();
 
 const { pendingAction, consumeAction } = useUploadState();
@@ -440,16 +437,8 @@ const formattedAudios = computed(() => {
 
 // 批量更新标注模态窗
 const showBatchAnnotationModal = ref(false);
-const algorithmOptionsForAnnotation = computed(() =>
-  (Array.isArray(algorithmOptionsSrc?.value) ? algorithmOptionsSrc.value : []).map(a => ({ value: a.value, label: a.name }))
-);
 
-const openBatchAnnotationModal = async () => {
-  try {
-    await fetchAlgorithmOptions();
-  } catch (e) {
-    // 获取算法选项失败，仍打开弹窗
-  }
+const openBatchAnnotationModal = () => {
   showBatchAnnotationModal.value = true;
 };
 
