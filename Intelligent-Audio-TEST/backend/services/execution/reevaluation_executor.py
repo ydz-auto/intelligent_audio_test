@@ -427,7 +427,7 @@ class ReevaluationExecutor:
                 config = test_case.config
                 config_rounds = config.get('rounds', [])
                 if config_rounds and isinstance(config_rounds[0], dict):
-                    algo_params = config_rounds[0].get('algorithmParams', {})
+                    algo_params = config_rounds[0].get('algorithm_params', {})
 
             full_case_params = {
                 'algorithm_type': algorithm_type,
@@ -468,7 +468,7 @@ class ReevaluationExecutor:
             # API: 逐轮评估
             for round_idx, round_data in enumerate(rounds):
                 evaluation = round_data.get('round_evaluation', {})
-                round_number = round_data.get('roundNumber', round_idx + 1) - 1
+                round_number = round_data.get('round_number', round_idx + 1) - 1
 
                 if not evaluation:
                     continue
@@ -478,7 +478,7 @@ class ReevaluationExecutor:
                     config = test_case.config
                     config_rounds = config.get('rounds', [])
                     if round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
-                        algo_params = config_rounds[round_idx].get('algorithmParams', {})
+                        algo_params = config_rounds[round_idx].get('algorithm_params', {})
 
                 full_case_params = {
                     'algorithm_type': algorithm_type,
@@ -550,13 +550,13 @@ class ReevaluationExecutor:
 
         test_case = db.session.get(TestCase, test_case_id)
 
-        # 从 rounds[0].algorithmParams 读取
+        # 从 rounds[0].algorithm_params 读取
         algo_params = {}
         if test_case and test_case.config:
             config = test_case.config
             rounds = config.get('rounds', [])
             if rounds and isinstance(rounds[0], dict):
-                algo_params = rounds[0].get('algorithmParams', {})
+                algo_params = rounds[0].get('algorithm_params', {})
 
         full_case_params = {
             'algorithm_type': algorithm_type,

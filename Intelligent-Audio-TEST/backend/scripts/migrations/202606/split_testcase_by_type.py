@@ -215,7 +215,7 @@ def migrate_data(conn):
         api_config = config.copy()
         api_config['audios'] = _split_audios(audios, 'api')
         api_config['dimensions'] = _split_dimensions(dimensions, 'api')
-        for e2e_key in ['background_noise']:
+        for e2e_key in ['background_noise', 'backgroundNoise']:
             api_config.pop(e2e_key, None)
 
         # --- 拆分 reference_params ---

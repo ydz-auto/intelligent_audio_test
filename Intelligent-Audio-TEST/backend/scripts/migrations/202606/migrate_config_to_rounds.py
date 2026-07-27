@@ -72,8 +72,8 @@ def build_round_from_old_config(config: dict, test_type: str) -> dict:
       rounds (旧的多轮配置)
     """
     round_item = {
-        'roundNumber': 1,
-        'inputType': 'text' if test_type == 'api' else 'audio',
+        'round_number': 1,
+        'input_type': 'text' if test_type == 'api' else 'audio',
     }
 
     # --- 音频配置 ---
@@ -83,15 +83,15 @@ def build_round_from_old_config(config: dict, test_type: str) -> dict:
         # E2E: 取第一个音频作为干声
         if test_type == 'e2e' and audios:
             first_audio = audios[0]
-            round_item['audioId'] = first_audio.get('audio_id') or first_audio.get('audioId', '')
+            round_item['audio_id'] = first_audio.get('audio_id') or first_audio.get('audioId', '')
 
     # --- 背景噪声 ---
     bg_noise = config.get('backgroundNoise') or config.get('background_noise')
     if bg_noise:
-        round_item['backgroundNoise'] = bg_noise
+        round_item['background_noise'] = bg_noise
 
     # --- 等待时间 ---
-    round_item['waitTime'] = 5
+    round_item['wait_time'] = 5
 
     # --- 评估维度（从旧 config.dimensions 移入 evaluation） ---
     dimensions = config.get('dimensions', [])
@@ -114,15 +114,15 @@ def build_round_from_old_config(config: dict, test_type: str) -> dict:
     if old_rounds and isinstance(old_rounds, list) and len(old_rounds) > 0:
         # 如果旧结构有多轮，这里只取第一轮的输入信息
         first_old = old_rounds[0]
-        round_item['inputType'] = first_old.get('inputType', round_item.get('inputType', 'text'))
-        if first_old.get('inputText'):
-            round_item['inputText'] = first_old['inputText']
-        if first_old.get('inputAudioId'):
-            round_item['inputAudioId'] = first_old['inputAudioId']
-        if first_old.get('audioId'):
-            round_item['audioId'] = first_old['audioId']
-        if first_old.get('waitTime'):
-            round_item['waitTime'] = first_old['waitTime']
+        round_item['input_type'] = first_old.get('input_type', first_old.get('inputType', round_item.get('input_type', 'text')))
+        if first_old.get('input_text') or first_old.get('inputText'):
+            round_item['input_text'] = first_old.get('input_text') or first_old.get('inputText')
+        if first_old.get('input_audio_id') or first_old.get('inputAudioId'):
+            round_item['input_audio_id'] = first_old.get('input_audio_id') or first_old.get('inputAudioId')
+        if first_old.get('audio_id') or first_old.get('audioId'):
+            round_item['audio_id'] = first_old.get('audio_id') or first_old.get('audioId')
+        if first_old.get('wait_time') or first_old.get('waitTime'):
+            round_item['wait_time'] = first_old.get('wait_time', first_old.get('waitTime', 5))
 
     return round_item
 
@@ -136,29 +136,29 @@ def build_rounds_from_old_rounds(old_rounds: list, config: dict, test_type: str)
     for i, old_round in enumerate(old_rounds):
         if not isinstance(old_round, dict):
             continue
-        
+
         round_item = {
-            'roundNumber': old_round.get('roundNumber', old_round.get('order', i + 1)),
-            'inputType': old_round.get('inputType', 'text' if test_type == 'api' else 'audio'),
-            'waitTime': old_round.get('waitTime', 5),
+            'round_number': old_round.get('round_number', old_round.get('roundNumber', old_round.get('order', i + 1))),
+            'input_type': old_round.get('input_type', old_round.get('inputType', 'text' if test_type == 'api' else 'audio')),
+            'wait_time': old_round.get('wait_time', old_round.get('waitTime', 5)),
         }
 
         # 输入
-        if old_round.get('inputText'):
-            round_item['inputText'] = old_round['inputText']
-        if old_round.get('inputAudioId'):
-            round_item['inputAudioId'] = old_round['inputAudioId']
-        if old_round.get('audioId'):
-            round_item['audioId'] = old_round['audioId']
+        if old_round.get('input_text') or old_round.get('inputText'):
+            round_item['input_text'] = old_round.get('input_text') or old_round.get('inputText')
+        if old_round.get('input_audio_id') or old_round.get('inputAudioId'):
+            round_item['input_audio_id'] = old_round.get('input_audio_id') or old_round.get('inputAudioId')
+        if old_round.get('audio_id') or old_round.get('audioId'):
+            round_item['audio_id'] = old_round.get('audio_id') or old_round.get('audioId')
 
         # 从顶层复制结构字段（旧设计中这些是用例级的）
         audios = config.get('audios', [])
         if audios:
             round_item['audios'] = audios
-        
+
         bg_noise = config.get('backgroundNoise') or config.get('background_noise')
         if bg_noise:
-            round_item['backgroundNoise'] = bg_noise
+            round_item['background_noise'] = bg_noise
 
         # 评估
         dimensions = config.get('dimensions', [])
@@ -202,48 +202,48 @@ def algorithm_params_to_list(algo_params) -> list:
     return []
 
 
-# 旧 config 顶层字段 → algorithmParams field_code 的映射
-# key: 旧 config 中的字段名, value: 新 algorithmParams 中的 field_code
+# 旧 config 顶层字段 → algorithm_params field_code 的映射
+# key: 旧 config 中的字段名, value: 新 algorithm_params 中的 field_code
 _LEGACY_FIELD_TO_ALGO_PARAM = {
-    'railDistance': 'railDistance',
-    'volumeLevel': 'volumeLevel',
-    'promptAudioId': 'promptAudioId',
+    'rail_distance': 'rail_distance',
+    'volume_level': 'volume_level',
+    'prompt_audio_id': 'prompt_audio_id',
 }
 
 
 def _migrate_legacy_fields_to_algo_params(config: dict) -> list:
     """
-    将旧 config 顶层的设备/能力字段转为 algorithmParams 列表项。
-    
+    将旧 config 顶层的设备/能力字段转为 algorithm_params 列表项。
+
     仅处理 case_algorithm_params 表中已定义的字段。
-    voiceprintRegistration 复合对象拆分为 voiceprintEnabled + voiceprintAudioId。
+    voiceprint_registration 复合对象拆分为 voiceprint_enabled + voiceprint_audio_id。
     """
     params = []
-    
+
     for old_field, field_code in _LEGACY_FIELD_TO_ALGO_PARAM.items():
         if old_field in config and config[old_field] is not None:
             params.append({'field_code': field_code, 'field_value': config[old_field]})
-    
-    # voiceprintRegistration 复合对象拆分
-    vp = config.get('voiceprintRegistration')
+
+    # voiceprint_registration 复合对象拆分
+    vp = config.get('voiceprint_registration') or config.get('voiceprintRegistration')
     if vp:
         if isinstance(vp, dict):
-            params.append({'field_code': 'voiceprintEnabled', 'field_value': True})
-            if vp.get('audioId') or vp.get('audio_id'):
-                params.append({'field_code': 'voiceprintAudioId', 'field_value': vp.get('audioId') or vp.get('audio_id')})
-            if vp.get('playbackDeviceId') or vp.get('playback_device_id'):
-                params.append({'field_code': 'voiceprintPlaybackDeviceId', 'field_value': vp.get('playbackDeviceId') or vp.get('playback_device_id')})
+            params.append({'field_code': 'voiceprint_enabled', 'field_value': True})
+            if vp.get('audio_id') or vp.get('audioId'):
+                params.append({'field_code': 'voiceprint_audio_id', 'field_value': vp.get('audio_id') or vp.get('audioId')})
+            if vp.get('playback_device_id') or vp.get('playbackDeviceId'):
+                params.append({'field_code': 'voiceprint_playback_device_id', 'field_value': vp.get('playback_device_id') or vp.get('playbackDeviceId')})
             if vp.get('spl'):
-                params.append({'field_code': 'voiceprintSpl', 'field_value': vp.get('spl')})
+                params.append({'field_code': 'voiceprint_spl', 'field_value': vp.get('spl')})
         else:
             # 简单布尔值场景
-            params.append({'field_code': 'voiceprintEnabled', 'field_value': vp})
-    
+            params.append({'field_code': 'voiceprint_enabled', 'field_value': vp})
+
     # interferers 干扰人列表
     interferers = config.get('interferers', [])
     if interferers:
         params.append({'field_code': 'interferers', 'field_value': interferers})
-    
+
     return params
 
 
@@ -307,7 +307,7 @@ def migrate(dry_run=False):
             # 按轮分组格式: [{round_number, params:[{field_code, field_value}]}]
             algo_params_col = []
             for rd in new_rounds:
-                rn = rd.get('roundNumber', 1)
+                rn = rd.get('round_number', 1)
                 algo_params_col.append({
                     'round_number': rn,
                     'params': [p.copy() for p in merged_algo_params]
@@ -326,7 +326,7 @@ def migrate(dry_run=False):
 
                 if ref_content and isinstance(ref_content, list) and len(ref_content) > 0:
                     for rd in new_rounds:
-                        rn = rd.get('roundNumber', 1)
+                        rn = rd.get('round_number', 1)
                         if not dry_run:
                             filepath = write_ref_file(case_id, rn, ref_content)
                             ref_params_col.append({

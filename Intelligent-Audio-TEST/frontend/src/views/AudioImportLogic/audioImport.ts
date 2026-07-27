@@ -32,10 +32,18 @@ export function useAudioImport() {
   // 上传完成后的用例生成提示
   const testCaseGeneratedCount = ref(0);
   const showTestCaseGeneratedTip = ref(false);
+  // 本次上传累加的真实用例数（后端 mergeChunks 返回 test_case_count）
+  let generatedTestCaseTotal = 0;
 
   const goToTestCaseManager = () => {
     showTestCaseGeneratedTip.value = false;
-    router.push('/test-cases');
+    // 按测试类型决定跳转：只有 e2e 去 E2ETest，否则去 TestCaseManager
+    const types = uploadOptions.testTypes || [];
+    if (types.length === 1 && types[0] === 'e2e') {
+      router.push('/E2ETest');
+    } else {
+      router.push('/TestCaseManager');
+    }
   };
   
   const audioList = ref<AudioInfo[]>([]);
@@ -1205,6 +1213,7 @@ export function useAudioImport() {
     uploadStatus.value = 'preparing';
     uploadProgress.value = 1;
     abortController = new AbortController();
+    generatedTestCaseTotal = 0;
 
     if (typeof window !== 'undefined') {
       await new Promise(resolve => requestAnimationFrame(resolve));
@@ -1388,7 +1397,7 @@ export function useAudioImport() {
             // 秒传时也需要调用 merge 来处理测试用例创建
             await processMergeForExistingFile(taskId, fileTask, effectiveOptions, testCaseConfig);
             fileTask.status = 'completed';
-            task.completedFiles = (task.completedFiles || 0) + 1;
+            // 秒传文件在 task 初始化时已计入 completedFiles，这里不重复 +1
             saveLocalTask(task);
           } catch (err) {
             console.error(`处理已存在文件失败 ${fileTask.name}:`, err);
@@ -1436,7 +1445,8 @@ export function useAudioImport() {
 
       // 如果生成了测试用例，显示提示
       if (uploadOptions.createTestCase && (task.failedFiles || 0) === 0) {
-        testCaseGeneratedCount.value = task.completedFiles || 0;
+        // 用后端返回的真实用例数，没有则回退到完成文件数
+        testCaseGeneratedCount.value = generatedTestCaseTotal > 0 ? generatedTestCaseTotal : (task.completedFiles || 0);
         showTestCaseGeneratedTip.value = true;
       }
 
@@ -1493,6 +1503,9 @@ export function useAudioImport() {
     }
 
     fileTask.audioId = mergeResponse.data?.audioId;
+    // 累加后端真实创建的用例数（后端返回驼峰 testCaseCount）
+    const cnt = mergeResponse.data?.testCaseCount ?? mergeResponse.data?.test_case_count;
+    if (typeof cnt === 'number' && cnt > 0) generatedTestCaseTotal += cnt;
     // 用秒传返回的真实 audioId 更新 tcConfig.rounds 里匹配 audio_name 的 audio_id
     // 这样最后一个文件 mergeChunks 时，前几个音频的 audio_id 已就绪
     if (tcConfig?.rounds && fileTask.audioId) {
@@ -1576,6 +1589,9 @@ export function useAudioImport() {
     }
 
     fileTask.audioId = mergeResponse.data?.audioId;
+    // 累加后端真实创建的用例数（后端返回驼峰 testCaseCount）
+    const cnt = mergeResponse.data?.testCaseCount ?? mergeResponse.data?.test_case_count;
+    if (typeof cnt === 'number' && cnt > 0) generatedTestCaseTotal += cnt;
     // 用 merge 返回的真实 audioId 更新 tcConfig.rounds 里匹配 audio_name 的 audio_id
     if (tcConfig?.rounds && fileTask.audioId) {
       const realName = mergeResponse.data?.name || fileTask.name;

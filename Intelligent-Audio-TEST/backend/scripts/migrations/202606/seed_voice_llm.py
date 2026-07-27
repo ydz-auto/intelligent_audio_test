@@ -89,13 +89,13 @@ def seed_voice_llm():
         # ============================================================
         print("\n=== Step 3: 注册 voice_llm 用例参数 (case_algorithm_params) ===")
 
-        # 清理 inputAudio（后端自动用音频 ID 填入，不需要作为用例参数定义）
+        # 清理 input_audio（后端自动用音频 ID 填入，不需要作为用例参数定义）
         deleted_inputAudio = conn.execute(text(
             "DELETE FROM case_algorithm_params "
-            "WHERE algorithm_type = 'voice_llm' AND param_code = 'inputAudio'"
+            "WHERE algorithm_type = 'voice_llm' AND param_code = 'input_audio'"
         )).rowcount
         if deleted_inputAudio:
-            print(f"  清理 {deleted_inputAudio} 条 inputAudio（后端自动填入，无需定义）")
+            print(f"  清理 {deleted_inputAudio} 条 input_audio（后端自动填入，无需定义）")
 
         case_params = [
             # (algo_type, param_code, param_name, label, param_type, scope,
@@ -105,7 +105,7 @@ def seed_voice_llm():
             #  annotation_code 默认=algorithm_type, field_path 默认=param_code
 
             # --- 通用参数（scope=common） ---
-            ('voice_llm', 'promptAudioId', 'Prompt 音频', 'Prompt 音频', 'audio_select', 'common',
+            ('voice_llm', 'prompt_audio_id', 'Prompt 音频', 'Prompt 音频', 'audio_select', 'common',
              False, None, '在干声播放之前播放的引导音频', 30, False, False,
              None, None, None, None,
              None, None),  # 不从标注提取
@@ -115,41 +115,51 @@ def seed_voice_llm():
              False, '[]', '干扰人配置列表，支持多路独立干扰', 20, False, False,
              None, None, None, None,
              None, None),  # 默认 annotation_code=voice_llm, field_path=interferers
-            ('voice_llm', 'railDistance', '导轨距离(cm)', '导轨距离', 'slider', 'e2e',
+            ('voice_llm', 'rail_distance', '导轨距离(cm)', '导轨距离', 'slider', 'e2e',
              False, None, '导轨距离，本轮结束后自动复位。不填则不控制导轨', 40, False, False,
              10, 200, 5, 'cm',
-             None, None),  # 默认 annotation_code=voice_llm, field_path=railDistance
-            ('voice_llm', 'volumeLevel', '被测设备音量', '设备音量', 'slider', 'e2e',
+             None, None),  # 默认 annotation_code=voice_llm, field_path=rail_distance
+            ('voice_llm', 'volume_level', '被测设备音量', '设备音量', 'slider', 'e2e',
              False, None, '被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量', 41, False, False,
              0, 100, 1, None,
-             None, None),  # 默认 annotation_code=voice_llm, field_path=volumeLevel
-            ('voice_llm', 'voiceprintEnabled', '声纹注册', '声纹注册', 'switch', 'e2e',
+             None, None),  # 默认 annotation_code=voice_llm, field_path=volume_level
+            ('voice_llm', 'voiceprint_enabled', '声纹注册', '声纹注册', 'switch', 'e2e',
              False, 'false', '是否在本轮播放声纹注册音频', 50, False, False,
              None, None, None, None,
              None, None),
-            ('voice_llm', 'voiceprintAudioId', '声纹注册音频', '声纹音频', 'audio_select', 'e2e',
+            ('voice_llm', 'voiceprint_audio_id', '声纹注册音频', '声纹音频', 'audio_select', 'e2e',
              False, None, '声纹注册音频文件', 51, False, False,
              None, None, None, None,
              None, None),
-            ('voice_llm', 'voiceprintPlaybackDeviceId', '声纹播放设备', '播放设备', 'device_select', 'e2e',
+            ('voice_llm', 'voiceprint_playback_device_id', '声纹播放设备', '播放设备', 'device_select', 'e2e',
              False, None, '声纹注册音频播放设备', 52, False, False,
              None, None, None, None,
              None, None),
-            ('voice_llm', 'voiceprintSpl', '声纹播放声压级', '声压级', 'number', 'e2e',
+            ('voice_llm', 'voiceprint_spl', '声纹播放声压级', '声压级', 'number', 'e2e',
              False, '70.0', '声纹注册音频播放声压级', 53, False, False,
              20, 100, 1, 'dB',
              None, None),
-            ('voice_llm', 'voiceprintWaitTime', '声纹等待时间(秒)', '等待时间', 'number', 'e2e',
+            ('voice_llm', 'voiceprint_wait_time', '声纹等待时间(秒)', '等待时间', 'number', 'e2e',
              False, '5.0', '声纹注册后等待时间', 54, False, False,
              0, 60, 1, 's',
              None, None),
 
+            # --- 结果收集模式参数（scope=e2e） ---
+            ('voice_llm', 'collect_per_round', '轮次内收集结果', '轮次内收集', 'switch', 'e2e',
+             False, 'true', '每轮结束后立即收集设备结果（默认开启）', 45, False, False,
+             None, None, None, None,
+             None, None),
+            ('voice_llm', 'collect_final', '最终收集结果', '最终收集', 'switch', 'e2e',
+             False, 'false', '所有轮次执行完毕后一次性收集未收集的轮次结果', 46, False, False,
+             None, None, None, None,
+             None, None),
+
             # --- API 专用参数（scope=api） ---
-            ('voice_llm', 'inputText', '输入文本', '输入文本', 'text', 'api',
+            ('voice_llm', 'input_text', '输入文本', '输入文本', 'text', 'api',
              False, None, '发送给 API 的文本内容（可与输入音频共存）', 70, False, False,
              None, None, None, None,
              None, 'query'),  # annotation_code 默认=voice_llm, field_path=query（标注 JSON 里字段名是 query）
-            # inputAudio 不作为用例参数定义，后端创建用例时自动用音频本身 ID 填入 algorithmParams
+            # input_audio 不作为用例参数定义，后端创建用例时自动用音频本身 ID 填入 algorithm_params
         ]
 
         inserted_count = 0

@@ -337,11 +337,11 @@ class APIExecutor(BaseExecutor):
             rounds = case_config.get('rounds', [])
             if rounds and isinstance(rounds[0], dict):
                 first_round = rounds[0]
-                ap_dict = first_round.get('algorithmParams', {})
+                ap_dict = first_round.get('algorithm_params', {})
                 if ap_dict and isinstance(ap_dict, dict):
                     case_config = case_config.copy()
                     case_config['algorithm_params'] = ap_dict
-                ref_path = first_round.get('referenceParamsPath')
+                ref_path = first_round.get('reference_params_path')
                 if ref_path:
                     ref_data = ReferenceParamsGenerator.load_from_file(ref_path)
                     if ref_data:
@@ -410,7 +410,7 @@ class APIExecutor(BaseExecutor):
             algorithm_params = {}
             rounds = case_config.get('rounds', [])
             if rounds and isinstance(rounds[0], dict):
-                ap_dict = rounds[0].get('algorithmParams', {})
+                ap_dict = rounds[0].get('algorithm_params', {})
                 if ap_dict and isinstance(ap_dict, dict):
                     algorithm_params = ap_dict
 

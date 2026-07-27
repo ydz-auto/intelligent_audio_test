@@ -7,16 +7,26 @@ from .utils import (
 )
 from .base_driver import BaseDeviceDriver
 from .android_driver import AndroidDriver
-from .harmony_driver import (
-    HarmonyDriver
-)
-from .harmony_translation_driver import (
-    HarmonyXiaoyiTranslationDriver,
-    XiaoyiFace2FaceDriver,
-    XiaoyiSimultaneousInterpretationDriver
-)
-from .harmony_xiaoyihuiji_driver import (
-    HarmonyHardenXiaoyiHuiJiDriver)
+
+# 鸿蒙驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
+# hypium 不可时跳过这些驱动，不影响其他功能
+try:
+    from .harmony_driver import (
+        HarmonyDriver
+    )
+    from .harmony_translation_driver import (
+        HarmonyXiaoyiTranslationDriver,
+        XiaoyiFace2FaceDriver,
+        XiaoyiSimultaneousInterpretationDriver
+    )
+    from .harmony_xiaoyihuiji_driver import (
+        HarmonyHardenXiaoyiHuiJiDriver)
+except ImportError:
+    HarmonyDriver = None
+    HarmonyXiaoyiTranslationDriver = None
+    XiaoyiFace2FaceDriver = None
+    XiaoyiSimultaneousInterpretationDriver = None
+    HarmonyHardenXiaoyiHuiJiDriver = None
 
 from .driver_factory import DeviceDriverFactory
 

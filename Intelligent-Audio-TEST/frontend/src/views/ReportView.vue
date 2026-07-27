@@ -1,10 +1,12 @@
 <template>
   <div class="report-view-page">
-    <!-- Toast 提示 -->
-    <div v-if="toast" class="toast-container" :class="`toast-${toast.type}`">
-      <i :class="toast.type === 'success' ? 'fas fa-check-circle' : toast.type === 'error' ? 'fas fa-exclamation-circle' : toast.type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'"></i>
-      <span>{{ toast.message }}</span>
-    </div>
+    <!-- Toast 提示：Teleport 到全局固定元素容器，避免被 .main-content 的 transform 截获 fixed 包含块导致随页面滚动 -->
+    <teleport to="#global-fixed-elements">
+      <div v-if="toast" class="toast-container" :class="`toast-${toast.type}`">
+        <i :class="toast.type === 'success' ? 'fas fa-check-circle' : toast.type === 'error' ? 'fas fa-exclamation-circle' : toast.type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'"></i>
+        <span>{{ toast.message }}</span>
+      </div>
+    </teleport>
 
 
     <div v-if="loading" class="loading-state">
@@ -217,18 +219,20 @@
       </div>
     </teleport>
 
-    <!-- 右侧浮动操作按钮 -->
-    <div class="floating-actions" v-if="report">
-      <button class="action-btn" @click="copyLink" title="分享链接">
-        <i class="fas fa-share-alt"></i>
-      </button>
-      <button class="action-btn" @click="exportReport" title="导出">
-        <i class="fas fa-download"></i>
-      </button>
-    </div>
-    <div v-if="copySuccess" class="copy-toast">
-      <i class="fas fa-check"></i> 链接已复制
-    </div>
+    <!-- 右侧浮动操作按钮：Teleport 到全局固定元素容器，避免被 .main-content 的 transform 截获 fixed 包含块导致随页面滚动 -->
+    <teleport to="#global-fixed-elements">
+      <div class="floating-actions" v-if="report">
+        <button class="action-btn" @click="copyLink" title="分享链接">
+          <i class="fas fa-share-alt"></i>
+        </button>
+        <button class="action-btn" @click="exportReport" title="导出">
+          <i class="fas fa-download"></i>
+        </button>
+      </div>
+      <div v-if="copySuccess" class="copy-toast">
+        <i class="fas fa-check"></i> 链接已复制
+      </div>
+    </teleport>
   </div>
 </template>
 

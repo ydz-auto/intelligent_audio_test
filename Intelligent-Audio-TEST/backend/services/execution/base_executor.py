@@ -583,27 +583,27 @@ class BaseExecutor:
             case_fields = field_mapper.get_case_fields(algorithm_type)
             
             # 从独立列读取算法参数（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
-            # 兼容旧数据：如果独立列为空，从 config.rounds[].algorithmParams 读取
+            # 兼容旧数据：如果独立列为空，从 config.rounds[].algorithm_params 读取
             from backend.utils.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
             algorithm_params_col = getattr(case, 'algorithm_params', None)
             
             # 把按轮分组的 algorithm_params 注入到每个 round_config 里（兼容下游读取）
-            # 下游 executor 仍用 round_config.get('algorithmParams') 读取
+            # 下游 executor 仍用 round_config.get('algorithm_params') 读取
             case_config = case_config.copy() if case_config else {}
             rounds = case_config.get('rounds', [])
             for round_item in rounds:
                 if isinstance(round_item, dict):
-                    rn = round_item.get('round_number') or round_item.get('roundNumber') or 1
+                    rn = round_item.get('round_number', 1)
                     # 优先从独立列按轮取
                     round_params = _get_round_algo_params(algorithm_params_col, rn)
                     if round_params:
-                        round_item['algorithmParams'] = round_params
-                    # 兼容旧数据：如果独立列没有，round 里已有的 algorithmParams 保持不变
-            
+                        round_item['algorithm_params'] = round_params
+                    # 兼容旧数据：如果独立列没有，round 里已有的 algorithm_params 保持不变
+
             # 第一轮算法参数（用于平面参数消费方）
             first_round = rounds[0] if rounds else {}
             case_algorithm_params = _normalize_algorithm_params(
-                first_round.get('algorithmParams', {}) if isinstance(first_round, dict) else {}
+                first_round.get('algorithm_params', {}) if isinstance(first_round, dict) else {}
             )
             
             # reference_params 从独立列读取（按轮分组路径），从文件加载内容
@@ -624,7 +624,7 @@ class BaseExecutor:
                 # 兼容旧数据：从 config.rounds[].reference_params_path 读取
                 for round_item in rounds:
                     if isinstance(round_item, dict):
-                        ref_path = round_item.get('reference_params_path') or round_item.get('referenceParamsPath')
+                        ref_path = round_item.get('reference_params_path')
                         if ref_path:
                             round_refs = ReferenceParamsGenerator.load_from_file(ref_path)
                             if round_refs:

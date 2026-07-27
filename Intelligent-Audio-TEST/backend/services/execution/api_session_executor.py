@@ -112,7 +112,7 @@ class APISessionExecutor:
                 continue
 
             self._executor._handle_control(task_id)
-            round_number = round_config.get('roundNumber', round_idx + 1)
+            round_number = round_config.get('round_number', round_idx + 1)
 
             self._executor.execution_engine.update_case_round_progress(
                 task_id, tc_rel_id, round_idx, len(rounds)
@@ -144,7 +144,7 @@ class APISessionExecutor:
                 self._log(level='ERROR', content=f"第 {round_number} 轮失败: {error_msg}",
                           task_id=task_id, api_id=api_config.id)
                 round_results.append(round_result or {
-                    'roundNumber': round_number, 'error': error_msg, 'success': False
+                    'round_number': round_number, 'error': error_msg, 'success': False
                 })
                 all_rounds_success = False
 
@@ -200,13 +200,13 @@ class APISessionExecutor:
     def _build_round_context(self, session, round_number, round_config, total_rounds,
                              case_algorithm_params, algorithm_type, audio=None, case_name=''):
         """构建单轮上下文"""
-        round_algo_params = round_config.get('algorithmParams', [])
+        round_algo_params = round_config.get('algorithm_params', [])
 
         input_text = ''
         for param in round_algo_params:
             fc = param.get('field_code', '')
             fv = param.get('field_value', '')
-            if fc == 'inputText':
+            if fc == 'input_text':
                 input_text = fv
 
         input_audio_path = self._get_round_audio_path(round_config)
@@ -237,11 +237,11 @@ class APISessionExecutor:
         audios = round_config.get('audios', [])
         if isinstance(audios, list) and audios:
             first_audio = audios[0] if isinstance(audios[0], dict) else {}
-            audio_id = first_audio.get('audio_id') or first_audio.get('audioId')
+            audio_id = first_audio.get('audio_id')
             if audio_id:
                 return self._query_audio_path(audio_id)
 
-        audio_id = round_config.get('audioId')
+        audio_id = round_config.get('audio_id')
         if audio_id:
             return self._query_audio_path(audio_id)
         return ''
@@ -288,7 +288,7 @@ class APISessionExecutor:
         timeout = session.session_timeout + 10
 
         input_text = context_data.get('input_text', '')
-        input_type = round_config.get('inputType', 'text')
+        input_type = round_config.get('input_type', 'text')
         start_time = time.time()
 
         try:
@@ -306,12 +306,12 @@ class APISessionExecutor:
         except http_requests.Timeout:
             latency = time.time() - start_time
             self._log('WARNING', f"Round {round_number} timeout ({session.session_timeout}s)", task_id=task_id)
-            return {'roundNumber': round_number, 'input': input_text, 'output': '',
+            return {'round_number': round_number, 'input': input_text, 'output': '',
                     'latency': round(latency, 3), 'error': 'timeout', 'success': False}
         except http_requests.RequestException as e:
             latency = time.time() - start_time
             self._log('ERROR', f"Round {round_number} failed: {e}", task_id=task_id)
-            return {'roundNumber': round_number, 'input': input_text, 'output': '',
+            return {'round_number': round_number, 'input': input_text, 'output': '',
                     'latency': round(latency, 3), 'error': str(e), 'success': False}
 
     def _send_via_adapter(self, task_id, algorithm_type, session, round_number, total_rounds,
@@ -346,7 +346,7 @@ class APISessionExecutor:
         output_text = task_result.get('output_content', task_result.get('output', ''))
 
         return {
-            'roundNumber': round_number, 'input': input_text, 'inputType': input_type,
+            'round_number': round_number, 'input': input_text, 'input_type': input_type,
             'output': output_text, 'output_audio_path': task_result.get('output_audio_path'),
             'latency': round(latency, 3), 'response_metrics': task_result.get('response_metrics', {}),
             'success': True, 'raw_response': task_result
@@ -374,7 +374,7 @@ class APISessionExecutor:
         output_text = task_result.get('output_content', task_result.get('output', ''))
 
         return {
-            'roundNumber': round_number, 'input': input_text, 'inputType': input_type,
+            'round_number': round_number, 'input': input_text, 'input_type': input_type,
             'output': output_text, 'latency': round(latency, 3),
             'success': True, 'raw_response': task_result
         }

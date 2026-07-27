@@ -1,15 +1,28 @@
 from .android_driver import AndroidDriver
 from .android_plaud import PlaudDriver
 from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
-from .harmony_driver import HarmonyDriver
-from .harmony_translation_driver import (
-    XiaoyiFace2FaceDriver,
-    XiaoyiSimultaneousInterpretationDriver
-)
-from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
-from .harmony_xiaoyichat import Xiaoyilivechat
-from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
 from .utils import log_and_emit
+
+# 鸿蒙驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
+# hypium 不可时跳过这些驱动，不影响其他功能
+try:
+    from .harmony_driver import HarmonyDriver
+    from .harmony_translation_driver import (
+        XiaoyiFace2FaceDriver,
+        XiaoyiSimultaneousInterpretationDriver
+    )
+    from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
+    from .harmony_xiaoyichat import Xiaoyilivechat
+    from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
+    _HYPium_AVAILABLE = True
+except ImportError:
+    HarmonyDriver = None
+    XiaoyiFace2FaceDriver = None
+    XiaoyiSimultaneousInterpretationDriver = None
+    HarmonyHardenXiaoyiHuiJiDriver = None
+    Xiaoyilivechat = None
+    HarmonyHardenXiaoyi_Input_MethodDriver = None
+    _HYPium_AVAILABLE = False
 
 
 class DeviceDriverFactory:
@@ -26,8 +39,10 @@ class DeviceDriverFactory:
 
         self._base_drivers = {
             'Android': AndroidDriver(),
-            'HarmonyOS': HarmonyDriver()
         }
+        # 鸿蒙基础驱动仅在 hypium 可用时注册
+        if _HYPium_AVAILABLE and HarmonyDriver is not None:
+            self._base_drivers['HarmonyOS'] = HarmonyDriver()
 
         self._specialized_drivers = []
         self._task_device_map = {}  # task_id -> [device_sn, ...]
@@ -74,40 +89,42 @@ class DeviceDriverFactory:
             'Plaud AI 录音专用驱动'
         )
 
-        self.register_specialized_driver(
-            XiaoyiFace2FaceDriver(),
-            ['face2face', '面对面', 'face'],
-            'HarmonyOS',
-            '小艺面对面翻译专用驱动'
-        )
+        # 鸿蒙专用驱动仅在 hypium 可用时注册
+        if _HYPium_AVAILABLE:
+            self.register_specialized_driver(
+                XiaoyiFace2FaceDriver(),
+                ['face2face', '面对面', 'face'],
+                'HarmonyOS',
+                '小艺面对面翻译专用驱动'
+            )
 
-        self.register_specialized_driver(
-            XiaoyiSimultaneousInterpretationDriver(),
-            ['simultaneous', '同传', 'interpretation'],
-            'HarmonyOS',
-            '小艺同传专用驱动'
-        )
+            self.register_specialized_driver(
+                XiaoyiSimultaneousInterpretationDriver(),
+                ['simultaneous', '同传', 'interpretation'],
+                'HarmonyOS',
+                '小艺同传专用驱动'
+            )
 
-        self.register_specialized_driver(
-            HarmonyHardenXiaoyiHuiJiDriver(),
-            ['harden', 'huiji', '慧记'],
-            'HarmonyOS',
-            '鸿蒙harden小艺慧记专用驱动'
-        )
+            self.register_specialized_driver(
+                HarmonyHardenXiaoyiHuiJiDriver(),
+                ['harden', 'huiji', '慧记'],
+                'HarmonyOS',
+                '鸿蒙harden小艺慧记专用驱动'
+            )
 
-        self.register_specialized_driver(
-            Xiaoyilivechat(),
-            ['xiaoyilivechat', '小艺通话', 'livechat'],
-            'HarmonyOS',
-            '小艺通话聊天专用驱动'
-        )
+            self.register_specialized_driver(
+                Xiaoyilivechat(),
+                ['xiaoyilivechat', '小艺通话', 'livechat'],
+                'HarmonyOS',
+                '小艺通话聊天专用驱动'
+            )
 
-        self.register_specialized_driver(
-            HarmonyHardenXiaoyi_Input_MethodDriver(),
-            ['input_method', '输入法', 'asr'],
-            'HarmonyOS',
-            '鸿蒙小艺输入法ASR专用驱动'
-        )
+            self.register_specialized_driver(
+                HarmonyHardenXiaoyi_Input_MethodDriver(),
+                ['input_method', '输入法', 'asr'],
+                'HarmonyOS',
+                '鸿蒙小艺输入法ASR专用驱动'
+            )
 
         self.register_specialized_driver(
             DouBaoAndroidAsrDriver(),

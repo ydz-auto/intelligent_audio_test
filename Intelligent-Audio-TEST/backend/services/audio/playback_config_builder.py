@@ -87,15 +87,14 @@ def build_noise_info(round_config, case_config):
     from backend.models import db
     from backend.models.models import Audio, PlaybackDevice
 
-    # 兼容 camelCase / snake_case，兼容 round 级 / case 级
-    bg_noise = round_config.get('backgroundNoise') or round_config.get('background_noise') or {}
+    # 兼容 round 级 / case 级
+    bg_noise = round_config.get('background_noise') or {}
     if not bg_noise and case_config:
-        bg_noise = (case_config.get('background_noise')
-                    or case_config.get('backgroundNoise') or {})
+        bg_noise = case_config.get('background_noise') or {}
 
     noise_audio = None
     noise_spl = 0
-    audio_id = bg_noise.get('audio_id') or bg_noise.get('audioId')
+    audio_id = bg_noise.get('audio_id')
     if audio_id:
         try:
             noise_audio = db.session.get(Audio, audio_id)
@@ -103,7 +102,7 @@ def build_noise_info(round_config, case_config):
             noise_audio = None
         noise_spl = bg_noise.get('spl', 0)
 
-    device_ids = bg_noise.get('device_ids') or bg_noise.get('deviceIds') or []
+    device_ids = bg_noise.get('device_ids') or []
     noise_devices = []
     for did in device_ids:
         dev = None
@@ -296,25 +295,25 @@ def build_interferer_configs(task_id, interferer_config, audio_service):
             continue
 
         # 兼容两种存储结构：
-        # - 嵌套（前端 syncStructuredFields 生成）：{audio:{id,name}, device:{id}, startDelay, ...}
+        # - 嵌套（前端 syncStructuredFields 生成）：{audio:{id,name}, device:{id}, start_delay, ...}
         # - 扁平（algorithm_params 独立列原样存储）：{audio_id, audio_name, playback_device_id, start_delay, ...}
         audio_info = interferer.get('audio')
         device_cfg = interferer.get('device')
         if not audio_info:
-            _aid = interferer.get('audio_id') or interferer.get('audioId')
+            _aid = interferer.get('audio_id')
             if _aid:
                 audio_info = {
                     'id': _aid,
-                    'name': interferer.get('audio_name') or interferer.get('audioName') or '',
+                    'name': interferer.get('audio_name') or '',
                 }
         if not device_cfg:
-            _did = interferer.get('playback_device_id') or interferer.get('playbackDeviceId')
+            _did = interferer.get('playback_device_id')
             if _did:
                 device_cfg = {'id': _did}
 
         spl = interferer.get('spl')
-        # startDelay 兼容：嵌套结构里是毫秒，扁平结构里是秒
-        start_delay_raw = interferer.get('startDelay', interferer.get('start_delay', 0))
+        # start_delay 兼容：嵌套结构里是毫秒，扁平结构里是秒
+        start_delay_raw = interferer.get('start_delay', 0)
         loop = interferer.get('loop', False)
 
         if not audio_info or not device_cfg:

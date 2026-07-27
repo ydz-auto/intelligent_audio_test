@@ -164,24 +164,26 @@
       @close="showAudioPlayerModal = false"
     />
 
-    <!-- 用例生成提示 -->
-    <div v-if="showTestCaseGeneratedTip" class="test-case-generated-tip">
-      <div class="tip-content">
-        <i class="fas fa-check-circle tip-icon"></i>
-        <div class="tip-text">
-          <span class="tip-title">已生成 {{ testCaseGeneratedCount }} 个草稿用例</span>
-          <span class="tip-desc">用例参数（播放设备、声压级、噪声等）请在用例管理页面完善</span>
-        </div>
-        <div class="tip-actions">
-          <button class="btn btn-primary btn-sm" @click="goToTestCaseManager">
-            <i class="fas fa-edit"></i> 去编辑
-          </button>
-          <button class="btn btn-text btn-sm" @click="showTestCaseGeneratedTip = false">
-            稍后
-          </button>
+    <!-- 用例生成提示：Teleport 到 body，避免被 .main-content 的 transform 截获 fixed 包含块导致随页面滚动 -->
+    <Teleport to="body">
+      <div v-if="showTestCaseGeneratedTip" class="test-case-generated-tip">
+        <div class="tip-content">
+          <i class="fas fa-check-circle tip-icon"></i>
+          <div class="tip-text">
+            <span class="tip-title">已生成 {{ testCaseGeneratedCount }} 个草稿用例</span>
+            <span class="tip-desc">用例参数（播放设备、声压级、噪声等）请在用例管理页面完善</span>
+          </div>
+          <div class="tip-actions">
+            <button class="btn btn-primary btn-sm" @click="goToTestCaseManager">
+              <i class="fas fa-edit"></i> 去编辑
+            </button>
+            <button class="btn btn-text btn-sm" @click="showTestCaseGeneratedTip = false">
+              稍后
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- 批量更新标注模态窗 -->
     <div class="modal-overlay" v-if="showBatchAnnotationModal" style="opacity: 1 !important; visibility: visible !important; pointer-events: auto !important; display: flex !important;">

@@ -205,7 +205,7 @@ class E2EDeviceManager:
         from backend.utils.env_device import EnvDeviceFactory
 
         _ENV_DEVICE_PARAM_MAP = {
-            'railDistance': ('rail', lambda v: {'distance_cm': float(v)}),
+            'rail_distance': ('rail', lambda v: {'distance_cm': float(v)}),
         }
 
         env_states = []

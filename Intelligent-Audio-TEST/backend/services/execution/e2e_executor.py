@@ -9,7 +9,6 @@ from backend.services.execution.e2e_device_manager import E2EDeviceManager
 from backend.services.execution.e2e_collector import E2ECollector
 from backend.services.execution.e2e_aggregator import E2EAggregator
 
-E2E_RESULT_COLLECTION_WAIT_TIME = float(os.environ.get('E2E_RESULT_COLLECTION_WAIT_TIME', '3.0'))
 
 
 class E2EExecutor(BaseExecutor):
@@ -184,14 +183,14 @@ class E2EExecutor(BaseExecutor):
 
         first_round_algo_params = {}
         if rounds and isinstance(rounds[0], dict):
-            first_round_algo_params = _normalize_algorithm_params(rounds[0].get('algorithmParams', []))
+            first_round_algo_params = _normalize_algorithm_params(rounds[0].get('algorithm_params', []))
 
         voiceprint_config = {
-            'enabled': first_round_algo_params.get('voiceprintEnabled', False),
-            'audio_id': first_round_algo_params.get('voiceprintAudioId'),
-            'playback_device_id': first_round_algo_params.get('voiceprintPlaybackDeviceId'),
-            'spl': first_round_algo_params.get('voiceprintSpl', 70.0),
-            'wait_time': first_round_algo_params.get('voiceprintWaitTime', 5.0),
+            'enabled': first_round_algo_params.get('voiceprint_enabled', False),
+            'audio_id': first_round_algo_params.get('voiceprint_audio_id'),
+            'playback_device_id': first_round_algo_params.get('voiceprint_playback_device_id'),
+            'spl': first_round_algo_params.get('voiceprint_spl', 70.0),
+            'wait_time': first_round_algo_params.get('voiceprint_wait_time', 5.0),
         }
         if voiceprint_config.get('enabled'):
             if not playback_orchestrator.play_voiceprint(voiceprint_config, task_id):
@@ -216,7 +215,7 @@ class E2EExecutor(BaseExecutor):
             if not isinstance(round_config, dict):
                 continue
 
-            round_number = round_config.get('roundNumber', round_idx + 1)
+            round_number = round_config.get('round_number', round_idx + 1)
             self.execution_engine.update_case_round_progress(task_id, tc_rel_id, round_idx, len(rounds))
             self._log(level='INFO', content=f"执行第 {round_number} 轮", task_id=task_id, test_case_id=test_case_id)
 
@@ -245,7 +244,7 @@ class E2EExecutor(BaseExecutor):
                               round_idx, round_config, round_number, rounds_data):
         """执行单轮：环境设置 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
         from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
-        round_algo_params = _normalize_algorithm_params(round_config.get('algorithmParams', []))
+        round_algo_params = _normalize_algorithm_params(round_config.get('algorithm_params', []))
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
         self._device_manager.pre_process_devices(
@@ -296,7 +295,6 @@ class E2EExecutor(BaseExecutor):
             device_info_list, task_id, test_case_id=test_case_id,
             extra_params=post_extra_params,
         )
-        time.sleep(E2E_RESULT_COLLECTION_WAIT_TIME)
 
         # 采集结果
         collect_result = self._collector.collect_results(

@@ -16,6 +16,7 @@ except Exception as e:
     log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import hypium: {e}")
     UiDriver = None
     By = None
+    MatchPattern = None
 
 try:
     import uiautomator2 as u2

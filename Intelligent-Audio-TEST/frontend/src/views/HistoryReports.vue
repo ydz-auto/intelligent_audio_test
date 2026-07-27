@@ -1,10 +1,12 @@
 <template>
   <div class="history-reports-view">
-    <!-- Toast 提示 -->
-    <div v-if="toast" class="toast-container" :class="`toast-${toast.type}`">
-      <i :class="toast.type === 'success' ? 'fas fa-check-circle' : toast.type === 'error' ? 'fas fa-exclamation-circle' : toast.type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'"></i>
-      <span>{{ toast.message }}</span>
-    </div>
+    <!-- Toast 提示：Teleport 到全局固定元素容器，避免被 .main-content 的 transform 截获 fixed 包含块导致随页面滚动 -->
+    <teleport to="#global-fixed-elements">
+      <div v-if="toast" class="toast-container" :class="`toast-${toast.type}`">
+        <i :class="toast.type === 'success' ? 'fas fa-check-circle' : toast.type === 'error' ? 'fas fa-exclamation-circle' : toast.type === 'warning' ? 'fas fa-exclamation-triangle' : 'fas fa-info-circle'"></i>
+        <span>{{ toast.message }}</span>
+      </div>
+    </teleport>
     
     <!-- 页面标题 -->
     <div class="page-header">

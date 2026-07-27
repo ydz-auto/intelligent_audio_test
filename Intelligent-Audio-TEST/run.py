@@ -14,11 +14,11 @@ shutdown_requested = False
 def signal_handler(signum, frame):
     global shutdown_requested
     if shutdown_requested:
-        print("\n⚠️  正在强制退出...")
+        print("\n[WARN] 正在强制退出...")
         os._exit(1)
-    
+
     shutdown_requested = True
-    print(f"\n🛑 收到信号 {signum}，正在关闭所有正在运行的任务...")
+    print(f"\n[INFO] 收到信号 {signum}，正在关闭所有正在运行的任务...")
     
     stopped_count = 0
     
@@ -67,7 +67,7 @@ def signal_handler(signum, frame):
     except Exception:
         pass
     
-    print("✅ 所有任务已停止，程序即将退出")
+    print("[OK] 所有任务已停止，程序即将退出")
 
 signal.signal(signal.SIGINT, signal_handler)
 signal.signal(signal.SIGTERM, signal_handler)

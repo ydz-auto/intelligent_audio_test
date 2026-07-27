@@ -1155,7 +1155,7 @@ class AudioController:
                             validated.annotations,
                             algorithm_type,
                         )
-                        test_case_id = AudioController._create_test_case_from_audio(
+                        tc_ids = AudioController._create_test_case_from_audio(
                             existing_audio.id,
                             test_types,
                             audio_tags,
@@ -1171,16 +1171,17 @@ class AudioController:
                             inherit_tags=tc_inherit_tags,
                             raw_annotations=raw_annotations_data,
                         )
-                        
+
                         # 提交测试用例创建
                         db.session.commit()
-                        
+
                         return success_response({
                             "file_id": file_id,
                             "audio_id": existing_audio.id,
                             "name": existing_audio.name,
                             "status": "completed",
-                            "test_case_id": test_case_id,
+                            "test_case_id": tc_ids[0] if tc_ids else None,
+                            "test_case_count": len(tc_ids) if isinstance(tc_ids, list) else (1 if tc_ids else 0),
                             "instant_upload": True
                         }, "秒传成功，测试用例已创建")
                     else:
@@ -1381,8 +1382,9 @@ class AudioController:
             
             # 如果需要创建测试用例
             created_test_case_id = None
+            created_test_case_count = 0
             if create_test_case:
-                created_test_case_id = AudioController._create_test_case_from_audio(
+                tc_ids = AudioController._create_test_case_from_audio(
                     new_audio.id,
                     test_types,
                     audio_tags,
@@ -1398,13 +1400,19 @@ class AudioController:
                     inherit_tags=tc_inherit_tags,
                     raw_annotations=raw_annotations_data or None,
                 )
-            
+                if isinstance(tc_ids, list):
+                    created_test_case_id = tc_ids[0] if tc_ids else None
+                    created_test_case_count = len(tc_ids)
+                else:
+                    created_test_case_id = tc_ids
+                    created_test_case_count = 1 if tc_ids else 0
+
             # 最终统一提交所有数据库变更
             db.session.commit()
-            
+
             # 清理临时分片文件
             safe_rmtree(chunk_dir)
-            
+
             # 返回结果
             response_data = {
                 "file_id": file_id,
@@ -1412,10 +1420,11 @@ class AudioController:
                 "name": new_audio.name,
                 "status": "completed"
             }
-            
+
             if created_test_case_id:
                 response_data["test_case_id"] = created_test_case_id
-            
+                response_data["test_case_count"] = created_test_case_count
+
             return success_response(response_data, "文件合并成功")
         except Exception as e:
             db.session.rollback()
@@ -2078,7 +2087,8 @@ class AudioController:
 
             # 不在这里 commit，交给调用者统一提交
             db.session.flush()
-            return created_tc_ids[0] if created_tc_ids else None
+            # 返回完整列表，调用方可获取真实创建用例数
+            return created_tc_ids
 
     # URL 远程导入
     @staticmethod

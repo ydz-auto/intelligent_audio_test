@@ -2,8 +2,8 @@ import subprocess
 import os
 import time
 
-PGSQL_BIN = r"C:\S2TT\environment\pgsql\bin"
-PGSQL_DATA = r"C:\S2TT\environment\pgsql\data"
+PGSQL_BIN = r"D:\00_env\postgresql-16.8-1-windows-x64-binaries\pgsql\bin"
+PGSQL_DATA = r"D:\00_env\postgresql-16.8-1-windows-x64-binaries\pgsql\data"
 PGSQL_PORT = 5432
 
 def is_postgres_running():

@@ -4,7 +4,10 @@ import re
 import time
 import subprocess
 
-from hypium import MatchPattern
+try:
+    from hypium import MatchPattern
+except ImportError:
+    MatchPattern = None
 
 from config.config import Config
 from .android_driver import AndroidDriver

@@ -161,9 +161,9 @@ def step1_restore_columns(engine, dry_run=False):
 # ========================================================================
 
 def step2_extract_from_rounds(engine, dry_run=False):
-    """从 config.rounds[] 中剥离 algorithmParams / referenceParamsPath 到独立列"""
+    """从 config.rounds[] 中剥离 algorithm_params / reference_params_path 到独立列"""
     print("\n" + "=" * 60)
-    print("Step 2: 从 config.rounds[] 剥离 algorithmParams / referenceParamsPath")
+    print("Step 2: 从 config.rounds[] 剥离 algorithm_params / reference_params_path")
     print("=" * 60)
 
     with engine.connect() as conn:
@@ -208,7 +208,7 @@ def step2_extract_from_rounds(engine, dry_run=False):
                 or 1
             )
 
-            # 剥离 algorithmParams
+            # 剥离 algorithm_params
             round_ap = (
                 round_item.pop('algorithm_params', None)
                 or round_item.pop('algorithmParams', None)
@@ -246,7 +246,7 @@ def step2_extract_from_rounds(engine, dry_run=False):
                         })
                 config_changed = True
 
-            # 剥离 referenceParamsPath
+            # 剥离 reference_params_path
             ref_path = (
                 round_item.pop('reference_params_path', None)
                 or round_item.pop('referenceParamsPath', None)
@@ -274,7 +274,7 @@ def step2_extract_from_rounds(engine, dry_run=False):
         if dry_run:
             print(f"  [DRY-RUN] {case_id}:")
             if config_changed:
-                print(f"    config: 移除 rounds 中的 algorithmParams/referenceParamsPath")
+                print(f"    config: 移除 rounds 中的 algorithm_params/reference_params_path")
             if algo_params_col and not existing_algo:
                 print(f"    algorithm_params 列: {len(algo_params_col)} 轮")
             if ref_params_col and not existing_ref:
@@ -399,7 +399,7 @@ def step3_fix_ref_paths(engine, dry_run=False):
 # ========================================================================
 
 def step4_clean_config_rounds(engine, dry_run=False):
-    """清理 config.rounds[] 中残留的 algorithmParams / referenceParamsPath"""
+    """清理 config.rounds[] 中残留的 algorithm_params / reference_params_path"""
     print("\n" + "=" * 60)
     print("Step 4: 清理 config.rounds[] 残留字段")
     print("=" * 60)
