@@ -14,8 +14,6 @@ from shared.utils.query_utils import now_cst
 from sqlalchemy import func, or_
 from flask_socketio import emit, join_room, leave_room
 
-from shared.config.config import Config
-
 
 class LogFilterRegistry:
     """

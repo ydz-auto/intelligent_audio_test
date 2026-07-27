@@ -66,4 +66,7 @@ def create_app(config_name='default'):
 
 if __name__ == '__main__':
     app = create_app()
+    # 启动 gRPC server，与 Flask 服务并存
+    from task_service.grpc.server import start_grpc_server
+    grpc_server = start_grpc_server(port=int(os.environ.get('GRPC_PORT', 50061)))
     app.run(host='0.0.0.0', port=5001, debug=False)
