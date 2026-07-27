@@ -7,19 +7,20 @@ import json
 import uuid
 import time
 import threading
-import os
+
+from shared.infrastructure.config import BaseConfig
 
 class RedisServiceRegistry:
     """Redis 服务注册中心"""
     _instance = None
     _lock = threading.Lock()
-    
+
     def __new__(cls, redis_url=None):
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    redis_url = redis_url or os.environ.get('REDIS_URL', 'redis://localhost:6379')
+                    redis_url = redis_url or BaseConfig.REDIS_URL
                     cls._instance.redis_client = redis.from_url(redis_url)
                     cls._instance.ttl = 15
                     cls._instance._heartbeat_thread = None

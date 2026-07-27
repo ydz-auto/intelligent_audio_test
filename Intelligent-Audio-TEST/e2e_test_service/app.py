@@ -14,16 +14,15 @@ sys.path.insert(0, project_dir)
 from shared.models.database import init_db
 from shared.utils.service_registry import RedisServiceRegistry
 from e2e_test_service.core.e2e_service import e2e_service
+from e2e_test_service.config.config import Config
 
 app = None
 
 def create_app(config_name='default'):
     global app
+    Config.validate()  # 启动前校验必填环境变量
     app = Flask(__name__)
-    DATABASE_URL = os.environ.get('DATABASE_URL')
-    if not DATABASE_URL:
-        raise RuntimeError('未配置 DATABASE_URL 环境变量')
-    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+    app.config['SQLALCHEMY_DATABASE_URI'] = Config.DATABASE_URL
     init_db(app, pool_size=5)
     e2e_service.init_app(app)
 
@@ -54,11 +53,11 @@ def create_app(config_name='default'):
     def internal_task_status(task_id):
         return e2e_service.get_task_status(task_id)
     
-    lab_name = os.environ.get('LAB_NAME', 'lab-a')
+    lab_name = Config.LAB_NAME
     registry = RedisServiceRegistry()
-    registry.register('e2e_test_service', 
-                      os.environ.get('SERVICE_HOST', '0.0.0.0'), 5002,
-                      grpc_port=50051,
+    registry.register('e2e_test_service',
+                      Config.SERVICE_HOST, Config.PORT,
+                      grpc_port=Config.GRPC_PORT,
                       capabilities={'labs': [lab_name]})
     
     return app
@@ -67,5 +66,5 @@ if __name__ == '__main__':
     app = create_app()
     # 启动 gRPC server，与 Flask 服务并存
     from e2e_test_service.grpc.server import start_grpc_server
-    grpc_server = start_grpc_server(port=int(os.environ.get('GRPC_PORT', 50051)))
+    grpc_server = start_grpc_server(port=Config.GRPC_PORT)
     app.run(host='0.0.0.0', port=5002, debug=False)

@@ -4,13 +4,14 @@
 - e2e_test_service gRPC server（端口 50051）：AudioService / DeviceService / PlaybackService / DeviceResultService / EnvDeviceService
 - task_service gRPC server（端口 50061）：ExecutionService
 """
-import os
 import grpc
 from functools import lru_cache
 
+from shared.infrastructure.config import BaseConfig
+
 # 服务地址
-E2E_GRPC_ADDR = f"{os.environ.get('E2E_TEST_SERVICE_HOST', 'localhost')}:{os.environ.get('E2E_TEST_SERVICE_GRPC_PORT', '50051')}"
-TASK_GRPC_ADDR = f"{os.environ.get('TASK_SERVICE_HOST', 'localhost')}:{os.environ.get('TASK_SERVICE_GRPC_PORT', '50061')}"
+E2E_GRPC_ADDR = f"{BaseConfig.E2E_TEST_SERVICE_HOST}:{BaseConfig.E2E_TEST_SERVICE_GRPC_PORT}"
+TASK_GRPC_ADDR = f"{BaseConfig.TASK_SERVICE_HOST}:{BaseConfig.TASK_SERVICE_GRPC_PORT}"
 
 
 @lru_cache(maxsize=1)

@@ -1,14 +1,15 @@
 """
 数据库初始化模块 - 共享层
 """
-import os
 from flask_sqlalchemy import SQLAlchemy
+
+from shared.infrastructure.config import BaseConfig
 
 db = SQLAlchemy()
 
 def init_db(app, pool_size=10):
     """初始化数据库连接池"""
-    uri = app.config.get('SQLALCHEMY_DATABASE_URI') or os.environ.get('DATABASE_URL')
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI') or BaseConfig.DATABASE_URL
     if not uri:
         raise RuntimeError('未配置 DATABASE_URL 或 SQLALCHEMY_DATABASE_URI 环境变量')
     app.config['SQLALCHEMY_DATABASE_URI'] = uri

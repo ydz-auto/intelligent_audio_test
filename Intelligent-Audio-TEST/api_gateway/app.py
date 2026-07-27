@@ -14,17 +14,16 @@ sys.path.insert(0, project_dir)
 
 from shared.models.database import init_db
 from shared.utils.service_registry import RedisServiceRegistry
+from api_gateway.config.config import Config
 
 app = None
 socketio = None
 
 def create_app(config_name='default'):
     global app, socketio
+    Config.validate()  # 启动前校验必填环境变量
     app = Flask(__name__)
-    DATABASE_URL = os.environ.get('DATABASE_URL')
-    if not DATABASE_URL:
-        raise RuntimeError('未配置 DATABASE_URL 环境变量')
-    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
+    app.config['SQLALCHEMY_DATABASE_URI'] = Config.DATABASE_URL
 
     init_db(app, pool_size=5)
     
@@ -83,7 +82,7 @@ def create_app(config_name='default'):
     
     # 服务注册
     registry = RedisServiceRegistry()
-    registry.register('api_gateway', os.environ.get('SERVICE_HOST', '0.0.0.0'), 5000)
+    registry.register('api_gateway', Config.SERVICE_HOST, Config.PORT)
     
     return app, socketio
 

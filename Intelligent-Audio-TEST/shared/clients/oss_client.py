@@ -16,6 +16,8 @@ import boto3
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
+from shared.infrastructure.config import BaseConfig
+
 
 class OSSClient:
     """
@@ -41,9 +43,9 @@ class OSSClient:
         return cls._instance
 
     def _init(self):
-        endpoint = os.environ.get('OSS_ENDPOINT', 'http://localhost:9000')
-        access_key = os.environ.get('OSS_ACCESS_KEY')
-        secret_key = os.environ.get('OSS_SECRET_KEY')
+        endpoint = BaseConfig.OSS_ENDPOINT
+        access_key = BaseConfig.OSS_ACCESS_KEY
+        secret_key = BaseConfig.OSS_SECRET_KEY
         if not access_key or not secret_key:
             raise RuntimeError('未配置 OSS_ACCESS_KEY 或 OSS_SECRET_KEY 环境变量')
 
@@ -57,17 +59,17 @@ class OSSClient:
                 connect_timeout=5,
                 read_timeout=60,
             ),
-            region_name=os.environ.get('OSS_REGION', 'us-east-1'),
+            region_name=BaseConfig.OSS_REGION,
         )
 
-        # bucket 名称从环境变量读取
+        # bucket 名称从配置读取
         self._buckets = {
-            'audios': os.environ.get('OSS_BUCKET_AUDIOS', 'audios'),
-            'case_result': os.environ.get('OSS_BUCKET_CASE_RESULT', 'case-result'),
-            'ref_params': os.environ.get('OSS_BUCKET_REF_PARAMS', 'ref-params'),
-            'reports': os.environ.get('OSS_BUCKET_REPORTS', 'reports'),
-            'archives': os.environ.get('OSS_BUCKET_ARCHIVES', 'archives'),
-            'temp': os.environ.get('OSS_BUCKET_TEMP', 'temp'),
+            'audios': BaseConfig.OSS_BUCKET_AUDIOS,
+            'case_result': BaseConfig.OSS_BUCKET_CASE_RESULT,
+            'ref_params': BaseConfig.OSS_BUCKET_REF_PARAMS,
+            'reports': BaseConfig.OSS_BUCKET_REPORTS,
+            'archives': BaseConfig.OSS_BUCKET_ARCHIVES,
+            'temp': BaseConfig.OSS_BUCKET_TEMP,
         }
 
     def _bucket(self, category: str) -> str:

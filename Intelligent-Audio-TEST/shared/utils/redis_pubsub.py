@@ -4,15 +4,16 @@ Redis Pub/Sub 封装 - 共享层
 """
 import redis
 import json
-import os
+
+from shared.infrastructure.config import BaseConfig
 
 class RedisPubSub:
     _instance = None
-    
+
     def __new__(cls, redis_url=None):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
-            redis_url = redis_url or os.environ.get('REDIS_URL', 'redis://localhost:6379')
+            redis_url = redis_url or BaseConfig.REDIS_URL
             cls._instance.redis_client = redis.from_url(redis_url)
         return cls._instance
     
