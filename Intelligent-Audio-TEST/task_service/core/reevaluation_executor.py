@@ -174,7 +174,7 @@ class ReevaluationExecutor:
                             rounds_in_algo = algo_result.get('rounds', [])
                             for ri, remapped in enumerate(remapped_results):
                                 if ri < len(rounds_in_algo):
-                                    from task_service.algorithm.field_mapper import get_field_mapper
+                                    from shared.utils.field_mapper import get_field_mapper
                                     fm = get_field_mapper()
                                     mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
                                     round_output = rounds_in_algo[ri].setdefault('output', {})
@@ -264,7 +264,7 @@ class ReevaluationExecutor:
                             rounds_in_algo = algo_result.get('rounds', [])
                             for ri, remapped in enumerate(remapped_results):
                                 if ri < len(rounds_in_algo):
-                                    from task_service.algorithm.field_mapper import get_field_mapper
+                                    from shared.utils.field_mapper import get_field_mapper
                                     fm = get_field_mapper()
                                     mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
                                     round_output = rounds_in_algo[ri].setdefault('output', {})
@@ -319,7 +319,7 @@ class ReevaluationExecutor:
                 if skipped_tc_rels:
                     db.session.commit()
 
-                from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+                from shared.utils.case_parameter_extractor import CaseParameterExtractor
 
                 for case_info in cases_to_reevaluate:
                     test_case_id = case_info['test_case_id']
@@ -418,7 +418,7 @@ class ReevaluationExecutor:
                 tc_rel.status = 'pending'
         db.session.commit()
 
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         from shared.models.models import TestCase
 
         test_case = db.session.get(TestCase, test_case_id)
@@ -548,7 +548,7 @@ class ReevaluationExecutor:
             if tc_rel.status not in ['stopped', 'skipped']:
                 tc_rel.status = 'pending'
 
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         from shared.models.models import TestCase
 
         test_case = db.session.get(TestCase, test_case_id)

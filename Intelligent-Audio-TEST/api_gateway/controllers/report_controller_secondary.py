@@ -11,7 +11,7 @@ from shared.utils.error_codes import ErrorCode
 from shared.utils.report.report_utils import ReportUtils
 from shared.utils.log_handler import log_and_emit
 # TODO: 跨服务依赖，应改为 HTTP 调用
-from task_service.algorithm.reference_params_generator import ReferenceParamsGenerator
+from shared.utils.reference_params_generator import ReferenceParamsGenerator
 from api_gateway.schemas.report import SecondaryCompareRequest
 from api_gateway.schemas.common import IdData
 from api_gateway.controllers.report_controller_base import ReportControllerBase

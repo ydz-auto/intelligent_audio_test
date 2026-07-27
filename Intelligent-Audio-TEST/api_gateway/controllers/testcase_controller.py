@@ -28,7 +28,7 @@ from api_gateway.schemas.testcase import (
     RoundConfigItem,
 )
 # TODO: 跨服务依赖，应改为 HTTP 调用
-from task_service.algorithm.reference_params_generator import ReferenceParamsGenerator
+from shared.utils.reference_params_generator import ReferenceParamsGenerator
 
 
 import uuid
@@ -1068,7 +1068,7 @@ class TestCaseController:
 
         # 计算总时长
         # TODO: 跨服务依赖，应改为 HTTP 调用
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         overlap_time = CaseParameterExtractor.get_overlap_time(config) if config else 0
         overlap_rate = CaseParameterExtractor.get_overlap_rate(config) if config else 0
         
@@ -2649,7 +2649,7 @@ class TestCaseController:
             return error_response("缺少 referenceParams 字段")
         
         # TODO: 跨服务依赖，应改为 HTTP 调用
-        from task_service.algorithm.reference_params_generator import normalize_reference_params
+        from shared.utils.reference_params_generator import normalize_reference_params
         new_ref_params = normalize_reference_params(new_ref_params)
         
         config = tc.config or {}

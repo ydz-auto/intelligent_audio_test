@@ -18,7 +18,7 @@ class E2EAggregator:
 
     def build_algorithm_result(self, task_id, all_round_results, case_config, algorithm_type):
         """从多轮原始结果构建 algo_result 结构（rounds[] + aggregated）"""
-        from task_service.algorithm.field_mapper import get_field_mapper
+        from shared.utils.field_mapper import get_field_mapper
 
         # 获取映射后的设备输出字段（含 source_param → target_param 映射关系）
         mapped_output_fields = get_field_mapper().get_mapped_device_output_fields(algorithm_type)

@@ -48,10 +48,7 @@ class TaskController:
             preserve_test_result: 为True时只清除TestResultDimension，保留TestResult（用于已执行完成的用例只需重新评估）
         """
         import os
-        import shutil
         from shared.models.models import TestResult, TestResultDimension, TaskCase
-        # TODO: 配置应从环境变量读取
-        from shared.config import Config
 
         if not case_ids:
             return None
@@ -512,7 +509,7 @@ class TaskController:
         algorithm_results = []
         try:
             # TODO: 跨服务依赖，应改为 HTTP 调用
-            from task_service.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            from shared.utils.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type) if algorithm_type else []
             
             for i, result in enumerate(results):
@@ -591,7 +588,7 @@ class TaskController:
         result_audios = {}  # {device_name: [{url, filename, param_code}]}
         try:
             # TODO: 跨服务依赖，应改为 HTTP 调用
-            from task_service.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            from shared.utils.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             if algorithm_type:
                 field_mapping = AlgorithmResultFieldMapper.get_field_mapping(algorithm_type)
                 

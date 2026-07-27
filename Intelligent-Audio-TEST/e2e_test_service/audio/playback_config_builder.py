@@ -477,8 +477,7 @@ def extract_overlap_rate(case_config):
     if not case_config:
         return 0
     try:
-        # TODO: 跨服务依赖 - e2e_test_service 不应依赖 task_service.algorithm，应改为 HTTP 调用
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         return CaseParameterExtractor.get_overlap_rate(case_config)
     except Exception:
         return 0
@@ -488,8 +487,7 @@ def extract_overlap_time(case_config):
     if not case_config:
         return 0
     try:
-        # TODO: 跨服务依赖 - e2e_test_service 不应依赖 task_service.algorithm，应改为 HTTP 调用
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         return CaseParameterExtractor.get_overlap_time(case_config)
     except Exception:
         return 0

@@ -106,8 +106,7 @@ class PlaybackOrchestrator:
             )
 
             # 5. 构建干扰人 audio_to_play 配置（从 algorithmParams 读取）
-            # TODO: 跨服务依赖 - e2e_test_service 不应依赖 task_service.algorithm，应改为 HTTP 调用
-            from task_service.algorithm.case_parameter_extractor import _normalize_algorithm_params
+            from shared.utils.case_parameter_extractor import _normalize_algorithm_params
             round_algo_params = _normalize_algorithm_params(round_config.get('algorithm_params', []))
             interferers = round_algo_params.get('interferers', [])
             interferer_configs = build_interferer_configs(

@@ -6,7 +6,7 @@ import json
 from shared.models.models import TaskCase
 from shared.models.database import db
 from task_service.evaluation.evaluation_mixin import EvaluationLoggerMixin
-from task_service.algorithm.field_mapper import get_field_mapper
+from shared.utils.field_mapper import get_field_mapper
 
 
 # 延迟导入app，避免循环导入和app未初始化问题

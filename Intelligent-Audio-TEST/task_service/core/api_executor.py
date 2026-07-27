@@ -7,8 +7,8 @@ from datetime import datetime, timezone, timedelta
 
 from shared.models.models import TaskAPI, Audio, TestCase, TaskCase, Task, API
 from shared.models.database import db
-from task_service.algorithm.field_mapper import get_field_mapper
-from task_service.algorithm.reference_params_generator import ReferenceParamsGenerator
+from shared.utils.field_mapper import get_field_mapper
+from shared.utils.reference_params_generator import ReferenceParamsGenerator
 from task_service.core.base_executor import BaseExecutor
 from task_service.core.api_concurrency_manager import APIConcurrencyManager
 from task_service.core.api_task_runner import APITaskRunner
@@ -298,7 +298,7 @@ class APIExecutor(BaseExecutor):
                 if value is not None:
                     ref_fields[key] = value
 
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         full_case_params = {
             'algorithm_params': case_algorithm_params or {},
             'reference_params': case_config.get('reference_params', {}) if case_config else {},

@@ -7,12 +7,13 @@ from shared.models.models import Log
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
+from shared.clients.oss_client import oss
 from api_gateway.schemas.log import LogItem, LogListData, LogRefreshData, LogRefreshRequest, LogMarkRequest, LogClearRequest, LogExportRequest, LogArchiveRequest, LogArchiveStatus, LogArchiveResult
 from datetime import datetime, timezone, timedelta
 from shared.utils.query_utils import now_cst
 from sqlalchemy import func, or_
 from flask_socketio import emit
-# TODO: 配置应从环境变量读取
+
 from shared.config.config import Config
 
 class LogController:
@@ -346,44 +347,26 @@ class LogController:
     @staticmethod
     def get_archive_status():
         try:
-            archive_dir = Config.ARCHIVE_PATH
-            
-            task_dir = os.path.join(archive_dir, 'tasks')
-            case_dir = os.path.join(archive_dir, 'cases')
-            other_dir = os.path.join(archive_dir, 'other')
-            
-            task_count = 0
-            case_count = 0
-            other_count = 0
-            
-            if os.path.exists(task_dir):
-                for task_id_dir in glob.glob(os.path.join(task_dir, '*')):
-                    if os.path.isdir(task_id_dir):
-                        for case_id_dir in glob.glob(os.path.join(task_id_dir, '*')):
-                            if os.path.isdir(case_id_dir):
-                                task_count += len(glob.glob(os.path.join(case_id_dir, '*.json')))
-                            elif case_id_dir.endswith('.json'):
-                                task_count += 1
-            
-            if os.path.exists(case_dir):
-                for case_id_dir in glob.glob(os.path.join(case_dir, '*')):
-                    if os.path.isdir(case_id_dir):
-                        case_count += len(glob.glob(os.path.join(case_id_dir, '*.json')))
-            
-            if os.path.exists(other_dir):
-                other_count = len(glob.glob(os.path.join(other_dir, '*.json')))
-            
+            # OSS: 列出 archives bucket 下各前缀的文件数
+            task_keys = oss.list_objects('archives', prefix='tasks/')
+            case_keys = oss.list_objects('archives', prefix='cases/')
+            other_keys = oss.list_objects('archives', prefix='other/')
+
+            task_count = len([k for k in task_keys if k.endswith('.json')])
+            case_count = len([k for k in case_keys if k.endswith('.json')])
+            other_count = len([k for k in other_keys if k.endswith('.json')])
+
             total_logs = db.session.query(func.count(Log.id)).scalar() or 0
-            
+
             cutoff_date = now_cst() - timedelta(days=7)
             hot_logs = db.session.query(func.count(Log.id)).filter(Log.time >= cutoff_date).scalar() or 0
             cold_logs = total_logs - hot_logs
-            
+
             return success_response({
                 "total_logs": total_logs,
                 "hot_logs": hot_logs,
                 "cold_logs": cold_logs,
-                "archive_dir": archive_dir,
+                "archive_dir": "oss://archives",
                 "task_archives": task_count,
                 "case_archives": case_count,
                 "other_archives": other_count
@@ -395,40 +378,49 @@ class LogController:
     def get_archived_logs():
         task_id = request.args.get('task_id', type=int)
         test_case_id = request.args.get('test_case_id')
-        
+
         if not task_id and not test_case_id:
             return error_response("需要提供 task_id 或 test_case_id 参数", code=400)
-        
+
         try:
-            archive_dir = Config.ARCHIVE_PATH
             logs = []
-            
-            def load_json_files(directory):
+
+            def load_oss_json_files(prefix):
+                """从 OSS archives bucket 读取指定前缀下所有 JSON 文件"""
                 result = []
-                if os.path.exists(directory):
-                    for json_file in glob.glob(os.path.join(directory, '*.json')):
-                        with open(json_file, 'r', encoding='utf-8') as f:
-                            result.extend(json.load(f))
+                keys = oss.list_objects('archives', prefix=prefix)
+                for key in keys:
+                    if not key.endswith('.json'):
+                        continue
+                    try:
+                        data = oss.download_bytes('archives', key)
+                        result.extend(json.loads(data))
+                    except Exception:
+                        continue
                 return result
-            
+
             if task_id:
-                task_dir = os.path.join(archive_dir, 'tasks', str(task_id))
-                if os.path.exists(task_dir):
-                    if test_case_id:
-                        case_dir = os.path.join(task_dir, str(test_case_id))
-                        logs.extend(load_json_files(case_dir))
-                    else:
-                        for subdir in glob.glob(os.path.join(task_dir, '*')):
-                            if os.path.isdir(subdir):
-                                logs.extend(load_json_files(subdir))
-                            elif subdir.endswith('.json'):
-                                with open(subdir, 'r', encoding='utf-8') as f:
-                                    logs.extend(json.load(f))
-            
+                if test_case_id:
+                    # tasks/{task_id}/{case_id}/*.json
+                    prefix = f'tasks/{task_id}/{test_case_id}/'
+                    logs.extend(load_oss_json_files(prefix))
+                else:
+                    # tasks/{task_id}/*.json + tasks/{task_id}/*/*.json
+                    prefix = f'tasks/{task_id}/'
+                    keys = oss.list_objects('archives', prefix=prefix)
+                    for key in keys:
+                        if not key.endswith('.json'):
+                            continue
+                        try:
+                            data = oss.download_bytes('archives', key)
+                            logs.extend(json.loads(data))
+                        except Exception:
+                            continue
+
             if test_case_id and not task_id:
-                case_dir = os.path.join(archive_dir, 'cases', str(test_case_id))
-                logs.extend(load_json_files(case_dir))
-            
+                prefix = f'cases/{test_case_id}/'
+                logs.extend(load_oss_json_files(prefix))
+
             logs.sort(key=lambda x: x.get('time', '') or '', reverse=True)
             
             items = []
@@ -483,17 +475,14 @@ class LogController:
                     remaining_count=db.session.query(func.count(Log.id)).scalar() or 0
                 ), "没有需要归档的日志")
             
-            archive_dir = Config.ARCHIVE_PATH
-            task_dir = os.path.join(archive_dir, 'tasks')
-            case_dir = os.path.join(archive_dir, 'cases')
-            other_dir = os.path.join(archive_dir, 'other')
-            
-            for d in [archive_dir, task_dir, case_dir, other_dir]:
-                if not os.path.exists(d):
-                    os.makedirs(d)
-            
+            # OSS: 归档到 archives bucket
+            # 结构: tasks/{task_id}/{case_id}/{date}.json
+            #       tasks/{task_id}/{date}.json
+            #       cases/{case_id}/{date}.json
+            #       other/{date}.json
+
             cold_logs = cold_logs_query.order_by(Log.time.asc()).all()
-            
+
             task_case_logs = {}
             task_only_logs = {}
             case_only_logs = {}
@@ -541,44 +530,41 @@ class LogController:
                     other_logs[log_date].append(log_data)
             
             archived_count = 0
-            
-            def save_archive(path, logs):
+
+            def save_archive_oss(oss_key, logs):
+                """上传归档到 OSS（合并已存在的）"""
                 existing_logs = []
-                if os.path.exists(path):
-                    with open(path, 'r', encoding='utf-8') as f:
-                        existing_logs = json.load(f)
+                if oss.exists('archives', oss_key):
+                    try:
+                        data = oss.download_bytes('archives', oss_key)
+                        existing_logs = json.loads(data)
+                    except Exception:
+                        existing_logs = []
                 existing_logs.extend(logs)
                 existing_logs.sort(key=lambda x: x.get('time', '') or '')
-                with open(path, 'w', encoding='utf-8') as f:
-                    json.dump(existing_logs, f, ensure_ascii=False, indent=2)
-            
+                oss.upload_bytes(
+                    json.dumps(existing_logs, ensure_ascii=False, indent=2).encode('utf-8'),
+                    'archives', oss_key, content_type='application/json'
+                )
+
             for (task_id, case_id, log_date), logs in task_case_logs.items():
-                task_case_dir = os.path.join(task_dir, str(task_id), str(case_id))
-                if not os.path.exists(task_case_dir):
-                    os.makedirs(task_case_dir)
-                archive_path = os.path.join(task_case_dir, f"{log_date}.json")
-                save_archive(archive_path, logs)
+                oss_key = f'tasks/{task_id}/{case_id}/{log_date}.json'
+                save_archive_oss(oss_key, logs)
                 archived_count += len(logs)
-            
+
             for (task_id, log_date), logs in task_only_logs.items():
-                task_only_dir = os.path.join(task_dir, str(task_id))
-                if not os.path.exists(task_only_dir):
-                    os.makedirs(task_only_dir)
-                archive_path = os.path.join(task_only_dir, f"{log_date}.json")
-                save_archive(archive_path, logs)
+                oss_key = f'tasks/{task_id}/{log_date}.json'
+                save_archive_oss(oss_key, logs)
                 archived_count += len(logs)
-            
+
             for (case_id, log_date), logs in case_only_logs.items():
-                case_only_dir = os.path.join(case_dir, str(case_id))
-                if not os.path.exists(case_only_dir):
-                    os.makedirs(case_only_dir)
-                archive_path = os.path.join(case_only_dir, f"{log_date}.json")
-                save_archive(archive_path, logs)
+                oss_key = f'cases/{case_id}/{log_date}.json'
+                save_archive_oss(oss_key, logs)
                 archived_count += len(logs)
-            
+
             for log_date, logs in other_logs.items():
-                archive_path = os.path.join(other_dir, f"{log_date}.json")
-                save_archive(archive_path, logs)
+                oss_key = f'other/{log_date}.json'
+                save_archive_oss(oss_key, logs)
                 archived_count += len(logs)
             
             log_ids = [log.id for log in cold_logs]
@@ -601,32 +587,32 @@ class LogController:
     @staticmethod
     def download_archive(filename):
         try:
-            archive_dir = Config.ARCHIVE_PATH
-            
-            for root, dirs, files in os.walk(archive_dir):
-                if filename in files:
-                    file_path = os.path.join(root, filename)
-                    if not os.path.abspath(file_path).startswith(os.path.abspath(archive_dir)):
-                        return error_response("非法的文件路径", code=400)
-                    return send_file(file_path, as_attachment=True)
-            
-            return error_response("归档文件不存在", code=404)
+            # OSS: 在 archives bucket 中搜索匹配的文件
+            all_keys = oss.list_objects('archives')
+            matching_keys = [k for k in all_keys if k.endswith(f'/{filename}') or k == filename]
+
+            if not matching_keys:
+                return error_response("归档文件不存在", code=404)
+
+            # 下载到临时文件再返回
+            import tempfile
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.json')
+            oss.download_file('archives', matching_keys[0], tmp.name)
+            return send_file(tmp.name, as_attachment=True, download_name=filename)
         except Exception as e:
             return error_response(f"下载失败: {str(e)}", code=500)
 
     @staticmethod
     def delete_archive(filename):
         try:
-            archive_dir = Config.ARCHIVE_PATH
-            
-            for root, dirs, files in os.walk(archive_dir):
-                if filename in files:
-                    file_path = os.path.join(root, filename)
-                    if not os.path.abspath(file_path).startswith(os.path.abspath(archive_dir)):
-                        return error_response("非法的文件路径", code=400)
-                    os.remove(file_path)
-                    return success_response(None, f"已删除归档文件: {filename}")
-            
-            return error_response("归档文件不存在", code=404)
+            # OSS: 在 archives bucket 中搜索并删除
+            all_keys = oss.list_objects('archives')
+            matching_keys = [k for k in all_keys if k.endswith(f'/{filename}') or k == filename]
+
+            if not matching_keys:
+                return error_response("归档文件不存在", code=404)
+
+            oss.delete('archives', matching_keys[0])
+            return success_response(None, f"已删除归档文件: {filename}")
         except Exception as e:
             return error_response(f"删除失败: {str(e)}", code=500)

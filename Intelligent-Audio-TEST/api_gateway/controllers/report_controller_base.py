@@ -38,7 +38,7 @@ class ReportControllerBase:
         """
         from shared.models.models import Audio, PlaybackDevice, Device
         # TODO: 跨服务依赖，应改为 HTTP 调用
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
 
         config = test_case.config or {}
         rounds = config.get('rounds', [])
@@ -897,7 +897,7 @@ class ReportControllerBase:
         if not reference_params:
             return {}
         # TODO: 跨服务依赖，应改为 HTTP 调用
-        from task_service.algorithm.reference_params_generator import ReferenceParamsGenerator
+        from shared.utils.reference_params_generator import ReferenceParamsGenerator
         try:
             # 如果已经是扁平字典格式（code -> {code, type, value}），直接原样返回
             # 这种格式在老报告 DB 中已存为 {query: {...}, correct_answer: {...}}

@@ -11,7 +11,7 @@ from task_service.evaluation.evaluation_api_client import evaluationApiClient
 from task_service.evaluation.evaluation_result_processor import EvaluationResultProcessor
 from task_service.evaluation.endpoint_worker import EndpointWorker
 from task_service.evaluation.evaluation_mixin import EvaluationLoggerMixin, get_endpoint_url, get_endpoint_field
-from task_service.algorithm.field_mapper import get_field_mapper
+from shared.utils.field_mapper import get_field_mapper
 
 app = None
 
@@ -176,8 +176,8 @@ class EvaluationService(EvaluationLoggerMixin):
         遍历 param_mappings，按 source 类型从每轮的 output（device/api）和
         按轮加载的 reference_params（reference）取值，用 target_param 作为 key。
         """
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
-        from task_service.algorithm.reference_params_generator import (
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.reference_params_generator import (
             get_reference_value as gen_reference_value,
         )
 

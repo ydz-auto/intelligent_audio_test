@@ -14,9 +14,9 @@ from ..models.algorithm_models import (
 )
 from ..models.database import db
 # TODO: 跨服务依赖，应改为 HTTP 调用
-from task_service.algorithm.algorithm_config_loader import AlgorithmConfigLoader
+from shared.utils.algorithm_config_loader import AlgorithmConfigLoader
 # TODO: 跨服务依赖，应改为 HTTP 调用
-from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+from shared.utils.case_parameter_extractor import CaseParameterExtractor
 from ..utils.web.response import success_response, error_response
 from ..models.models import Dimension
 from ..schemas.algorithm import (

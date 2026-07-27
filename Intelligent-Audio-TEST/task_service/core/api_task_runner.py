@@ -5,7 +5,7 @@ import json
 import random
 
 from task_service.clients.api_driver import APIDriver
-from task_service.algorithm.field_mapper import get_field_mapper
+from shared.utils.field_mapper import get_field_mapper
 
 
 class APITaskRunner:

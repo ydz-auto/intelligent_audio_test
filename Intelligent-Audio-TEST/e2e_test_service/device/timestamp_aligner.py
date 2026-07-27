@@ -3,7 +3,7 @@
 import json
 import difflib
 import statistics
-from task_service.algorithm.field_mapper import get_field_mapper  # TODO: 跨服务依赖，应改为 HTTP 调用
+from shared.utils.field_mapper import get_field_mapper
 from shared.utils.log_handler import log_not_emit
 from .rttm_stm_utils import RttmStmUtils
 

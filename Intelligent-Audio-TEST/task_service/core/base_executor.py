@@ -2,8 +2,8 @@ import threading
 from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 from shared.utils.log_handler import log_and_emit
-from task_service.algorithm.field_mapper import get_field_mapper
-from task_service.algorithm.algorithm_config_loader import get_config_loader
+from shared.utils.field_mapper import get_field_mapper
+from shared.utils.algorithm_config_loader import get_config_loader
 from shared.models.database import db
 from shared.models.models import utc8now, Task, TaskCase, TestCase
 import json
@@ -458,7 +458,7 @@ class BaseExecutor:
             )
         
         from task_service.evaluation.evaluation_service import evaluation_service
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         
         case_params = case_config or {}
         algorithm_params = case_params.get('algorithm_params', case_params)
@@ -586,7 +586,7 @@ class BaseExecutor:
             
             # 从独立列读取算法参数（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
             # 兼容旧数据：如果独立列为空，从 config.rounds[].algorithm_params 读取
-            from task_service.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
+            from shared.utils.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
             algorithm_params_col = getattr(case, 'algorithm_params', None)
             
             # 把按轮分组的 algorithm_params 注入到每个 round_config 里（兼容下游读取）
@@ -609,7 +609,7 @@ class BaseExecutor:
             )
             
             # reference_params 从独立列读取（按轮分组路径），从文件加载内容
-            from task_service.algorithm.reference_params_generator import ReferenceParamsGenerator
+            from shared.utils.reference_params_generator import ReferenceParamsGenerator
             reference_params_col = getattr(case, 'reference_params', None)
             all_reference_params = []
             

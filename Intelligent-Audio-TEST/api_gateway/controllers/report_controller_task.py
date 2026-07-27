@@ -8,7 +8,7 @@ from shared.utils.log_handler import log_and_emit
 from shared.utils.report.report_query_builder import ReportQueryBuilder
 from shared.utils.result_data_store import load_full_result_data
 # TODO: 跨服务依赖，应改为 HTTP 调用
-from task_service.algorithm.reference_params_generator import ReferenceParamsGenerator
+from shared.utils.reference_params_generator import ReferenceParamsGenerator
 from api_gateway.schemas.report import GenerateTaskReportRequest, ReportDetailData as ReportDetailDataSchema, ReportSummarySimplified
 from datetime import datetime, timedelta, timezone
 from shared.utils.query_utils import now_cst

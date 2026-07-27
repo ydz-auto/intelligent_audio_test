@@ -155,7 +155,7 @@ class APISessionExecutor:
                            algorithm_type, aggregated, api_id):
         """提交多轮会话评估"""
         from task_service.evaluation.evaluation_service import evaluation_service
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
 
         full_case_params = {
             'algorithm_params': case_algorithm_params or {},

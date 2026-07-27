@@ -6,7 +6,7 @@ from sqlalchemy import text
 from shared.models.models import TaskCase, TestResult, utc8now
 from shared.models.database import db
 from shared.utils.result_data_store import write_result_data_file, split_result_data
-from task_service.algorithm.field_mapper import get_field_mapper
+from shared.utils.field_mapper import get_field_mapper
 
 
 class APIResultProcessor:
@@ -121,7 +121,7 @@ class APIResultProcessor:
             'reference_params': reference_params
         }
 
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         eval_params = CaseParameterExtractor.get_evaluation_params(
             case_config=full_case_params,
             algorithm_result=algorithm_result,

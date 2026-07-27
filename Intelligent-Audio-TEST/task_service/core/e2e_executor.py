@@ -5,7 +5,7 @@ import os
 from e2e_test_service.audio.playback_orchestrator import playback_orchestrator
 # TODO: 跨服务调用 - Task Service 不应直接 import 设备驱动，应改为 HTTP 调用 e2e_test_service
 from e2e_test_service.drivers import device_driver_factory, register_task_events
-from task_service.algorithm.field_mapper import get_field_mapper
+from shared.utils.field_mapper import get_field_mapper
 from task_service.core.base_executor import BaseExecutor
 from task_service.core.e2e_device_manager import E2EDeviceManager
 from task_service.core.e2e_collector import E2ECollector
@@ -181,7 +181,7 @@ class E2EExecutor(BaseExecutor):
 
     def _register_voiceprint(self, task_id, tc_rel_id, rounds, test_case_id):
         """从首轮 algorithmParams 提取声纹配置并执行注册"""
-        from task_service.algorithm.case_parameter_extractor import _normalize_algorithm_params
+        from shared.utils.case_parameter_extractor import _normalize_algorithm_params
 
         first_round_algo_params = {}
         if rounds and isinstance(rounds[0], dict):
@@ -245,7 +245,7 @@ class E2EExecutor(BaseExecutor):
                               device_info_list, result_id, case_reference_params,
                               round_idx, round_config, round_number, rounds_data):
         """执行单轮：环境设置 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
-        from task_service.algorithm.case_parameter_extractor import _normalize_algorithm_params
+        from shared.utils.case_parameter_extractor import _normalize_algorithm_params
         round_algo_params = _normalize_algorithm_params(round_config.get('algorithm_params', []))
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
@@ -452,7 +452,7 @@ class E2EExecutor(BaseExecutor):
 
     def _collect_playback_timestamps(self, task_id, play_result, case_config):
         """从 play_result 的 audio_timelines 收集播放时间戳"""
-        from task_service.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.utils.case_parameter_extractor import CaseParameterExtractor
         overlap_rate = CaseParameterExtractor.get_overlap_rate(case_config) if case_config else 0
         overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
 

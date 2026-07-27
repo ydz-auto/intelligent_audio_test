@@ -15,7 +15,7 @@ from shared.utils.log_handler import log_not_emit
 from shared.utils.task_utils import has_running_e2e_tasks
 from shared.clients.oss_client import oss
 # TODO: 跨服务依赖，应改为 HTTP 调用
-from task_service.algorithm.case_parameter_extractor import _normalize_algorithm_params_to_list
+from shared.utils.case_parameter_extractor import _normalize_algorithm_params_to_list
 from api_gateway.schemas.audio import (
     AudioIdsData,
     AudioItem,
@@ -2129,7 +2129,7 @@ class AudioController:
 
                 # 同步生成参考参数（rounds 模式和平面模式都会真正生成文件）
                 # TODO: 跨服务依赖，应改为 HTTP 调用
-                from task_service.algorithm.reference_params_generator import ReferenceParamsGenerator
+                from shared.utils.reference_params_generator import ReferenceParamsGenerator
                 ReferenceParamsGenerator.apply_to_config(new_tc)
                 log_not_emit('DEBUG', 'audio_controller', f'new_tc.algorithm_params={_json.dumps(new_tc.algorithm_params, ensure_ascii=False)[:300] if new_tc.algorithm_params else "None"}', category='audio')
                 log_not_emit('DEBUG', 'audio_controller', f'new_tc.reference_params={_json.dumps(new_tc.reference_params, ensure_ascii=False)[:300] if new_tc.reference_params else "None"}', category='audio')
