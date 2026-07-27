@@ -80,6 +80,10 @@ services:
       - OSS_BUCKET_ARCHIVES=archives
       - OSS_BUCKET_TEMP=temp
       - SERVICE_HOST=api_gateway
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=50061
+      - E2E_TEST_SERVICE_HOST=e2e_test_service
+      - E2E_TEST_SERVICE_GRPC_PORT=50051
     depends_on:
       postgres:
         condition: service_healthy
@@ -94,6 +98,7 @@ services:
       dockerfile: Dockerfile.task_service
     ports:
       - "5001:5001"
+      - "50061:50061"
     environment:
       - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
       - REDIS_URL=redis://redis:6379
@@ -107,6 +112,11 @@ services:
       - OSS_BUCKET_ARCHIVES=archives
       - OSS_BUCKET_TEMP=temp
       - SERVICE_HOST=task_service
+      - GRPC_PORT=50061
+      - E2E_TEST_SERVICE_HOST=e2e_test_service
+      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      - API_TEST_SERVICE_HOST=api_test_service
+      - API_TEST_SERVICE_PORT=5003
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,6 +147,8 @@ services:
       - GRPC_PORT=50051
       - LAB_NAME=lab-a
       - SERVICE_HOST=e2e_test_service
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=50061
     depends_on:
       - postgres
       - redis
