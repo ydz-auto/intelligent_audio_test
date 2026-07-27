@@ -6,9 +6,9 @@
 """
 
 from flask import request
-from ..models.algorithm_models import AlgorithmGroup, AlgorithmDefinition
-from ..models.database import db
-from ..utils.web.response import success_response, error_response
+from shared.models.algorithm_models import AlgorithmGroup, AlgorithmDefinition
+from shared.models.database import db
+from shared.utils.response import success_response, error_response
 from ..schemas.algorithm import AlgorithmGroupCreate, AlgorithmGroupUpdate, AlgorithmGroupItem
 from datetime import datetime
 

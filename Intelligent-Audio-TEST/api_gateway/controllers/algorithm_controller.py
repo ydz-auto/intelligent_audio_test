@@ -7,18 +7,18 @@
 
 from typing import List, Dict, Any
 from flask import request
-from ..models.algorithm_models import (
+from shared.models.algorithm_models import (
     AlgorithmDefinition, AlgorithmDeviceParam, AlgorithmApiParam,
     ParamMapping, AlgorithmDimensionRelation, CaseAlgorithmParam, EvaluationDimensionParam,
     AlgorithmReferenceParam
 )
-from ..models.database import db
+from shared.models.database import db
 # TODO: 跨服务依赖，应改为 HTTP 调用
 from shared.utils.algorithm_config_loader import AlgorithmConfigLoader
 # TODO: 跨服务依赖，应改为 HTTP 调用
 from shared.utils.case_parameter_extractor import CaseParameterExtractor
-from ..utils.web.response import success_response, error_response
-from ..models.models import Dimension
+from shared.utils.response import success_response, error_response
+from shared.models.models import Dimension
 from ..schemas.algorithm import (
     AlgorithmListQuery,
     AlgorithmDetailResponse,
