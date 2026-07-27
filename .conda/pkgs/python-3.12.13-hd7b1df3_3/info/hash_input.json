@@ -1,0 +1,14 @@
+{
+  "xz": "5",
+  "channel_targets": "defaults",
+  "openssl": "3",
+  "target_platform": "win-64",
+  "expat": "2",
+  "tk": "8.6",
+  "bzip2": "1",
+  "libffi": "3.4",
+  "cxx_compiler": "vs2022",
+  "zlib": "1",
+  "c_compiler": "vs2022",
+  "sqlite": "3"
+}

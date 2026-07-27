@@ -1,0 +1,13 @@
+{
+  "mod": "Thu, 06 Feb 2025 18:07:11 GMT",
+  "etag": "\"f83fff10217f204c49475b9031ba7e86\"",
+  "cache_control": "public, max-age=30",
+  "url": "https://repo.anaconda.com/pkgs/r/noarch",
+  "size": 15049908,
+  "mtime_ns": 1784862744929991000,
+  "refresh_ns": 1784883450544898900,
+  "has_shards": {
+    "last_checked": "2026-07-24T02:03:16.066032Z",
+    "value": false
+  }
+}

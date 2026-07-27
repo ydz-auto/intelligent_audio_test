@@ -1,0 +1,112 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: intelligent_audio_test
+      POSTGRES_PASSWORD: intelligent_audio_test666
+      POSTGRES_DB: intelligent_audio_test
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intelligent_audio_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api_gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.api_gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - SERVICE_HOST=api_gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  task_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.task_service
+    ports:
+      - "5001:5001"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - SERVICE_HOST=task_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  e2e_test_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e_test_service
+    ports:
+      - "5002:5002"
+      - "50051:50051"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - GRPC_PORT=50051
+      - LAB_NAME=lab-a
+      - SERVICE_HOST=e2e_test_service
+    depends_on:
+      - postgres
+      - redis
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+
+  api_test_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.api_test_service
+    ports:
+      - "5003:5003"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - SERVICE_HOST=api_test_service
+    depends_on:
+      - postgres
+      - redis
+    deploy:
+      replicas: 2
+
+  evaluation_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.evaluation_service
+    ports:
+      - "5004:5004"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - SERVICE_HOST=evaluation_service
+    depends_on:
+      - postgres
+      - redis
+
+volumes:
+  postgres_data:
