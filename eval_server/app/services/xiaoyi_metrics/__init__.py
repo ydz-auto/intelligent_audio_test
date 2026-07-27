@@ -26,7 +26,8 @@ def calculate_xiaoyi_metrics(task_params):
             - record_file (str): wav 录音文件路径
             - pause (list): 停顿区间数据
             - first_frame_ms (int|None): 录屏首帧时刻
-            - end_ms (int|None): 音频结束时刻
+            - start_ms (int|None): 音频开始播放时刻
+            - input (list): 主服务下发的 input 词级时间戳
             - offset_ms (int): 时延补偿，默认 40
 
     Returns:
@@ -71,7 +72,8 @@ def calculate_xiaoyi_metrics(task_params):
     results['takeover_latency'] = compute_takeover_latency_from_raw(
         first_frame_ms=task_params.get('first_frame_ms'),
         asr_hyp=asr_hyp,
-        end_ms=task_params.get('end_ms'),
+        start_ms=task_params.get('start_ms'),
+        input_words=task_params.get('input', []),
         offset_ms=task_params.get('offset_ms', 40),
     )
     logger.info(f"[takeover_latency] {results['takeover_latency']}")

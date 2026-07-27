@@ -363,7 +363,7 @@ def create_task_upload():
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) == 1 and isinstance(rounds_list[0], dict):
             rd = rounds_list[0]
-            for fld in ('record_file', 'pause', 'first_frame_ms', 'end_ms', 'offset_ms'):
+            for fld in ('record_file', 'pause', 'first_frame_ms', 'start_ms', 'input', 'offset_ms'):
                 val = rd.get(fld)
                 if val is not None and val != '' and not task_params.get(fld):
                     task_params[fld] = val
