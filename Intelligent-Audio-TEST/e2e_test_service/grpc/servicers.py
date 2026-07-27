@@ -45,8 +45,14 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
     """音频服务 gRPC servicer，委托给 audio_service"""
 
     def __init__(self):
-        from e2e_test_service.audio.audio_engine import audio_service
-        self._audio_service = audio_service
+        self._audio_service = None
+
+    @property
+    def audio_service(self):
+        if self._audio_service is None:
+            from e2e_test_service.audio.audio_engine import audio_service
+            self._audio_service = audio_service
+        return self._audio_service
 
     def PlayAudio(self, request, context=None):
         """播放音频"""
@@ -61,7 +67,7 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
             player_type = play_config.get('player_type', 'dry')
             offset = play_config.get('offset', 0)
 
-            self._audio_service.play_audio(
+            self.audio_service.play_audio(
                 task_id=task_id,
                 file_path=file_path,
                 device_index=device_index,
@@ -83,7 +89,7 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         """停止播放"""
         try:
             task_id = request.task_id
-            self._audio_service.stop_task_audio(task_id)
+            self.audio_service.stop_task_audio(task_id)
             return e2e_pb.StopAudioResponse(success=True, message="ok", data=_dumps({"task_id": str(task_id)}))
         except Exception as e:
             return e2e_pb.StopAudioResponse(success=False, message=str(e), data="")
@@ -92,7 +98,7 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         """获取播放状态"""
         try:
             task_id = request.task_id
-            active_players = getattr(self._audio_service, 'active_players', {})
+            active_players = getattr(self.audio_service, 'active_players', {})
             players_info = {}
             task_key = task_id
             if task_key not in active_players and task_id is not None:
@@ -177,8 +183,14 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
     """设备驱动服务 gRPC servicer，委托给 device_driver_factory"""
 
     def __init__(self):
-        from e2e_test_service.drivers import device_driver_factory
-        self._factory = device_driver_factory
+        self._factory = None
+
+    @property
+    def factory(self):
+        if self._factory is None:
+            from e2e_test_service.drivers import device_driver_factory
+            self._factory = device_driver_factory
+        return self._factory
 
     def CreateDriver(self, request, context=None):
         """创建设备驱动（连接设备）"""
@@ -192,9 +204,9 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
 
             # 注册任务设备
             if device_info_list:
-                self._factory.register_task_devices(task_id, device_info_list)
+                self.factory.register_task_devices(task_id, device_info_list)
 
-            driver = self._factory.get_driver(system, keywords=keywords, device_sn=device_sn)
+            driver = self.factory.get_driver(system, keywords=keywords, device_sn=device_sn)
             driver_info = {
                 "system": system,
                 "keywords": keywords,
@@ -210,7 +222,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
         """销毁设备驱动"""
         try:
             task_id = request.task_id
-            self._factory.cleanup_devices(task_id)
+            self.factory.cleanup_devices(task_id)
             return e2e_pb.DestroyDriverResponse(
                 success=True, message="ok", data=_dumps({"task_id": str(task_id), "cleaned": True})
             )
@@ -270,8 +282,14 @@ class PlaybackServiceServicer(e2e_grpc.PlaybackServiceServicer):
     """播放编排服务 gRPC servicer，委托给 playback_orchestrator"""
 
     def __init__(self):
-        from e2e_test_service.audio.playback_orchestrator import playback_orchestrator
-        self._orchestrator = playback_orchestrator
+        self._orchestrator = None
+
+    @property
+    def orchestrator(self):
+        if self._orchestrator is None:
+            from e2e_test_service.audio.playback_orchestrator import playback_orchestrator
+            self._orchestrator = playback_orchestrator
+        return self._orchestrator
 
     def StartPlayback(self, request, context=None):
         """开始播放编排"""
@@ -286,19 +304,19 @@ class PlaybackServiceServicer(e2e_grpc.PlaybackServiceServicer):
                 offset = playback_config.get('offset', 0)
                 overlap_rate = playback_config.get('overlap_rate', 0)
                 overlap_time = playback_config.get('overlap_time', 0)
-                result = self._orchestrator.preview(
+                result = self.orchestrator.preview(
                     audio_configs, case_config, task_id,
                     offset=offset, overlap_rate=overlap_rate, overlap_time=overlap_time,
                 )
             elif mode == 'voiceprint':
                 vp_config = playback_config.get('vp_config', {})
-                result = self._orchestrator.play_voiceprint(vp_config, task_id)
+                result = self.orchestrator.play_voiceprint(vp_config, task_id)
             else:
                 round_config = playback_config.get('round_config', {})
                 case_config = playback_config.get('case_config')
                 test_case_id = playback_config.get('test_case_id')
                 round_number = playback_config.get('round_number')
-                result = self._orchestrator.play_round(
+                result = self.orchestrator.play_round(
                     round_config, task_id,
                     case_config=case_config,
                     test_case_id=test_case_id,
@@ -330,8 +348,14 @@ class DeviceResultServiceServicer(e2e_grpc.DeviceResultServiceServicer):
     """设备结果采集服务 gRPC servicer，委托给 device_result_collector"""
 
     def __init__(self):
-        from e2e_test_service.device.device_result_collector import get_device_result_collector
-        self._collector = get_device_result_collector()
+        self._collector = None
+
+    @property
+    def collector(self):
+        if self._collector is None:
+            from e2e_test_service.device.device_result_collector import get_device_result_collector
+            self._collector = get_device_result_collector()
+        return self._collector
 
     def CollectResult(self, request, context=None):
         """采集设备结果"""
@@ -347,12 +371,12 @@ class DeviceResultServiceServicer(e2e_grpc.DeviceResultServiceServicer):
                 round_idx = collect_config.get('round_idx', 0)
                 round_config = collect_config.get('round_config', {})
                 round_start_time = collect_config.get('round_start_time')
-                result = self._collector.collect_round_results(
+                result = self.collector.collect_round_results(
                     task_id, test_case_id, device_info_list,
                     round_idx, round_config, round_start_time,
                 )
             else:
-                result = self._collector.collect_raw_results(
+                result = self.collector.collect_raw_results(
                     task_id, test_case_id, device_info_list, extra_params,
                 )
             return e2e_pb.CollectResultResponse(
@@ -387,8 +411,14 @@ class EnvDeviceServiceServicer(e2e_grpc.EnvDeviceServiceServicer):
     """环境设备服务 gRPC servicer，委托给 EnvDeviceFactory"""
 
     def __init__(self):
-        from e2e_test_service.env_device import EnvDeviceFactory
-        self._factory_cls = EnvDeviceFactory
+        self._factory_cls = None
+
+    @property
+    def factory_cls(self):
+        if self._factory_cls is None:
+            from e2e_test_service.env_device import EnvDeviceFactory
+            self._factory_cls = EnvDeviceFactory
+        return self._factory_cls
 
     def ControlEnvDevice(self, request, context=None):
         """控制环境设备（导轨旋转等）"""
@@ -405,9 +435,9 @@ class EnvDeviceServiceServicer(e2e_grpc.EnvDeviceServiceServicer):
 
             # 批量创建并控制设备
             if device_configs:
-                devices = self._factory_cls.create_from_config(device_configs)
+                devices = self.factory_cls.create_from_config(device_configs)
             elif device_type:
-                devices = [self._factory_cls.create(device_type, config)]
+                devices = [self.factory_cls.create(device_type, config)]
             else:
                 devices = []
 

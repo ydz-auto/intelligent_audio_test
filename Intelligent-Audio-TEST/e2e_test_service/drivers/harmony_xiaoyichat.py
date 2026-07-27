@@ -9,7 +9,7 @@ from hypium.model import UiParam
 
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
-from config.config import Config
+from e2e_test_service.config.config import Config
 from shared.clients.oss_client import oss
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
 

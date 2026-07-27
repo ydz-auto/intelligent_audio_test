@@ -11,7 +11,7 @@ try:
 except ImportError:
     MatchPattern = None
 
-from config.config import Config
+from e2e_test_service.config.config import Config
 from shared.clients.oss_client import oss
 from .android_driver import AndroidDriver
 from .device_config import get_device_config

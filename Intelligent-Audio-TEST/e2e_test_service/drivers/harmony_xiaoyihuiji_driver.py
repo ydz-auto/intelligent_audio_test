@@ -7,7 +7,7 @@ import shutil
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
-from config.config import Config
+from e2e_test_service.config.config import Config
 from shared.clients.oss_client import oss
 
 # 日志目录路径

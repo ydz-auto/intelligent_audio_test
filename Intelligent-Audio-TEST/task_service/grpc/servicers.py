@@ -38,8 +38,14 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
     """执行引擎服务 gRPC servicer，委托给 execution_engine"""
 
     def __init__(self):
-        from task_service.core.execution_engine import execution_engine
-        self._engine = execution_engine
+        self._engine = None
+
+    @property
+    def engine(self):
+        if self._engine is None:
+            from task_service.core.execution_engine import execution_engine
+            self._engine = execution_engine
+        return self._engine
 
     def CreateTask(self, request, context=None):
         """创建任务
@@ -65,7 +71,7 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
             from flask import current_app
             task_id = request.task_id
             app = current_app._get_current_object()
-            success, message = self._engine.start_task(app, task_id)
+            success, message = self.engine.start_task(app, task_id)
             return task_pb.StartTaskResponse(
                 success=success,
                 message=message,
@@ -80,7 +86,7 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
             from flask import current_app
             task_id = request.task_id
             app = current_app._get_current_object()
-            success, message = self._engine.control_task(app, task_id, 'stop')
+            success, message = self.engine.control_task(app, task_id, 'stop')
             return task_pb.StopTaskResponse(
                 success=success,
                 message=message,
@@ -152,7 +158,7 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
     def GetEngineInfo(self, request, context=None):
         """获取执行引擎实例信息（如线程池状态）"""
         try:
-            engine = self._engine
+            engine = self.engine
             info = {
                 "running_tasks": list(engine.running_tasks.keys()) if hasattr(engine, 'running_tasks') else [],
                 "running_e2e": getattr(engine, 'running_e2e', False),
