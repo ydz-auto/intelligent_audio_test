@@ -11,6 +11,8 @@ from shared.models.database import db
 from sqlalchemy import and_
 from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_and_emit
+# 跨服务调用：通过 gRPC ExecutionService 调用任务执行引擎
+from api_gateway.controllers._grpc_proxies import _ReevaluationExecutorProxy
 from api_gateway.schemas.common import IdData
 from api_gateway.schemas.evaluation import (
     CategoryCreateInput,
@@ -1201,9 +1203,8 @@ class EvaluationController:
         if task.status not in ['completed', 'failed', 'stopped', 'paused', 'skipped']:
             return error_response("只有已完成/失败/停止/暂停/跳过的任务才能重新评估")
 
-        # TODO: 跨服务依赖，应改为 HTTP 调用
-        from task_service.core.reevaluation_executor import ReevaluationExecutor
-        executor = ReevaluationExecutor.get_instance()
+        # 跨服务调用：通过 gRPC ExecutionService 重新评估
+        executor = _ReevaluationExecutorProxy.get_instance()
         success, message = executor.submit(
             task_id=task_id,
             reextract_device_output=reextract_device_output,

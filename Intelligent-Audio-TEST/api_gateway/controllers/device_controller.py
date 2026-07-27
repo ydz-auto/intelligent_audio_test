@@ -3,8 +3,8 @@ from shared.models.models import Device, DeviceTag, TaskDevice
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
-# TODO: 跨服务依赖，应改为 HTTP 调用
-from e2e_test_service.drivers import device_driver_factory
+# 跨服务调用：通过 gRPC DeviceService 调用设备驱动工厂
+from api_gateway.controllers._grpc_proxies import device_driver_factory
 from api_gateway.schemas.common import IdData
 from api_gateway.schemas.device import (
     DeviceHealthItem,
@@ -213,7 +213,7 @@ class DeviceController:
             device['system_version'] = 'Unknown'
             device['app_name'] = 'Default App'
             device['app_version'] = '1.0.0'
-            device['ip'] = '127.0.0.1'
+            device['ip'] = device.get('ip', '')
 
         return success_response([DeviceScanItem(**d) for d in all_devices], f"成功扫描到 {len(all_devices)} 个在线设备")
 

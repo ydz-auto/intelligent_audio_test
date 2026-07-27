@@ -18,10 +18,10 @@ app = None
 def create_app(config_name='default'):
     global app
     app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-        'DATABASE_URL',
-        'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
-    )
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    if not DATABASE_URL:
+        raise RuntimeError('未配置 DATABASE_URL 环境变量')
+    app.config['SQLALCHEMY_DATABASE_URI'] = DATABASE_URL
     init_db(app, pool_size=20)
 
     # 健康检查

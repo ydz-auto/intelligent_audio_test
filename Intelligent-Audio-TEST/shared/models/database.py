@@ -1,14 +1,17 @@
 """
 数据库初始化模块 - 共享层
 """
+import os
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
 
 def init_db(app, pool_size=10):
     """初始化数据库连接池"""
-    app.config['SQLALCHEMY_DATABASE_URI'] = app.config.get('SQLALCHEMY_DATABASE_URI') or \
-        'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
+    uri = app.config.get('SQLALCHEMY_DATABASE_URI') or os.environ.get('DATABASE_URL')
+    if not uri:
+        raise RuntimeError('未配置 DATABASE_URL 或 SQLALCHEMY_DATABASE_URI 环境变量')
+    app.config['SQLALCHEMY_DATABASE_URI'] = uri
     app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
         'pool_size': pool_size,
         'pool_recycle': 3600,

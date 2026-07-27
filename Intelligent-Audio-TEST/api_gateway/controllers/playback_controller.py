@@ -4,8 +4,8 @@ from shared.models.models import PlaybackDevice
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
-# TODO: 跨服务依赖，应改为 HTTP 调用
-from e2e_test_service.audio.audio_engine import AudioService
+# 跨服务调用：通过 gRPC AudioService 调用音频引擎
+from api_gateway.controllers._grpc_proxies import AudioService, audio_service
 from shared.utils.task_utils import has_running_e2e_tasks
 from api_gateway.schemas.common import IdData, StatusData
 from api_gateway.schemas.playback import PlaybackDeviceItem, PlaybackDeviceListData, PlaybackScanItem, PlaybackStatusItem, PlaybackTestData
@@ -359,9 +359,10 @@ class PlaybackController:
             gain = 1.0
             if spl and device.current_spl_mapping_id:
                 try:
-                    # TODO: 跨服务依赖，应改为 HTTP 调用
-                    from e2e_test_service.audio.spl_service import spl_service
-                    gain = spl_service.spl_to_gain(device.current_spl_mapping_id, spl)
+                    # 跨服务调用：通过 gRPC AudioService 的 SPL 测量
+                    from api_gateway.controllers._grpc_proxies import spl_service
+                    # TODO: spl_to_gain 方法需在 gRPC server 端实现
+                    gain = getattr(spl_service, 'spl_to_gain', lambda *a: 1.0)(device.current_spl_mapping_id, spl)
                 except Exception:
                     pass
 

@@ -7,14 +7,14 @@ from shared.models.models import Task, TaskCase,  TestCase, API
 from shared.models.database import db
 from shared.utils.log_handler import log_and_emit
 
-# TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-from e2e_test_service.audio.audio_engine import audio_service
+# 跨服务调用：通过 gRPC AudioService 调用音频引擎
+from shared.clients.grpc_clients import get_audio_service_stub
 from task_service.core.api_executor import APIExecutor
 from task_service.core.e2e_executor import E2EExecutor
 from shared.utils.event_manager import EventManager
 from shared.utils.config_manager import config_manager
-# TODO: 跨服务调用 - Task Service 不应直接 import 设备驱动，应改为 HTTP 调用 e2e_test_service
-from e2e_test_service.drivers import device_driver_factory, register_task_events, unregister_task_events
+# 跨服务调用：通过 gRPC DeviceService 调用设备驱动工厂
+from shared.clients.grpc_clients import get_device_service_stub
 
 # 执行引擎类，负责管理和执行测试任务
 # 实现单例模式，确保全局只有一个执行引擎实例
@@ -664,27 +664,25 @@ class ExecutionEngine:
                                 tc.duration = None
                         
                         local_db_session.commit()
-                        # 暂停时停止所有音频播放
-                        audio_service.stop_task_audio(task_id)
-                        # 暂停时清理设备并注销事件
-                        device_driver_factory.cleanup_devices(task_id)
-                        unregister_task_events(task_id)
+                        # 暂停时停止所有音频播放（通过 gRPC AudioService）
+                        _stop_task_audio_via_grpc(task_id)
+                        # 暂停时清理设备并注销事件（通过 gRPC DeviceService）
+                        _cleanup_devices_via_grpc(task_id)
+                        _unregister_task_events_via_grpc(task_id)
                         self._emit_progress(task)  # 发送进度更新
                         return True, "任务已暂停"
                     elif action == 'resume':
                         # 恢复任务
                         # 检查事件是否还存在，如果不存在需要重新注册
-                        # TODO: 跨服务调用 - Task Service 不应直接 import 设备驱动，应改为 HTTP 调用 e2e_test_service
-                        from e2e_test_service.drivers import get_task_events
-                        if get_task_events(task_id) is None:
+                        # 跨服务调用：通过 gRPC DeviceService 获取任务事件
+                        if _get_task_events_via_grpc(task_id) is None:
                             # 重新注册事件
                             if task_id not in self.pause_flags:
                                 self.pause_flags[task_id] = threading.Event()
                             if task_id not in self.stop_flags:
                                 self.stop_flags[task_id] = threading.Event()
-                            # TODO: 跨服务调用 - Task Service 不应直接 import 设备驱动，应改为 HTTP 调用 e2e_test_service
-                            from e2e_test_service.drivers import register_task_events
-                            register_task_events(task_id, self.stop_flags[task_id], self.pause_flags[task_id])
+                            # 跨服务调用：通过 gRPC DeviceService 注册任务事件
+                            _register_task_events_via_grpc(task_id, self.stop_flags[task_id], self.pause_flags[task_id])
                         
                         self.pause_flags[task_id].set()  # 设置暂停标志，恢复执行
                         task.status = 'running'  # 更新任务状态
@@ -1727,3 +1725,87 @@ class ExecutionEngine:
 
 # 创建ExecutionEngine实例，供外部调用
 execution_engine = ExecutionEngine()
+
+
+# ──────────────────────────────────────────────────────────────────
+#  gRPC 调用封装：把对 e2e_test_service 的直接 import 调用替换为 gRPC stub 调用
+# ──────────────────────────────────────────────────────────────────
+
+def _stop_task_audio_via_grpc(task_id):
+    """通过 gRPC AudioService 停止任务音频（原 audio_service.stop_task_audio）"""
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_audio_service_stub()
+        stub.StopAudio(e2e_service_pb2.StopAudioRequest(task_id=str(task_id)))
+    except Exception:
+        pass
+
+
+def _cleanup_devices_via_grpc(task_id):
+    """通过 gRPC DeviceService 清理任务设备（原 device_driver_factory.cleanup_devices）"""
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_device_service_stub()
+        stub.DestroyDriver(e2e_service_pb2.DestroyDriverRequest(
+            task_id=str(task_id),
+            driver_id='',
+        ))
+    except Exception:
+        pass
+
+
+def _unregister_task_events_via_grpc(task_id):
+    """通过 gRPC DeviceService 注销任务事件（原 unregister_task_events）"""
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_device_service_stub()
+        stub.UnregisterTaskEvents(e2e_service_pb2.UnregisterTaskEventsRequest(
+            task_id=str(task_id)
+        ))
+    except Exception:
+        pass
+
+
+def _get_task_events_via_grpc(task_id):
+    """通过 gRPC DeviceService 获取任务事件（原 get_task_events）
+
+    返回 None 表示未注册事件（用于 resume 时判断是否需要重新注册）
+    """
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_device_service_stub()
+        resp = stub.GetTaskEvents(e2e_service_pb2.GetTaskEventsRequest(
+            task_id=str(task_id), max_events=1
+        ))
+        if not resp.success or not resp.data:
+            return None
+        return _json.loads(resp.data)
+    except Exception:
+        return None
+
+
+def _register_task_events_via_grpc(task_id, stop_event, pause_event):
+    """通过 gRPC DeviceService 注册任务事件（原 register_task_events）
+
+    注意：stop_event / pause_event 是进程内 threading.Event 对象，
+    无法跨进程序列化传递。此处只传递事件状态，实际事件机制需重新设计。
+    TODO: 改为 gRPC 调用后，事件机制需重新设计（如基于状态轮询）
+    """
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_device_service_stub()
+        callback_config = {
+            'stop_event_set': stop_event.is_set() if stop_event else False,
+            'pause_event_set': pause_event.is_set() if pause_event else True,
+        }
+        stub.RegisterTaskEvents(e2e_service_pb2.RegisterTaskEventsRequest(
+            task_id=str(task_id),
+            callback_config=_json.dumps(callback_config)
+        ))
+    except Exception:
+        pass

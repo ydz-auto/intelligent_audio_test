@@ -107,14 +107,23 @@ class ReevaluationExecutor:
                 test_results = []
 
                 if reextract_device_output:
-                    # TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-                    from e2e_test_service.device.device_result_reextractor import get_device_result_reextractor
-                    reextractor = get_device_result_reextractor()
-
-                    if reevaluate_type == 'all':
-                        reextract_result = reextractor.reextract_for_task(task_id, evaluation_status=None)
-                    else:
-                        reextract_result = reextractor.reextract_for_task(task_id, evaluation_status='failed')
+                    # 跨服务调用：通过 gRPC DeviceResultService 重新提取设备结果
+                    from shared.clients.grpc_clients import get_device_result_service_stub
+                    import json as _json_re
+                    from shared.proto import e2e_service_pb2 as _e2e_pb2
+                    _stub = get_device_result_service_stub()
+                    _reeextract_config = {
+                        'evaluation_status': None if reevaluate_type == 'all' else 'failed',
+                    }
+                    _resp = _stub.ReextractResult(_e2e_pb2.ReextractResultRequest(
+                        task_id=str(task_id),
+                        reextract_config=_json_re.dumps(_reeextract_config)
+                    ))
+                    reextract_result = {
+                        'success': _resp.success,
+                        'message': _resp.message,
+                        'data': _json_re.loads(_resp.data) if _resp.data else None,
+                    }
 
                     if not reextract_result.get('success'):
                         log_and_emit('WARNING', 'reevaluator',
@@ -160,12 +169,13 @@ class ReevaluationExecutor:
                         # 从文件恢复 raw_results，重新映射字段（修复多对一映射字段丢失问题）
                         raw_results_list = full_data.get('raw_results_list') if full_data else None
                         if raw_results_list:
-                            # TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-                            from e2e_test_service.device.device_result_collector import get_device_result_collector
+                            # 跨服务调用：通过 gRPC DeviceResultService 转换结果
+                            from shared.clients.grpc_clients import get_device_result_service_stub
+                            from task_service.core.base_executor import _DeviceResultCollectorProxy
                             from shared.models.models import TestCase
                             test_case = db.session.get(TestCase, result.test_case_id)
                             algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
-                            collector = get_device_result_collector()
+                            collector = _DeviceResultCollectorProxy(get_device_result_service_stub())
                             remapped_results = collector.convert_results(
                                 [dict(r, raw_results=r.get('raw_results', {})) for r in raw_results_list],
                                 algorithm_type
@@ -250,12 +260,13 @@ class ReevaluationExecutor:
                         # 从文件恢复 raw_results，重新映射字段（修复多对一映射字段丢失问题）
                         raw_results_list = full_data.get('raw_results_list') if full_data else None
                         if raw_results_list:
-                            # TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-                            from e2e_test_service.device.device_result_collector import get_device_result_collector
+                            # 跨服务调用：通过 gRPC DeviceResultService 转换结果
+                            from shared.clients.grpc_clients import get_device_result_service_stub
+                            from task_service.core.base_executor import _DeviceResultCollectorProxy
                             from shared.models.models import TestCase
                             test_case = db.session.get(TestCase, result.test_case_id)
                             algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
-                            collector = get_device_result_collector()
+                            collector = _DeviceResultCollectorProxy(get_device_result_service_stub())
                             remapped_results = collector.convert_results(
                                 [dict(r, raw_results=r.get('raw_results', {})) for r in raw_results_list],
                                 algorithm_type

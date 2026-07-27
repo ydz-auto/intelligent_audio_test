@@ -6,8 +6,10 @@ from shared.models.database import db
 from shared.utils.response import success_response, error_response, convert_keys_to_camel
 from shared.utils.error_codes import ErrorCode
 from shared.utils.log_handler import log_not_emit
-# TODO: 跨服务依赖，应改为 HTTP 调用
-from task_service.core.execution_engine import execution_engine
+# 跨服务调用：通过 gRPC ExecutionService 调用任务执行引擎
+from api_gateway.controllers._grpc_proxies import (
+    execution_engine, _ReevaluationExecutorProxy,
+)
 from shared.utils.result_data_store import load_full_result_data
 from shared.clients.oss_client import oss
 from api_gateway.schemas.common import IdData, TaskStatusData
@@ -107,11 +109,10 @@ class TaskController:
         if not completed_cases:
             return
 
-        # TODO: 跨服务依赖，应改为 HTTP 调用
-        from task_service.core.reevaluation_executor import ReevaluationExecutor
+        # 跨服务调用：通过 gRPC ExecutionService 重新评估
         from shared.models.models import TestCase
 
-        reevaluation_executor = ReevaluationExecutor.get_instance()
+        reevaluation_executor = _ReevaluationExecutorProxy.get_instance()
         task = db.session.get(Task, task_id)
         test_type = task.type if task and task.type else 'api'
 
@@ -1310,14 +1311,19 @@ class TaskController:
                     from reportlab.pdfbase import pdfmetrics
                     from reportlab.pdfbase.ttfonts import TTFont
                     import os
+                    import platform
 
-                    # 注册中文字体 (Windows 常用路径)
-                    font_path = "C:\\Windows\\Fonts\\msyh.ttc" # 微软雅黑
-                    if not os.path.exists(font_path):
-                        font_path = "C:\\Windows\\Fonts\\simsun.ttc" # 宋体
-                    
+                    # 注册中文字体 (跨平台候选路径)
+                    font_candidates = (
+                        ['C:\\Windows\\Fonts\\msyh.ttc', 'C:\\Windows\\Fonts\\simsun.ttc']
+                        if platform.system() == 'Windows'
+                        else ['/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
+                              '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc']
+                    )
+                    font_path = next((p for p in font_candidates if os.path.exists(p)), None)
+
                     font_name = "CustomFont"
-                    if os.path.exists(font_path):
+                    if font_path and os.path.exists(font_path):
                         pdfmetrics.registerFont(TTFont(font_name, font_path))
                     else:
                         font_name = "Helvetica" # 回退
@@ -1368,8 +1374,8 @@ class TaskController:
     @staticmethod
     def rextract(task_id):
         from pydantic import BaseModel, Field
-        # TODO: 跨服务依赖，应改为 HTTP 调用
-        from e2e_test_service.device.device_result_reextractor import get_device_result_reextractor
+        # 跨服务调用：通过 gRPC DeviceResultService 重新提取设备结果
+        from api_gateway.controllers._grpc_proxies import get_device_result_reextractor
 
         class TaskReextractInput(BaseModel):
             task_id: int = Field(..., validation_alias='task_id')
@@ -1442,19 +1448,11 @@ class TaskController:
 
         try:
             app = current_app._get_current_object()
-            
+
             if task.status in ['running', 'paused']:
-                # TODO: 跨服务依赖，应改为 HTTP 调用
-                from task_service.core.execution_engine import execution_engine as ee
-                stop_future = ee.api_task_pool.submit(
-                    execution_engine.control_task,
-                    app, task_id, 'stop'
-                )
-                try:
-                    stop_future.result(timeout=5)
-                except Exception:
-                    pass
-            
+                # 跨服务调用：通过 gRPC ExecutionService 停止任务
+                execution_engine.control_task(app, task_id, 'stop')
+
             # 2. 从任务队列中移除任务
             execution_engine.remove_from_queue(task_id)
             

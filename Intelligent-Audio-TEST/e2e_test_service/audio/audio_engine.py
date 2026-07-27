@@ -52,9 +52,20 @@ class AudioService:
         """获取音频播放专用线程池（延迟初始化，避免循环导入）"""
         if self._audio_pool is None:
             try:
-                # TODO: 跨服务依赖 - e2e_test_service 不应依赖 task_service.core，应改为通过参数传递
-                from task_service.core.execution_engine import execution_engine
-                self._audio_pool = execution_engine.audio_playback_pool
+                # 跨服务调用：通过 gRPC ExecutionService 获取引擎信息（原 execution_engine.audio_playback_pool）
+                from shared.clients.grpc_clients import get_execution_service_stub
+                from shared.proto import task_service_pb2
+                import json as _json
+                _stub = get_execution_service_stub()
+                _resp = _stub.GetEngineInfo(task_service_pb2.GetEngineInfoRequest(task_id=''))
+                if _resp.success and _resp.data:
+                    _info = _json.loads(_resp.data)
+                    pool_size = _info.get('audio_playback_pool_size', 3)
+                else:
+                    pool_size = 3
+                # gRPC 无法返回线程池对象，本地创建对应大小的线程池
+                from concurrent.futures import ThreadPoolExecutor
+                self._audio_pool = ThreadPoolExecutor(max_workers=pool_size, thread_name_prefix='audio_play_')
             except Exception as e:
                 log_and_emit('WARNING', 'audio_engine', f"无法获取音频线程池，使用本地线程池: {e}", category='audio')
                 from concurrent.futures import ThreadPoolExecutor

@@ -42,8 +42,10 @@ class OSSClient:
 
     def _init(self):
         endpoint = os.environ.get('OSS_ENDPOINT', 'http://localhost:9000')
-        access_key = os.environ.get('OSS_ACCESS_KEY', 'minio')
-        secret_key = os.environ.get('OSS_SECRET_KEY', 'minio123')
+        access_key = os.environ.get('OSS_ACCESS_KEY')
+        secret_key = os.environ.get('OSS_SECRET_KEY')
+        if not access_key or not secret_key:
+            raise RuntimeError('未配置 OSS_ACCESS_KEY 或 OSS_SECRET_KEY 环境变量')
 
         self._client = boto3.client(
             's3',

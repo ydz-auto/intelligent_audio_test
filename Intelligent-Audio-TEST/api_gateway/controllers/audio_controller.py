@@ -2879,8 +2879,8 @@ class AudioController:
         
         # 无论是否提供设备ID，都使用后端硬件播放
         try:
-            # TODO: 跨服务依赖，应改为 HTTP 调用
-            from e2e_test_service.audio.audio_engine import audio_service
+            # 跨服务调用：通过 gRPC AudioService 调用音频引擎
+            from api_gateway.controllers._grpc_proxies import audio_service
             from shared.models.models import PlaybackDevice, SPLMapping
             
             # 设备信息
@@ -2929,9 +2929,10 @@ class AudioController:
                 
                 # 计算音量/增益
                 if spl and getattr(device, 'current_spl_mapping_id', None):
-                    # TODO: 跨服务依赖，应改为 HTTP 调用
-                    from e2e_test_service.audio.spl_service import spl_service
-                    gain = spl_service.spl_to_gain(device.current_spl_mapping_id, spl)
+                    # 跨服务调用：通过 gRPC AudioService 的 SPL 测量
+                    from api_gateway.controllers._grpc_proxies import spl_service
+                    # TODO: spl_to_gain 方法需在 gRPC server 端实现
+                    gain = getattr(spl_service, 'spl_to_gain', lambda *a: 1.0)(device.current_spl_mapping_id, spl)
                 
                 # 获取物理设备索引
                 device_index = 0
@@ -2986,8 +2987,8 @@ class AudioController:
     @staticmethod
     def stop_preview(audio_id):
         try:
-            # TODO: 跨服务依赖，应改为 HTTP 调用
-            from e2e_test_service.audio.audio_engine import audio_service
+            # 跨服务调用：通过 gRPC AudioService 调用音频引擎
+            from api_gateway.controllers._grpc_proxies import audio_service
             
             # 解析实际的音频ID（与preview方法相同的逻辑）
             actual_audio_id = audio_id

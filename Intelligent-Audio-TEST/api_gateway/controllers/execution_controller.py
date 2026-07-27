@@ -2,8 +2,8 @@ from flask import request, current_app
 from shared.models.models import Task, TaskCase
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
-# TODO: 跨服务依赖，应改为 HTTP 调用
-from task_service.core.execution_engine import execution_engine
+# 跨服务调用：通过 gRPC ExecutionService 调用任务执行引擎
+from api_gateway.controllers._grpc_proxies import execution_engine
 from api_gateway.schemas.common import TaskStatusData
 from api_gateway.schemas.task import TaskControlRequest
 
@@ -20,12 +20,10 @@ class ExecutionController:
         if not cases:
             return error_response("该任务中没有待运行的用例")
 
-        # 开始异步执行
-        # 需要获取应用实例以供 context 使用
+        # 开始异步执行（通过 gRPC ExecutionService 启动任务）
         app = current_app._get_current_object()
-        print(app)
         success, message = execution_engine.start_task(app, task_id)
-        
+
         if success:
             return success_response(None, message)
         else:
@@ -35,8 +33,9 @@ class ExecutionController:
     @staticmethod
     def control(task_id):
         req = TaskControlRequest.model_validate(request.get_json())
-        
+
         action = req.action
+        # 通过 gRPC ExecutionService 控制任务
         app = current_app._get_current_object()
         success, message = execution_engine.control_task(app, task_id, action)
         

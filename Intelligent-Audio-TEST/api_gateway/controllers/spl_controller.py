@@ -513,8 +513,8 @@ class SPLController:
             unique_id = None
         
         try:
-            # TODO: 跨服务依赖，应改为 HTTP 调用
-            from e2e_test_service.audio.audio_engine import audio_service
+            # 跨服务调用：通过 gRPC AudioService 调用音频引擎
+            from api_gateway.controllers._grpc_proxies import audio_service
             from shared.models.models import PlaybackDevice
             import wave
             import os
@@ -621,8 +621,8 @@ class SPLController:
             if unique_id == "":
                 unique_id = None
             
-            # TODO: 跨服务依赖，应改为 HTTP 调用
-            from e2e_test_service.audio.audio_engine import audio_engine
+            # 跨服务调用：通过 gRPC AudioService 调用音频引擎
+            from api_gateway.controllers._grpc_proxies import audio_service as audio_engine
 
             if unique_id:
                 device_index = audio_service.get_device_index(unique_id)

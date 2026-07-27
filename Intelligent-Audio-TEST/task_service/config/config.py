@@ -6,13 +6,14 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class TaskServiceConfig:
     PORT = int(os.environ.get('PORT', 5001))
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379')
-    DATABASE_URL = os.environ.get('DATABASE_URL',
-        'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test')
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    if not DATABASE_URL:
+        raise RuntimeError('未配置 DATABASE_URL 环境变量')
 
     # OSS
     OSS_ENDPOINT = os.environ.get('OSS_ENDPOINT', 'http://localhost:9000')
-    OSS_ACCESS_KEY = os.environ.get('OSS_ACCESS_KEY', 'minio')
-    OSS_SECRET_KEY = os.environ.get('OSS_SECRET_KEY', 'minio123')
+    OSS_ACCESS_KEY = os.environ.get('OSS_ACCESS_KEY')
+    OSS_SECRET_KEY = os.environ.get('OSS_SECRET_KEY')
 
     # 执行服务地址
     E2E_TEST_SERVICE_HOST = os.environ.get('E2E_TEST_SERVICE_HOST', 'localhost')

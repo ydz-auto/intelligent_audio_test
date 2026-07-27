@@ -4,10 +4,10 @@ import threading
 
 from shared.models.models import Audio, Device, TaskDevice
 from shared.models.database import db
-# TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-from e2e_test_service.audio.audio_engine import audio_service
-# TODO: 跨服务调用 - Task Service 不应直接 import 设备驱动，应改为 HTTP 调用 e2e_test_service
-from e2e_test_service.drivers import device_driver_factory
+# 跨服务调用：通过 gRPC AudioService 调用音频引擎
+from shared.clients.grpc_clients import get_audio_service_stub
+# 跨服务调用：通过 gRPC DeviceService 调用设备驱动工厂
+from shared.clients.grpc_clients import get_device_service_stub
 
 
 class E2EDeviceManager:
@@ -32,7 +32,8 @@ class E2EDeviceManager:
 
             device_info_list = []
             for dev in devices:
-                driver = device_driver_factory.get_driver(dev.system, keywords=dev.keywords)
+                # 跨服务调用：通过 gRPC DeviceService 获取驱动
+                driver = _get_driver_via_grpc(dev.system, keywords=dev.keywords)
                 prompt_path, prompt_name = self._get_prompt_audio_info(
                     dev.needs_prompt_audio, dev.prompt_config
                 )
@@ -192,20 +193,17 @@ class E2EDeviceManager:
         """播放提示音频"""
         prompt_info = next((info for info in device_info_list if info["prompt_audio_path"]), None)
         if prompt_info:
-            future = audio_service.play_audio(
+            # 跨服务调用：通过 gRPC AudioService 播放音频
+            _play_audio_via_grpc(
                 task_id=task_id, file_path=prompt_info["prompt_audio_path"],
                 device_index=device_index, channel_index=playback_dev.channel_index if playback_dev else 0,
                 gain=main_gain, player_type='dry'
             )
-            try:
-                future.result()
-            except Exception as e:
-                self._log(level='ERROR', content=f"提示音播放失败: {e}", task_id=task_id)
 
     def setup_env_devices_for_round(self, round_algo_params, task_id):
         """设置本轮环境设备（导轨等），返回状态列表供 teardown 恢复。"""
-        # TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-        from e2e_test_service.env_device import EnvDeviceFactory
+        # 跨服务调用：通过 gRPC EnvDeviceService 控制环境设备
+        from shared.clients.grpc_clients import get_env_device_service_stub
 
         _ENV_DEVICE_PARAM_MAP = {
             'rail_distance': ('rail', lambda v: {'distance_cm': float(v)}),
@@ -217,8 +215,9 @@ class E2EDeviceManager:
             if value is None:
                 continue
             try:
-                dev = EnvDeviceFactory.create(device_type)
-                if dev and dev.is_available():
+                # 通过 gRPC 控制环境设备
+                dev = _EnvDeviceProxy(get_env_device_service_stub(), device_type)
+                if dev.is_available():
                     state = dev.setup(build_settings(value))
                     env_states.append((dev, state))
                     self._log(level='INFO', content=f"环境设备 {device_type} 已设置: {param_key}={value}", task_id=task_id)
@@ -233,3 +232,159 @@ class E2EDeviceManager:
                 dev.teardown(state)
             except Exception as e:
                 self._log(level='WARNING', content=f"环境设备 {dev.device_type} 恢复失败: {e}", task_id=task_id)
+
+
+# ──────────────────────────────────────────────────────────────────
+#  gRPC 调用封装：把对 e2e_test_service 的直接 import 调用替换为 gRPC stub 调用
+# ──────────────────────────────────────────────────────────────────
+
+def _get_driver_via_grpc(system, **kwargs):
+    """通过 gRPC DeviceService 获取设备驱动（原 device_driver_factory.get_driver）
+
+    原 get_driver 返回一个本地 driver 对象，提供 initialize/pre_process/post_process/
+    teardown/set_task_id/set_test_case_id/set_device_id 等方法。
+    gRPC 无法返回对象，此处返回 _DriverProxy 代理封装 gRPC 调用。
+    """
+    return _DriverProxy(system, kwargs)
+
+
+class _DriverProxy:
+    """设备驱动代理：封装对 gRPC DeviceService 的调用
+
+    注意：原 driver 对象在本地进程内持有大量状态（设备连接、线程池等），
+    gRPC 模式下这些状态需由 e2e_test_service server 端管理。
+    """
+
+    def __init__(self, system, kwargs):
+        self.system = system
+        self.kwargs = kwargs
+        self._task_id = None
+        self._test_case_id = None
+        self._device_id = None
+
+    def set_task_id(self, task_id):
+        self._task_id = task_id
+
+    def set_test_case_id(self, test_case_id):
+        self._test_case_id = test_case_id
+
+    def set_device_id(self, device_id):
+        self._device_id = device_id
+
+    def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs):
+        import json as _json
+        from shared.proto import e2e_service_pb2
+        try:
+            stub = get_device_service_stub()
+            resp = stub.CreateDriver(e2e_service_pb2.CreateDriverRequest(
+                task_id=str(task_id or self._task_id or ''),
+                device_config=_json.dumps({
+                    'action': 'initialize',
+                    'system': self.system,
+                    'device_sn': device_sn,
+                    'test_case_id': test_case_id or self._test_case_id,
+                    'kwargs': kwargs,
+                })
+            ))
+            return resp.success
+        except Exception:
+            return False
+
+    def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs):
+        # TODO: gRPC DeviceService 暂无对应 RPC，需扩展 proto
+        pass
+
+    def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs):
+        # TODO: gRPC DeviceService 暂无对应 RPC，需扩展 proto
+        pass
+
+    def teardown(self, device_sn, task_id=None, test_case_id=None, **kwargs):
+        import json as _json
+        from shared.proto import e2e_service_pb2
+        try:
+            stub = get_device_service_stub()
+            resp = stub.DestroyDriver(e2e_service_pb2.DestroyDriverRequest(
+                task_id=str(task_id or self._task_id or ''),
+                driver_id=device_sn,
+            ))
+            return resp.success
+        except Exception:
+            return False
+
+
+def _play_audio_via_grpc(task_id, file_path, device_index=0, channel_index=0, gain=0.0, player_type='dry', **kwargs):
+    """通过 gRPC AudioService 播放音频（原 audio_service.play_audio）"""
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_audio_service_stub()
+        play_config = {
+            'file_path': file_path,
+            'device_index': device_index,
+            'channel_index': channel_index,
+            'gain': gain,
+            'player_type': player_type,
+            'kwargs': kwargs,
+        }
+        resp = stub.PlayAudio(e2e_service_pb2.PlayAudioRequest(
+            task_id=str(task_id),
+            audio_file_paths=_json.dumps([file_path]),
+            play_config=_json.dumps(play_config)
+        ))
+        return resp.success
+    except Exception:
+        return False
+
+
+class _EnvDeviceProxy:
+    """环境设备代理：封装对 gRPC EnvDeviceService 的调用（原 EnvDeviceFactory.create 返回的对象）"""
+
+    def __init__(self, stub, device_type):
+        self._stub = stub
+        self.device_type = device_type
+
+    def is_available(self):
+        # 简单探测：通过 ControlEnvDevice 发一个空动作检查可用性
+        import json as _json
+        from shared.proto import e2e_service_pb2
+        try:
+            resp = self._stub.ControlEnvDevice(e2e_service_pb2.ControlEnvDeviceRequest(
+                task_id='',
+                device_action=_json.dumps({'device_type': self.device_type, 'action': 'is_available'})
+            ))
+            return resp.success
+        except Exception:
+            return False
+
+    def setup(self, settings):
+        import json as _json
+        from shared.proto import e2e_service_pb2
+        try:
+            resp = self._stub.ControlEnvDevice(e2e_service_pb2.ControlEnvDeviceRequest(
+                task_id='',
+                device_action=_json.dumps({
+                    'device_type': self.device_type,
+                    'action': 'setup',
+                    'settings': settings,
+                })
+            ))
+            if resp.success and resp.data:
+                return _json.loads(resp.data)
+            return {}
+        except Exception:
+            return {}
+
+    def teardown(self, state):
+        import json as _json
+        from shared.proto import e2e_service_pb2
+        try:
+            self._stub.ControlEnvDevice(e2e_service_pb2.ControlEnvDeviceRequest(
+                task_id='',
+                device_action=_json.dumps({
+                    'device_type': self.device_type,
+                    'action': 'teardown',
+                    'state': state,
+                })
+            ))
+        except Exception:
+            pass

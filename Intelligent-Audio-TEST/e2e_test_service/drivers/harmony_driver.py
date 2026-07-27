@@ -86,7 +86,7 @@ class HarmonyDriver(BaseDeviceDriver):
         password = self._unlock_password
         try:
             if driver:
-                self._log(level='DEBUG', content=f"Attempting to input password: {password}")
+                self._log(level='DEBUG', content=f"Attempting to input password: {'*' * len(password)}")
                 coords_cache = {}
                 for i, digit in enumerate(password):
                     if self._check_stop("unlock"):

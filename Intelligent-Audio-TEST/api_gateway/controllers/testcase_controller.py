@@ -1103,10 +1103,10 @@ class TestCaseController:
         if has_running_e2e_tasks():
             return error_response("当前有待执行的E2E测试任务，不允许使用后端扬声器播放", 403)
 
-        # TODO: 跨服务依赖，应改为 HTTP 调用
-        from e2e_test_service.audio.audio_engine import audio_service
-        # TODO: 跨服务依赖，应改为 HTTP 调用
-        from e2e_test_service.audio.spl_service import spl_service
+        # 跨服务调用：通过 gRPC AudioService 调用音频引擎
+        from api_gateway.controllers._grpc_proxies import audio_service
+        # 跨服务调用：通过 gRPC AudioService 的 SPL 测量
+        from api_gateway.controllers._grpc_proxies import spl_service
         from shared.models.models import PlaybackDevice, Audio
         
         preview_task_id = f"PREVIEW_{tc_id}"
@@ -1127,8 +1127,8 @@ class TestCaseController:
         preview_stop_flags[tc_id] = False
 
         try:
-            # TODO: 跨服务依赖，应改为 HTTP 调用
-            from e2e_test_service.audio.playback_orchestrator import playback_orchestrator
+            # 跨服务调用：通过 gRPC PlaybackService 调用播放编排
+            from api_gateway.controllers._grpc_proxies import playback_orchestrator
 
             preview_result = playback_orchestrator.preview(
                 audio_configs=preview_audios,
@@ -1170,8 +1170,8 @@ class TestCaseController:
         """
         停止预览测试用例：向音频引擎发送停止信号
         """
-        # TODO: 跨服务依赖，应改为 HTTP 调用
-        from e2e_test_service.audio.audio_engine import audio_service
+        # 跨服务调用：通过 gRPC AudioService 调用音频引擎
+        from api_gateway.controllers._grpc_proxies import audio_service
         preview_task_id = f"PREVIEW_{tc_id}"
         
         # 设置停止标志，通知播放线程停止

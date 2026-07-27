@@ -1,10 +1,10 @@
 import json
 import time
 import os
-# TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-from e2e_test_service.audio.playback_orchestrator import playback_orchestrator
-# TODO: 跨服务调用 - Task Service 不应直接 import 设备驱动，应改为 HTTP 调用 e2e_test_service
-from e2e_test_service.drivers import device_driver_factory, register_task_events
+# 跨服务调用：通过 gRPC PlaybackService 调用播放编排
+from shared.clients.grpc_clients import get_playback_service_stub
+# 跨服务调用：通过 gRPC DeviceService 调用设备驱动
+from shared.clients.grpc_clients import get_device_service_stub
 from shared.utils.field_mapper import get_field_mapper
 from task_service.core.base_executor import BaseExecutor
 from task_service.core.e2e_device_manager import E2EDeviceManager
@@ -76,7 +76,8 @@ class E2EExecutor(BaseExecutor):
             self._handle_control(task_id)
             self._update_tc_rel_status(tc_rel_id, execution_status='running')
             stop_event, pause_event = self._get_control_events(task_id)
-            register_task_events(task_id, stop_event, pause_event)
+            # 跨服务调用：通过 gRPC DeviceService 注册任务事件
+            _register_task_events_via_grpc(task_id, stop_event, pause_event)
 
             # ── 阶段一：循环前准备 ──
             device_info_list, result_id = self._prepare_rounds(
@@ -144,7 +145,8 @@ class E2EExecutor(BaseExecutor):
 
         device_info_list = device_result['data']['device_info_list']
         self.current_extra_params = self._execute_extra_params(algorithm_type, case_field_values, include_format_strings=True)
-        device_driver_factory.register_task_devices(task_id, device_info_list)
+        # 跨服务调用：通过 gRPC DeviceService 注册任务设备
+        _register_task_devices_via_grpc(task_id, device_info_list)
 
         for info in device_info_list:
             if info.get("driver"):
@@ -195,7 +197,8 @@ class E2EExecutor(BaseExecutor):
             'wait_time': first_round_algo_params.get('voiceprint_wait_time', 5.0),
         }
         if voiceprint_config.get('enabled'):
-            if not playback_orchestrator.play_voiceprint(voiceprint_config, task_id):
+            # 跨服务调用：通过 gRPC PlaybackService 播放声纹
+            if not _play_voiceprint_via_grpc(voiceprint_config, task_id):
                 self._log(level='ERROR', content='声纹注册失败，中止测试', task_id=task_id, test_case_id=test_case_id)
                 self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message='声纹注册失败')
                 raise RuntimeError('声纹注册失败')
@@ -254,7 +257,7 @@ class E2EExecutor(BaseExecutor):
             extra_params={**self.current_extra_params, 'round_number': round_idx},
         )
 
-        play_result = playback_orchestrator.play_round(
+        play_result = _play_round_via_grpc(
             round_config=round_config, task_id=task_id,
             case_config=case_config, test_case_id=test_case_id,
             round_number=round_number,
@@ -314,9 +317,12 @@ class E2EExecutor(BaseExecutor):
             r['round_number'] = round_idx
 
         # 字段映射：将 raw_results 映射为 target 字段（如 output_text、question_text 等）
-        # TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-        from e2e_test_service.device.device_result_collector import get_device_result_collector
-        tagged_results = get_device_result_collector().convert_results(tagged_results, algorithm_type)
+        # 跨服务调用：通过 gRPC DeviceResultService 转换结果
+        from shared.clients.grpc_clients import get_device_result_service_stub
+        from task_service.core.base_executor import _DeviceResultCollectorProxy
+        tagged_results = _DeviceResultCollectorProxy(
+            get_device_result_service_stub()
+        ).convert_results(tagged_results, algorithm_type)
 
         # 轮次内评估
         primary = tagged_results[0] if tagged_results else {}
@@ -603,6 +609,102 @@ class E2EExecutor(BaseExecutor):
     def _process_results_base(self, **kwargs):
         """委托到 BaseExecutor._process_results，供 E2EAggregator 调用"""
         return super()._process_results(**kwargs)
+
+
+# ──────────────────────────────────────────────────────────────────
+#  gRPC 调用封装：把对 e2e_test_service 的直接 import 调用替换为 gRPC stub 调用
+# ──────────────────────────────────────────────────────────────────
+
+def _register_task_events_via_grpc(task_id, stop_event, pause_event):
+    """通过 gRPC DeviceService 注册任务事件（原 register_task_events）"""
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_device_service_stub()
+        callback_config = {
+            # stop_event / pause_event 是进程内 threading.Event，无法跨进程传递
+            # TODO: 改为 gRPC 调用后，事件机制需重新设计（如基于状态轮询）
+            'stop_event_set': stop_event.is_set() if stop_event else False,
+            'pause_event_set': pause_event.is_set() if pause_event else True,
+        }
+        resp = stub.RegisterTaskEvents(e2e_service_pb2.RegisterTaskEventsRequest(
+            task_id=str(task_id),
+            callback_config=_json.dumps(callback_config)
+        ))
+        return resp.success
+    except Exception:
+        return False
+
+
+def _register_task_devices_via_grpc(task_id, device_info_list):
+    """通过 gRPC DeviceService 注册任务设备（原 device_driver_factory.register_task_devices）"""
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_device_service_stub()
+        # device_info_list 内含 driver 对象，无法跨进程序列化
+        # 只传递设备元数据
+        serializable_info = [
+            {
+                'device_id': info.get('device_id'),
+                'device_sn': info.get('device_sn'),
+                'device_name': info.get('device_name'),
+                'needs_prompt_audio': info.get('needs_prompt_audio'),
+                'prompt_audio_path': info.get('prompt_audio_path'),
+                'prompt_audio_name': info.get('prompt_audio_name'),
+            }
+            for info in device_info_list
+        ]
+        resp = stub.CreateDriver(e2e_service_pb2.CreateDriverRequest(
+            task_id=str(task_id),
+            device_config=_json.dumps(serializable_info)
+        ))
+        return resp.success
+    except Exception:
+        return False
+
+
+def _play_voiceprint_via_grpc(voiceprint_config, task_id):
+    """通过 gRPC PlaybackService 播放声纹（原 playback_orchestrator.play_voiceprint）"""
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_playback_service_stub()
+        playback_config = {
+            'action': 'play_voiceprint',
+            'voiceprint_config': voiceprint_config,
+        }
+        resp = stub.StartPlayback(e2e_service_pb2.StartPlaybackRequest(
+            task_id=str(task_id),
+            playback_config=_json.dumps(playback_config)
+        ))
+        return resp.success
+    except Exception:
+        return False
+
+
+def _play_round_via_grpc(round_config, task_id, case_config, test_case_id, round_number):
+    """通过 gRPC PlaybackService 播放本轮音频（原 playback_orchestrator.play_round）"""
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_playback_service_stub()
+        playback_config = {
+            'action': 'play_round',
+            'round_config': round_config,
+            'case_config': case_config,
+            'test_case_id': test_case_id,
+            'round_number': round_number,
+        }
+        resp = stub.StartPlayback(e2e_service_pb2.StartPlaybackRequest(
+            task_id=str(task_id),
+            playback_config=_json.dumps(playback_config)
+        ))
+        if not resp.success or not resp.data:
+            return None
+        return _json.loads(resp.data)
+    except Exception:
+        return None
 
 
 

@@ -36,12 +36,23 @@ class BaseExecutor:
     
     def _get_control_events(self, task_id):
         """获取控制事件"""
-        # TODO: 跨服务调用 - Task Service 不应直接 import 设备驱动，应改为 HTTP 调用 e2e_test_service
-        from e2e_test_service.drivers import get_task_events
-        events = get_task_events(task_id)
-        if events is None or not isinstance(events, dict):
+        # 跨服务调用：通过 gRPC DeviceService 获取任务事件
+        from shared.clients.grpc_clients import get_device_service_stub
+        import json as _json
+        try:
+            stub = get_device_service_stub()
+            from shared.proto import e2e_service_pb2
+            resp = stub.GetTaskEvents(e2e_service_pb2.GetTaskEventsRequest(task_id=str(task_id), max_events=10))
+            if not resp.success or not resp.data:
+                return None, None
+            events = _json.loads(resp.data)
+            if not isinstance(events, dict):
+                return None, None
+            # stop_event / pause_event 是进程内 threading.Event 对象，跨进程无法直接传递
+            # TODO: 改为 gRPC 调用后，事件机制需重新设计（如基于轮询/状态查询）
+            return events.get('stop_event'), events.get('pause_event')
+        except Exception:
             return None, None
-        return events.get('stop_event'), events.get('pause_event')
     
     def _log(self, level, content, task_id=None, test_case_id=None, device_id=None, api_id=None, category='execution', **kwargs):
         """统一日志记录方法"""
@@ -131,9 +142,70 @@ class BaseExecutor:
     
     def _get_result_mapper(self):
         """获取结果映射器"""
-        # TODO: 跨服务调用 - Task Service 不应直接依赖 e2e_test_service，应改为 HTTP 调用
-        from e2e_test_service.device.device_result_collector import get_device_result_collector
-        return get_device_result_collector()
+        # 跨服务调用：通过 gRPC DeviceResultService 获取结果采集器
+        # 原 get_device_result_collector() 返回一个本地对象，提供 convert_results/build_case_result_log 方法
+        # gRPC 只能传递 JSON，无法直接返回对象，此处使用本地代理封装 gRPC 调用
+        from shared.clients.grpc_clients import get_device_result_service_stub
+        return _DeviceResultCollectorProxy(get_device_result_service_stub())
+
+
+class _DeviceResultCollectorProxy:
+    """设备结果采集器代理：将本地对象方法调用封装为 gRPC DeviceResultService 调用"""
+
+    def __init__(self, stub):
+        self._stub = stub
+
+    def convert_results(self, all_results, algorithm_type):
+        import json as _json
+        from shared.proto import e2e_service_pb2
+        req = e2e_service_pb2.CollectResultRequest(
+            task_id='',
+            collect_config=_json.dumps({
+                'action': 'convert_results',
+                'all_results': all_results,
+                'algorithm_type': algorithm_type,
+            })
+        )
+        resp = self._stub.CollectResult(req)
+        if not resp.success or not resp.data:
+            return all_results
+        return _json.loads(resp.data)
+
+    def build_case_result_log(self, algorithm_type, res, ref_fields=None, **kwargs):
+        import json as _json
+        from shared.proto import e2e_service_pb2
+        req = e2e_service_pb2.CollectResultRequest(
+            task_id='',
+            collect_config=_json.dumps({
+                'action': 'build_case_result_log',
+                'algorithm_type': algorithm_type,
+                'res': res,
+                'ref_fields': ref_fields,
+                'kwargs': kwargs,
+            })
+        )
+        resp = self._stub.CollectResult(req)
+        if not resp.success or not resp.data:
+            return ''
+        return resp.data
+
+    def collect_raw_results(self, task_id, test_case_id, device_info_list, extra_params, log_callback=None, **kwargs):
+        import json as _json
+        from shared.proto import e2e_service_pb2
+        req = e2e_service_pb2.CollectResultRequest(
+            task_id=str(task_id),
+            collect_config=_json.dumps({
+                'action': 'collect_raw_results',
+                'test_case_id': test_case_id,
+                'device_info_list': device_info_list,
+                'extra_params': extra_params,
+                'kwargs': kwargs,
+            })
+        )
+        resp = self._stub.CollectResult(req)
+        if not resp.success or not resp.data:
+            return []
+        return _json.loads(resp.data)
     
     def _save_result(self, task_id, test_case_id, result_data, algo_result, algorithm_type, 
                      device_id=None, api_id=None, execution_status='completed', response_time=0,
