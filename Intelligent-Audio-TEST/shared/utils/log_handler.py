@@ -4,7 +4,6 @@ import sys
 import threading
 import queue
 import re
-import os
 import json
 from datetime import datetime, timezone, timedelta
 from flask import has_app_context, current_app
@@ -18,7 +17,11 @@ _global_db_handler = None
 
 LOG_ARCHIVE_THRESHOLD = 300000
 LOG_HOT_DATA_DAYS = 7
-LOG_ARCHIVE_DIR = 'archives'
+# 归档统一写入 OSS（archives bucket），key 结构与 LogController.archive_logs 保持一致：
+#   tasks/{task_id}/{case_id}/{date}.json
+#   tasks/{task_id}/{date}.json
+#   cases/{case_id}/{date}.json
+#   other/{date}.json
 LOG_ARCHIVE_RETENTION_DAYS = 90  # 归档文件保留90天（约3个月），过期自动删除
 CONSOLE_LOG_MAX_LENGTH = 20000
 
@@ -199,9 +202,10 @@ class DatabaseLogHandler(logging.Handler):
                     if Log and SessionLocal and self.flask_app:
                         self._process_batch(batch, Log, SessionLocal)
 
-                    # flush 后 batch 中每条 data 已带上数据库 id，再推送 WebSocket
+                    # flush 后 batch 中每条 data 已带上数据库 id（或 _db_failed 标记），再推送 WebSocket
+                    # 仅推送成功入库的日志，失败批次由 _emit_websocket 内部跳过
                     for data in batch:
-                        if data.get('push_to_websocket'):
+                        if data.get('push_to_websocket') and data.get('id') is not None:
                             self._emit_websocket(data)
 
                     batch = []
@@ -212,11 +216,8 @@ class DatabaseLogHandler(logging.Handler):
                             self._check_and_archive(Log, SessionLocal)
                         self._last_archive_check = current_time
                 else:
-                    # batch 还未满/未超时，仍需即时推送 WebSocket（无 db id）
-                    for data in batch:
-                        if data.get('push_to_websocket') and not data.get('_ws_sent'):
-                            self._emit_websocket(data)
-                            data['_ws_sent'] = True
+                    # batch 未满且未超时：暂不推送，等入库后再推（保证前端拿到合法 id）
+                    pass
                         
             except Exception as e:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - CRITICAL ERROR - {str(e)}")
@@ -297,16 +298,28 @@ class DatabaseLogHandler(logging.Handler):
                     session.add(log_entry)
                     session.flush()
                     data['id'] = log_entry.id
+                    # 记录入库时间，供 WS 推送复用，避免 time 字段漂移
+                    data['_ws_time'] = data['time'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(data['time'], 'strftime') else None
                 session.commit()
                 if self.enable_console_log:
                     print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DEBUG - Batch saved {len(batch)} logs.")
             except Exception as e:
                 session.rollback()
+                # 批次失败：清空 id、标记失败，_emit_websocket 会跳过这些条目
+                for data in batch:
+                    data['id'] = None
+                    data['_db_failed'] = True
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DB ERROR - {str(e)}")
             finally:
                 session.close()
     
     def _emit_websocket(self, data):
+        """
+        推送日志到前端。
+        - 全量频道 `/ws/logs`：按 sid 过滤器精准 emit（skip_peer=False 只发给本进程该 sid）。
+        - 任务频道 task_{task_id}：用 room 广播给订阅了该 task 的客户端（无过滤器干扰）。
+        - 只有在数据库 flush 成功（data 含有效 id）后才推送，避免前端拿到不存在的 id。
+        """
         is_ws_ready = (
             self.socketio_instance and
             hasattr(self.socketio_instance, 'server') and
@@ -329,26 +342,54 @@ class DatabaseLogHandler(logging.Handler):
                 self.socketio_instance.server is not None
             )
 
-        if is_ws_ready:
-            try:
-                utc_plus_8 = timezone(timedelta(hours=8))
-                log_time = datetime.now(utc_plus_8).strftime('%Y-%m-%d %H:%M:%S')
-                log_payload = {
-                    "id": data.get('id'),
-                    "time": log_time,
-                    "level": data['level'],
-                    "module": data['module'],
-                    "content": data['content'],
-                    "mark": ""
-                }
+        if not is_ws_ready:
+            return
 
+        # 只有成功入库（拿到 id）才推送，避免前端显示不存在的日志
+        if data.get('id') is None and data.get('_db_failed'):
+            return
+
+        try:
+            utc_plus_8 = timezone(timedelta(hours=8))
+            log_time = data.get('_ws_time') or datetime.now(utc_plus_8).strftime('%Y-%m-%d %H:%M:%S')
+            log_payload = {
+                "id": data.get('id'),
+                "time": log_time,
+                "level": data['level'],
+                "module": data['module'],
+                "content": data['content'],
+                "mark": "",
+                "task_id": data.get('task_id'),
+                "test_case_id": data.get('test_case_id'),
+                "category": data.get('category'),
+                "source": data.get('source'),
+            }
+
+            # 1) 全量频道：按 sid 过滤精准下发
+            try:
+                from api_gateway.controllers.log_controller import log_filter_registry
+                matched_sids = log_filter_registry.match(data)
+                for sid in matched_sids:
+                    self.socketio_instance.emit(
+                        'logs',
+                        {'type': 'LOG_BATCH', 'data': [log_payload]},
+                        namespace='/ws/logs',
+                        to=sid,
+                    )
+            except ImportError:
+                # api_gateway 未加载（其他子进程场景），退化为全量广播
                 self.socketio_instance.emit('logs', {'type': 'LOG_BATCH', 'data': [log_payload]}, namespace='/ws/logs')
-                if data.get('task_id'):
-                    self.socketio_instance.emit('task_log', {'taskId': str(data['task_id']), 'log': log_payload})
-            except Exception as ws_error:
-                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WS ERROR - {str(ws_error)}")
-        else:
-            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WARN - WebSocket not ready, socketio_instance is None")
+
+            # 2) 任务频道：room 广播给订阅了该 task 的连接
+            if data.get('task_id'):
+                self.socketio_instance.emit(
+                    'task_log',
+                    {'taskId': str(data['task_id']), 'log': log_payload},
+                    room=f"task_{data['task_id']}",
+                    namespace='/ws/logs',
+                )
+        except Exception as ws_error:
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WS ERROR - {str(ws_error)}")
     
     def _check_and_archive(self, Log, SessionLocal):
         if not Log or not SessionLocal or not self.flask_app:
@@ -372,23 +413,21 @@ class DatabaseLogHandler(logging.Handler):
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - ARCHIVE ERROR - {str(e)}")
     
     def _archive_old_logs(self, Log, SessionLocal, session, total_count):
+        """
+        将冷数据日志归档到 OSS（archives bucket），key 结构与 LogController.archive_logs 一致：
+            tasks/{task_id}/{case_id}/{date}.json
+            tasks/{task_id}/{date}.json
+            cases/{case_id}/{date}.json
+            other/{date}.json
+        归档完成后从数据库删除对应日志。
+        """
+        from shared.clients.oss_client import oss
+
         cutoff_date = datetime.now(timezone(timedelta(hours=8))) - timedelta(days=LOG_HOT_DATA_DAYS)
-
-        archive_dir = os.path.join(os.getcwd(), LOG_ARCHIVE_DIR)
-        if not os.path.exists(archive_dir):
-            os.makedirs(archive_dir)
-
-        tasks_base = os.path.join(archive_dir, 'tasks')
-        cases_base = os.path.join(archive_dir, 'cases')
-        system_dir = os.path.join(archive_dir, 'system')
-
-        for d in [tasks_base, cases_base, system_dir]:
-            if not os.path.exists(d):
-                os.makedirs(d)
-
         old_logs = session.query(Log).filter(Log.time < cutoff_date).order_by(Log.time.asc()).limit(100000).all()
 
         if not old_logs:
+            # 没有冷数据，但总量仍超阈值：直接删除最旧的（无归档价值）
             delete_count = total_count - LOG_ARCHIVE_THRESHOLD
             if delete_count > 0:
                 oldest_logs = session.query(Log).order_by(Log.time.asc()).limit(delete_count).all()
@@ -398,12 +437,15 @@ class DatabaseLogHandler(logging.Handler):
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Deleted {len(log_ids)} oldest logs (no archive needed).")
             return
 
-        # 分组：task_logs[task_id]['_task' | case_id] = [log_data, ...]
-        # case_logs[case_id] = [log_data, ...]  （无 task_id 的用例日志）
-        # system_logs = [log_data, ...]
-        task_logs = {}
-        case_logs = {}
-        system_logs = []
+        # 分组（与 LogController.archive_logs 对齐）：
+        #   task_case_logs[(task_id, case_id, date)] = [log_data, ...]
+        #   task_only_logs[(task_id, date)] = [log_data, ...]
+        #   case_only_logs[(case_id, date)] = [log_data, ...]
+        #   other_logs[date] = [log_data, ...]
+        task_case_logs = {}
+        task_only_logs = {}
+        case_only_logs = {}
+        other_logs = {}
 
         for log in old_logs:
             log_data = {
@@ -423,107 +465,86 @@ class DatabaseLogHandler(logging.Handler):
                 'algorithm_type': log.algorithm_type,
                 'created_at': log.created_at.isoformat() if log.created_at else None
             }
+            log_date = (log.time or log.created_at or datetime.now(timezone(timedelta(hours=8)))).strftime('%Y-%m-%d')
 
-            tid = log.task_id
-            cid = log.test_case_id
-            if tid:
-                if tid not in task_logs:
-                    task_logs[tid] = {}
-                bucket_key = cid if cid else '_task'
-                if bucket_key not in task_logs[tid]:
-                    task_logs[tid][bucket_key] = []
-                task_logs[tid][bucket_key].append(log_data)
-            elif cid:
-                if cid not in case_logs:
-                    case_logs[cid] = []
-                case_logs[cid].append(log_data)
+            if log.task_id and log.test_case_id:
+                key = (log.task_id, log.test_case_id, log_date)
+                task_case_logs.setdefault(key, []).append(log_data)
+            elif log.task_id:
+                key = (log.task_id, log_date)
+                task_only_logs.setdefault(key, []).append(log_data)
+            elif log.test_case_id:
+                key = (log.test_case_id, log_date)
+                case_only_logs.setdefault(key, []).append(log_data)
             else:
-                system_logs.append(log_data)
+                other_logs.setdefault(log_date, []).append(log_data)
+
+        def _save_archive_oss(oss_key, logs):
+            """上传归档到 OSS（合并已存在文件，按时间排序）"""
+            existing_logs = []
+            if oss.exists('archives', oss_key):
+                try:
+                    data = oss.download_bytes('archives', oss_key)
+                    existing_logs = json.loads(data)
+                except Exception:
+                    existing_logs = []
+            existing_logs.extend(logs)
+            existing_logs.sort(key=lambda x: x.get('time', '') or '')
+            oss.upload_bytes(
+                json.dumps(existing_logs, ensure_ascii=False, indent=2).encode('utf-8'),
+                'archives', oss_key, content_type='application/json'
+            )
 
         archived_count = 0
-        task_count = 0
-        case_count = 0
-
-        # 任务下按用例分级：archives/tasks/task_{id}/_task.json + case_{cid}.json
-        for task_id, buckets in task_logs.items():
-            task_subdir = os.path.join(tasks_base, f"task_{task_id}")
-            if not os.path.exists(task_subdir):
-                os.makedirs(task_subdir)
-            for bucket_key, logs in buckets.items():
-                if bucket_key == '_task':
-                    fname = '_task.jsonl'
-                else:
-                    fname = f"case_{bucket_key}.jsonl"
-                archive_path = os.path.join(task_subdir, fname)
-                with open(archive_path, 'a', encoding='utf-8') as f:
-                    for ld in logs:
-                        f.write(json.dumps(ld, ensure_ascii=False) + '\n')
-                archived_count += len(logs)
-            task_count += 1
-
-        # 无任务的用例日志：archives/cases/case_{id}.jsonl
-        for case_id, logs in case_logs.items():
-            archive_path = os.path.join(cases_base, f"case_{case_id}.jsonl")
-            with open(archive_path, 'a', encoding='utf-8') as f:
-                for ld in logs:
-                    f.write(json.dumps(ld, ensure_ascii=False) + '\n')
+        for (task_id, case_id, log_date), logs in task_case_logs.items():
+            _save_archive_oss(f'tasks/{task_id}/{case_id}/{log_date}.json', logs)
             archived_count += len(logs)
-            case_count += 1
-
-        # 系统日志：archives/system/YYYY-MM-DD.log 追加写行格式
-        if system_logs:
-            today = datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d')
-            archive_path = os.path.join(system_dir, f"{today}.log")
-            with open(archive_path, 'a', encoding='utf-8') as f:
-                for ld in system_logs:
-                    f.write(json.dumps(ld, ensure_ascii=False) + '\n')
-            archived_count += len(system_logs)
+        for (task_id, log_date), logs in task_only_logs.items():
+            _save_archive_oss(f'tasks/{task_id}/{log_date}.json', logs)
+            archived_count += len(logs)
+        for (case_id, log_date), logs in case_only_logs.items():
+            _save_archive_oss(f'cases/{case_id}/{log_date}.json', logs)
+            archived_count += len(logs)
+        for log_date, logs in other_logs.items():
+            _save_archive_oss(f'other/{log_date}.json', logs)
+            archived_count += len(logs)
 
         log_ids_to_delete = [log.id for log in old_logs]
         session.query(Log).filter(Log.id.in_(log_ids_to_delete)).delete(synchronize_session=False)
         session.commit()
 
-        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Archived {archived_count} logs (tasks: {task_count}, orphan cases: {case_count}, system: {len(system_logs)})")
+        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Archived {archived_count} logs to OSS (task+case: {len(task_case_logs)}, task: {len(task_only_logs)}, case: {len(case_only_logs)}, other: {len(other_logs)})")
 
         remaining_count = session.query(Log).count()
         if remaining_count > LOG_ARCHIVE_THRESHOLD:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Still {remaining_count} logs, will continue archiving next cycle.")
 
     def _clean_expired_archives(self):
-        """清理过期归档文件，删除修改时间超过 LOG_ARCHIVE_RETENTION_DAYS 天的文件"""
-        archive_dir = os.path.join(os.getcwd(), LOG_ARCHIVE_DIR)
-        if not os.path.exists(archive_dir):
-            return
+        """清理 OSS 上过期的归档对象（LastModified 超过 LOG_ARCHIVE_RETENTION_DAYS 天）"""
+        from shared.clients.oss_client import oss
 
+        bucket = oss._bucket('archives')
         cutoff_time = time.time() - LOG_ARCHIVE_RETENTION_DAYS * 86400
         deleted_count = 0
-        deleted_size = 0
 
-        for root, dirs, files in os.walk(archive_dir, topdown=False):
-            for fname in files:
-                fpath = os.path.join(root, fname)
-                try:
-                    mtime = os.path.getmtime(fpath)
-                    if mtime < cutoff_time:
-                        fsize = os.path.getsize(fpath)
-                        os.remove(fpath)
-                        deleted_count += 1
-                        deleted_size += fsize
-                except (PermissionError, OSError):
-                    pass
-
-            # 清理空目录（先删子目录再删父目录）
-            for dname in dirs:
-                dpath = os.path.join(root, dname)
-                try:
-                    if not os.listdir(dpath):
-                        os.rmdir(dpath)
-                except (PermissionError, OSError):
-                    pass
+        # 分页列出全部对象（list_objects_v2 单次最多 1000 条）
+        paginator = oss._client.get_paginator('list_objects_v2')
+        try:
+            for page in paginator.paginate(Bucket=bucket):
+                for obj in page.get('Contents', []):
+                    last_modified = obj['LastModified'].timestamp()
+                    if last_modified < cutoff_time:
+                        try:
+                            oss._client.delete_object(Bucket=bucket, Key=obj['Key'])
+                            deleted_count += 1
+                        except Exception:
+                            pass
+        except Exception as e:
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WARN - Clean expired archives failed: {str(e)}")
+            return
 
         if deleted_count > 0:
-            size_mb = deleted_size / (1024 * 1024)
-            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Cleaned {deleted_count} expired archive files ({size_mb:.1f}MB), older than {LOG_ARCHIVE_RETENTION_DAYS} days.")
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Cleaned {deleted_count} expired archive objects on OSS, older than {LOG_ARCHIVE_RETENTION_DAYS} days.")
 
     def set_console_log(self, enable):
         self.enable_console_log = enable
@@ -553,14 +574,15 @@ class DatabaseLogHandler(logging.Handler):
             if 'WebSocket' in log_message or 'socketio' in log_message or 'emitting event' in log_message:
                 return
             
-            # 去重检查
-            log_fingerprint = hashlib.md5(f"{record.levelno}-{record.module}-{log_message}".encode('utf-8')).hexdigest()
+            # 去重检查：指纹带上 task_id/test_case_id/category，避免同结构不同用例日志被误吞
+            ctx_key = f"{record.levelno}-{record.module}-{getattr(record, 'task_id', None)}-{getattr(record, 'test_case_id', None)}-{getattr(record, 'category', '')}-{log_message}"
+            log_fingerprint = hashlib.md5(ctx_key.encode('utf-8')).hexdigest()
             current_time = datetime.now().timestamp()
-            
+
             if log_fingerprint in self.recent_logs:
                 if current_time - self.recent_logs[log_fingerprint] < self.log_ttl:
                     return
-            
+
             self.recent_logs[log_fingerprint] = current_time
             
             # 清理过期指纹
@@ -584,14 +606,15 @@ class DatabaseLogHandler(logging.Handler):
                 'push_to_websocket': getattr(record, 'push_to_websocket', True)
             }
             
-            # 放入队列，不阻塞主线程
-            self.queue.put(log_data)
-            
-            # 调试信息：确认已入队
-            if self.enable_console_log and False: # 暂时关闭，避免输出太多
-                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - DatabaseLogHandler - DEBUG - Log put into queue.")
-            
+            # 放入队列：非阻塞，满时打印 stderr（不被 console_log 开关屏蔽），便于发现丢日志
+            try:
+                self.queue.put_nowait(log_data)
+            except queue.Full:
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - WARN - Log queue full (maxsize={self.queue.maxsize}), dropping log: [{log_data.get('level')}] {log_data.get('module')} - {log_data.get('content')[:200]}", file=sys.stderr)
+            except Exception as qe:
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - put queue failed: {qe}", file=sys.stderr)
+
         except Exception as e:
-            if self.enable_console_log:
-                print(f"Error putting log into queue: {str(e)}", file=sys.stderr)
+            # emit 自身异常总是打印，避免静默失败
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_handler - ERROR - emit failed: {str(e)}", file=sys.stderr)
 

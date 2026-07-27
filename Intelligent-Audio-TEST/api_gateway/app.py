@@ -68,9 +68,13 @@ def create_app(config_name='default'):
 
     # 注册 WebSocket 事件处理器
     from api_gateway.controllers.log_controller import LogController
+    from shared.utils.log_handler import set_socketio
+    set_socketio(socketio)
     socketio.on_event('connect', LogController.handle_connect, namespace='/ws/logs')
     socketio.on_event('disconnect', LogController.handle_disconnect, namespace='/ws/logs')
     socketio.on_event('set_filter', LogController.handle_set_filter, namespace='/ws/logs')
+    socketio.on_event('subscribe_task', LogController.handle_subscribe_task, namespace='/ws/logs')
+    socketio.on_event('unsubscribe_task', LogController.handle_unsubscribe_task, namespace='/ws/logs')
 
     # 健康检查
     @app.route('/health')

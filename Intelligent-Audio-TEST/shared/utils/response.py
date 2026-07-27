@@ -4,9 +4,7 @@ from typing import Type, TypeVar, List, Any
 from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
 from shared.utils.error_codes import ErrorCode
-# TODO: 跨服务依赖 - ApiResponse 定义在 api_gateway.schemas.response，shared 层不应依赖 api_gateway
-# 短期保留 import 路径，长期应将 ApiResponse 移至 shared 层
-from api_gateway.schemas.response import ApiResponse
+from shared.schemas.response import ApiResponse
 
 T = TypeVar('T', bound=BaseModel)
 

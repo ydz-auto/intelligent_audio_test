@@ -1,0 +1,250 @@
+syntax = "proto3";
+package e2e_service;
+option py_generic_services = true;
+
+// ===== 音频服务 =====
+service AudioService {
+  // 播放音频
+  rpc PlayAudio(PlayAudioRequest) returns (PlayAudioResponse);
+  // 停止播放
+  rpc StopAudio(StopAudioRequest) returns (StopAudioResponse);
+  // 获取播放状态
+  rpc GetPlayStatus(GetPlayStatusRequest) returns (GetPlayStatusResponse);
+  // 获取音频文件信息
+  rpc GetAudioInfo(GetAudioInfoRequest) returns (AudioInfoResponse);
+  // 声压级测量
+  rpc MeasureSPL(MeasureSPLRequest) returns (SPLResponse);
+  // 开始SPL测量
+  rpc StartSPL(StartSPLRequest) returns (StartSPLResponse);
+  // 停止SPL测量
+  rpc StopSPL(StopSPLRequest) returns (StopSPLResponse);
+}
+
+// ===== 设备驱动服务 =====
+service DeviceService {
+  // 创建设备驱动（连接设备）
+  rpc CreateDriver(CreateDriverRequest) returns (CreateDriverResponse);
+  // 销毁设备驱动
+  rpc DestroyDriver(DestroyDriverRequest) returns (DestroyDriverResponse);
+  // 注册任务事件回调
+  rpc RegisterTaskEvents(RegisterTaskEventsRequest) returns (RegisterTaskEventsResponse);
+  // 注销任务事件回调
+  rpc UnregisterTaskEvents(UnregisterTaskEventsRequest) returns (UnregisterTaskEventsResponse);
+  // 获取任务事件
+  rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsResponse);
+}
+
+// ===== 播放编排服务 =====
+service PlaybackService {
+  // 开始播放编排
+  rpc StartPlayback(StartPlaybackRequest) returns (StartPlaybackResponse);
+  // 停止播放编排
+  rpc StopPlayback(StopPlaybackRequest) returns (StopPlaybackResponse);
+}
+
+// ===== 设备结果采集服务 =====
+service DeviceResultService {
+  // 采集设备结果
+  rpc CollectResult(CollectResultRequest) returns (CollectResultResponse);
+  // 重新提取设备结果
+  rpc ReextractResult(ReextractResultRequest) returns (ReextractResultResponse);
+}
+
+// ===== 环境设备服务 =====
+service EnvDeviceService {
+  // 控制环境设备（导轨旋转等）
+  rpc ControlEnvDevice(ControlEnvDeviceRequest) returns (ControlEnvDeviceResponse);
+}
+
+// ==================== AudioService Messages ====================
+
+message PlayAudioRequest {
+  string task_id = 1;
+  string audio_file_paths = 2;  // JSON 序列化的音频文件路径列表
+  string play_config = 3;      // JSON 序列化的播放配置
+}
+
+message PlayAudioResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的播放结果
+}
+
+message StopAudioRequest {
+  string task_id = 1;
+}
+
+message StopAudioResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetPlayStatusRequest {
+  string task_id = 1;
+}
+
+message GetPlayStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的播放状态
+}
+
+message GetAudioInfoRequest {
+  string task_id = 1;
+  string audio_file_path = 2;
+}
+
+message AudioInfoResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的音频文件信息
+}
+
+message MeasureSPLRequest {
+  string task_id = 1;
+  string measure_config = 2;  // JSON 序列化的测量配置
+}
+
+message SPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的声压级测量结果
+}
+
+message StartSPLRequest {
+  string task_id = 1;
+  string spl_config = 2;  // JSON 序列化的 SPL 配置
+}
+
+message StartSPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopSPLRequest {
+  string task_id = 1;
+}
+
+message StopSPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== DeviceService Messages ====================
+
+message CreateDriverRequest {
+  string task_id = 1;
+  string device_config = 2;  // JSON 序列化的设备配置
+}
+
+message CreateDriverResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的驱动信息
+}
+
+message DestroyDriverRequest {
+  string task_id = 1;
+  string driver_id = 2;
+}
+
+message DestroyDriverResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message RegisterTaskEventsRequest {
+  string task_id = 1;
+  string callback_config = 2;  // JSON 序列化的回调配置
+}
+
+message RegisterTaskEventsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UnregisterTaskEventsRequest {
+  string task_id = 1;
+}
+
+message UnregisterTaskEventsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetTaskEventsRequest {
+  string task_id = 1;
+  int32 max_events = 2;
+}
+
+message GetTaskEventsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的事件列表
+}
+
+// ==================== PlaybackService Messages ====================
+
+message StartPlaybackRequest {
+  string task_id = 1;
+  string playback_config = 2;  // JSON 序列化的播放编排配置
+}
+
+message StartPlaybackResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopPlaybackRequest {
+  string task_id = 1;
+}
+
+message StopPlaybackResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== DeviceResultService Messages ====================
+
+message CollectResultRequest {
+  string task_id = 1;
+  string collect_config = 2;  // JSON 序列化的采集配置
+}
+
+message CollectResultResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的采集结果
+}
+
+message ReextractResultRequest {
+  string task_id = 1;
+  string reextract_config = 2;  // JSON 序列化的重新提取配置
+}
+
+message ReextractResultResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的重新提取结果
+}
+
+// ==================== EnvDeviceService Messages ====================
+
+message ControlEnvDeviceRequest {
+  string task_id = 1;
+  string device_action = 2;  // JSON 序列化的设备动作（导轨旋转等）
+}
+
+message ControlEnvDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的控制结果
+}

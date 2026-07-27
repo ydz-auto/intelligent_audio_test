@@ -1,0 +1,83 @@
+syntax = "proto3";
+package task_service;
+option py_generic_services = true;
+
+// ===== 执行引擎服务 =====
+service ExecutionService {
+  // 创建任务
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+  // 启动任务
+  rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
+  // 停止任务
+  rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
+  // 获取任务状态
+  rpc GetTaskStatus(GetTaskStatusRequest) returns (TaskStatusResponse);
+  // 重新评估
+  rpc Reevaluate(ReevaluateRequest) returns (ReevaluateResponse);
+  // 获取执行引擎实例信息（如线程池状态）
+  rpc GetEngineInfo(GetEngineInfoRequest) returns (EngineInfoResponse);
+}
+
+// ==================== ExecutionService Messages ====================
+
+message CreateTaskRequest {
+  string task_id = 1;
+  string task_config = 2;  // JSON 序列化的任务配置
+}
+
+message CreateTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的创建结果
+}
+
+message StartTaskRequest {
+  string task_id = 1;
+}
+
+message StartTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopTaskRequest {
+  string task_id = 1;
+}
+
+message StopTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetTaskStatusRequest {
+  string task_id = 1;
+}
+
+message TaskStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的任务状态
+}
+
+message ReevaluateRequest {
+  string task_id = 1;
+  string reevaluate_config = 2;  // JSON 序列化的重新评估配置
+}
+
+message ReevaluateResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的重新评估结果
+}
+
+message GetEngineInfoRequest {
+  string task_id = 1;
+}
+
+message EngineInfoResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的引擎信息（线程池状态等）
+}

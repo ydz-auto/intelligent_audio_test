@@ -38,14 +38,23 @@ class ReferenceRefreshTask:
         self.started_at = None
         self.completed_at = None
 
-    def run(self):
-        """在新线程中执行刷新任务"""
+    def run(self, refresher=None):
+        """在新线程中执行刷新任务
+
+        Args:
+            refresher: 可调用对象，签名为 refresher(test_case)，用于刷新单个用例的参考参数。
+                        如果未提供，将尝试延迟导入 TestCaseController.refresh_reference_texts。
+        """
         self.status = 'running'
         self.started_at = datetime.now(timezone(timedelta(hours=8)))
 
         try:
-            # TODO: 跨服务调用 - TestCaseController 在 api_gateway.controllers，shared 层不应依赖 api_gateway
-            from api_gateway.controllers.testcase_controller import TestCaseController
+            if refresher is None:
+                try:
+                    from api_gateway.controllers.testcase_controller import TestCaseController
+                    refresher = TestCaseController.refresh_reference_texts
+                except ImportError:
+                    raise RuntimeError("refresher 未提供且 TestCaseController 不可用")
 
             test_cases = TestCase.query.filter(
                 TestCase.id.in_(self.case_ids),
@@ -56,7 +65,7 @@ class ReferenceRefreshTask:
 
             for tc in test_cases:
                 try:
-                    TestCaseController.refresh_reference_texts(tc)
+                    refresher(tc)
                     tc.updated_at = datetime.now(timezone(timedelta(hours=8)))
                     db.session.add(tc)
                     self.updated_count += 1
@@ -107,12 +116,16 @@ class ReferenceRefreshTask:
 _refresh_tasks = {}
 
 
-def submit_reference_refresh_task(case_ids: list) -> str:
+def submit_reference_refresh_task(case_ids: list, executor=None, refresher=None) -> str:
     """
     提交用例参考刷新任务
 
     Args:
         case_ids: 用例ID列表
+        executor: 执行器对象，需提供 api_task_pool.submit 方法（如 execution_engine 实例）。
+                    如果未提供，将尝试延迟导入 execution_engine。
+        refresher: 可调用对象，签名为 refresher(test_case)，用于刷新单个用例的参考参数。
+                    如果未提供，将交由 ReferenceRefreshTask.run 内部延迟导入。
 
     Returns:
         task_id: 任务ID，用于查询进度
@@ -123,9 +136,13 @@ def submit_reference_refresh_task(case_ids: list) -> str:
     task.task_id = task_id
     _refresh_tasks[task_id] = task
 
-    # TODO: 跨服务调用 - shared 层不应直接依赖 task_service，应改为通过参数传递
-    from task_service.core.execution_engine import execution_engine
-    execution_engine.api_task_pool.submit(task.run)
+    if executor is None:
+        try:
+            from task_service.core.execution_engine import execution_engine as executor
+        except ImportError:
+            raise RuntimeError("executor 未提供且 execution_engine 不可用")
+
+    executor.api_task_pool.submit(lambda: task.run(refresher=refresher))
 
     logger.info(f"[submit_reference_refresh_task] 任务已提交: {task_id}, 用例数: {len(case_ids)}")
 

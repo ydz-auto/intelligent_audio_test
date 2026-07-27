@@ -384,14 +384,13 @@ class EventManager:
                 })
                 
                 # Multi-round progress: read from execution_engine in-memory cache
-                # TODO: 跨服务调用 - shared 层不应直接依赖 task_service，应改为通过事件或参数传递
-                from task_service.core.execution_engine import execution_engine
-                round_progress = execution_engine.round_progress_cache.get(tc.id)
-                if round_progress:
-                    test_cases_data[-1]['roundProgress'] = {
-                        'current': round_progress.get('current', 0),
-                        'total': round_progress.get('total', 0),
-                    }
+                if self.execution_engine is not None:
+                    round_progress = getattr(self.execution_engine, 'round_progress_cache', {}).get(tc.id)
+                    if round_progress:
+                        test_cases_data[-1]['roundProgress'] = {
+                            'current': round_progress.get('current', 0),
+                            'total': round_progress.get('total', 0),
+                        }
                 
                 if tc.execution_status in ['pending', 'queued']:
                     pending_count += 1
@@ -425,13 +424,9 @@ class EventManager:
                 if task_api:
                     api = local_db_session.query(API).get(task_api.api_id)
                     if api:
-                        # TODO: 跨服务调用 - shared 层不应直接依赖 task_service，应改为通过参数传递
-                        from task_service.core.execution_engine import execution_engine
-                        api_executor = getattr(execution_engine, 'api_executors', {}).get(str(db_task.id))
+                        api_executor = getattr(self.execution_engine, 'api_executors', {}).get(str(db_task.id)) if self.execution_engine is not None else None
                         if api_executor:
-                            # TODO: 跨服务调用 - LoadBalancer 已迁移到 task_service.clients
-                            from task_service.clients.load_balancer import LoadBalancer
-                            load_balancer = getattr(execution_engine, 'load_balancer', None)
+                            load_balancer = getattr(self.execution_engine, 'load_balancer', None) if self.execution_engine is not None else None
                             if load_balancer:
                                 url_status = load_balancer.get_url_status()
                                 for url, status in url_status.items():

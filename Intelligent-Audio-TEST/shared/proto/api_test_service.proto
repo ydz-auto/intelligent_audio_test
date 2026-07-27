@@ -1,0 +1,58 @@
+syntax = "proto3";
+package api_test_service;
+option py_generic_services = true;
+
+// ===== API 测试服务 =====
+service APITestService {
+  // 创建 API 测试任务
+  rpc CreateAPITest(CreateAPITestRequest) returns (CreateAPITestResponse);
+  // 启动 API 测试
+  rpc StartAPITest(StartAPITestRequest) returns (StartAPITestResponse);
+  // 停止 API 测试
+  rpc StopAPITest(StopAPITestRequest) returns (StopAPITestResponse);
+  // 获取 API 测试状态
+  rpc GetAPITestStatus(GetAPITestStatusRequest) returns (APITestStatusResponse);
+}
+
+// ==================== APITestService Messages ====================
+
+message CreateAPITestRequest {
+  string task_id = 1;
+  string test_config = 2;  // JSON 序列化的 API 测试配置
+}
+
+message CreateAPITestResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的创建结果
+}
+
+message StartAPITestRequest {
+  string task_id = 1;
+}
+
+message StartAPITestResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopAPITestRequest {
+  string task_id = 1;
+}
+
+message StopAPITestResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetAPITestStatusRequest {
+  string task_id = 1;
+}
+
+message APITestStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的 API 测试状态
+}

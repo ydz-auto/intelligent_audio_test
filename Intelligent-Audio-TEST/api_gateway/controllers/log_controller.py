@@ -12,9 +12,75 @@ from api_gateway.schemas.log import LogItem, LogListData, LogRefreshData, LogRef
 from datetime import datetime, timezone, timedelta
 from shared.utils.query_utils import now_cst
 from sqlalchemy import func, or_
-from flask_socketio import emit
+from flask_socketio import emit, join_room, leave_room
 
 from shared.config.config import Config
+
+
+class LogFilterRegistry:
+    """
+    WebSocket 日志过滤器注册表（进程内单例）。
+    保存每个 sid 的过滤器 {levels, modules, task_id, keyword}，供 _emit_websocket 做服务端过滤。
+    同时维护 sid -> 房间集合，便于按 task 精准推送。
+    """
+    _instance = None
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._filters = {}      # sid -> dict
+            cls._instance._sid_task = {}     # sid -> task_id（订阅的任务）
+        return cls._instance
+
+    def set_filter(self, sid, filt):
+        self._filters[sid] = filt or {}
+
+    def get_filter(self, sid):
+        return self._filters.get(sid)
+
+    def remove(self, sid):
+        self._filters.pop(sid, None)
+        self._sid_task.pop(sid, None)
+
+    def subscribe_task(self, sid, task_id):
+        self._sid_task[sid] = task_id
+
+    def unsubscribe_task(self, sid):
+        self._sid_task.pop(sid, None)
+
+    def match(self, log_data):
+        """
+        返回通过过滤器的 sid 列表。
+        log_data 字段：level, module, task_id, content
+        """
+        level = (log_data.get('level') or '').upper()
+        module = (log_data.get('module') or '').upper()
+        content = log_data.get('content') or ''
+        log_task_id = log_data.get('task_id')
+        matched = []
+        for sid, filt in self._filters.items():
+            if not filt:
+                matched.append(sid)
+                continue
+            levels = filt.get('levels')
+            if levels:
+                if level not in [l.upper() for l in levels]:
+                    continue
+            modules = filt.get('modules')
+            if modules:
+                if module not in [m.upper() for m in modules]:
+                    continue
+            kw = filt.get('keyword')
+            if kw and kw not in content:
+                continue
+            ftid = filt.get('task_id')
+            if ftid and str(log_task_id) != str(ftid):
+                continue
+            matched.append(sid)
+        return matched
+
+
+log_filter_registry = LogFilterRegistry()
 
 class LogController:
     # 获取日志列表 (支持分页和高级过滤)
@@ -203,7 +269,10 @@ class LogController:
     def refresh_logs():
         req = LogRefreshRequest.model_validate(request.get_json() or {})
         new_logs = Log.query.filter(Log.id > req.last_id).order_by(Log.id.asc()).limit(100).all()
-        
+
+        # 当前库内最大 id；若 last_id 大于它，说明增量基准已失效（日志被清/归档），前端应 reset
+        db_max_id = db.session.query(func.max(Log.id)).scalar() or 0
+
         data_list = []
         for log in new_logs:
             data_list.append(
@@ -224,15 +293,19 @@ class LogController:
                     algorithm_type=log.algorithm_type,
                 )
             )
-            
-        return success_response(
-            LogRefreshData(
-                items=data_list,
-                count=len(data_list),
-                new_count=len(data_list),
-                last_id=data_list[-1].id if data_list else req.last_id,
-            )
+
+        # 将 db_max_id / reset_required 放入 data，前端据此判断是否需要重置增量基准
+        payload = LogRefreshData(
+            items=data_list,
+            count=len(data_list),
+            new_count=len(data_list),
+            last_id=data_list[-1].id if data_list else req.last_id,
         )
+        payload_dict = payload.model_dump(by_alias=True, exclude_none=True)
+        payload_dict['db_max_id'] = db_max_id
+        if req.last_id > db_max_id:
+            payload_dict['reset_required'] = True
+        return success_response(payload_dict)
 
     # 标记日志
     @staticmethod
@@ -326,23 +399,69 @@ class LogController:
 
     @staticmethod
     def handle_connect():
-        """处理 WebSocket 连接"""
-        # 可以添加 JWT 校验逻辑
-        log_not_emit('INFO', 'log_controller', 'Client connected to Log WebSocket', category='system')
+        """处理 WebSocket 连接，初始化该 sid 的过滤器为空（接收全部日志）"""
+        from flask_socketio import request as sio_request
+        sid = getattr(sio_request, 'sid', None)
+        if sid:
+            log_filter_registry.set_filter(sid, {})
+        log_not_emit('INFO', 'log_controller', f'Client connected to Log WebSocket sid={sid}', category='system')
         emit('status', {'type': 'STATUS', 'data': {'isMonitoring': True, 'message': 'Connected to Log Server'}})
 
     @staticmethod
     def handle_disconnect():
-        """处理 WebSocket 断开连接"""
-        log_not_emit('INFO', 'log_controller', 'Client disconnected from Log WebSocket', category='system')
+        """处理 WebSocket 断开连接，清理该 sid 的过滤器与任务订阅"""
+        from flask_socketio import request as sio_request
+        sid = getattr(sio_request, 'sid', None)
+        if sid:
+            log_filter_registry.remove(sid)
+        log_not_emit('INFO', 'log_controller', f'Client disconnected from Log WebSocket sid={sid}', category='system')
 
     @staticmethod
     def handle_set_filter(data):
-        """设置日志过滤配置"""
-        # data: { "levels": ["error"], "modules": ["TASK"] }
-        # 实际应用中，过滤器状态应保存在 session 或连接上下文中
-        log_not_emit('INFO', 'log_controller', f'Filter updated: {data}', category='system')
-        emit('status', {'type': 'FILTER_APPLIED', 'data': data})
+        """设置当前连接的日志过滤配置，服务端按此过滤再推送"""
+        from flask_socketio import request as sio_request
+        sid = getattr(sio_request, 'sid', None)
+        if not sid:
+            return
+        # 规范化字段，缺失视为不过滤
+        filt = {
+            'levels': data.get('levels') or [],
+            'modules': data.get('modules') or [],
+            'keyword': data.get('keyword') or '',
+            'task_id': data.get('task_id'),
+        }
+        log_filter_registry.set_filter(sid, filt)
+        log_not_emit('INFO', 'log_controller', f'Filter updated sid={sid}: {filt}', category='system')
+        emit('status', {'type': 'FILTER_APPLIED', 'data': filt})
+
+    @staticmethod
+    def handle_subscribe_task(data):
+        """订阅指定 task 的日志房间。data: { "task_id": 123 }"""
+        from flask_socketio import request as sio_request
+        sid = getattr(sio_request, 'sid', None)
+        if not sid:
+            return
+        task_id = data.get('task_id')
+        if task_id is None:
+            emit('status', {'type': 'ERROR', 'data': {'message': 'task_id required'}})
+            return
+        room = f'task_{task_id}'
+        join_room(room)
+        log_filter_registry.subscribe_task(sid, task_id)
+        emit('status', {'type': 'SUBSCRIBED', 'data': {'task_id': task_id, 'room': room}})
+
+    @staticmethod
+    def handle_unsubscribe_task(data):
+        """取消订阅 task 房间。"""
+        from flask_socketio import request as sio_request
+        sid = getattr(sio_request, 'sid', None)
+        if not sid:
+            return
+        task_id = data.get('task_id')
+        if task_id is not None:
+            leave_room(f'task_{task_id}')
+        log_filter_registry.unsubscribe_task(sid)
+        emit('status', {'type': 'UNSUBSCRIBED', 'data': {'task_id': task_id}})
 
     @staticmethod
     def get_archive_status():

@@ -8,7 +8,20 @@ from shared.utils.log_handler import log_and_emit
 class EvaluationLoggerMixin:
     """统一日志记录混入，所有评估模块继承此类即可获得 _log 方法"""
 
-    def _log(self, level, content, task_id=None, test_case_id=None, api_id=None, **kwargs):
+    def _log(self, level, content, task_id=None, test_case_id=None, api_id=None,
+             device_id=None, algorithm_type=None, **kwargs):
+        """
+        统一日志入口。device_id/algorithm_type 显式声明，便于按设备/算法检索评估日志。
+
+        Args:
+            level: 日志级别
+            content: 日志内容
+            task_id: 任务ID
+            test_case_id: 用例ID
+            api_id: API ID
+            device_id: 设备ID（评估涉及设备时传入）
+            algorithm_type: 算法类型（评估算法时传入）
+        """
         log_and_emit(
             level=level,
             module='Evaluation',
@@ -18,6 +31,8 @@ class EvaluationLoggerMixin:
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,
+            device_id=device_id,
+            algorithm_type=algorithm_type,
             **kwargs
         )
 

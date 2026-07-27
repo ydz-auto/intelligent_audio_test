@@ -1,8 +1,7 @@
 from shared.models.models import TestResultDimension, TestCase, Device, API, Task, Dimension
 from shared.models.database import db
 from shared.utils.result_data_store import load_full_result_data
-# TODO: 跨服务依赖 - ReportAudioItem, ReportTestCaseItem 在 api_gateway.schemas.testcase，shared 层不应依赖 api_gateway
-from api_gateway.schemas.testcase import ReportAudioItem, ReportTestCaseItem
+from shared.schemas.testcase import ReportAudioItem, ReportTestCaseItem
 
 class ReportUtils:
     @staticmethod
