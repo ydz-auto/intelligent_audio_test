@@ -2,10 +2,13 @@ import time
 import subprocess
 import os
 import re
+import tempfile
+import shutil
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from config.config import Config
+from shared.clients.oss_client import oss
 
 # 日志目录路径
 LOG_DEVICE_PATH = "/data/app/el2/100/base/com.huawei.hmos.vassistant/haps/voice_pc/files/log"
@@ -158,7 +161,9 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         task_id_path = sanitize_path(task_id or kwargs.get('task_id', 'default_task_id'))
         test_case_id_path = test_case_id or kwargs.get('test_case_id', 'default_id')
 
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id_path}', f'{test_case_id_path}', f'{device_sn}')
+        # 改造为 OSS 存储：先写本地临时目录，采集完上传 OSS 后清理本地临时
+        oss_key_prefix = f'{task_id_path}/{test_case_id_path}/{device_sn}'
+        local_dir = tempfile.mkdtemp(prefix=f'case_{task_id_path}_{test_case_id_path}_')
 
         while driver.find_component(By.text('正在保存')):
             time.sleep(1)
@@ -257,6 +262,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         pull_result = file_pull(device_sn, file_name, file_real_path, case_name, test_case_id)
 
         if pull_result is None:
+            shutil.rmtree(local_dir, ignore_errors=True)
             return [{
                 "result_type": "real-time",
                 "success": False,
@@ -266,6 +272,12 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
                 "success": False,
                 "message": "文件拉取失败",
             }]
+
+        # 采集完后上传到 OSS，然后清理本地临时目录（extract_results_from_archive 会从 OSS 读取）
+        for fname in os.listdir(local_dir):
+            oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+                             f'{oss_key_prefix}/{fname}')
+        shutil.rmtree(local_dir, ignore_errors=True)
 
         process_results = self.extract_results_from_archive(task_id, test_case_id, device_sn, **kwargs)
         return process_results
@@ -301,17 +313,37 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         task_id_sanitized = sanitize_path(task_id)
         case_id_sanitized = sanitize_path(test_case_id)
 
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id_sanitized}', f'{case_id_sanitized}', f'{device_sn}')
+        # 改造为 OSS 存储：从 OSS 下载 log 目录下 asr 文件到本地临时，处理后写 stm/rttm 上传 OSS，清理本地临时
+        oss_key_prefix = f'{task_id_sanitized}/{case_id_sanitized}/{device_sn}'
+        local_dir = tempfile.mkdtemp(prefix=f'archive_{task_id_sanitized}_{case_id_sanitized}_')
         log_dir = Path(local_dir) / "log"
+        log_dir.mkdir(parents=True, exist_ok=True)
 
-        self._log(level='INFO', content=f"从存档提取结果，路径: {log_dir}", task_id=task_id, test_case_id=test_case_id)
+        # 从 OSS 下载 log/ 前缀下的所有对象到本地临时 log 目录
+        oss_log_prefix = f'{oss_key_prefix}/log/'
+        try:
+            oss_keys = oss.list_objects('case_result', prefix=oss_log_prefix)
+        except Exception as e:
+            self._log(level='ERROR', content=f"列出OSS log对象失败: {oss_log_prefix}, error: {e}", task_id=task_id, test_case_id=test_case_id)
+            oss_keys = []
+        for k in oss_keys:
+            fname = k[len(oss_log_prefix):] if k.startswith(oss_log_prefix) else os.path.basename(k)
+            if fname:
+                try:
+                    oss.download_file('case_result', k, str(log_dir / fname))
+                except Exception as e:
+                    self._log(level='WARNING', content=f"下载OSS对象失败: {k}, error: {e}", task_id=task_id, test_case_id=test_case_id)
 
-        if not log_dir.exists():
-            self._log(level='ERROR', content=f"存档日志目录不存在: {log_dir}", task_id=task_id, test_case_id=test_case_id)
+        self._log(level='INFO', content=f"从存档提取结果，OSS log 前缀: {oss_log_prefix}, 本地临时: {log_dir}", task_id=task_id, test_case_id=test_case_id)
+
+        if not any(log_dir.iterdir()):
+            shutil.rmtree(local_dir, ignore_errors=True)
+            self._log(level='ERROR', content=f"存档日志目录为空(OSS): {oss_log_prefix}", task_id=task_id, test_case_id=test_case_id)
             return {
                 'success': False,
-                'message': f'存档日志目录不存在: {log_dir}',
-                'local_dir': local_dir
+                'message': f'存档日志目录不存在(OSS): {oss_log_prefix}',
+                'local_dir': None,
+                'oss_prefix': oss_key_prefix,
             }
 
         asr_files = list(log_dir.glob("asr-*.txt"))
@@ -796,6 +828,11 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         with open(fix_rttm_path, "w", encoding="utf-8") as f:
             f.write(fix_rttm_content)
 
+        # 写完后上传 stm/rttm 到 OSS，然后清理本地临时目录
+        for fname in os.listdir(local_dir):
+            oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+                             f'{oss_key_prefix}/{fname}')
+        shutil.rmtree(local_dir, ignore_errors=True)
 
         recording_result = {
             "result_type": "real-time",
@@ -810,6 +847,8 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             "recording_asr_path": '',
             "recording_asr_content": '',
             "log_path": local_dir,
+            "oss_prefix": oss_key_prefix,
+            "local_dir": None,  # 已清理本地临时目录，保留字段兼容旧调用
         }
 
         fix_result = {
@@ -825,6 +864,8 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             "fix_asr_path": '',
             "fix_asr_content": '',
             "log_path": local_dir,
+            "oss_prefix": oss_key_prefix,
+            "local_dir": None,  # 已清理本地临时目录，保留字段兼容旧调用
         }
 
         process_results = [recording_result, fix_result]

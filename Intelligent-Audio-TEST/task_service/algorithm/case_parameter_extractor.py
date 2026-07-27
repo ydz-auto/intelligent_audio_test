@@ -19,7 +19,11 @@ from .reference_params_generator import (
     normalize_reference_params,
     ReferenceParamsGenerator as RefGenerator
 )
+from shared.clients.oss_client import oss
 from shared.utils.log_handler import log_not_emit
+
+# 参考参数存储的 OSS bucket 类别
+_REF_PARAMS_BUCKET = 'ref_params'
 
 
 def _get_algo_param(algorithm_params: Optional[List[Dict]], field_code: str, default=None):
@@ -405,29 +409,29 @@ class CaseParameterExtractor:
 
     @classmethod
     def _load_ref_file(cls, reference_params_path: Optional[str]) -> Dict[str, Any]:
-        """从 referenceParamsPath 文件加载参考参数
+        """从 OSS（ref_params bucket）加载参考参数
 
         Args:
-            reference_params_path: 参考参数文件路径
+            reference_params_path: 参考参数 OSS 对象 key（或兼容本地绝对路径）
         Returns:
-            解析后的 JSON 内容，路径无效或文件不存在时返回空 dict
+            解析后的 JSON 内容，路径无效或对象不存在时返回空 dict
         """
         if not reference_params_path:
             return {}
         try:
-            # 支持绝对路径和相对于项目根目录的路径
-            if not os.path.isabs(reference_params_path):
-                from flask import current_app
-                base_dir = current_app.config.get('PROJECT_ROOT', os.getcwd())
-                reference_params_path = os.path.join(base_dir, reference_params_path)
-
-            if not os.path.exists(reference_params_path):
-                log_not_emit('WARNING', 'case_parameter_extractor',
-                             f'Reference params file not found: {reference_params_path}', category='algorithm')
-                return {}
-
-            with open(reference_params_path, 'r', encoding='utf-8') as f:
-                data = _json.load(f)
+            # 兼容本地绝对路径（旧数据）
+            if os.path.isabs(reference_params_path) and os.path.exists(reference_params_path):
+                with open(reference_params_path, 'r', encoding='utf-8') as f:
+                    data = _json.load(f)
+            else:
+                # 从 OSS 读取
+                if not oss.exists(_REF_PARAMS_BUCKET, reference_params_path):
+                    log_not_emit('WARNING', 'case_parameter_extractor',
+                                 f'Reference params object not found: oss://{_REF_PARAMS_BUCKET}/{reference_params_path}',
+                                 category='algorithm')
+                    return {}
+                raw = oss.download_bytes(_REF_PARAMS_BUCKET, reference_params_path)
+                data = _json.loads(raw.decode('utf-8'))
 
             # 如果文件内容是列表 [{code, type, value}]，转为 dict 格式方便查找
             if isinstance(data, list):

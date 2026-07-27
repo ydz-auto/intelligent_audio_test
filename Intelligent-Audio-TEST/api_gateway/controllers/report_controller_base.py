@@ -6,6 +6,7 @@ from shared.utils.log_handler import log_not_emit
 from shared.utils.report.report_utils import ReportUtils
 from shared.utils.query_utils import escape_like_pattern, sanitize_keyword, normalize_sort_field, normalize_sort_order, now_cst
 from shared.utils.result_data_store import load_full_result_data
+from shared.clients.oss_client import oss
 from api_gateway.schemas.report import ReportDetailData, ReportListData, ReportListItem, ReportListItemSummary, ReportSummarySimplified, ReportListQuery, ReportCaseListQuery, ReportSearchCasesRequest
 from datetime import datetime
 from sqlalchemy.orm import joinedload, load_only
@@ -730,15 +731,6 @@ class ReportControllerBase:
             )
             return error_response("该报告没有关联的任务ID", 400)
 
-        static_base_path = current_app.config.get('STATIC_BASE_PATH')
-        if not static_base_path:
-            log_and_emit(
-                level='ERROR',
-                module='report',
-                content='下载用例日志失败 - 服务器未配置静态文件路径'
-            )
-            return error_response("服务器未配置静态文件路径", 500)
-
         merge_relations = TaskMergeRelation.query.filter_by(merged_task_id=task_id).all()
         task_ids_to_search = [task_id]
         if merge_relations:
@@ -756,17 +748,24 @@ class ReportControllerBase:
             found_any = False
             with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
                 for search_task_id in task_ids_to_search:
-                    local_dir = os.path.join(static_base_path, 'case_result', str(search_task_id), str(case_id))
-                    
-                    if os.path.exists(local_dir):
+                    # OSS: 列出 case-result bucket 下 {task_id}/{case_id}/ 的所有文件
+                    oss_prefix = f'{search_task_id}/{case_id}/'
+                    try:
+                        oss_keys = oss.list_objects('case_result', prefix=oss_prefix)
+                    except Exception:
+                        oss_keys = []
+                    if oss_keys:
                         found_any = True
-                        for root, dirs, files in os.walk(local_dir):
-                            for file in files:
-                                file_path = os.path.join(root, file)
-                                arcname = os.path.relpath(file_path, local_dir)
+                        for oss_key in oss_keys:
+                            # 下载文件内容
+                            try:
+                                file_data = oss.download_bytes('case_result', oss_key)
+                                arcname = oss_key[len(oss_prefix):]  # 去掉前缀
                                 if len(task_ids_to_search) > 1:
                                     arcname = os.path.join(f"task_{search_task_id}", arcname)
-                                zf.write(file_path, arcname)
+                                zf.writestr(arcname, file_data)
+                            except Exception:
+                                continue
 
                 full_data = load_full_result_data(test_result.result_data, getattr(test_result, 'result_data_path', None)) if test_result else {}
                 if test_result and full_data and 'adjusted_reference_params' in full_data:

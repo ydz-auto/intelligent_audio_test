@@ -15,6 +15,7 @@ import traceback
 from abc import ABC, abstractmethod
 from pydub import AudioSegment
 from shared.utils.log_handler import log_and_emit
+from shared.clients.oss_client import oss
 
 
 class AudioDriver(ABC):
@@ -120,9 +121,14 @@ class PyAudioDriver(AudioDriver):
     def _load_audio_files(self, audio_configs):
         """打开音频文件并提取元数据。
 
+        若 config['file'] 不是本地存在的路径，则视作 OSS key（audios bucket），
+        先下载到本地临时文件再打开。下载的临时源文件会返回给调用方，
+        以便播放结束后清理。
+
         Returns:
             tuple: (audio_files, audio_channels, audio_gains, audio_file_channels,
-                   audio_file_rates, audio_is_noise, audio_loops, audio_delays)
+                   audio_file_rates, audio_is_noise, audio_loops, audio_delays,
+                   downloaded_temp_sources)
             若无有效文件则返回 None。
         """
         audio_files = []
@@ -133,6 +139,7 @@ class PyAudioDriver(AudioDriver):
         audio_is_noise = []
         audio_loops = []
         audio_delays = []
+        downloaded_temp_sources = []
 
         for config in audio_configs:
             file_path = config.get('file')
@@ -143,6 +150,18 @@ class PyAudioDriver(AudioDriver):
             delay = config.get('delay', 0)
 
             audio_delays.append(delay)
+
+            # 源文件读取改造：若本地不存在，则视为 OSS key（audios bucket）下载到临时
+            if not os.path.exists(file_path):
+                try:
+                    file_path = oss.download_to_temp('audios', file_path, '.wav')
+                    downloaded_temp_sources.append(file_path)
+                    # 回写 config['file'] 为本地临时路径，供后续增益补偿等环节使用
+                    config['file'] = file_path
+                    log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Downloaded audio from OSS to temp: {file_path}", category='audio')
+                except Exception as e:
+                    log_and_emit('ERROR', 'audio_engine', f"Failed to download audio from OSS (key={config.get('file')}): {e}", category='audio')
+                    continue
 
             if not os.path.exists(file_path):
                 log_and_emit('ERROR', 'audio_engine', f"File not found: {file_path}", category='audio')
@@ -175,10 +194,18 @@ class PyAudioDriver(AudioDriver):
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] audio_configs count: {len(audio_configs)}, audio_files count after loop: {len(audio_files)}, audio_is_noise={audio_is_noise}, audio_delays={audio_delays}", category='audio')
 
         if not audio_files:
+            # 无有效文件时也要清理已下载的临时源文件
+            for tmp in downloaded_temp_sources:
+                try:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
+                except Exception:
+                    pass
             return None
 
         return (audio_files, audio_channels, audio_gains, audio_file_channels,
-                audio_file_rates, audio_is_noise, audio_loops, audio_delays)
+                audio_file_rates, audio_is_noise, audio_loops, audio_delays,
+                downloaded_temp_sources)
 
     def _pre_resample(self, audio_files, audio_file_rates, audio_file_channels, target_rate, app=None):
         """预重采样：将采样率不一致的音频统一到 target_rate。
@@ -413,13 +440,14 @@ class PyAudioDriver(AudioDriver):
         if not loaded:
             return
         (audio_files, audio_channels, audio_gains, audio_file_channels,
-         audio_file_rates, audio_is_noise, audio_loops, audio_delays) = loaded
+         audio_file_rates, audio_is_noise, audio_loops, audio_delays,
+         downloaded_temp_sources) = loaded
 
         file_channels = audio_files[0].getnchannels()
         original_rate = audio_files[0].getframerate()
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Audio file info: channels={file_channels}, rate={original_rate}", category='audio')
 
-        # 2. 计算增益补偿
+        # 2. 计算增益补偿（使用实际本地路径：若从 OSS 下载，config['file'] 已被回写为临时路径）
         audio_gain_compensations = [self.calculate_gain_compensation(c['file']) for c in audio_configs]
 
         # 3. 获取设备信息
@@ -504,4 +532,12 @@ class PyAudioDriver(AudioDriver):
                         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Deleted resampled temp file: {temp_file}", category='audio')
                 except Exception as e:
                     log_and_emit('WARNING', 'audio_engine', f"[play_multi] Failed to delete temp file {temp_file}: {e}", category='audio')
+            # 清理从 OSS 下载的源文件临时副本（重采样的临时文件仍保持本地，已在上面清理）
+            for src_temp in downloaded_temp_sources:
+                try:
+                    if os.path.exists(src_temp):
+                        os.remove(src_temp)
+                        log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Deleted downloaded source temp file: {src_temp}", category='audio')
+                except Exception as e:
+                    log_and_emit('WARNING', 'audio_engine', f"[play_multi] Failed to delete downloaded source temp file {src_temp}: {e}", category='audio')
             log_and_emit('DEBUG', 'audio_engine', "Multi audio playback resources released", category='audio')

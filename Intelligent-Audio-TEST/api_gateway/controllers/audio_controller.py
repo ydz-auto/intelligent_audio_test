@@ -13,6 +13,7 @@ from shared.models.database import db
 from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
 from shared.utils.task_utils import has_running_e2e_tasks
+from shared.clients.oss_client import oss
 # TODO: 跨服务依赖，应改为 HTTP 调用
 from task_service.algorithm.case_parameter_extractor import _normalize_algorithm_params_to_list
 from api_gateway.schemas.audio import (
@@ -83,28 +84,23 @@ def safe_rmtree(path):
         time.sleep(0.5)
         shutil.rmtree(path, ignore_errors=True)
 
-# 辅助函数：获取相对路径（只返回static路径后半部分）
+# 辅助函数：获取相对路径（OSS key 模式下直接返回 key）
 def get_relative_path(file_path):
-    # 获取static目录路径
+    # OSS 改造后，file_path 已是 OSS key，直接返回
+    # 兼容旧的本地绝对路径（剥离 static 前缀）
+    if '/' in file_path and not os.path.isabs(file_path):
+        return file_path
     static_base_path = current_app.config.get('STATIC_BASE_PATH')
     if not static_base_path:
         return file_path
-    
-    # 将Windows风格路径转换为统一的斜杠格式
     normalized_file_path = file_path.replace('\\', '/')
     normalized_static_path = static_base_path.replace('\\', '/')
-    
-    # 查找static目录在文件路径中的位置
     static_index = normalized_file_path.find(normalized_static_path)
     if static_index != -1:
-        # 返回static目录之后的部分（去掉开头的斜杠）
         relative_path = normalized_file_path[static_index + len(normalized_static_path):]
-        # 去掉开头的斜杠
         while relative_path.startswith('/'):
             relative_path = relative_path[1:]
         return relative_path
-    
-    # 如果没有找到static目录，返回原路径
     return file_path
 
 def convert_to_wav(file_path):
@@ -706,28 +702,41 @@ class AudioController:
         retry_file_operation(file.save, temp_file_path)
         
         try:
-            # 转换为WAV格式
+            # 转换为WAV格式（生成临时 WAV 文件，返回临时路径）
             wav_file_path, wav_filename, sample_rate, bits_per_sample = convert_to_wav(temp_file_path)
             
             # 删除原始临时文件
             if os.path.exists(temp_file_path) and temp_file_path != wav_file_path:
                 retry_file_operation(os.remove, temp_file_path)
             
-            # 更新文件路径为WAV文件（统一用正斜杠，避免 Windows 反斜杠导致后续查询/拼接问题）
-            file_path = wav_file_path.replace('\\', '/')
+            # 上传规整后的 WAV 到 OSS（audios bucket），DB 记录 OSS key 而非本地路径
+            audio_id_for_key = uuid.uuid4().hex
+            oss_key = f"audio_{audio_id_for_key}.wav"
+            oss.upload_file(wav_file_path, 'audios', oss_key)
+            # 上传完成后删除本地临时 WAV
+            if os.path.exists(wav_file_path):
+                retry_file_operation(os.remove, wav_file_path)
+            
+            # DB 记录 OSS key（复用 file_path 字段，语义为音频文件在 OSS 上的 key）
+            file_path = oss_key
             # 更新文件名为WAV文件名
             original_filename = wav_filename
             
         except Exception as e:
-            # 如果转换失败，删除临时文件并抛出异常
+            # 如果转换/上传失败，删除临时文件并抛出异常
             if os.path.exists(temp_file_path):
                 retry_file_operation(os.remove, temp_file_path)
-            raise ValueError(f"音频转换失败: {str(e)}")
+            if 'wav_file_path' in dir() and os.path.exists(wav_file_path):
+                retry_file_operation(os.remove, wav_file_path)
+            raise ValueError(f"音频转换/上传OSS失败: {str(e)}")
         
-        # 提取WAV文件元数据
-        file_size = os.path.getsize(file_path)
+        # 提取WAV文件元数据（从 OSS 下载到临时后解析，避免依赖本地持久文件）
+        # 先下载到临时用于元数据提取，提取后删除
+        meta_tmp_path = None
         try:
-            audio_seg = AudioSegment.from_file(file_path)
+            meta_tmp_path = oss.download_to_temp('audios', oss_key, '.wav')
+            file_size = os.path.getsize(meta_tmp_path)
+            audio_seg = AudioSegment.from_file(meta_tmp_path)
             duration = len(audio_seg) / 1000.0
             channels = audio_seg.channels
             # 使用实际的位深计算比特率
@@ -739,9 +748,18 @@ class AudioController:
                 
         except Exception as e:
             # 如果元数据提取失败，说明不是有效的音频文件
-            if os.path.exists(file_path):
-                retry_file_operation(os.remove, file_path)
+            # 删除已上传到 OSS 的对象，避免残留无效数据
+            try:
+                oss.delete('audios', oss_key)
+            except Exception:
+                pass
             raise ValueError(f"无法识别的音频格式或文件已损坏: {str(e)}")
+        finally:
+            if meta_tmp_path and os.path.exists(meta_tmp_path):
+                try:
+                    os.remove(meta_tmp_path)
+                except Exception:
+                    pass
         
         return {
             "name": original_filename,
@@ -1238,6 +1256,9 @@ class AudioController:
             final_path = os.path.normpath(final_path)
             
             # 转换为WAV格式
+            wav_file_path = None
+            oss_key = None
+            meta_tmp_path = None
             try:
                 wav_file_path, wav_filename, sample_rate, bits_per_sample = convert_to_wav(final_path)
                 
@@ -1245,20 +1266,43 @@ class AudioController:
                 if os.path.exists(final_path) and final_path != wav_file_path:
                     retry_file_operation(os.remove, final_path)
                 
-                # 更新文件路径为WAV文件（统一用正斜杠）
-                final_path = wav_file_path.replace('\\', '/')
+                # 上传规整后的 WAV 到 OSS（audios bucket），DB 记录 OSS key
+                audio_id_for_key = uuid.uuid4().hex
+                oss_key = f"audio_{audio_id_for_key}.wav"
+                oss.upload_file(wav_file_path, 'audios', oss_key)
+                # 上传完成后删除本地临时 WAV
+                if os.path.exists(wav_file_path):
+                    retry_file_operation(os.remove, wav_file_path)
+                
+                # DB 记录 OSS key（复用 file_path 字段）
+                final_path = oss_key
                 # 更新文件名为WAV文件名
                 upload_file.filename = wav_filename
                 upload_file.original_filename = wav_filename
                 
             except Exception as e:
-                # 如果转换失败，保留原始文件但标记格式
-                logger.warning(f"音频转换失败，将保留原始格式: {str(e)}")
+                # 如果转换/上传失败，保留原始文件但标记格式
+                logger.warning(f"音频转换/上传OSS失败，将保留原始格式: {str(e)}")
+                # 清理可能残留的临时文件
+                if wav_file_path and os.path.exists(wav_file_path):
+                    try:
+                        os.remove(wav_file_path)
+                    except Exception:
+                        pass
+                if oss_key:
+                    try:
+                        oss.delete('audios', oss_key)
+                    except Exception:
+                        pass
                 sample_rate = 44100
                 bits_per_sample = 16
             
-            # 提取音频元数据
-            file_size = os.path.getsize(final_path)
+            # 提取音频元数据：若已上传 OSS，从 OSS 下载到临时提取；否则用本地 final_path
+            meta_source_path = final_path
+            if oss_key:
+                meta_tmp_path = oss.download_to_temp('audios', oss_key, '.wav')
+                meta_source_path = meta_tmp_path
+            file_size = os.path.getsize(meta_source_path)
             
             # 初始化元数据默认值（不依赖ffmpeg）
             duration = 0.0
@@ -1269,7 +1313,7 @@ class AudioController:
             # 尝试提取详细元数据，但不依赖ffmpeg可用性
             try:
                 # 尝试提取详细元数据
-                audio_seg = AudioSegment.from_file(final_path)
+                audio_seg = AudioSegment.from_file(meta_source_path)
                 duration = len(audio_seg) / 1000.0
                 sample_rate = audio_seg.frame_rate
                 channels = audio_seg.channels
@@ -1282,7 +1326,13 @@ class AudioController:
             except Exception as e:
                 # ffmpeg不可用或元数据提取失败，使用默认值继续
                 logger.info(f"音频元数据提取失败，使用默认值: {str(e)}")
-                # 保留合并后的文件，不删除，继续使用默认元数据
+            finally:
+                # 清理用于元数据提取的临时文件（若从 OSS 下载的）
+                if meta_tmp_path and os.path.exists(meta_tmp_path):
+                    try:
+                        os.remove(meta_tmp_path)
+                    except Exception:
+                        pass
             
             # 获取源语言（从算法参数中提取）
             source_language = AudioController._get_source_language_from_algorithm_params(algorithm_params)

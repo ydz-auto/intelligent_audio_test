@@ -3,6 +3,7 @@ import time
 import json
 import requests
 import traceback
+from shared.clients.oss_client import oss
 from task_service.evaluation.evaluation_mixin import EvaluationLoggerMixin
 
 
@@ -144,18 +145,21 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
     @staticmethod
     def _is_file_value(value):
-        """判断字符串值是否可能是文件（data URI 或本地可解析路径）。"""
+        """判断字符串值是否可能是文件（data URI、本地路径或 OSS key）。"""
         if not isinstance(value, str) or not value:
             return False
         if value.startswith('data:') and ',' in value:
             return True
         if len(value) >= 4096:
             return False
-        # 绝对路径
+        # 绝对路径（本地文件）
         if os.path.isabs(value):
             return os.path.exists(value)
-        # 相对路径：尝试多种方式解析
-        return ApiRequestHandler._resolve_relative_path(value) is not None
+        # OSS key（audios bucket）
+        try:
+            return oss.exists('audios', value)
+        except Exception:
+            return False
 
     @classmethod
     def _extract_single_file(cls, field_name, value, files, form_fields_fallback=None, fallback_key=None, fallback_value=None):
@@ -178,8 +182,11 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 files[field_name] = (filename, file_bytes, mime)
                 return True
             elif isinstance(value, str) and len(value) < 4096:
-                # 绝对路径直接用；相对路径解析
-                resolved = value if os.path.isabs(value) else cls._resolve_relative_path(value)
+                # 绝对路径（本地文件）直接用；相对路径作为 OSS key 下载到临时文件
+                if os.path.isabs(value) and os.path.exists(value):
+                    resolved = value
+                else:
+                    resolved = cls._resolve_relative_path(value)
                 if resolved and os.path.exists(resolved):
                     with open(resolved, 'rb') as f:
                         file_bytes = f.read()
@@ -196,37 +203,22 @@ class ApiRequestHandler(EvaluationLoggerMixin):
     @staticmethod
     def _resolve_relative_path(value):
         """
-        将相对路径解析为本地存在的绝对路径。尝试多种方式：
-        1. 基于当前工作目录直接解析
-        2. 基于 STATIC_BASE_PATH 解析（处理路径前缀重复问题）
-        返回第一个存在的绝对路径，都不存在则返回 None。
-        """
-        norm = value.replace('\\', os.sep).replace('/', os.sep)
+        将相对路径（OSS key）解析为本地临时文件路径。
 
-        # 1. 直接基于当前工作目录
+        音频文件存储在 OSS audios bucket，value 视为 OSS key，
+        下载到临时文件后返回本地路径。失败返回 None。
+        """
+        # 本地文件直接返回
+        norm = value.replace('\\', os.sep).replace('/', os.sep)
         if os.path.exists(norm):
             return os.path.abspath(norm)
 
-        # 2. 基于 STATIC_BASE_PATH 解析
+        # 作为 OSS key 下载到临时文件
         try:
-            # TODO: 跨服务调用 - Config 应从环境变量读取
-            base_path = os.environ.get('STATIC_BASE_PATH')
+            ext = os.path.splitext(value)[1] or '.wav'
+            return oss.download_to_temp('audios', value, ext)
         except Exception:
-            base_path = None
-        if not base_path:
             return None
-
-        base_norm = base_path.replace('\\', os.sep).replace('/', os.sep)
-        # 如果 value 已经以 base_path 开头，直接用 value（避免重复拼接）
-        if norm.startswith(base_norm):
-            if os.path.exists(norm):
-                return os.path.abspath(norm)
-        # 否则拼接 base_path + value
-        joined = os.path.join(base_norm, norm)
-        if os.path.exists(joined):
-            return os.path.abspath(joined)
-
-        return None
 
     def create_task_upload(self, url, form_fields, files, timeout=30, task_id=None):
         """

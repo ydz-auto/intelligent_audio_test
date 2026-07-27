@@ -10,36 +10,32 @@ import json
 import os
 import re
 
-# TODO: 跨服务调用 - Config 应从共享配置或环境变量读取
-def _get_static_base_path():
-    return os.environ.get('STATIC_BASE_PATH', os.path.join(os.environ.get('PROJECT_ROOT', ''), 'static'))
+from shared.clients.oss_client import oss
 from shared.utils.log_handler import log_not_emit
 
 HEAVY_KEYS = ['adjusted_reference_params', 'raw_results', 'alignment_info']
 
 _MODULE_NAME = 'result_data_store'
 
+# OSS bucket 类别（对应 OSSClient._buckets 中的 key）
+_RESULT_BUCKET = 'case_result'
+
 
 def _sanitize_path(s):
     return re.sub(r'[^a-zA-Z0-9_]', '_', str(s))
 
 
-def _build_result_dir(task_id, test_case_id, device_sn):
+def _build_result_key(task_id, test_case_id, device_sn, filename='result_data.json'):
+    """构建 OSS 对象 key：{task_id}/{case_id}/{device_sn}/{filename}"""
     task_id_safe = _sanitize_path(task_id)
     case_id_safe = _sanitize_path(test_case_id)
     device_sn_safe = _sanitize_path(device_sn)
-    return os.path.join(
-        _get_static_base_path(),
-        'case_result',
-        task_id_safe,
-        case_id_safe,
-        device_sn_safe
-    )
+    return f"{task_id_safe}/{case_id_safe}/{device_sn_safe}/{filename}"
 
 
 def write_result_data_file(task_id, test_case_id, device_sn, result_data):
     """
-    将完整的 result_data 写入文件，返回相对路径。
+    将完整的 result_data 写入 OSS（case_result bucket），返回 OSS key。
 
     Args:
         task_id: 任务ID
@@ -48,26 +44,20 @@ def write_result_data_file(task_id, test_case_id, device_sn, result_data):
         result_data: 完整结果数据字典
 
     Returns:
-        写入成功返回文件的相对路径字符串，失败返回空字符串
+        写入成功返回 OSS key 字符串，失败返回空字符串
     """
     try:
-        result_dir = _build_result_dir(task_id, test_case_id, device_sn)
-        os.makedirs(result_dir, exist_ok=True)
-
-        file_path = os.path.join(result_dir, 'result_data.json')
-
-        with open(file_path, 'w', encoding='utf-8') as f:
-            json.dump(result_data, f, ensure_ascii=False, indent=2)
-
-        relative_path = os.path.relpath(file_path, _get_static_base_path())
+        key = _build_result_key(task_id, test_case_id, device_sn)
+        data = json.dumps(result_data, ensure_ascii=False, indent=2).encode('utf-8')
+        oss.upload_bytes(data, _RESULT_BUCKET, key, content_type='application/json')
 
         log_not_emit(
             'DEBUG', _MODULE_NAME,
-            f'write_result_data_file: written to {relative_path}',
+            f'write_result_data_file: uploaded to oss://{_RESULT_BUCKET}/{key}',
             category='system', task_id=task_id, test_case_id=test_case_id
         )
 
-        return relative_path
+        return key
 
     except Exception as e:
         log_not_emit(
@@ -80,10 +70,10 @@ def write_result_data_file(task_id, test_case_id, device_sn, result_data):
 
 def read_result_data_file(path):
     """
-    从文件读取 result_data 字典。
+    从 OSS（case_result bucket）读取 result_data 字典。
 
     Args:
-        path: 文件路径（相对路径或绝对路径）
+        path: OSS 对象 key（由 write_result_data_file 返回）
 
     Returns:
         读取成功返回字典，失败返回空字典
@@ -92,26 +82,23 @@ def read_result_data_file(path):
         if not path:
             return {}
 
-        if not os.path.isabs(path):
-            path = os.path.join(_get_static_base_path(), path)
-
-        if not os.path.exists(path):
+        if not oss.exists(_RESULT_BUCKET, path):
             log_not_emit(
                 'WARNING', _MODULE_NAME,
-                f'read_result_data_file: file not found: {path}',
+                f'read_result_data_file: object not found: oss://{_RESULT_BUCKET}/{path}',
                 category='system'
             )
             return {}
 
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
+        raw = oss.download_bytes(_RESULT_BUCKET, path)
+        data = json.loads(raw.decode('utf-8'))
 
         if isinstance(data, dict):
             return data
 
         log_not_emit(
             'WARNING', _MODULE_NAME,
-            f'read_result_data_file: unexpected data type in {path}',
+            f'read_result_data_file: unexpected data type from oss://{_RESULT_BUCKET}/{path}',
             category='system'
         )
         return {}

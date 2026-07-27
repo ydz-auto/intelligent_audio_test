@@ -12,7 +12,6 @@ services = [
     {'name': 'task_service', 'port': 5001, 'dir': 'task_service'},
     {'name': 'e2e_test_service', 'port': 5002, 'dir': 'e2e_test_service'},
     {'name': 'api_test_service', 'port': 5003, 'dir': 'api_test_service'},
-    {'name': 'evaluation_service', 'port': 5004, 'dir': 'evaluation_service'},
 ]
 
 processes = []

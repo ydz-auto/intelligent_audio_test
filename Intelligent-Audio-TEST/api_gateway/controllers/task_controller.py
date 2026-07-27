@@ -9,6 +9,7 @@ from shared.utils.log_handler import log_not_emit
 # TODO: 跨服务依赖，应改为 HTTP 调用
 from task_service.core.execution_engine import execution_engine
 from shared.utils.result_data_store import load_full_result_data
+from shared.clients.oss_client import oss
 from api_gateway.schemas.common import IdData, TaskStatusData
 from api_gateway.schemas.task import (
     TaskApiBrief,
@@ -84,12 +85,14 @@ class TaskController:
             ).all()
 
             for tc in task_cases:
-                local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{tc.test_case_id}')
-                if os.path.exists(local_dir):
-                    try:
-                        shutil.rmtree(local_dir)
-                    except Exception as e:
-                        errors.append(f"删除用例 {tc.test_case_id} 日志文件失败: {str(e)}")
+                # OSS: 删除 case-result bucket 下 {task_id}/{case_id}/ 的所有文件
+                oss_prefix = f'{task_id}/{tc.test_case_id}/'
+                try:
+                    oss_keys = oss.list_objects('case_result', prefix=oss_prefix)
+                    for oss_key in oss_keys:
+                        oss.delete('case_result', oss_key)
+                except Exception as e:
+                    errors.append(f"删除用例 {tc.test_case_id} OSS文件失败: {str(e)}")
 
         return errors if errors else None
 

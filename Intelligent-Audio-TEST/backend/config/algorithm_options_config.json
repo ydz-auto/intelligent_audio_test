@@ -1,9 +1,0 @@
-{
-  "options_sources": {
-    "static": {
-      "label": "静态",
-      "description": "使用默认值或手动输入",
-      "type": "static"
-    }
-  }
-}

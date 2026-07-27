@@ -13,14 +13,20 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, List, Any
+from shared.clients.oss_client import oss
 from shared.models.database import db
 from shared.models.models import Audio, AudioAnnotation
 from shared.utils.log_handler import log_not_emit
 
-# reference_params 文件存储目录: 使用项目统一 static 目录
-# TODO: 跨服务调用 - Config 应从环境变量读取
-import os
-REF_PARAMS_DIR = os.environ.get('REF_PARAMS_STORAGE_PATH', os.path.join(os.environ.get('STATIC_BASE_PATH', ''), 'ref_params'))
+# reference_params 文件存储到 OSS（ref_params bucket）
+_REF_PARAMS_BUCKET = 'ref_params'
+
+
+def _build_ref_params_key(case_id, round_number, filename=None):
+    """构建参考参数 OSS key：{case_id}/{filename} 或 {case_id}/round_{round_number}.json"""
+    if filename is None:
+        filename = f"round_{round_number}.json"
+    return f"{case_id}/{filename}"
 
 # annotation data 中的已知顶层字段，其余字段视为额外字段并透传到参考参数
 _KNOWN_DATA_KEYS = {'segments', 'text', 'annotations', 'timestamps', 'timestamps_global'}
@@ -362,47 +368,42 @@ class ReferenceParamsGenerator:
         log_not_emit('DEBUG', 'reference_params_generator', f'Applying reference params for test_case: {test_case.algorithm_type}, {len(rounds)} round(s)', category='algorithm')
         
         case_id = getattr(test_case, 'id', '') or str(id(test_case))
-        ref_dir = REF_PARAMS_DIR  # 保持相对路径: static\ref_params
-        # 每个用例的多轮参考参数存一个子文件夹，避免所有用例的文件混在一起
-        case_ref_dir = os.path.join(ref_dir, str(case_id))
-        os.makedirs(case_ref_dir, exist_ok=True)
-        
-        # 收集每轮的 reference_params 路径，最后赋值到独立列
+
+        # 收集每轮的 reference_params OSS key，最后赋值到独立列
         ref_params_list = []
         total_params = 0
         for round_item in rounds:
             if not isinstance(round_item, dict):
                 continue
-            
+
             round_number = round_item.get('round_number', 1)
-            
+
             # 为该 round 独立生成 reference params
             round_params = cls.generate_for_round(test_case, round_item)
             if not round_params:
                 log_not_emit('WARNING', 'reference_params_generator',
                              f'round {round_number}: no params generated', category='algorithm')
                 continue
-            
+
             round_params = normalize_reference_params(round_params)
-            
-            # 写入该 round 的独立文件
-            filename = f"round_{round_number}.json"
-            filepath = os.path.join(case_ref_dir, filename)
-            
+
+            # 写入该 round 的独立 OSS 对象
+            oss_key = _build_ref_params_key(case_id, round_number)
+
             try:
-                with open(filepath, 'w', encoding='utf-8') as f:
-                    json.dump(round_params, f, ensure_ascii=False, indent=2)
-                # 路径收集到独立列结构，不再写入 config 的 round_item
+                data = json.dumps(round_params, ensure_ascii=False, indent=2).encode('utf-8')
+                oss.upload_bytes(data, _REF_PARAMS_BUCKET, oss_key, content_type='application/json')
+                # OSS key 收集到独立列结构，不再写入 config 的 round_item
                 ref_params_list.append({
                     'round_number': round_number,
-                    'reference_params_path': filepath
+                    'reference_params_path': oss_key
                 })
                 total_params += len(round_params)
                 log_not_emit('DEBUG', 'reference_params_generator',
-                             f'round {round_number}: written {len(round_params)} params to {filepath}', category='algorithm')
+                             f'round {round_number}: uploaded {len(round_params)} params to oss://{_REF_PARAMS_BUCKET}/{oss_key}', category='algorithm')
             except Exception as e:
                 log_not_emit('ERROR', 'reference_params_generator',
-                             f'round {round_number}: failed to write {filepath}: {e}', category='algorithm')
+                             f'round {round_number}: failed to upload oss://{_REF_PARAMS_BUCKET}/{oss_key}: {e}', category='algorithm')
         
         # 路径写入 reference_params 独立列，不再修改 config
         test_case.reference_params = ref_params_list
@@ -452,61 +453,56 @@ class ReferenceParamsGenerator:
         
         round_params = normalize_reference_params(round_params)
         
-        # 写入文件
+        # 写入 OSS
         case_id = getattr(test_case, 'id', '') or str(id(test_case))
-        ref_dir = REF_PARAMS_DIR
-        case_ref_dir = os.path.join(ref_dir, str(case_id))
-        os.makedirs(case_ref_dir, exist_ok=True)
+        oss_key = _build_ref_params_key(case_id, round_number)
 
-        filename = f"round_{round_number}.json"
-        filepath = os.path.join(case_ref_dir, filename)
-        
         try:
-            with open(filepath, 'w', encoding='utf-8') as f:
-                json.dump(round_params, f, ensure_ascii=False, indent=2)
-            # 路径写入 reference_params 独立列中对应轮的记录，不再修改 config 中的 round_item
+            data = json.dumps(round_params, ensure_ascii=False, indent=2).encode('utf-8')
+            oss.upload_bytes(data, _REF_PARAMS_BUCKET, oss_key, content_type='application/json')
+            # OSS key 写入 reference_params 独立列中对应轮的记录，不再修改 config 中的 round_item
             ref_params_col = list(test_case.reference_params or [])
             found = False
             for item in ref_params_col:
                 if isinstance(item, dict) and item.get('round_number') == round_number:
-                    item['reference_params_path'] = filepath
+                    item['reference_params_path'] = oss_key
                     found = True
                     break
             if not found:
                 # reference_params 列为 None 或没有该轮记录，追加一条
                 ref_params_col.append({
                     'round_number': round_number,
-                    'reference_params_path': filepath
+                    'reference_params_path': oss_key
                 })
             test_case.reference_params = ref_params_col
             log_not_emit('INFO', 'reference_params_generator',
-                         f'on_audio_associated: round {round_number} written {len(round_params)} params to {filepath}', category='algorithm')
+                         f'on_audio_associated: round {round_number} uploaded {len(round_params)} params to oss://{_REF_PARAMS_BUCKET}/{oss_key}', category='algorithm')
         except Exception as e:
             log_not_emit('ERROR', 'reference_params_generator',
-                         f'on_audio_associated: round {round_number} failed to write {filepath}: {e}', category='algorithm')
+                         f'on_audio_associated: round {round_number} failed to upload oss://{_REF_PARAMS_BUCKET}/{oss_key}: {e}', category='algorithm')
 
     @classmethod
     def load_from_file(cls, filepath: str) -> list:
         """
-        从文件加载参考参数
-        
+        从 OSS 加载参考参数
+
         Args:
-            filepath: 参考参数文件路径
-            
+            filepath: 参考参数 OSS 对象 key
+
         Returns:
             参考参数列表，格式与 generate() 返回值相同
         """
-        if not filepath or not os.path.exists(filepath):
+        if not filepath:
             return []
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            raw = oss.download_bytes(_REF_PARAMS_BUCKET, filepath)
+            data = json.loads(raw.decode('utf-8'))
             if isinstance(data, list):
                 return data
             return []
         except Exception as e:
             log_not_emit('ERROR', 'reference_params_generator',
-                         f'Failed to load reference params from {filepath}: {e}', category='algorithm')
+                         f'Failed to load reference params from oss://{_REF_PARAMS_BUCKET}/{filepath}: {e}', category='algorithm')
             return []
 
     @classmethod

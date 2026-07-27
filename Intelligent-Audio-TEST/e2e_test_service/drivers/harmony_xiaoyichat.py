@@ -2,12 +2,15 @@ import time
 import subprocess
 import os
 import re
+import tempfile
+import shutil
 
 from hypium.model import UiParam
 
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from config.config import Config
+from shared.clients.oss_client import oss
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
 
 class Xiaoyilivechat(HarmonyDriver):
@@ -270,14 +273,16 @@ class Xiaoyilivechat(HarmonyDriver):
                     check=False, capture_output=True, text=True, timeout=120
                 )
                 device_path = f'/data/local/tmp/{record_file_name}'
-            local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result',
-                                     str(task_id) if task_id else 'default_task_id',
-                                     str(test_case_id) if test_case_id else 'default_id', device_sn)
-            os.makedirs(local_dir, exist_ok=True)
+            # 改造为 OSS 存储：先写本地临时目录，采集完上传 OSS 后清理本地临时
+            task_id_path = str(task_id) if task_id else 'default_task_id'
+            test_case_id_path = str(test_case_id) if test_case_id else 'default_id'
+            oss_key_prefix = f'{task_id_path}/{test_case_id_path}/{device_sn}'
+            local_dir = tempfile.mkdtemp(prefix=f'case_{task_id_path}_{test_case_id_path}_')
             local_path = os.path.join(local_dir, record_file_name)
             recv_result = subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', device_path, local_path],
                                          check=False, capture_output=True, text=True, timeout=120)
             if not os.path.exists(local_path):
+                shutil.rmtree(local_dir, ignore_errors=True)
                 self._log(level='ERROR', content=f"录屏文件拉取失败: {recv_result.stderr}",
                           task_id=task_id, test_case_id=test_case_id)
                 result = {
@@ -289,13 +294,20 @@ class Xiaoyilivechat(HarmonyDriver):
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,
                 'question': question_text or '',
-                'answer': answer_text or ''
+                'answer': answer_text or '',
+                'oss_prefix': oss_key_prefix,
+                'local_dir': None,  # 已清理本地临时目录，保留字段兼容旧调用
                 }
                 return [result]
             # mp4 无损转 wav
             wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
             print(f"[录屏] mp4 路径: {local_path}")
             print(f"[录屏] wav 路径: {wav_path}")
+            # 采集完后上传到 OSS，然后清理本地临时目录
+            for fname in os.listdir(local_dir):
+                oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+                                 f'{oss_key_prefix}/{fname}')
+            shutil.rmtree(local_dir, ignore_errors=True)
             result = {
                 'success': True,
                 'message': 'Success',
@@ -305,7 +317,9 @@ class Xiaoyilivechat(HarmonyDriver):
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,
                 'question': question_text,
-                'answer': answer_text
+                'answer': answer_text,
+                'oss_prefix': oss_key_prefix,
+                'local_dir': None,  # 已清理本地临时目录，保留字段兼容旧调用
             }
             return [result]
         except Exception as e:

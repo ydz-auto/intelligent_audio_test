@@ -3,6 +3,8 @@ import json
 import re
 import time
 import subprocess
+import tempfile
+import shutil
 
 try:
     from hypium import MatchPattern
@@ -10,6 +12,7 @@ except ImportError:
     MatchPattern = None
 
 from config.config import Config
+from shared.clients.oss_client import oss
 from .android_driver import AndroidDriver
 from .device_config import get_device_config
 from .utils import check_stop, u2, log_and_emit, By
@@ -246,8 +249,8 @@ class PlaudDriver(AndroidDriver):
         task_id_path = task_id or kwargs.get('task_id', 'default_task_id')
         test_case_id_path = test_case_id or kwargs.get('test_case_id', 'default_case_id')
 
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id_path}', f'{test_case_id_path}', f'{device_sn}')
-        os.makedirs(local_dir, exist_ok=True)
+        # 改造为 OSS 存储：先写本地临时目录，采集完上传 OSS 后清理本地临时
+        local_dir = tempfile.mkdtemp(prefix=f'case_{task_id_path}_{test_case_id_path}_')
 
         temp_device_path = '/data/local/tmp/srt'
         mkdir_cmd = ['hdc', '-t', LOG_DEVICE_ID, 'shell', 'mkdir', '-p', temp_device_path]
@@ -312,6 +315,13 @@ class PlaudDriver(AndroidDriver):
 
         self._log(level='INFO', content=f"STM/RTTM 文件已保存", task_id=task_id, test_case_id=test_case_id)
 
+        # 采集完后上传到 OSS，然后清理本地临时目录
+        oss_key_prefix = f'{task_id_path}/{test_case_id_path}/{device_sn}'
+        for fname in os.listdir(local_dir):
+            oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+                             f'{oss_key_prefix}/{fname}')
+        shutil.rmtree(local_dir, ignore_errors=True)
+
         return [
             {
                 "result_type": "non-real-time",
@@ -324,6 +334,8 @@ class PlaudDriver(AndroidDriver):
                 "recording_asr_path": srt_file_path,
                 "recording_asr_content": recording_asr_content,
                 "log_path": local_dir,
+                "oss_prefix": oss_key_prefix,  # OSS key 前缀
+                "local_dir": None,  # 已清理本地临时目录，保留字段兼容旧调用
             }
         ]
 
@@ -419,31 +431,60 @@ class PlaudDriver(AndroidDriver):
                     'message': str
                 }
         """
-        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result', f'{task_id}', f'{test_case_id}', f'{device_sn}')
+        # 改造为 OSS 存储：从 OSS 下载 srt 到本地临时，解析后写 stm/rttm 上传 OSS，清理本地临时
+        oss_key_prefix = f'{task_id}/{test_case_id}/{device_sn}'
+        srt_oss_key = f'{oss_key_prefix}/{test_case_id}.srt'
+        local_dir = tempfile.mkdtemp(prefix=f'archive_{task_id}_{test_case_id}_')
         srt_file_path = os.path.join(local_dir, f'{test_case_id}.srt')
+        try:
+            oss.download_file('case_result', srt_oss_key, srt_file_path)
+        except Exception as e:
+            shutil.rmtree(local_dir, ignore_errors=True)
+            self._log(level='ERROR', content=f"从OSS下载存档SRT失败: {srt_oss_key}, error: {e}", task_id=task_id, test_case_id=test_case_id)
+            return {
+                'success': False,
+                'message': f'存档SRT文件不存在(OSS): {srt_oss_key}',
+                'local_dir': None,
+                'oss_prefix': oss_key_prefix,
+            }
 
-        self._log(level='INFO', content=f"从存档提取SRT结果，路径: {srt_file_path}", task_id=task_id, test_case_id=test_case_id)
+        self._log(level='INFO', content=f"从存档提取SRT结果，OSS key: {srt_oss_key}", task_id=task_id, test_case_id=test_case_id)
 
         if not os.path.exists(srt_file_path):
+            shutil.rmtree(local_dir, ignore_errors=True)
             self._log(level='ERROR', content=f"存档SRT文件不存在: {srt_file_path}", task_id=task_id, test_case_id=test_case_id)
             return {
                 'success': False,
                 'message': f'存档SRT文件不存在: {srt_file_path}',
-                'local_dir': local_dir
+                'local_dir': None,
+                'oss_prefix': oss_key_prefix,
             }
 
         recording_stm_content, recording_rttm_content, recording_asr_content = self._parse_srt_to_stm_rttm(srt_file_path)
 
         if not recording_stm_content:
+            shutil.rmtree(local_dir, ignore_errors=True)
             self._log(level='WARNING', content=f"SRT文件解析结果为空: {srt_file_path}", task_id=task_id, test_case_id=test_case_id)
             return {
                 'success': False,
                 'message': f'SRT文件解析结果为空: {srt_file_path}',
-                'local_dir': local_dir
+                'local_dir': None,
+                'oss_prefix': oss_key_prefix,
             }
 
         recording_stm_path = os.path.join(local_dir, "recording.stm")
         recording_rttm_path = os.path.join(local_dir, "recording.rttm")
+
+        # 写 stm/rttm 后上传 OSS，再清理本地临时
+        with open(recording_stm_path, "w", encoding="utf-8") as f:
+            f.write(recording_stm_content)
+        with open(recording_rttm_path, "w", encoding="utf-8") as f:
+            f.write(recording_rttm_content)
+
+        for fname in os.listdir(local_dir):
+            oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+                             f'{oss_key_prefix}/{fname}')
+        shutil.rmtree(local_dir, ignore_errors=True)
 
         self._log(level='INFO', content=f"成功从存档提取SRT结果，STM行数: {len(recording_stm_content.split(chr(10)))}", task_id=task_id, test_case_id=test_case_id)
 
@@ -453,7 +494,8 @@ class PlaudDriver(AndroidDriver):
             'recording_stm_content': recording_stm_content,
             'recording_rttm_content': recording_rttm_content,
             'recording_asr_content': recording_asr_content,
-            'local_dir': local_dir,
+            'local_dir': None,  # 已清理本地临时目录，保留字段兼容旧调用
+            'oss_prefix': oss_key_prefix,
             'recording_stm_path': recording_stm_path,
             'recording_rttm_path': recording_rttm_path,
             'recording_asr_path': srt_file_path,
