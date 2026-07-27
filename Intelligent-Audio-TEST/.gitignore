@@ -54,3 +54,8 @@ static/audios/temp_resample/
 .migrations/
 
 archives/
+
+# 本地开发临时启动脚本
+_start_backend.py
+_test_all.py
+dump.rdb
