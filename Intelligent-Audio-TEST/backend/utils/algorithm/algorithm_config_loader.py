@@ -10,7 +10,7 @@
 
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from threading import Lock
+from threading import Lock, RLock
 from backend.models.algorithm_models import (
     AlgorithmDefinition,
     AlgorithmDeviceParam,
@@ -34,7 +34,7 @@ class AlgorithmConfigLoader:
     _instance_lock = Lock()
     _config_cache: Dict[str, Any] = {}
     _last_reload_time: Optional[datetime] = None
-    _reload_lock = Lock()
+    _reload_lock = RLock()
 
     def __new__(cls):
         if cls._instance is None:

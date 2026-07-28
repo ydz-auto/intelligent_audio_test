@@ -1564,6 +1564,10 @@ def get_reference_value(
         if not value:
             return ''
         
+        # json 类型参数（如 pause）直接返回整个 list
+        if ref_type == 'json':
+            return value
+        
         # 直接返回第一个可用项
         first_item = value[0]
         if isinstance(first_item, dict):
