@@ -24,7 +24,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 时延补偿（毫秒）
+# 音响结束播放时间戳与音频内容最后一个词的时延补偿（毫秒）
 DEFAULT_OFFSET_MS = 40
 
 
@@ -148,8 +148,8 @@ def compute_takeover_latency(first_frame_ms, asr_json_path, start_ms, input_word
         f"[接管时延] first_frame_ms={first_frame_ms} "
         f"first_word_begin_ms={first_word_begin_ms} "
         f"model_first_word_ms={model_first_word_ms} "
-        f"start_ms={start_ms} t2_ms={t2_ms} offset_ms={offset_ms} "
-        f"audio_start_with_offset_ms={audio_start_with_offset_ms} "
+        f"end_ms={end_ms} offset_ms={offset_ms} "
+        f"audio_end_with_offset_ms={audio_end_with_offset_ms} "
         f"takeover_latency_ms={takeover_latency_ms}ms"
     )
     return result

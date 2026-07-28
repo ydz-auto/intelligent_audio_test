@@ -62,4 +62,27 @@ def compute_tor_during_pauses(chunks, pause_intervals):
     per_pause = []
     takeover_count = 0
     for p in pause_intervals:
-        p_iv = p.get('
+        p_iv = p.get('timestamp', [0, 0])
+        if p_iv[0] is None or p_iv[1] is None:
+            per_pause.append(0)
+            continue
+        # 检查是否有 chunk 与该 pause 区间重叠
+        takeover = 0
+        for c in chunks:
+            c_iv = c.get('timestamp', [0, 0])
+            if c_iv[0] is None or c_iv[1] is None:
+                continue
+            if _intervals_overlap(c_iv, p_iv):
+                takeover = 1
+                break
+        per_pause.append(takeover)
+        if takeover:
+            takeover_count += 1
+
+    tor = takeover_count / total if total > 0 else 0.0
+    return {
+        'per_pause': per_pause,
+        'takeover_count': takeover_count,
+        'total_pauses': total,
+        'tor': tor,
+    }

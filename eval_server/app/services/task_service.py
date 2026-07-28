@@ -206,12 +206,6 @@ class TaskService:
             )
         elif task_type == 'xiaoyi_metrics':
             from .xiaoyi_metrics import calculate_xiaoyi_metrics
-            import json as _json
-            import logging as _logging
-            _logging.getLogger(__name__).info(
-                f"[xiaoyi_metrics] 调用接口: TaskService.calculate, task_type={task_type}, "
-                f"task_params={_json.dumps(task_params, ensure_ascii=False, default=str)}"
-            )
             return calculate_xiaoyi_metrics(task_params)
         else:
             raise ValueError(f"Unknown task type: {task_type}")
@@ -275,8 +269,8 @@ class TaskService:
             )
         except Exception as e:
             TaskModel.update_task_status(
-                eval_task_id, 
-                'failed', 
+                eval_task_id,
+                'failed',
                 completed_at=datetime.now().isoformat(),
                 error_msg=str(e)
             )
@@ -284,4 +278,7 @@ class TaskService:
 
 def calculate_in_process(task_type, task_params):
     """模块级函数，供 ProcessPoolExecutor 调用（可被 pickle 序列化到子进程）"""
+    # 子进程不继承父进程的 logging handler，需重新初始化，否则日志丢失
+    from ..app import setup_logging
+    setup_logging()
     return TaskService.calculate(task_type, task_params)
