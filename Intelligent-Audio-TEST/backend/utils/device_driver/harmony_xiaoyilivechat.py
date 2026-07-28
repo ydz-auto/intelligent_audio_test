@@ -9,8 +9,7 @@ from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 
-
-class XiaoyiLivechat(HarmonyDriver):
+class XiaoyilivechatV2(HarmonyDriver):
     """小艺通话 live 态驱动
 
     与 harmony_xiaoyichat 的差异:
