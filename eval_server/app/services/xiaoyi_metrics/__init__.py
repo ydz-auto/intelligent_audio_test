@@ -9,12 +9,36 @@ xiaoyi_metrics 包
     - takeover_latency (接管时延) : takeover_latency.compute_takeover_latency_from_raw
 """
 import logging
+from datetime import datetime, timezone, timedelta
 
 from .tor import compute_tor_during_pauses
 from .false_takeover import compute_false_takeover
 from .takeover_latency import compute_takeover_latency_from_raw
 
 logger = logging.getLogger(__name__)
+
+_CST = timezone(timedelta(hours=8))
+
+
+def _ms_to_utc(ms):
+    """毫秒 Unix 时间戳 → 东八区时间字符串"""
+    if ms is None:
+        return 'N/A'
+    return datetime.fromtimestamp(ms / 1000, tz=_CST).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+
+def _format_takeover_latency(r):
+    """格式化 takeover_latency 结果用于日志打印：时间戳加 UTC，时延/补偿用秒"""
+    return (
+        f"{{takeover_latency_ms={r.get('takeover_latency_ms')}({(r.get('takeover_latency_ms') or 0) / 1000:.3f}s) "
+        f"first_frame_ms={r.get('first_frame_ms')}({_ms_to_utc(r.get('first_frame_ms'))}) "
+        f"first_word_begin_ms={r.get('first_word_begin_ms')} "
+        f"model_first_word_ms={r.get('model_first_word_ms')}({_ms_to_utc(r.get('model_first_word_ms'))}) "
+        f"end_ms={r.get('end_ms')}({_ms_to_utc(r.get('end_ms'))}) "
+        f"offset_ms={r.get('offset_ms')}({(r.get('offset_ms') or 0) / 1000:.3f}s) "
+        f"audio_end_with_offset_ms={r.get('audio_end_with_offset_ms')}({_ms_to_utc(r.get('audio_end_with_offset_ms'))}) "
+        f"message={r.get('message')}}}"
+    )
 
 
 def calculate_xiaoyi_metrics(task_params):
@@ -26,7 +50,8 @@ def calculate_xiaoyi_metrics(task_params):
             - record_file (str): wav 录音文件路径
             - pause (list): 停顿区间数据
             - first_frame_ms (int|None): 录屏首帧时刻
-            - end_ms (int|None): 音频结束时刻
+            - start_ms (int|None): 音频开始播放时刻
+            - input (list): 主服务下发的 input 词级时间戳
             - offset_ms (int): 时延补偿，默认 40
 
     Returns:
@@ -37,7 +62,7 @@ def calculate_xiaoyi_metrics(task_params):
         }
     """
     import json as _json
-    from ..utils.asr_adapator import call_modelscope_asr, parse_result
+    from app.utils.asr_adapator import call_modelscope_asr, parse_result
 
     logger.info(f"[xiaoyi_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
 
@@ -71,9 +96,10 @@ def calculate_xiaoyi_metrics(task_params):
     results['takeover_latency'] = compute_takeover_latency_from_raw(
         first_frame_ms=task_params.get('first_frame_ms'),
         asr_hyp=asr_hyp,
-        end_ms=task_params.get('end_ms'),
+        start_ms=task_params.get('start_ms'),
+        input_words=task_params.get('input', []),
         offset_ms=task_params.get('offset_ms', 40),
     )
-    logger.info(f"[takeover_latency] {results['takeover_latency']}")
+    logger.info(f"[takeover_latency] {_format_takeover_latency(results['takeover_latency'])}")
 
     return results

@@ -410,36 +410,34 @@ const formatValue = (value) => {
 
 const getAudioUrl = (audio) => {
   if (!audio) return '';
-  
-  // 如果直接传入的是路径字符串（兼容旧用法）
+
+  // 如果直接传入的是字符串（OSS key），通过 stream-by-path 获取预签名 URL
   if (typeof audio === 'string') {
     return `${apiBaseUrl.replace('/v1', '')}/audio/stream-by-path?path=${encodeURIComponent(audio)}`;
   }
-  
+
   // 如果有完整URL（后端直接返回的），直接返回
   if (audio.url && audio.url.startsWith('http')) {
     return audio.url;
   }
   if (audio.url && audio.url.startsWith('/')) {
-    // 处理后端返回的 /api/audios/play/{id} 格式
     if (audio.url.includes('/audios/play/')) {
       return audio.url;
     }
-    // 处理其他 /api 开头的路径
     return `${apiBaseUrl.replace('/v1', '')}${audio.url}`;
   }
-  
+
   // 优先使用 ID 获取音频
   if (audio.id) {
     const taskType = audio.type || 'api';
     return `${apiBaseUrl}/audios/${audio.id}/stream?task_type=${taskType}`;
   }
-  
-  // 如果没有 ID，回退到使用路径
+
+  // 回退：用 path（OSS key）通过 stream-by-path 获取
   if (audio.path) {
     return `${apiBaseUrl.replace('/v1', '')}/audio/stream-by-path?path=${encodeURIComponent(audio.path)}`;
   }
-  
+
   return '';
 };
 

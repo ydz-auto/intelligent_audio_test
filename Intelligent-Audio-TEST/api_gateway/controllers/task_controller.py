@@ -617,17 +617,26 @@ class TaskController:
                             if audio_data:
                                 # 处理不同格式
                                 if isinstance(audio_data, str):
-                                    device_audios.append({
-                                        'url': audio_data,
-                                        'filename': param_code,
-                                        'param_code': param_code
-                                    })
+                                    raw_url = audio_data
                                 elif isinstance(audio_data, dict):
-                                    device_audios.append({
-                                        'url': audio_data.get('url') or audio_data.get('path', ''),
-                                        'filename': audio_data.get('filename') or audio_data.get('name', param_code),
-                                        'param_code': param_code
-                                    })
+                                    raw_url = audio_data.get('url') or audio_data.get('path', '')
+                                else:
+                                    raw_url = ''
+                                # 将 OSS key 转为预签名 URL
+                                if raw_url:
+                                    try:
+                                        from shared.clients.oss_client import oss
+                                        bucket = 'case_result' if raw_url.startswith('case_result/') else 'audios'
+                                        presigned = oss.get_presigned_url(bucket, raw_url, expires=3600)
+                                    except Exception:
+                                        presigned = raw_url
+                                else:
+                                    presigned = ''
+                                device_audios.append({
+                                    'url': presigned,
+                                    'filename': audio_data.get('filename') if isinstance(audio_data, dict) else param_code,
+                                    'param_code': param_code
+                                })
                         
                         if device_audios:
                             result_audios[resource] = device_audios

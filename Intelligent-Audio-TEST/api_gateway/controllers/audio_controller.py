@@ -4,7 +4,7 @@ import requests
 import time
 import shutil
 import logging
-from flask import request, send_file, Response, current_app, jsonify
+from flask import request, send_file, Response, current_app, jsonify, redirect
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
 from sqlalchemy import cast, String, func
@@ -3052,58 +3052,23 @@ class AudioController:
 
     @staticmethod
     def stream_by_path():
-        path = request.args.get('path')
-        if not path:
+        """通过 OSS key 获取预签名 URL 播放音频"""
+        oss_key = request.args.get('path')
+        if not oss_key:
             return error_response("未提供路径", 400)
-            
-        if not os.path.exists(path):
-            return error_response("文件不存在", 404)
 
-        # 安全检查：确保路径在允许的目录下（例如音频存储目录或任务结果目录）
-        # 这里为了简化，仅检查是否存在。在生产环境中应加强检查。
-        
-        file_size = os.path.getsize(path)
-        ext = os.path.splitext(path)[1].lower().replace('.', '')
-        if not ext:
-            ext = 'wav'
-        mimetype = f"audio/{ext}"
-        
-        range_header = request.headers.get('Range', None)
-        if not range_header:
-            return send_file(path, mimetype=mimetype)
-            
-        # 处理 Range 请求: bytes=start-end
-        import re
-        match = re.search(r'bytes=(\d+)-(\d*)', range_header)
-        if not match:
-            return send_file(path, mimetype=mimetype)
+        # 根据 OSS key 前缀确定 bucket
+        if oss_key.startswith('case_result/'):
+            bucket = 'case_result'
+        else:
+            bucket = 'audios'
 
-        start = int(match.group(1))
-        end = match.group(2)
-        end = int(end) if end else file_size - 1
-
-        if start >= file_size:
-            return Response("Range Not Satisfiable", status=416)
-
-        chunk_size = end - start + 1
-        
-        def generate():
-            with open(path, 'rb') as f:
-                f.seek(start)
-                remaining = chunk_size
-                while remaining > 0:
-                    read_size = min(remaining, 1024 * 64)
-                    data = f.read(read_size)
-                    if not data:
-                        break
-                    yield data
-                    remaining -= len(data)
-
-        rv = Response(generate(), 206, mimetype=mimetype, direct_passthrough=True)
-        rv.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
-        rv.headers.add('Accept-Ranges', 'bytes')
-        rv.headers.add('Content-Length', str(chunk_size))
-        return rv
+        try:
+            presigned_url = oss.get_presigned_url(bucket, oss_key, expires=3600)
+            return jsonify({"url": presigned_url})
+        except Exception as e:
+            logging.getLogger(__name__).error(f"stream_by_path 获取 OSS 预签名 URL 失败: {e}, key={oss_key}, bucket={bucket}")
+            return error_response(f"获取音频失败: {e}", 404)
 
     # 试听音频 (前端或后端播放)
     @staticmethod
@@ -3484,15 +3449,6 @@ class AudioController:
         except Exception as e:
             db.session.rollback()
             return error_response(str(e))
-
-    @staticmethod
-    def folder_import():
-        """
-        文件夹批量导入（服务端扫描指定目录）
-        请求体: { path: str, recursive: bool, createTestCase: bool, ... }
-        当前为占位实现，前端暂未调用。
-        """
-        return error_response('文件夹批量导入接口尚未实现，请使用逐文件上传接口', 501)
 
     @staticmethod
     def get_folder_tree():

@@ -13,6 +13,7 @@ try:
     )
     from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
     from .harmony_xiaoyichat import Xiaoyilivechat
+    from .harmony_xiaoyilivechat import XiaoyilivechatV2
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
     _HYPium_AVAILABLE = True
 except ImportError:
@@ -21,6 +22,7 @@ except ImportError:
     XiaoyiSimultaneousInterpretationDriver = None
     HarmonyHardenXiaoyiHuiJiDriver = None
     Xiaoyilivechat = None
+    XiaoyilivechatV2 = None
     HarmonyHardenXiaoyi_Input_MethodDriver = None
     _HYPium_AVAILABLE = False
 
@@ -117,6 +119,13 @@ class DeviceDriverFactory:
                 ['xiaoyilivechat', '小艺通话', 'livechat'],
                 'HarmonyOS',
                 '小艺通话聊天专用驱动'
+            )
+
+            self.register_specialized_driver(
+                XiaoyilivechatV2(),
+                ['xiaoyilivechatv2', '小艺通话live', 'livechatv2'],
+                'HarmonyOS',
+                '小艺通话live专用驱动(V2)'
             )
 
             self.register_specialized_driver(

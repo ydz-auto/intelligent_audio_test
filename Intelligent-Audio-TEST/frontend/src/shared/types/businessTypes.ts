@@ -34,6 +34,8 @@ export interface AudioInfo {
     name: string;
     filename: string;
     filepath: string;
+    filePath?: string;
+    file_path?: string;
     size: number;
     duration: number;
     format: string;
@@ -43,8 +45,12 @@ export interface AudioInfo {
     audioType?: 'dry' | 'noise' | 'prompt' | 'mixed';
     tags?: string[];
     createdAt: string;
+    updatedAt?: string;
     asrText?: string;
     translations?: Array<{ text: string, direction: string }>;
+    annotations?: any[];
+    sourceLanguage?: string;
+    description?: string;
 }
 
 export type Audio = AudioInfo;
@@ -67,6 +73,7 @@ export interface AudioUploadFile {
     folderGroupName?: string;
     asrText?: string;
     translations?: Array<{ text: string, direction: string }>;
+    tags?: string[];
     annotations?: Array<{
         format: string;
         name: string;
@@ -115,12 +122,14 @@ export interface AudioUploadOptions {
         weight: number;
         params?: Record<string, any>;
     }>;
-    algorithmParams?: Record<string, any>;
+    algorithmParams?: any[];
     promptDeviceId?: string | number | null;
     promptSourceLanguage?: string;
     promptTargetLanguage?: string;
     promptTranslationDirection?: string;
     promptAlgorithmType?: string;
+    groupNameType?: 'root' | 'folder' | 'custom';
+    customGroupName?: string;
 }
 
 export interface SelectedEvaluationDimension {

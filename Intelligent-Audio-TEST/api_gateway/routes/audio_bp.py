@@ -71,10 +71,6 @@ def stop_preview(audio_id):
 def stream_by_path():
     return AudioController.stream_by_path()
 
-@audio_bp.route('/folder-import', methods=['POST'])
-def folder_import():
-    return AudioController.folder_import()
-
 @audio_bp.route('/<audio_id>', methods=['DELETE'])
 def delete(audio_id):
     return AudioController.delete(audio_id)

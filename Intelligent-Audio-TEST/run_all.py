@@ -145,6 +145,7 @@ def start_redis():
     candidates = []
     if os.name == 'nt':
         candidates = [
+            r'C:\S2TT\environment\redis\redis-server.exe',
             r'D:\00_env\redis\Redis-8.8.1-Windows-x64-cygwin-with-Service\redis-server.exe',
             r'D:\00_env\redis\redis-server.exe',
         ]
@@ -231,6 +232,7 @@ def start_minio():
     candidates = []
     if os.name == 'nt':
         candidates = [
+            r'C:\S2TT\environment\minio\minio.exe',
             r'D:\00_env\minio\minio.exe',
         ]
     else:
@@ -248,7 +250,8 @@ def start_minio():
     # 从 .env 读取 MinIO 凭据（与 BaseConfig 一致）
     minio_root_user = CHILD_ENV.get('OSS_ACCESS_KEY', 'minio')
     minio_root_password = CHILD_ENV.get('OSS_SECRET_KEY', 'minio123')
-    minio_data_dir = os.path.join(os.path.dirname(minio_bin), 'data')
+    # 数据目录：优先 .env 的 MINIO_DATA_DIR，否则回落到 minio.exe 同级 data 目录
+    minio_data_dir = CHILD_ENV.get('MINIO_DATA_DIR') or os.path.join(os.path.dirname(minio_bin), 'data')
     print(f"[START] minio: {minio_bin} (data: {minio_data_dir})", flush=True)
     env = dict(CHILD_ENV)
     env['MINIO_ROOT_USER'] = minio_root_user

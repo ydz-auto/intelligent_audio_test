@@ -35,6 +35,8 @@ from ..services.wer_calculator import calculate_wer, calculate_ser, calculate_cp
 from ..services.task_service import calculate_in_process  # 进程池计算包装函数
 from ..utils.concurrency import ConcurrencyManager  # 并发管理器
 
+logger = logging.getLogger('api')
+
 # 创建 API Blueprint，所有 API 路由以 /api 开头
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -204,6 +206,25 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 pool = _get_calc_pool()
                 future = pool.submit(calculate_in_process, task_type, task_params)
                 result = future.result()  # 阻塞等待子进程完成，但释放 GIL，不阻塞 HTTP 处理线程
+                if task_type == 'xiaoyi_metrics' and isinstance(result, dict):
+                    tl = result.get('takeover_latency')
+                    if tl:
+                        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                        _cst = _tz(_td(hours=8))
+                        def _ms2utc(ms):
+                            if ms is None:
+                                return 'N/A'
+                            return _dt.fromtimestamp(ms / 1000, tz=_cst).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                        logger.info(
+                            f"[takeover_latency] takeover_latency_ms={tl.get('takeover_latency_ms')}({(tl.get('takeover_latency_ms') or 0) / 1000:.3f}s) "
+                            f"first_frame_ms={tl.get('first_frame_ms')}({_ms2utc(tl.get('first_frame_ms'))}) "
+                            f"first_word_begin_ms={tl.get('first_word_begin_ms')} "
+                            f"model_first_word_ms={tl.get('model_first_word_ms')}({_ms2utc(tl.get('model_first_word_ms'))}) "
+                            f"end_ms={tl.get('end_ms')}({_ms2utc(tl.get('end_ms'))}) "
+                            f"offset_ms={tl.get('offset_ms')}({(tl.get('offset_ms') or 0) / 1000:.3f}s) "
+                            f"audio_end_with_offset_ms={tl.get('audio_end_with_offset_ms')}({_ms2utc(tl.get('audio_end_with_offset_ms'))}) "
+                            f"message={tl.get('message')}"
+                        )
                 TaskModel.update_task_status(
                     eval_task_id,
                     'completed',
@@ -211,6 +232,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                     result=result
                 )
             except Exception as e:
+                logger.exception(f"[process_local_task] 任务失败 eval_task_id={eval_task_id} task_type={task_type}: {e}")
                 TaskModel.update_task_status(
                     eval_task_id,
                     'failed',
@@ -363,7 +385,7 @@ def create_task_upload():
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) == 1 and isinstance(rounds_list[0], dict):
             rd = rounds_list[0]
-            for fld in ('record_file', 'pause', 'first_frame_ms', 'end_ms', 'offset_ms'):
+            for fld in ('record_file', 'pause', 'first_frame_ms', 'start_ms', 'input', 'offset_ms'):
                 val = rd.get(fld)
                 if val is not None and val != '' and not task_params.get(fld):
                     task_params[fld] = val

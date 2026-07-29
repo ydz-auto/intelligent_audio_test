@@ -28,7 +28,7 @@
       <div class="toolbar-actions">
           <button class="btn btn-primary" @click="() => {
             const algoType = algorithmTypeFilter === 'all' ? '' : algorithmTypeFilter;
-            emit('openAddModal', undefined, { algorithmType: algoType, testType: testTypeFilter.value === 'all' ? undefined : testTypeFilter.value as 'api' | 'e2e' });
+            emit('openAddModal', undefined, { algorithmType: algoType, testType: testTypeFilter === 'all' ? undefined : testTypeFilter as 'api' | 'e2e' });
           }">
             <i class="fas fa-plus"></i>
             新增用例
@@ -141,7 +141,7 @@
                 @click.stop
                 @edit="() => emit('openEditGroupModal', group)"
                 @delete="() => handleGroupDelete(group)"
-                @addCase="() => emit('openAddModal', group, { algorithmType: algorithmTypeFilter === 'all' ? '' : algorithmTypeFilter, testType: testTypeFilter.value === 'all' ? undefined : testTypeFilter.value as 'api' | 'e2e' })"
+                @addCase="() => emit('openAddModal', group, { algorithmType: algorithmTypeFilter === 'all' ? '' : algorithmTypeFilter, testType: testTypeFilter === 'all' ? undefined : testTypeFilter as 'api' | 'e2e' })"
                 @copyGroup="() => handleCopyGroup(group)"
                 @updateAlgorithmParams="() => handleUpdateAlgorithmParams(group)"
                 @updatePlaybackDevice="() => handleUpdatePlaybackDevice(group)"
@@ -321,34 +321,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, shallowRef, triggerRef, nextTick } from 'vue';
-import TestCaseCard from './TestCaseCard.vue'
+import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue';
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
 import AudioPlayerModal from '../AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
-import CRUDFormModal from '../modal/CRUDFormModal.vue';
 import { playbackApi, algorithmApi } from '../../../utils/api';
-import { useTestCaseStore } from '../../../store/testCaseStore';
 import { normalizeTestCaseConfig } from '../../../utils/utils';
-import { useModalControl, MODAL_TYPES } from '../../../composables/useModal';
+import { useTestCaseBatchActions } from '../../../composables/useTestCaseBatchActions';
+import { useTestCaseAudioPreview } from '../../../composables/useTestCaseAudioPreview';
+import { useTestCaseGroupExpand } from '../../../composables/useTestCaseGroupExpand';
+import { useTestCaseFilters } from '../../../composables/useTestCaseFilters';
 import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../shared/types';
-
-function useDebounce<T>(value: Ref<T>, delay: number = 300): Ref<T> {
-  const debouncedValue = ref(value.value) as Ref<T>;
-  let timeout: ReturnType<typeof setTimeout> | null = null;
-  
-  watch(value, (newValue) => {
-    if (timeout) clearTimeout(timeout);
-    timeout = setTimeout(() => {
-      debouncedValue.value = newValue;
-    }, delay);
-  });
-  
-  return debouncedValue;
-}
-
-import type { Ref } from 'vue';
 
 const props = defineProps<{
   testCaseGroups?: Record<string, TestCase[]>;
@@ -375,11 +359,16 @@ const emit = defineEmits<{
   (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string }): void;
 }>();
 
-const expandedCategories = ref<Record<string, boolean>>({});
-const expandedTagCategories = ref<Record<string, boolean>>({});
+// ===== 本地状态（组件级，跨 composable 共享） =====
 const selectedCases = ref<(string | number)[]>([]);
+const playbackDevices = ref<PlaybackDevice[]>([]);
+const algorithmOptions = ref<{ value: string; label: string }[]>([]);
+
+// 视图模式：'group' 分组视图 | 'tag' 标签视图
+const innerViewMode = ref<'group' | 'tag'>(props.viewMode || 'group');
+
+// 筛选状态在组件级声明，供 groupExpand / filters / batchActions 共享同一份响应式状态
 const searchQuery = ref('');
-const debouncedSearchQuery = useDebounce(searchQuery, 300);
 const testTypeFilter = ref('all');
 const algorithmTypeFilter = ref('all');
 const groupFilter = ref('all');
@@ -387,8 +376,116 @@ const tagFilter = ref('all');
 const sortBy = ref('count');
 const sortOrder = ref('desc');
 
-// 视图模式：'group' 分组视图 | 'tag' 标签视图
-const innerViewMode = ref<'group' | 'tag'>(props.viewMode || 'group');
+// hasMoreGroups 由分组分页计算属性驱动，先占位再被 composable 引用
+const hasMoreGroups = ref(true);
+
+// ===== 分组展开/加载 composable =====
+// 预先创建占位 ref，待分组/标签分页计算属性定义后再同步。
+const paginatedGroupsRef = ref<string[]>([]);
+const paginatedTagsRef = ref<string[]>([]);
+const hasMoreTagsRef = ref(false);
+
+const groupExpandModule = useTestCaseGroupExpand(
+  algorithmTypeFilter,
+  innerViewMode,
+  paginatedGroupsRef,
+  paginatedTagsRef,
+  hasMoreGroups,
+  hasMoreTagsRef
+);
+
+const {
+  expandedCategories,
+  expandedTagCategories,
+  currentPage,
+  itemsPerPage,
+  isLoadingMore,
+  listContainerRef,
+  loadMoreTriggerRef,
+  toggleCategory,
+  toggleTagCategory,
+  isGroupLoading,
+  hasMoreGroupCases,
+  getGroupTotalCount,
+  loadMoreCases,
+  loadMoreGroups,
+  handleScroll,
+  setupLoadMoreObserver,
+  cleanupObserver
+} = groupExpandModule;
+
+// ===== 筛选/搜索 composable =====
+// 筛选状态 ref 在组件级声明，这里传入 composable 用于管理 watch / reset 逻辑
+const filtersModule = useTestCaseFilters(
+  props,
+  {
+    searchQuery,
+    testTypeFilter,
+    algorithmTypeFilter,
+    groupFilter,
+    tagFilter,
+    sortBy,
+    sortOrder
+  },
+  {
+    currentPage,
+    innerViewMode,
+    emitTagFilterChange: (filters) => emit('tagFilterChange', filters)
+  }
+);
+
+const {
+  debouncedSearchQuery,
+  resetFilters
+} = filtersModule;
+
+// ===== 批量操作 composable =====
+const batchActionsModule = useTestCaseBatchActions(
+  computed(() => filteredTestCases.value),
+  selectedCases,
+  algorithmTypeFilter
+);
+
+const {
+  handleCopyGroup,
+  handleUpdateAlgorithmParams,
+  handleUpdatePlaybackDevice,
+  handleUpdateSPL,
+  handleAdjustGroup,
+  handleUpdateDimensions,
+  handleUpdateNoise,
+  handleAutoGenerateName,
+  handleUpdateTags,
+  handleRefreshReference
+} = batchActionsModule;
+
+// ===== 音频预览 composable =====
+const audioPreviewModule = useTestCaseAudioPreview(
+  (testCase) => emit('openEditModal', testCase),
+  (testCase) => emit('deleteTestCase', testCase),
+  selectedCases
+);
+
+const {
+  showAudioPlayer,
+  currentTestCaseCaseId,
+  showAudioTypeModal,
+  currentTestCase,
+  currentHasAPIConfig,
+  currentHasE2eConfig,
+  selectedAudioType,
+  showAudioPreviewModal,
+  previewPlaybackMode,
+  showPlaybackDeviceModal,
+  handleCloseAudioTypeModal,
+  selectAudioType,
+  handleAudioPreviewModalClose,
+  handleAudioPreviewConfirm,
+  handleAudioPlayerClose,
+  handleAction
+} = audioPreviewModule;
+
+// ===== 视图模式切换 =====
 const updateViewMode = (mode: 'group' | 'tag') => {
   innerViewMode.value = mode;
   emit('update:viewMode', mode);
@@ -405,177 +502,12 @@ watch(() => props.viewMode, (newMode) => {
   }
 });
 
-// Pagination state
-const currentPage = ref(1);
-const itemsPerPage = ref(5);
-const isLoadingMore = ref(false);
-const hasMoreGroups = ref(true);
-const listContainerRef = ref<HTMLElement | null>(null);
-const loadMoreTriggerRef = ref<HTMLElement | null>(null);
-
-const showAudioPlayer = ref(false);
-const currentTestCaseCaseId = ref<string | number | null>(null);
-const showAudioTypeModal = ref(false);
-const currentTestCase = ref<TestCase | null>(null);
-const currentHasAPIConfig = ref(false);
-const currentHasE2eConfig = ref(false);
-const selectedAudioType = ref('');
-const playbackDevices = ref<PlaybackDevice[]>([]);
-const algorithmOptions = ref<{ value: string; label: string }[]>([]);
-const showAudioPreviewModal = ref(false);
-const previewPlaybackMode = ref<'frontend' | 'backend'>('frontend');
-const showPlaybackDeviceModal = ref(false);
-
-async function loadAlgorithmOptions() {
-  try {
-    const data = await algorithmApi.getOptions();
-    algorithmOptions.value = [
-      { value: 'all', label: '所有算法' },
-      ...(data?.algorithms || []).map((algo: any) => ({
-        value: algo.value,
-        label: algo.name || algo.value
-      }))
-    ];
-  } catch (error) {
-    console.error('加载算法选项失败:', error);
-    algorithmOptions.value = [
-      { value: 'all', label: '所有算法' },
-      { value: 'translation', label: '翻译' },
-      { value: 'asr', label: 'ASR识别' },
-      { value: 'speaker_recognition', label: '说话人识别' },
-      { value: 'tts', label: '语音合成' }
-    ];
-  }
-}
-
+// ===== 选中用例上报 =====
 watch(selectedCases, (newValue) => {
   emit('updateSelectedCases', newValue);
 }, { deep: true });
 
-watch(() => props.algorithmTypeFilter, (newValue, oldValue) => {
-  if (newValue !== undefined) {
-    algorithmTypeFilter.value = newValue;
-  }
-}, { immediate: true });
-
-watch(() => props.testTypeFilter, (newValue) => {
-  if (newValue !== undefined) {
-    testTypeFilter.value = newValue;
-  }
-}, { immediate: true });
-
-watch([searchQuery, testTypeFilter, algorithmTypeFilter, groupFilter, tagFilter, sortBy, sortOrder], () => {
-  currentPage.value = 1;
-});
-
-// 标签视图模式下，筛选条件变化时通知父组件重新请求后端
-watch([debouncedSearchQuery, testTypeFilter, algorithmTypeFilter, innerViewMode], () => {
-  if (innerViewMode.value === 'tag') {
-    emit('tagFilterChange', {
-      keyword: debouncedSearchQuery.value || undefined,
-      testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
-      algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
-    });
-  }
-});
-
-const loadPlaybackDevices = async () => {
-  try {
-    const result = await playbackApi.getAll();
-    playbackDevices.value = (result as any).items || [];
-  } catch (error) {
-    console.error('加载播放设备列表失败:', error);
-    playbackDevices.value = [];
-  }
-};
-
-const modalControl = useModalControl();
-
-let currentBatchGroup = '';
-let currentBatchCaseIds: (string | number)[] = [];
-const openBatchMenuGroup = ref<string | null>(null);
-
-const toggleBatchMenu = (group: string) => {
-  if (openBatchMenuGroup.value === group) {
-    openBatchMenuGroup.value = null;
-  } else {
-    openBatchMenuGroup.value = group;
-  }
-};
-
-const closeAllBatchMenus = () => {
-  openBatchMenuGroup.value = null;
-};
-
-onMounted(() => {
-  document.addEventListener('click', closeAllBatchMenus);
-});
-
-onUnmounted(() => {
-  document.removeEventListener('click', closeAllBatchMenus);
-});
-
-const checkTestCaseConfig = (testCase: TestCase) => {
-  const normalizedConfig = normalizeTestCaseConfig(testCase.config || {});
-  // Rounds-based format: collect all audios from all rounds
-  const rounds = normalizedConfig.rounds || [];
-  const allAudios: any[] = [];
-  rounds.forEach((round: any) => {
-    if (Array.isArray(round.audios)) {
-      allAudios.push(...round.audios);
-    }
-  });
-
-  // In dual-record architecture, test_type is at the record level
-  // 后端列表接口返回字段名为 type，兼容 test_type / testType
-  const recordTestType = ((testCase as any).test_type || (testCase as any).testType || (testCase as any).type || 'api').toLowerCase();
-  const isApi = recordTestType === 'api';
-  const isE2e = recordTestType === 'e2e' || recordTestType === 'e2e_test';
-
-  const hasAPIConfig = isApi && allAudios.length > 0;
-  const hasE2eConfig = isE2e && allAudios.length > 0;
-  
-  const apiAudioId = hasAPIConfig ? allAudios[0]?.audioId : null;
-  const e2eAudioIds = hasE2eConfig ? allAudios.map((a: any) => a.audioId) : [];
-  
-  console.log('检查测试用例配置:', { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds });
-  return { hasAPIConfig, hasE2eConfig, apiAudioId, e2eAudioIds };
-};
-
-const handleGlobalKeyDown = (event: KeyboardEvent) => {
-  if (event.key === 'Escape') {
-    if (showAudioTypeModal.value) {
-      handleCloseAudioTypeModal();
-    }
-    if (showAudioPreviewModal.value) {
-      handleAudioPreviewModalClose();
-    }
-    if (showPlaybackDeviceModal.value) {
-      showPlaybackDeviceModal.value = false;
-    }
-    if (showAudioPlayer.value) {
-      handleAudioPlayerClose();
-    }
-  }
-};
-
-onMounted(async () => {
-  window.addEventListener('keydown', handleGlobalKeyDown);
-  setupLoadMoreObserver();
-  await Promise.all([
-    loadPlaybackDevices(),
-    loadAlgorithmOptions()
-  ]);
-});
-
-onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleGlobalKeyDown);
-  if (loadMoreObserver) {
-    loadMoreObserver.disconnect();
-    loadMoreObserver = null;
-  }
-});
-
+// ===== 计算属性：分组视图 =====
 const availableGroups = computed(() => {
   console.log('[availableGroups] props.testCaseGroups:', props.testCaseGroups);
   console.log('[availableGroups] props.testCaseGroups keys:', Object.keys(props.testCaseGroups || {}));
@@ -812,7 +744,7 @@ const paginationInfo = computed(() => {
   };
 });
 
-// ===== 标签视图计算属性 =====
+// ===== 计算属性：标签视图 =====
 const availableTags = computed(() => {
   return Object.keys(props.tagViewData || {});
 });
@@ -887,17 +819,15 @@ const paginatedTags = computed(() => {
 
 // 标签视图是否还有更多未展示的标签
 const hasMoreTags = computed(() => paginatedTags.value.length < sortedTags.value.length);
-// 当前视图是否还有更多：分组视图看 hasMoreGroups，标签视图看 hasMoreTags。
-// 滚动加载/IntersectionObserver/loadMoreGroups 共用此判断，避免标签视图永远加载不出第 6 个起标签。
-const hasMore = computed(() => innerViewMode.value === 'tag' ? hasMoreTags.value : hasMoreGroups.value);
 
-const toggleTagCategory = (tagName: string) => {
-  expandedTagCategories.value = {
-    ...expandedTagCategories.value,
-    [tagName]: !expandedTagCategories.value[tagName]
-  };
-};
+// 同步分页结果到 groupExpand composable 引用（用于哨兵 watch）
+watch([paginatedGroups, paginatedTags, hasMoreTags], () => {
+  paginatedGroupsRef.value = paginatedGroups.value;
+  paginatedTagsRef.value = paginatedTags.value;
+  hasMoreTagsRef.value = hasMoreTags.value;
+}, { immediate: true });
 
+// ===== 用例卡片操作 =====
 const getTestCaseActions = () => {
   return [
     { id: 'preview', icon: 'fa-play', title: '预览音频' },
@@ -905,50 +835,6 @@ const getTestCaseActions = () => {
     { id: 'edit', icon: 'fa-edit', title: '编辑用例' },
     { id: 'delete', icon: 'fa-trash', title: '删除用例' }
   ];
-};
-
-const toggleCategory = async (group: string) => {
-  const wasExpanded = expandedCategories.value[group];
-  expandedCategories.value[group] = !wasExpanded;
-
-  if (!wasExpanded) {
-    const store = useTestCaseStore();
-    const groupInfo = store.groupsList.find(g => g.name === group);
-    if (groupInfo && (!store.loadedGroupCases[groupInfo.id] || store.loadedGroupCases[groupInfo.id].length === 0)) {
-      // 传当前算法过滤值,使拉取的用例与徽标计数(按算法统计)及 filteredTestCases 过滤一致,
-      // 否则拉取的是分组下所有算法用例,经算法过滤后可能为空(显示"已加载 0/N 条")。
-      const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
-      await store.fetchCasesByGroup(groupInfo.id, { algorithmType });
-    }
-  }
-};
-
-const isGroupLoading = (groupName: string) => {
-  const store = useTestCaseStore();
-  const groupInfo = store.groupsList.find(g => g.name === groupName);
-  if (!groupInfo) return false;
-  return store.isGroupLoading(groupInfo.id);
-};
-
-const hasMoreGroupCases = (groupName: string) => {
-  const store = useTestCaseStore();
-  const groupInfo = store.groupsList.find(g => g.name === groupName);
-  if (!groupInfo) return false;
-  return store.hasMoreGroupCases(groupInfo.id);
-};
-
-const getGroupTotalCount = (groupName: string) => {
-  const store = useTestCaseStore();
-  const groupInfo = store.groupsList.find(g => g.name === groupName);
-  return groupInfo?.testCaseCount || 0;
-};
-
-const loadMoreCases = async (groupName: string) => {
-  const store = useTestCaseStore();
-  const groupInfo = store.groupsList.find(g => g.name === groupName);
-  if (groupInfo) {
-    await store.loadMoreGroupCases(groupInfo.id);
-  }
 };
 
 const toggleTestCaseSelection = (caseId: string | number) => {
@@ -974,562 +860,95 @@ const toggleGroupSelection = (group: string) => {
   });
 };
 
-const resetFilters = () => {
-  searchQuery.value = '';
-  testTypeFilter.value = 'all';
-  algorithmTypeFilter.value = 'all';
-  groupFilter.value = 'all';
-  tagFilter.value = 'all';
-  sortBy.value = 'count';
-  sortOrder.value = 'desc';
-  currentPage.value = 1; // Reset to first page
-};
-
-const loadMoreGroups = () => {
-  if (isLoadingMore.value || !hasMore.value) return;
-  isLoadingMore.value = true;
-  setTimeout(() => {
-    currentPage.value++;
-    isLoadingMore.value = false;
-  }, 300);
-};
-
-const handleScroll = (event: Event) => {
-  const target = event.target as HTMLElement;
-  const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-  if (scrollBottom < 100 && hasMore.value && !isLoadingMore.value) {
-    loadMoreGroups();
-  }
-};
-
-// 滚动加载兜底：页面真正滚动的是外层 MAIN.main-content（overflow:auto），
-// 既不是 window 也不是 .single-column-layout，所以 @scroll 和 window 监听都捕获不到。
-// 用 IntersectionObserver 监听"加载更多"哨兵，进入视口即自动加载，不受滚动容器归属影响。
-let loadMoreObserver: IntersectionObserver | null = null;
-const setupLoadMoreObserver = () => {
-  if (typeof IntersectionObserver === 'undefined') return;
-  if (loadMoreObserver) loadMoreObserver.disconnect();
-  loadMoreObserver = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (entry.isIntersecting && hasMore.value && !isLoadingMore.value) {
-        loadMoreGroups();
-      }
-    });
-  }, { rootMargin: '100px' });
-  if (loadMoreTriggerRef.value) {
-    loadMoreObserver.observe(loadMoreTriggerRef.value);
-  }
-};
-// 哨兵是 v-if 元素，每次加载后会重新挂载，需重新观察；
-// 分组/标签视图切换时哨兵也会换元素，需一并重新观察。
-watch([hasMore, isLoadingMore, () => paginatedGroups.value.length, () => paginatedTags.value.length, innerViewMode], () => {
-  nextTick(setupLoadMoreObserver);
-});
-
-const deleteGroup = (groupName: string) => {
-  emit('deleteGroup', groupName);
-};
-
-const exportTestCases = () => {
-  console.log('导出测试用例');
-  alert('导出用例功能开发中...');
-};
-
-const openBatchImportModal = () => {
-  console.log('打开批量导入模态框');
-  alert('导入用例功能开发中...');
-};
-
-const handleCloseAudioTypeModal = () => {
-  showAudioTypeModal.value = false;
-  currentTestCase.value = null;
-};
-
-const selectAudioType = (audioType: string) => {
-  selectedAudioType.value = audioType;
-  showAudioTypeModal.value = false;
-  
-  if (audioType === 'api') {
-    showAudioPlayer.value = true;
-  } else if (audioType === 'e2e') {
-    showAudioPreviewModal.value = true;
-  }
-};
-
-const handleAudioPreviewModalClose = () => {
-  showAudioPreviewModal.value = false;
-};
-
-const handleAudioPreviewConfirm = (previewData: any) => {
-  showAudioPreviewModal.value = false;
-  previewPlaybackMode.value = previewData.playbackMode || 'frontend';
-  showAudioPlayer.value = true;
-};
-
-const handleAudioPlayerClose = () => {
-  showAudioPlayer.value = false;
-  currentTestCaseCaseId.value = null;
-  selectedAudioType.value = '';
-  previewPlaybackMode.value = 'frontend';
-};
-
 const handleGroupDelete = (group: string) => {
   emit('deleteGroup', group);
 };
 
-const handleCopyGroup = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
+// ===== 批量菜单开关 =====
+const openBatchMenuGroup = ref<string | null>(null);
+
+const toggleBatchMenu = (group: string) => {
+  if (openBatchMenuGroup.value === group) {
+    openBatchMenuGroup.value = null;
+  } else {
+    openBatchMenuGroup.value = group;
   }
-  
-  currentBatchGroup = group;
-  currentBatchCaseIds = groupCases.map((tc: TestCase) => tc.id);
-  
+};
+
+const closeAllBatchMenus = () => {
+  openBatchMenuGroup.value = null;
+};
+
+// ===== 数据加载 =====
+async function loadAlgorithmOptions() {
   try {
-    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '复制分组',
-      content: `确定要复制分组 "${group}" 下的 ${groupCases.length} 个用例吗？\n\n复制后将成为新分组：${group}_copy`,
-      confirmText: '复制',
-      cancelText: '取消',
-      danger: false
-    });
-    
-    if (confirmed?.confirmed) {
-      const store = useTestCaseStore();
-      const result = await store.copyGroupCases(group);
-      if (result) {
-        alert(`分组复制成功！\n\n原分组：${group}\n新分组：${group}_copy`);
-      }
-    }
+    const data = await algorithmApi.getOptions();
+    algorithmOptions.value = [
+      { value: 'all', label: '所有算法' },
+      ...(data?.algorithms || []).map((algo: any) => ({
+        value: algo.value,
+        label: algo.name || algo.value
+      }))
+    ];
   } catch (error) {
-    console.error('复制分组失败:', error);
+    console.error('加载算法选项失败:', error);
+    algorithmOptions.value = [
+      { value: 'all', label: '所有算法' },
+      { value: 'translation', label: '翻译' },
+      { value: 'asr', label: 'ASR识别' },
+      { value: 'speaker_recognition', label: '说话人识别' },
+      { value: 'tts', label: '语音合成' }
+    ];
   }
-};
+}
 
-const handleUpdateAlgorithmParams = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
+const loadPlaybackDevices = async () => {
   try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_ALGORITHM_PARAMS, {
-      title: '批量设置用例专属参数',
-      caseCount: currentBatchCaseIds.length,
-      algorithmType: groupCases[0]?.algorithmType || ''
-    });
-
-    if (result?.algorithmType && result?.params) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdateAlgorithmParams(currentBatchCaseIds, result.params);
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的专属参数`);
-      }
-    }
+    const result = await playbackApi.getAll();
+    playbackDevices.value = (result as any).items || [];
   } catch (error) {
-    console.error('更新用例专属参数失败:', error);
+    console.error('加载播放设备列表失败:', error);
+    playbackDevices.value = [];
   }
 };
 
-const handleUpdatePlaybackDevice = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_PLAYBACK_DEVICE, {
-      title: '批量设置播放设备',
-      caseCount: currentBatchCaseIds.length
-    });
-
-    if (result?.deviceId) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdatePlaybackDevices(currentBatchCaseIds, { deviceId: result.deviceId });
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的播放设备`);
-      }
+// ===== 键盘快捷键 =====
+const handleGlobalKeyDown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape') {
+    if (showAudioTypeModal.value) {
+      handleCloseAudioTypeModal();
     }
-  } catch (error) {
-    console.error('更新播放设备失败:', error);
-  }
-};
-
-const handleUpdateSPL = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_SPL, {
-      title: '批量设置声压级',
-      caseCount: currentBatchCaseIds.length,
-      initialValue: 65
-    });
-
-    if (result?.value !== undefined) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdateSPL(currentBatchCaseIds, { value: result.value });
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的声压`);
-      }
+    if (showAudioPreviewModal.value) {
+      handleAudioPreviewModalClose();
     }
-  } catch (error) {
-    console.error('更新声压失败:', error);
-  }
-};
-
-const handleAdjustGroup = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_ADJUST_GROUP, {
-      title: '批量调整分组',
-      caseCount: currentBatchCaseIds.length,
-      currentGroupId: ''
-    });
-
-    if (result?.groupId) {
-      const store = useTestCaseStore();
-      let updateResult = false;
-      if (result.isCopy) {
-        updateResult = await store.batchCopyCases(currentBatchCaseIds, result.groupId);
-      } else {
-        updateResult = await store.batchMoveCases(currentBatchCaseIds, result.groupId);
-      }
-      if (updateResult) {
-        alert(`已成功将 ${currentBatchCaseIds.length} 个用例${result.isCopy ? '复制' : '移动'}到目标分组`);
-      }
+    if (showPlaybackDeviceModal.value) {
+      showPlaybackDeviceModal.value = false;
     }
-  } catch (error) {
-    console.error('调整分组失败:', error);
-  }
-};
-
-const handleUpdateDimensions = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_DIMENSION, {
-      title: '批量设置评价维度',
-      caseCount: currentBatchCaseIds.length,
-      algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : ''
-    });
-
-    if (result?.dimensions) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdateDimensions(currentBatchCaseIds, result.dimensions, result.testType);
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的评价维度`);
-      }
+    if (showAudioPlayer.value) {
+      handleAudioPlayerClose();
     }
-  } catch (error) {
-    console.error('更新评价维度失败:', error);
   }
 };
 
-const handleUpdateNoise = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
+// ===== 生命周期 =====
+onMounted(() => {
+  document.addEventListener('click', closeAllBatchMenus);
+  window.addEventListener('keydown', handleGlobalKeyDown);
+  setupLoadMoreObserver();
+  Promise.all([
+    loadPlaybackDevices(),
+    loadAlgorithmOptions()
+  ]);
+});
 
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
+onUnmounted(() => {
+  document.removeEventListener('click', closeAllBatchMenus);
+});
 
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_NOISE, {
-      title: '批量设置噪声',
-      caseCount: currentBatchCaseIds.length
-    });
-
-    if (result) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdateNoise(
-        currentBatchCaseIds,
-        result.audioId || '',
-        result.spl || 0,
-        result.deviceIds || []
-      );
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的噪声配置`);
-      }
-    }
-  } catch (error) {
-    console.error('更新噪声配置失败:', error);
-  }
-};
-
-const handleAutoGenerateName = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
-
-  try {
-    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '批量通过标签自动生成用例名',
-      content: `将为 ${currentBatchCaseIds.length} 个用例自动生成名称（按标签长度排序，用"-"连接）\n\n是否继续？`,
-      confirmText: '确定',
-      cancelText: '取消',
-      danger: false
-    });
-
-    if (confirmed?.confirmed) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchAutoGenerateName(currentBatchCaseIds);
-      if (updateResult) {
-        alert(`已成功为 ${currentBatchCaseIds.length} 个用例自动生成名称`);
-      }
-    }
-  } catch (error) {
-    console.error('自动生成用例名失败:', error);
-  }
-};
-
-const handleUpdateTags = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_TAGS, {
-      title: '批量管理用例标签',
-      caseCount: currentBatchCaseIds.length
-    });
-
-    if (result) {
-      const store = useTestCaseStore();
-      let updateResult = false;
-      if (result.action === 'add' && result.tags) {
-        updateResult = await store.batchAddTags(currentBatchCaseIds, result.tags);
-      } else if (result.action === 'remove' && result.tags) {
-        updateResult = await store.batchRemoveTags(currentBatchCaseIds, result.tags);
-      } else if (result.action === 'rename' && result.oldTagName && result.newTagName) {
-        updateResult = await store.batchRenameTag(result.oldTagName, result.newTagName);
-      }
-      if (updateResult) {
-        const actionText = result.action === 'add' ? '添加' : result.action === 'remove' ? '移除' : '重命名';
-        alert(`已成功${actionText}标签`);
-      }
-    }
-  } catch (error) {
-    console.error('更新标签失败:', error);
-  }
-};
-
-const handleRefreshReference = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
-
-  try {
-    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '用例参考更新',
-      content: `确定要刷新 ${currentBatchCaseIds.length} 个用例的参考参数吗？\n\n这将从关联音频的标注数据重新生成参考参数。`,
-      confirmText: '确定刷新',
-      cancelText: '取消',
-      danger: false
-    });
-
-    if (confirmed?.confirmed) {
-      const store = useTestCaseStore();
-      const result = await store.batchRefreshReference(currentBatchCaseIds);
-
-      if (result && typeof result === 'object' && 'taskId' in result) {
-        console.log(`[handleRefreshReference] 异步任务已提交: ${result.taskId}，开始轮询进度...`);
-
-        const pollAndNotify = async () => {
-          const status = await store.pollRefreshTaskStatus(result.taskId);
-
-          if (status.success) {
-            console.log(`[handleRefreshReference] 任务完成: 成功 ${status.updated} 个，失败 ${status.failed} 个`);
-            await store.fetchTestCases();
-            alert(`用例参考更新完成！\n\n成功刷新: ${status.updated} 个\n失败: ${status.failed} 个`);
-          } else {
-            console.error('[handleRefreshReference] 任务查询失败或任务不存在');
-            alert('用例参考更新任务执行失败，请稍后重试');
-          }
-        };
-
-        pollAndNotify();
-      } else if (result === true) {
-        alert(`已成功刷新 ${currentBatchCaseIds.length} 个用例的参考参数`);
-      }
-    }
-  } catch (error) {
-    console.error('刷新用例参考失败:', error);
-  }
-};
-
-const handleAction = async (actionEvent: { action: { id: string }; testCase: TestCase }, group: string) => {
-  const testCase = actionEvent.testCase;
-  console.log('[TestCaseListContainer] 处理测试用例操作:', { action: actionEvent.action.id, testCase: testCase.name });
-  
-  switch (actionEvent.action.id) {
-    case 'preview': {
-      const config = testCase.config || {};
-      // 兼容新格式 config.rounds[].audios 与旧格式 config.audios
-      const rounds = config.rounds || [];
-      const hasRoundsAudios = rounds.some((r: any) => Array.isArray(r.audios) && r.audios.length > 0);
-      const hasAudioConfig = hasRoundsAudios || (config.audios && config.audios.length > 0);
-
-      if (hasAudioConfig) {
-        try {
-          const { hasAPIConfig, hasE2eConfig } = checkTestCaseConfig(testCase);
-          currentTestCase.value = testCase;
-          currentTestCaseCaseId.value = testCase.id;
-          currentHasAPIConfig.value = hasAPIConfig;
-          currentHasE2eConfig.value = hasE2eConfig;
-          
-          if (hasAPIConfig && hasE2eConfig) {
-            showAudioTypeModal.value = true;
-          } else if (hasAPIConfig) {
-            selectedAudioType.value = 'api';
-            showAudioPlayer.value = true;
-          } else if (hasE2eConfig) {
-            selectedAudioType.value = 'e2e';
-            showAudioPreviewModal.value = true;
-          }
-        } catch (error: any) {
-          console.error('音频试听失败:', error);
-        }
-      }
-      break;
-    }
-    case 'copy':
-      try {
-        const store = useTestCaseStore();
-        await store.copyTestCase(testCase.id);
-        selectedCases.value = [];
-      } catch (error: any) {
-        console.error('复制测试用例失败:', error);
-      }
-      break;
-    case 'edit':
-      emit('openEditModal', testCase);
-      break;
-    case 'delete':
-      emit('deleteTestCase', testCase);
-      break;
-  }
-};
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleGlobalKeyDown);
+  cleanupObserver();
+});
 </script>
 
 <style scoped>

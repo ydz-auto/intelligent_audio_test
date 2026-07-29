@@ -1,6 +1,18 @@
 export { ErrorCode } from './errorCode';
 export type { APIResponse, PaginatedData } from './errorCode';
 
+// Algorithm-related shared types
+export type {
+  AlgorithmDefinition,
+  AlgorithmParam,
+  AlgorithmGroup,
+  ParamMapping,
+  FormSchema,
+  FormField,
+  TagCategory,
+  TagItem
+} from './algorithmTypes';
+
 // rounds-as-top-level 架构核心类型 re-export
 export type {
   AlgorithmParamItem,
