@@ -1,0 +1,42 @@
+{
+
+      "path": "input.wav",
+      "caseId": 1001,
+      "content": "",
+      "query": "home and bull at home and work from  home and everything I don't know  I wonder if it  will have like um generation  impact",
+      "correctAnswer": "",
+      "correctnessType": "",
+      "text": " ",
+      "railDistance": 80,
+      "volumeLevel": 60,
+      "interferers": [],
+      "voiceprintEnabled": false,
+      "voiceprintSpl": 70.0,
+      "voiceprintWaitTime": 5.0,
+      "inputText": "home and bull at home and work from  home and everything I don't know  I wonder if it  will have like um generation  impact",
+      "pause":[
+    {
+        "text": "[PAUSE]",
+        "timestamp": [
+            3.9299999999998363,
+            4.709999999999809
+        ]
+    },
+    {
+        "text": "[PAUSE]",
+        "timestamp": [
+            7.039999999999964,
+            7.809999999999945
+        ]
+    }
+],
+    "input":[
+    {
+        "text": "home",
+        "timestamp": [
+             8.789999999999964,
+            9.549999999999955
+        ]
+    }
+]
+}

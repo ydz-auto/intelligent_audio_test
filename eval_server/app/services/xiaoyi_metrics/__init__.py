@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from .tor import compute_tor_during_pauses
 from .false_takeover import compute_false_takeover
 from .takeover_latency import compute_takeover_latency_from_raw
+from .input_asr import compute_input_asr_match
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +54,15 @@ def calculate_xiaoyi_metrics(task_params):
             - start_ms (int|None): 音频开始播放时刻
             - input (list): 主服务下发的 input 词级时间戳
             - offset_ms (int): 时延补偿，默认 40
+            - query (str): 参考参数 JSON 中的 query 文本（与 pause 同源）
+            - question (str): get_results() 返回的设备识别用户提问文本
 
     Returns:
         dict: {
             'tor': {...},              接话率结果
             'false_takeover': {...},   误接管率结果
             'takeover_latency': {...}, 接管时延结果
+            'input_asr': {...},        输入识别准确率结果
         }
     """
     import json as _json
@@ -101,5 +105,12 @@ def calculate_xiaoyi_metrics(task_params):
         offset_ms=task_params.get('offset_ms', 40),
     )
     logger.info(f"[takeover_latency] {_format_takeover_latency(results['takeover_latency'])}")
+
+    # input_asr: 对比参考 query 与设备识别 question
+    results['input_asr'] = compute_input_asr_match(
+        query=task_params.get('query', ''),
+        question=task_params.get('question', ''),
+    )
+    logger.info(f"[input_asr] {results['input_asr']}")
 
     return results
