@@ -731,6 +731,19 @@ export const audiosApi = {
     return request('GET', '/audios/upload/progress', null, { ...options, params: { task_id: taskId } });
   },
 
+  // 前端直传 OSS 相关接口（生产环境多实例部署）
+  async presignUpload(data: { filename: string; fileSize: number; md5?: string; chunkSize?: number; isWav: boolean; relativePath?: string }, options: RequestOptions = {}) {
+    return request('POST', '/audios/upload/presign', data, options);
+  },
+
+  async presignPart(data: { uploadId: string; partNumber: number }, ossKey: string, category: string = 'raw_chunks', options: RequestOptions = {}) {
+    return request('POST', '/audios/upload/presign-part', data, { ...options, params: { oss_key: ossKey, category } });
+  },
+
+  async completeDirectUpload(data: any, options: RequestOptions = {}) {
+    return request('POST', '/audios/upload/complete-direct', data, options);
+  },
+
   async getFolderTree(params: any = {}, options: RequestOptions = {}) {
     return request('POST', '/audios/folder-tree', params, options);
   }

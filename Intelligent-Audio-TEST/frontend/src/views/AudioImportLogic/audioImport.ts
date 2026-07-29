@@ -1530,76 +1530,163 @@ export function useAudioImport() {
       fileTask.annotations,
       options.algorithmParams
     );
-    const chunkSize = fileTask.chunkSize || 10 * 1024 * 1024;
-    const totalChunks = fileTask.totalChunks || Math.ceil(fileTask.size / chunkSize);
-    
-    for (let i = 0; i < totalChunks; i++) {
+
+    // 判断文件是否是 WAV（决定直传路径）
+    const ext = fileTask.name.split('.').pop()?.toLowerCase() || '';
+    const isWav = ext === 'wav';
+    const chunkSize = 5 * 1024 * 1024;  // S3 最小分片 5MB
+    const totalChunks = Math.max(1, Math.ceil(fileTask.size / chunkSize));
+
+    // 1. 请求预签名 URL
+    const presignResponse = await audiosApi.presignUpload({
+      filename: fileTask.name,
+      fileSize: fileTask.size,
+      md5: fileTask.md5,
+      chunkSize,
+      isWav,
+      relativePath: (fileTask.file as any).webkitRelativePath || '',
+    }, {
+      signal: abortController?.signal,
+      unwrapResponse: false,
+    }) as APIResponse<any>;
+
+    // 秒传命中
+    if (presignResponse.data?.instantUpload) {
+      fileTask.audioId = presignResponse.data.audioId;
+      fileTask.status = 'completed';
+      fileTask.progress = 100;
+      fileTask.uploadedSize = fileTask.size;
+      // 秒传仍需处理测试用例创建
+      await processMergeForExistingFile(taskId, fileTask, options, tcConfig);
+      return;
+    }
+
+    const { uploadId, ossKey, category, parts: presignedParts, totalParts } = presignResponse.data || {};
+    if (!uploadId || !ossKey) {
+      throw new Error(presignResponse.message || '获取上传预签名 URL 失败');
+    }
+
+    // 2. 分片直传 OSS（PUT 预签名 URL）
+    const uploadedParts: Array<{ PartNumber: number; ETag: string }> = [];
+    for (let i = 0; i < totalParts; i++) {
       if ((uploadStatus.value as string) === 'paused' || (uploadStatus.value as string) === 'stopped') {
         fileTask.status = (uploadStatus.value as string) === 'paused' ? 'paused' : 'stopped';
         throw new Error(`Upload ${fileTask.status}`);
       }
 
+      // 获取分片预签名 URL（超过初始批次时按需请求）
+      let partUrl: string;
+      if (i < presignedParts.length) {
+        partUrl = presignedParts[i].url;
+      } else {
+        const partResp = await audiosApi.presignPart({
+          uploadId,
+          partNumber: i + 1,
+        }, ossKey, category, { signal: abortController?.signal, unwrapResponse: false }) as APIResponse<any>;
+        partUrl = partResp.data?.url;
+      }
+      if (!partUrl) throw new Error(`获取分片 ${i + 1} 预签名 URL 失败`);
+
       const start = i * chunkSize;
       const end = Math.min(start + chunkSize, fileTask.size);
       const chunk = fileTask.file.slice(start, end);
-      
-      const formData = new FormData();
-      formData.append('chunk', chunk);
-      formData.append('task_id', taskId);
-      formData.append('file_id', fileTask.fileId);
-      formData.append('chunk_index', i.toString());
-      formData.append('total_chunks', totalChunks.toString());
-      formData.append('md5', fileTask.md5 || '');
 
-      await audiosApi.uploadChunk(formData, { signal: abortController?.signal });
-      
+      // PUT 分片到 OSS
+      // 注意：预签名 URL 不签名 Content-Type，必须避免 fetch 自动添加 Blob 的 type 作为 Content-Type，
+      // 否则 S3 会因签名不匹配返回 403。用 ArrayBuffer 替代 Blob 可避免自动 Content-Type。
+      const chunkBuf = await chunk.arrayBuffer();
+      const putResp = await fetch(partUrl, {
+        method: 'PUT',
+        body: chunkBuf,
+        signal: abortController?.signal,
+      });
+      if (!putResp.ok) {
+        throw new Error(`分片 ${i + 1} 上传失败: ${putResp.status} ${putResp.statusText}`);
+      }
+      const etag = putResp.headers.get('ETag') || '';
+      uploadedParts.push({ PartNumber: i + 1, ETag: etag });
+
       fileTask.uploadedSize = end;
       fileTask.progress = Math.round((end / fileTask.size) * 100);
       updateOverallProgress();
     }
 
-    const mergeResponse = await audiosApi.mergeChunks(fileTask.fileId, taskId, {
-      audioType: options.audioType,
-      createTestCase: options.createTestCase,
-      tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
-      description: options.description,
-      testTypes: options.testTypes,
-      playbackDeviceId: options.playbackDeviceId,
-      spl: options.spl,
-      groupNameType: options.groupNameType,
-      customGroupName: fileTask.folderGroupName || options.customGroupName,
-      inheritTags: options.inheritTags,
-      dimensions: options.createTestCase ? options.dimensions : undefined,
-      noiseAudioId: options.noiseAudioId,
-      noiseSpl: options.noiseSpl,
-      asrText: fileTask.asrText || '',
-      translations: fileTask.translations || [],
-      annotations: fileTask.annotations || [],
-      algorithmType: options.algorithmType,
-      algorithmRelations: options.algorithmRelations,
-      algorithmParams: normalizedAlgorithmParams || [],
-      testCaseConfig: tcConfig
-    }, {
-      signal: abortController?.signal,
-      unwrapResponse: false
-    }) as APIResponse<{ audioId: string | number }>;
+    // 3. 完成上传：WAV 直传完成接口，非 WAV 走 merge 接口（后端拉取转码）
+    if (isWav) {
+      // WAV：直传 audios bucket，调 complete-direct 登记 DB
+      const completeResp = await audiosApi.completeDirectUpload({
+        ossKey,
+        uploadId,
+        parts: uploadedParts,
+        filename: fileTask.name,
+        md5: fileTask.md5,
+        fileSize: fileTask.size,
+        tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
+        audioType: options.audioType,
+        asrText: fileTask.asrText || '',
+      }, {
+        signal: abortController?.signal,
+        unwrapResponse: false,
+      }) as APIResponse<any>;
 
-    if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== 200 && mergeResponse.code !== 201) {
-      throw new Error(mergeResponse.message || 'Failed to merge chunks');
-    }
+      if (completeResp.code !== undefined && completeResp.code !== 0 && completeResp.code !== 200) {
+        throw new Error(completeResp.message || '直传完成失败');
+      }
+      fileTask.audioId = completeResp.data?.audio_id || completeResp.data?.audioId;
 
-    fileTask.audioId = mergeResponse.data?.audioId;
-    // 累加后端真实创建的用例数（后端返回驼峰 testCaseCount）
-    const cnt = mergeResponse.data?.testCaseCount ?? mergeResponse.data?.test_case_count;
-    if (typeof cnt === 'number' && cnt > 0) generatedTestCaseTotal += cnt;
-    // 用 merge 返回的真实 audioId 更新 tcConfig.rounds 里匹配 audio_name 的 audio_id
-    if (tcConfig?.rounds && fileTask.audioId) {
-      const realName = mergeResponse.data?.name || fileTask.name;
-      for (const r of tcConfig.rounds) {
-        if (!r.audios) continue;
-        for (const a of r.audios) {
-          if (a.audio_name === fileTask.name || a.audio_name === realName) {
-            a.audio_id = fileTask.audioId;
+      // WAV 直传不创建测试用例，多轮场景仍需调 merge 创建用例
+      if (tcConfig?.rounds?.length || options.createTestCase) {
+        await processMergeForExistingFile(taskId, fileTask, options, tcConfig);
+      }
+    } else {
+      // 非 WAV：前端直传 raw-chunks bucket，调 merge 接口让后端拉取转码
+      const mergeResponse = await audiosApi.mergeChunks(fileTask.fileId, taskId, {
+        audioType: options.audioType,
+        createTestCase: options.createTestCase,
+        tags: fileTask.tags && fileTask.tags.length > 0 ? fileTask.tags : options.tags,
+        description: options.description,
+        testTypes: options.testTypes,
+        playbackDeviceId: options.playbackDeviceId,
+        spl: options.spl,
+        groupNameType: options.groupNameType,
+        customGroupName: fileTask.folderGroupName || options.customGroupName,
+        inheritTags: options.inheritTags,
+        dimensions: options.createTestCase ? options.dimensions : undefined,
+        noiseAudioId: options.noiseAudioId,
+        noiseSpl: options.noiseSpl,
+        asrText: fileTask.asrText || '',
+        translations: fileTask.translations || [],
+        annotations: fileTask.annotations || [],
+        algorithmType: options.algorithmType,
+        algorithmRelations: options.algorithmRelations,
+        algorithmParams: normalizedAlgorithmParams || [],
+        testCaseConfig: tcConfig,
+        // OSS 直传模式参数
+        isDirectOss: true,
+        ossUploadId: uploadId,
+        ossKey,
+        ossParts: uploadedParts,
+      }, {
+        signal: abortController?.signal,
+        unwrapResponse: false,
+      }) as APIResponse<{ audioId: string | number }>;
+
+      if (mergeResponse.code !== undefined && mergeResponse.code !== null && mergeResponse.code !== 0 && mergeResponse.code !== 200 && mergeResponse.code !== 201) {
+        throw new Error(mergeResponse.message || 'Failed to merge chunks');
+      }
+
+      fileTask.audioId = mergeResponse.data?.audioId;
+      const cnt = mergeResponse.data?.testCaseCount ?? mergeResponse.data?.test_case_count;
+      if (typeof cnt === 'number' && cnt > 0) generatedTestCaseTotal += cnt;
+      // 用 merge 返回的真实 audioId 更新 tcConfig.rounds 里匹配 audio_name 的 audio_id
+      if (tcConfig?.rounds && fileTask.audioId) {
+        const realName = mergeResponse.data?.name || fileTask.name;
+        for (const r of tcConfig.rounds) {
+          if (!r.audios) continue;
+          for (const a of r.audios) {
+            if (a.audio_name === fileTask.name || a.audio_name === realName) {
+              a.audio_id = fileTask.audioId;
+            }
           }
         }
       }

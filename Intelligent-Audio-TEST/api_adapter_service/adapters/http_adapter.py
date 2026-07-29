@@ -12,10 +12,11 @@ import time
 import requests
 from typing import Optional
 
+from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.utils.logger import logger
 
 
-class HttpAdapter:
+class HttpAdapter(BaseAdapter):
     """
     voice_llm HTTP REST adapter.
 
@@ -27,11 +28,11 @@ class HttpAdapter:
     """
 
     def __init__(self, vendor_config: dict):
+        super().__init__(vendor_config)
         self.base_url = vendor_config.get('base_url', vendor_config.get('api_url', ''))
         self.headers = dict(vendor_config.get('headers', {}))
         self.timeout = vendor_config.get('timeout', 60)
         self.result_parser = vendor_config.get('result_parser', {})
-        self.connected = False
 
     def send_request(
         self,

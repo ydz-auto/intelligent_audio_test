@@ -12,7 +12,7 @@ RTTM/STM 解析委托给 RttmStmUtils
 import threading
 import copy
 import json
-from shared.utils.field_mapper import get_field_mapper
+from shared.algorithm.field_mapper import get_field_mapper
 from shared.utils.log_handler import log_not_emit
 from .timestamp_aligner import TimestampAligner
 from .rttm_stm_utils import RttmStmUtils
@@ -288,7 +288,7 @@ class DeviceResultCollector:
                          category='engine')
 
             # 添加更多调试信息
-            from shared.utils.field_mapper import get_field_mapper
+            from shared.algorithm.field_mapper import get_field_mapper
             fm = get_field_mapper()
             mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
             if isinstance(mapped_fields, list):

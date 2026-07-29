@@ -11,16 +11,9 @@ from task_service.evaluation.evaluation_api_client import evaluationApiClient
 from task_service.evaluation.evaluation_result_processor import EvaluationResultProcessor
 from task_service.evaluation.endpoint_worker import EndpointWorker
 from task_service.evaluation.evaluation_mixin import EvaluationLoggerMixin, get_endpoint_url, get_endpoint_field
-from shared.utils.field_mapper import get_field_mapper
+from shared.algorithm.field_mapper import get_field_mapper
 
-app = None
-
-def get_app():
-    global app
-    if app is None:
-        # TODO: 跨服务调用 - 不应直接 import app 实例，应使用 current_app
-        from flask import current_app as app
-    return app
+from flask import current_app
 
 
 class EvaluationService(EvaluationLoggerMixin):
@@ -103,7 +96,6 @@ class EvaluationService(EvaluationLoggerMixin):
             return self.endpoint_workers[endpoint_url]
 
     def _load_all_endpoint_configs(self):
-        current_app = get_app()
         if current_app:
             with current_app.app_context():
                 try:
@@ -176,8 +168,8 @@ class EvaluationService(EvaluationLoggerMixin):
         遍历 param_mappings，按 source 类型从每轮的 output（device/api）和
         按轮加载的 reference_params（reference）取值，用 target_param 作为 key。
         """
-        from shared.utils.case_parameter_extractor import CaseParameterExtractor
-        from shared.utils.reference_params_generator import (
+        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
+        from shared.algorithm.reference_params_generator import (
             get_reference_value as gen_reference_value,
         )
 
@@ -349,7 +341,6 @@ class EvaluationService(EvaluationLoggerMixin):
 
     def _load_test_case_and_refs(self, test_case_id, field_mapper, kwargs, task_id):
         """加载测试用例、算法类型、参考文本和维度配置"""
-        current_app = get_app()
         with current_app.app_context():
             local_db_session = db.session()
             try:
@@ -451,7 +442,6 @@ class EvaluationService(EvaluationLoggerMixin):
 
     def _load_dimension_data(self, unique_dimension_ids, task_id, test_case_id, test_case):
         """从数据库加载维度数据并构建 dim_dict 列表"""
-        current_app = get_app()
         with current_app.app_context():
             local_db_session = db.session()
             try:
@@ -535,7 +525,6 @@ class EvaluationService(EvaluationLoggerMixin):
 
     def _mark_evaluation_queued(self, task_id, test_case_id):
         """标记评估状态为 queued"""
-        current_app = get_app()
         with current_app.app_context():
             update_session = db.session()
             try:
@@ -556,7 +545,6 @@ class EvaluationService(EvaluationLoggerMixin):
             dim_id = dim_data['id']
             dim_name = dim_data['name']
 
-            current_app = get_app()
             dimension_result_id = None
             with current_app.app_context():
                 local_db_session = db.session()
@@ -810,7 +798,6 @@ class EvaluationService(EvaluationLoggerMixin):
 
         更新用例的status字段和统计信息，任务状态由执行引擎统一更新
         """
-        current_app = get_app()
         with current_app.app_context():
             local_db_session = db.session()
             try:

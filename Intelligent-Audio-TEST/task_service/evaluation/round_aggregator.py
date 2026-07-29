@@ -5,11 +5,7 @@ from shared.models.database import db
 from task_service.evaluation.evaluation_mixin import EvaluationLoggerMixin
 
 
-def get_app():
-    """获取应用实例，延迟导入"""
-    # TODO: 跨服务调用 - 不应直接 import app 实例，应使用 current_app
-    from flask import current_app as app
-    return app
+from flask import current_app
 
 
 class RoundAggregator(EvaluationLoggerMixin):
@@ -26,7 +22,6 @@ class RoundAggregator(EvaluationLoggerMixin):
         if not result_id:
             return False
 
-        current_app = get_app()
         with current_app.app_context():
             local_db_session = db.session()
             try:
@@ -47,7 +42,6 @@ class RoundAggregator(EvaluationLoggerMixin):
         if not result_id:
             return True
 
-        current_app = get_app()
         with current_app.app_context():
             local_db_session = db.session()
             try:
@@ -71,7 +65,6 @@ class RoundAggregator(EvaluationLoggerMixin):
         Returns:
             dict with keys like avg_{dim_name}, round_count, completed_rounds
         """
-        current_app = get_app()
         with current_app.app_context():
             local_db_session = db.session()
             try:

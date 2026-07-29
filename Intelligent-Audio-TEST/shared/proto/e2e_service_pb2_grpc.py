@@ -70,6 +70,21 @@ class AudioServiceStub:
                 request_serializer=e2e__service__pb2.StopSPLRequest.SerializeToString,
                 response_deserializer=e2e__service__pb2.StopSPLResponse.FromString,
                 _registered_method=True)
+        self.GetPhysicalDevices = channel.unary_unary(
+                '/e2e_service.AudioService/GetPhysicalDevices',
+                request_serializer=e2e__service__pb2.GetPhysicalDevicesRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetPhysicalDevicesResponse.FromString,
+                _registered_method=True)
+        self.GetDeviceIndex = channel.unary_unary(
+                '/e2e_service.AudioService/GetDeviceIndex',
+                request_serializer=e2e__service__pb2.GetDeviceIndexRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetDeviceIndexResponse.FromString,
+                _registered_method=True)
+        self.StopAudioByPattern = channel.unary_unary(
+                '/e2e_service.AudioService/StopAudioByPattern',
+                request_serializer=e2e__service__pb2.StopAudioByPatternRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.StopAudioByPatternResponse.FromString,
+                _registered_method=True)
 
 
 class AudioServiceServicer:
@@ -125,6 +140,27 @@ class AudioServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetPhysicalDevices(self, request, context):
+        """扫描所有物理输出设备
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDeviceIndex(self, request, context):
+        """根据唯一标识获取设备索引
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopAudioByPattern(self, request, context):
+        """按模式停止音频播放
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AudioServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -162,6 +198,21 @@ def add_AudioServiceServicer_to_server(servicer, server):
                     servicer.StopSPL,
                     request_deserializer=e2e__service__pb2.StopSPLRequest.FromString,
                     response_serializer=e2e__service__pb2.StopSPLResponse.SerializeToString,
+            ),
+            'GetPhysicalDevices': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPhysicalDevices,
+                    request_deserializer=e2e__service__pb2.GetPhysicalDevicesRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetPhysicalDevicesResponse.SerializeToString,
+            ),
+            'GetDeviceIndex': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDeviceIndex,
+                    request_deserializer=e2e__service__pb2.GetDeviceIndexRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetDeviceIndexResponse.SerializeToString,
+            ),
+            'StopAudioByPattern': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopAudioByPattern,
+                    request_deserializer=e2e__service__pb2.StopAudioByPatternRequest.FromString,
+                    response_serializer=e2e__service__pb2.StopAudioByPatternResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -364,6 +415,87 @@ class AudioService:
             metadata,
             _registered_method=True)
 
+    @staticmethod
+    def GetPhysicalDevices(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioService/GetPhysicalDevices',
+            e2e__service__pb2.GetPhysicalDevicesRequest.SerializeToString,
+            e2e__service__pb2.GetPhysicalDevicesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDeviceIndex(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioService/GetDeviceIndex',
+            e2e__service__pb2.GetDeviceIndexRequest.SerializeToString,
+            e2e__service__pb2.GetDeviceIndexResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopAudioByPattern(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioService/StopAudioByPattern',
+            e2e__service__pb2.StopAudioByPatternRequest.SerializeToString,
+            e2e__service__pb2.StopAudioByPatternResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
 
 class DeviceServiceStub:
     """===== 设备驱动服务 =====
@@ -399,6 +531,36 @@ class DeviceServiceStub:
                 '/e2e_service.DeviceService/GetTaskEvents',
                 request_serializer=e2e__service__pb2.GetTaskEventsRequest.SerializeToString,
                 response_deserializer=e2e__service__pb2.GetTaskEventsResponse.FromString,
+                _registered_method=True)
+        self.DriverScan = channel.unary_unary(
+                '/e2e_service.DeviceService/DriverScan',
+                request_serializer=e2e__service__pb2.DriverScanRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.DriverScanResponse.FromString,
+                _registered_method=True)
+        self.DriverUnlock = channel.unary_unary(
+                '/e2e_service.DeviceService/DriverUnlock',
+                request_serializer=e2e__service__pb2.DriverUnlockRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.DriverUnlockResponse.FromString,
+                _registered_method=True)
+        self.GetMockMode = channel.unary_unary(
+                '/e2e_service.DeviceService/GetMockMode',
+                request_serializer=e2e__service__pb2.GetMockModeRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetMockModeResponse.FromString,
+                _registered_method=True)
+        self.SetMockMode = channel.unary_unary(
+                '/e2e_service.DeviceService/SetMockMode',
+                request_serializer=e2e__service__pb2.SetMockModeRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.SetMockModeResponse.FromString,
+                _registered_method=True)
+        self.GetDriverNameByKeywords = channel.unary_unary(
+                '/e2e_service.DeviceService/GetDriverNameByKeywords',
+                request_serializer=e2e__service__pb2.GetDriverNameByKeywordsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetDriverNameByKeywordsResponse.FromString,
+                _registered_method=True)
+        self.GetRegisteredKeywords = channel.unary_unary(
+                '/e2e_service.DeviceService/GetRegisteredKeywords',
+                request_serializer=e2e__service__pb2.GetRegisteredKeywordsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetRegisteredKeywordsResponse.FromString,
                 _registered_method=True)
 
 
@@ -441,6 +603,48 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def DriverScan(self, request, context):
+        """扫描设备
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DriverUnlock(self, request, context):
+        """解锁设备
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetMockMode(self, request, context):
+        """获取 mock 模式
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetMockMode(self, request, context):
+        """设置 mock 模式
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDriverNameByKeywords(self, request, context):
+        """按关键词获取驱动名
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetRegisteredKeywords(self, request, context):
+        """获取已注册关键词
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_DeviceServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -468,6 +672,36 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.GetTaskEvents,
                     request_deserializer=e2e__service__pb2.GetTaskEventsRequest.FromString,
                     response_serializer=e2e__service__pb2.GetTaskEventsResponse.SerializeToString,
+            ),
+            'DriverScan': grpc.unary_unary_rpc_method_handler(
+                    servicer.DriverScan,
+                    request_deserializer=e2e__service__pb2.DriverScanRequest.FromString,
+                    response_serializer=e2e__service__pb2.DriverScanResponse.SerializeToString,
+            ),
+            'DriverUnlock': grpc.unary_unary_rpc_method_handler(
+                    servicer.DriverUnlock,
+                    request_deserializer=e2e__service__pb2.DriverUnlockRequest.FromString,
+                    response_serializer=e2e__service__pb2.DriverUnlockResponse.SerializeToString,
+            ),
+            'GetMockMode': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetMockMode,
+                    request_deserializer=e2e__service__pb2.GetMockModeRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetMockModeResponse.SerializeToString,
+            ),
+            'SetMockMode': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetMockMode,
+                    request_deserializer=e2e__service__pb2.SetMockModeRequest.FromString,
+                    response_serializer=e2e__service__pb2.SetMockModeResponse.SerializeToString,
+            ),
+            'GetDriverNameByKeywords': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDriverNameByKeywords,
+                    request_deserializer=e2e__service__pb2.GetDriverNameByKeywordsRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetDriverNameByKeywordsResponse.SerializeToString,
+            ),
+            'GetRegisteredKeywords': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetRegisteredKeywords,
+                    request_deserializer=e2e__service__pb2.GetRegisteredKeywordsRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetRegisteredKeywordsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -606,6 +840,168 @@ class DeviceService:
             '/e2e_service.DeviceService/GetTaskEvents',
             e2e__service__pb2.GetTaskEventsRequest.SerializeToString,
             e2e__service__pb2.GetTaskEventsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DriverScan(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceService/DriverScan',
+            e2e__service__pb2.DriverScanRequest.SerializeToString,
+            e2e__service__pb2.DriverScanResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DriverUnlock(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceService/DriverUnlock',
+            e2e__service__pb2.DriverUnlockRequest.SerializeToString,
+            e2e__service__pb2.DriverUnlockResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetMockMode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceService/GetMockMode',
+            e2e__service__pb2.GetMockModeRequest.SerializeToString,
+            e2e__service__pb2.GetMockModeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetMockMode(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceService/SetMockMode',
+            e2e__service__pb2.SetMockModeRequest.SerializeToString,
+            e2e__service__pb2.SetMockModeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDriverNameByKeywords(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceService/GetDriverNameByKeywords',
+            e2e__service__pb2.GetDriverNameByKeywordsRequest.SerializeToString,
+            e2e__service__pb2.GetDriverNameByKeywordsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetRegisteredKeywords(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceService/GetRegisteredKeywords',
+            e2e__service__pb2.GetRegisteredKeywordsRequest.SerializeToString,
+            e2e__service__pb2.GetRegisteredKeywordsResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -922,6 +1318,170 @@ class EnvDeviceService:
             '/e2e_service.EnvDeviceService/ControlEnvDevice',
             e2e__service__pb2.ControlEnvDeviceRequest.SerializeToString,
             e2e__service__pb2.ControlEnvDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class ExecutionServiceStub:
+    """===== E2E 执行服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.StartE2ETask = channel.unary_unary(
+                '/e2e_service.ExecutionService/StartE2ETask',
+                request_serializer=e2e__service__pb2.StartE2ETaskRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.StartE2ETaskResponse.FromString,
+                _registered_method=True)
+        self.StopE2ETask = channel.unary_unary(
+                '/e2e_service.ExecutionService/StopE2ETask',
+                request_serializer=e2e__service__pb2.StopE2ETaskRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.StopE2ETaskResponse.FromString,
+                _registered_method=True)
+        self.GetE2ETaskStatus = channel.unary_unary(
+                '/e2e_service.ExecutionService/GetE2ETaskStatus',
+                request_serializer=e2e__service__pb2.GetE2ETaskStatusRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetE2ETaskStatusResponse.FromString,
+                _registered_method=True)
+
+
+class ExecutionServiceServicer:
+    """===== E2E 执行服务 =====
+    """
+
+    def StartE2ETask(self, request, context):
+        """启动 E2E 任务（执行单个 E2E 用例）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopE2ETask(self, request, context):
+        """停止 E2E 任务
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetE2ETaskStatus(self, request, context):
+        """获取 E2E 任务状态
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_ExecutionServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'StartE2ETask': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartE2ETask,
+                    request_deserializer=e2e__service__pb2.StartE2ETaskRequest.FromString,
+                    response_serializer=e2e__service__pb2.StartE2ETaskResponse.SerializeToString,
+            ),
+            'StopE2ETask': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopE2ETask,
+                    request_deserializer=e2e__service__pb2.StopE2ETaskRequest.FromString,
+                    response_serializer=e2e__service__pb2.StopE2ETaskResponse.SerializeToString,
+            ),
+            'GetE2ETaskStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetE2ETaskStatus,
+                    request_deserializer=e2e__service__pb2.GetE2ETaskStatusRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetE2ETaskStatusResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'e2e_service.ExecutionService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('e2e_service.ExecutionService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class ExecutionService:
+    """===== E2E 执行服务 =====
+    """
+
+    @staticmethod
+    def StartE2ETask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.ExecutionService/StartE2ETask',
+            e2e__service__pb2.StartE2ETaskRequest.SerializeToString,
+            e2e__service__pb2.StartE2ETaskResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopE2ETask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.ExecutionService/StopE2ETask',
+            e2e__service__pb2.StopE2ETaskRequest.SerializeToString,
+            e2e__service__pb2.StopE2ETaskResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetE2ETaskStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.ExecutionService/GetE2ETaskStatus',
+            e2e__service__pb2.GetE2ETaskStatusRequest.SerializeToString,
+            e2e__service__pb2.GetE2ETaskStatusResponse.FromString,
             options,
             channel_credentials,
             insecure,

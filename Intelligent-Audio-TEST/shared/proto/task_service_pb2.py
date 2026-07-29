@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12task_service.proto\x12\x0ctask_service\"9\n\x11\x43reateTaskRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x13\n\x0btask_config\x18\x02 \x01(\t\"D\n\x12\x43reateTaskResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"#\n\x10StartTaskRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"C\n\x11StartTaskResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"\"\n\x0fStopTaskRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"B\n\x10StopTaskResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"\'\n\x14GetTaskStatusRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"D\n\x12TaskStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"?\n\x11ReevaluateRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x19\n\x11reevaluate_config\x18\x02 \x01(\t\"D\n\x12ReevaluateResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"\'\n\x14GetEngineInfoRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"D\n\x12\x45ngineInfoResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t2\xfb\x03\n\x10\x45xecutionService\x12O\n\nCreateTask\x12\x1f.task_service.CreateTaskRequest\x1a .task_service.CreateTaskResponse\x12L\n\tStartTask\x12\x1e.task_service.StartTaskRequest\x1a\x1f.task_service.StartTaskResponse\x12I\n\x08StopTask\x12\x1d.task_service.StopTaskRequest\x1a\x1e.task_service.StopTaskResponse\x12U\n\rGetTaskStatus\x12\".task_service.GetTaskStatusRequest\x1a .task_service.TaskStatusResponse\x12O\n\nReevaluate\x12\x1f.task_service.ReevaluateRequest\x1a .task_service.ReevaluateResponse\x12U\n\rGetEngineInfo\x12\".task_service.GetEngineInfoRequest\x1a .task_service.EngineInfoResponseB\x03\x90\x01\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12task_service.proto\x12\x0ctask_service\"9\n\x11\x43reateTaskRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x13\n\x0btask_config\x18\x02 \x01(\t\"D\n\x12\x43reateTaskResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"#\n\x10StartTaskRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"C\n\x11StartTaskResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"\"\n\x0fStopTaskRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"B\n\x10StopTaskResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"#\n\x10PauseTaskRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"C\n\x11PauseTaskResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"$\n\x11ResumeTaskRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"D\n\x12ResumeTaskResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\")\n\x16RemoveFromQueueRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"I\n\x17RemoveFromQueueResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"\'\n\x14GetTaskStatusRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"D\n\x12TaskStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"^\n\x11ReevaluateRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x1f\n\x17reextract_device_output\x18\x02 \x01(\x08\x12\x17\n\x0freevaluate_type\x18\x03 \x01(\t\"D\n\x12ReevaluateResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"\x9e\x01\n\x1bReevaluateMultiRoundRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x13\n\x0bresult_json\x18\x02 \x01(\t\x12\x14\n\x0ctest_case_id\x18\x03 \x01(\t\x12\x18\n\x10\x61lgorithm_result\x18\x04 \x01(\t\x12\x11\n\ttest_type\x18\x05 \x01(\t\x12\x16\n\x0e\x61lgorithm_type\x18\x06 \x01(\t\"N\n\x1cReevaluateMultiRoundResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"\xb2\x01\n\x17ReevaluateSingleRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x11\n\tresult_id\x18\x02 \x01(\t\x12\x14\n\x0ctest_case_id\x18\x03 \x01(\t\x12\x18\n\x10\x61lgorithm_result\x18\x04 \x01(\t\x12\x18\n\x10reference_params\x18\x05 \x01(\t\x12\x11\n\ttest_type\x18\x06 \x01(\t\x12\x16\n\x0e\x61lgorithm_type\x18\x07 \x01(\t\"J\n\x18ReevaluateSingleResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"\'\n\x14GetEngineInfoRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"D\n\x12\x45ngineInfoResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"~\n\x13\x45valuateCaseRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x11\n\tresult_id\x18\x02 \x01(\t\x12\x14\n\x0ctest_case_id\x18\x03 \x01(\t\x12\x18\n\x10\x61lgorithm_result\x18\x04 \x01(\t\x12\x13\n\x0b\x65val_params\x18\x05 \x01(\t\"F\n\x14\x45valuateCaseResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t2\xa3\x08\n\x10\x45xecutionService\x12O\n\nCreateTask\x12\x1f.task_service.CreateTaskRequest\x1a .task_service.CreateTaskResponse\x12L\n\tStartTask\x12\x1e.task_service.StartTaskRequest\x1a\x1f.task_service.StartTaskResponse\x12I\n\x08StopTask\x12\x1d.task_service.StopTaskRequest\x1a\x1e.task_service.StopTaskResponse\x12L\n\tPauseTask\x12\x1e.task_service.PauseTaskRequest\x1a\x1f.task_service.PauseTaskResponse\x12O\n\nResumeTask\x12\x1f.task_service.ResumeTaskRequest\x1a .task_service.ResumeTaskResponse\x12^\n\x0fRemoveFromQueue\x12$.task_service.RemoveFromQueueRequest\x1a%.task_service.RemoveFromQueueResponse\x12U\n\rGetTaskStatus\x12\".task_service.GetTaskStatusRequest\x1a .task_service.TaskStatusResponse\x12O\n\nReevaluate\x12\x1f.task_service.ReevaluateRequest\x1a .task_service.ReevaluateResponse\x12m\n\x14ReevaluateMultiRound\x12).task_service.ReevaluateMultiRoundRequest\x1a*.task_service.ReevaluateMultiRoundResponse\x12\x61\n\x10ReevaluateSingle\x12%.task_service.ReevaluateSingleRequest\x1a&.task_service.ReevaluateSingleResponse\x12U\n\rGetEngineInfo\x12\".task_service.GetEngineInfoRequest\x1a .task_service.EngineInfoResponse\x12U\n\x0c\x45valuateCase\x12!.task_service.EvaluateCaseRequest\x1a\".task_service.EvaluateCaseResponseB\x03\x90\x01\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -44,19 +44,43 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_STOPTASKREQUEST']._serialized_end=305
   _globals['_STOPTASKRESPONSE']._serialized_start=307
   _globals['_STOPTASKRESPONSE']._serialized_end=373
-  _globals['_GETTASKSTATUSREQUEST']._serialized_start=375
-  _globals['_GETTASKSTATUSREQUEST']._serialized_end=414
-  _globals['_TASKSTATUSRESPONSE']._serialized_start=416
-  _globals['_TASKSTATUSRESPONSE']._serialized_end=484
-  _globals['_REEVALUATEREQUEST']._serialized_start=486
-  _globals['_REEVALUATEREQUEST']._serialized_end=549
-  _globals['_REEVALUATERESPONSE']._serialized_start=551
-  _globals['_REEVALUATERESPONSE']._serialized_end=619
-  _globals['_GETENGINEINFOREQUEST']._serialized_start=621
-  _globals['_GETENGINEINFOREQUEST']._serialized_end=660
-  _globals['_ENGINEINFORESPONSE']._serialized_start=662
-  _globals['_ENGINEINFORESPONSE']._serialized_end=730
-  _globals['_EXECUTIONSERVICE']._serialized_start=733
-  _globals['_EXECUTIONSERVICE']._serialized_end=1240
+  _globals['_PAUSETASKREQUEST']._serialized_start=375
+  _globals['_PAUSETASKREQUEST']._serialized_end=410
+  _globals['_PAUSETASKRESPONSE']._serialized_start=412
+  _globals['_PAUSETASKRESPONSE']._serialized_end=479
+  _globals['_RESUMETASKREQUEST']._serialized_start=481
+  _globals['_RESUMETASKREQUEST']._serialized_end=517
+  _globals['_RESUMETASKRESPONSE']._serialized_start=519
+  _globals['_RESUMETASKRESPONSE']._serialized_end=587
+  _globals['_REMOVEFROMQUEUEREQUEST']._serialized_start=589
+  _globals['_REMOVEFROMQUEUEREQUEST']._serialized_end=630
+  _globals['_REMOVEFROMQUEUERESPONSE']._serialized_start=632
+  _globals['_REMOVEFROMQUEUERESPONSE']._serialized_end=705
+  _globals['_GETTASKSTATUSREQUEST']._serialized_start=707
+  _globals['_GETTASKSTATUSREQUEST']._serialized_end=746
+  _globals['_TASKSTATUSRESPONSE']._serialized_start=748
+  _globals['_TASKSTATUSRESPONSE']._serialized_end=816
+  _globals['_REEVALUATEREQUEST']._serialized_start=818
+  _globals['_REEVALUATEREQUEST']._serialized_end=912
+  _globals['_REEVALUATERESPONSE']._serialized_start=914
+  _globals['_REEVALUATERESPONSE']._serialized_end=982
+  _globals['_REEVALUATEMULTIROUNDREQUEST']._serialized_start=985
+  _globals['_REEVALUATEMULTIROUNDREQUEST']._serialized_end=1143
+  _globals['_REEVALUATEMULTIROUNDRESPONSE']._serialized_start=1145
+  _globals['_REEVALUATEMULTIROUNDRESPONSE']._serialized_end=1223
+  _globals['_REEVALUATESINGLEREQUEST']._serialized_start=1226
+  _globals['_REEVALUATESINGLEREQUEST']._serialized_end=1404
+  _globals['_REEVALUATESINGLERESPONSE']._serialized_start=1406
+  _globals['_REEVALUATESINGLERESPONSE']._serialized_end=1480
+  _globals['_GETENGINEINFOREQUEST']._serialized_start=1482
+  _globals['_GETENGINEINFOREQUEST']._serialized_end=1521
+  _globals['_ENGINEINFORESPONSE']._serialized_start=1523
+  _globals['_ENGINEINFORESPONSE']._serialized_end=1591
+  _globals['_EVALUATECASEREQUEST']._serialized_start=1593
+  _globals['_EVALUATECASEREQUEST']._serialized_end=1719
+  _globals['_EVALUATECASERESPONSE']._serialized_start=1721
+  _globals['_EVALUATECASERESPONSE']._serialized_end=1791
+  _globals['_EXECUTIONSERVICE']._serialized_start=1794
+  _globals['_EXECUTIONSERVICE']._serialized_end=2853
 _builder.BuildServices(DESCRIPTOR, 'task_service_pb2', _globals)
 # @@protoc_insertion_point(module_scope)

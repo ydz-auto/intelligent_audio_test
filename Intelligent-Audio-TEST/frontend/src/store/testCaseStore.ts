@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { testcasesApi, groupsApi } from '../utils/api'
 import { convertTestCaseFormData } from '../utils/utils'
+import { snakeToCamelObject } from '../utils/fieldNaming'
 import { useNotification } from '../composables/useNotification'
 import type { 
   TestCase, 
@@ -213,11 +214,14 @@ export const useTestCaseStore = defineStore('testCase', () => {
         total: typeof testCasesResponse?.total === 'number' ? testCasesResponse.total : testCasesData.length
       };
       
-      testCases.value = testCasesData.map(tc => ({
-        ...tc,
-        type: tc.type || 'api',
-        deleted: tc.deleted || false
-      }));
+      testCases.value = testCasesData.map(tc => {
+        const normalized = snakeToCamelObject(tc);
+        return {
+          ...normalized,
+          type: normalized.type || 'api',
+          deleted: normalized.deleted || false
+        };
+      });
       
       organizeTestCasesByGroup();
       extractTags();
@@ -258,7 +262,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const groups: Record<string, TestCase[]> = {};
       items.forEach(item => {
         const tagName = item.tag || '未分类';
-        groups[tagName] = Array.isArray(item.testCases) ? item.testCases : [];
+        groups[tagName] = Array.isArray(item.testCases)
+          ? item.testCases.map((tc: any) => snakeToCamelObject(tc))
+          : [];
       });
 
       tagViewData.value = groups;
@@ -359,11 +365,14 @@ export const useTestCaseStore = defineStore('testCase', () => {
       
       let casesData: TestCase[] = [];
       if (response && response.items) {
-        casesData = response.items.map((tc: any) => ({
-          ...tc,
-          type: tc.type || 'api',
-          deleted: tc.deleted || false
-        }));
+        casesData = response.items.map((tc: any) => {
+          const normalized = snakeToCamelObject(tc);
+          return {
+            ...normalized,
+            type: normalized.type || 'api',
+            deleted: normalized.deleted || false
+          };
+        });
       }
       
       if (page === 1) {

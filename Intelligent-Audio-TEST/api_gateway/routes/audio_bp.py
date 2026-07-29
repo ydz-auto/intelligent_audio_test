@@ -100,6 +100,19 @@ def merge_chunks():
 def get_upload_progress():
     return AudioController.get_upload_progress()
 
+# 前端直传 OSS 相关接口（生产环境多实例部署）
+@audio_bp.route('/upload/presign', methods=['POST'])
+def presign_upload():
+    return AudioController.presign_upload()
+
+@audio_bp.route('/upload/presign-part', methods=['POST'])
+def presign_part():
+    return AudioController.presign_part()
+
+@audio_bp.route('/upload/complete-direct', methods=['POST'])
+def complete_direct_upload():
+    return AudioController.complete_direct_upload()
+
 # 音频算法关联接口
 @audio_bp.route('/<int:audio_id>/algorithms', methods=['GET'])
 def get_audio_algorithms(audio_id):

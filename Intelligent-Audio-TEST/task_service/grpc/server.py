@@ -13,6 +13,7 @@ from concurrent import futures
 import grpc
 
 from shared.proto import task_service_pb2_grpc as task_grpc
+from shared.infrastructure.grpc_interceptors import server_log_interceptor
 from task_service.grpc.servicers import ExecutionServiceServicer
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,10 @@ def start_grpc_server(port=50061):
     Returns:
         grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收
     """
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=20))
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=10),
+        interceptors=[server_log_interceptor],
+    )
     task_grpc.add_ExecutionServiceServicer_to_server(ExecutionServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')
     server.start()

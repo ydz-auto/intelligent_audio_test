@@ -1,7 +1,7 @@
 from typing import List, Optional
 from pydantic import Field
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
@@ -79,3 +79,4 @@ class LogArchiveResult(APIModel):
     deleted_count: int
     archive_file: Optional[str] = None
     remaining_count: int
+

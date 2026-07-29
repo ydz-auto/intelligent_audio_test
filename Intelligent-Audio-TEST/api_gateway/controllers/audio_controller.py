@@ -4,7 +4,7 @@ import requests
 import time
 import shutil
 import logging
-from flask import request, send_file, Response, current_app
+from flask import request, send_file, Response, current_app, jsonify
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
 from sqlalchemy import cast, String, func
@@ -14,8 +14,7 @@ from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
 from shared.utils.task_utils import has_running_e2e_tasks
 from shared.clients.oss_client import oss
-# TODO: 跨服务依赖，应改为 HTTP 调用
-from shared.utils.case_parameter_extractor import _normalize_algorithm_params_to_list
+from shared.algorithm.case_parameter_extractor import _normalize_algorithm_params_to_list
 from api_gateway.schemas.audio import (
     AudioIdsData,
     AudioItem,
@@ -24,9 +23,12 @@ from api_gateway.schemas.audio import (
     BatchActionRequest,
     BatchPlaybackRequest,
     BatchUpdateAnnotationsRequest,
+    CompleteDirectUploadRequest,
     ConvertFormatRequest,
     InitUploadTaskRequest,
     MergeChunksRequest,
+    PresignPartRequest,
+    PresignUploadRequest,
     RegisterUploadFileRequest,
     TagListData as AudioTagListData,
     URLImportRequest,
@@ -102,6 +104,13 @@ def get_relative_path(file_path):
             relative_path = relative_path[1:]
         return relative_path
     return file_path
+
+def _read_wav_header(file_path):
+    """读取 WAV 文件头的采样率和位深（不依赖 ffmpeg/pydub）"""
+    import wave
+    with wave.open(file_path, 'rb') as wf:
+        return wf.getframerate(), wf.getsampwidth() * 8
+
 
 def convert_to_wav(file_path):
     """
@@ -710,8 +719,20 @@ class AudioController:
                 retry_file_operation(os.remove, temp_file_path)
             
             # 上传规整后的 WAV 到 OSS（audios bucket），DB 记录 OSS key 而非本地路径
-            audio_id_for_key = uuid.uuid4().hex
-            oss_key = f"audio_{audio_id_for_key}.wav"
+            # 保留用户本地目录结构
+            if relative_path:
+                safe_path = relative_path.replace('\\', '/').lstrip('/')
+                safe_path = '/'.join(p for p in safe_path.split('/') if p and p != '..')
+                oss_key = f"direct/{safe_path}"
+            else:
+                oss_key = f"direct/{wav_filename}"
+            # 同名去重
+            if oss.exists('audios', oss_key):
+                base, ext_part = os.path.splitext(oss_key)
+                counter = 1
+                while oss.exists('audios', f"{base}_{counter}{ext_part}"):
+                    counter += 1
+                oss_key = f"{base}_{counter}{ext_part}"
             oss.upload_file(wav_file_path, 'audios', oss_key)
             # 上传完成后删除本地临时 WAV
             if os.path.exists(wav_file_path):
@@ -792,7 +813,219 @@ class AudioController:
             'chunk': chunk_dir,
             'temp': temp_dir
         }
-    
+
+    # ========== 前端直传 OSS 接口 ==========
+
+    @staticmethod
+    def presign_upload():
+        """生成 S3 Multipart Upload 初始化信息和第一批分片预签名 URL
+
+        前端调用此接口获取 upload_id 和分片预签名 URL，直接 PUT 分片到 OSS。
+        - WAV 文件：直传 audios bucket（最终文件，无需后端转码）
+        - 非 WAV 文件：直传 raw-chunks bucket（临时，后端 merge 时拉取转码）
+        """
+        try:
+            data = request.get_json() or {}
+            try:
+                validated = PresignUploadRequest.model_validate(data)
+            except ValidationError as e:
+                return error_response(f"参数验证失败: {e}")
+
+            # 秒传判断：MD5 命中直接返回
+            if validated.md5:
+                existing = Audio.query.filter_by(md5=validated.md5, deleted=False).first()
+                if existing:
+                    return success_response({
+                        "instantUpload": True,
+                        "audioId": existing.id,
+                        "name": existing.name,
+                    }, "秒传成功")
+
+            # 生成 OSS key：保留用户本地目录结构
+            ext = os.path.splitext(validated.filename)[1].lower()
+            # WAV 直传 audios，非 WAV 传 raw-chunks
+            category = 'audios' if validated.is_wav else 'raw_chunks'
+            if validated.relative_path:
+                # 浏览器 webkitRelativePath，如 "test_data/noise/sample.wav"
+                # OSS key: "direct/test_data/noise/sample.wav"
+                # 清理路径，防止 ../ 和 绝对路径注入
+                safe_path = validated.relative_path.replace('\\', '/').lstrip('/')
+                safe_path = '/'.join(p for p in safe_path.split('/') if p and p != '..')
+                oss_key = f"direct/{safe_path}"
+            else:
+                # 没有目录信息（单文件上传），用原始文件名
+                oss_key = f"direct/{validated.filename}"
+
+            # 同名去重：如果 OSS key 已存在，加序号后缀（如 sample_1.wav, sample_2.wav）
+            if oss.exists(category, oss_key):
+                base, ext_part = os.path.splitext(oss_key)
+                counter = 1
+                while oss.exists(category, f"{base}_{counter}{ext_part}"):
+                    counter += 1
+                oss_key = f"{base}_{counter}{ext_part}"
+
+            # 初始化 S3 Multipart Upload
+            upload_id = oss.create_multipart_upload(category, oss_key)
+
+            # 计算分片数
+            chunk_size = validated.chunk_size or (5 * 1024 * 1024)
+            total_parts = max(1, (validated.file_size + chunk_size - 1) // chunk_size)
+
+            # 生成前几个分片的预签名 URL（前端按需请求更多）
+            # 一次性生成最多 100 个分片 URL（覆盖 500MB 以内文件）
+            parts_to_presign = min(total_parts, 100)
+            presigned_parts = []
+            for part_num in range(1, parts_to_presign + 1):
+                url = oss.get_part_upload_presigned_url(
+                    category, oss_key, upload_id, part_num, expires=3600
+                )
+                presigned_parts.append({
+                    "partNumber": part_num,
+                    "url": url,
+                })
+
+            return success_response({
+                "uploadId": upload_id,
+                "ossKey": oss_key,
+                "category": category,
+                "chunkSize": chunk_size,
+                "totalParts": total_parts,
+                "parts": presigned_parts,
+                "presignedRemaining": total_parts > parts_to_presign,
+            }, "预签名 URL 生成成功")
+
+        except Exception as e:
+            logger.error(f"presign_upload failed: {e}", exc_info=True)
+            return error_response(str(e))
+
+    @staticmethod
+    def presign_part():
+        """请求更多分片的预签名 URL（大文件场景，超过初始 100 个分片）"""
+        try:
+            data = request.get_json() or {}
+            try:
+                validated = PresignPartRequest.model_validate(data)
+            except ValidationError as e:
+                return error_response(f"参数验证失败: {e}")
+
+            # 从 query params 获取 oss_key 和 category
+            oss_key = request.args.get('oss_key')
+            category = request.args.get('category', 'raw_chunks')
+            if not oss_key:
+                return error_response("缺少 oss_key 参数")
+
+            url = oss.get_part_upload_presigned_url(
+                category, oss_key, validated.upload_id, validated.part_number, expires=3600
+            )
+            return success_response({
+                "partNumber": validated.part_number,
+                "url": url,
+            })
+        except Exception as e:
+            logger.error(f"presign_part failed: {e}", exc_info=True)
+            return error_response(str(e))
+
+    @staticmethod
+    def complete_direct_upload():
+        """WAV 文件直传 OSS 完成后，合并分片 + 登记 DB
+
+        前端直传 WAV 到 audios bucket 后调用此接口：
+        1. 调 OSS CompleteMultipartUpload 合并分片
+        2. 从 OSS 下载到临时文件提取元数据（采样率/位深/时长）
+        3. 创建 Audio 记录
+        4. 可选创建 TestCase
+        """
+        temp_file = None
+        try:
+            data = request.get_json() or {}
+            try:
+                validated = CompleteDirectUploadRequest.model_validate(data)
+            except ValidationError as e:
+                return error_response(f"参数验证失败: {e}")
+
+            # 1. 完成 OSS 端分片合并
+            # 归一化 parts 字段：前端传 partNumber/etag（驼峰），boto3 要 PartNumber/ETag
+            normalized_parts = []
+            for p in (validated.parts or []):
+                if isinstance(p, dict):
+                    normalized_parts.append({
+                        'PartNumber': int(p.get('PartNumber') or p.get('partNumber') or 0),
+                        'ETag': p.get('ETag') or p.get('etag') or p.get('Etag') or '',
+                    })
+            if validated.upload_id and normalized_parts:
+                oss.complete_multipart_upload(
+                    'audios', validated.oss_key, validated.upload_id, normalized_parts
+                )
+
+            # 2. 下载到临时文件提取元数据
+            temp_file = oss.download_to_temp('audios', validated.oss_key, '.wav')
+            file_size = os.path.getsize(temp_file)
+
+            # 从 WAV 头读采样率/位深
+            try:
+                sample_rate, bits_per_sample = _read_wav_header(temp_file)
+            except Exception:
+                sample_rate = validated.sample_rate or 44100
+                bits_per_sample = validated.bits_per_sample or 16
+
+            # 提取时长（不依赖 ffmpeg）
+            try:
+                import wave
+                with wave.open(temp_file, 'rb') as wf:
+                    duration = wf.getnframes() / wf.getframerate() if wf.getframerate() else 0.0
+            except Exception:
+                duration = validated.duration or 0.0
+
+            # 3. 创建 Audio 记录
+            audio = Audio(
+                name=validated.filename,
+                original_filename=validated.filename,
+                file_path=validated.oss_key,  # OSS key
+                format='wav',
+                size=file_size,
+                duration=duration,
+                sample_rate=sample_rate,
+                md5=validated.md5,
+                audio_type=validated.audio_type or 'dry',
+                asr_text=validated.asr_text or '',
+                deleted=False,
+            )
+            db.session.add(audio)
+            db.session.commit()
+
+            # 4. 处理标签
+            if validated.tags:
+                for tag_name in validated.tags:
+                    tag = Tag.query.filter_by(name=tag_name).first()
+                    if not tag:
+                        tag = Tag(name=tag_name)
+                        db.session.add(tag)
+                        db.session.flush()
+                    db.session.add(AudioTag(audio_id=audio.id, tag_id=tag.id))
+                db.session.commit()
+
+            return success_response({
+                "audio_id": audio.id,
+                "name": audio.name,
+                "oss_key": validated.oss_key,
+                "size": file_size,
+                "duration": duration,
+                "sample_rate": sample_rate,
+                "bits_per_sample": bits_per_sample,
+            }, "直传完成")
+
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"complete_direct_upload failed: {e}", exc_info=True)
+            return error_response(str(e))
+        finally:
+            # 清理临时文件
+            if temp_file and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except Exception:
+                    pass
+
     # 初始化上传任务
     @staticmethod
     def init_upload_task():
@@ -1143,12 +1376,19 @@ class AudioController:
             
             # 检查是否是秒传文件（total_chunks = 0 且状态为 completed）
             is_instant_upload = upload_file.total_chunks == 0 and upload_file.status == 'completed'
-            
+
+            # WAV 直传场景：complete-direct 已把音频入库，但 UploadFile 分片状态未更新。
+            # 若 md5 已对应 Audio 记录，则视为已入库，跳过分片检查。
+            if not is_instant_upload and upload_file.md5:
+                existing_audio_check = Audio.query.filter_by(md5=upload_file.md5, deleted=False).first()
+                if existing_audio_check:
+                    is_instant_upload = True
+
             if not is_instant_upload:
                 # 普通上传：检查所有分片是否已上传
                 if upload_file.completed_chunks < upload_file.total_chunks:
                     return error_response("还有分片未上传完成")
-            
+
             # 秒传场景：直接获取已有音频信息
             existing_audio_id = None
             audio_tags = []
@@ -1220,66 +1460,107 @@ class AudioController:
                         }, "秒传成功")
             
             # 以下是普通合并流程（非秒传）
-            chunk_dir = os.path.join(dirs['chunk'], file_id)
-            
-            # 生成最终文件路径
-            if upload_file.relative_path:
-                # 保持原目录结构
-                final_path = os.path.join(dirs['base'], upload_file.relative_path)
-                # 确保目录存在
-                os.makedirs(os.path.dirname(final_path), exist_ok=True)
+            # OSS 直传模式：前端已分片直传 OSS，后端从 OSS 拉取合并转码
+            if validated.is_direct_oss and validated.oss_key and validated.oss_upload_id:
+                # 完成 OSS 端分片合并（raw-chunks bucket）
+                # 归一化 parts 字段：前端传 partNumber/etag（驼峰），boto3 要 PartNumber/ETag
+                normalized_oss_parts = []
+                for p in (validated.oss_parts or []):
+                    if isinstance(p, dict):
+                        normalized_oss_parts.append({
+                            'PartNumber': int(p.get('PartNumber') or p.get('partNumber') or 0),
+                            'ETag': p.get('ETag') or p.get('etag') or p.get('Etag') or '',
+                        })
+                if normalized_oss_parts:
+                    oss.complete_multipart_upload(
+                        'raw_chunks', validated.oss_key,
+                        validated.oss_upload_id, normalized_oss_parts
+                    )
+                # 从 OSS 下载到本地临时文件（用于转码）
+                dirs = AudioController._init_upload_dirs()
+                ext = os.path.splitext(validated.oss_key)[1].lower() or '.tmp'
+                final_path = oss.download_to_temp('raw_chunks', validated.oss_key, ext)
+                # 下载后清理 OSS raw-chunks 中的源文件
+                try:
+                    oss.delete_object('raw_chunks', validated.oss_key)
+                except Exception as e:
+                    logger.warning(f"清理 OSS raw-chunks 失败: {e}")
             else:
-                # 直接保存到基础目录
-                safe_filename = AudioController._get_unique_filename(dirs['base'], upload_file.filename)
-                final_path = os.path.join(dirs['base'], safe_filename)
-            
-            # 合并所有分片
-            def perform_merge():
-                # 确保目标目录存在
-                os.makedirs(os.path.dirname(final_path), exist_ok=True)
-                
-                # 如果文件已存在，先尝试删除（解决某些情况下的占用问题）
-                if os.path.exists(final_path):
-                    # 使用带重试机制的删除操作
-                    retry_file_operation(os.remove, final_path)
+                # 本地分片模式（兼容旧前端）
+                chunk_dir = os.path.join(dirs['chunk'], file_id)
 
-                with open(final_path, 'wb') as final_file:
-                    for i in range(upload_file.total_chunks):
-                        chunk_path = os.path.join(chunk_dir, f"chunk_{i}")
-                        if os.path.exists(chunk_path):
-                            with open(chunk_path, 'rb') as chunk_file:
-                                final_file.write(chunk_file.read())
+                # 生成最终文件路径
+                if upload_file.relative_path:
+                    final_path = os.path.join(dirs['base'], upload_file.relative_path)
+                    os.makedirs(os.path.dirname(final_path), exist_ok=True)
+                else:
+                    safe_filename = AudioController._get_unique_filename(dirs['base'], upload_file.filename)
+                    final_path = os.path.join(dirs['base'], safe_filename)
+
+                # 合并所有分片
+                def perform_merge():
+                    os.makedirs(os.path.dirname(final_path), exist_ok=True)
+                    if os.path.exists(final_path):
+                        retry_file_operation(os.remove, final_path)
+                    with open(final_path, 'wb') as final_file:
+                        for i in range(upload_file.total_chunks):
+                            chunk_path = os.path.join(chunk_dir, f"chunk_{i}")
+                            if os.path.exists(chunk_path):
+                                with open(chunk_path, 'rb') as chunk_file:
+                                    final_file.write(chunk_file.read())
+
+                retry_file_operation(perform_merge)
+                final_path = os.path.normpath(final_path)
             
-            retry_file_operation(perform_merge)
-            
-            # 规范化路径（处理混合斜杠问题）
-            final_path = os.path.normpath(final_path)
-            
-            # 转换为WAV格式
+            # 转换为WAV格式（已是 WAV 的跳过转码，直接上传 OSS）
             wav_file_path = None
             oss_key = None
             meta_tmp_path = None
             try:
-                wav_file_path, wav_filename, sample_rate, bits_per_sample = convert_to_wav(final_path)
-                
-                # 删除原始合并文件
-                if os.path.exists(final_path) and final_path != wav_file_path:
-                    retry_file_operation(os.remove, final_path)
-                
+                # 判断原始文件是否已经是 WAV
+                orig_ext = os.path.splitext(final_path)[1].lower()
+                if orig_ext == '.wav':
+                    # WAV 文件无需转码，直接用原文件
+                    wav_file_path = final_path
+                    wav_filename = os.path.basename(final_path)
+                    # 从 WAV 头读取采样率/位深（不依赖 ffmpeg）
+                    sample_rate, bits_per_sample = _read_wav_header(final_path)
+                else:
+                    # 非 WAV 需要转码
+                    wav_file_path, wav_filename, sample_rate, bits_per_sample = convert_to_wav(final_path)
+                    # 删除原始合并文件
+                    if os.path.exists(final_path) and final_path != wav_file_path:
+                        retry_file_operation(os.remove, final_path)
+
                 # 上传规整后的 WAV 到 OSS（audios bucket），DB 记录 OSS key
-                audio_id_for_key = uuid.uuid4().hex
-                oss_key = f"audio_{audio_id_for_key}.wav"
+                # 保留用户本地目录结构：从 upload_file.relative_path 或原始 oss_key 推导
+                if upload_file.relative_path:
+                    safe_path = upload_file.relative_path.replace('\\', '/').lstrip('/')
+                    safe_path = '/'.join(p for p in safe_path.split('/') if p and p != '..')
+                    # 把扩展名换成 .wav（转码后的格式）
+                    stem = os.path.splitext(safe_path)[0]
+                    oss_key = f"direct/{stem}.wav"
+                else:
+                    stem = os.path.splitext(upload_file.filename)[0]
+                    oss_key = f"direct/{stem}.wav"
+                # 同名去重
+                if oss.exists('audios', oss_key):
+                    base, ext_part = os.path.splitext(oss_key)
+                    counter = 1
+                    while oss.exists('audios', f"{base}_{counter}{ext_part}"):
+                        counter += 1
+                    oss_key = f"{base}_{counter}{ext_part}"
                 oss.upload_file(wav_file_path, 'audios', oss_key)
                 # 上传完成后删除本地临时 WAV
                 if os.path.exists(wav_file_path):
                     retry_file_operation(os.remove, wav_file_path)
-                
+
                 # DB 记录 OSS key（复用 file_path 字段）
                 final_path = oss_key
                 # 更新文件名为WAV文件名
                 upload_file.filename = wav_filename
                 upload_file.original_filename = wav_filename
-                
+
             except Exception as e:
                 # 如果转换/上传失败，保留原始文件但标记格式
                 logger.warning(f"音频转换/上传OSS失败，将保留原始格式: {str(e)}")
@@ -1296,7 +1577,7 @@ class AudioController:
                         pass
                 sample_rate = 44100
                 bits_per_sample = 16
-            
+
             # 提取音频元数据：若已上传 OSS，从 OSS 下载到临时提取；否则用本地 final_path
             meta_source_path = final_path
             if oss_key:
@@ -1461,9 +1742,6 @@ class AudioController:
             # 最终统一提交所有数据库变更
             db.session.commit()
 
-            # 清理临时分片文件
-            safe_rmtree(chunk_dir)
-
             # 返回结果
             response_data = {
                 "file_id": file_id,
@@ -1490,6 +1768,28 @@ class AudioController:
             )
             db.session.rollback()
             return error_response(str(e))
+        finally:
+            # 无论成功/失败，都清理本地临时分片和中间文件
+            # 1. 清理分片目录（仅本地分片模式有 chunk_dir）
+            try:
+                if 'chunk_dir' in dir() and chunk_dir and os.path.exists(chunk_dir):
+                    safe_rmtree(chunk_dir)
+            except Exception:
+                pass
+            # 2. 清理转码失败的 fallback 残留文件（final_path 在异常分支可能是本地路径）
+            try:
+                if 'final_path' in dir() and os.path.exists(final_path):
+                    # 如果 final_path 是 OSS key（已成功上传），跳过；本地路径才删
+                    if os.path.isabs(final_path) or not final_path.replace('/', os.sep).startswith('audio_'):
+                        retry_file_operation(os.remove, final_path)
+            except Exception:
+                pass
+            # 3. 清理元数据提取临时文件
+            try:
+                if 'meta_tmp_path' in dir() and meta_tmp_path and os.path.exists(meta_tmp_path):
+                    retry_file_operation(os.remove, meta_tmp_path)
+            except Exception:
+                pass
     
     # 获取上传任务进度
     @staticmethod
@@ -2128,8 +2428,7 @@ class AudioController:
                             new_tc.tags.append(tag)
 
                 # 同步生成参考参数（rounds 模式和平面模式都会真正生成文件）
-                # TODO: 跨服务依赖，应改为 HTTP 调用
-                from shared.utils.reference_params_generator import ReferenceParamsGenerator
+                from shared.algorithm.reference_params_generator import ReferenceParamsGenerator
                 ReferenceParamsGenerator.apply_to_config(new_tc)
                 log_not_emit('DEBUG', 'audio_controller', f'new_tc.algorithm_params={_json.dumps(new_tc.algorithm_params, ensure_ascii=False)[:300] if new_tc.algorithm_params else "None"}', category='audio')
                 log_not_emit('DEBUG', 'audio_controller', f'new_tc.reference_params={_json.dumps(new_tc.reference_params, ensure_ascii=False)[:300] if new_tc.reference_params else "None"}', category='audio')
@@ -2725,49 +3024,31 @@ class AudioController:
         # 检查最终音频是否存在
         if not audio or audio.deleted:
             return error_response("音频不存在", 404)
-        
-        path = audio.file_path
-        if not os.path.exists(path):
-            return error_response("音频文件已从磁盘移除", 404)
 
-        file_size = os.path.getsize(path)
-        range_header = request.headers.get('Range', None)
-        
-        if not range_header:
-            return send_file(path, mimetype=f"audio/{audio.format or 'wav'}", as_attachment=True, download_name=audio.name or f"audio_{audio_id}.{audio.format or 'wav'}")
+        # file_path 现在存的是 OSS key（如 direct/sample.wav），从 OSS 流式返回
+        oss_key = audio.file_path
+        if not oss_key:
+            return error_response("音频文件路径缺失", 404)
 
-        # 处理 Range 请求: bytes=start-end
-        import re
-        match = re.search(r'bytes=(\d+)-(\d*)', range_header)
-        if not match:
-            return send_file(path, mimetype=f"audio/{audio.format or 'wav'}", as_attachment=True, download_name=audio.name or f"audio_{audio_id}.{audio.format or 'wav'}")
-
-        start = int(match.group(1))
-        end = match.group(2)
-        end = int(end) if end else file_size - 1
-
-        if start >= file_size:
-            return Response("Range Not Satisfiable", status=416)
-
-        chunk_size = end - start + 1
-        
-        def generate():
-            with open(path, 'rb') as f:
-                f.seek(start)
-                remaining = chunk_size
-                while remaining > 0:
-                    read_size = min(remaining, 1024 * 64)
-                    data = f.read(read_size)
-                    if not data:
-                        break
-                    yield data
-                    remaining -= len(data)
-
-        rv = Response(generate(), 206, mimetype=f"audio/{audio.format or 'wav'}", direct_passthrough=True)
-        rv.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
-        rv.headers.add('Accept-Ranges', 'bytes')
-        rv.headers.add('Content-Length', str(chunk_size))
-        return rv
+        # 生成预签名 URL，让前端直接从 OSS 拉取（支持 Range 请求）
+        presigned_url = oss.get_presigned_url('audios', oss_key, expires=3600)
+        # 兼容旧数据：单桶模式下旧文件不带前缀，如果带前缀的 key 不存在，
+        # 用 boto3 原始 client 直接对桶生成预签名（绕过前缀逻辑）
+        if not oss.exists('audios', oss_key):
+            import boto3
+            from shared.infrastructure.config import BaseConfig
+            s3 = boto3.client('s3',
+                endpoint_url=BaseConfig.OSS_ENDPOINT,
+                aws_access_key_id=BaseConfig.OSS_ACCESS_KEY,
+                aws_secret_access_key=BaseConfig.OSS_SECRET_KEY,
+                region_name=BaseConfig.OSS_REGION)
+            bucket = BaseConfig.OSS_BUCKET_NAME or 'audios'
+            presigned_url = s3.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': bucket, 'Key': oss_key},
+                ExpiresIn=3600,
+            )
+        return jsonify({"url": presigned_url})
 
     @staticmethod
     def stream_by_path():
@@ -2929,10 +3210,9 @@ class AudioController:
                 
                 # 计算音量/增益
                 if spl and getattr(device, 'current_spl_mapping_id', None):
-                    # 跨服务调用：通过 gRPC AudioService 的 SPL 测量
+                    # 通过 gRPC AudioService 计算 SPL 到增益的映射
                     from api_gateway.controllers._grpc_proxies import spl_service
-                    # TODO: spl_to_gain 方法需在 gRPC server 端实现
-                    gain = getattr(spl_service, 'spl_to_gain', lambda *a: 1.0)(device.current_spl_mapping_id, spl)
+                    gain = spl_service.spl_to_gain(device.current_spl_mapping_id, spl)
                 
                 # 获取物理设备索引
                 device_index = 0

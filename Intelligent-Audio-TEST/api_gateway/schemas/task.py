@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from pydantic import Field, field_validator, model_validator
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
@@ -180,3 +180,4 @@ class TaskBatchActionRequest(APIModel):
 
 class TaskMergeRequest(APIModel):
     task_ids: List[int] = Field(default_factory=list, alias='taskIds', validation_alias='taskIds')
+

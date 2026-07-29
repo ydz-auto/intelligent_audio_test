@@ -1,7 +1,7 @@
 from typing import Generic, List, Optional, TypeVar
 from pydantic import Field
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 
 T = TypeVar("T")
 
@@ -39,3 +39,4 @@ class PaginatedData(APIModel, Generic[T]):
 class CountData(APIModel):
     count: int = Field(..., alias='count', validation_alias='count')
     new_count: Optional[int] = Field(None, alias='newCount', validation_alias='newCount')
+

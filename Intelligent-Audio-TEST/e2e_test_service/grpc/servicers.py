@@ -20,23 +20,7 @@ import threading
 
 from shared.proto import e2e_service_pb2 as e2e_pb
 from shared.proto import e2e_service_pb2_grpc as e2e_grpc
-
-
-def _loads(s, default):
-    """安全 JSON 解析，空字符串返回默认值"""
-    if not s:
-        return default
-    if isinstance(s, bytes):
-        s = s.decode('utf-8')
-    return json.loads(s)
-
-
-def _dumps(obj):
-    """JSON 序列化，None/不可序列化对象返回空字符串"""
-    try:
-        return json.dumps(obj, ensure_ascii=False, default=str)
-    except Exception:
-        return ""
+from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
 
 # ==================== AudioServiceServicer ====================
@@ -133,12 +117,43 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         except Exception as e:
             return e2e_pb.AudioInfoResponse(success=False, message=str(e), data="")
 
+    def GetPhysicalDevices(self, request, context=None):
+        """扫描所有物理输出设备"""
+        try:
+            devices = self.audio_service.get_all_physical_devices()
+            return e2e_pb.GetPhysicalDevicesResponse(
+                success=True, message="ok", data=_dumps(devices),
+            )
+        except Exception as e:
+            return e2e_pb.GetPhysicalDevicesResponse(success=False, message=str(e), data="")
+
+    def GetDeviceIndex(self, request, context=None):
+        """根据唯一标识获取设备索引"""
+        try:
+            unique_id = request.unique_id
+            device_index = self.audio_service.get_device_index(unique_id)
+            return e2e_pb.GetDeviceIndexResponse(
+                success=True, message="ok",
+                data=_dumps({"device_index": device_index}),
+            )
+        except Exception as e:
+            return e2e_pb.GetDeviceIndexResponse(success=False, message=str(e), data="")
+
+    def StopAudioByPattern(self, request, context=None):
+        """按模式停止音频播放"""
+        try:
+            self.audio_service.stop_task_audio_by_pattern(
+                request.task_id_pattern,
+                request.player_type_pattern,
+            )
+            return e2e_pb.StopAudioByPatternResponse(success=True, message="ok", data="")
+        except Exception as e:
+            return e2e_pb.StopAudioByPatternResponse(success=False, message=str(e), data="")
+
     def MeasureSPL(self, request, context=None):
         """声压级测量"""
         try:
             measure_config = _loads(request.measure_config, {})
-            # SPL 测量需要硬件支持，当前返回占位结果
-            # 实际测量由 spl_service / spl_mapping 完成
             from e2e_test_service.audio.spl_service import spl_service
             mapping_id = measure_config.get('mapping_id')
             target_spl = measure_config.get('target_spl', 70.0)
@@ -156,8 +171,6 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         """开始 SPL 测量"""
         try:
             spl_config = _loads(request.spl_config, {})
-            # SPL 测量后台任务，当前实现为占位
-            # 实际后台 SPL 测量需要硬件配合
             return e2e_pb.StartSPLResponse(
                 success=True, message="ok",
                 data=_dumps({"task_id": request.task_id, "config": spl_config, "started": True}),
@@ -168,7 +181,6 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
     def StopSPL(self, request, context=None):
         """停止 SPL 测量"""
         try:
-            # 停止后台 SPL 测量任务
             return e2e_pb.StopSPLResponse(
                 success=True, message="ok",
                 data=_dumps({"task_id": request.task_id, "stopped": True}),
@@ -196,11 +208,11 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
         """创建设备驱动（连接设备）"""
         try:
             device_config = _loads(request.device_config, {})
+            task_id = request.task_id
             system = device_config.get('system')
             keywords = device_config.get('keywords')
             device_sn = device_config.get('device_sn')
             device_info_list = device_config.get('device_info_list', [])
-            task_id = request.task_id
 
             # 注册任务设备
             if device_info_list:
@@ -232,16 +244,37 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
     def RegisterTaskEvents(self, request, context=None):
         """注册任务事件回调"""
         try:
-            from e2e_test_service.drivers import register_task_events
+            from e2e_test_service.drivers import register_task_events, get_task_events
             callback_config = _loads(request.callback_config, {})
             task_id = request.task_id
-            stop_event = threading.Event()
-            pause_event = threading.Event()
-            pause_event.set()
-            register_task_events(task_id, stop_event, pause_event)
+
+            existing = get_task_events(task_id)
+            if existing:
+                stop_event = existing['stop_event']
+                pause_event = existing['pause_event']
+                if callback_config.get('stop_event_set', False):
+                    stop_event.set()
+                else:
+                    stop_event.clear()
+                if callback_config.get('pause_event_set', True):
+                    pause_event.set()
+                else:
+                    pause_event.clear()
+                action = 'updated'
+            else:
+                stop_event = threading.Event()
+                pause_event = threading.Event()
+                pause_event.set()
+                if callback_config.get('stop_event_set', False):
+                    stop_event.set()
+                if not callback_config.get('pause_event_set', True):
+                    pause_event.clear()
+                register_task_events(task_id, stop_event, pause_event)
+                action = 'registered'
+
             return e2e_pb.RegisterTaskEventsResponse(
                 success=True, message="ok",
-                data=_dumps({"task_id": str(task_id), "registered": True}),
+                data=_dumps({"task_id": str(task_id), action: True}),
             )
         except Exception as e:
             return e2e_pb.RegisterTaskEventsResponse(success=False, message=str(e), data="")
@@ -274,6 +307,62 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             )
         except Exception as e:
             return e2e_pb.GetTaskEventsResponse(success=False, message=str(e), data="")
+
+    def DriverScan(self, request, context=None):
+        """扫描设备"""
+        try:
+            system = request.system
+            keywords = request.keywords or None
+            driver = self.factory.get_driver(system, keywords=keywords) if system else None
+            result = driver.scan() if driver else []
+            return e2e_pb.DriverScanResponse(success=True, message="ok", data=_dumps(result))
+        except Exception as e:
+            return e2e_pb.DriverScanResponse(success=False, message=str(e), data="")
+
+    def DriverUnlock(self, request, context=None):
+        """解锁设备"""
+        try:
+            system = request.system
+            keywords = request.keywords or None
+            serial_or_ip = request.serial_or_ip
+            driver = self.factory.get_driver(system, keywords=keywords) if system else None
+            if driver:
+                driver.unlock(serial_or_ip)
+            return e2e_pb.DriverUnlockResponse(success=True, message="ok", data=_dumps({"unlocked": True}))
+        except Exception as e:
+            return e2e_pb.DriverUnlockResponse(success=False, message=str(e), data="")
+
+    def GetMockMode(self, request, context=None):
+        """获取 mock 模式"""
+        try:
+            mock_mode = self.factory.get_mock_mode()
+            return e2e_pb.GetMockModeResponse(success=True, message="ok", data=_dumps({"mock_mode": mock_mode}))
+        except Exception as e:
+            return e2e_pb.GetMockModeResponse(success=False, message=str(e), data="")
+
+    def SetMockMode(self, request, context=None):
+        """设置 mock 模式"""
+        try:
+            self.factory.set_mock_mode(request.mock_mode)
+            return e2e_pb.SetMockModeResponse(success=True, message="ok", data=_dumps({"mock_mode": request.mock_mode}))
+        except Exception as e:
+            return e2e_pb.SetMockModeResponse(success=False, message=str(e), data="")
+
+    def GetDriverNameByKeywords(self, request, context=None):
+        """按关键词获取驱动名"""
+        try:
+            name = self.factory.get_driver_name_by_keywords(request.system, request.keywords or None)
+            return e2e_pb.GetDriverNameByKeywordsResponse(success=True, message="ok", data=_dumps({"driver_name": name}))
+        except Exception as e:
+            return e2e_pb.GetDriverNameByKeywordsResponse(success=False, message=str(e), data="")
+
+    def GetRegisteredKeywords(self, request, context=None):
+        """获取已注册关键词"""
+        try:
+            keywords_list = self.factory.get_registered_keywords()
+            return e2e_pb.GetRegisteredKeywordsResponse(success=True, message="ok", data=_dumps(keywords_list))
+        except Exception as e:
+            return e2e_pb.GetRegisteredKeywordsResponse(success=False, message=str(e), data="")
 
 
 # ==================== PlaybackServiceServicer ====================
@@ -405,6 +494,60 @@ class DeviceResultServiceServicer(e2e_grpc.DeviceResultServiceServicer):
             return e2e_pb.ReextractResultResponse(success=False, message=str(e), data="")
 
 
+# ==================== ExecutionServiceServicer ====================
+
+class ExecutionServiceServicer(e2e_grpc.ExecutionServiceServicer):
+    """E2E 执行服务 gRPC servicer，委托给 e2e_service"""
+
+    def __init__(self):
+        self._e2e_service = None
+
+    @property
+    def e2e_service(self):
+        if self._e2e_service is None:
+            from e2e_test_service.core.e2e_service import e2e_service
+            self._e2e_service = e2e_service
+        return self._e2e_service
+
+    def StartE2ETask(self, request, context=None):
+        """启动 E2E 任务（执行单个 E2E 用例）"""
+        try:
+            task_id = request.task_id
+            tc_rel_id = request.tc_rel_id
+            result = self.e2e_service.start_e2e_case(task_id, tc_rel_id)
+            return e2e_pb.StartE2ETaskResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result),
+            )
+        except Exception as e:
+            return e2e_pb.StartE2ETaskResponse(success=False, message=str(e), data="")
+
+    def StopE2ETask(self, request, context=None):
+        """停止 E2E 任务"""
+        try:
+            task_id = request.task_id
+            result = self.e2e_service.stop_e2e_case(task_id)
+            return e2e_pb.StopE2ETaskResponse(
+                success=result.get('success', False),
+                message=result.get('message', ''),
+                data=_dumps(result),
+            )
+        except Exception as e:
+            return e2e_pb.StopE2ETaskResponse(success=False, message=str(e), data="")
+
+    def GetE2ETaskStatus(self, request, context=None):
+        """获取 E2E 任务状态"""
+        try:
+            task_id = request.task_id
+            result = self.e2e_service.get_e2e_task_status(task_id)
+            return e2e_pb.GetE2ETaskStatusResponse(
+                success=True, message="ok", data=_dumps(result)
+            )
+        except Exception as e:
+            return e2e_pb.GetE2ETaskStatusResponse(success=False, message=str(e), data="")
+
+
 # ==================== EnvDeviceServiceServicer ====================
 
 class EnvDeviceServiceServicer(e2e_grpc.EnvDeviceServiceServicer):
@@ -433,7 +576,6 @@ class EnvDeviceServiceServicer(e2e_grpc.EnvDeviceServiceServicer):
 
             result = {"task_id": str(task_id), "action": action, "devices": []}
 
-            # 批量创建并控制设备
             if device_configs:
                 devices = self.factory_cls.create_from_config(device_configs)
             elif device_type:

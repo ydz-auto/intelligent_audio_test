@@ -72,7 +72,7 @@ class PayloadBuilder(EvaluationLoggerMixin):
 
         special_fields = set()
         if algorithm_type:
-            from shared.utils.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            from shared.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type)
             for field in output_fields:
                 source_param = field.get('source_param', '')

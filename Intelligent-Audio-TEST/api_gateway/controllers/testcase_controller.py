@@ -27,8 +27,7 @@ from api_gateway.schemas.testcase import (
     TestCaseExportRequest,
     RoundConfigItem,
 )
-# TODO: 跨服务依赖，应改为 HTTP 调用
-from shared.utils.reference_params_generator import ReferenceParamsGenerator
+from shared.algorithm.reference_params_generator import ReferenceParamsGenerator
 
 
 import uuid
@@ -1055,36 +1054,70 @@ class TestCaseController:
         if not preview_audios:
             return error_response("用例未配置有效的音频资源")
 
-        # 获取第一个有效音频的ID
-        first_audio_id = None
+        # 获取所有有效音频的ID（多轮可能有多个音频）
+        audio_ids = []
+        seen_ids = set()
         for audio_config in preview_audios:
             audio_id = audio_config.get('audio_id') or audio_config.get('audioId')
-            if audio_id:
-                first_audio_id = audio_id
-                break
-        
-        if not first_audio_id:
+            if audio_id and audio_id not in seen_ids:
+                audio_ids.append(audio_id)
+                seen_ids.add(audio_id)
+
+        if not audio_ids:
             return error_response("用例未配置有效的音频ID")
 
-        # 计算总时长
-        # TODO: 跨服务依赖，应改为 HTTP 调用
-        from shared.utils.case_parameter_extractor import CaseParameterExtractor
+        first_audio_id = audio_ids[0]
+
+        # 计算总时长（所有音频时长之和）
+        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
         overlap_time = CaseParameterExtractor.get_overlap_time(config) if config else 0
         overlap_rate = CaseParameterExtractor.get_overlap_rate(config) if config else 0
-        
+
         total_duration = 0
         try:
             from shared.models.models import Audio
-            audio_record = Audio.query.filter_by(id=first_audio_id, deleted=False).first()
-            if audio_record and audio_record.duration:
-                total_duration = audio_record.duration
+            for aid in audio_ids:
+                rec = Audio.query.filter_by(id=aid, deleted=False).first()
+                if rec and rec.duration:
+                    total_duration += rec.duration
         except:
             pass
 
-        # 前端播放模式：返回音频流URL
+        # 前端播放模式：返回所有音频的 OSS 预签名 URL，前端连续播放
         if playback_mode == 'frontend':
-            from flask import url_for
-            audio_stream_url = f"/audios/{first_audio_id}/stream"
+            from shared.clients.oss_client import oss
+            from shared.infrastructure.config import BaseConfig
+            from shared.models.models import Audio
+            import boto3
+
+            # 生成预签名 URL 的辅助函数
+            def _make_presigned_url(oss_key):
+                url = oss.get_presigned_url('audios', oss_key, expires=3600)
+                if not oss.exists('audios', oss_key):
+                    s3 = boto3.client('s3',
+                        endpoint_url=BaseConfig.OSS_ENDPOINT,
+                        aws_access_key_id=BaseConfig.OSS_ACCESS_KEY,
+                        aws_secret_access_key=BaseConfig.OSS_SECRET_KEY,
+                        region_name=BaseConfig.OSS_REGION)
+                    bucket = BaseConfig.OSS_BUCKET_NAME or 'audios'
+                    url = s3.generate_presigned_url(
+                        'get_object',
+                        Params={'Bucket': bucket, 'Key': oss_key},
+                        ExpiresIn=3600,
+                    )
+                return url
+
+            audio_stream_urls = []
+            for aid in audio_ids:
+                rec = Audio.query.filter_by(id=aid, deleted=False).first()
+                if rec and rec.file_path:
+                    audio_stream_urls.append(_make_presigned_url(rec.file_path))
+
+            if not audio_stream_urls:
+                return error_response("音频文件不存在", 404)
+
+            # 兼容：单个音频时也填 audio_stream_url
+            audio_stream_url = audio_stream_urls[0] if audio_stream_urls else None
             
             return success_response(
                 TestCasePreviewData(
@@ -1096,6 +1129,7 @@ class TestCaseController:
                     playback_mode='frontend',
                     audio_id=first_audio_id,
                     audio_stream_url=audio_stream_url,
+                    audio_stream_urls=audio_stream_urls if len(audio_stream_urls) > 1 else None,
                 )
             )
         
@@ -1180,7 +1214,11 @@ class TestCaseController:
             preview_stop_flags[tc_id] = True
         
         # 停止音频播放 - 停止所有 PREVIEW_ 开头的任务
-        audio_service.stop_task_audio_by_pattern("PREVIEW_")
+        try:
+            audio_service.stop_task_audio_by_pattern("PREVIEW_")
+        except AttributeError:
+            # gRPC 服务不可用时忽略，本地预览已通过 preview_stop_flags 停止
+            pass
         
         return success_response(TestCaseStopPreviewData(test_case_id=tc_id, status="preview_stopped", message="预览已停止"))
     # 批量操作
@@ -2648,8 +2686,7 @@ class TestCaseController:
         if new_ref_params is None:
             return error_response("缺少 referenceParams 字段")
         
-        # TODO: 跨服务依赖，应改为 HTTP 调用
-        from shared.utils.reference_params_generator import normalize_reference_params
+        from shared.algorithm.reference_params_generator import normalize_reference_params
         new_ref_params = normalize_reference_params(new_ref_params)
         
         config = tc.config or {}

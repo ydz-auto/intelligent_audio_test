@@ -3,9 +3,10 @@ import threading
 from shared.models.models import Task, TaskCase, TestResult, TestResultDimension
 from shared.models.database import db
 from shared.utils.log_handler import log_and_emit
-from task_service.evaluation.evaluation_service import evaluation_service, get_app
+from task_service.evaluation.evaluation_service import evaluation_service
 from shared.utils.result_data_store import load_full_result_data
 from sqlalchemy import and_
+from flask import current_app
 
 
 class ReevaluationExecutor:
@@ -79,7 +80,6 @@ class ReevaluationExecutor:
             reextract_device_output = task_info['reextract_device_output']
             reevaluate_type = task_info['reevaluate_type']
 
-        current_app = get_app()
         with current_app.app_context():
             task = db.session.query(Task).get(task_id)
             if task:
@@ -91,7 +91,7 @@ class ReevaluationExecutor:
                      task_id=task_id)
 
         from task_service.core.execution_engine import execution_engine
-        execution_engine.api_task_pool.submit(
+        execution_engine._reference_refresh_pool.submit(
             self._run_reevaluation,
             task_id, reextract_device_output, reevaluate_type
         )
@@ -99,7 +99,6 @@ class ReevaluationExecutor:
     def _run_reevaluation(self, task_id, reextract_device_output, reevaluate_type):
         """执行重新评估"""
         success = False
-        current_app = get_app()
 
         try:
             with current_app.app_context():
@@ -171,7 +170,7 @@ class ReevaluationExecutor:
                         if raw_results_list:
                             # 跨服务调用：通过 gRPC DeviceResultService 转换结果
                             from shared.clients.grpc_clients import get_device_result_service_stub
-                            from task_service.core.base_executor import _DeviceResultCollectorProxy
+                            from shared.infrastructure.base_executor import _DeviceResultCollectorProxy
                             from shared.models.models import TestCase
                             test_case = db.session.get(TestCase, result.test_case_id)
                             algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
@@ -184,7 +183,7 @@ class ReevaluationExecutor:
                             rounds_in_algo = algo_result.get('rounds', [])
                             for ri, remapped in enumerate(remapped_results):
                                 if ri < len(rounds_in_algo):
-                                    from shared.utils.field_mapper import get_field_mapper
+                                    from shared.algorithm.field_mapper import get_field_mapper
                                     fm = get_field_mapper()
                                     mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
                                     round_output = rounds_in_algo[ri].setdefault('output', {})
@@ -262,7 +261,7 @@ class ReevaluationExecutor:
                         if raw_results_list:
                             # 跨服务调用：通过 gRPC DeviceResultService 转换结果
                             from shared.clients.grpc_clients import get_device_result_service_stub
-                            from task_service.core.base_executor import _DeviceResultCollectorProxy
+                            from shared.infrastructure.base_executor import _DeviceResultCollectorProxy
                             from shared.models.models import TestCase
                             test_case = db.session.get(TestCase, result.test_case_id)
                             algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
@@ -275,7 +274,7 @@ class ReevaluationExecutor:
                             rounds_in_algo = algo_result.get('rounds', [])
                             for ri, remapped in enumerate(remapped_results):
                                 if ri < len(rounds_in_algo):
-                                    from shared.utils.field_mapper import get_field_mapper
+                                    from shared.algorithm.field_mapper import get_field_mapper
                                     fm = get_field_mapper()
                                     mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
                                     round_output = rounds_in_algo[ri].setdefault('output', {})
@@ -330,7 +329,7 @@ class ReevaluationExecutor:
                 if skipped_tc_rels:
                     db.session.commit()
 
-                from shared.utils.case_parameter_extractor import CaseParameterExtractor
+                from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
 
                 for case_info in cases_to_reevaluate:
                     test_case_id = case_info['test_case_id']
@@ -429,7 +428,7 @@ class ReevaluationExecutor:
                 tc_rel.status = 'pending'
         db.session.commit()
 
-        from shared.utils.case_parameter_extractor import CaseParameterExtractor
+        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
         from shared.models.models import TestCase
 
         test_case = db.session.get(TestCase, test_case_id)
@@ -559,7 +558,7 @@ class ReevaluationExecutor:
             if tc_rel.status not in ['stopped', 'skipped']:
                 tc_rel.status = 'pending'
 
-        from shared.utils.case_parameter_extractor import CaseParameterExtractor
+        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
         from shared.models.models import TestCase
 
         test_case = db.session.get(TestCase, test_case_id)
@@ -635,7 +634,6 @@ class ReevaluationExecutor:
             self.is_reevaluating = False
             self.running_task_id = None
 
-        current_app = get_app()
         with current_app.app_context():
             task = db.session.query(Task).get(task_id)
             if task:

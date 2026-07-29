@@ -28,20 +28,14 @@
 from e2e_test_service.env_device.base_env_device import BaseEnvDevice
 from e2e_test_service.env_device.env_device_factory import EnvDeviceFactory
 from e2e_test_service.env_device.rail import RailEnvDevice, SerialRailEnvDevice
-from e2e_test_service.env_device.modbus_tcp import ModbusTcpEnvDevice
-from e2e_test_service.env_device.siemens_s7_modbus import SiemensS7ModbusEnvDevice
 
 # 注册内置设备类型到工厂
 EnvDeviceFactory.register('rail', RailEnvDevice)
 EnvDeviceFactory.register('serial_rail', SerialRailEnvDevice)
-EnvDeviceFactory.register('modbus_tcp', ModbusTcpEnvDevice)
-EnvDeviceFactory.register('siemens_s7_modbus', SiemensS7ModbusEnvDevice)
 
 __all__ = [
     'BaseEnvDevice',
     'EnvDeviceFactory',
     'RailEnvDevice',
     'SerialRailEnvDevice',
-    'ModbusTcpEnvDevice',
-    'SiemensS7ModbusEnvDevice',
 ]

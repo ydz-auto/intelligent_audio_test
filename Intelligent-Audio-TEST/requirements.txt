@@ -9,10 +9,21 @@ Jinja2>=3.0.0
 python-socketio>=5.8.0
 python-engineio>=4.6.0
 
+# ===== gRPC =====
+grpcio>=1.83.0
+grpcio-tools>=1.83.0
+protobuf>=5.29.0
+
 # ===== Database =====
 SQLAlchemy>=2.0.0
 alembic>=1.13.0
 psycopg2-binary>=2.9.0
+
+# ===== Object Storage =====
+minio>=7.2.0
+
+# ===== Redis =====
+redis>=5.0.0
 
 # ===== Data Validation =====
 pydantic>=2.0.0

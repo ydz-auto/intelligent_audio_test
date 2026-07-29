@@ -106,6 +106,9 @@ const emit = defineEmits(['close', 'play', 'pause', 'stop', 'confirm', 'cancel',
 
 const audio = ref<HTMLAudioElement | null>(null);
 const isPlaying = ref(false);
+
+// 多音频连续播放的播放列表
+const multiAudioPlaylist = ref<string[]>([]);
 const currentTime = ref(0);
 const duration = ref(0);
 const progressPercentage = ref(0);
@@ -204,9 +207,13 @@ const handleCanPlay = () => {
 const handleLoadedMetadata = () => {
   try {
     if (audio.value) {
-      duration.value = audio.value.duration;
+      // 多音频连续播放时，不覆盖从 API 拿到的总时长
+      if (!multiAudioPlaylist.value || multiAudioPlaylist.value.length <= 1) {
+        duration.value = audio.value.duration;
+      }
       console.log('Audio metadata loaded:', {
-        duration: duration.value,
+        duration: audio.value.duration,
+        totalDuration: duration.value,
         currentTime: audio.value.currentTime,
         paused: audio.value.paused
       });
@@ -228,11 +235,14 @@ const handleTimeUpdate = () => {
     if (!isDragging.value && audio.value) {
       const currentAudioTime = audio.value.currentTime;
       const audioDuration = audio.value.duration;
-      
+
       currentTime.value = currentAudioTime;
-      
-      if (!isNaN(audioDuration) && audioDuration > 0 && audioDuration !== Infinity) {
-        duration.value = audioDuration;
+
+      // 多音频连续播放时，不覆盖总时长
+      if (!multiAudioPlaylist.value || multiAudioPlaylist.value.length <= 1) {
+        if (!isNaN(audioDuration) && audioDuration > 0 && audioDuration !== Infinity) {
+          duration.value = audioDuration;
+        }
       }
       
       if (duration.value > 0) {
@@ -439,20 +449,42 @@ const playTestCasePreview = async () => {
       console.log('Set real duration from testcases preview API:', duration.value);
     }
     
-    if (previewResult && previewResult.playbackMode === 'frontend' && previewResult.audioStreamUrl) {
-      console.log('Frontend mode: Playing audio stream URL:', previewResult.audioStreamUrl);
+    if (previewResult && (previewResult.playbackMode === 'frontend' || previewResult.playback_mode === 'frontend') && (previewResult.audioStreamUrls || previewResult.audio_stream_urls || previewResult.audioStreamUrl || previewResult.audio_stream_url)) {
+      const urls = previewResult.audioStreamUrls || previewResult.audio_stream_urls;
+      const singleUrl = previewResult.audioStreamUrl || previewResult.audio_stream_url;
+      console.log('Frontend mode: Playing audio stream URL(s):', urls || singleUrl);
       if (audio.value) {
-        const fullStreamUrl = `${apiBaseUrl}${previewResult.audioStreamUrl}`;
-        audio.value.src = fullStreamUrl;
-        try {
-          await audio.value.load();
-          await audio.value.play();
-          console.log('Local audio playback started');
-        } catch (playError: any) {
-          console.error('Audio play error:', playError);
-          playError.value = '音频播放失败，请检查音频文件是否有效';
-          isPlaying.value = false;
+        // 多轮音频连续播放
+        const playlist = urls && urls.length > 0 ? urls : (singleUrl ? [singleUrl] : []);
+        multiAudioPlaylist.value = playlist;
+        let currentIndex = 0;
+
+        const playNext = async () => {
+          if (currentIndex >= playlist.length) {
+            isPlaying.value = false;
+            return;
+          }
+          audio.value!.src = playlist[currentIndex];
+          try {
+            await audio.value!.load();
+            await audio.value!.play();
+            console.log(`Local audio playback started (${currentIndex + 1}/${playlist.length})`);
+          } catch (playError: any) {
+            console.error('Audio play error:', playError);
+            playError.value = '音频播放失败，请检查音频文件是否有效';
+            isPlaying.value = false;
+          }
+        };
+
+        // 单音频时不需要 ended 事件
+        if (playlist.length > 1) {
+          audio.value.addEventListener('ended', () => {
+            currentIndex++;
+            playNext();
+          });
         }
+
+        await playNext();
       }
     } else {
       console.log('Backend mode: Audio playing on external devices');
@@ -475,17 +507,30 @@ const playTestCasePreview = async () => {
 
 const playAudioStream = async () => {
   if (audio.value && props.audioId) {
-    const audioStreamUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
-    audio.value.src = audioStreamUrl;
-    
     audio.value.addEventListener('error', (e) => {
       console.error('Audio element error:', audio.value?.error);
       if (audio.value?.error?.code === 4) {
         playError.value = '音频格式不支持或服务器返回错误(400)。可能的原因：音频文件格式不正确或后端服务异常';
       }
     });
-    
+
     try {
+      // 后端返回 OSS 预签名 URL，前端直接从 OSS 拉取音频
+      const streamApiUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
+      const resp = await fetch(streamApiUrl);
+      if (!resp.ok) {
+        playError.value = `获取音频失败 (${resp.status})`;
+        isPlaying.value = false;
+        return;
+      }
+      const data = await resp.json();
+      const presignedUrl = data?.data?.url || data?.url;
+      if (!presignedUrl) {
+        playError.value = '获取音频 URL 失败';
+        isPlaying.value = false;
+        return;
+      }
+      audio.value.src = presignedUrl;
       await audio.value.load();
       await audio.value.play();
       console.log('Local audio playback started');

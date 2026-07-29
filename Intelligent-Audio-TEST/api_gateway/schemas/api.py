@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 from pydantic import Field
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
@@ -89,3 +89,4 @@ class ApiUpdateInput(APIModel):
     default_max_audio_duration: Optional[int] = Field(None, alias='defaultMaxAudioDuration', validation_alias='defaultMaxAudioDuration')
     status: Optional[str] = Field(None, alias='status', validation_alias='status')
     endpoints: Optional[List[ApiEndpointInput]] = Field(None, alias='endpoints', validation_alias='endpoints')
+

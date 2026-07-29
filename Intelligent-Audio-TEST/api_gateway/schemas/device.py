@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 from pydantic import Field, ConfigDict, AliasChoices
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
@@ -140,3 +140,4 @@ class DeviceHealthCheckRequest(APIModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     device_ids: Optional[List[int]] = Field(None, validation_alias=AliasChoices('deviceIds', 'device_ids'))
+

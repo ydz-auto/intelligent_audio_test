@@ -55,8 +55,18 @@ def create_app(config_name='default'):
     
     registry = RedisServiceRegistry()
     registry.register('api_test_service',
-                      Config.SERVICE_HOST, Config.PORT)
-    
+                      Config.SERVICE_HOST, Config.PORT,
+                      grpc_port=Config.GRPC_PORT)
+
+    # 启动 gRPC server（在 create_app 内启动，确保任何调用方式都会启动）
+    # 持有引用到 app.config 防止被 GC 回收
+    from api_test_service.grpc.server import start_grpc_server
+    try:
+        app.config['_grpc_server'] = start_grpc_server(port=Config.GRPC_PORT)
+        app.logger.info("gRPC server started on port %s", Config.GRPC_PORT)
+    except Exception as e:
+        app.logger.warning("gRPC server failed to start: %s", e)
+
     return app
 
 if __name__ == '__main__':

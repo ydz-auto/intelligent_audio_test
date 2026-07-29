@@ -10,10 +10,11 @@ import time
 import random
 from typing import Optional
 
+from api_adapter_service.adapters.base import BaseAdapter
 from api_adapter_service.utils.logger import logger
 
 
-class MockDialogAdapter:
+class MockDialogAdapter(BaseAdapter):
     """
     voice_llm dialog mode mock adapter.
 
@@ -48,7 +49,7 @@ class MockDialogAdapter:
     }
 
     def __init__(self, vendor_config: dict = None):
-        self.vendor_config = vendor_config or {}
+        super().__init__(vendor_config or {})
         self.connected = True
         self._round_counter: dict = {}  # session_id -> round count
 

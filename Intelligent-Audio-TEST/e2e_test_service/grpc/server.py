@@ -17,12 +17,14 @@ from concurrent import futures
 import grpc
 
 from shared.proto import e2e_service_pb2_grpc as e2e_grpc
+from shared.infrastructure.grpc_interceptors import server_log_interceptor
 from e2e_test_service.grpc.servicers import (
     AudioServiceServicer,
     DeviceServiceServicer,
     PlaybackServiceServicer,
     DeviceResultServiceServicer,
     EnvDeviceServiceServicer,
+    ExecutionServiceServicer,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,12 +39,16 @@ def start_grpc_server(port=50051):
     Returns:
         grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收
     """
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=20))
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=5),
+        interceptors=[server_log_interceptor],
+    )
     e2e_grpc.add_AudioServiceServicer_to_server(AudioServiceServicer(), server)
     e2e_grpc.add_DeviceServiceServicer_to_server(DeviceServiceServicer(), server)
     e2e_grpc.add_PlaybackServiceServicer_to_server(PlaybackServiceServicer(), server)
     e2e_grpc.add_DeviceResultServiceServicer_to_server(DeviceResultServiceServicer(), server)
     e2e_grpc.add_EnvDeviceServiceServicer_to_server(EnvDeviceServiceServicer(), server)
+    e2e_grpc.add_ExecutionServiceServicer_to_server(ExecutionServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')
     server.start()
     logger.info("e2e_test_service gRPC server started on port %s", port)

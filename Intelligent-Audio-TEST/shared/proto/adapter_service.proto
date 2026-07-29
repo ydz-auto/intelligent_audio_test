@@ -1,0 +1,49 @@
+syntax = "proto3";
+package adapter_service;
+option py_generic_services = true;
+
+// ===== API Adapter 服务 =====
+service AdapterService {
+  // 发送单轮请求（同步）
+  rpc SendRound(SendRoundRequest) returns (SendRoundResponse);
+  // 健康检查
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// ==================== AdapterService Messages ====================
+
+message SendRoundRequest {
+  string task_type = 1;
+  string session_id = 2;
+  int32 round = 3;
+  int32 total_rounds = 4;
+  string vendor = 5;
+  string vendor_config = 6;   // JSON: vendor 配置
+  string context = 7;          // JSON: 上下文
+  string context_for_request = 8;  // JSON: 请求用上下文
+  string input_data = 9;       // text 内容 或 audio_path
+  string input_type = 10;      // 'text' 或 'audio'
+  string source_lang = 11;
+  string target_lang = 12;
+  string algorithm_params = 13; // JSON
+  string case_algorithm_params = 14; // JSON
+  string translation_direction = 15;
+  string rendered_body = 16;   // JSON
+  string rendered_headers = 17; // JSON
+  int32 timeout = 18;
+}
+
+message SendRoundResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {asr_text, trans_text, output, latency, raw_response}
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool healthy = 1;
+  string service = 2;
+  int32 active_sessions = 3;
+  int32 total_tasks = 4;
+}

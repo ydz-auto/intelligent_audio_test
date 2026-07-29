@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 from pydantic import Field, field_validator, AliasChoices
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
@@ -177,3 +177,4 @@ class TaskReevaluateResult(APIModel):
     queued_cases: int = Field(..., alias='queuedCases', validation_alias='queuedCases')
     reextracted_cases: int = Field(0, alias='reextractedCases', validation_alias='reextractedCases')
     message: str = Field(..., alias='message', validation_alias='message')
+

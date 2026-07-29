@@ -21,7 +21,7 @@ def _convert_device_output_to_algorithm_result(algorithm_type: str, device_outpu
         dict: algorithm_result 格式的数据
     """
     try:
-        from shared.utils.field_mapper import get_field_mapper
+        from shared.algorithm.field_mapper import get_field_mapper
         field_mapper = get_field_mapper()
 
         mapped_results = field_mapper.convert_device_output(algorithm_type, device_output)
@@ -326,7 +326,7 @@ class DeviceResultReextractor:
         """获取原始参考参数"""
         if not test_case or not test_case.config:
             return None
-        from shared.utils.reference_params_generator import ReferenceParamsGenerator
+        from shared.algorithm.reference_params_generator import ReferenceParamsGenerator
         ref_col = getattr(test_case, 'reference_params', None)
         if ref_col:
             params = ReferenceParamsGenerator.get_all_reference_params(ref_col)

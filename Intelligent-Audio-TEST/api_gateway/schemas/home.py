@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 from pydantic import Field
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 
 
 class HomeStatsRefreshRequest(APIModel):
@@ -93,3 +93,4 @@ class HomeStatsSummary(APIModel):
     recent_tasks: List[RecentTaskItem] = Field(default_factory=list, alias='recentTasks', validation_alias='recentTasks')
     top_groups: List[TopGroupItem] = Field(default_factory=list, alias='topGroups', validation_alias='topGroups')
     device_status: DeviceStatus = Field(default_factory=DeviceStatus, alias='deviceStatus', validation_alias='deviceStatus')
+

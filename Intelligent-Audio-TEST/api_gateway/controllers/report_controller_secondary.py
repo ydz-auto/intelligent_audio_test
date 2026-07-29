@@ -10,13 +10,11 @@ from shared.utils.response import success_response, error_response
 from shared.utils.error_codes import ErrorCode
 from shared.utils.report.report_utils import ReportUtils
 from shared.utils.log_handler import log_and_emit
-# TODO: 跨服务依赖，应改为 HTTP 调用
-from shared.utils.reference_params_generator import ReferenceParamsGenerator
+from shared.algorithm.reference_params_generator import ReferenceParamsGenerator
 from api_gateway.schemas.report import SecondaryCompareRequest
 from api_gateway.schemas.common import IdData
 from api_gateway.controllers.report_controller_base import ReportControllerBase
 from api_gateway.controllers.report_controller_task import ReportControllerTask
-# TODO: 跨服务依赖，应改为 HTTP 调用
 from api_gateway.app import socketio
 from datetime import datetime, timedelta, timezone
 from shared.utils.query_utils import now_cst
@@ -319,7 +317,6 @@ class ReportControllerSecondary(ReportControllerBase):
 
     @staticmethod
     def _secondary_compare_async(report_ids, description, report_key):
-        # TODO: 跨服务依赖，应改为 HTTP 调用
         from flask import current_app as flask_app
         if flask_app is None:
             log_and_emit('ERROR', 'report', '[secondary_compare_async] Flask app is None')

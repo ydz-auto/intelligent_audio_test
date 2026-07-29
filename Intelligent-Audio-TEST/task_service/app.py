@@ -5,6 +5,7 @@ Task Service 服务启动入口
 from flask import Flask
 import os
 import sys
+import logging
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(current_dir)
@@ -61,11 +62,16 @@ def create_app(config_name='default'):
     registry = RedisServiceRegistry()
     registry.register('task_service', Config.SERVICE_HOST, Config.PORT)
 
+    # 启动 gRPC server（在 create_app 内启动，确保任何调用方式都会启动）
+    from task_service.grpc.server import start_grpc_server
+    try:
+        app.config['_grpc_server'] = start_grpc_server(port=Config.GRPC_PORT)
+        app.logger.info("gRPC server started on port %s", Config.GRPC_PORT)
+    except Exception as e:
+        app.logger.warning("gRPC server failed to start: %s", e)
+
     return app
 
 if __name__ == '__main__':
     app = create_app()
-    # 启动 gRPC server，与 Flask 服务并存
-    from task_service.grpc.server import start_grpc_server
-    grpc_server = start_grpc_server(port=Config.GRPC_PORT)
     app.run(host='0.0.0.0', port=5001, debug=False)

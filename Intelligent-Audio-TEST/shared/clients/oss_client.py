@@ -62,7 +62,13 @@ class OSSClient:
             region_name=BaseConfig.OSS_REGION,
         )
 
-        # bucket 名称从配置读取
+        # 单桶模式：OSS_BUCKET_NAME 非空时，所有 category 共用此桶，
+        # key 统一拼成 {OSS_KEY_PREFIX}/{category}/{key}。
+        # 不配置则回退到多桶模式（向后兼容）。
+        self._single_bucket = BaseConfig.OSS_BUCKET_NAME or ''
+        self._key_prefix = BaseConfig.OSS_KEY_PREFIX.strip('/')
+
+        # 多桶模式 bucket 名称
         self._buckets = {
             'audios': BaseConfig.OSS_BUCKET_AUDIOS,
             'case_result': BaseConfig.OSS_BUCKET_CASE_RESULT,
@@ -70,13 +76,50 @@ class OSSClient:
             'reports': BaseConfig.OSS_BUCKET_REPORTS,
             'archives': BaseConfig.OSS_BUCKET_ARCHIVES,
             'temp': BaseConfig.OSS_BUCKET_TEMP,
+            'raw_chunks': BaseConfig.OSS_BUCKET_RAW_CHUNKS,
         }
 
     def _bucket(self, category: str) -> str:
+        """返回 category 对应的 bucket 名（单桶模式返回统一桶名）"""
+        if self._single_bucket:
+            return self._single_bucket
         bucket = self._buckets.get(category)
         if not bucket:
             raise ValueError(f"Unknown OSS category: {category}")
         return bucket
+
+    def _full_key(self, category: str, key: str) -> str:
+        """生成实际存储的 OSS key。
+
+        单桶模式：{OSS_KEY_PREFIX}/{category}/{key}
+        多桶模式：{key}（原样返回）
+        """
+        if not self._single_bucket:
+            return key
+        parts = []
+        if self._key_prefix:
+            parts.append(self._key_prefix)
+        parts.append(category)
+        parts.append(key.lstrip('/'))
+        return '/'.join(parts)
+
+    def _strip_key(self, category: str, full_key: str) -> str:
+        """从实际存储的 OSS key 还原出逻辑 key（去掉前缀）。
+
+        单桶模式：{OSS_KEY_PREFIX}/{category}/{key} → {key}
+        多桶模式：原样返回
+        """
+        if not self._single_bucket:
+            return full_key
+        # 构造期望的前缀
+        prefix_parts = []
+        if self._key_prefix:
+            prefix_parts.append(self._key_prefix)
+        prefix_parts.append(category)
+        prefix = '/'.join(prefix_parts) + '/'
+        if full_key.startswith(prefix):
+            return full_key[len(prefix):]
+        return full_key
 
     # ---- 上传 ----
 
@@ -86,25 +129,28 @@ class OSSClient:
 
         :param local_path: 本地文件路径
         :param category: 存储类别（audios/case_result/ref_params/reports/archives/temp）
-        :param key: OSS 对象 key（如 task_123/case_456/device_sn/audio.wav）
-        :return: OSS key
+        :param key: 逻辑 key（如 task_123/case_456/device_sn/audio.wav）
+        :return: 逻辑 key（单桶模式下实际存储 key 带前缀，返回值与输入一致）
         """
         bucket = self._bucket(category)
-        self._client.upload_file(local_path, bucket, key)
+        full_key = self._full_key(category, key)
+        self._client.upload_file(local_path, bucket, full_key)
         return key
 
     def upload_bytes(self, data: bytes, category: str, key: str, content_type: Optional[str] = None) -> str:
         """上传字节数据到 OSS"""
         bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
         extra_args = {'ContentType': content_type} if content_type else {}
-        self._client.upload_fileobj(io.BytesIO(data), bucket, key, ExtraArgs=extra_args)
+        self._client.upload_fileobj(io.BytesIO(data), bucket, full_key, ExtraArgs=extra_args)
         return key
 
     def upload_stream(self, stream: BinaryIO, category: str, key: str, content_type: Optional[str] = None) -> str:
         """上传文件流到 OSS"""
         bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
         extra_args = {'ContentType': content_type} if content_type else {}
-        self._client.upload_fileobj(stream, bucket, key, ExtraArgs=extra_args)
+        self._client.upload_fileobj(stream, bucket, full_key, ExtraArgs=extra_args)
         return key
 
     # ---- 下载 ----
@@ -114,25 +160,28 @@ class OSSClient:
         从 OSS 下载文件到本地
 
         :param category: 存储类别
-        :param key: OSS 对象 key
+        :param key: 逻辑 key
         :param local_path: 本地目标路径
         :return: 本地文件路径
         """
         bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        self._client.download_file(bucket, key, local_path)
+        self._client.download_file(bucket, full_key, local_path)
         return local_path
 
     def download_bytes(self, category: str, key: str) -> bytes:
         """从 OSS 下载文件为字节"""
         bucket = self._bucket(category)
-        obj = self._client.get_object(Bucket=bucket, Key=key)
+        full_key = self._full_key(category, key)
+        obj = self._client.get_object(Bucket=bucket, Key=full_key)
         return obj['Body'].read()
 
     def download_stream(self, category: str, key: str) -> BinaryIO:
         """从 OSS 下载文件流（不读入内存）"""
         bucket = self._bucket(category)
-        obj = self._client.get_object(Bucket=bucket, Key=key)
+        full_key = self._full_key(category, key)
+        obj = self._client.get_object(Bucket=bucket, Key=full_key)
         return obj['Body']
 
     # ---- 临时文件（下载→处理→上传）----
@@ -156,8 +205,9 @@ class OSSClient:
     def exists(self, category: str, key: str) -> bool:
         """检查对象是否存在"""
         bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
         try:
-            self._client.head_object(Bucket=bucket, Key=key)
+            self._client.head_object(Bucket=bucket, Key=full_key)
             return True
         except ClientError:
             return False
@@ -165,13 +215,15 @@ class OSSClient:
     def delete(self, category: str, key: str):
         """删除对象"""
         bucket = self._bucket(category)
-        self._client.delete_object(Bucket=bucket, Key=key)
+        full_key = self._full_key(category, key)
+        self._client.delete_object(Bucket=bucket, Key=full_key)
 
     def list_objects(self, category: str, prefix: str = '') -> list:
-        """列出对象 key 列表"""
+        """列出对象 key 列表（返回逻辑 key，已去掉前缀）"""
         bucket = self._bucket(category)
-        resp = self._client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-        return [obj['Key'] for obj in resp.get('Contents', [])]
+        full_prefix = self._full_key(category, prefix)
+        resp = self._client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)
+        return [self._strip_key(category, obj['Key']) for obj in resp.get('Contents', [])]
 
     def get_presigned_url(self, category: str, key: str, expires: int = 3600) -> str:
         """
@@ -181,20 +233,100 @@ class OSSClient:
         :return: 预签名 URL
         """
         bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
         return self._client.generate_presigned_url(
             'get_object',
-            Params={'Bucket': bucket, 'Key': key},
+            Params={'Bucket': bucket, 'Key': full_key},
             ExpiresIn=expires,
         )
 
     def get_upload_presigned_url(self, category: str, key: str, expires: int = 3600) -> str:
         """生成上传预签名 URL（前端直传）"""
         bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
         return self._client.generate_presigned_url(
             'put_object',
-            Params={'Bucket': bucket, 'Key': key},
+            Params={'Bucket': bucket, 'Key': full_key},
             ExpiresIn=expires,
         )
+
+    # ---- S3 Multipart Upload（前端分片直传 OSS）----
+
+    def create_multipart_upload(self, category: str, key: str) -> str:
+        """初始化分片上传，返回 Upload ID"""
+        bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
+        resp = self._client.create_multipart_upload(Bucket=bucket, Key=full_key)
+        return resp['UploadId']
+
+    def get_part_upload_presigned_url(self, category: str, key: str, upload_id: str,
+                                       part_number: int, expires: int = 3600) -> str:
+        """生成单个分片上传的预签名 URL（前端直传分片到 OSS）"""
+        bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
+        return self._client.generate_presigned_url(
+            'upload_part',
+            Params={
+                'Bucket': bucket,
+                'Key': full_key,
+                'UploadId': upload_id,
+                'PartNumber': part_number,
+            },
+            ExpiresIn=expires,
+        )
+
+    def complete_multipart_upload(self, category: str, key: str, upload_id: str,
+                                   parts: list) -> dict:
+        """完成分片上传，合并 OSS 端的分片
+
+        :param parts: [{'PartNumber': 1, 'ETag': '"xxx"'}, ...]
+        :return: CompleteMultipartUpload 响应
+        """
+        bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
+        resp = self._client.complete_multipart_upload(
+            Bucket=bucket,
+            Key=full_key,
+            UploadId=upload_id,
+            MultipartUpload={'Parts': parts},
+        )
+        return resp
+
+    def abort_multipart_upload(self, category: str, key: str, upload_id: str):
+        """取消分片上传，清理已上传的分片"""
+        bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
+        self._client.abort_multipart_upload(
+            Bucket=bucket,
+            Key=full_key,
+            UploadId=upload_id,
+        )
+
+    def list_multipart_parts(self, category: str, key: str, upload_id: str) -> list:
+        """列出已上传的分片（用于断点续传）"""
+        bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
+        resp = self._client.list_parts(
+            Bucket=bucket,
+            Key=full_key,
+            UploadId=upload_id,
+        )
+        return resp.get('Parts', [])
+
+    def delete_object(self, category: str, key: str):
+        """删除单个对象"""
+        bucket = self._bucket(category)
+        full_key = self._full_key(category, key)
+        self._client.delete_object(Bucket=bucket, Key=full_key)
+
+    def delete_prefix(self, category: str, prefix: str):
+        """批量删除指定前缀下的所有对象"""
+        bucket = self._bucket(category)
+        full_prefix = self._full_key(category, prefix)
+        resp = self._client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)
+        objects = [{'Key': obj['Key']} for obj in resp.get('Contents', [])]
+        if objects:
+            self._client.delete_objects(Bucket=bucket, Delete={'Objects': objects})
 
     # ---- 便捷方法 ----
 

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from pydantic import Field, field_validator, AliasChoices, model_validator, ConfigDict
 from pydantic.alias_generators import to_camel
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 from shared.schemas.testcase import ReportAudioItem, ReportTestCaseItem
 
@@ -132,6 +132,8 @@ class TestCasePreviewData(APIModel):
     playback_mode: Optional[str] = Field('backend', alias='playback_mode', validation_alias=AliasChoices('playback_mode', 'playbackMode'))
     audio_id: Optional[Union[int, str]] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
     audio_stream_url: Optional[str] = Field(None, alias='audio_stream_url', validation_alias=AliasChoices('audio_stream_url', 'audioStreamUrl'))
+    # 多轮音频连续播放
+    audio_stream_urls: Optional[List[str]] = Field(None, alias='audio_stream_urls', validation_alias=AliasChoices('audio_stream_urls', 'audioStreamUrls'))
 
 
 class TestCaseStopPreviewData(APIModel):
@@ -521,4 +523,5 @@ class TestCaseUpdateSchema(APIModel):
         if isinstance(self.reference_params, list):
             return self.reference_params
         return None
+
 

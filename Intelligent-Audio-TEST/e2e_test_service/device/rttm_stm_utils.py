@@ -1,7 +1,7 @@
 """RTTM/STM 解析与时间戳调整工具"""
 
 import json
-from shared.utils.field_mapper import get_field_mapper
+from shared.algorithm.field_mapper import get_field_mapper
 from shared.utils.log_handler import log_not_emit
 
 

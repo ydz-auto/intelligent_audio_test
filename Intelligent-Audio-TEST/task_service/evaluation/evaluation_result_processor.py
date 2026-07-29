@@ -7,16 +7,7 @@ from task_service.evaluation.evaluation_utils import extract_by_path, calculate_
 from task_service.evaluation.round_aggregator import RoundAggregator
 from task_service.evaluation.evaluation_mixin import update_task_case_status_in_db
 
-# 延迟导入app，避免循环导入和app未初始化问题
-app = None
-
-def get_app():
-    """获取应用实例，延迟导入"""
-    global app
-    if app is None:
-        # TODO: 跨服务调用 - 不应直接 import app 实例，应使用 current_app
-        from flask import current_app as app
-    return app
+from flask import current_app
 
 
 class EvaluationResultProcessor(RoundAggregator):
@@ -32,7 +23,6 @@ class EvaluationResultProcessor(RoundAggregator):
         注意：这只标记 TestResult 的执行状态，不影响 TaskCase 的最终状态
         TaskCase 的最终状态需要在所有 TestResult 都评估完成后统一更新
         """
-        current_app = get_app()
         with current_app.app_context():
             local_db_session = db.session()
             try:
@@ -138,7 +128,6 @@ class EvaluationResultProcessor(RoundAggregator):
             return
 
         # 获取应用上下文
-        current_app = get_app()
         with current_app.app_context():
             try:
                 # 如果提供了session则使用，否则创建新session
@@ -224,7 +213,6 @@ class EvaluationResultProcessor(RoundAggregator):
             test_type: 测试类型 (api 或 e2e)，用于筛选对应类型的维度
         """
         # 获取应用上下文
-        current_app = get_app()
         with current_app.app_context():
             try:
                 # 使用本地会话确保独立可靠的会话
@@ -395,7 +383,6 @@ class EvaluationResultProcessor(RoundAggregator):
         更新组内所有维度的评估结果为失败状态
         """
         # 使用应用上下文
-        current_app = get_app()
         with current_app.app_context():
             # 使用单个会话
             local_db_session = db.session()
@@ -459,7 +446,6 @@ class EvaluationResultProcessor(RoundAggregator):
             test_type: 测试类型 (api 或 e2e)
         """
         # 使用应用上下文确保可以访问数据库
-        current_app = get_app()
         with current_app.app_context():
             # 使用单个数据库会话处理整组维度的更新，显著减少数据库锁定风险
             local_db_session = db.session()
@@ -521,7 +507,6 @@ class EvaluationResultProcessor(RoundAggregator):
             return True
 
         # 获取应用上下文
-        current_app = get_app()
         with current_app.app_context():
             try:
                 # 使用本地会话

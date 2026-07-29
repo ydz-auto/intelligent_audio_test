@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Union
 from pydantic import Field
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 from api_gateway.schemas.testcase import AlgorithmParamItem, RoundConfigItem
 
@@ -54,6 +54,45 @@ class InitUploadTaskRequest(APIModel):
     pass
 
 
+# ========== 前端直传 OSS 相关 schemas ==========
+
+class PresignUploadRequest(APIModel):
+    """请求预签名上传 URL（前端直传 OSS）"""
+    filename: str = Field(..., alias='filename', validation_alias='filename')
+    file_size: int = Field(0, alias='fileSize', validation_alias='fileSize')
+    md5: Optional[str] = Field(None, alias='md5', validation_alias='md5')
+    # 分片大小（字节），默认 5MB（S3 最小分片大小）
+    chunk_size: Optional[int] = Field(5 * 1024 * 1024, alias='chunkSize', validation_alias='chunkSize')
+    # 是否是 WAV（WAV 直传 audios bucket，非 WAV 传 raw-chunks bucket）
+    is_wav: Optional[bool] = Field(False, alias='isWav', validation_alias='isWav')
+    # 原始目录结构（来自浏览器 webkitRelativePath），用于保留本地目录结构
+    # 如 "test_data/noise/sample.wav"，OSS key 会存成 "direct/test_data/noise/sample.wav"
+    relative_path: Optional[str] = Field(None, alias='relativePath', validation_alias='relativePath')
+
+
+class PresignPartRequest(APIModel):
+    """请求单个分片的预签名上传 URL"""
+    upload_id: str = Field(..., alias='uploadId', validation_alias='uploadId')
+    part_number: int = Field(..., alias='partNumber', validation_alias='partNumber')
+
+
+class CompleteDirectUploadRequest(APIModel):
+    """前端直传完成后登记 DB（WAV 场景，无需后端转码）"""
+    oss_key: str = Field(..., alias='ossKey', validation_alias='ossKey')
+    upload_id: Optional[str] = Field(None, alias='uploadId', validation_alias='uploadId')
+    parts: Optional[List[Dict]] = Field(default_factory=list, alias='parts', validation_alias='parts')
+    filename: str = Field(..., alias='filename', validation_alias='filename')
+    md5: Optional[str] = Field(None, alias='md5', validation_alias='md5')
+    file_size: int = Field(0, alias='fileSize', validation_alias='fileSize')
+    sample_rate: Optional[int] = Field(44100, alias='sampleRate', validation_alias='sampleRate')
+    bits_per_sample: Optional[int] = Field(16, alias='bitsPerSample', validation_alias='bitsPerSample')
+    duration: Optional[float] = Field(0.0, alias='duration', validation_alias='duration')
+    # 测试用例相关（同 MergeChunksRequest 的部分字段）
+    tags: Optional[List[str]] = Field(default_factory=list, alias='tags', validation_alias='tags')
+    audio_type: Optional[str] = Field('dry', alias='audioType', validation_alias='audioType')
+    asr_text: Optional[str] = Field('', alias='asrText', validation_alias='asrText')
+
+
 class RegisterUploadFileRequest(APIModel):
     task_id: str = Field(..., alias='taskId', validation_alias='taskId')
     files: Optional[List[Dict]] = Field(default_factory=list, alias='files', validation_alias='files')
@@ -84,6 +123,11 @@ class MergeChunksRequest(APIModel):
     file_id: str = Field(..., alias='fileId', validation_alias='fileId')
     task_id: str = Field(..., alias='taskId', validation_alias='taskId')
     create_test_case: Optional[bool] = Field(False, alias='createTestCase', validation_alias='createTestCase')
+    # 前端直传 OSS 模式：非 WAV 文件分片直传 raw-chunks bucket 后，merge 从 OSS 拉取
+    oss_upload_id: Optional[str] = Field(None, alias='ossUploadId', validation_alias='ossUploadId')
+    oss_key: Optional[str] = Field(None, alias='ossKey', validation_alias='ossKey')
+    oss_parts: Optional[List[Dict]] = Field(None, alias='ossParts', validation_alias='ossParts')
+    is_direct_oss: Optional[bool] = Field(False, alias='isDirectOss', validation_alias='isDirectOss')
     test_types: Optional[List[str]] = Field(default_factory=lambda: ['api'], alias='testTypes', validation_alias='testTypes')
     # dimensions 接受 dict 或 list，由 _create_test_case_from_audio 统一处理
     dimensions: Optional[Any] = Field(default_factory=dict, alias='dimensions', validation_alias='dimensions')
@@ -200,3 +244,4 @@ class BatchUpdateAnnotationsRequest(APIModel):
     items: List[BatchAnnotationItem] = Field(default_factory=list, alias='items', validation_alias='items')
     algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
     refresh_test_cases: Optional[bool] = Field(True, alias='refreshTestCases', validation_alias='refreshTestCases')
+

@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, AliasChoices
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 
 
 class AlgorithmReferenceParam(BaseModel):
@@ -772,3 +772,4 @@ class AlgorithmMappingListQuery(APIModel):
     algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
     source_type: Optional[str] = Field(None, alias='sourceType', validation_alias='sourceType')
     dimension_id: Optional[int] = Field(None, alias='dimensionId', validation_alias='dimensionId')
+

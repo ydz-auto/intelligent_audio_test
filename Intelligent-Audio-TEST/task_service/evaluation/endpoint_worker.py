@@ -6,19 +6,10 @@ import json
 from shared.models.models import TaskCase
 from shared.models.database import db
 from task_service.evaluation.evaluation_mixin import EvaluationLoggerMixin
-from shared.utils.field_mapper import get_field_mapper
+from shared.algorithm.field_mapper import get_field_mapper
 
 
-# 延迟导入app，避免循环导入和app未初始化问题
-app = None
-
-def get_app():
-    """获取应用实例，延迟导入"""
-    global app
-    if app is None:
-        # TODO: 跨服务调用 - 不应直接 import app 实例，应使用 current_app
-        from flask import current_app as app
-    return app
+from flask import current_app
 
 
 class EndpointWorker(EvaluationLoggerMixin):
@@ -65,14 +56,12 @@ class EndpointWorker(EvaluationLoggerMixin):
         self._log(level='INFO', content=f"端点Worker已停止: {self.endpoint_url}")
 
     def _worker_loop(self):
-        current_app = get_app()
         for _ in range(10):
-            current_app = get_app()
-            if current_app is not None:
+            if current_app:
                 break
             time.sleep(1)
 
-        if current_app is None:
+        if not current_app:
             self._log(level='ERROR', content=f"端点Worker启动失败: {self.endpoint_url}")
             return
 

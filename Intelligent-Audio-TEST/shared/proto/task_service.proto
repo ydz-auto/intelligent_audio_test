@@ -10,12 +10,24 @@ service ExecutionService {
   rpc StartTask(StartTaskRequest) returns (StartTaskResponse);
   // 停止任务
   rpc StopTask(StopTaskRequest) returns (StopTaskResponse);
+  // 暂停任务
+  rpc PauseTask(PauseTaskRequest) returns (PauseTaskResponse);
+  // 恢复任务
+  rpc ResumeTask(ResumeTaskRequest) returns (ResumeTaskResponse);
+  // 从队列中移除任务
+  rpc RemoveFromQueue(RemoveFromQueueRequest) returns (RemoveFromQueueResponse);
   // 获取任务状态
   rpc GetTaskStatus(GetTaskStatusRequest) returns (TaskStatusResponse);
-  // 重新评估
+  // 重新评估（任务级批量重新评估）
   rpc Reevaluate(ReevaluateRequest) returns (ReevaluateResponse);
+  // 多轮用例重新评估
+  rpc ReevaluateMultiRound(ReevaluateMultiRoundRequest) returns (ReevaluateMultiRoundResponse);
+  // 单轮用例重新评估
+  rpc ReevaluateSingle(ReevaluateSingleRequest) returns (ReevaluateSingleResponse);
   // 获取执行引擎实例信息（如线程池状态）
   rpc GetEngineInfo(GetEngineInfoRequest) returns (EngineInfoResponse);
+  // 评估单个用例结果（供 e2e_test_service / api_test_service 跨服务调用）
+  rpc EvaluateCase(EvaluateCaseRequest) returns (EvaluateCaseResponse);
 }
 
 // ==================== ExecutionService Messages ====================
@@ -51,6 +63,36 @@ message StopTaskResponse {
   string data = 3;
 }
 
+message PauseTaskRequest {
+  string task_id = 1;
+}
+
+message PauseTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ResumeTaskRequest {
+  string task_id = 1;
+}
+
+message ResumeTaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message RemoveFromQueueRequest {
+  string task_id = 1;
+}
+
+message RemoveFromQueueResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
 message GetTaskStatusRequest {
   string task_id = 1;
 }
@@ -63,13 +105,45 @@ message TaskStatusResponse {
 
 message ReevaluateRequest {
   string task_id = 1;
-  string reevaluate_config = 2;  // JSON 序列化的重新评估配置
+  bool reextract_device_output = 2;
+  string reevaluate_type = 3;  // all / failed / passed
 }
 
 message ReevaluateResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON 序列化的重新评估结果
+}
+
+message ReevaluateMultiRoundRequest {
+  string task_id = 1;
+  string result_json = 2;       // JSON 序列化的结果对象
+  string test_case_id = 3;
+  string algorithm_result = 4;  // JSON 序列化的算法结果
+  string test_type = 5;
+  string algorithm_type = 6;
+}
+
+message ReevaluateMultiRoundResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ReevaluateSingleRequest {
+  string task_id = 1;
+  string result_id = 2;
+  string test_case_id = 3;
+  string algorithm_result = 4;    // JSON 序列化的算法结果
+  string reference_params = 5;    // JSON 序列化的参考参数
+  string test_type = 6;
+  string algorithm_type = 7;
+}
+
+message ReevaluateSingleResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
 }
 
 message GetEngineInfoRequest {
@@ -80,4 +154,18 @@ message EngineInfoResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON 序列化的引擎信息（线程池状态等）
+}
+
+message EvaluateCaseRequest {
+  string task_id = 1;
+  string result_id = 2;
+  string test_case_id = 3;
+  string algorithm_result = 4;  // JSON 序列化的算法结果
+  string eval_params = 5;  // JSON 序列化的评估参数 (algorithm_type, test_type, round_number 等)
+}
+
+message EvaluateCaseResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的评估结果
 }

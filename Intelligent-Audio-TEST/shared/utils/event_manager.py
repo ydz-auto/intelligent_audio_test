@@ -3,12 +3,22 @@ from datetime import datetime, timezone, timedelta
 from shared.models.models import Task, TaskCase, TestCase, Log, TestResult, TestResultDimension, Audio
 from shared.models.database import db
 from shared.utils.log_handler import log_and_emit
-# TODO: 跨服务调用 - socketio 应通过 current_app 获取，不应直接 import app 实例
-from flask import current_app as app
-try:
-    socketio = app.extensions.get('socketio') if hasattr(app, 'extensions') else None
-except Exception:
-    socketio = None
+from flask import current_app
+
+
+def get_socketio():
+    """延迟从应用上下文获取 socketio 实例
+
+    在模块 import 阶段 current_app 尚无上下文，无法直接读取 extensions。
+    每次 emit 时通过当前请求/应用上下文动态获取，避免绑定到过期的 app 实例。
+    """
+    try:
+        if current_app and hasattr(current_app, 'extensions'):
+            return current_app.extensions.get('socketio')
+    except Exception:
+        pass
+    return None
+
 
 class EventManager:
     def _log(self, level, content, task_id=None, test_case_id=None, api_id=None, category='execution', module='EventManager', **kwargs):
@@ -52,8 +62,6 @@ class EventManager:
         self.execution_engine = execution_engine
         self._last_progress = {}
         try:
-            # TODO: 跨服务调用 - config 应从环境变量读取
-            from flask import current_app
             if current_app and hasattr(current_app, 'config'):
                 self._min_update_interval = current_app.config.get('WEBSOCKET_MIN_UPDATE_INTERVAL', 0.1)
             else:
@@ -318,8 +326,10 @@ class EventManager:
             if cached_progress and current_time - cached_progress['timestamp'] < 0.1:
                 progress_data = cached_progress['data']
                 try:
-                    socketio.emit('task_progress', progress_data)
-                    self._log(level='DEBUG', content=f"使用缓存发送进度更新，task_id={task_id}", task_id=task_id)
+                    _socketio = get_socketio()
+                    if _socketio:
+                        _socketio.emit('task_progress', progress_data)
+                        self._log(level='DEBUG', content=f"使用缓存发送进度更新，task_id={task_id}", task_id=task_id)
                 except Exception as emit_error:
                     self._log(level='WARNING', content=f"使用缓存发送进度更新失败: {str(emit_error)}", task_id=task_id)
                 return
@@ -637,8 +647,10 @@ class EventManager:
             }
             
             try:
-                socketio.emit('task_progress', progress_data)
-                self._log(level='DEBUG', content=f"成功发送 task_progress 事件，task_id={task_id}, progress={progress_data.get('totalProgress', 0)}%", task_id=task_id)
+                _socketio = get_socketio()
+                if _socketio:
+                    _socketio.emit('task_progress', progress_data)
+                    self._log(level='DEBUG', content=f"成功发送 task_progress 事件，task_id={task_id}, progress={progress_data.get('totalProgress', 0)}%", task_id=task_id)
             except Exception as emit_error:
                 self._log(level='ERROR', content=f"发送 task_progress 事件失败: {str(emit_error)}", task_id=task_id)
                 raise
@@ -657,6 +669,8 @@ class EventManager:
                 "level": level,
                 "time": datetime.now(utc_plus_8).isoformat()
             }
-            socketio.emit('error_alert', alert_data)
+            _socketio = get_socketio()
+            if _socketio:
+                _socketio.emit('error_alert', alert_data)
         except Exception:
             pass

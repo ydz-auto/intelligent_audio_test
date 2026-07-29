@@ -50,6 +50,21 @@ class ExecutionServiceStub:
                 request_serializer=task__service__pb2.StopTaskRequest.SerializeToString,
                 response_deserializer=task__service__pb2.StopTaskResponse.FromString,
                 _registered_method=True)
+        self.PauseTask = channel.unary_unary(
+                '/task_service.ExecutionService/PauseTask',
+                request_serializer=task__service__pb2.PauseTaskRequest.SerializeToString,
+                response_deserializer=task__service__pb2.PauseTaskResponse.FromString,
+                _registered_method=True)
+        self.ResumeTask = channel.unary_unary(
+                '/task_service.ExecutionService/ResumeTask',
+                request_serializer=task__service__pb2.ResumeTaskRequest.SerializeToString,
+                response_deserializer=task__service__pb2.ResumeTaskResponse.FromString,
+                _registered_method=True)
+        self.RemoveFromQueue = channel.unary_unary(
+                '/task_service.ExecutionService/RemoveFromQueue',
+                request_serializer=task__service__pb2.RemoveFromQueueRequest.SerializeToString,
+                response_deserializer=task__service__pb2.RemoveFromQueueResponse.FromString,
+                _registered_method=True)
         self.GetTaskStatus = channel.unary_unary(
                 '/task_service.ExecutionService/GetTaskStatus',
                 request_serializer=task__service__pb2.GetTaskStatusRequest.SerializeToString,
@@ -60,10 +75,25 @@ class ExecutionServiceStub:
                 request_serializer=task__service__pb2.ReevaluateRequest.SerializeToString,
                 response_deserializer=task__service__pb2.ReevaluateResponse.FromString,
                 _registered_method=True)
+        self.ReevaluateMultiRound = channel.unary_unary(
+                '/task_service.ExecutionService/ReevaluateMultiRound',
+                request_serializer=task__service__pb2.ReevaluateMultiRoundRequest.SerializeToString,
+                response_deserializer=task__service__pb2.ReevaluateMultiRoundResponse.FromString,
+                _registered_method=True)
+        self.ReevaluateSingle = channel.unary_unary(
+                '/task_service.ExecutionService/ReevaluateSingle',
+                request_serializer=task__service__pb2.ReevaluateSingleRequest.SerializeToString,
+                response_deserializer=task__service__pb2.ReevaluateSingleResponse.FromString,
+                _registered_method=True)
         self.GetEngineInfo = channel.unary_unary(
                 '/task_service.ExecutionService/GetEngineInfo',
                 request_serializer=task__service__pb2.GetEngineInfoRequest.SerializeToString,
                 response_deserializer=task__service__pb2.EngineInfoResponse.FromString,
+                _registered_method=True)
+        self.EvaluateCase = channel.unary_unary(
+                '/task_service.ExecutionService/EvaluateCase',
+                request_serializer=task__service__pb2.EvaluateCaseRequest.SerializeToString,
+                response_deserializer=task__service__pb2.EvaluateCaseResponse.FromString,
                 _registered_method=True)
 
 
@@ -92,6 +122,27 @@ class ExecutionServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def PauseTask(self, request, context):
+        """暂停任务
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ResumeTask(self, request, context):
+        """恢复任务
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RemoveFromQueue(self, request, context):
+        """从队列中移除任务
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetTaskStatus(self, request, context):
         """获取任务状态
         """
@@ -100,7 +151,21 @@ class ExecutionServiceServicer:
         raise NotImplementedError('Method not implemented!')
 
     def Reevaluate(self, request, context):
-        """重新评估
+        """重新评估（任务级批量重新评估）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReevaluateMultiRound(self, request, context):
+        """多轮用例重新评估
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReevaluateSingle(self, request, context):
+        """单轮用例重新评估
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -108,6 +173,13 @@ class ExecutionServiceServicer:
 
     def GetEngineInfo(self, request, context):
         """获取执行引擎实例信息（如线程池状态）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def EvaluateCase(self, request, context):
+        """评估单个用例结果（供 e2e_test_service / api_test_service 跨服务调用）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -131,6 +203,21 @@ def add_ExecutionServiceServicer_to_server(servicer, server):
                     request_deserializer=task__service__pb2.StopTaskRequest.FromString,
                     response_serializer=task__service__pb2.StopTaskResponse.SerializeToString,
             ),
+            'PauseTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.PauseTask,
+                    request_deserializer=task__service__pb2.PauseTaskRequest.FromString,
+                    response_serializer=task__service__pb2.PauseTaskResponse.SerializeToString,
+            ),
+            'ResumeTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.ResumeTask,
+                    request_deserializer=task__service__pb2.ResumeTaskRequest.FromString,
+                    response_serializer=task__service__pb2.ResumeTaskResponse.SerializeToString,
+            ),
+            'RemoveFromQueue': grpc.unary_unary_rpc_method_handler(
+                    servicer.RemoveFromQueue,
+                    request_deserializer=task__service__pb2.RemoveFromQueueRequest.FromString,
+                    response_serializer=task__service__pb2.RemoveFromQueueResponse.SerializeToString,
+            ),
             'GetTaskStatus': grpc.unary_unary_rpc_method_handler(
                     servicer.GetTaskStatus,
                     request_deserializer=task__service__pb2.GetTaskStatusRequest.FromString,
@@ -141,10 +228,25 @@ def add_ExecutionServiceServicer_to_server(servicer, server):
                     request_deserializer=task__service__pb2.ReevaluateRequest.FromString,
                     response_serializer=task__service__pb2.ReevaluateResponse.SerializeToString,
             ),
+            'ReevaluateMultiRound': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReevaluateMultiRound,
+                    request_deserializer=task__service__pb2.ReevaluateMultiRoundRequest.FromString,
+                    response_serializer=task__service__pb2.ReevaluateMultiRoundResponse.SerializeToString,
+            ),
+            'ReevaluateSingle': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReevaluateSingle,
+                    request_deserializer=task__service__pb2.ReevaluateSingleRequest.FromString,
+                    response_serializer=task__service__pb2.ReevaluateSingleResponse.SerializeToString,
+            ),
             'GetEngineInfo': grpc.unary_unary_rpc_method_handler(
                     servicer.GetEngineInfo,
                     request_deserializer=task__service__pb2.GetEngineInfoRequest.FromString,
                     response_serializer=task__service__pb2.EngineInfoResponse.SerializeToString,
+            ),
+            'EvaluateCase': grpc.unary_unary_rpc_method_handler(
+                    servicer.EvaluateCase,
+                    request_deserializer=task__service__pb2.EvaluateCaseRequest.FromString,
+                    response_serializer=task__service__pb2.EvaluateCaseResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -240,6 +342,87 @@ class ExecutionService:
             _registered_method=True)
 
     @staticmethod
+    def PauseTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ExecutionService/PauseTask',
+            task__service__pb2.PauseTaskRequest.SerializeToString,
+            task__service__pb2.PauseTaskResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ResumeTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ExecutionService/ResumeTask',
+            task__service__pb2.ResumeTaskRequest.SerializeToString,
+            task__service__pb2.ResumeTaskResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RemoveFromQueue(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ExecutionService/RemoveFromQueue',
+            task__service__pb2.RemoveFromQueueRequest.SerializeToString,
+            task__service__pb2.RemoveFromQueueResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def GetTaskStatus(request,
             target,
             options=(),
@@ -294,6 +477,60 @@ class ExecutionService:
             _registered_method=True)
 
     @staticmethod
+    def ReevaluateMultiRound(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ExecutionService/ReevaluateMultiRound',
+            task__service__pb2.ReevaluateMultiRoundRequest.SerializeToString,
+            task__service__pb2.ReevaluateMultiRoundResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReevaluateSingle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ExecutionService/ReevaluateSingle',
+            task__service__pb2.ReevaluateSingleRequest.SerializeToString,
+            task__service__pb2.ReevaluateSingleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def GetEngineInfo(request,
             target,
             options=(),
@@ -310,6 +547,33 @@ class ExecutionService:
             '/task_service.ExecutionService/GetEngineInfo',
             task__service__pb2.GetEngineInfoRequest.SerializeToString,
             task__service__pb2.EngineInfoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def EvaluateCase(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ExecutionService/EvaluateCase',
+            task__service__pb2.EvaluateCaseRequest.SerializeToString,
+            task__service__pb2.EvaluateCaseResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -1,7 +1,7 @@
 from typing import Optional
 from pydantic import Field, AliasChoices
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
@@ -35,3 +35,4 @@ class GroupMoveCasesRequest(APIModel):
 
 class GroupListData(PaginatedData[GroupItem]):
     pass
+

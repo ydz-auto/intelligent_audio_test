@@ -1,7 +1,7 @@
 from typing import Any, List, Optional
 from pydantic import Field
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
@@ -81,3 +81,4 @@ class PlaybackTestSchema(APIModel):
 
 class PlaybackAssociateSplSchema(APIModel):
     spl_mapping_id: int = Field(..., alias='splMappingId', validation_alias='splMappingId')
+

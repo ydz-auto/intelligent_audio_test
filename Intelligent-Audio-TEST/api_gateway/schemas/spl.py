@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 from pydantic import Field
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
@@ -145,3 +145,4 @@ class StopTestToneData(APIModel):
 class SplCalibrationResult(APIModel):
     id: int = Field(..., alias='id', validation_alias='id')
     calibration_status: str = Field(..., alias='calibrationStatus', validation_alias='calibrationStatus')
+

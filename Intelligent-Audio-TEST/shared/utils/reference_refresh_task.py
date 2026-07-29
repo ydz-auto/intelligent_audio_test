@@ -122,7 +122,7 @@ def submit_reference_refresh_task(case_ids: list, executor=None, refresher=None)
 
     Args:
         case_ids: 用例ID列表
-        executor: 执行器对象，需提供 api_task_pool.submit 方法（如 execution_engine 实例）。
+        executor: 执行器对象，需提供 _reference_refresh_pool.submit 方法（如 execution_engine 实例）。
                     如果未提供，将尝试延迟导入 execution_engine。
         refresher: 可调用对象，签名为 refresher(test_case)，用于刷新单个用例的参考参数。
                     如果未提供，将交由 ReferenceRefreshTask.run 内部延迟导入。
@@ -142,7 +142,7 @@ def submit_reference_refresh_task(case_ids: list, executor=None, refresher=None)
         except ImportError:
             raise RuntimeError("executor 未提供且 execution_engine 不可用")
 
-    executor.api_task_pool.submit(lambda: task.run(refresher=refresher))
+    executor._reference_refresh_pool.submit(lambda: task.run(refresher=refresher))
 
     logger.info(f"[submit_reference_refresh_task] 任务已提交: {task_id}, 用例数: {len(case_ids)}")
 

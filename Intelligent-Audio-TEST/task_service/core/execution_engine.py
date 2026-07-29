@@ -9,12 +9,12 @@ from shared.utils.log_handler import log_and_emit
 
 # 跨服务调用：通过 gRPC AudioService 调用音频引擎
 from shared.clients.grpc_clients import get_audio_service_stub
-from task_service.core.api_executor import APIExecutor
-from task_service.core.e2e_executor import E2EExecutor
 from shared.utils.event_manager import EventManager
 from shared.utils.config_manager import config_manager
 # 跨服务调用：通过 gRPC DeviceService 调用设备驱动工厂
 from shared.clients.grpc_clients import get_device_service_stub
+# 跨服务调用：通过 gRPC 调用 E2E/API 测试执行（e2e_test_service / api_test_service）
+from shared.clients.grpc_clients import get_e2e_execution_service_stub, get_api_test_service_stub
 
 # 执行引擎类，负责管理和执行测试任务
 # 实现单例模式，确保全局只有一个执行引擎实例
@@ -46,8 +46,8 @@ class ExecutionEngine:
                 cls._instance.api_entry_status = {}  # 存储 API 入口 (Master) 的状态: {url: {'available': True, 'fail_count': 0}}
                 cls._instance.api_entry_lock = threading.Lock()
                 cls._instance.event_manager = EventManager(cls._instance)  # 事件管理器，用于处理事件通知
-                cls._instance.api_executor = APIExecutor(cls._instance)  # API执行器，用于执行API测试用例
-                cls._instance.e2e_executor = E2EExecutor(cls._instance)  # E2E执行器，用于执行端到端测试用例
+                # API/E2E 执行逻辑已下沉到各自微服务（api_test_service / e2e_test_service）
+                # task_service 通过 gRPC 调用，不再持有本地执行器实例
                 
                 # 从配置文件加载超时时间
                 cls._instance.test_case_wait_time = config_manager.get_value('execution_engine', 'test_case_wait_time', 300)  # 等待测试用例执行完成的超时时间（秒）
@@ -79,30 +79,18 @@ class ExecutionEngine:
                 cls._instance.scheduler_app = None
 
                 # 独立线程池隔离 - 解决前端刷新导致音频播放卡顿问题
-                # API任务线程池（限制最大并发数，避免线程资源耗尽）
-                cls._instance.api_task_pool = ThreadPoolExecutor(
-                    max_workers=10,
-                    thread_name_prefix='api_task_'
-                )
-                # 设备控制线程池（专用于设备驱动操作）
-                cls._instance.device_control_pool = ThreadPoolExecutor(
-                    max_workers=5,
-                    thread_name_prefix='device_ctrl_'
-                )
-                # 音频播放线程池（高优先级，独立隔离）
-                cls._instance.audio_playback_pool = ThreadPoolExecutor(
-                    max_workers=3,
-                    thread_name_prefix='audio_play_'
+                # 微服务化后：API 执行下沉到 api_test_service，设备控制下沉到 e2e_test_service，
+                # 音频播放下沉到 e2e_test_service.AudioService，task_service 不再持有这些线程池。
+                # 保留 _reference_refresh_pool 供 reference_refresh_task 使用
+                cls._instance._reference_refresh_pool = ThreadPoolExecutor(
+                    max_workers=2,
+                    thread_name_prefix='ref_refresh_'
                 )
         return cls._instance
 
     def shutdown(self):
-        if hasattr(self, 'api_task_pool') and self.api_task_pool:
-            self.api_task_pool.shutdown(wait=False)
-        if hasattr(self, 'device_control_pool') and self.device_control_pool:
-            self.device_control_pool.shutdown(wait=False)
-        if hasattr(self, 'audio_playback_pool') and self.audio_playback_pool:
-            self.audio_playback_pool.shutdown(wait=False)
+        if hasattr(self, '_reference_refresh_pool') and self._reference_refresh_pool:
+            self._reference_refresh_pool.shutdown(wait=False)
         for task_id, executor in list(self.api_executors.items()):
             executor.shutdown(wait=False)
         self.api_executors.clear()
@@ -361,8 +349,8 @@ class ExecutionEngine:
                 # 创建任务完成事件（用于替代忙等待）
                 self.task_completion_events[task_id] = threading.Event()
                 
-                # 注册任务控制事件（供驱动实时获取）
-                register_task_events(task_id, stop_event, pause_event)
+                # 注册任务控制事件（通过 gRPC 同步到 e2e_test_service）
+                _register_task_events_via_grpc(task_id, stop_event, pause_event)
                 
                 # 更新运行状态
                 self.running_tasks[task_id] = task_type
@@ -562,14 +550,18 @@ class ExecutionEngine:
                         tc.error_message = '任务被手动停止'
                     
                     local_db_session.commit()
-                    # 停止所有音频播放
-                    audio_service.stop_task_audio(task_id)
+                    # 停止所有音频播放（通过 gRPC 调用 e2e_test_service 的 AudioService）
+                    _stop_task_audio_via_grpc(task_id)
                     self._emit_progress(task)  # 发送进度更新
                     
                     # 如果任务在workers中，设置停止标志
                     if task_id in self.workers:
                         self.stop_flags[task_id].set()  # 设置停止标志
                         self.pause_flags[task_id].set()  # 确保任务不处于暂停状态，以便能响应停止指令
+                        # 通过 gRPC 通知 e2e_test_service 同步停止事件
+                        _register_task_events_via_grpc(
+                            task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                        )
                         # 唤醒等待线程，使其能立即检测到 stop_event
                         self.notify_case_completed(task_id)
                     
@@ -614,8 +606,9 @@ class ExecutionEngine:
                     # 检查队列并启动下一个任务
                     self._check_queue()
 
-                    device_driver_factory.cleanup_devices(task_id)
-                    unregister_task_events(task_id)
+                    # 通过 gRPC 调用 e2e_test_service 的 DeviceService
+                    _cleanup_devices_via_grpc(task_id)
+                    _unregister_task_events_via_grpc(task_id)
                     
                     return True, "任务已停止"
                 else:
@@ -649,6 +642,10 @@ class ExecutionEngine:
                     if action == 'pause':
                         # 暂停任务
                         self.pause_flags[task_id].clear()  # 清除暂停标志，触发暂停
+                        # 通过 gRPC 通知 e2e_test_service 同步暂停事件
+                        _register_task_events_via_grpc(
+                            task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                        )
                         task.status = 'paused'  # 更新任务状态
                         
                         # 对于 API 任务，不重置执行中的用例状态为 pending
@@ -685,6 +682,10 @@ class ExecutionEngine:
                             _register_task_events_via_grpc(task_id, self.stop_flags[task_id], self.pause_flags[task_id])
                         
                         self.pause_flags[task_id].set()  # 设置暂停标志，恢复执行
+                        # 通过 gRPC 通知 e2e_test_service 同步恢复事件
+                        _register_task_events_via_grpc(
+                            task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                        )
                         task.status = 'running'  # 更新任务状态
                         local_db_session.commit()
                         self._emit_progress(task)  # 发送进度更新
@@ -775,11 +776,11 @@ class ExecutionEngine:
                             task._api_config = api_config
                             task._available_endpoints = available_endpoints
                             
-                            # 创建API任务的线程池
-                            self.api_executors[task_id] = ThreadPoolExecutor(max_workers=max_workers)
+                            # 微服务化后：不再创建本地线程池，API 用例通过 gRPC 调用 api_test_service 执行
+                            # api_test_service 内部管理自己的线程池和并发控制
                             self._log(
                                 level='INFO', 
-                                content=f"API任务 {task_id} 初始化成功，创建线程池，最大线程数: {max_workers}",
+                                content=f"API任务 {task_id} 初始化成功，执行下沉到 api_test_service",
                                 task_id=task_id,
                                 api_id=api_config.id if api_config else None
                             )
@@ -1033,21 +1034,7 @@ class ExecutionEngine:
                         # 根据任务类型执行测试用例
                         if task.type == 'api':
                             try:
-                                # 检查线程池是否存在
-                                if task_id not in self.api_executors:
-                                    # 线程池不存在，API任务初始化失败，标记为失败
-                                    self._log(
-                                        level='ERROR', 
-                                        content=f"API任务线程池不存在，任务 {task_id} 执行失败",
-                                        task_id=task_id
-                                    )
-                                    tc_rel.status = 'failed'
-                                    tc_rel.execution_status = 'failed'
-                                    tc_rel.error_message = "API任务线程池初始化失败"
-                                    local_db_session.commit()
-                                    continue
-
-                                # 原子占用用例，避免主循环在工作线程更新状态前重复提交同一用例
+                                # 原子占用用例，避免重复提交
                                 tc_rel_id = tc_rel.id
                                 claimed = local_db_session.query(TaskCase).filter(
                                     TaskCase.id == tc_rel_id,
@@ -1064,12 +1051,10 @@ class ExecutionEngine:
                                     local_db_session.rollback()
                                     continue
                                 local_db_session.commit()
-                                
-                                # 直接提交到线程池执行
-                                # 状态更新：主线程已将 pending 原子占用为 queued，工作线程再将 queued → running → completed/failed
-                                self.api_executors[task_id].submit(self._execute_api_case, app, task_id, tc_rel_id)
-                                # 对于API任务，详细状态由execute_api_case方法内部管理
-                                # 提交后立即继续，不等待执行完成
+
+                                # 微服务化后：直接同步通过 gRPC 调用 api_test_service 执行
+                                # api_test_service 内部管理自己的线程池和并发控制
+                                self._execute_api_case(app, task_id, tc_rel_id)
                                 continue
                             except Exception as e:
                                 # API任务执行异常，标记为失败，不执行E2E流程
@@ -1169,7 +1154,7 @@ class ExecutionEngine:
                     local_db_session.close()
 
                 # API/E2E任务：等待所有测试用例执行完成
-                if (task.type == 'api' and task_id in self.api_executors) or task.type == 'e2e':
+                if task.type in ('api', 'e2e'):
                     # 等待所有测试用例的执行状态都不是running或queued
                     max_wait_time = self.test_case_wait_time  # 从配置文件读取的超时时间
                     wait_start_time = time.time()
@@ -1381,11 +1366,6 @@ class ExecutionEngine:
                                 local_db_session.close()
                             except Exception:
                                 pass
-                    
-                    # 等待完成后关闭线程池
-                    if task_id in self.api_executors:
-                        self.api_executors[task_id].shutdown(wait=True)
-                        del self.api_executors[task_id]
 
                 # 检查任务状态，如果是暂停状态则保持暂停，不改变状态
                 if task.status != 'paused':
@@ -1651,23 +1631,53 @@ class ExecutionEngine:
 
     def _execute_api_case(self, app, task_id, tc_rel_id):
         """执行API测试用例
-        
+
+        微服务化迁移后，不再直接调用本地 self.api_executor，
+        改为通过 gRPC 调用 api_test_service 执行用例。
+
         Args:
             app: Flask应用实例
             task_id: 任务ID
             tc_rel_id: 任务用例关联ID
-            
+
         Returns:
             执行结果
         """
         try:
-            return self.api_executor.execute_api_case(app, task_id, tc_rel_id)
+            # 通过 gRPC 调用 api_test_service 的 CreateAPITest
+            # test_config 携带 case_ids，由 api_test_service 内部驱动 APIExecutor 执行
+            import json as _json
+            from shared.proto import api_test_service_pb2 as api_pb
+            from shared.clients.grpc_clients import get_api_test_service_stub
+
+            stub = get_api_test_service_stub()
+            req = api_pb.CreateAPITestRequest(
+                task_id=str(task_id),
+                test_config=_json.dumps({'case_ids': [str(tc_rel_id)]}),
+            )
+            resp = stub.CreateAPITest(req)
+            if not resp.success:
+                raise RuntimeError(f"api_test_service 执行失败: {resp.message}")
+
+            # 更新任务统计信息（基于 api_test_service 已写入数据库的 TaskCase 状态）
+            local_db_session = db.session()
+            try:
+                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+                if tc_rel:
+                    # 若 api_test_service 未设置 started_at，在此兜底
+                    if not tc_rel.started_at:
+                        tc_rel.started_at = datetime.now(self.utc_plus_8)
+                        local_db_session.commit()
+            finally:
+                local_db_session.close()
+
+            return True
         except Exception as e:
             # 捕获所有异常，确保测试用例状态被正确更新
             import traceback
             error_trace = traceback.format_exc()
             error_msg = f"API 执行异常: {str(e)}"
-            
+
             # 使用应用上下文记录日志和更新状态
             with app.app_context():
                 self._log(
@@ -1675,7 +1685,7 @@ class ExecutionEngine:
                     content=f"API 用例执行失败: {error_msg}\n{error_trace}",
                     task_id=task_id
                 )
-                
+
                 # 更新测试用例状态为失败
                 local_db_session = db.session()
                 try:
@@ -1695,7 +1705,7 @@ class ExecutionEngine:
                         tc_rel.duration = int((tc_rel.completed_at - started_at).total_seconds())
                         tc_rel.error_message = error_msg
                         local_db_session.commit()
-                        
+
                         # 更新任务统计信息
                         task = local_db_session.query(Task).get(task_id)
                         if task:
@@ -1712,16 +1722,18 @@ class ExecutionEngine:
 
     def _execute_e2e_case(self, task_id, tc_rel_id):
         """执行端到端测试用例
-        
+
+        通过 gRPC 调用 e2e_test_service 的 ExecutionService.StartE2ETask，
+        E2E 业务逻辑已下沉到 e2e_test_service 进程。
+
         Args:
             task_id: 任务ID
             tc_rel_id: 任务用例关联ID
-            
+
         Returns:
             执行结果（成功返回True，失败返回False）
         """
-        # 直接传递任务ID和测试用例关联ID，而不是对象，避免延迟加载问题
-        return self.e2e_executor.execute_e2e_case(task_id, tc_rel_id)
+        return _execute_e2e_case_via_grpc(task_id, tc_rel_id)
 
 # 创建ExecutionEngine实例，供外部调用
 execution_engine = ExecutionEngine()
@@ -1789,11 +1801,10 @@ def _get_task_events_via_grpc(task_id):
 
 
 def _register_task_events_via_grpc(task_id, stop_event, pause_event):
-    """通过 gRPC DeviceService 注册任务事件（原 register_task_events）
+    """通过 gRPC DeviceService 注册/同步任务事件
 
-    注意：stop_event / pause_event 是进程内 threading.Event 对象，
-    无法跨进程序列化传递。此处只传递事件状态，实际事件机制需重新设计。
-    TODO: 改为 gRPC 调用后，事件机制需重新设计（如基于状态轮询）
+    e2e_test_service 端首次调用创建本地 Event，后续调用根据传入的
+    stop_event_set/pause_event_set 同步其本地 Event 状态，实现跨进程事件通知。
     """
     import json as _json
     from shared.proto import e2e_service_pb2
@@ -1809,3 +1820,25 @@ def _register_task_events_via_grpc(task_id, stop_event, pause_event):
         ))
     except Exception:
         pass
+
+
+def _execute_e2e_case_via_grpc(task_id, tc_rel_id):
+    """通过 gRPC 调用 e2e_test_service 的 ExecutionService.StartE2ETask
+
+    原 `self.e2e_executor.execute_e2e_case(task_id, tc_rel_id)` 已替换为跨服务
+    gRPC 调用，E2E 业务逻辑已下沉到 e2e_test_service 进程。
+    """
+    import json as _json
+    from shared.proto import e2e_service_pb2
+    try:
+        stub = get_e2e_execution_service_stub()
+        resp = stub.StartE2ETask(e2e_service_pb2.StartE2ETaskRequest(
+            task_id=str(task_id),
+            tc_rel_id=str(tc_rel_id),
+            e2e_config='',
+        ))
+        if not resp.success:
+            return False
+        return True
+    except Exception:
+        return False

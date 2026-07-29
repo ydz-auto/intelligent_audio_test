@@ -18,6 +18,12 @@ service AudioService {
   rpc StartSPL(StartSPLRequest) returns (StartSPLResponse);
   // 停止SPL测量
   rpc StopSPL(StopSPLRequest) returns (StopSPLResponse);
+  // 扫描所有物理输出设备
+  rpc GetPhysicalDevices(GetPhysicalDevicesRequest) returns (GetPhysicalDevicesResponse);
+  // 根据唯一标识获取设备索引
+  rpc GetDeviceIndex(GetDeviceIndexRequest) returns (GetDeviceIndexResponse);
+  // 按模式停止音频播放
+  rpc StopAudioByPattern(StopAudioByPatternRequest) returns (StopAudioByPatternResponse);
 }
 
 // ===== 设备驱动服务 =====
@@ -32,6 +38,18 @@ service DeviceService {
   rpc UnregisterTaskEvents(UnregisterTaskEventsRequest) returns (UnregisterTaskEventsResponse);
   // 获取任务事件
   rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsResponse);
+  // 扫描设备
+  rpc DriverScan(DriverScanRequest) returns (DriverScanResponse);
+  // 解锁设备
+  rpc DriverUnlock(DriverUnlockRequest) returns (DriverUnlockResponse);
+  // 获取 mock 模式
+  rpc GetMockMode(GetMockModeRequest) returns (GetMockModeResponse);
+  // 设置 mock 模式
+  rpc SetMockMode(SetMockModeRequest) returns (SetMockModeResponse);
+  // 按关键词获取驱动名
+  rpc GetDriverNameByKeywords(GetDriverNameByKeywordsRequest) returns (GetDriverNameByKeywordsResponse);
+  // 获取已注册关键词
+  rpc GetRegisteredKeywords(GetRegisteredKeywordsRequest) returns (GetRegisteredKeywordsResponse);
 }
 
 // ===== 播放编排服务 =====
@@ -54,6 +72,16 @@ service DeviceResultService {
 service EnvDeviceService {
   // 控制环境设备（导轨旋转等）
   rpc ControlEnvDevice(ControlEnvDeviceRequest) returns (ControlEnvDeviceResponse);
+}
+
+// ===== E2E 执行服务 =====
+service ExecutionService {
+  // 启动 E2E 任务（执行单个 E2E 用例）
+  rpc StartE2ETask(StartE2ETaskRequest) returns (StartE2ETaskResponse);
+  // 停止 E2E 任务
+  rpc StopE2ETask(StopE2ETaskRequest) returns (StopE2ETaskResponse);
+  // 获取 E2E 任务状态
+  rpc GetE2ETaskStatus(GetE2ETaskStatusRequest) returns (GetE2ETaskStatusResponse);
 }
 
 // ==================== AudioService Messages ====================
@@ -133,6 +161,36 @@ message StopSPLResponse {
   string data = 3;
 }
 
+message GetPhysicalDevicesRequest {
+}
+
+message GetPhysicalDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的设备列表
+}
+
+message GetDeviceIndexRequest {
+  string unique_id = 1;
+}
+
+message GetDeviceIndexResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {"device_index": int}
+}
+
+message StopAudioByPatternRequest {
+  string task_id_pattern = 1;
+  string player_type_pattern = 2;
+}
+
+message StopAudioByPatternResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
 // ==================== DeviceService Messages ====================
 
 message CreateDriverRequest {
@@ -187,6 +245,70 @@ message GetTaskEventsResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON 序列化的事件列表
+}
+
+message DriverScanRequest {
+  string system = 1;
+  string keywords = 2;
+}
+
+message DriverScanResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的设备列表
+}
+
+message DriverUnlockRequest {
+  string system = 1;
+  string keywords = 2;
+  string serial_or_ip = 3;
+}
+
+message DriverUnlockResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetMockModeRequest {
+  string system = 1;
+}
+
+message GetMockModeResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {"mock_mode": bool}
+}
+
+message SetMockModeRequest {
+  string system = 1;
+  bool mock_mode = 2;
+}
+
+message SetMockModeResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetDriverNameByKeywordsRequest {
+  string system = 1;
+  string keywords = 2;
+}
+
+message GetDriverNameByKeywordsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {"driver_name": str}
+}
+
+message GetRegisteredKeywordsRequest {
+}
+
+message GetRegisteredKeywordsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的关键词列表
 }
 
 // ==================== PlaybackService Messages ====================
@@ -247,4 +369,38 @@ message ControlEnvDeviceResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON 序列化的控制结果
+}
+
+// ==================== ExecutionService Messages ====================
+
+message StartE2ETaskRequest {
+  string task_id = 1;
+  string tc_rel_id = 2;  // 任务用例关联ID
+  string e2e_config = 3;  // JSON 序列化的 E2E 配置（预留）
+}
+
+message StartE2ETaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的执行结果
+}
+
+message StopE2ETaskRequest {
+  string task_id = 1;
+}
+
+message StopE2ETaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetE2ETaskStatusRequest {
+  string task_id = 1;
+}
+
+message GetE2ETaskStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的任务状态
 }

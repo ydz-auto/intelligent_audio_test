@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional
 from pydantic import Field, AliasChoices
 
-from api_gateway.schemas.base import APIModel
+from shared.schemas.base import APIModel
 
 
 class ReportMetricValue(APIModel):
@@ -298,3 +298,4 @@ class ReportSearchCasesRequest(APIModel):
     tags: Optional[List[str]] = Field(None, alias='tags', validation_alias=AliasChoices('tags'))
     page: int = Field(1, alias='page', validation_alias=AliasChoices('page'))
     per_page: int = Field(20, alias='perPage', validation_alias=AliasChoices('per_page', 'perPage'))
+

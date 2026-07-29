@@ -509,8 +509,7 @@ class TaskController:
         algorithm_type = case_info.algorithm_type if case_info and hasattr(case_info, 'algorithm_type') else ''
         algorithm_results = []
         try:
-            # TODO: 跨服务依赖，应改为 HTTP 调用
-            from shared.utils.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            from shared.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type) if algorithm_type else []
             
             for i, result in enumerate(results):
@@ -588,8 +587,7 @@ class TaskController:
         field_mapping = {'result': [], 'reference': []}
         result_audios = {}  # {device_name: [{url, filename, param_code}]}
         try:
-            # TODO: 跨服务依赖，应改为 HTTP 调用
-            from shared.utils.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            from shared.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
             if algorithm_type:
                 field_mapping = AlgorithmResultFieldMapper.get_field_mapping(algorithm_type)
                 

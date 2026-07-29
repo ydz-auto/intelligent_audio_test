@@ -19,7 +19,6 @@ import os
 logger = logging.getLogger(__name__)
 
 # 导入全局app实例，用于在线程中创建应用上下文
-# TODO: 跨服务依赖，应改为 HTTP 调用
 from flask import current_app as app
 
 # 全局音频服务单例，确保驱动不被重复初始化
@@ -359,10 +358,9 @@ class PlaybackController:
             gain = 1.0
             if spl and device.current_spl_mapping_id:
                 try:
-                    # 跨服务调用：通过 gRPC AudioService 的 SPL 测量
+                    # 通过 gRPC AudioService 计算 SPL 到增益的映射
                     from api_gateway.controllers._grpc_proxies import spl_service
-                    # TODO: spl_to_gain 方法需在 gRPC server 端实现
-                    gain = getattr(spl_service, 'spl_to_gain', lambda *a: 1.0)(device.current_spl_mapping_id, spl)
+                    gain = spl_service.spl_to_gain(device.current_spl_mapping_id, spl)
                 except Exception:
                     pass
 

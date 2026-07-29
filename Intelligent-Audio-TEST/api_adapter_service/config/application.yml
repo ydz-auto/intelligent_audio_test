@@ -30,14 +30,27 @@ vendor:
   volc_ast:
     protocol: websocket
     ws_url: "${VOLC_WS_URL:}"
-    headers:
-      Authorization: "Bearer ${VOLC_API_KEY:}"
+    app_key: "${VOLC_APP_KEY:}"
+    access_key: "${VOLC_ACCESS_KEY:}"
+    resource_id: "${VOLC_RESOURCE_ID:}"
+    mode: "s2s"
     timeout: 30
 
-  mock:
-    protocol: mock
-    ws_url: "mock://localhost"
-    timeout: 5
+  qwen:
+    protocol: websocket
+    api_url: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-livetranslate-flash-realtime"
+    api_key: "${QWEN_API_KEY:}"
+    target_language: "en"
+    audio_enabled: false
+    timeout: 30
+
+  openai:
+    protocol: sse
+    base_url: "${OPENAI_BASE_URL:https://api.openai.com}"
+    api_key: "${OPENAI_API_KEY:}"
+    model: "${OPENAI_MODEL:gpt-4o}"
+    endpoint: "/v1/chat/completions"
+    timeout: 60
 
   voice_llm:
     protocol: http
@@ -56,6 +69,11 @@ vendor:
       session_timeout: 120
     concurrency:
       max_concurrent_sessions: 5
+
+  mock:
+    protocol: mock
+    ws_url: "mock://localhost"
+    timeout: 5
 
 result:
   max_frame_count: 100000

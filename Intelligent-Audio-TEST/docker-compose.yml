@@ -84,6 +84,8 @@ services:
       - TASK_SERVICE_GRPC_PORT=50061
       - E2E_TEST_SERVICE_HOST=e2e_test_service
       - E2E_TEST_SERVICE_GRPC_PORT=50051
+      - API_TEST_SERVICE_HOST=api_test_service
+      - API_TEST_SERVICE_GRPC_PORT=50071
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,6 +119,7 @@ services:
       - E2E_TEST_SERVICE_GRPC_PORT=50051
       - API_TEST_SERVICE_HOST=api_test_service
       - API_TEST_SERVICE_PORT=5003
+      - API_TEST_SERVICE_GRPC_PORT=50071
     depends_on:
       postgres:
         condition: service_healthy
@@ -156,12 +159,28 @@ services:
     devices:
       - /dev/bus/usb:/dev/bus/usb
 
+  api_adapter_service:
+    build:
+      context: .
+      dockerfile: Dockerfile.api_adapter_service
+    ports:
+      - "8000:8000"
+    environment:
+      - VOICE_LLM_API_BASE=${VOICE_LLM_API_BASE:-}
+      - VOICE_LLM_API_KEY=${VOICE_LLM_API_KEY:-}
+      - VOLC_WS_URL=${VOLC_WS_URL:-}
+      - VOLC_API_KEY=${VOLC_API_KEY:-}
+    depends_on:
+      - postgres
+      - redis
+
   api_test_service:
     build:
       context: .
       dockerfile: Dockerfile.api_test_service
     ports:
       - "5003:5003"
+      - "50071:50071"
     environment:
       - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
       - REDIS_URL=redis://redis:6379
@@ -173,10 +192,14 @@ services:
       - OSS_BUCKET_REPORTS=reports
       - OSS_BUCKET_TEMP=temp
       - SERVICE_HOST=api_test_service
+      - GRPC_PORT=50071
+      - API_ADAPTER_SERVICE_HOST=api_adapter_service
+      - API_ADAPTER_SERVICE_PORT=8000
     depends_on:
       - postgres
       - redis
       - minio
+      - api_adapter_service
     deploy:
       replicas: 2
 

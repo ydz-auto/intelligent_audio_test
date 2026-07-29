@@ -7,13 +7,11 @@ from shared.utils.report.report_utils import ReportUtils
 from shared.utils.log_handler import log_and_emit
 from shared.utils.report.report_query_builder import ReportQueryBuilder
 from shared.utils.result_data_store import load_full_result_data
-# TODO: 跨服务依赖，应改为 HTTP 调用
-from shared.utils.reference_params_generator import ReferenceParamsGenerator
+from shared.algorithm.reference_params_generator import ReferenceParamsGenerator
 from api_gateway.schemas.report import GenerateTaskReportRequest, ReportDetailData as ReportDetailDataSchema, ReportSummarySimplified
 from datetime import datetime, timedelta, timezone
 from shared.utils.query_utils import now_cst
 from api_gateway.controllers.report_controller_base import ReportControllerBase
-# TODO: 跨服务依赖，应改为 HTTP 调用
 from api_gateway.app import socketio
 import json
 import traceback
@@ -561,7 +559,6 @@ class ReportControllerTask(ReportControllerBase):
 
     @staticmethod
     def _generate_task_report_async(task_id, name, description):
-        # TODO: 跨服务依赖，应改为 HTTP 调用
         from flask import current_app as flask_app
         if flask_app is None:
             log_and_emit('ERROR', 'report', f'[generate_task_report_async] Flask app is None, cannot create context', task_id=task_id)

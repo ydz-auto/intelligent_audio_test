@@ -130,3 +130,13 @@ Intelligent-Audio-TEST/query_logs.py
 
 # Log file (binary log)
 Intelligent-Audio-TEST/log
+
+# Conda cache & environment
+.conda/
+
+# Redis dump
+dump.rdb
+
+# Graphify output
+graphify-out/
+Intelligent-Audio-TEST/graphify-out/
