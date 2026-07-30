@@ -1984,8 +1984,8 @@ input[type="checkbox"].test-case-checkbox:hover {
     text-decoration: underline;
 }
 
-/* Use Case Details Modal */
-.modal {
+/* Use Case Details Modal - 作用域限定，避免污染全局 .modal */
+.test-view-common .modal {
     display: none;
     position: fixed;
     z-index: 1000;

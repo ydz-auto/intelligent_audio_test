@@ -87,15 +87,16 @@ export function useApiTest() {
     algorithmModalMode,
     algorithmEditData,
     algorithmSearchQuery,
-    editingAlgorithm,
-    filteredAlgorithmList,
-    loadAlgorithms,
-    selectAlgorithm,
-    getAlgorithmName,
-    openAlgorithmModal,
-    openAlgorithmConfigModal,
-    closeAlgorithmModal
-  } = useAlgorithmSelection({
+  editingAlgorithm,
+  filteredAlgorithmList,
+  loadAlgorithms,
+  selectAlgorithm,
+  getAlgorithmName,
+  openAlgorithmModal,
+  openCreateAlgorithmModal,
+  openAlgorithmConfigModal,
+  closeAlgorithmModal
+} = useAlgorithmSelection({
     onSelectCallback: async (type: string | null) => {
       if (type) {
         await fetchTestCases({ algorithmType: type })
@@ -735,6 +736,7 @@ export function useApiTest() {
     selectAlgorithm,
     getAlgorithmName,
     openAlgorithmModal,
+    openCreateAlgorithmModal,
     openAlgorithmConfigModal,
     closeAlgorithmModal,
     algorithmModalVisible,

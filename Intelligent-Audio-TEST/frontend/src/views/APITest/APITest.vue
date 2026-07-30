@@ -32,7 +32,7 @@
       >
         <template #header-extra>
           <div class="algorithm-toolbar">
-            <button class="btn btn-primary" @click="openAlgorithmModal">
+            <button class="btn btn-primary" @click="openCreateAlgorithmModal">
               <i class="fas fa-plus"></i> 新增算法
             </button>
             <div class="search-box">
@@ -324,6 +324,7 @@ const {
   selectAlgorithm,
   getAlgorithmName,
   openAlgorithmModal,
+  openCreateAlgorithmModal,
   openAlgorithmConfigModal,
   closeAlgorithmModal,
   
