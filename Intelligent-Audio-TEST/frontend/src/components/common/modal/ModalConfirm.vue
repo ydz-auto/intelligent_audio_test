@@ -26,7 +26,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useModalControl } from '../../../composables/useModal'
+import { useModalControl } from '../../../composables/modal/useModal'
 
 const props = defineProps({
   modalId: {

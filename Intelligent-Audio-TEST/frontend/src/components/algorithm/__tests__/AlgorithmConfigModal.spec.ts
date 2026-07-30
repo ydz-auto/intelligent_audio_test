@@ -66,13 +66,13 @@ vi.mock('../MappingEditor.vue', () => ({
 }))
 
 // Mock useModalControl
-vi.mock('../../../composables/useModal', () => ({
+vi.mock('../../../composables/modal/useModal', () => ({
   useModalControl: () => ({ open: mockOpenConfirm }),
   MODAL_TYPES: { BASIC_CONFIRM: 'basicConfirm' },
 }))
 
 // Mock useDimensions
-vi.mock('../../../composables/useDimensions', () => ({
+vi.mock('../../../composables/shared/useDimensions', () => ({
   useDimensions: () => ({ fetchAllDimensions: mockFetchAllDimensions }),
 }))
 

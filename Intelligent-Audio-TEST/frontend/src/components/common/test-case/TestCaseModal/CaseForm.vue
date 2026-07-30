@@ -156,11 +156,11 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, inject, nextTick } from 'vue';
-import AlgorithmSelector from '../../AlgorithmSelector.vue';
+import AlgorithmSelector from '../../audio/AlgorithmSelector.vue';
 import RoundConfigEditor from './RoundConfigEditor.vue';
 import OverallEvaluationEditor from './OverallEvaluationEditor.vue';
-import { useAlgorithmConfig } from '../../../../composables/useAlgorithmConfig';
-import { useAlgorithmLabels } from '../../../../composables/useAlgorithmLabels';
+import { useAlgorithmConfig } from '../../../../composables/algorithm/useAlgorithmConfig';
+import { useAlgorithmLabels } from '../../../../composables/algorithm/useAlgorithmLabels';
 import { tagsApi, algorithmApi } from '../../../../utils/api';
 import type { TestCaseFormData, RoundConfigItem, PlaybackDevice } from './types';
 

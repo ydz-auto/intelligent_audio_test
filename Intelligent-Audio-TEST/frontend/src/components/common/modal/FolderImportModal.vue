@@ -128,9 +128,9 @@ import { ref, computed, watch, reactive, onMounted, onUnmounted } from 'vue'
 import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType } from '../../../utils/audioUtils'
 import { evaluationApi, devicesApi, algorithmApi } from '../../../utils/api'
 import type { PropType } from 'vue'
-import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/useTestCaseConfig'
-import { useAlgorithmConfig } from '../../../composables/useAlgorithmConfig'
-import UploadOptions from '../../common/UploadOptions.vue'
+import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/testCase/useTestCaseConfig'
+import { useAlgorithmConfig } from '../../../composables/algorithm/useAlgorithmConfig'
+import UploadOptions from '../misc/UploadOptions.vue'
 
 const algorithmConfig = useAlgorithmConfig()
 const getAlgorithmOptions = () => algorithmConfig.getAlgorithmOptions()

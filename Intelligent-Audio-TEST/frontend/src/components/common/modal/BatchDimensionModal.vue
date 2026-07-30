@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { useDimensions } from '../../../composables/useDimensions'
+import { useDimensions } from '../../../composables/shared/useDimensions'
 
 interface Dimension {
   id: string

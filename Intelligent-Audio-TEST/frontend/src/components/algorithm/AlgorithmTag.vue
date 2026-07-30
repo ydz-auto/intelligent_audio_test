@@ -22,7 +22,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { useAlgorithmLabels } from '../../composables/useAlgorithmLabels'
+import { useAlgorithmLabels } from '../../composables/algorithm/useAlgorithmLabels'
 
 const { loadAlgorithms, getAlgorithmLabel, algorithms } = useAlgorithmLabels()
 

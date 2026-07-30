@@ -397,12 +397,12 @@
 
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue'
-import AudioPlayerModal from '../common/AudioPlayerModal.vue'
-import TestCaseReportDetail from '../common/TestCaseReportDetail.vue'
-import PaginationComponent from '../common/PaginationComponent.vue'
+import AudioPlayerModal from '../common/audio/AudioPlayerModal.vue'
+import TestCaseReportDetail from '../common/misc/TestCaseReportDetail.vue'
+import PaginationComponent from '../common/data/PaginationComponent.vue'
 import { reportsApi } from '../../utils/api'
 import { API_CONFIG } from '../../utils/config'
-import { useNotification } from '../../composables/useNotification'
+import { useNotification } from '../../composables/modal/useNotification'
 import '../../assets/styles/components/report-filter-card.css'
 
 // Audio player state

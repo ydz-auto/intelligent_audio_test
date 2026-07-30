@@ -5,7 +5,7 @@
  * 此文件作为中转层，确保导入路径正确。
  */
 
-import { getModalManager as getOriginalManager } from '../composables/useModal';
+import { getModalManager as getOriginalManager } from '../composables/modal/useModal';
 
 export const getModalManager = getOriginalManager;
 

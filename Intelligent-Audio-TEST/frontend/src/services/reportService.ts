@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 import { reportsApi } from '../utils/api';
-import { useModalControl, MODAL_TYPES } from '../composables/useModal';
+import { useModalControl, MODAL_TYPES } from '../composables/modal/useModal';
 import { sanitizeConclusion } from '../utils/sanitize';
 import { normalizeReport } from '../utils/fieldNaming';
 import socketService from '../utils/socket';

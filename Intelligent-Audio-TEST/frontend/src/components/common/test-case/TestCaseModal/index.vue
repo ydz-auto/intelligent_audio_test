@@ -135,8 +135,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted, provide } from 'vue';
 import { testcasesApi } from '../../../../utils/api';
-import { useNotification } from '../../../../composables/useNotification';
-import AudioSelectModal from '../../AudioSelectModal.vue';
+import { useNotification } from '../../../../composables/modal/useNotification';
+import AudioSelectModal from '../../audio/AudioSelectModal.vue';
 import AudioPreviewModal from '../../modal/AudioPreviewModal.vue';
 import GlobalPlaybackDeviceModal from '../../modal/GlobalPlaybackDeviceModal.vue';
 import BatchSplModal from './BatchSplModal.vue';

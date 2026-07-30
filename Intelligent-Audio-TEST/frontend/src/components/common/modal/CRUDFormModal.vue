@@ -66,10 +66,10 @@ import FormField from '../form/FormField.vue'
 import ArrayField from '../form/ArrayField.vue'
 import DeviceSelector from './DeviceSelector.vue'
 
-import { useFormValidation } from '../../../composables/useFormValidation'
+import { useFormValidation } from '../../../composables/modal/useFormValidation'
 import { useModalStore } from '../../../store/modalStore'
-import { useDeviceSelection } from '../../../composables/useDeviceSelection'
-import { useDeviceScanning } from '../../../composables/useDeviceScanning'
+import { useDeviceSelection } from '../../../composables/device/useDeviceSelection'
+import { useDeviceScanning } from '../../../composables/device/useDeviceScanning'
 import { devicesApi, splApi } from '../../../utils/api'
 
 const props = defineProps({

@@ -142,7 +142,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
-import { useAlgorithmLabels } from '../../../composables/useAlgorithmLabels';
+import { useAlgorithmLabels } from '../../../composables/algorithm/useAlgorithmLabels';
 import { copyToClipboard } from '../../../utils/utils';
 
 const { loadAlgorithms, getAlgorithmLabel } = useAlgorithmLabels();

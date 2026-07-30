@@ -24,7 +24,7 @@
 @import './components/dropdown-multi-select.css';
 @import './components/test-case-card.css';
 @import './components/comparison-common.css';
-@import './device-card.css';
+@import './device/device-card.css';
 @import './e2etest/dropdown.css';
 
 /* 4. 页面布局样式 - 响应式设计实现 */
@@ -37,15 +37,19 @@
 @import './tasks/filter-sort.css';
 @import './tasks/stats.css';
 
-/* 5. 报告相关样式 */
+/* 6. 报告相关样式 */
 @import './reports/base.css';
+@import './reports/reports.css';
 
-/* 5. 页面特定样式 - 各页面专用样式 */
-@import './device.css';
+/* 7. 页面特定样式 - 各页面专用样式 */
+@import './device/device.css';
 @import './test-case-manager/base.css';
 @import './test-case-manager/toolbar.css';
 @import './test-case-manager/category.css';
-@import './SPLMapping.css';
+@import './test-case-manager/test-case-manager.css';
+@import './spl-mapping/spl-mapping.css';
+@import './e2etest/e2etest.css';
+@import './api-test/api-test.css';
 @import './api-test/toolbar.css';
 @import './api-test/visualization.css';
 @import './api-test/step-panel.css';

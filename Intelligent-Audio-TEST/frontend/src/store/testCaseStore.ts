@@ -3,10 +3,10 @@ import { ref } from 'vue'
 import { testcasesApi } from '../utils/api'
 import { convertTestCaseFormData } from '../utils/utils'
 import { snakeToCamelObject } from '../utils/fieldNaming'
-import { useNotification } from '../composables/useNotification'
-import { useTestCaseBatchOps } from '../composables/useTestCaseBatchOps'
-import { useTestCaseGroups } from '../composables/useTestCaseGroups'
-import { useTestCaseImport } from '../composables/useTestCaseImport'
+import { useNotification } from '../composables/modal/useNotification'
+import { useTestCaseBatchOps } from '../composables/testCase/useTestCaseBatchOps'
+import { useTestCaseGroups } from '../composables/testCase/useTestCaseGroups'
+import { useTestCaseImport } from '../composables/testCase/useTestCaseImport'
 import type {
   TestCase,
   TestCaseFormData,

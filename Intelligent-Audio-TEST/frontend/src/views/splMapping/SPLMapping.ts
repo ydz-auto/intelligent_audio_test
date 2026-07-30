@@ -1,5 +1,5 @@
 import { ref, reactive, computed, watch, nextTick } from 'vue';
-import { getModalManager } from '../../composables/useModal';
+import { getModalManager } from '../../composables/modal/useModal';
 import { splApi, playbackApi } from '../../utils/api';
 import Chart, { ChartDataset } from 'chart.js/auto';
 import type {

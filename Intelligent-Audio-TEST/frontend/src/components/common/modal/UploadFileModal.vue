@@ -169,10 +169,10 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/useTestCaseConfig'
+import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/testCase/useTestCaseConfig'
 import { parseAudioTxtFile, parseAnnotationFormat, determineAnnotationType } from '../../../utils/audioUtils'
 import { algorithmApi } from '../../../utils/api'
-import UploadOptions from '../../common/UploadOptions.vue'
+import UploadOptions from '../misc/UploadOptions.vue'
 
 const props = defineProps({
   modalId: { type: String, default: '' },

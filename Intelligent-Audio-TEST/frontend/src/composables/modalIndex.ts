@@ -30,7 +30,7 @@ export {
   getModalManager,
   provideModal,
   MODAL_TYPES
-} from './useModal'
+} from './modal/useModal'
 
 export type { 
   ModalType,
@@ -38,4 +38,4 @@ export type {
   ActiveModal
 } from '../shared/types'
 
-export type { ModalManager } from './useModal'
+export type { ModalManager } from './modal/useModal'

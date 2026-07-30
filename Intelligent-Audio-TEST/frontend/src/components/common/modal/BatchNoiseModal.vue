@@ -69,7 +69,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { getModalManager } from '../../../composables/useModal'
+import { getModalManager } from '../../../composables/modal/useModal'
 import { MODAL_TYPES } from '../../../shared/types'
 import { playbackApi } from '../../../utils/api'
 

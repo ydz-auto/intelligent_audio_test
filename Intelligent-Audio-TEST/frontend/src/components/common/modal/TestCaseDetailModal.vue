@@ -109,7 +109,7 @@
 <script setup>
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { tasksApi, logsApi } from '../../../utils/api'
-import TestCaseReportDetail from '../TestCaseReportDetail.vue'
+import TestCaseReportDetail from '../misc/TestCaseReportDetail.vue'
 
 const props = defineProps({
   taskId: { type: [String, Number], required: true },

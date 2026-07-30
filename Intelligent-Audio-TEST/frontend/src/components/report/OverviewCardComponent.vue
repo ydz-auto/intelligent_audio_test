@@ -54,7 +54,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import DataTable from '../common/DataTable.vue'
+import DataTable from '../common/data/DataTable.vue'
 
 const props = defineProps({
   reportData: {

@@ -33,7 +33,7 @@ vi.mock('../../../components/algorithm/AlgorithmConfigModal.vue', () => ({
 }))
 
 // Mock PaginationComponent
-vi.mock('../../../components/common/PaginationComponent.vue', () => ({
+vi.mock('../../../components/common/data/PaginationComponent.vue', () => ({
   default: defineComponent({
     name: 'PaginationComponent',
     props: ['currentPage', 'pageSize', 'totalItems'],
@@ -42,10 +42,10 @@ vi.mock('../../../components/common/PaginationComponent.vue', () => ({
   }),
 }))
 
-// Mock useModalControl — 组件从 src/views/ 导入 '../composables/useModal' → src/composables/useModal
-// 从测试文件 src/components/algorithm/__tests__/ 到 src/composables/useModal 是 '../../../composables/useModal'
+// Mock useModalControl — 组件从 src/views/ 导入 '../composables/modal/useModal' → src/composables/modal/useModal
+// 从测试文件 src/components/algorithm/__tests__/ 到 src/composables/modal/useModal 是 '../../../composables/modal/useModal'
 const mockOpenConfirm = vi.fn()
-vi.mock('../../../composables/useModal', () => ({
+vi.mock('../../../composables/modal/useModal', () => ({
   useModalControl: () => ({
     open: mockOpenConfirm,
   }),
@@ -53,7 +53,7 @@ vi.mock('../../../composables/useModal', () => ({
 }))
 
 // 导入被测组件
-import AlgorithmConfigPage from '../../../views/AlgorithmConfigPage.vue'
+import AlgorithmConfigPage from '../../../views/AlgorithmConfig/AlgorithmConfigPage.vue'
 
 // 辅助函数
 function makeOkResponse(body: any) {

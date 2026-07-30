@@ -1,23 +1,23 @@
 import { createRouter, createWebHashHistory, RouteRecordRaw } from 'vue-router'
 
 const routes : Array<RouteRecordRaw> = [
-  { path: '/', name: 'home', component: () => import('../views/Home.vue') },
-  { path: '/E2ETest', name: 'e2eTest', component: () => import('../views/E2ETest.vue') },
-  { path: '/APITest', name: 'apiTest', component: () => import('../views/APITest.vue') },
-  { path: '/apitest', name: 'apiTestLower', component: () => import('../views/APITest.vue') },
-  { path: '/tasks', name: 'tasks', component: () => import('../views/Tasks.vue') },
-  { path: '/history-reports', name: 'historyReports', component: () => import('../views/HistoryReports.vue') },
-  { path: '/test-reports', name: 'testReports', component: () => import('../views/TestReports.vue') },
-  { path: '/report/:id', name: 'reportView', component: () => import('../views/ReportView.vue') },
-  { path: '/report', name: 'reportViewQuery', component: () => import('../views/ReportView.vue') },
-  { path: '/TestCaseManager', name: 'testCaseManager', component: () => import('../views/TestCaseManager.vue') },
-  { path: '/Evaluation', name: 'evaluation', component: () => import('../views/Evaluation.vue') },
-  { path: '/Device', name: 'device', component: () => import('../views/Device.vue') },
-  { path: '/AudioImport', name: 'audioImport', component: () => import('../views/AudioImport.vue') },
-  { path: '/SPLMapping', name: 'splMapping', component: () => import('../views/SPLMapping.vue') },
-  { path: '/LogView', name: 'logView', component: () => import('../views/LogView.vue') },
-  { path: '/AlgorithmConfig', name: 'algorithmConfig', component: () => import('../views/AlgorithmConfigPage.vue') },
-  { path: '/TagManagement', name: 'tagManagement', component: () => import('../views/TagManagement.vue') }
+  { path: '/', name: 'home', component: () => import('../views/Home/Home.vue') },
+  { path: '/E2ETest', name: 'e2eTest', component: () => import('../views/E2ETest/E2ETest.vue') },
+  { path: '/APITest', name: 'apiTest', component: () => import('../views/APITest/APITest.vue') },
+  { path: '/apitest', name: 'apiTestLower', component: () => import('../views/APITest/APITest.vue') },
+  { path: '/tasks', name: 'tasks', component: () => import('../views/Tasks/Tasks.vue') },
+  { path: '/history-reports', name: 'historyReports', component: () => import('../views/HistoryReports/HistoryReports.vue') },
+  { path: '/test-reports', name: 'testReports', component: () => import('../views/TestReports/TestReports.vue') },
+  { path: '/report/:id', name: 'reportView', component: () => import('../views/ReportView/ReportView.vue') },
+  { path: '/report', name: 'reportViewQuery', component: () => import('../views/ReportView/ReportView.vue') },
+  { path: '/TestCaseManager', name: 'testCaseManager', component: () => import('../views/TestCaseManager/TestCaseManager.vue') },
+  { path: '/Evaluation', name: 'evaluation', component: () => import('../views/Evaluation/Evaluation.vue') },
+  { path: '/Device', name: 'device', component: () => import('../views/Device/Device.vue') },
+  { path: '/AudioImport', name: 'audioImport', component: () => import('../views/AudioImport/AudioImport.vue') },
+  { path: '/SPLMapping', name: 'splMapping', component: () => import('../views/SPLMapping/SPLMapping.vue') },
+  { path: '/LogView', name: 'logView', component: () => import('../views/LogView/LogView.vue') },
+  { path: '/AlgorithmConfig', name: 'algorithmConfig', component: () => import('../views/AlgorithmConfig/AlgorithmConfigPage.vue') },
+  { path: '/TagManagement', name: 'tagManagement', component: () => import('../views/TagManagement/TagManagement.vue') }
 ]
 
 const router = createRouter({

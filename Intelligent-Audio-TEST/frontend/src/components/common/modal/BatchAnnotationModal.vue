@@ -169,7 +169,7 @@ import { ref, computed, watch } from 'vue'
 import { parseAnnotationFormat, parseAudioTxtFile } from '../../../utils/audioUtils'
 import { audiosApi } from '../../../utils/api'
 import SparkMD5 from 'spark-md5'
-import AlgorithmSelector from '../AlgorithmSelector.vue'
+import AlgorithmSelector from '../audio/AlgorithmSelector.vue'
 
 defineProps({})
 const emit = defineEmits(['close', 'success'])

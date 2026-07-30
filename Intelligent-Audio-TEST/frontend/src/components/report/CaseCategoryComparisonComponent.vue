@@ -273,7 +273,7 @@
 <script setup>
 import { ref, computed, watch, onUnmounted } from 'vue'
 import ChartComponent from './ChartComponent.vue'
-import DataTable from '../common/DataTable.vue'
+import DataTable from '../common/data/DataTable.vue'
 import { reportsApi } from '../../utils/api'
 import '../../assets/styles/components/report-filter-card.css'
 

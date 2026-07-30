@@ -553,9 +553,9 @@
 import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
 import BasicModal from '../common/modal/BasicModal.vue'
 import MappingEditor from './MappingEditor.vue'
-import { useModalControl, MODAL_TYPES } from '../../composables/useModal'
-import { useDimensions } from '../../composables/useDimensions'
-import { useAlgorithmConfig } from '../../composables/useAlgorithmConfig'
+import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal'
+import { useDimensions } from '../../composables/shared/useDimensions'
+import { useAlgorithmConfig } from '../../composables/algorithm/useAlgorithmConfig'
 import { algorithmApi, evaluationApi } from '../../utils/api'
 
 const PARAM_CODE_PRESETS: Record<string, {param_name: string; param_type: string; default_value?: string; help_text?: string; min_value?: number; max_value?: number; step?: number; unit?: string}> = {

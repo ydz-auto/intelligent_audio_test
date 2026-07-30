@@ -113,7 +113,7 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue'
 import { algorithmApi } from '../../utils/api'
-import { useNotification } from '../../composables/useNotification'
+import { useNotification } from '../../composables/modal/useNotification'
 
 const { warning, error } = useNotification()
 

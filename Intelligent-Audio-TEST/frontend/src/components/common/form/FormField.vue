@@ -378,7 +378,7 @@ import RequiredInputsEditor from './RequiredInputsEditor.vue'
 import OutputFieldsEditor from './OutputFieldsEditor.vue'
 import APISettingsEditor from './APISettingsEditor.vue'
 import RuleEditor from './RuleEditor.vue'
-import { useAlgorithmConfig } from '../../../composables/useAlgorithmConfig'
+import { useAlgorithmConfig } from '../../../composables/algorithm/useAlgorithmConfig'
 
 const props = defineProps({
   field: {type: Object, required: true},

@@ -45,7 +45,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import DynamicForm from '../../algorithm/DynamicForm.vue'
-import { useAlgorithmConfig } from '../../../composables/useAlgorithmConfig'
+import { useAlgorithmConfig } from '../../../composables/algorithm/useAlgorithmConfig'
 
 interface Props {
   modalId: string

@@ -324,14 +324,14 @@
 import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue';
 import TestCaseListWithPagination from './TestCaseListWithPagination.vue';
 import TestCaseGroupActions from './TestCaseGroupActions.vue';
-import AudioPlayerModal from '../AudioPlayerModal.vue';
+import AudioPlayerModal from '../audio/AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import { playbackApi, algorithmApi } from '../../../utils/api';
 import { normalizeTestCaseConfig } from '../../../utils/utils';
-import { useTestCaseBatchActions } from '../../../composables/useTestCaseBatchActions';
-import { useTestCaseAudioPreview } from '../../../composables/useTestCaseAudioPreview';
-import { useTestCaseGroupExpand } from '../../../composables/useTestCaseGroupExpand';
-import { useTestCaseFilters } from '../../../composables/useTestCaseFilters';
+import { useTestCaseBatchActions } from '../../../composables/testCase/useTestCaseBatchActions';
+import { useTestCaseAudioPreview } from '../../../composables/testCase/useTestCaseAudioPreview';
+import { useTestCaseGroupExpand } from '../../../composables/testCase/useTestCaseGroupExpand';
+import { useTestCaseFilters } from '../../../composables/testCase/useTestCaseFilters';
 import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../shared/types';
 
 const props = defineProps<{

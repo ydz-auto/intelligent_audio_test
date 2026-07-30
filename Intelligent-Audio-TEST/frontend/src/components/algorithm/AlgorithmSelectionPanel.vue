@@ -59,7 +59,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { AlgorithmOption } from '@/composables/useAlgorithmSelection'
+import type { AlgorithmOption } from '@/composables/algorithm/useAlgorithmSelection'
 
 interface Props {
   algorithmList: AlgorithmOption[]
@@ -117,5 +117,4 @@ function getAlgorithmIcon(groupName?: string): string {
 </script>
 
 <style>
-@import '@/assets/styles/test-common.css';
 </style>

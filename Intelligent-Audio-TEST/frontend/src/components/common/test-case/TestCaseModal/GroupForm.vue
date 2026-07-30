@@ -29,8 +29,8 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue';
-import { useAlgorithmConfig } from '../../../../composables/useAlgorithmConfig';
-import { useAlgorithmLabels } from '../../../../composables/useAlgorithmLabels';
+import { useAlgorithmConfig } from '../../../../composables/algorithm/useAlgorithmConfig';
+import { useAlgorithmLabels } from '../../../../composables/algorithm/useAlgorithmLabels';
 import type { GroupFormData } from './types';
 
 const props = defineProps<{

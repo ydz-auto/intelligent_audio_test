@@ -1,0 +1,533 @@
+.report-view-page {
+  min-height: 100vh;
+  padding: 0;
+  margin: -32px;
+  width: calc(100% + 64px);
+  background: white;
+}
+
+.back-section {
+  margin-bottom: 24px;
+}
+
+.loading-state,
+.error-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  text-align: center;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #1677FF;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-state p,
+.error-state p,
+.empty-state p {
+  color: #64748b;
+  margin: 8px 0 24px 0;
+}
+
+.error-state h2,
+.empty-state h2 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 8px 0;
+}
+
+.btn-primary {
+  padding: 10px 24px;
+  background: #1677FF;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary:hover {
+  background: #0958D9;
+}
+
+.btn {
+  padding: 8px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.2s;
+  font-weight: 500;
+}
+
+.btn-primary {
+  background: #1677FF;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #0958D9;
+}
+
+.btn-success {
+  background: #52C41A;
+  color: white;
+}
+
+.btn-success:hover {
+  background: #389E0D;
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-secondary:hover {
+  background: #e2e8f0;
+}
+
+/* 对比报告容器 */
+.comparison-report-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.comparison-header {
+  margin-bottom: 32px;
+  text-align: center;
+}
+
+.comparison-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 12px 0;
+}
+
+.comparison-subtitle {
+  font-size: 15px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* 报告保存区域 / 分析结论卡片 */
+.analysis-conclusion-card {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  display: flex;
+  gap: 20px;
+}
+
+.analysis-icon {
+  width: 48px;
+  height: 48px;
+  background: #e6f7ff;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #1890ff;
+  font-size: 24px;
+}
+
+.analysis-content {
+  flex: 1;
+}
+
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.analysis-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.analysis-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.analysis-status .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.analysis-status.published .status-dot {
+  background: #52C41A;
+}
+
+.analysis-status.draft .status-dot {
+  background: #FAAD14;
+}
+
+.analysis-text {
+  font-size: 14px;
+  color: #334155;
+  line-height: 1.8;
+  margin-bottom: 16px;
+}
+
+.analysis-text :deep(p) {
+  margin: 0 0 12px 0;
+}
+
+.analysis-text :deep(ul),
+.analysis-text :deep(ol) {
+  margin: 0 0 12px 0;
+  padding-left: 24px;
+}
+
+.analysis-text :deep(li) {
+  margin-bottom: 6px;
+}
+
+.analysis-edit {
+  margin-bottom: 16px;
+}
+
+.edit-field {
+  margin-bottom: 16px;
+}
+
+.edit-field label {
+  display: block;
+  font-size: 13px;
+  color: #64748b;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.edit-field input,
+.edit-field textarea {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #1e293b;
+  background: white;
+  transition: all 0.2s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.edit-field input:focus,
+.edit-field textarea:focus {
+  outline: none;
+  border-color: #1677FF;
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.1);
+}
+
+.edit-field textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.6;
+}
+
+.analysis-textarea {
+  width: 100%;
+  min-height: 120px;
+  padding: 12px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #1e293b;
+  background: white;
+  resize: vertical;
+  line-height: 1.8;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.analysis-textarea:focus {
+  outline: none;
+  border-color: #1677FF;
+  box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.1);
+}
+
+.analysis-actions {
+  display: flex;
+  gap: 12px;
+}
+
+/* 选择器 */
+.comparison-selectors {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.selector-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 20px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.selector-title i {
+  color: #1677FF;
+}
+
+.selector-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+#unified-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  width: 100%;
+}
+
+.device-select-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+  position: relative;
+  user-select: none;
+}
+
+.device-select-item:hover {
+  border-color: #1677FF;
+  background: #f0f7ff;
+}
+
+.device-select-item.selected {
+  border-color: #1677FF;
+  background: #e6f7ff;
+}
+
+.device-select-item.api-item {
+  border-color: #d9f7be;
+}
+
+.device-select-item.api-item:hover {
+  border-color: #52C41A;
+  background: #f6ffed;
+}
+
+.device-select-item.api-item.selected {
+  border-color: #52C41A;
+  background: #d9f7be;
+}
+
+.device-icon-wrapper {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #64748b;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.device-select-item.selected .device-icon-wrapper {
+  background: #1677FF;
+  color: white;
+}
+
+.device-select-item.api-item.selected .device-icon-wrapper {
+  background: #52C41A;
+  color: white;
+}
+
+.device-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.device-name {
+  font-weight: 600;
+  color: #1e293b;
+  font-size: 14px;
+}
+
+.device-type-tag {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.selection-indicator {
+  color: #1677FF;
+  font-size: 18px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.device-select-item.selected .selection-indicator {
+  opacity: 1;
+}
+
+.device-select-item.api-item .selection-indicator {
+  color: #52C41A;
+}
+
+/* 对比表格 section */
+.comparison-section {
+  margin-bottom: 24px;
+}
+
+/* Toast */
+.toast-container {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: white;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: slideInRight 0.3s ease;
+}
+
+.toast-success { background: #52C41A; }
+.toast-error { background: #FF4D4F; }
+.toast-warning { background: #FAAD14; }
+.toast-info { background: #1677FF; }
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* 浮动操作按钮 */
+.floating-actions {
+  position: fixed;
+  bottom: 20px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+}
+
+.action-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: white;
+  border: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 18px;
+  color: #64748b;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.action-btn:hover {
+  background: #1677FF;
+  color: white;
+  border-color: #1677FF;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
+}
+
+.copy-toast {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  padding: 10px 16px;
+  background: #52C41A;
+  color: white;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: slideInRight 0.3s ease;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .comparison-report-container {
+    padding: 16px;
+  }
+
+  .analysis-conclusion-card {
+    flex-direction: column;
+    padding: 16px;
+  }
+
+  .analysis-icon {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+
+  .comparison-title {
+    font-size: 22px;
+  }
+
+  .device-select-item {
+    width: 100%;
+  }
+
+  .floating-actions {
+    bottom: 80px;
+  }
+}

@@ -95,11 +95,11 @@
 import { watch, computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { provideModal } from './composables/index'
-import { registerGlobalModals } from './composables/modalRegistration'
+import { registerGlobalModals } from './composables/modal/modalRegistration'
 import { GlobalModalContainer, modalConfirm } from './composables/modalIndex'
 import { useModalStore } from './store/modalStore'
 import Notification from './components/common/modal/Notification.vue'
-import { provideNotification } from './composables/useNotification'
+import { provideNotification } from './composables/modal/useNotification'
 
 const notificationRef = ref(null)
 

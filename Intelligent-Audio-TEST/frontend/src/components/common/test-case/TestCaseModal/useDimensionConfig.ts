@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue';
-import { useDimensions } from '../../../../composables/useDimensions';
+import { useDimensions } from '../../../../composables/shared/useDimensions';
 import type { Dimension, DimensionConfig, AssociatedDimension } from './types';
 
 export function useDimensionConfig() {

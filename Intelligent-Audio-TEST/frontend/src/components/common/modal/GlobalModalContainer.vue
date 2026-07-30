@@ -105,8 +105,8 @@
 
 <script setup lang="ts">
 import { computed, watch } from 'vue'
-import { getModalManager } from '../../../composables/useModal'
-import { useUploadState } from '../../../composables/useUploadState'
+import { getModalManager } from '../../../composables/modal/useModal'
+import { useUploadState } from '../../../composables/upload/useUploadState'
 import { type ActiveModal, MODAL_TYPES } from '../../../shared/types'
 import BasicModal from './BasicModal.vue'
 import { testcasesApi } from '../../../utils/api'
@@ -132,11 +132,11 @@ import BatchNoiseModal from './BatchNoiseModal.vue'
 import BatchTagsModal from './BatchTagsModal.vue'
 import TagCategoryModal from './TagCategoryModal.vue'
 import TagEditModal from './TagEditModal.vue'
-import TaskTypeModal from '../../../views/TasksLogic/TaskTypeModal.vue'
-import TaskDetailModal from '../../../views/TasksLogic/TaskDetailModal.vue'
+import TaskTypeModal from './TaskTypeModal.vue'
+import TaskDetailModal from './TaskDetailModal.vue'
 import TestCaseDetailModal from './TestCaseDetailModal.vue'
-import AudioPlayerModal from '../AudioPlayerModal.vue'
-import AudioSelectModal from '../AudioSelectModal.vue'
+import AudioPlayerModal from '../audio/AudioPlayerModal.vue'
+import AudioSelectModal from '../audio/AudioSelectModal.vue'
 import ReevaluateSelectModal from './ReevaluateSelectModal.vue'
 
 const isNativeEvent = (data: any): boolean => {

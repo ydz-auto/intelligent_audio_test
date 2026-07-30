@@ -54,7 +54,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import DynamicForm from './DynamicForm.vue'
-import { useAlgorithmConfig, type AlgorithmDefinition, type FormSchema } from '../../composables/useAlgorithmConfig'
+import { useAlgorithmConfig, type AlgorithmDefinition, type FormSchema } from '../../composables/algorithm/useAlgorithmConfig'
 
 interface AlgorithmConfig {
   enabled: boolean
