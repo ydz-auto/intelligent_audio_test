@@ -27,10 +27,6 @@ def get_one(audio_id):
 def get_all_tags():
     return AudioController.get_all_tags()
 
-@audio_bp.route('/upload', methods=['POST'])
-def upload():
-    return AudioController.upload()
-
 @audio_bp.route('/url-import', methods=['POST'])
 def url_import():
     return AudioController.url_import()

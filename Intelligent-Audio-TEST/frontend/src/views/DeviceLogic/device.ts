@@ -1,8 +1,8 @@
 import { ref, computed, onMounted, onUnmounted, watch, Ref } from 'vue';
 import { devicesApi, playbackApi, apisApi, audiosApi } from '../../utils/api';
 import { useModalControl } from '../../composables/useModal';
-import { MODAL_TYPES } from '../../shared/types';
 import { useDeviceManagement } from '../../composables/useDeviceManagement';
+import { MODAL_TYPES } from '../../shared/types';
 import type { PlaybackDevice, APIConfig, Audio } from '../../shared/types';
 
 export interface TestDevice {
@@ -82,7 +82,21 @@ const promptAudios = ref<Audio[]>([]);
 const availableSerials = ref<string[]>([]);
 const algorithmTypeOptions = ref<{ value: string; label: string }[]>([]);
 let statusUpdateTimer : ReturnType<typeof setInterval> | null = null;
-let deviceManagement: ReturnType<typeof useDeviceManagement>;
+let deviceManagement: {
+  devices: ReturnType<typeof ref<DeviceUnion[]>>;
+  activeDeviceType: ReturnType<typeof ref<'test' | 'playback' | 'api'>>;
+  modalManager: ReturnType<typeof useModalControl>;
+  addDevice: (type?: string, initialData?: any) => void;
+  editDevice: (id: number | string, type?: string) => Promise<void>;
+  deleteDevice: (id: number | string, type?: string) => Promise<void>;
+  batchDeleteDevices: (ids: (number | string)[], type?: string) => Promise<void>;
+  importDevices: (type?: string) => void;
+  exportDevices: (type?: string) => void;
+  testDeviceConnection: (id: number | string, type?: string) => Promise<void>;
+  scanDevices: (type?: string) => void;
+  startHealthCheckPolling: () => void;
+  stopHealthCheckPolling: () => void;
+} | undefined;
 
 interface ListResponse<T> {
   items?: T[];
@@ -791,8 +805,9 @@ function getAlgorithmTypeName(algorithmType: string): string {
 }
 
 export function useDevice() {
-  // Initialize device management after provideModal() has been called
-  deviceManagement = useDeviceManagement('test', fetchAllDevices);
+  // useDeviceManagement 已恢复完整能力：设备列表/弹窗/增删/扫描/健康轮询等。
+  // 传入 fetchAllDevices 作为刷新回调，使增删改后同步合并设备列表。
+  deviceManagement = useDeviceManagement('test', fetchAllDevices) as any;
 
   onMounted(() => {
     fetchAllDevices();
@@ -807,7 +822,7 @@ export function useDevice() {
     if (statusUpdateTimer) {
       clearInterval(statusUpdateTimer);
     }
-    
+
     document.removeEventListener('click', handleClickOutsideEvent);
   });
   

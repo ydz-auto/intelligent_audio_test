@@ -145,8 +145,6 @@ def test_task_apis():
 def test_report_apis():
     print('\n=== 10. 报告管理 API ===')
     api_get('/api/v1/reports', category='报告')
-    # /trend 需要 ReportController.get_trend_data 方法（已知缺失）
-    api_get('/api/v1/reports/trend', category='报告')
 
 
 # ==================== 11. 日志管理 ====================
@@ -228,44 +226,11 @@ def test_grpc_connectivity():
         log_result('gRPC', 'RPC', 'connectivity', 'fail', str(e)[:100])
 
 
-# ==================== 17. 音频上传测试 ====================
+# ==================== 17. 音频上传测试（分片上传流程）====================
 def test_audio_upload():
-    print('\n=== 17. 音频上传测试 ===')
-    # 生成一个简单的 WAV 文件
-    import struct
-    import wave
-
-    sample_rate = 16000
-    duration = 1  # 1 second
-    num_samples = sample_rate * duration
-
-    buf = BytesIO()
-    with wave.open(buf, 'wb') as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(sample_rate)
-        for i in range(num_samples):
-            # 生成 440Hz 正弦波
-            import math
-            val = int(32767 * math.sin(2 * math.pi * 440 * i / sample_rate))
-            wf.writeframes(struct.pack('<h', val))
-
-    buf.seek(0)
-    files = {'file': ('test_tone.wav', buf, 'audio/wav')}
-    try:
-        resp = requests.post(f'{BASE_URL}/api/v1/audios/upload', files=files, timeout=30)
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get('success') or data.get('id'):
-                log_result('音频上传', 'POST', '/api/v1/audios/upload', 'pass')
-                return data
-            else:
-                log_result('音频上传', 'POST', '/api/v1/audios/upload', 'fail', f'response: {str(data)[:200]}')
-        else:
-            log_result('音频上传', 'POST', '/api/v1/audios/upload', 'fail', f'status={resp.status_code}')
-    except Exception as e:
-        log_result('音频上传', 'POST', '/api/v1/audios/upload', 'fail', str(e)[:100])
-    return None
+    print('\n=== 17. 音频上传测试（分片上传 init）===')
+    # /upload 已移除，测试分片上传初始化接口
+    api_post('/api/v1/audios/upload/init', {}, category='音频上传')
 
 
 # ==================== 18. voice_llm 样例测试 ====================

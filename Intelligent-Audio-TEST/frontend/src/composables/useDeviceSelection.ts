@@ -1,11 +1,18 @@
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
+
+export interface FormField {
+  key: string
+  type?: string
+  options?: any[]
+  label?: string
+}
 
 export function useDeviceSelection() {
-  const selectedDeviceId = ref(null)
+  const selectedDeviceId = ref<string | null>(null)
 
-  const isPlaybackDeviceForm = (fields) => {
-    return fields.some(field => 
-      field.key === 'playbackType' || 
+  const isPlaybackDeviceForm = (fields: FormField[]) => {
+    return fields.some(field =>
+      field.key === 'playbackType' ||
       field.key === 'audioChannel' ||
       field.key === 'deviceUniqueId' ||
       field.key === 'sampleRate' ||
@@ -13,8 +20,8 @@ export function useDeviceSelection() {
     )
   }
 
-  const isTestDeviceForm = (fields) => {
-    return fields.some(field => 
+  const isTestDeviceForm = (fields: FormField[]) => {
+    return fields.some(field =>
       field.key === 'serialNumber' ||
       field.key === 'system' ||
       field.key === 'systemVersion' ||
@@ -22,9 +29,9 @@ export function useDeviceSelection() {
     )
   }
 
-  const selectDevice = (device, fields, formValuesRef, isEditMode) => {
+  const selectDevice = (device: any, fields: FormField[], formValuesRef: Ref<any>, isEditMode: boolean) => {
     selectedDeviceId.value = device.displayKey || device.deviceUniqueId || device.serial
-    
+
     const formValues = formValuesRef.value
 
     const deviceUniqueId = device.deviceUniqueId || device.id || device.serial
@@ -41,17 +48,17 @@ export function useDeviceSelection() {
     if (device.model) {
       formValues.model = device.model
     }
-    
+
     const srField = fields.find(f => f.key === 'sampleRate' || f.key === 'sample_rate')
     if (srField) {
       formValues[srField.key] = device.sampleRate || 48000
     }
-    
+
     const ciField = fields.find(f => f.key === 'channelIndex' || f.key === 'channel_index')
     if (ciField) {
       formValues[ciField.key] = device.channelIndex !== undefined ? device.channelIndex : 0
     }
-    
+
     if (device.serial) {
       const serialField = fields.find(f => f.key === 'serialNumber')
       if (serialField) {
@@ -82,7 +89,7 @@ export function useDeviceSelection() {
         formValues.appVersion = device.appVersion
       }
     }
-    
+
     return formValues
   }
 

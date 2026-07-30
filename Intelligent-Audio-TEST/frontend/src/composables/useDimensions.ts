@@ -27,7 +27,7 @@ export function useDimensions() {
     isLoading.value = true
     try {
       const allDimensions: EvaluationDimension[] = []
-      const byId = new Map<number, EvaluationDimension>()
+      const byId = new Map<number | string, EvaluationDimension>()
       let page = 1
       let pages = 1
 

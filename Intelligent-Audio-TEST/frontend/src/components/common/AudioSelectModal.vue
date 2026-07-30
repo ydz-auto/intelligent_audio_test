@@ -130,7 +130,7 @@ const emit = defineEmits<{
 }>();
 
 const {
-  audios,
+  audioList: audios,
   totalAudios,
   currentPage,
   pageSize,
@@ -140,16 +140,22 @@ const {
   tagModes,
   tagModesObject,
   filters,
-  loadAudios,
-  loadAllTags,
-  handleSearch,
-  handleFilterChange,
-  handleToggleTag,
-  handleTagClick,
-  handlePageChange,
-  handleSizeChange,
+  fetchAudios: loadAudios,
+  fetchAllTags: loadAllTags,
+  filterAudios: handleFilterChange,
+  toggleTag,
+  handleGoToPage: handlePageChange,
+  handlePageSizeChange: handleSizeChange,
   resetFilters
 } = useAudioList();
+const handleToggleTag = toggleTag;
+const handleTagClick = toggleTag;
+// useAudioList 未提供 handleSearch，这里实现：更新搜索词并重新拉取
+const handleSearch = async (keyword?: string) => {
+  searchQuery.value = keyword ?? '';
+  currentPage.value = 1;
+  await loadAudios();
+};
 
 const loading = ref(false);
 

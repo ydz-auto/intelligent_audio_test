@@ -622,7 +622,7 @@ class SPLController:
                 unique_id = None
             
             # 跨服务调用：通过 gRPC AudioService 调用音频引擎
-            from api_gateway.controllers._grpc_proxies import audio_service as audio_engine
+            from api_gateway.controllers._grpc_proxies import audio_service
 
             if unique_id:
                 device_index = audio_service.get_device_index(unique_id)

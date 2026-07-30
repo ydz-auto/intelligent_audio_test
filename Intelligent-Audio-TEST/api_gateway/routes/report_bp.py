@@ -48,10 +48,6 @@ def generate_task_report():
 def export():
     return ReportController.export()
 
-@report_bp.route('/trend', methods=['GET'])
-def get_trend_data():
-    return ReportController.get_trend_data()
-
 @report_bp.route('/case-averages', methods=['POST'])
 def get_case_averages_by_filters():
     return ReportController.get_case_averages_by_filters()

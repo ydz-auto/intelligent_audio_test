@@ -17,20 +17,20 @@
             </div>
             <div class="config-item">
               <label>超时时间 (ms)</label>
-              <input 
-                type="number" 
-                v-model.number="localValue.timeout" 
+              <input
+                type="number"
+                v-model.number="localValue.timeout"
                 placeholder="如: 30000"
                 @input="handleChange"
               />
             </div>
           </div>
-          
+
           <div class="config-row">
             <div class="config-item full-width">
               <label>Headers</label>
-              <textarea 
-                v-model="headersJson" 
+              <textarea
+                v-model="headersJson"
                 placeholder='{"Content-Type": "application/json"}'
                 rows="2"
                 @input="parseHeaders"
@@ -39,7 +39,7 @@
           </div>
         </div>
       </div>
-      
+
       <div class="api-settings-right">
         <div class="editor-section preview-section">
           <h4>body_template JSON</h4>
@@ -80,36 +80,18 @@ const localValue = reactive({
   timeout: 30000
 })
 
-const localInputs = ref([])
 const headersJson = ref('')
 const bodyTemplateJson = ref('')
 
 watch(() => props.modelValue, (newVal) => {
-  if (newVal && typeof newVal === 'object') {
-    localValue.method = newVal.method || 'POST'
-    localValue.headers = newVal.headers ? { ...newVal.headers } : {}
-    localValue.body_template = newVal.body_template ? JSON.parse(JSON.stringify(newVal.body_template)) : {}
-    localValue.timeout = newVal.timeout || 30000
+  const val = (newVal && typeof newVal === 'object') ? newVal : {}
+  localValue.method = val.method || 'POST'
+  localValue.headers = val.headers ? { ...val.headers } : {}
+  localValue.body_template = val.body_template ? JSON.parse(JSON.stringify(val.body_template)) : {}
+  localValue.timeout = val.timeout || 30000
 
-    headersJson.value = JSON.stringify(localValue.headers, null, 2)
-    bodyTemplateJson.value = JSON.stringify(localValue.body_template, null, 2)
-
-    const bodyTemplate = localValue.body_template || {}
-    // 从 rounds[0] 取输入字段
-    const roundTpl = (bodyTemplate.rounds && bodyTemplate.rounds[0]) || {}
-    const inputKeys = Object.keys(roundTpl)
-    if (inputKeys.length > 0) {
-      localInputs.value = inputKeys.map(key => ({
-        param_code: key,
-        param_name: '',
-        field_type: 'text',
-        required: true,
-        help_text: ''
-      }))
-    } else {
-      localInputs.value = []
-    }
-  }
+  headersJson.value = JSON.stringify(localValue.headers, null, 2)
+  bodyTemplateJson.value = JSON.stringify(localValue.body_template, null, 2)
 }, { immediate: true, deep: true })
 
 function parseHeaders() {
@@ -124,78 +106,10 @@ function parseBodyTemplate() {
   try {
     const parsed = JSON.parse(bodyTemplateJson.value || '{}')
     localValue.body_template = parsed
-    // 同步 rounds[0] 的 key 到 localInputs
-    const roundTpl = (parsed.rounds && parsed.rounds[0]) || {}
-    const inputKeys = Object.keys(roundTpl)
-    if (inputKeys.length > 0) {
-      localInputs.value = inputKeys.map(key => ({
-        param_code: key,
-        param_name: '',
-        field_type: 'text',
-        required: true,
-        help_text: ''
-      }))
-    } else {
-      localInputs.value = []
-    }
     handleChange()
   } catch (e) {
     // JSON 解析失败时不做操作，等用户修好
   }
-}
-
-function addInput() {
-  if (!localInputs.value) {
-    localInputs.value = []
-  }
-  localInputs.value.push({
-    param_code: '',
-    param_name: '',
-    field_type: 'text',
-    required: true,
-    help_text: ''
-  })
-  handleChange()
-}
-
-function removeInput(index) {
-  const removedInput = localInputs.value[index]
-  if (removedInput && removedInput.param_code) {
-    const roundTpl = localValue.body_template.rounds?.[0]
-    if (roundTpl) {
-      delete roundTpl[removedInput.param_code]
-    }
-  }
-  localInputs.value.splice(index, 1)
-  handleChange()
-}
-
-function handleInputChange() {
-  syncBodyTemplate()
-  handleChange()
-}
-
-function syncBodyTemplate() {
-  // 确保 body_template 有 rounds 结构
-  if (!localValue.body_template.rounds) {
-    localValue.body_template.rounds = [{}]
-  }
-  const roundTpl = localValue.body_template.rounds[0]
-
-  localInputs.value.forEach(input => {
-    if (input.param_code && !roundTpl[input.param_code]) {
-      roundTpl[input.param_code] = `{{${input.param_code}}}`
-    }
-  })
-
-  const inputKeys = new Set(localInputs.value.map(i => i.param_code).filter(k => k))
-  Object.keys(roundTpl).forEach(key => {
-    if (!inputKeys.has(key)) {
-      delete roundTpl[key]
-    }
-  })
-  // 同步 JSON 文本
-  bodyTemplateJson.value = JSON.stringify(localValue.body_template, null, 2)
 }
 
 function handleChange() {
@@ -304,202 +218,6 @@ function handleChange() {
 .config-item textarea {
   font-family: monospace;
   resize: vertical;
-}
-
-.inputs-table {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  overflow: hidden;
-  background: white;
-  margin-bottom: 12px;
-}
-
-.table-header {
-  display: flex;
-  gap: 8px;
-  padding: 12px 16px;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  font-size: 12px;
-  font-weight: 600;
-  color: #64748b;
-}
-
-.table-body {
-  display: flex;
-  flex-direction: column;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.input-row {
-  display: flex;
-  gap: 8px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f1f5f9;
-  align-items: center;
-}
-
-.input-row:last-child {
-  border-bottom: none;
-}
-
-.row-index {
-  width: 24px;
-  text-align: center;
-  font-weight: 600;
-  color: #64748b;
-  font-size: 12px;
-  flex-shrink: 0;
-}
-
-.th-index {
-  width: 24px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.th-key {
-  flex: 1;
-}
-
-.th-label {
-  flex: 1;
-}
-
-.th-source {
-  width: 80px;
-  flex-shrink: 0;
-}
-
-.th-required {
-  width: 50px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.th-desc {
-  flex: 1;
-}
-
-.th-action {
-  width: 40px;
-  flex-shrink: 0;
-}
-
-.key-input,
-.label-input,
-.desc-input {
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 14px;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.key-input {
-  flex: 1;
-}
-
-.label-input {
-  flex: 1;
-}
-
-.desc-input {
-  flex: 1;
-}
-
-.source-select {
-  width: 80px;
-  padding: 8px 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 6px;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.key-input:focus,
-.label-input:focus,
-.desc-input:focus,
-.source-select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-.checkbox-wrapper {
-  width: 50px;
-  display: flex;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.checkbox-wrapper input {
-  width: 16px;
-  height: 16px;
-  cursor: pointer;
-}
-
-.btn-remove {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  color: #ef4444;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.btn-remove:hover {
-  background: #fee2e2;
-}
-
-.btn-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: #3b82f6;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
-  width: fit-content;
-}
-
-.btn-add:hover {
-  background: #2563eb;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 20px;
-  color: #94a3b8;
-  background: white;
-  border: 1px dashed #e2e8f0;
-  border-radius: 8px;
-  margin-bottom: 12px;
-}
-
-.empty-state i {
-  font-size: 32px;
-  margin-bottom: 8px;
-}
-
-.empty-state p {
-  margin: 0;
-  font-size: 14px;
 }
 
 .preview-section {

@@ -36,10 +36,10 @@ export function normalizeSelectedCaseIds(ids: (string | number)[]) {
 
 export function useE2eView() {
   const router = useRouter()
-  const { 
-    devices, 
-    filteredDevices, 
-    isLoading: devicesLoading, 
+  const {
+    devices,
+    filteredDevices,
+    isLoading: devicesLoading,
     fetchDevices,
     deviceSearchQuery,
     selectedDeviceStatus,
@@ -447,7 +447,8 @@ export function useE2eView() {
     openAlgorithmModal,
     openCreateAlgorithmModal,
     openAlgorithmConfigModal,
-    closeAlgorithmModal
+    closeAlgorithmModal,
+    searchAlgorithms
   } = useAlgorithmSelection({
     onSelectCallback: async (type: string | null) => {
       if (type) {
@@ -737,6 +738,7 @@ export function useE2eView() {
     algorithmEditData,
     editingAlgorithm,
     algorithmSearchQuery,
+    searchAlgorithms,
     filteredAlgorithmList,
     fetchTagView
   }

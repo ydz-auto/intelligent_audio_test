@@ -60,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 
 import FormField from '../form/FormField.vue'
 import ArrayField from '../form/ArrayField.vue'
@@ -87,6 +87,7 @@ const formValues = ref({})
 const submitting = ref(false)
 const uploadedFiles = ref({})
 const isDraftRestored = ref(false)
+const syncing = ref(false)  // 防止 apiSettings ↔ requiredInputs 双向联动死循环
 
 const dynamicFieldOptions = ref({
   deviceUniqueId: [],
@@ -415,6 +416,7 @@ const getDefaultValue = (field) => {
     case 'number': return 0
     case 'switch': return false
     case 'apiMeta': return { protocol: 'https', environment: 'development', version: 'v1', apiKey: '' }
+    case 'apiSettingsEditor': return { method: 'POST', headers: {}, body_template: {}, timeout: 30000 }
     default: return ''
   }
 }
@@ -712,6 +714,97 @@ watch(() => formValues.value.parentDimensionId, (newParentId) => {
         }
       }
     }
+  }
+})
+
+// 联动：requiredInputs 变化时，同步 apiSettings.body_template.rounds[0] 的 key（值用 {{key}} 占位符）
+watch(() => formValues.value.requiredInputs, (newInputs) => {
+  if (syncing.value) return
+  if (!Array.isArray(newInputs) || !formValues.value.apiSettings) return
+  const apiSettings = formValues.value.apiSettings
+  if (!apiSettings || typeof apiSettings !== 'object') return
+  if (!apiSettings.body_template || typeof apiSettings.body_template !== 'object') {
+    apiSettings.body_template = {}
+  }
+  const bodyTpl = apiSettings.body_template
+  if (!bodyTpl.rounds) bodyTpl.rounds = [{}]
+  if (!bodyTpl.rounds[0]) bodyTpl.rounds[0] = {}
+  const roundTpl = bodyTpl.rounds[0]
+
+  const inputKeys = new Set(newInputs.map(i => i && i.param_code).filter(k => k))
+
+  // 新增缺失的 key（值用 {{key}} 占位符）
+  newInputs.forEach(input => {
+    const key = input && input.param_code
+    if (key && !(key in roundTpl)) {
+      roundTpl[key] = `{{${key}}}`
+    }
+  })
+
+  // 删除已不存在的参数 key（只删值是 {{xxx}} 占位符的，保留用户手写的非参数字段）
+  Object.keys(roundTpl).forEach(key => {
+    const val = roundTpl[key]
+    if (typeof val === 'string' && val.match(/^{{(.+)}}$/) && !inputKeys.has(key)) {
+      delete roundTpl[key]
+    }
+  })
+
+  // 触发 APISettingsEditor 重新渲染（替换对象引用）
+  syncing.value = true
+  formValues.value.apiSettings = { ...apiSettings, body_template: { ...bodyTpl, rounds: [{ ...roundTpl }] } }
+  nextTick(() => { syncing.value = false })
+}, { deep: true })
+
+// 联动：apiSettings.body_template.rounds[0] 的 key 变化时，同步 requiredInputs 的参数键名
+watch(() => {
+  const apiSettings = formValues.value.apiSettings
+  const round0 = apiSettings && apiSettings.body_template && apiSettings.body_template.rounds && apiSettings.body_template.rounds[0]
+  if (!round0) return ''
+  // 用 keys 签名捕获 key 增删/改名（值变化不触发）
+  return Object.keys(round0).join('\n')
+}, (sig) => {
+  if (syncing.value) return
+  const inputs = formValues.value.requiredInputs
+  if (!Array.isArray(inputs)) return
+
+  const apiSettings = formValues.value.apiSettings
+  const roundTpl = apiSettings?.body_template?.rounds?.[0] || {}
+
+  // rounds[0] 的所有 key 都是参数键名（保留 round 中的顺序）
+  const expectedKeys = Object.keys(roundTpl)
+
+  const existingKeys = new Set(inputs.map(i => i && i.param_code).filter(Boolean))
+  let changed = false
+  const newInputs = []
+
+  // 按 expectedKeys 顺序映射：已有则保留，否则新增
+  expectedKeys.forEach(key => {
+    const existing = inputs.find(i => i && i.param_code === key)
+    if (existing) {
+      newInputs.push(existing)
+    } else {
+      newInputs.push({
+        param_code: key,
+        param_name: '',
+        field_type: 'text',
+        required: true,
+        default_value: '',
+        help_text: ''
+      })
+      changed = true
+    }
+    existingKeys.delete(key)
+  })
+
+  // 原有但不在 expectedKeys 里的（用户在 JSON 里删/改了 key）→ 删除
+  if (existingKeys.size > 0) {
+    changed = true
+  }
+
+  if (changed || newInputs.length !== inputs.length) {
+    syncing.value = true
+    formValues.value.requiredInputs = newInputs
+    nextTick(() => { syncing.value = false })
   }
 })
 

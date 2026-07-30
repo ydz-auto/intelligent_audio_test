@@ -3,11 +3,11 @@ import { devicesApi } from '../utils/api'
 
 export function useDeviceScanning() {
   const isScanning = ref(false)
-  const scanResults = ref([])
-  const availableSerials = ref([])
-  const addedPlaybackDevices = ref([])
-  const addedTestDevices = ref([])
-  const apiPlaybackDevices = ref([])
+  const scanResults = ref<any[]>([])
+  const availableSerials = ref<any[]>([])
+  const addedPlaybackDevices = ref<any[]>([])
+  const addedTestDevices = ref<any[]>([])
+  const apiPlaybackDevices = ref<any[]>([])
 
   const fetchAddedPlaybackDevices = async () => {
     try {
