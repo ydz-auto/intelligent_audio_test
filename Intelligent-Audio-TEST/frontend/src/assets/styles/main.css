@@ -10,6 +10,9 @@
 /* 2. CSS变量定义 - 统一主题和样式参数 */
 @import './variables.css';
 
+/* 2.1 测试公共样式 - 端到端测试/API测试共用的步骤、算法选择等样式 */
+@import './test-common.css';
+
 /* 3. 基础组件样式 - 按照UI设计规范实现 */
 @import './components/common.css';
 @import './components/button.css';
