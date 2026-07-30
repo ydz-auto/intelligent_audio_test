@@ -14,8 +14,8 @@ xiaoyi_takeover_latency.py
                            (模型回复第一个词相对 mp4 起点的偏移, 毫秒)
     start_ms             : harmony_xiaoyichat.get_results() 返回的 start_ms
                            (本轮音频播放开始的绝对时刻, 毫秒 Unix 时间戳)
-    t2_ms                : 主服务下发的 input 词级时间戳中第一个词的 start
-                           input[0].timestamp[0] * 1000 (秒转毫秒)
+    t2_ms                : 主服务下发的 input 词级时间戳中最后一个词的 end
+                           input[-1].timestamp[-1] * 1000 (秒转毫秒)
     offset_ms            : 时延补偿, 默认 40ms
 """
 import os
@@ -29,21 +29,21 @@ DEFAULT_OFFSET_MS = 40
 
 
 def _extract_t2_ms(input_words):
-    """从 input 词级时间戳中提取第一个词的 start（秒转毫秒）
+    """从 input 词级时间戳中提取最后一个词的 end（秒转毫秒）
 
     Args:
         input_words (list): [{"text": "...", "timestamp": [start, end]}, ...]
 
     Returns:
-        int: 第一个词的 start 毫秒值；input 为空或缺失时返回 0
+        int: 最后一个词的 end 毫秒值；input 为空或缺失时返回 0
     """
     if not input_words:
         return 0
     try:
-        first_start_s = input_words[0].get('timestamp', [0.0])[0]
-        if first_start_s is None:
-            first_start_s = 0.0
-        return int(first_start_s * 1000)
+        last_end_s = input_words[-1].get('timestamp', [0.0, 0.0])[-1]
+        if last_end_s is None:
+            last_end_s = 0.0
+        return int(last_end_s * 1000)
     except (IndexError, TypeError, KeyError):
         return 0
 

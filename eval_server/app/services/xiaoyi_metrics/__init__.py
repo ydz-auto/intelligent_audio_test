@@ -42,6 +42,20 @@ def _format_takeover_latency(r):
     )
 
 
+def _format_input_asr(r):
+    """格式化 input_asr 结果用于日志打印"""
+    return (
+        f"{{match={r.get('match')} "
+        f"similarity={r.get('similarity')} "
+        f"query_original={r.get('query_original')!r} "
+        f"question_original={r.get('question_original')!r} "
+        f"query_normalized={r.get('query_normalized')!r} "
+        f"question_normalized={r.get('question_normalized')!r} "
+        f"threshold={r.get('threshold')} "
+        f"message={r.get('message')}}}"
+    )
+
+
 def calculate_xiaoyi_metrics(task_params):
     """
     统一入口：调一次 ASR，三个维度共享结果
@@ -96,21 +110,32 @@ def calculate_xiaoyi_metrics(task_params):
     results['false_takeover'] = compute_false_takeover(chunks, pause_intervals)
     logger.info(f"[false_takeover] {results['false_takeover']}")
 
-    # takeover_latency
+    # takeover_latency: start_ms / input_lastword 可能在 rounds[0] 中
+    rounds = task_params.get('rounds', [])
+    round0 = rounds[0] if rounds else {}
+    input_words = (
+        task_params.get('input')
+        or task_params.get('input_lastword')
+        or round0.get('input')
+        or round0.get('input_lastword')
+        or []
+    )
+    start_ms = task_params.get('start_ms') or round0.get('start_ms')
+    offset_ms = task_params.get('offset_ms') or round0.get('offset_ms') or 40
+
     results['takeover_latency'] = compute_takeover_latency_from_raw(
         first_frame_ms=task_params.get('first_frame_ms'),
         asr_hyp=asr_hyp,
-        start_ms=task_params.get('start_ms'),
-        input_words=task_params.get('input', []),
-        offset_ms=task_params.get('offset_ms', 40),
+        start_ms=start_ms,
+        input_words=input_words,
+        offset_ms=offset_ms,
     )
     logger.info(f"[takeover_latency] {_format_takeover_latency(results['takeover_latency'])}")
 
     # input_asr: 对比参考 query 与设备识别 question
     results['input_asr'] = compute_input_asr_match(
-        query=task_params.get('query', ''),
-        question=task_params.get('question', ''),
+        task_params=task_params,
     )
-    logger.info(f"[input_asr] {results['input_asr']}")
+    logger.info(f"[input_asr] {_format_input_asr(results['input_asr'])}")
 
     return results

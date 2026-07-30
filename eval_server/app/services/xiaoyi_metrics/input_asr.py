@@ -37,13 +37,56 @@ def _normalize_text(text):
     return text
 
 
-def compute_input_asr_match(query, question, threshold=SIMILARITY_THRESHOLD):
+def _unwrap_value(val):
+    """解包 {'text': '...'} 格式的值为纯字符串（与 task_service._unwrap_value 一致）"""
+    if isinstance(val, dict) and 'text' in val:
+        return val['text']
+    return val
+
+
+def _extract_query_question(task_params):
+    """从 task_params 中提取 query 和 question
+
+    参考 llm_judge_calculator 的获取方式：
+    - 顶层有 query/question 直接用
+    - 否则从 rounds 中逐轮拼接
+    """
+    query = _unwrap_value(task_params.get('query', ''))
+    question = _unwrap_value(task_params.get('question', ''))
+
+    if query and question:
+        return query, question
+
+    rounds = task_params.get('rounds')
+    if rounds and isinstance(rounds, list):
+        queries = []
+        questions = []
+        for rd in rounds:
+            if not isinstance(rd, dict):
+                continue
+            q = _unwrap_value(rd.get('query', ''))
+            qs = _unwrap_value(rd.get('question', ''))
+            if q:
+                queries.append(q)
+            if qs:
+                questions.append(qs)
+        if not query and queries:
+            query = ' '.join(queries)
+        if not question and questions:
+            question = ' '.join(questions)
+
+    return query or '', question or ''
+
+
+def compute_input_asr_match(task_params, threshold=SIMILARITY_THRESHOLD):
     """对比参考 query 与设备识别 question 的文本相似度
 
+    参考 llm_judge_calculator 的方式从 task_params 中提取 query/question：
+    - 顶层有则用顶层
+    - 否则从 rounds 中逐轮拼接
+
     Args:
-        query (str): 参考参数 JSON 中的 query 文本（输入音频对应的原始文本）
-        question (str|None): harmony_xiaoyichat.get_results() 返回的 question
-                             （设备端识别到的用户提问文本）
+        task_params (dict): 任务参数，包含 query/question 或 rounds
         threshold (float): 相似度阈值，默认 0.8
 
     Returns:
@@ -58,6 +101,9 @@ def compute_input_asr_match(query, question, threshold=SIMILARITY_THRESHOLD):
             'message': str,            错误/成功说明
         }
     """
+    query, question = _extract_query_question(task_params)
+    logger.info(f"[input_asr] 原始 query={query!r}, 原始 question={question!r}")
+
     result = {
         'match': False,
         'similarity': 0.0,
