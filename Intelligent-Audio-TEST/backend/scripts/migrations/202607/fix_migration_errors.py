@@ -796,6 +796,34 @@ def step10_fix_test_results(engine, dry_run=False):
 
 
 # ========================================================================
+# Step 11: 确保 dimensions.statistic_method 列存在
+# ========================================================================
+
+def step11_ensure_dimensions_statistic_method(engine, dry_run=False):
+    """确保 dimensions.statistic_method 列存在（统计方式: average/weighted_wer）"""
+    print("\n" + "=" * 60)
+    print("Step 11: 确保 dimensions.statistic_method 列存在")
+    print("=" * 60)
+
+    if dry_run:
+        with engine.connect() as conn:
+            exists = _col_exists(conn, 'dimensions', 'statistic_method')
+            print(f"  [DRY-RUN] statistic_method 列存在: {exists}")
+        return
+
+    with engine.begin() as conn:
+        if not _col_exists(conn, 'dimensions', 'statistic_method'):
+            conn.execute(text(
+                "ALTER TABLE dimensions "
+                "ADD COLUMN statistic_method VARCHAR(30) "
+                "NOT NULL DEFAULT 'average'"
+            ))
+            print("  [OK] 新增列: dimensions.statistic_method")
+        else:
+            print("  [SKIP] statistic_method 列已存在")
+
+
+# ========================================================================
 # 主流程
 # ========================================================================
 
@@ -827,6 +855,7 @@ def main():
         (8, step8_fix_evaluation_dimension_params),
         (9, step9_fix_algorithm_reference_params),
         (10, step10_fix_test_results),
+        (11, step11_ensure_dimensions_statistic_method),
     ]
 
     for step_num, step_func in steps:
