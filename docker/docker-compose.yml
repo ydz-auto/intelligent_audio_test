@@ -1,0 +1,208 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: intelligent_audio_test
+      POSTGRES_PASSWORD: intelligent_audio_test666
+      POSTGRES_DB: intelligent_audio_test
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intelligent_audio_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 minio minio123;
+      mc mb myminio/audios --ignore-existing;
+      mc mb myminio/case-result --ignore-existing;
+      mc mb myminio/ref-params --ignore-existing;
+      mc mb myminio/reports --ignore-existing;
+      mc mb myminio/archives --ignore-existing;
+      mc mb myminio/temp --ignore-existing;
+      exit 0;
+      "
+
+  api_gateway:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api_gateway
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://minio:9000
+      - OSS_ACCESS_KEY=minio
+      - OSS_SECRET_KEY=minio123
+      - OSS_BUCKET_AUDIOS=audios
+      - OSS_BUCKET_CASE_RESULT=case-result
+      - OSS_BUCKET_REF_PARAMS=ref-params
+      - OSS_BUCKET_REPORTS=reports
+      - OSS_BUCKET_ARCHIVES=archives
+      - OSS_BUCKET_TEMP=temp
+      - SERVICE_HOST=api_gateway
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=50061
+      - E2E_TEST_SERVICE_HOST=e2e_test_service
+      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      - API_TEST_SERVICE_HOST=api_test_service
+      - API_TEST_SERVICE_GRPC_PORT=50071
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  task_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.task_service
+    ports:
+      - "5001:5001"
+      - "50061:50061"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://minio:9000
+      - OSS_ACCESS_KEY=minio
+      - OSS_SECRET_KEY=minio123
+      - OSS_BUCKET_AUDIOS=audios
+      - OSS_BUCKET_CASE_RESULT=case-result
+      - OSS_BUCKET_REF_PARAMS=ref-params
+      - OSS_BUCKET_REPORTS=reports
+      - OSS_BUCKET_ARCHIVES=archives
+      - OSS_BUCKET_TEMP=temp
+      - SERVICE_HOST=task_service
+      - GRPC_PORT=50061
+      - E2E_TEST_SERVICE_HOST=e2e_test_service
+      - E2E_TEST_SERVICE_GRPC_PORT=50051
+      - API_TEST_SERVICE_HOST=api_test_service
+      - API_TEST_SERVICE_PORT=5003
+      - API_TEST_SERVICE_GRPC_PORT=50071
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  e2e_test_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.e2e_test_service
+    ports:
+      - "5002:5002"
+      - "50051:50051"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://minio:9000
+      - OSS_ACCESS_KEY=minio
+      - OSS_SECRET_KEY=minio123
+      - OSS_BUCKET_AUDIOS=audios
+      - OSS_BUCKET_CASE_RESULT=case-result
+      - OSS_BUCKET_REF_PARAMS=ref-params
+      - OSS_BUCKET_REPORTS=reports
+      - OSS_BUCKET_ARCHIVES=archives
+      - OSS_BUCKET_TEMP=temp
+      - GRPC_PORT=50051
+      - LAB_NAME=lab-a
+      - SERVICE_HOST=e2e_test_service
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=50061
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+
+  api_adapter_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api_adapter_service
+    ports:
+      - "8000:8000"
+    environment:
+      - VOICE_LLM_API_BASE=${VOICE_LLM_API_BASE:-}
+      - VOICE_LLM_API_KEY=${VOICE_LLM_API_KEY:-}
+      - VOLC_WS_URL=${VOLC_WS_URL:-}
+      - VOLC_API_KEY=${VOLC_API_KEY:-}
+    depends_on:
+      - postgres
+      - redis
+
+  api_test_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api_test_service
+    ports:
+      - "5003:5003"
+      - "50071:50071"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://minio:9000
+      - OSS_ACCESS_KEY=minio
+      - OSS_SECRET_KEY=minio123
+      - OSS_BUCKET_AUDIOS=audios
+      - OSS_BUCKET_CASE_RESULT=case-result
+      - OSS_BUCKET_REPORTS=reports
+      - OSS_BUCKET_TEMP=temp
+      - SERVICE_HOST=api_test_service
+      - GRPC_PORT=50071
+      - API_ADAPTER_SERVICE_HOST=api_adapter_service
+      - API_ADAPTER_SERVICE_PORT=8000
+    depends_on:
+      - postgres
+      - redis
+      - minio
+      - api_adapter_service
+    deploy:
+      replicas: 2
+
+volumes:
+  postgres_data:
+  minio_data:

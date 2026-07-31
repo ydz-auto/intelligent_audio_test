@@ -95,6 +95,27 @@ python run_all.py
 | Adapter Service | http://localhost:5008 |
 | MinIO Console | http://localhost:9001 |
 
+### Docker 部署
+
+所有 Docker 配置集中在仓库根 [docker/](docker/) 目录：
+
+```bash
+# 一键启动全部服务（PG + Redis + MinIO + 5 后端微服务）
+docker compose -f docker/docker-compose.yml up -d --build
+```
+
+| 文件 | 说明 |
+|------|------|
+| [docker/docker-compose.yml](docker/docker-compose.yml) | 编排文件（含 PG/Redis/MinIO + 5 服务 + minio-init） |
+| [docker/Dockerfile.api_gateway](docker/Dockerfile.api_gateway) | API 网关镜像 |
+| [docker/Dockerfile.task_service](docker/Dockerfile.task_service) | 任务服务镜像 |
+| [docker/Dockerfile.e2e_test_service](docker/Dockerfile.e2e_test_service) | E2E 测试服务镜像 |
+| [docker/Dockerfile.api_test_service](docker/Dockerfile.api_test_service) | API 测试服务镜像 |
+| [docker/Dockerfile.api_adapter_service](docker/Dockerfile.api_adapter_service) | 算法适配服务镜像 |
+| [docker/.dockerignore](docker/.dockerignore) | 构建上下文排除规则 |
+
+> 注：build context 为仓库根（`..`），Dockerfile 内通过 `COPY Intelligent-Audio-TEST/ .` 拷贝主平台代码。E2E 服务挂载 `/dev/bus/usb` 以直连 Android 设备。
+
 ### 单独启动评估/ASR 服务
 
 ```bash

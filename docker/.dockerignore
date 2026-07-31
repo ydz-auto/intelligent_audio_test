@@ -1,0 +1,116 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+venv/
+ENV/
+env/
+.conda/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Compressed
+*.rar
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+.trae/
+.openspec/
+*.iml
+backend/data.db
+
+# Node / Frontend build
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Test / coverage
+coverage/
+.pytest_cache/
+
+# Env files (secrets)
+.env
+.env.local
+.env.*.local
+
+# Tooling / agent artifacts
+.codegraph/
+CLAUDE.md
+.qoder/
+graphify-out/
+
+# Git
+.git/
+.gitignore
+
+# Runtime data
+Intelligent-Audio-TEST/static/audios/chunks/
+Intelligent-Audio-TEST/tmp_hypium/
+Intelligent-Audio-TEST/log
+eval_server/app/database/tasks/
+eval_server/app/database/uploads/
+eval_server/app/database/endpoints.json
+Intelligent-Audio-TEST/static/ref_params/
+Intelligent-Audio-TEST/static/case_result/
+Intelligent-Audio-TEST/backend/static/case_result/
+
+# Large media (use Git LFS / volume mount instead)
+*.mp4
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aac
+*.pcm
+*.opus
+*.amr
+*.wma
+
+# Docker self (avoid recursive context)
+docker/
+
+# Docs (not needed in image)
+Intelligent-Audio-TEST/doc/
+Intelligent-Audio-TEST/docs/
+eval_server/doc/
+asr_server/README.md
+README.md

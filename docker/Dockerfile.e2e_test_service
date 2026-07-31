@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 系统依赖：音频播放（ffmpeg、alsa、pulseaudio）、设备通信（adb、串口）
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    adb \
+    alsa-utils \
+    libasound2 \
+    libasound2-dev \
+    pulseaudio \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY Intelligent-Audio-TEST/requirements.txt ./requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY Intelligent-Audio-TEST/ .
+
+EXPOSE 5002 50051
+
+CMD ["python", "-m", "e2e_test_service.app"]

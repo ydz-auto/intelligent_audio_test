@@ -8,6 +8,9 @@
 - get_device_result_reextractor → gRPC DeviceResultService
 """
 import json
+import logging
+from typing import Any, Callable
+
 from shared.clients.grpc_clients import (
     get_execution_service_stub,
     get_device_service_stub,
@@ -15,6 +18,32 @@ from shared.clients.grpc_clients import (
     get_playback_service_stub,
     get_device_result_service_stub,
 )
+
+_logger = logging.getLogger(__name__)
+
+
+def _grpc_call(
+    call_func: Callable[[], Any],
+    default_return: Any = None,
+    error_msg_prefix: str = "操作失败",
+    log_error: bool = True,
+) -> Any:
+    """通用的 gRPC 调用包装，统一异常处理。
+
+    Args:
+        call_func: 执行 gRPC 调用的无参函数
+        default_return: 异常时的默认返回值；若为 callable，则以异常对象为参数调用
+        error_msg_prefix: 错误消息前缀，用于日志
+        log_error: 是否记录异常日志
+    """
+    try:
+        return call_func()
+    except Exception as e:
+        if log_error:
+            _logger.error(f"{error_msg_prefix}: {e}", exc_info=True)
+        if callable(default_return):
+            return default_return(e)
+        return default_return
 
 
 class _ExecutionEngineProxy:
@@ -26,16 +55,22 @@ class _ExecutionEngineProxy:
 
     def start_task(self, app, task_id):
         from shared.proto import task_service_pb2
-        try:
+
+        def _call():
             stub = get_execution_service_stub()
             resp = stub.StartTask(task_service_pb2.StartTaskRequest(task_id=str(task_id)))
             return resp.success, resp.message
-        except Exception as e:
-            return False, f"启动任务失败: {str(e)}"
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: (False, f"启动任务失败: {e}"),
+            error_msg_prefix="启动任务失败",
+        )
 
     def control_task(self, app, task_id, action):
         from shared.proto import task_service_pb2
-        try:
+
+        def _call():
             stub = get_execution_service_stub()
             if action == 'stop':
                 resp = stub.StopTask(task_service_pb2.StopTaskRequest(task_id=str(task_id)))
@@ -46,17 +81,22 @@ class _ExecutionEngineProxy:
             else:
                 return False, f"不支持的控制操作: {action}"
             return resp.success, resp.message
-        except Exception as e:
-            return False, f"控制任务失败: {str(e)}"
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: (False, f"控制任务失败: {e}"),
+            error_msg_prefix="控制任务失败",
+        )
 
     def remove_from_queue(self, task_id):
         from shared.proto import task_service_pb2
-        try:
+
+        def _call():
             stub = get_execution_service_stub()
             resp = stub.RemoveFromQueue(task_service_pb2.RemoveFromQueueRequest(task_id=str(task_id)))
             return resp.success
-        except Exception:
-            return False
+
+        return _grpc_call(_call, default_return=False, error_msg_prefix="移除队列失败")
 
 
 class _EventManagerProxy:
@@ -86,7 +126,8 @@ class _ReevaluationExecutorProxy:
 
     def submit(self, task_id, reextract_device_output=True, reevaluate_type='all'):
         from shared.proto import task_service_pb2
-        try:
+
+        def _call():
             stub = get_execution_service_stub()
             resp = stub.Reevaluate(task_service_pb2.ReevaluateRequest(
                 task_id=str(task_id),
@@ -94,14 +135,19 @@ class _ReevaluationExecutorProxy:
                 reevaluate_type=reevaluate_type,
             ))
             return resp.success, resp.message
-        except Exception as e:
-            return False, f"重新评估失败: {str(e)}"
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: (False, f"重新评估失败: {e}"),
+            error_msg_prefix="重新评估失败",
+        )
 
     def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result,
                                  test_type, algorithm_type):
         """多轮用例重新评估"""
         from shared.proto import task_service_pb2
-        try:
+
+        def _call():
             stub = get_execution_service_stub()
             resp = stub.ReevaluateMultiRound(task_service_pb2.ReevaluateMultiRoundRequest(
                 task_id=str(task_id),
@@ -112,14 +158,19 @@ class _ReevaluationExecutorProxy:
                 algorithm_type=algorithm_type or 'translation',
             ))
             return resp.success, resp.message
-        except Exception as e:
-            return False, f"多轮重新评估失败: {str(e)}"
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: (False, f"多轮重新评估失败: {e}"),
+            error_msg_prefix="多轮重新评估失败",
+        )
 
     def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result,
                            reference_params, test_type, algorithm_type):
         """单轮用例重新评估"""
         from shared.proto import task_service_pb2
-        try:
+
+        def _call():
             stub = get_execution_service_stub()
             resp = stub.ReevaluateSingle(task_service_pb2.ReevaluateSingleRequest(
                 task_id=str(task_id),
@@ -131,8 +182,12 @@ class _ReevaluationExecutorProxy:
                 algorithm_type=algorithm_type or 'translation',
             ))
             return resp.success, resp.message
-        except Exception as e:
-            return False, f"单轮重新评估失败: {str(e)}"
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: (False, f"单轮重新评估失败: {e}"),
+            error_msg_prefix="单轮重新评估失败",
+        )
 
 
 class _DeviceDriverFactoryProxy:
@@ -144,7 +199,8 @@ class _DeviceDriverFactoryProxy:
 
     def get_driver_name_by_keywords(self, system, keywords):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_service_stub()
             resp = stub.GetDriverNameByKeywords(e2e_service_pb2.GetDriverNameByKeywordsRequest(
                 system=system or '',
@@ -153,30 +209,32 @@ class _DeviceDriverFactoryProxy:
             if resp.success and resp.data:
                 return json.loads(resp.data).get('driver_name', '')
             return ''
-        except Exception:
-            return ''
+
+        return _grpc_call(_call, default_return='', error_msg_prefix="获取驱动名称失败")
 
     def get_registered_keywords(self):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_service_stub()
             resp = stub.GetRegisteredKeywords(e2e_service_pb2.GetRegisteredKeywordsRequest())
             if resp.success and resp.data:
                 return json.loads(resp.data)
             return []
-        except Exception:
-            return []
+
+        return _grpc_call(_call, default_return=[], error_msg_prefix="获取已注册关键词失败")
 
     def get_mock_mode(self):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_service_stub()
             resp = stub.GetMockMode(e2e_service_pb2.GetMockModeRequest())
             if resp.success and resp.data:
                 return json.loads(resp.data).get('mock_mode', False)
             return False
-        except Exception:
-            return False
+
+        return _grpc_call(_call, default_return=False, error_msg_prefix="获取 mock 模式失败")
 
 
 # 模块级单例
@@ -194,7 +252,8 @@ class _DriverProxy:
     def scan(self):
         """扫描设备"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_service_stub()
             resp = stub.DriverScan(e2e_service_pb2.DriverScanRequest(
                 system=self._system or '',
@@ -203,13 +262,14 @@ class _DriverProxy:
             if resp.success and resp.data:
                 return json.loads(resp.data)
             return []
-        except Exception:
-            return []
+
+        return _grpc_call(_call, default_return=[], error_msg_prefix="设备扫描失败")
 
     def unlock(self, serial_or_ip):
         """解锁设备"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_service_stub()
             resp = stub.DriverUnlock(e2e_service_pb2.DriverUnlockRequest(
                 system=self._system or '',
@@ -217,33 +277,35 @@ class _DriverProxy:
                 serial_or_ip=serial_or_ip or '',
             ))
             return resp.success
-        except Exception:
-            return False
+
+        return _grpc_call(_call, default_return=False, error_msg_prefix="设备解锁失败")
 
     @property
     def _mock_mode(self):
         """获取 mock 模式状态"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_service_stub()
             resp = stub.GetMockMode(e2e_service_pb2.GetMockModeRequest())
             if resp.success and resp.data:
                 return json.loads(resp.data).get('mock_mode', False)
             return False
-        except Exception:
-            return False
+
+        return _grpc_call(_call, default_return=False, log_error=False)
 
     @_mock_mode.setter
     def _mock_mode(self, value):
         """设置 mock 模式"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_service_stub()
             stub.SetMockMode(e2e_service_pb2.SetMockModeRequest(
                 mock_mode=bool(value),
             ))
-        except Exception:
-            pass
+
+        _grpc_call(_call, default_return=None, log_error=False)
 
 
 class _AudioServiceProxy:
@@ -252,7 +314,8 @@ class _AudioServiceProxy:
     def play_audio(self, task_id=None, file_path=None, device_index=0, channel_index=0,
                    gain=0.0, player_type='dry', **kwargs):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             play_config = {
                 'file_path': file_path,
@@ -268,20 +331,26 @@ class _AudioServiceProxy:
                 play_config=json.dumps(play_config)
             ))
             return _CompletedFuture(resp.success)
-        except Exception as e:
-            return _CompletedFuture(False, str(e))
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: _CompletedFuture(False, str(e)),
+            error_msg_prefix="播放音频失败",
+        )
 
     def stop_task_audio(self, task_id):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             stub.StopAudio(e2e_service_pb2.StopAudioRequest(task_id=str(task_id)))
-        except Exception:
-            pass
+
+        _grpc_call(_call, default_return=None, log_error=False)
 
     def get_audio_info(self, task_id, audio_file_path):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             resp = stub.GetAudioInfo(e2e_service_pb2.GetAudioInfoRequest(
                 task_id=str(task_id),
@@ -290,27 +359,27 @@ class _AudioServiceProxy:
             if resp.success and resp.data:
                 return json.loads(resp.data)
             return None
-        except Exception:
-            return None
+
+        return _grpc_call(_call, default_return=None, error_msg_prefix="获取音频信息失败")
 
     def get_all_physical_devices(self):
         """扫描所有可用的物理输出设备及通道"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             resp = stub.GetPhysicalDevices(e2e_service_pb2.GetPhysicalDevicesRequest())
             if resp.success and resp.data:
                 return json.loads(resp.data)
             return []
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"get_all_physical_devices failed: {e}")
-            return []
+
+        return _grpc_call(_call, default_return=[], error_msg_prefix="get_all_physical_devices failed")
 
     def get_device_index(self, unique_id):
         """根据唯一标识获取物理设备索引"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             resp = stub.GetDeviceIndex(e2e_service_pb2.GetDeviceIndexRequest(
                 unique_id=unique_id or '',
@@ -318,38 +387,36 @@ class _AudioServiceProxy:
             if resp.success and resp.data:
                 return json.loads(resp.data).get('device_index')
             return None
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"get_device_index failed: {e}")
-            return None
+
+        return _grpc_call(_call, default_return=None, error_msg_prefix="get_device_index failed")
 
     def stop_task_audio_by_pattern(self, task_id_pattern, player_type_pattern=None):
         """按模式停止音频播放"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             resp = stub.StopAudioByPattern(e2e_service_pb2.StopAudioByPatternRequest(
                 task_id_pattern=task_id_pattern or '',
                 player_type_pattern=player_type_pattern or '',
             ))
             return resp.success
-        except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"stop_task_audio_by_pattern failed: {e}")
-            return False
+
+        return _grpc_call(_call, default_return=False, error_msg_prefix="stop_task_audio_by_pattern failed")
 
     @property
     def active_players(self):
         """获取活跃播放器快照"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             resp = stub.GetPlayStatus(e2e_service_pb2.GetPlayStatusRequest(task_id=''))
             if resp.success and resp.data:
                 return json.loads(resp.data).get('players', {})
             return {}
-        except Exception:
-            return {}
+
+        return _grpc_call(_call, default_return={}, error_msg_prefix="获取活跃播放器失败")
 
     @property
     def _device_cache(self):
@@ -373,7 +440,8 @@ class _SplServiceProxy:
 
     def measure_spl(self, task_id=None, **kwargs):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             resp = stub.MeasureSPL(e2e_service_pb2.MeasureSPLRequest(
                 task_id=str(task_id or ''),
@@ -382,34 +450,37 @@ class _SplServiceProxy:
             if resp.success and resp.data:
                 return json.loads(resp.data)
             return None
-        except Exception:
-            return None
+
+        return _grpc_call(_call, default_return=None, error_msg_prefix="测量 SPL 失败")
 
     def start_spl(self, task_id=None, **kwargs):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             resp = stub.StartSPL(e2e_service_pb2.StartSPLRequest(
                 task_id=str(task_id or ''),
                 spl_config=json.dumps(kwargs)
             ))
             return resp.success
-        except Exception:
-            return False
+
+        return _grpc_call(_call, default_return=False, error_msg_prefix="启动 SPL 失败")
 
     def stop_spl(self, task_id=None, **kwargs):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             resp = stub.StopSPL(e2e_service_pb2.StopSPLRequest(task_id=str(task_id or '')))
             return resp.success
-        except Exception:
-            return False
+
+        return _grpc_call(_call, default_return=False, error_msg_prefix="停止 SPL 失败")
 
     def spl_to_gain(self, mapping_id, target_spl, app=None):
         """通过 gRPC MeasureSPL 计算 SPL 到增益的映射"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_audio_service_stub()
             measure_config = {'mapping_id': mapping_id, 'target_spl': target_spl}
             resp = stub.MeasureSPL(e2e_service_pb2.MeasureSPLRequest(
@@ -420,8 +491,8 @@ class _SplServiceProxy:
                 result = json.loads(resp.data)
                 return result.get('gain', 1.0)
             return 1.0
-        except Exception:
-            return 1.0
+
+        return _grpc_call(_call, default_return=1.0, error_msg_prefix="SPL 转增益失败")
 
 
 spl_service = _SplServiceProxy()
@@ -434,7 +505,8 @@ class _PlaybackOrchestratorProxy:
                 offset=0, overlap_rate=0, overlap_time=0, **kwargs):
         """预览播放编排"""
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_playback_service_stub()
             playback_config = {
                 'mode': 'preview',
@@ -452,13 +524,14 @@ class _PlaybackOrchestratorProxy:
             if not resp.success or not resp.data:
                 return None
             return json.loads(resp.data)
-        except Exception:
-            return None
+
+        return _grpc_call(_call, default_return=None, error_msg_prefix="预览播放编排失败")
 
     def play_round(self, round_config=None, task_id=None, case_config=None,
                    test_case_id=None, round_number=None, **kwargs):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_playback_service_stub()
             playback_config = {
                 'mode': 'round',
@@ -475,12 +548,13 @@ class _PlaybackOrchestratorProxy:
             if not resp.success or not resp.data:
                 return None
             return json.loads(resp.data)
-        except Exception:
-            return None
+
+        return _grpc_call(_call, default_return=None, error_msg_prefix="轮次播放失败")
 
     def play_voiceprint(self, voiceprint_config, task_id=None, **kwargs):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_playback_service_stub()
             playback_config = {
                 'mode': 'voiceprint',
@@ -492,16 +566,17 @@ class _PlaybackOrchestratorProxy:
                 playback_config=json.dumps(playback_config)
             ))
             return resp.success
-        except Exception:
-            return False
+
+        return _grpc_call(_call, default_return=False, error_msg_prefix="声纹播放失败")
 
     def stop_playback(self, task_id=None, **kwargs):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_playback_service_stub()
             stub.StopPlayback(e2e_service_pb2.StopPlaybackRequest(task_id=str(task_id or '')))
-        except Exception:
-            pass
+
+        _grpc_call(_call, default_return=None, log_error=False)
 
 
 playback_orchestrator = _PlaybackOrchestratorProxy()
@@ -512,7 +587,8 @@ class _DeviceResultReextractorProxy:
 
     def reextract_for_task(self, task_id, evaluation_status=None):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_result_service_stub()
             reextract_config = {
                 'evaluation_status': evaluation_status,
@@ -526,8 +602,12 @@ class _DeviceResultReextractorProxy:
                 'message': resp.message,
                 'data': json.loads(resp.data) if resp.data else None,
             }
-        except Exception as e:
-            return {'success': False, 'message': str(e), 'data': None}
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': str(e), 'data': None},
+            error_msg_prefix="重新提取设备结果失败",
+        )
 
 
 def get_device_result_reextractor():
@@ -545,7 +625,8 @@ class _DeviceResultCollectorApiProxy:
 
     def convert_results(self, all_results, algorithm_type):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_result_service_stub()
             collect_config = {
                 'action': 'convert_results',
@@ -559,12 +640,13 @@ class _DeviceResultCollectorApiProxy:
             if not resp.success or not resp.data:
                 return all_results
             return json.loads(resp.data)
-        except Exception:
-            return all_results
+
+        return _grpc_call(_call, default_return=all_results, error_msg_prefix="转换结果失败")
 
     def build_case_result_log(self, algorithm_type, res, ref_fields=None, **kwargs):
         from shared.proto import e2e_service_pb2
-        try:
+
+        def _call():
             stub = get_device_result_service_stub()
             collect_config = {
                 'action': 'build_case_result_log',
@@ -580,8 +662,8 @@ class _DeviceResultCollectorApiProxy:
             if resp.success and resp.data:
                 return resp.data
             return ''
-        except Exception:
-            return ''
+
+        return _grpc_call(_call, default_return='', error_msg_prefix="构建用例结果日志失败")
 
 
 class _CompletedFuture:
