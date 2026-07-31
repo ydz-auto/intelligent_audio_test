@@ -11,7 +11,7 @@ export const STATIC_CONFIG = {
 } as const;
 
 export const API_CONFIG = {
-  // 使用相对路径，由 vite.config.ts 的 server.proxy 转发到后端 api_gateway:5000
+  // 使用相对路径，由 vite.config.ts 的 server.proxy 转发到后端 api_gateway:6000
   // 避免跨端口 CORS 问题；WebSocket 也走同源代理
   baseUrl: '/api/v1',
   wsBaseUrl: ''  // 同源，Socket.IO 由 vite 代理 /socket.io

@@ -717,7 +717,7 @@ class FieldMapper:
                     if target_key not in result or not result[target_key]:
                         result[target_key] = result[store_key]
         elif orig_output_fields:
-            for field_key, field_def in orig_output_fields.items():
+            for field_def in orig_output_fields:
                 source_param = field_def.get('code')
                 result[source_param] = device_result.get(source_param, '')
         else:

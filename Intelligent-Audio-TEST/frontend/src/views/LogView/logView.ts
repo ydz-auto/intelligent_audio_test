@@ -1,4 +1,5 @@
-import { ref, computed, watch, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onBeforeUnmount, onUnmounted, nextTick, type Ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { logsApi, algorithmApi } from '../../utils/api';
 // 移除不存在的导入，使用默认值
 const LOG_LEVEL_OPTIONS = [{ value: 'debug', label: 'Debug' }, { value: 'info', label: 'Info' }, { value: 'warning', label: 'Warning' }, { value: 'error', label: 'Error' }];
@@ -12,7 +13,14 @@ interface UILog extends Log {
   time: string;
 }
 
-export function useLogView() {
+interface LogViewRefs {
+  startDateTimeRef?: Ref<HTMLInputElement | null>;
+  endDateTimeRef?: Ref<HTMLInputElement | null>;
+  startContainerRef?: Ref<HTMLElement | null>;
+  endContainerRef?: Ref<HTMLElement | null>;
+}
+
+export function useLogView(refs?: LogViewRefs) {
   const realTimeLogEnabled = ref(false);
   const showMonitorIndicator = ref(false);
   const logRate = ref(0);
@@ -63,6 +71,16 @@ export function useLogView() {
   const currentPage = ref(1);
   const pageSize = ref(10);
   const algorithmOptions = ref<{ value: string; label: string }[]>([]);
+
+  // 日志配置默认值
+  const LOGCategoryOptions = [{ value: 'all', label: '所有分类' }, { value: 'system', label: '系统日志' }, { value: 'test', label: '测试日志' }, { value: 'error', label: '错误日志' }];
+  const LOGModuleOptions = [{ value: 'all', label: '所有模块' }, { value: 'api', label: 'API模块' }, { value: 'e2e', label: 'E2E测试' }, { value: 'device', label: '设备管理' }];
+  const LOGMarkOptions = [{ value: 'all', label: '所有标记' }, { value: 'yellow', label: '黄色标记' }, { value: 'red', label: '红色标记' }, { value: 'green', label: '绿色标记' }, { value: 'blue', label: '蓝色标记' }];
+
+  const getAlgorithmLabel = (algorithmType: string): string => {
+    const option = algorithmOptions.value.find(opt => opt.value === algorithmType);
+    return option ? option.label : algorithmType;
+  };
 
   async function loadAlgorithmOptions() {
     try {
@@ -497,6 +515,105 @@ export function useLogView() {
     });
   };
 
+  // 日期时间选择器逻辑
+  const openDateTimePicker = (inputRef: Ref<HTMLInputElement | null>) => {
+    if (inputRef && inputRef.value) {
+      // 直接调用输入框的showPicker方法（现代浏览器支持）
+      if (typeof (inputRef.value as any).showPicker === 'function') {
+        try {
+          (inputRef.value as any).showPicker();
+        } catch (error) {
+          // 如果showPicker不可用，回退到模拟点击
+          inputRef.value.focus();
+          const event = new MouseEvent('click', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+          });
+          inputRef.value.dispatchEvent(event);
+        }
+      } else {
+        // 回退方案：模拟点击
+        inputRef.value.focus();
+        const event = new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          view: window
+        });
+        inputRef.value.dispatchEvent(event);
+      }
+    }
+  };
+
+  const handleStartDateClick = () => {
+    if (refs?.startDateTimeRef) openDateTimePicker(refs.startDateTimeRef);
+  };
+
+  const handleEndDateClick = () => {
+    if (refs?.endDateTimeRef) openDateTimePicker(refs.endDateTimeRef);
+  };
+
+  // 调整筛选卡片高度的函数
+  function adjustFilterCardHeight() {
+    const filterBar = document.querySelector('.log-view > .filter-section > .filter-bar') as HTMLElement;
+    if (filterBar) {
+      // 重置高度以触发重新计算
+      filterBar.style.height = 'auto';
+      // 强制重排
+      filterBar.offsetHeight;
+      // 再次设置为auto确保内容能正确撑开
+      filterBar.style.height = 'auto';
+    }
+  }
+
+  // 添加事件监听器
+  onMounted(() => {
+    // 为开始时间容器添加点击事件
+    if (refs?.startContainerRef?.value) {
+      refs.startContainerRef.value.addEventListener('click', handleStartDateClick);
+    }
+    
+    // 为结束时间容器添加点击事件
+    if (refs?.endContainerRef?.value) {
+      refs.endContainerRef.value.addEventListener('click', handleEndDateClick);
+    }
+  });
+
+  // 组件挂载时初始化日志视图
+  onMounted(async () => {
+    await initLogView();
+    // 组件挂载后强制重新计算高度
+    nextTick(() => {
+      adjustFilterCardHeight();
+    });
+  });
+
+  // 清理事件监听器
+  onBeforeUnmount(() => {
+    if (refs?.startContainerRef?.value) {
+      refs.startContainerRef.value.removeEventListener('click', handleStartDateClick);
+    }
+    
+    // 为结束时间容器添加点击事件
+    if (refs?.endContainerRef?.value) {
+      refs.endContainerRef.value.removeEventListener('click', handleEndDateClick);
+    }
+    cleanupLogView();
+  });
+
+  // 监听路由变化，确保组件可见时重新计算高度
+  const route = useRoute();
+  watch(
+    () => route.path,
+    () => {
+      if (route.path === '/LogView') {
+        nextTick(() => {
+          adjustFilterCardHeight();
+        });
+      }
+    }
+  );
+
   return {
     realTimeLogEnabled,
     showMonitorIndicator,
@@ -523,6 +640,10 @@ export function useLogView() {
     advancedFilterText,
     autoScrollText,
     selectedLevelObjects,
+    LOGCategoryOptions,
+    LOGModuleOptions,
+    LOGMarkOptions,
+    getAlgorithmLabel,
     initLogView,
     cleanupLogView,
     fetchLogs,

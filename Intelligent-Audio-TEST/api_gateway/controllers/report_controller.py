@@ -1,4 +1,5 @@
-from flask import request, send_file, Response, stream_with_context, jsonify
+from api_gateway.controllers.request_adapter import request
+from fastapi.responses import FileResponse, StreamingResponse
 from shared.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
 from shared.models.database import db
 from shared.utils.response import success_response, error_response, format_response
@@ -319,11 +320,10 @@ class ReportController(ReportControllerBase):
                 output.seek(0)
                 
                 filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.xlsx"
-                return send_file(
+                return FileResponse(
                     output,
-                    mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    as_attachment=True,
-                    download_name=filename
+                    media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
                 )
             elif format_type == 'pdf':
                 from reportlab.lib import colors
@@ -357,11 +357,10 @@ class ReportController(ReportControllerBase):
                 output.seek(0)
                 
                 filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.pdf"
-                return send_file(
+                return FileResponse(
                     output,
-                    mimetype='application/pdf',
-                    as_attachment=True,
-                    download_name=filename
+                    media_type='application/pdf',
+                    headers={"Content-Disposition": f"attachment; filename={filename}"}
                 )
             else:
                 def generate():
@@ -375,9 +374,9 @@ class ReportController(ReportControllerBase):
                         yield (",".join(csv_row) + "\n").encode('utf-8-sig')
 
                 filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.csv"
-                return Response(
-                    stream_with_context(generate()),
-                    mimetype='text/csv',
+                return StreamingResponse(
+                    generate(),
+                    media_type='text/csv',
                     headers={"Content-Disposition": f"attachment; filename={filename}"}
                 )
         except Exception as e:

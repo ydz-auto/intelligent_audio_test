@@ -1,69 +1,71 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.tag_controller import TagCategoryController, TagController
+from api_gateway.routes._response import to_response
 
-tag_bp = Blueprint('tag', __name__)
+router = APIRouter()
 
 
-@tag_bp.route('/categories', methods=['GET'])
+@router.get('/categories')
 def get_categories():
-    return TagCategoryController.get_all()
+    return to_response(TagCategoryController.get_all())
 
 
-@tag_bp.route('/categories/<int:category_id>', methods=['GET'])
-def get_category(category_id):
-    return TagCategoryController.get_one(category_id)
+@router.get('/categories/{category_id}')
+def get_category(category_id: int):
+    return to_response(TagCategoryController.get_one(category_id))
 
 
-@tag_bp.route('/categories', methods=['POST'])
+@router.post('/categories')
 def create_category():
-    return TagCategoryController.create()
+    return to_response(TagCategoryController.create())
 
 
-@tag_bp.route('/categories/<int:category_id>', methods=['PUT'])
-def update_category(category_id):
-    return TagCategoryController.update(category_id)
+@router.put('/categories/{category_id}')
+def update_category(category_id: int):
+    return to_response(TagCategoryController.update(category_id))
 
 
-@tag_bp.route('/categories/<int:category_id>', methods=['DELETE'])
-def delete_category(category_id):
-    return TagCategoryController.delete(category_id)
+@router.delete('/categories/{category_id}')
+def delete_category(category_id: int):
+    return to_response(TagCategoryController.delete(category_id))
 
 
-@tag_bp.route('', methods=['GET'])
+@router.get('')
 def get_tags():
-    return TagController.get_all()
+    return to_response(TagController.get_all())
 
 
-@tag_bp.route('/names', methods=['GET'])
+@router.get('/names')
 def get_tag_names():
-    return TagController.get_all_names()
+    return to_response(TagController.get_all_names())
 
 
-@tag_bp.route('/by-category', methods=['GET'])
+@router.get('/by-category')
 def get_tags_by_category():
-    return TagController.get_tags_by_category()
+    return to_response(TagController.get_tags_by_category())
 
 
-@tag_bp.route('/<int:tag_id>', methods=['GET'])
-def get_tag(tag_id):
-    return TagController.get_one(tag_id)
+@router.get('/{tag_id}')
+def get_tag(tag_id: int):
+    return to_response(TagController.get_one(tag_id))
 
 
-@tag_bp.route('', methods=['POST'])
+@router.post('')
 def create_tag():
-    return TagController.create()
+    return to_response(TagController.create())
 
 
-@tag_bp.route('/<int:tag_id>', methods=['PUT'])
-def update_tag(tag_id):
-    return TagController.update(tag_id)
+@router.put('/{tag_id}')
+def update_tag(tag_id: int):
+    return to_response(TagController.update(tag_id))
 
 
-@tag_bp.route('/<int:tag_id>', methods=['DELETE'])
-def delete_tag(tag_id):
-    return TagController.delete(tag_id)
+@router.delete('/{tag_id}')
+def delete_tag(tag_id: int):
+    return to_response(TagController.delete(tag_id))
 
 
-@tag_bp.route('/batch-category', methods=['PUT'])
+@router.put('/batch-category')
 def batch_update_category():
-    return TagController.batch_update_category()
+    return to_response(TagController.batch_update_category())

@@ -23,7 +23,7 @@ export function useTestCaseManager() {
 
   const store = useTestCaseStore();
   const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination } = storeToRefs(store);
-  const { fetchTestCases, fetchTagView, deleteGroup: deleteGroupFromStore, deleteTestCase } = store;
+  const { fetchTestCases, fetchTagView, deleteGroup: deleteGroupFromStore, deleteTestCase, resetGroupCache } = store;
 
   // 视图模式：'group' 分组视图 | 'tag' 标签视图
   const viewMode = ref<'group' | 'tag'>('group');
@@ -57,6 +57,15 @@ export function useTestCaseManager() {
     currentFilters.value = filters;
     if (viewMode.value === 'tag') {
       fetchTagView({
+        keyword: filters.keyword,
+        testType: filters.testType,
+        algorithmType: filters.algorithmType,
+      });
+    } else {
+      // 分组视图:按筛选重新拉取分组列表,使徽标计数(test_case_count)与筛选一致。
+      // 清空已加载分组用例,避免展开时显示旧筛选下的缓存数据。
+      resetGroupCache();
+      fetchTestCases({
         keyword: filters.keyword,
         testType: filters.testType,
         algorithmType: filters.algorithmType,

@@ -4,7 +4,7 @@ from datetime import datetime, timezone, timedelta
 
 from sqlalchemy import text
 from shared.models.models import TaskCase, TestResult, utc8now
-from shared.models.database import db
+from shared.models.database import db, _engine_ref
 from shared.utils.result_data_store import write_result_data_file, split_result_data
 from shared.algorithm.field_mapper import get_field_mapper
 
@@ -74,7 +74,7 @@ class APIResultProcessor:
 
         result_id = None
         try:
-            with db.engine.connect() as conn:
+            with _engine_ref[0].connect() as conn:
                 result = conn.execute(insert_sql, params)
                 result_id = result.scalar()
                 conn.commit()
@@ -201,7 +201,7 @@ class APIResultProcessor:
         }
 
         try:
-            with db.engine.connect() as conn:
+            with _engine_ref[0].connect() as conn:
                 result = conn.execute(insert_sql, params)
                 result_id = result.scalar()
                 conn.commit()
@@ -221,7 +221,7 @@ class APIResultProcessor:
             utc_plus_8 = timezone(timedelta(hours=8))
         local_db_session = db.session()
         try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if tc_rel and tc_rel.execution_status not in ['stopped']:
                 tc_rel.execution_status = 'failed'
                 tc_rel.evaluation_status = 'completed'

@@ -76,7 +76,6 @@ class ExecutionEngine:
                 cls._instance.scheduler_thread = None
                 cls._instance.scheduler_stop_event = None
                 cls._instance._scheduler_initialized = False
-                cls._instance.scheduler_app = None
 
                 # 独立线程池隔离 - 解决前端刷新导致音频播放卡顿问题
                 # 微服务化后：API 执行下沉到 api_test_service，设备控制下沉到 e2e_test_service，
@@ -96,10 +95,6 @@ class ExecutionEngine:
         self.api_executors.clear()
         self._stop_scheduler()
         self._log(level='INFO', content="执行引擎已关闭")
-
-    def set_scheduler_app(self, app):
-        """设置调度器使用的 Flask 应用实例"""
-        self.scheduler_app = app
 
     def _init_scheduler(self):
         """初始化并启动后台调度线程（在 _log 方法定义后调用）"""
@@ -134,20 +129,26 @@ class ExecutionEngine:
 
     def _scheduler_loop(self):
         """调度器主循环，定期检查并启动 pending 任务，支持事件驱动"""
-        if self.scheduler_stop_event is None or self.scheduler_app is None:
+        if self.scheduler_stop_event is None:
             return
 
         check_interval = config_manager.get_value('execution_engine', 'scheduler_interval', 3)
 
-        with self.scheduler_app.app_context():
-            while not self.scheduler_stop_event.is_set():
+        while not self.scheduler_stop_event.is_set():
+            try:
+                self._schedule_pending_tasks()
+            except Exception as e:
+                print(f"[Scheduler] 调度器检查任务时发生错误: {str(e)}")
+            finally:
+                # 每轮循环结束清理本线程 DB session，防止连接泄漏
                 try:
-                    self._schedule_pending_tasks()
-                except Exception as e:
-                    print(f"[Scheduler] 调度器检查任务时发生错误: {str(e)}")
+                    from shared.models.database import remove_db_session
+                    remove_db_session()
+                except Exception:
+                    pass
 
-                self.scheduler_event.wait(timeout=check_interval)
-                self.scheduler_event.clear()
+            self.scheduler_event.wait(timeout=check_interval)
+            self.scheduler_event.clear()
 
     def _schedule_pending_tasks(self):
         """检查并自动启动 pending 状态的任务
@@ -195,7 +196,7 @@ class ExecutionEngine:
 
                 if can_run:
                     try:
-                        success, message = self.start_task(self.scheduler_app, task_id)
+                        success, message = self.start_task(task_id)
                         if success:
                             print(f"[Scheduler] 任务 {task_id} ({task.type}) 自动启动成功")
                         else:
@@ -292,13 +293,12 @@ class ExecutionEngine:
             **kwargs
         )
 
-    def start_task(self, app, task_id):
+    def start_task(self, task_id):
         """启动测试任务
-        
+
         Args:
-            app: Flask应用实例，用于获取应用上下文
             task_id: 任务ID
-            
+
         Returns:
             tuple: (是否成功, 状态消息)
         """
@@ -313,7 +313,7 @@ class ExecutionEngine:
         # 获取任务类型和关联的API
         local_db_session = db.session()
         try:
-            task = local_db_session.query(Task).get(task_id)
+            task = local_db_session.get(Task, task_id)
             if not task:
                 return False, "任务不存在"
             
@@ -362,7 +362,7 @@ class ExecutionEngine:
                 # 更新任务状态为running
                 local_db_session = db.session()
                 try:
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     if task:
                         task.status = 'running'
                         local_db_session.commit()
@@ -370,7 +370,7 @@ class ExecutionEngine:
                     local_db_session.close()
 
                 # 创建任务执行线程
-                thread = threading.Thread(target=self._run_task, args=(app, task_id, stop_event, pause_event))
+                thread = threading.Thread(target=self._run_task, args=(task_id, stop_event, pause_event))
                 self.workers[task_id] = thread
                 self.stop_flags[task_id] = stop_event
                 self.pause_flags[task_id] = pause_event
@@ -385,13 +385,12 @@ class ExecutionEngine:
                     'id': task_id,
                     'type': task_type,
                     'api_ids': api_ids,
-                    'app': app
                 })
             
             # 更新任务状态为queued
             local_db_session = db.session()
             try:
-                task = local_db_session.query(Task).get(task_id)
+                task = local_db_session.get(Task, task_id)
                 if task:
                     task.status = 'queued'
                     local_db_session.commit()
@@ -417,9 +416,8 @@ class ExecutionEngine:
                     task_id = queued_task['id']
                     task_type = queued_task['type']
                     api_ids = queued_task['api_ids']
-                    app = queued_task['app']
-                    
-                    task = local_db_session.query(Task).get(task_id)
+
+                    task = local_db_session.get(Task, task_id)
                     task_status = task.status if task else None
                     
                     if task_status == 'stopped':
@@ -448,7 +446,6 @@ class ExecutionEngine:
                         
                         tasks_to_start.append({
                             'task_id': task_id,
-                            'app': app,
                             'task': task
                         })
                     else:
@@ -458,16 +455,15 @@ class ExecutionEngine:
             
             for task_info in tasks_to_start:
                 task_id = task_info['task_id']
-                app = task_info['app']
-                
+
                 stop_event = threading.Event()
                 pause_event = threading.Event()
                 pause_event.set()
-                
+
                 # 创建任务完成事件（用于替代忙等待）
                 self.task_completion_events[task_id] = threading.Event()
-                
-                thread = threading.Thread(target=self._run_task, args=(app, task_id, stop_event, pause_event))
+
+                thread = threading.Thread(target=self._run_task, args=(task_id, stop_event, pause_event))
                 self.workers[task_id] = thread
                 self.stop_flags[task_id] = stop_event
                 self.pause_flags[task_id] = pause_event
@@ -494,15 +490,14 @@ class ExecutionEngine:
             self.task_queue = new_queue
         return removed
 
-    def control_task(self, app, task_id, action):
+    def control_task(self, task_id, action):
         """
         控制任务执行（暂停、恢复、停止）
-        
+
         Args:
-            app: Flask应用实例，用于获取应用上下文
             task_id: 任务ID
             action: 操作类型，可选值：'pause', 'resume', 'stop'
-            
+
         Returns:
             tuple: (是否成功, 状态消息)
         """
@@ -510,207 +505,206 @@ class ExecutionEngine:
         if action == 'stop':
             self.remove_from_queue(task_id)
 
-        with app.app_context():
-            # 使用本地会话确保独立可靠的会话
-            local_db_session = db.session()
-            try:
-                task = local_db_session.query(Task).get(task_id)
-                if not task:
-                    return False, "任务不存在"
+        # 使用本地会话确保独立可靠的会话
+        local_db_session = db.session()
+        try:
+            task = local_db_session.get(Task, task_id)
+            if not task:
+                return False, "任务不存在"
 
-                # 检查任务状态是否允许执行操作
-                if action == 'pause':
-                    if task.status not in ['running', 'queued']:
-                        return False, "只有执行中或排队中的任务才能暂停"
-                elif action == 'resume':
-                    if task.status != 'paused':
-                        return False, "只有已暂停的任务才能恢复"
-                elif action == 'stop':
-                    if task.status not in ['running', 'paused', 'queued']:
-                        return False, "只有执行中、已暂停或排队中的任务才能停止"
+            # 检查任务状态是否允许执行操作
+            if action == 'pause':
+                if task.status not in ['running', 'queued']:
+                    return False, "只有执行中或排队中的任务才能暂停"
+            elif action == 'resume':
+                if task.status != 'paused':
+                    return False, "只有已暂停的任务才能恢复"
+            elif action == 'stop':
+                if task.status not in ['running', 'paused', 'queued']:
+                    return False, "只有执行中、已暂停或排队中的任务才能停止"
 
-                # 对于停止操作，即使任务不在workers中，也应该执行
-                if action == 'stop':
-                    # 更新任务状态为stopped
-                    task.status = 'stopped'
-                    task.completed_at = datetime.now(self.utc_plus_8)
-                    
-                    # 只处理未完成的用例（执行中、排队中、待执行），保留已完成用例的状态
-                    cases = local_db_session.query(TaskCase).filter(
-                        TaskCase.task_id == task_id,
-                        ~TaskCase.status.in_(['completed', 'failed', 'skipped'])
-                    ).all()
-                    for tc in cases:
-                        tc.status = 'skipped'
-                        tc.execution_status = 'stopped'
-                        tc.evaluation_status = 'stopped'
-                        tc.started_at = None
-                        tc.completed_at = datetime.now(self.utc_plus_8)
-                        tc.duration = None
-                        tc.error_message = '任务被手动停止'
-                    
+            # 对于停止操作，即使任务不在workers中，也应该执行
+            if action == 'stop':
+                # 更新任务状态为stopped
+                task.status = 'stopped'
+                task.completed_at = datetime.now(self.utc_plus_8)
+                
+                # 只处理未完成的用例（执行中、排队中、待执行），保留已完成用例的状态
+                cases = local_db_session.query(TaskCase).filter(
+                    TaskCase.task_id == task_id,
+                    ~TaskCase.status.in_(['completed', 'failed', 'skipped'])
+                ).all()
+                for tc in cases:
+                    tc.status = 'skipped'
+                    tc.execution_status = 'stopped'
+                    tc.evaluation_status = 'stopped'
+                    tc.started_at = None
+                    tc.completed_at = datetime.now(self.utc_plus_8)
+                    tc.duration = None
+                    tc.error_message = '任务被手动停止'
+                
+                local_db_session.commit()
+                # 停止所有音频播放（通过 gRPC 调用 e2e_test_service 的 AudioService）
+                _stop_task_audio_via_grpc(task_id)
+                self._emit_progress(task)  # 发送进度更新
+                
+                # 如果任务在workers中，设置停止标志
+                if task_id in self.workers:
+                    self.stop_flags[task_id].set()  # 设置停止标志
+                    self.pause_flags[task_id].set()  # 确保任务不处于暂停状态，以便能响应停止指令
+                    # 通过 gRPC 通知 e2e_test_service 同步停止事件
+                    _register_task_events_via_grpc(
+                        task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                    )
+                    # 唤醒等待线程，使其能立即检测到 stop_event
+                    self.notify_case_completed(task_id)
+                
+                # 立即清理运行状态，避免新任务进入排队
+                with self.queue_lock:
+                    if task_id in self.running_tasks:
+                        task_type = self.running_tasks[task_id]
+                        del self.running_tasks[task_id]
+                        
+                        if task_type == 'e2e':
+                            self.running_e2e = False
+                        else:
+                            # 释放占用的 API ID
+                            try:
+                                from shared.models.models import TaskAPI
+                                task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
+                                for api_rel in task_apis:
+                                    if api_rel.api_id in self.running_apis:
+                                        self.running_apis.remove(api_rel.api_id)
+                            except Exception as e:
+                                self._log(level='WARNING', content=f"清理API资源时发生错误: {str(e)}", task_id=task_id)
+                
+                # 清理线程和标志位
+                self.workers.pop(task_id, None)
+                self.stop_flags.pop(task_id, None)
+                self.pause_flags.pop(task_id, None)
+                self.task_completion_events.pop(task_id, None)
+                # 清理进度缓存，避免内存泄漏
+                self.task_progress_cache.pop(task_id, None)
+                self.last_progress_update.pop(task_id, None)
+                # 清理多轮进度缓存（key 为 tc_rel_id，需查询当前任务的用例 ID）
+                try:
+                    tc_rel_ids = [
+                        tc_id for (tc_id,) in
+                        local_db_session.query(TaskCase.id).filter_by(task_id=task_id).all()
+                    ]
+                    for tc_rel_id in tc_rel_ids:
+                        self.round_progress_cache.pop(tc_rel_id, None)
+                except Exception:
+                    pass
+
+                # 检查队列并启动下一个任务
+                self._check_queue()
+
+                # 通过 gRPC 调用 e2e_test_service 的 DeviceService
+                _cleanup_devices_via_grpc(task_id)
+                _unregister_task_events_via_grpc(task_id)
+                
+                return True, "任务已停止"
+            else:
+                # 对于暂停和恢复操作，需要任务在workers中
+                if action == 'pause' and task.status == 'queued':
+                    self.remove_from_queue(task_id)
+                    task.status = 'paused'
                     local_db_session.commit()
-                    # 停止所有音频播放（通过 gRPC 调用 e2e_test_service 的 AudioService）
-                    _stop_task_audio_via_grpc(task_id)
-                    self._emit_progress(task)  # 发送进度更新
-                    
-                    # 如果任务在workers中，设置停止标志
-                    if task_id in self.workers:
-                        self.stop_flags[task_id].set()  # 设置停止标志
-                        self.pause_flags[task_id].set()  # 确保任务不处于暂停状态，以便能响应停止指令
-                        # 通过 gRPC 通知 e2e_test_service 同步停止事件
-                        _register_task_events_via_grpc(
-                            task_id, self.stop_flags[task_id], self.pause_flags[task_id]
-                        )
-                        # 唤醒等待线程，使其能立即检测到 stop_event
-                        self.notify_case_completed(task_id)
-                    
-                    # 立即清理运行状态，避免新任务进入排队
-                    with self.queue_lock:
-                        if task_id in self.running_tasks:
-                            task_type = self.running_tasks[task_id]
-                            del self.running_tasks[task_id]
-                            
-                            if task_type == 'e2e':
-                                self.running_e2e = False
-                            else:
-                                # 释放占用的 API ID
-                                try:
-                                    from shared.models.models import TaskAPI
-                                    task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
-                                    for api_rel in task_apis:
-                                        if api_rel.api_id in self.running_apis:
-                                            self.running_apis.remove(api_rel.api_id)
-                                except Exception as e:
-                                    self._log(level='WARNING', content=f"清理API资源时发生错误: {str(e)}", task_id=task_id)
-                    
-                    # 清理线程和标志位
-                    self.workers.pop(task_id, None)
-                    self.stop_flags.pop(task_id, None)
-                    self.pause_flags.pop(task_id, None)
-                    self.task_completion_events.pop(task_id, None)
-                    # 清理进度缓存，避免内存泄漏
-                    self.task_progress_cache.pop(task_id, None)
-                    self.last_progress_update.pop(task_id, None)
-                    # 清理多轮进度缓存（key 为 tc_rel_id，需查询当前任务的用例 ID）
-                    try:
-                        tc_rel_ids = [
-                            tc_id for (tc_id,) in
-                            local_db_session.query(TaskCase.id).filter_by(task_id=task_id).all()
+                    self._emit_progress(task)
+                    return True, "任务已暂停"
+
+                if action == 'resume' and task_id not in self.workers:
+                    if task.type == 'api':
+                        from shared.models.models import TaskAPI
+                        api_ids = [
+                            rel.api_id
+                            for rel in local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
                         ]
-                        for tc_rel_id in tc_rel_ids:
-                            self.round_progress_cache.pop(tc_rel_id, None)
-                    except Exception:
-                        pass
-
-                    # 检查队列并启动下一个任务
-                    self._check_queue()
-
-                    # 通过 gRPC 调用 e2e_test_service 的 DeviceService
-                    _cleanup_devices_via_grpc(task_id)
-                    _unregister_task_events_via_grpc(task_id)
-                    
-                    return True, "任务已停止"
-                else:
-                    # 对于暂停和恢复操作，需要任务在workers中
-                    if action == 'pause' and task.status == 'queued':
-                        self.remove_from_queue(task_id)
-                        task.status = 'paused'
+                        with self.queue_lock:
+                            self.task_queue.append({"id": task.id, "type": "api", "api_ids": api_ids, "app": app})
+                        task.status = 'queued'
                         local_db_session.commit()
                         self._emit_progress(task)
-                        return True, "任务已暂停"
-
-                    if action == 'resume' and task_id not in self.workers:
-                        if task.type == 'api':
-                            from shared.models.models import TaskAPI
-                            api_ids = [
-                                rel.api_id
-                                for rel in local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
-                            ]
-                            with self.queue_lock:
-                                self.task_queue.append({"id": task.id, "type": "api", "api_ids": api_ids, "app": app})
-                            task.status = 'queued'
-                            local_db_session.commit()
-                            self._emit_progress(task)
-                            self.trigger_scheduler_check()
-                            return True, "任务已恢复"
-                        return False, "未找到运行中的任务"
-
-                    if task_id not in self.workers:
-                        return False, "未找到运行中的任务"
-
-                    if action == 'pause':
-                        # 暂停任务
-                        self.pause_flags[task_id].clear()  # 清除暂停标志，触发暂停
-                        # 通过 gRPC 通知 e2e_test_service 同步暂停事件
-                        _register_task_events_via_grpc(
-                            task_id, self.stop_flags[task_id], self.pause_flags[task_id]
-                        )
-                        task.status = 'paused'  # 更新任务状态
-                        
-                        # 对于 API 任务，不重置执行中的用例状态为 pending
-                        # 因为 API 线程是在 pause_event 上阻塞，恢复时会自动继续执行
-                        # 如果重置为 pending，会导致调度器重新启动新线程，造成重复执行
-                        if task.type == 'e2e':
-                            # E2E 任务是同步顺序执行的，暂停时可以将当前正在执行的用例重置
-                            # 但为了统一和简单，建议也不重置，让 E2E 执行器内部处理暂停
-                            running_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, execution_status='running').all()
-                            for tc in running_cases:
-                                tc.execution_status = 'pending'
-                                tc.completed_at = None
-                                tc.duration = None
-                        
-                        local_db_session.commit()
-                        # 暂停时停止所有音频播放（通过 gRPC AudioService）
-                        _stop_task_audio_via_grpc(task_id)
-                        # 暂停时清理设备并注销事件（通过 gRPC DeviceService）
-                        _cleanup_devices_via_grpc(task_id)
-                        _unregister_task_events_via_grpc(task_id)
-                        self._emit_progress(task)  # 发送进度更新
-                        return True, "任务已暂停"
-                    elif action == 'resume':
-                        # 恢复任务
-                        # 检查事件是否还存在，如果不存在需要重新注册
-                        # 跨服务调用：通过 gRPC DeviceService 获取任务事件
-                        if _get_task_events_via_grpc(task_id) is None:
-                            # 重新注册事件
-                            if task_id not in self.pause_flags:
-                                self.pause_flags[task_id] = threading.Event()
-                            if task_id not in self.stop_flags:
-                                self.stop_flags[task_id] = threading.Event()
-                            # 跨服务调用：通过 gRPC DeviceService 注册任务事件
-                            _register_task_events_via_grpc(task_id, self.stop_flags[task_id], self.pause_flags[task_id])
-                        
-                        self.pause_flags[task_id].set()  # 设置暂停标志，恢复执行
-                        # 通过 gRPC 通知 e2e_test_service 同步恢复事件
-                        _register_task_events_via_grpc(
-                            task_id, self.stop_flags[task_id], self.pause_flags[task_id]
-                        )
-                        task.status = 'running'  # 更新任务状态
-                        local_db_session.commit()
-                        self._emit_progress(task)  # 发送进度更新
+                        self.trigger_scheduler_check()
                         return True, "任务已恢复"
-                    return False, "无效的操作指令"
-            finally:
-                local_db_session.close()
+                    return False, "未找到运行中的任务"
 
-    def _run_task(self, app, task_id, stop_event, pause_event):
+                if task_id not in self.workers:
+                    return False, "未找到运行中的任务"
+
+                if action == 'pause':
+                    # 暂停任务
+                    self.pause_flags[task_id].clear()  # 清除暂停标志，触发暂停
+                    # 通过 gRPC 通知 e2e_test_service 同步暂停事件
+                    _register_task_events_via_grpc(
+                        task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                    )
+                    task.status = 'paused'  # 更新任务状态
+                    
+                    # 对于 API 任务，不重置执行中的用例状态为 pending
+                    # 因为 API 线程是在 pause_event 上阻塞，恢复时会自动继续执行
+                    # 如果重置为 pending，会导致调度器重新启动新线程，造成重复执行
+                    if task.type == 'e2e':
+                        # E2E 任务是同步顺序执行的，暂停时可以将当前正在执行的用例重置
+                        # 但为了统一和简单，建议也不重置，让 E2E 执行器内部处理暂停
+                        running_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, execution_status='running').all()
+                        for tc in running_cases:
+                            tc.execution_status = 'pending'
+                            tc.completed_at = None
+                            tc.duration = None
+                    
+                    local_db_session.commit()
+                    # 暂停时停止所有音频播放（通过 gRPC AudioService）
+                    _stop_task_audio_via_grpc(task_id)
+                    # 暂停时清理设备并注销事件（通过 gRPC DeviceService）
+                    _cleanup_devices_via_grpc(task_id)
+                    _unregister_task_events_via_grpc(task_id)
+                    self._emit_progress(task)  # 发送进度更新
+                    return True, "任务已暂停"
+                elif action == 'resume':
+                    # 恢复任务
+                    # 检查事件是否还存在，如果不存在需要重新注册
+                    # 跨服务调用：通过 gRPC DeviceService 获取任务事件
+                    if _get_task_events_via_grpc(task_id) is None:
+                        # 重新注册事件
+                        if task_id not in self.pause_flags:
+                            self.pause_flags[task_id] = threading.Event()
+                        if task_id not in self.stop_flags:
+                            self.stop_flags[task_id] = threading.Event()
+                        # 跨服务调用：通过 gRPC DeviceService 注册任务事件
+                        _register_task_events_via_grpc(task_id, self.stop_flags[task_id], self.pause_flags[task_id])
+                    
+                    self.pause_flags[task_id].set()  # 设置暂停标志，恢复执行
+                    # 通过 gRPC 通知 e2e_test_service 同步恢复事件
+                    _register_task_events_via_grpc(
+                        task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                    )
+                    task.status = 'running'  # 更新任务状态
+                    local_db_session.commit()
+                    self._emit_progress(task)  # 发送进度更新
+                    return True, "任务已恢复"
+                return False, "无效的操作指令"
+        finally:
+            local_db_session.close()
+
+    def _run_task(self, task_id, stop_event, pause_event):
         """执行测试任务的核心方法
-        
+
         Args:
-            app: Flask应用实例，用于获取应用上下文
             task_id: 任务ID
             stop_event: 停止事件，用于通知任务停止
             pause_event: 暂停事件，用于通知任务暂停/恢复
         """
-        with app.app_context():
+        try:
             from shared.models.models import Log, TaskCase
+            from shared.models.database import remove_db_session
             
             # 使用本地会话获取任务对象
             local_db_session = db.session()
             try:
                 # 获取任务对象
-                task = local_db_session.query(Task).get(task_id)
+                task = local_db_session.get(Task, task_id)
                 if not task:
                     self._log(
                         level='ERROR', 
@@ -740,7 +734,7 @@ class ExecutionEngine:
                 local_db_session = db.session()
                 try:
                     # 重新获取任务对象，确保它在有效会话中
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     if not task:
                         self._log(
                             level='ERROR', 
@@ -755,7 +749,7 @@ class ExecutionEngine:
                             from shared.models.models import TaskAPI
                             # 获取API配置
                             task_api = local_db_session.query(TaskAPI).filter_by(task_id=task.id).first()
-                            api_config = local_db_session.query(API).get(task_api.api_id) if task_api else None
+                            api_config = local_db_session.get(API, task_api.api_id) if task_api else None
                             
                             # 获取可用的API端点
                             available_endpoints = []
@@ -805,7 +799,7 @@ class ExecutionEngine:
                     local_db_session = db.session()
                     try:
                         # 重新获取任务对象，确保它在有效会话中
-                        task = local_db_session.query(Task).get(task_id)
+                        task = local_db_session.get(Task, task_id)
                         if not task:
                             self._log(
                                 level='ERROR', 
@@ -942,12 +936,19 @@ class ExecutionEngine:
                                 task_id=task_id
                             )
                             from shared.models.models import PlaybackDevice
-                            case = local_db_session.query(TestCase).get(tc_rel.test_case_id)
+                            case = local_db_session.get(TestCase, tc_rel.test_case_id)
                             if case:
                                 playback_devices = set()
                                 # 从配置中获取音频播放设备
+                                # audios 存储在 rounds[].audios 中（rounds-as-top-level 格式）
                                 config = case.config or {}
-                                audios = config.get('audios', [])
+                                rounds = config.get('rounds', []) if isinstance(config, dict) else []
+                                audios = []
+                                for round_item in rounds:
+                                    if isinstance(round_item, dict):
+                                        round_audios = round_item.get('audios', [])
+                                        if isinstance(round_audios, list):
+                                            audios.extend(round_audios)
                                 self._log(
                                     level='DEBUG',
                                     content=f"E2E用例配置: 音频数量={len(audios)}",
@@ -966,7 +967,7 @@ class ExecutionEngine:
                                 
                                 # 检查播放设备状态
                                 for device_id in playback_devices:
-                                    playback_dev = local_db_session.query(PlaybackDevice).get(device_id)
+                                    playback_dev = local_db_session.get(PlaybackDevice, device_id)
                                     if playback_dev:
                                         pb_dev_status = playback_dev.status
                                         self._log(
@@ -1027,7 +1028,7 @@ class ExecutionEngine:
                         # 注意：只有真正进入等待队列的用例才会被统计为"排队中"
 
                         # 重新获取任务对象以避免 detached instance 问题
-                        task = local_db_session.query(Task).get(task_id)
+                        task = local_db_session.get(Task, task_id)
                         if not task:
                             continue
                         
@@ -1054,7 +1055,7 @@ class ExecutionEngine:
 
                                 # 微服务化后：直接同步通过 gRPC 调用 api_test_service 执行
                                 # api_test_service 内部管理自己的线程池和并发控制
-                                self._execute_api_case(app, task_id, tc_rel_id)
+                                self._execute_api_case(task_id, tc_rel_id)
                                 continue
                             except Exception as e:
                                 # API任务执行异常，标记为失败，不执行E2E流程
@@ -1074,7 +1075,7 @@ class ExecutionEngine:
                             success = self._execute_e2e_case(task_id, tc_rel.id)
                             
                             # 重新获取tc_rel对象，因为execute_e2e_case方法内部可能已经更新了它
-                            tc_rel = local_db_session.query(TaskCase).get(tc_rel.id)
+                            tc_rel = local_db_session.get(TaskCase, tc_rel.id)
                             
                             # 更新任务统计信息
                             success_count = local_db_session.query(TaskCase).filter(
@@ -1086,8 +1087,17 @@ class ExecutionEngine:
                         
                         # 发送告警（如果执行失败）
                         if not success:
+                            # E2E执行失败时，若用例仍停留在pending（gRPC内部未自行更新状态），
+                            # 必须将状态置为failed，避免while循环反复取到同一个用例造成死循环
+                            if tc_rel.execution_status not in ('completed', 'failed'):
+                                tc_rel.execution_status = 'failed'
+                                tc_rel.status = 'failed'
+                                # 评估状态也置为completed，避免后续任务级状态判定误认为"评估中"
+                                tc_rel.evaluation_status = 'completed'
+                                tc_rel.completed_at = datetime.now(self.utc_plus_8)
+                                tc_rel.error_message = tc_rel.error_message or 'E2E用例执行失败（gRPC返回失败或异常）'
                             self._emit_alert(task_id, f"用例执行失败: {tc_rel.test_case_id}")
-                            
+
                         local_db_session.commit()
                         self._emit_progress(task)  # 发送进度更新
                     finally:
@@ -1096,7 +1106,7 @@ class ExecutionEngine:
                 # 检查是否所有测试用例都已执行完成，提前更新任务状态
                 local_db_session = db.session()
                 try:
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     if task:
                         # 获取所有测试用例
                         all_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id).count()
@@ -1138,12 +1148,12 @@ class ExecutionEngine:
                             if task.status in ['completed', 'failed']:
                                 # 更新任务完成时间和实际执行时长
                                 task.completed_at = datetime.now(self.utc_plus_8)
-                            if task.started_at:
-                                # 确保 started_at 是带时区的 datetime 对象
-                                if task.started_at.tzinfo is None:
-                                    task.started_at = task.started_at.replace(tzinfo=self.utc_plus_8)
-                                # 计算实际执行时长（秒）
-                                task.actual_duration = int((task.completed_at - task.started_at).total_seconds())
+                                if task.started_at:
+                                    # 确保 started_at 是带时区的 datetime 对象
+                                    if task.started_at.tzinfo is None:
+                                        task.started_at = task.started_at.replace(tzinfo=self.utc_plus_8)
+                                    # 计算实际执行时长（秒）
+                                    task.actual_duration = int((task.completed_at - task.started_at).total_seconds())
                             # 更新任务的已完成用例数和失败用例数
                             task.completed_cases = completed_cases
                             task.failed_cases = failed_cases
@@ -1373,7 +1383,7 @@ class ExecutionEngine:
                     local_db_session = db.session()
                     try:
                         # 重新获取任务对象，确保它在有效会话中
-                        task = local_db_session.query(Task).get(task_id)
+                        task = local_db_session.get(Task, task_id)
                         if not task:
                             # 任务不存在，直接返回，不继续处理
                             return
@@ -1452,7 +1462,7 @@ class ExecutionEngine:
                 local_db_session = db.session()
                 try:
                     # 重新获取任务对象，确保它在有效会话中
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     if not task:
                         self._log(
                             level='ERROR', 
@@ -1548,7 +1558,7 @@ class ExecutionEngine:
                 should_cleanup = True
                 local_db_session = db.session()
                 try:
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     # 只有当任务明确处于 'paused' 状态时，才保留资源（以便恢复）
                     # 如果任务被停止 ('stopped')、完成 ('completed') 或失败 ('failed')，必须清理
                     if task and task.status == 'paused' and not stop_event.is_set():
@@ -1604,6 +1614,13 @@ class ExecutionEngine:
 
                     # 检查队列并启动下一个任务
                     self._check_queue()
+        finally:
+            # 后台线程结束时清理本线程 DB session，防止连接泄漏
+            try:
+                from shared.models.database import remove_db_session
+                remove_db_session()
+            except Exception:
+                pass
 
     def _update_endpoint_health(self, endpoint_url, available):
         """更新API入口(Master)的可用性状态
@@ -1629,14 +1646,13 @@ class ExecutionEngine:
                 self._log(level='WARNING' if not available else 'INFO', 
                          content=f"API入口状态变更: {endpoint_url} -> {status_str}")
 
-    def _execute_api_case(self, app, task_id, tc_rel_id):
+    def _execute_api_case(self, task_id, tc_rel_id):
         """执行API测试用例
 
         微服务化迁移后，不再直接调用本地 self.api_executor，
         改为通过 gRPC 调用 api_test_service 执行用例。
 
         Args:
-            app: Flask应用实例
             task_id: 任务ID
             tc_rel_id: 任务用例关联ID
 
@@ -1662,7 +1678,7 @@ class ExecutionEngine:
             # 更新任务统计信息（基于 api_test_service 已写入数据库的 TaskCase 状态）
             local_db_session = db.session()
             try:
-                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+                tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 if tc_rel:
                     # 若 api_test_service 未设置 started_at，在此兜底
                     if not tc_rel.started_at:
@@ -1678,46 +1694,43 @@ class ExecutionEngine:
             error_trace = traceback.format_exc()
             error_msg = f"API 执行异常: {str(e)}"
 
-            # 使用应用上下文记录日志和更新状态
-            with app.app_context():
-                self._log(
-                    level='ERROR',
-                    content=f"API 用例执行失败: {error_msg}\n{error_trace}",
-                    task_id=task_id
-                )
+            self._log(
+                level='ERROR',
+                content=f"API 用例执行失败: {error_msg}\n{error_trace}",
+                task_id=task_id
+            )
 
-                # 更新测试用例状态为失败
-                local_db_session = db.session()
-                try:
-                    tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
-                    if tc_rel:
-                        tc_rel.status = 'failed'
-                        tc_rel.execution_status = 'failed'
-                        # 如果started_at字段为空，设置它
-                        if not tc_rel.started_at:
-                            tc_rel.started_at = datetime.now(self.utc_plus_8)
-                        tc_rel.completed_at = datetime.now(self.utc_plus_8)
-                        # 计算测试用例执行时长，确保时区一致
-                        started_at = tc_rel.started_at
-                        if started_at.tzinfo is None:
-                            # 如果started_at不带时区，将其转换为带时区的datetime对象
-                            started_at = started_at.replace(tzinfo=self.utc_plus_8)
-                        tc_rel.duration = int((tc_rel.completed_at - started_at).total_seconds())
-                        tc_rel.error_message = error_msg
+            # 更新测试用例状态为失败
+            local_db_session = db.session()
+            try:
+                tc_rel = local_db_session.get(TaskCase, tc_rel_id)
+                if tc_rel:
+                    tc_rel.status = 'failed'
+                    tc_rel.execution_status = 'failed'
+                    # 如果started_at字段为空，设置它
+                    if not tc_rel.started_at:
+                        tc_rel.started_at = datetime.now(self.utc_plus_8)
+                    tc_rel.completed_at = datetime.now(self.utc_plus_8)
+                    # 计算测试用例执行时长，确保时区一致
+                    started_at = tc_rel.started_at
+                    if started_at.tzinfo is None:
+                        started_at = started_at.replace(tzinfo=self.utc_plus_8)
+                    tc_rel.duration = int((tc_rel.completed_at - started_at).total_seconds())
+                    tc_rel.error_message = error_msg
+                    local_db_session.commit()
+
+                    # 更新任务统计信息
+                    task = local_db_session.get(Task, task_id)
+                    if task:
+                        task.completed_cases = local_db_session.query(TaskCase).filter(
+                            TaskCase.task_id == task_id,
+                            TaskCase.status == 'completed'
+                        ).count()
+                        task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='failed').count()
                         local_db_session.commit()
-
-                        # 更新任务统计信息
-                        task = local_db_session.query(Task).get(task_id)
-                        if task:
-                            task.completed_cases = local_db_session.query(TaskCase).filter(
-                                TaskCase.task_id == task_id,
-                                TaskCase.status == 'completed'
-                            ).count()
-                            task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='failed').count()
-                            local_db_session.commit()
-                            self._emit_progress(task)
-                finally:
-                    local_db_session.close()
+                        self._emit_progress(task)
+            finally:
+                local_db_session.close()
             return False
 
     def _execute_e2e_case(self, task_id, tc_rel_id):
@@ -1840,5 +1853,9 @@ def _execute_e2e_case_via_grpc(task_id, tc_rel_id):
         if not resp.success:
             return False
         return True
-    except Exception:
+    except Exception as e:
+        import logging as _logging
+        _logging.getLogger('task_service').exception(
+            f"[_execute_e2e_case_via_grpc] gRPC调用StartE2ETask异常: task_id={task_id}, tc_rel_id={tc_rel_id}, error={e}"
+        )
         return False

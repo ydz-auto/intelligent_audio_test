@@ -1,4 +1,4 @@
-from flask import request,current_app
+from api_gateway.controllers.request_adapter import request
 from shared.models.models import SPLMapping, PlaybackDevice, Audio, CalibrationHistory
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
@@ -520,7 +520,8 @@ class SPLController:
             import os
             
             # 使用静态资源路径下的音频文件
-            sample_audio = os.path.join(current_app.config.get('AUDIO_STORAGE_PATH'), 'test.wav')
+            from api_gateway.config.config import Config
+            sample_audio = os.path.join(Config.AUDIO_STORAGE_PATH, 'test.wav')
             
             
             if not os.path.exists(sample_audio):

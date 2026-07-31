@@ -6,7 +6,7 @@
 与 device_driver（被测设备驱动）平行，管理导轨、声压计、人工嘴等辅助设备。
 
 使用方式：
-    from e2e_test_service.env_device import EnvDeviceFactory
+    from e2e_test_service.env_device.env_device_factory import EnvDeviceFactory
 
     # 从配置批量创建设备
     devices = EnvDeviceFactory.create_from_config([
@@ -25,17 +25,9 @@
         dev.disconnect()
 """
 
-from e2e_test_service.env_device.base_env_device import BaseEnvDevice
+# 注册内置设备类型到工厂（导入即注册，副作用）
 from e2e_test_service.env_device.env_device_factory import EnvDeviceFactory
 from e2e_test_service.env_device.rail import RailEnvDevice, SerialRailEnvDevice
 
-# 注册内置设备类型到工厂
 EnvDeviceFactory.register('rail', RailEnvDevice)
 EnvDeviceFactory.register('serial_rail', SerialRailEnvDevice)
-
-__all__ = [
-    'BaseEnvDevice',
-    'EnvDeviceFactory',
-    'RailEnvDevice',
-    'SerialRailEnvDevice',
-]

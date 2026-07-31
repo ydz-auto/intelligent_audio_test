@@ -54,9 +54,12 @@ class APITestService:
                     cls._instance._initialized = False
         return cls._instance
 
-    def init_app(self, app):
-        """初始化服务"""
-        self.app = app
+    def init_app(self, app=None):
+        """初始化服务
+
+        Args:
+            app: 保留参数以兼容旧调用，内部不再使用（DB session 由 scoped_session 提供）
+        """
         self._engine = _APIEngineAdapter()
         self._executor = None
         self._executor_lock = threading.Lock()
@@ -91,8 +94,7 @@ class APITestService:
         from shared.models.database import db
         from shared.models.models import TaskCase
 
-        app = getattr(self, 'app', None)
-        if app is None:
+        if not self._initialized:
             return {'success': False, 'task_id': task_id, 'message': '服务未初始化'}
 
         # 标记任务运行中
@@ -105,7 +107,7 @@ class APITestService:
 
         def _run_case(tc_rel_id):
             try:
-                executor.execute_api_case(app, task_id, tc_rel_id)
+                executor.execute_api_case(task_id, tc_rel_id)
             except Exception as e:
                 import traceback
                 self._log(task_id, 'ERROR', f"API 用例 {tc_rel_id} 执行异常: {str(e)}\n{traceback.format_exc()}")
@@ -116,16 +118,15 @@ class APITestService:
             # 查询待执行的 TaskCase ID（如果调用方未提供 case_ids，则从数据库按 pending 状态读取）
             target_case_ids = list(case_ids) if case_ids else []
             if not target_case_ids:
-                with app.app_context():
-                    local_db_session = db.session()
-                    try:
-                        pending = local_db_session.query(TaskCase).filter(
-                            TaskCase.task_id == task_id,
-                            TaskCase.execution_status.in_(['pending', 'queued'])
-                        ).all()
-                        target_case_ids = [tc.id for tc in pending]
-                    finally:
-                        local_db_session.close()
+                local_db_session = db.session()
+                try:
+                    pending = local_db_session.query(TaskCase).filter(
+                        TaskCase.task_id == task_id,
+                        TaskCase.execution_status.in_(['pending', 'queued'])
+                    ).all()
+                    target_case_ids = [tc.id for tc in pending]
+                finally:
+                    local_db_session.close()
 
             if not target_case_ids:
                 self._mark_task_idle(task_id)

@@ -1,24 +1,31 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.group_controller import GroupController
+from api_gateway.routes._response import to_response
 
-group_bp = Blueprint('groups', __name__)
+router = APIRouter()
 
-@group_bp.route('', methods=['GET'])
+
+@router.get('')
 def get_all():
-    return GroupController.get_all()
+    return to_response(GroupController.get_all())
 
-@group_bp.route('', methods=['POST'])
+
+@router.post('')
 def create():
-    return GroupController.create()
+    return to_response(GroupController.create())
 
-@group_bp.route('/<group_id>', methods=['PUT'])
-def update(group_id):
-    return GroupController.update(group_id)
 
-@group_bp.route('/<group_id>', methods=['DELETE'])
-def delete(group_id):
-    return GroupController.delete(group_id)
+@router.put('/{group_id}')
+def update(group_id: str):
+    return to_response(GroupController.update(group_id))
 
-@group_bp.route('/move-cases', methods=['POST'])
+
+@router.delete('/{group_id}')
+def delete(group_id: str):
+    return to_response(GroupController.delete(group_id))
+
+
+@router.post('/move-cases')
 def move_cases():
-    return GroupController.move_cases()
+    return to_response(GroupController.move_cases())

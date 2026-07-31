@@ -1,0 +1,256 @@
+.algorithm-selector {
+  margin: 16px 0;
+}
+
+.options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.option-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.option-item label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.option-item label .hint {
+  font-weight: normal;
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.algorithm-multi-select {
+  position: relative;
+}
+
+.select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 2px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  background: var(--white-color);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.select-header:hover {
+  border-color: var(--secondary-color);
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: 1;
+}
+
+.algo-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--secondary-light);
+  color: var(--secondary-color);
+  border-radius: var(--border-radius-sm);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.algo-tag.is-primary {
+  background: var(--secondary-color);
+  color: white;
+}
+
+.algo-tag .primary-badge {
+  background: rgba(255, 255, 255, 0.3);
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 10px;
+}
+
+.algo-tag i {
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast);
+}
+
+.algo-tag i:hover {
+  opacity: 1;
+}
+
+.placeholder {
+  color: var(--text-disabled);
+  font-size: 14px;
+}
+
+.dropdown-icon {
+  color: var(--text-light);
+  transition: transform var(--transition-fast);
+  margin-left: 8px;
+}
+
+.dropdown-icon.rotated {
+  transform: rotate(180deg);
+}
+
+.dropdown-menu {
+  background: var(--white-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  box-shadow: var(--shadow-lg);
+  max-height: 300px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.dropdown-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  font-size: 13px;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: var(--secondary-color);
+}
+
+.dropdown-list {
+  overflow-y: auto;
+  max-height: 240px;
+}
+
+.group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px 4px;
+  background: var(--background-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.group-name {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.group-count {
+  background: var(--border-color);
+  color: var(--text-light);
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.dropdown-item:hover {
+  background: var(--background-secondary);
+}
+
+.dropdown-item.selected {
+  background: var(--secondary-light);
+}
+
+.item-checkbox {
+  color: var(--text-light);
+  font-size: 16px;
+}
+
+.dropdown-item.selected .item-checkbox {
+  color: var(--secondary-color);
+}
+
+.item-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.set-primary-btn {
+  padding: 4px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  background: var(--white-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.set-primary-btn:hover {
+  border-color: var(--secondary-color);
+  color: var(--secondary-color);
+}
+
+.set-primary-btn.primary {
+  background: var(--secondary-color);
+  border-color: var(--secondary-color);
+  color: white;
+}
+
+.dropdown-empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-light);
+  font-size: 14px;
+}
+
+.algorithm-params-section {
+  margin-top: 16px;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+
+.section-title {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.algo-type-hint {
+  font-weight: normal;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.empty-state {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+}

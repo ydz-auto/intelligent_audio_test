@@ -53,8 +53,7 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
         """启动任务"""
         try:
             task_id = request.task_id
-            app = self.engine.scheduler_app
-            success, message = self.engine.start_task(app, task_id)
+            success, message = self.engine.start_task(task_id)
             return task_pb.StartTaskResponse(
                 success=success,
                 message=message,
@@ -67,8 +66,7 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
         """停止任务"""
         try:
             task_id = request.task_id
-            app = self.engine.scheduler_app
-            success, message = self.engine.control_task(app, task_id, 'stop')
+            success, message = self.engine.control_task(task_id, 'stop')
             return task_pb.StopTaskResponse(
                 success=success,
                 message=message,
@@ -81,8 +79,7 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
         """暂停任务"""
         try:
             task_id = request.task_id
-            app = self.engine.scheduler_app
-            success, message = self.engine.control_task(app, task_id, 'pause')
+            success, message = self.engine.control_task(task_id, 'pause')
             return task_pb.PauseTaskResponse(
                 success=success,
                 message=message,
@@ -95,8 +92,7 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
         """恢复任务"""
         try:
             task_id = request.task_id
-            app = self.engine.scheduler_app
-            success, message = self.engine.control_task(app, task_id, 'resume')
+            success, message = self.engine.control_task(task_id, 'resume')
             return task_pb.ResumeTaskResponse(
                 success=success,
                 message=message,
@@ -123,32 +119,30 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
             from shared.models.database import db
             from shared.models.models import Task
             task_id = request.task_id
-            app = self.engine.scheduler_app
-            with app.app_context():
-                local_db_session = db.session()
-                try:
-                    task = local_db_session.query(Task).get(task_id)
-                    if not task:
-                        return task_pb.TaskStatusResponse(
-                            success=False, message=f"任务 {task_id} 不存在", data=""
-                        )
-                    status_info = {
-                        "task_id": str(task_id),
-                        "status": task.status,
-                        "type": task.type,
-                        "total_cases": task.total_cases,
-                        "completed_cases": task.completed_cases,
-                        "failed_cases": task.failed_cases,
-                        "started_at": str(task.started_at) if task.started_at else None,
-                        "completed_at": str(task.completed_at) if task.completed_at else None,
-                        "actual_duration": task.actual_duration,
-                        "error_message": task.error_message,
-                    }
+            local_db_session = db.session()
+            try:
+                task = local_db_session.get(Task, task_id)
+                if not task:
                     return task_pb.TaskStatusResponse(
-                        success=True, message="ok", data=_dumps(status_info)
+                        success=False, message=f"任务 {task_id} 不存在", data=""
                     )
-                finally:
-                    local_db_session.close()
+                status_info = {
+                    "task_id": str(task_id),
+                    "status": task.status,
+                    "type": task.type,
+                    "total_cases": task.total_cases,
+                    "completed_cases": task.completed_cases,
+                    "failed_cases": task.failed_cases,
+                    "started_at": str(task.started_at) if task.started_at else None,
+                    "completed_at": str(task.completed_at) if task.completed_at else None,
+                    "actual_duration": task.actual_duration,
+                    "error_message": task.error_message,
+                }
+                return task_pb.TaskStatusResponse(
+                    success=True, message="ok", data=_dumps(status_info)
+                )
+            finally:
+                local_db_session.close()
         except Exception as e:
             return task_pb.TaskStatusResponse(success=False, message=str(e), data="")
 
@@ -262,13 +256,11 @@ class ExecutionServiceServicer(task_grpc.ExecutionServiceServicer):
             algorithm_result = _loads(request.algorithm_result, {})
             eval_params = _loads(request.eval_params, {})
 
-            app = self.engine.scheduler_app
-            with app.app_context():
-                from task_service.evaluation.evaluation_service import evaluation_service
-                evaluation_service.evaluate_case(
-                    task_id, result_id, test_case_id, algorithm_result,
-                    **eval_params,
-                )
+            from task_service.evaluation.evaluation_service import evaluation_service
+            evaluation_service.evaluate_case(
+                task_id, result_id, test_case_id, algorithm_result,
+                **eval_params,
+            )
             return task_pb.EvaluateCaseResponse(
                 success=True, message="ok",
                 data=_dumps({"task_id": str(task_id), "result_id": str(result_id), "evaluated": True}),

@@ -21,7 +21,7 @@ class APISessionExecutor:
     def _log(self):
         return self._executor._log
 
-    def execute(self, app, task_id, tc_rel_id, data, case_config):
+    def execute(self, task_id, tc_rel_id, data, case_config):
         """多轮会话执行（配置驱动，不绑定算法类型）"""
         case_name = data['case_name']
         test_case_id = data['test_case_id']
@@ -188,7 +188,7 @@ class APISessionExecutor:
         """更新 TaskCase 状态为 running"""
         local_db_session = db.session()
         try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if tc_rel and tc_rel.execution_status in ['pending', 'queued']:
                 tc_rel.execution_status = 'running'
                 if not tc_rel.started_at:
@@ -254,7 +254,7 @@ class APISessionExecutor:
         """查询音频文件路径"""
         local_db_session = db.session()
         try:
-            audio_obj = local_db_session.query(Audio).get(audio_id)
+            audio_obj = local_db_session.get(Audio, audio_id)
             if audio_obj:
                 return audio_obj.file_path
         finally:

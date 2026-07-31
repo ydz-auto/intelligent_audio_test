@@ -13,10 +13,9 @@ class E2ECollector:
 
     def collect_results(self, task_id, test_case_id, device_info_list, **kwargs):
         """采集设备原始结果，计算播放偏移，返回 all_results（可能含 adjusted_reference_params）"""
-        # 跨服务调用：通过 gRPC DeviceResultService 获取设备结果采集器
-        from shared.clients.grpc_clients import get_device_result_service_stub
-        from shared.infrastructure.base_executor import _DeviceResultCollectorProxy
-        collector = _DeviceResultCollectorProxy(get_device_result_service_stub())
+        # e2e_test_service 进程内直接使用本地 DeviceResultCollector，不走 gRPC
+        from e2e_test_service.device.device_result_collector import DeviceResultCollector
+        collector = DeviceResultCollector()
 
         algorithm_type = kwargs.get('algorithm_type', 'translation')
         extra_params = self._executor._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)

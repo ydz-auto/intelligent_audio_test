@@ -215,14 +215,11 @@ class PyAudioDriver(AudioDriver):
         """
         resample_temp_dir = None
         if app:
-            resample_temp_dir = app.config.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
+            resample_temp_dir = getattr(app, 'config', {}).get('RESAMPLE_TEMP_PATH', os.environ.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample')))
         else:
-            try:
-                from flask import current_app
-                resample_temp_dir = current_app.config.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
-            except RuntimeError as e:
-                resample_temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample')
-                log_and_emit('WARNING', 'audio_engine', f"[play_multi] current_app.config.get('RESAMPLE_TEMP_PATH') failed: {e}, using fallback: {resample_temp_dir}", category='audio')
+            resample_temp_dir = os.environ.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
+            if not os.environ.get('RESAMPLE_TEMP_PATH'):
+                log_and_emit('WARNING', 'audio_engine', f"[play_multi] os.environ.get('RESAMPLE_TEMP_PATH') not set, using fallback: {resample_temp_dir}", category='audio')
 
         os.makedirs(resample_temp_dir, exist_ok=True)
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Pre-resampling audio files to target rate {target_rate}, temp_dir={resample_temp_dir}", category='audio')

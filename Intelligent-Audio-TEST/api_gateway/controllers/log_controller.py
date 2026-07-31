@@ -2,7 +2,8 @@ import os
 import pandas as pd
 import json
 import glob
-from flask import request, send_file
+from api_gateway.controllers.request_adapter import request
+from fastapi.responses import FileResponse
 from shared.models.models import Log
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
@@ -12,7 +13,6 @@ from api_gateway.schemas.log import LogItem, LogListData, LogRefreshData, LogRef
 from datetime import datetime, timezone, timedelta
 from shared.utils.query_utils import now_cst
 from sqlalchemy import func, or_
-from flask_socketio import emit, join_room, leave_room
 
 
 class LogFilterRegistry:
@@ -391,34 +391,29 @@ class LogController:
             file_path = os.path.join(export_dir, f"{filename}.xlsx")
             df.to_excel(file_path, index=False)
         
-        return send_file(file_path, as_attachment=True)
+        return FileResponse(file_path, headers={"Content-Disposition": "attachment"})
 
     # --- WebSocket 实时日志处理 ---
+    # WebSocket 连接管理已迁移至 api_gateway.websocket.connection_manager
+    # 以下方法保留为空实现，保持接口兼容
 
     @staticmethod
-    def handle_connect():
+    def handle_connect(sid=None):
         """处理 WebSocket 连接，初始化该 sid 的过滤器为空（接收全部日志）"""
-        from flask_socketio import request as sio_request
-        sid = getattr(sio_request, 'sid', None)
         if sid:
             log_filter_registry.set_filter(sid, {})
         log_not_emit('INFO', 'log_controller', f'Client connected to Log WebSocket sid={sid}', category='system')
-        emit('status', {'type': 'STATUS', 'data': {'isMonitoring': True, 'message': 'Connected to Log Server'}})
 
     @staticmethod
-    def handle_disconnect():
+    def handle_disconnect(sid=None):
         """处理 WebSocket 断开连接，清理该 sid 的过滤器与任务订阅"""
-        from flask_socketio import request as sio_request
-        sid = getattr(sio_request, 'sid', None)
         if sid:
             log_filter_registry.remove(sid)
         log_not_emit('INFO', 'log_controller', f'Client disconnected from Log WebSocket sid={sid}', category='system')
 
     @staticmethod
-    def handle_set_filter(data):
+    def handle_set_filter(sid, data):
         """设置当前连接的日志过滤配置，服务端按此过滤再推送"""
-        from flask_socketio import request as sio_request
-        sid = getattr(sio_request, 'sid', None)
         if not sid:
             return
         # 规范化字段，缺失视为不过滤
@@ -430,36 +425,24 @@ class LogController:
         }
         log_filter_registry.set_filter(sid, filt)
         log_not_emit('INFO', 'log_controller', f'Filter updated sid={sid}: {filt}', category='system')
-        emit('status', {'type': 'FILTER_APPLIED', 'data': filt})
 
     @staticmethod
-    def handle_subscribe_task(data):
+    def handle_subscribe_task(sid, data):
         """订阅指定 task 的日志房间。data: { "task_id": 123 }"""
-        from flask_socketio import request as sio_request
-        sid = getattr(sio_request, 'sid', None)
         if not sid:
             return
         task_id = data.get('task_id')
         if task_id is None:
-            emit('status', {'type': 'ERROR', 'data': {'message': 'task_id required'}})
             return
-        room = f'task_{task_id}'
-        join_room(room)
         log_filter_registry.subscribe_task(sid, task_id)
-        emit('status', {'type': 'SUBSCRIBED', 'data': {'task_id': task_id, 'room': room}})
 
     @staticmethod
-    def handle_unsubscribe_task(data):
+    def handle_unsubscribe_task(sid, data):
         """取消订阅 task 房间。"""
-        from flask_socketio import request as sio_request
-        sid = getattr(sio_request, 'sid', None)
         if not sid:
             return
         task_id = data.get('task_id')
-        if task_id is not None:
-            leave_room(f'task_{task_id}')
         log_filter_registry.unsubscribe_task(sid)
-        emit('status', {'type': 'UNSUBSCRIBED', 'data': {'task_id': task_id}})
 
     @staticmethod
     def get_archive_status():
@@ -715,7 +698,7 @@ class LogController:
             import tempfile
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.json')
             oss.download_file('archives', matching_keys[0], tmp.name)
-            return send_file(tmp.name, as_attachment=True, download_name=filename)
+            return FileResponse(tmp.name, headers={"Content-Disposition": f"attachment; filename={filename}"})
         except Exception as e:
             return error_response(f"下载失败: {str(e)}", code=500)
 

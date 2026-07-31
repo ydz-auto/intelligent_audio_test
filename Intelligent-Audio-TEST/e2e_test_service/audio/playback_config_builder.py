@@ -10,7 +10,7 @@
 所有函数接收 audio_service 和 log_fn 参数，不依赖 PlaybackOrchestrator 实例。
 """
 
-from e2e_test_service.audio.audio_engine import log_not_emit
+from shared.utils.log_handler import log_not_emit
 
 
 def _resolve_audio_file_path(audio_info, audio_obj=None):
@@ -62,7 +62,7 @@ def resolve_spl_gain(spl_mapping_id, target_spl, app=None):
 
 def resolve_dry_audios(audios, round_config=None):
     """从 audios 列表解析出 [(audio_config, audio_obj), ...]，仅保留干声。"""
-    from shared.models import db
+    from shared.models.database import db
     from shared.models.models import Audio
 
     result = []
@@ -84,7 +84,7 @@ def resolve_dry_audios(audios, round_config=None):
 
 def build_noise_info(round_config, case_config):
     """解析本轮噪声 audio_info + 噪声设备列表。"""
-    from shared.models import db
+    from shared.models.database import db
     from shared.models.models import Audio, PlaybackDevice
 
     # 兼容 round 级 / case 级
@@ -148,7 +148,7 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None):
     Returns:
         (configs, playback_devices_map)
     """
-    from shared.models import db
+    from shared.models.database import db
     from shared.models.models import PlaybackDevice
 
     playback_devices_map = {}
@@ -285,7 +285,7 @@ def build_interferer_configs(task_id, interferer_config, audio_service):
     if not interferer_config:
         return []
 
-    from shared.models import db
+    from shared.models.database import db
     from shared.models.models import Audio, PlaybackDevice
 
     audio_to_play = []
@@ -392,7 +392,7 @@ def build_interferer_configs(task_id, interferer_config, audio_service):
 
 def prepare_preview_playback_info(audio_configs, case_config):
     """为 preview 场景分类干声/噪声音频及设备。"""
-    from shared.models import db
+    from shared.models.database import db
     from shared.models.models import Audio, PlaybackDevice
 
     dry_audios_info = []

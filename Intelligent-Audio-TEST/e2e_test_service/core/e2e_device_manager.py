@@ -6,8 +6,8 @@ from shared.models.models import Audio, Device, TaskDevice
 from shared.models.database import db
 # 跨服务调用：通过 gRPC AudioService 调用音频引擎
 from shared.clients.grpc_clients import get_audio_service_stub
-# 跨服务调用：通过 gRPC DeviceService 调用设备驱动工厂
-from shared.clients.grpc_clients import get_device_service_stub
+# e2e_test_service 进程内直接使用本地 driver_factory
+from e2e_test_service.drivers.driver_factory import driver_factory
 
 
 class E2EDeviceManager:
@@ -235,111 +235,12 @@ class E2EDeviceManager:
 
 
 # ──────────────────────────────────────────────────────────────────
-#  gRPC 调用封装：把对 e2e_test_service 的直接 import 调用替换为 gRPC stub 调用
+#  本地调用封装：driver_factory 在 e2e_test_service 进程内，直接调用
 # ──────────────────────────────────────────────────────────────────
 
 def _get_driver_via_grpc(system, **kwargs):
-    """通过 gRPC DeviceService 获取设备驱动（原 device_driver_factory.get_driver）
-
-    原 get_driver 返回一个本地 driver 对象，提供 initialize/pre_process/post_process/
-    teardown/set_task_id/set_test_case_id/set_device_id 等方法。
-    gRPC 无法返回对象，此处返回 _DriverProxy 代理封装 gRPC 调用。
-    """
-    return _DriverProxy(system, kwargs)
-
-
-class _DriverProxy:
-    """设备驱动代理：封装对 gRPC DeviceService 的调用
-
-    注意：原 driver 对象在本地进程内持有大量状态（设备连接、线程池等），
-    gRPC 模式下这些状态需由 e2e_test_service server 端管理。
-    """
-
-    def __init__(self, system, kwargs):
-        self.system = system
-        self.kwargs = kwargs
-        self._task_id = None
-        self._test_case_id = None
-        self._device_id = None
-
-    def set_task_id(self, task_id):
-        self._task_id = task_id
-
-    def set_test_case_id(self, test_case_id):
-        self._test_case_id = test_case_id
-
-    def set_device_id(self, device_id):
-        self._device_id = device_id
-
-    def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs):
-        import json as _json
-        from shared.proto import e2e_service_pb2
-        try:
-            stub = get_device_service_stub()
-            resp = stub.CreateDriver(e2e_service_pb2.CreateDriverRequest(
-                task_id=str(task_id or self._task_id or ''),
-                device_config=_json.dumps({
-                    'action': 'initialize',
-                    'system': self.system,
-                    'device_sn': device_sn,
-                    'test_case_id': test_case_id or self._test_case_id,
-                    'kwargs': kwargs,
-                })
-            ))
-            return resp.success
-        except Exception:
-            return False
-
-    def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs):
-        import json as _json
-        from shared.proto import e2e_service_pb2
-        try:
-            stub = get_device_service_stub()
-            device_config = {
-                'action': 'pre_process',
-                'device_sn': device_sn,
-                'test_case_id': test_case_id or self._test_case_id,
-                'kwargs': kwargs,
-            }
-            resp = stub.CreateDriver(e2e_service_pb2.CreateDriverRequest(
-                task_id=str(task_id or ''),
-                device_config=_json.dumps(device_config)
-            ))
-            return resp.success
-        except Exception:
-            return False
-
-    def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs):
-        import json as _json
-        from shared.proto import e2e_service_pb2
-        try:
-            stub = get_device_service_stub()
-            device_config = {
-                'action': 'post_process',
-                'device_sn': device_sn,
-                'test_case_id': test_case_id or self._test_case_id,
-                'kwargs': kwargs,
-            }
-            resp = stub.CreateDriver(e2e_service_pb2.CreateDriverRequest(
-                task_id=str(task_id or ''),
-                device_config=_json.dumps(device_config)
-            ))
-            return resp.success
-        except Exception:
-            return False
-
-    def teardown(self, device_sn, task_id=None, test_case_id=None, **kwargs):
-        import json as _json
-        from shared.proto import e2e_service_pb2
-        try:
-            stub = get_device_service_stub()
-            resp = stub.DestroyDriver(e2e_service_pb2.DestroyDriverRequest(
-                task_id=str(task_id or self._task_id or ''),
-                driver_id=device_sn,
-            ))
-            return resp.success
-        except Exception:
-            return False
+    """获取本地设备驱动对象（driver_factory 在 e2e_test_service 进程内）"""
+    return driver_factory.get_driver(system, keywords=kwargs.get('keywords'), device_sn=kwargs.get('device_sn'))
 
 
 def _play_audio_via_grpc(task_id, file_path, device_index=0, channel_index=0, gain=0.0, player_type='dry', **kwargs):

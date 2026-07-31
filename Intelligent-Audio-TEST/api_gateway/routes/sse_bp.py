@@ -1,11 +1,12 @@
-from flask import Blueprint, Response, request, stream_with_context
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 import json
 import time
 import threading
 from datetime import datetime, timezone, timedelta
 
-# 创建 SSE 蓝图
-sse_bp = Blueprint('sse_bp', __name__)
+# 创建 SSE 路由
+router = APIRouter()
 
 # SSE 客户端连接管理
 class SSEManager:
@@ -84,7 +85,7 @@ def format_sse(data, event=None, event_id=None):
     return "\n".join(messages)
 
 
-@sse_bp.route('/events', methods=['GET'])
+@router.get('/events')
 def stream_events():
     """SSE 事件流端点"""
     def generate():
@@ -102,9 +103,9 @@ def stream_events():
                 yield format_sse(event['data'], event['type'], event['id'])
                 last_id = event['id']
 
-    return Response(
-        stream_with_context(generate()),
-        mimetype='text/event-stream',
+    return StreamingResponse(
+        generate(),
+        media_type='text/event-stream',
         headers={
             'Cache-Control': 'no-cache',
             'X-Accel-Buffering': 'no',

@@ -4,7 +4,9 @@ import requests
 import time
 import shutil
 import logging
-from flask import request, send_file, Response, current_app, jsonify, redirect
+from api_gateway.controllers.request_adapter import request
+from fastapi.responses import FileResponse, StreamingResponse
+from api_gateway.config.config import Config
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
 from sqlalchemy import cast, String, func
@@ -92,7 +94,7 @@ def get_relative_path(file_path):
     # 兼容旧的本地绝对路径（剥离 static 前缀）
     if '/' in file_path and not os.path.isabs(file_path):
         return file_path
-    static_base_path = current_app.config.get('STATIC_BASE_PATH')
+    static_base_path = Config.STATIC_BASE_PATH if hasattr(Config, 'STATIC_BASE_PATH') else None
     if not static_base_path:
         return file_path
     normalized_file_path = file_path.replace('\\', '/')
@@ -674,7 +676,7 @@ class AudioController:
         original_filename = file.filename
         
         # 确定基础上传目录 - 使用配置文件中的 AUDIO_STORAGE_PATH
-        base_upload_dir = current_app.config.get('AUDIO_STORAGE_PATH')
+        base_upload_dir = Config.AUDIO_STORAGE_PATH
         
         # 确定最终的文件路径（先保存为临时文件，后续会转换为WAV）
         if relative_path:
@@ -800,7 +802,7 @@ class AudioController:
         """
         初始化上传相关目录
         """
-        base_upload_dir = current_app.config.get('AUDIO_STORAGE_PATH')
+        base_upload_dir = Config.AUDIO_STORAGE_PATH
         chunk_dir = os.path.join(base_upload_dir, 'chunks')
         temp_dir = os.path.join(base_upload_dir, 'temp')
         
@@ -2962,11 +2964,10 @@ class AudioController:
                             zf.write(audio.file_path, audio.original_filename)
                 
                 memory_file.seek(0)
-                return send_file(
+                return FileResponse(
                     memory_file,
-                    mimetype='application/zip',
-                    as_attachment=True,
-                    download_name=f'audios_export_{now_cst().strftime("%Y%m%d%H%M%S")}.zip'
+                    media_type='application/zip',
+                    headers={"Content-Disposition": f"attachment; filename=audios_export_{now_cst().strftime('%Y%m%d%H%M%S')}.zip"}
                 )
             elif action == 'tags':
                 tags = validated.tags
@@ -3048,7 +3049,7 @@ class AudioController:
                 Params={'Bucket': bucket, 'Key': oss_key},
                 ExpiresIn=3600,
             )
-        return jsonify({"url": presigned_url})
+        return {"url": presigned_url}
 
     @staticmethod
     def stream_by_path():
@@ -3065,7 +3066,7 @@ class AudioController:
 
         try:
             presigned_url = oss.get_presigned_url(bucket, oss_key, expires=3600)
-            return jsonify({"url": presigned_url})
+            return {"url": presigned_url}
         except Exception as e:
             logging.getLogger(__name__).error(f"stream_by_path 获取 OSS 预签名 URL 失败: {e}, key={oss_key}, bucket={bucket}")
             return error_response(f"获取音频失败: {e}", 404)
@@ -3563,7 +3564,7 @@ class AudioController:
         ).order_by(Audio.file_path).all()
 
         # Compute the base storage path prefix for reliable folder key extraction
-        audio_storage_path = current_app.config.get('AUDIO_STORAGE_PATH', '')
+        audio_storage_path = Config.AUDIO_STORAGE_PATH
         base_normalized = audio_storage_path.replace(chr(92), '/').rstrip('/')
 
         def get_folder_key(file_path):

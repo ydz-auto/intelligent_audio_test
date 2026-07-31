@@ -1,12 +1,16 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.execution_controller import ExecutionController
+from api_gateway.routes._response import to_response
 
-execution_bp = Blueprint('execution', __name__)
+router = APIRouter()
 
-@execution_bp.route('/<int:task_id>/start', methods=['POST'])
-def start(task_id):
-    return ExecutionController.start(task_id)
 
-@execution_bp.route('/<int:task_id>/control', methods=['POST'])
-def control(task_id):
-    return ExecutionController.control(task_id)
+@router.post('/{task_id}/start')
+def start(task_id: int):
+    return to_response(ExecutionController.start(task_id))
+
+
+@router.post('/{task_id}/control')
+def control(task_id: int):
+    return to_response(ExecutionController.control(task_id))

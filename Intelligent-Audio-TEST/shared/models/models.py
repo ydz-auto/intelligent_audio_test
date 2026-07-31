@@ -858,7 +858,7 @@ class UploadChunk(db.Model):
     status = Column(String(20), nullable=False, default='pending', comment='分片状态 (pending/uploading/completed/failed)')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
-    
+
     stored_path = Column(String(500), comment='分片存储路径')
 
 
@@ -876,4 +876,9 @@ class StatsCache(db.Model):
     cache_value = Column(JSON, nullable=False, comment='缓存数据 (JSON格式)')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='最后更新时间')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
+
+
+# 确保 AlgorithmDefinition 等算法模型注册到同一个 Base.metadata，
+# 使 AudioAlgorithmRelation.algorithm relationship('AlgorithmDefinition') 可解析
+from shared.models.algorithm_models import AlgorithmDefinition  # noqa: E402,F401
 

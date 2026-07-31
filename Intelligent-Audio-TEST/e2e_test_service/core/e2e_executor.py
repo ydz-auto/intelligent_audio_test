@@ -274,6 +274,7 @@ class E2EExecutor(BaseExecutor):
             }
 
         # 收集播放时间戳（含毫秒级起止时间），供 post_process / collect_results 传递给设备驱动
+        self._log(level='DEBUG', content=f"[play_round] play_result keys={list(play_result.keys()) if isinstance(play_result, dict) else type(play_result).__name__}, has audio_timelines={isinstance(play_result, dict) and 'audio_timelines' in play_result}", task_id=task_id, test_case_id=test_case_id)
         self._collect_playback_timestamps(task_id, play_result, case_config)
 
         # 构建含播放时间戳的 extra_params，供设备驱动 post_process / get_results 使用
@@ -317,12 +318,9 @@ class E2EExecutor(BaseExecutor):
             r['round_number'] = round_idx
 
         # 字段映射：将 raw_results 映射为 target 字段（如 output_text、question_text 等）
-        # 跨服务调用：通过 gRPC DeviceResultService 转换结果
-        from shared.clients.grpc_clients import get_device_result_service_stub
-        from shared.infrastructure.base_executor import _DeviceResultCollectorProxy
-        tagged_results = _DeviceResultCollectorProxy(
-            get_device_result_service_stub()
-        ).convert_results(tagged_results, algorithm_type)
+        # e2e_test_service 进程内直接使用本地 DeviceResultCollector，不走 gRPC
+        from e2e_test_service.device.device_result_collector import DeviceResultCollector
+        tagged_results = DeviceResultCollector().convert_results(tagged_results, algorithm_type)
 
         # 轮次内评估
         primary = tagged_results[0] if tagged_results else {}
@@ -463,6 +461,7 @@ class E2EExecutor(BaseExecutor):
         overlap_time = CaseParameterExtractor.get_overlap_time(case_config) if case_config else 0
 
         audio_timelines = play_result.get('audio_timelines', []) if play_result else []
+        self._log(level='DEBUG', content=f"[collect_ts] audio_timelines count={len(audio_timelines)}, first_keys={list(audio_timelines[0].keys()) if audio_timelines else 'empty'}", task_id=task_id)
         round_start_ms = None
         round_end_ms = None
         for timeline in audio_timelines:
@@ -470,7 +469,8 @@ class E2EExecutor(BaseExecutor):
                 continue
             audio_config = timeline.get('config', {})
             audio_obj = timeline.get('audio', {})
-            audio_id = getattr(audio_obj, 'id', None)
+            # gRPC JSON 序列化后 audio 变成字符串，优先从 config 取 audio_id
+            audio_id = audio_config.get('audio_id') or getattr(audio_obj, 'id', None)
             if not audio_id:
                 continue
 
@@ -704,6 +704,8 @@ def _play_round_via_grpc(round_config, task_id, case_config, test_case_id, round
         ))
         if not resp.success or not resp.data:
             return None
-        return _json.loads(resp.data)
+        wrapper = _json.loads(resp.data)
+        # gRPC 服务端把 result 包装在 {"result": ..., "mode": ...} 里，解包返回 result
+        return wrapper.get('result') if isinstance(wrapper, dict) else wrapper
     except Exception:
         return None

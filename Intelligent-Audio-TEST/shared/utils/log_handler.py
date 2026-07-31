@@ -6,7 +6,6 @@ import queue
 import re
 import json
 from datetime import datetime, timezone, timedelta
-from flask import has_app_context, current_app
 import hashlib
 
 LOG_AND_EMIT_CONSOLE_LOG = None
@@ -14,26 +13,29 @@ LOG_AND_EMIT_CONSOLE_LOG = None
 _cached_socketio = None
 _cached_app = None
 _global_db_handler = None
+_ws_broadcast_callback = None  # FastAPI WebSocket 广播回调
 
 LOG_ARCHIVE_THRESHOLD = 300000
 LOG_HOT_DATA_DAYS = 7
-# 归档统一写入 OSS（archives bucket），key 结构与 LogController.archive_logs 保持一致：
-#   tasks/{task_id}/{case_id}/{date}.json
-#   tasks/{task_id}/{date}.json
-#   cases/{case_id}/{date}.json
-#   other/{date}.json
-LOG_ARCHIVE_RETENTION_DAYS = 90  # 归档文件保留90天（约3个月），过期自动删除
+LOG_ARCHIVE_RETENTION_DAYS = 90
 CONSOLE_LOG_MAX_LENGTH = 20000
 
 def set_socketio(socketio):
-    """设置全局 SocketIO 实例"""
+    """设置全局 SocketIO/WS 管理器实例"""
     global _cached_socketio
     _cached_socketio = socketio
     if _global_db_handler:
         _global_db_handler.set_socketio(socketio)
 
+def set_ws_broadcast_callback(callback):
+    """设置 WebSocket 广播回调（FastAPI ConnectionManager.broadcast_log_sync）"""
+    global _ws_broadcast_callback
+    _ws_broadcast_callback = callback
+    if _global_db_handler:
+        _global_db_handler._ws_broadcast_callback = callback
+
 def set_flask_app(app):
-    """设置全局 Flask App 实例"""
+    """设置全局 App 实例（FastAPI 兼容，保留向后兼容）"""
     global _cached_app
     _cached_app = app
     if _global_db_handler:
@@ -76,7 +78,7 @@ def log_and_emit(level, module, content, category='system', source='backend', ta
     
     # 从配置中获取控制台日志设置
     if enable_console_log is None:
-        if _cached_app and hasattr(_cached_app, 'config'):
+        if _cached_app and hasattr(_cached_app, 'config') and isinstance(_cached_app.config, dict):
             enable_console_log = _cached_app.config.get('CONSOLE_LOG_ENABLED', True)
         else:
             enable_console_log = True
@@ -148,6 +150,8 @@ class DatabaseLogHandler(logging.Handler):
         self.enable_console_log = False
         self.socketio_instance = None
         self.flask_app = None
+        self._ws_broadcast_callback = None  # FastAPI WebSocket 广播回调
+        self._redis_pubsub = None  # Redis PubSub 实例（子服务进程用）
         
         self._last_db_warning_time = 0
         self._last_ws_warning_time = 0
@@ -199,14 +203,20 @@ class DatabaseLogHandler(logging.Handler):
                 
                 if should_flush and batch:
                     Log, db, SessionLocal = self._init_db_components(Log, db, SessionLocal)
-                    if Log and SessionLocal and self.flask_app:
+                    if Log and SessionLocal:
                         self._process_batch(batch, Log, SessionLocal)
+                    else:
+                        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WARN - _init_db_components returned None, Log={Log is not None}, SessionLocal={SessionLocal is not None}")
 
                     # flush 后 batch 中每条 data 已带上数据库 id（或 _db_failed 标记），再推送 WebSocket
                     # 仅推送成功入库的日志，失败批次由 _emit_websocket 内部跳过
                     for data in batch:
                         if data.get('push_to_websocket') and data.get('id') is not None:
                             self._emit_websocket(data)
+                        else:
+                            # 调试：跳过原因
+                            if data.get('push_to_websocket'):
+                                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WARN - Skip WS push: push_to_websocket={data.get('push_to_websocket')}, id={data.get('id')}, _db_failed={data.get('_db_failed')}")
 
                     batch = []
                     last_flush = current_time
@@ -224,48 +234,34 @@ class DatabaseLogHandler(logging.Handler):
                 time.sleep(0.5)
     
     def _init_db_components(self, Log, db, SessionLocal):
-        if self.flask_app is None:
-            global _cached_app
-            if _cached_app:
-                self.flask_app = _cached_app
-                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Flask App instance acquired.")
-        
         if self.socketio_instance is None:
             global _cached_socketio
             if _cached_socketio:
                 self.socketio_instance = _cached_socketio
-            elif self.flask_app:
-                try:
-                    self.socketio_instance = self.flask_app.extensions.get('socketio')
-                except:
-                    pass
-        
-        if self.flask_app is None:
-            return None, None, None
-        
+
         try:
-            with self.flask_app.app_context():
-                from shared.models.models import Log as LogModel
-                from shared.models.database import db as db_instance
-                from sqlalchemy.orm import sessionmaker
-                Log = LogModel
-                db = db_instance
-                if db.engine:
-                    SessionLocal = sessionmaker(bind=db.engine)
-                    return Log, db, SessionLocal
-                return None, None, None
+            from shared.models.models import Log as LogModel
+            from shared.models.database import get_engine
+            from sqlalchemy.orm import sessionmaker
+            Log = LogModel
+            engine = get_engine()
+            if engine is not None:
+                SessionLocal = sessionmaker(bind=engine)
+                return Log, db, SessionLocal
+            # 调试：engine 为 None 时打印
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WARN - get_engine() returned None")
+            return None, None, None
         except ImportError:
             try:
-                with self.flask_app.app_context():
-                    from models.models import Log as LogModel
-                    from models.database import db as db_instance
-                    from sqlalchemy.orm import sessionmaker
-                    Log = LogModel
-                    db = db_instance
-                    if db.engine:
-                        SessionLocal = sessionmaker(bind=db.engine)
-                        return Log, db, SessionLocal
-                    return None, None, None
+                from models.models import Log as LogModel
+                from models.database import _engine_ref
+                from sqlalchemy.orm import sessionmaker
+                Log = LogModel
+                engine = _engine_ref[0]
+                if engine is not None:
+                    SessionLocal = sessionmaker(bind=engine)
+                    return Log, db, SessionLocal
+                return None, None, None
             except Exception as e:
                 print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - IMPORT ERROR - {str(e)}")
                 return None, None, None
@@ -274,82 +270,73 @@ class DatabaseLogHandler(logging.Handler):
             return None, None, None
     
     def _process_batch(self, batch, Log, SessionLocal):
-        if not Log or not SessionLocal or not self.flask_app:
+        if not Log or not SessionLocal:
             return
 
-        with self.flask_app.app_context():
-            session = SessionLocal()
-            try:
-                for data in batch:
-                    log_entry = Log(
-                        time=data['time'],
-                        level=data['level'],
-                        category=data['category'],
-                        module=data['module'],
-                        source=data['source'],
-                        content=data['content'],
-                        task_id=data.get('task_id'),
-                        device_id=data.get('device_id'),
-                        api_id=data.get('api_id'),
-                        test_case_id=data.get('test_case_id'),
-                        thread_id=data.get('thread_id'),
-                        algorithm_type=data.get('algorithm_type')
-                    )
-                    session.add(log_entry)
-                    session.flush()
-                    data['id'] = log_entry.id
-                    # 记录入库时间，供 WS 推送复用，避免 time 字段漂移
-                    data['_ws_time'] = data['time'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(data['time'], 'strftime') else None
-                session.commit()
-                if self.enable_console_log:
-                    print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DEBUG - Batch saved {len(batch)} logs.")
-            except Exception as e:
-                session.rollback()
-                # 批次失败：清空 id、标记失败，_emit_websocket 会跳过这些条目
-                for data in batch:
-                    data['id'] = None
-                    data['_db_failed'] = True
-                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DB ERROR - {str(e)}")
-            finally:
-                session.close()
+        session = SessionLocal()
+        try:
+            for data in batch:
+                log_entry = Log(
+                    time=data['time'],
+                    level=data['level'],
+                    category=data['category'],
+                    module=data['module'],
+                    source=data['source'],
+                    content=data['content'],
+                    task_id=data.get('task_id'),
+                    device_id=data.get('device_id'),
+                    api_id=data.get('api_id'),
+                    test_case_id=data.get('test_case_id'),
+                    thread_id=data.get('thread_id'),
+                    algorithm_type=data.get('algorithm_type')
+                )
+                session.add(log_entry)
+                session.flush()
+                data['id'] = log_entry.id
+                # 记录入库时间，供 WS 推送复用，避免 time 字段漂移
+                data['_ws_time'] = data['time'].strftime('%Y-%m-%d %H:%M:%S') if hasattr(data['time'], 'strftime') else None
+            session.commit()
+            if self.enable_console_log:
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DEBUG - Batch saved {len(batch)} logs.")
+        except Exception as e:
+            session.rollback()
+            # 批次失败：清空 id、标记失败，_emit_websocket 会跳过这些条目
+            for data in batch:
+                data['id'] = None
+                data['_db_failed'] = True
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - DB ERROR - {str(e)}")
+        finally:
+            session.close()
     
     def _emit_websocket(self, data):
         """
         推送日志到前端。
-        - 全量频道 `/ws/logs`：按 sid 过滤器精准 emit（skip_peer=False 只发给本进程该 sid）。
-        - 任务频道 task_{task_id}：用 room 广播给订阅了该 task 的客户端（无过滤器干扰）。
-        - 只有在数据库 flush 成功（data 含有效 id）后才推送，避免前端拿到不存在的 id。
+        - api_gateway 进程：有 _ws_broadcast_callback（Socket.IO），直接调用推送。
+        - task_service / e2e_test_service 等子服务进程：无 callback，
+          通过 Redis PubSub 发布到 task_logs 频道，由 api_gateway 订阅后转发给前端。
         """
-        is_ws_ready = (
-            self.socketio_instance and
-            hasattr(self.socketio_instance, 'server') and
-            self.socketio_instance.server is not None
-        )
-
-        if not is_ws_ready:
-            # 尝试从全局获取 socketio 实例
-            global _cached_socketio
-            if _cached_socketio:
-                self.socketio_instance = _cached_socketio
-            elif self.flask_app:
-                try:
-                    self.socketio_instance = self.flask_app.extensions.get('socketio')
-                except Exception:
-                    pass
-            is_ws_ready = (
-                self.socketio_instance and
-                hasattr(self.socketio_instance, 'server') and
-                self.socketio_instance.server is not None
-            )
-
-        if not is_ws_ready:
-            return
-
         # 只有成功入库（拿到 id）才推送，避免前端显示不存在的日志
         if data.get('id') is None and data.get('_db_failed'):
             return
 
+        # 1) api_gateway 进程：有 WebSocket 广播回调，直接推送
+        global _ws_broadcast_callback
+        if _ws_broadcast_callback is not None:
+            try:
+                _ws_broadcast_callback(data)
+                return
+            except Exception as ws_error:
+                print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WS CALLBACK ERROR - {str(ws_error)}")
+
+        # 2) 子服务进程：无 callback，通过 Redis PubSub 发布给 api_gateway 转发
+        self._publish_via_redis(data)
+
+    def _publish_via_redis(self, data):
+        """当前进程无 WebSocket 时，通过 Redis PubSub 发布日志给 api_gateway 转发"""
         try:
+            if self._redis_pubsub is None:
+                from shared.utils.redis_pubsub import RedisPubSub
+                self._redis_pubsub = RedisPubSub()
             utc_plus_8 = timezone(timedelta(hours=8))
             log_time = data.get('_ws_time') or datetime.now(utc_plus_8).strftime('%Y-%m-%d %H:%M:%S')
             log_payload = {
@@ -364,51 +351,31 @@ class DatabaseLogHandler(logging.Handler):
                 "category": data.get('category'),
                 "source": data.get('source'),
             }
+            message = {
+                'log_payload': log_payload,
+                'task_id': data.get('task_id'),
+            }
+            self._redis_pubsub.publish('task_logs', message)
+        except Exception as e:
+            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - REDIS PUB ERROR - {str(e)}")
 
-            # 1) 全量频道：按 sid 过滤精准下发
-            try:
-                from api_gateway.controllers.log_controller import log_filter_registry
-                matched_sids = log_filter_registry.match(data)
-                for sid in matched_sids:
-                    self.socketio_instance.emit(
-                        'logs',
-                        {'type': 'LOG_BATCH', 'data': [log_payload]},
-                        namespace='/ws/logs',
-                        to=sid,
-                    )
-            except ImportError:
-                # api_gateway 未加载（其他子进程场景），退化为全量广播
-                self.socketio_instance.emit('logs', {'type': 'LOG_BATCH', 'data': [log_payload]}, namespace='/ws/logs')
-
-            # 2) 任务频道：room 广播给订阅了该 task 的连接
-            if data.get('task_id'):
-                self.socketio_instance.emit(
-                    'task_log',
-                    {'taskId': str(data['task_id']), 'log': log_payload},
-                    room=f"task_{data['task_id']}",
-                    namespace='/ws/logs',
-                )
-        except Exception as ws_error:
-            print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - WS ERROR - {str(ws_error)}")
-    
     def _check_and_archive(self, Log, SessionLocal):
-        if not Log or not SessionLocal or not self.flask_app:
+        if not Log or not SessionLocal:
             return
-        
-        try:
-            with self.flask_app.app_context():
-                session = SessionLocal()
-                try:
-                    total_count = session.query(Log).count()
-                    
-                    if total_count > LOG_ARCHIVE_THRESHOLD:
-                        print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Log count {total_count} exceeds threshold {LOG_ARCHIVE_THRESHOLD}, starting archive...")
-                        self._archive_old_logs(Log, SessionLocal, session, total_count)
 
-                    # 清理过期归档文件（每次归档检查时都执行）
-                    self._clean_expired_archives()
-                finally:
-                    session.close()
+        try:
+            session = SessionLocal()
+            try:
+                total_count = session.query(Log).count()
+
+                if total_count > LOG_ARCHIVE_THRESHOLD:
+                    print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - INFO - Log count {total_count} exceeds threshold {LOG_ARCHIVE_THRESHOLD}, starting archive...")
+                    self._archive_old_logs(Log, SessionLocal, session, total_count)
+
+                # 清理过期归档文件（每次归档检查时都执行）
+                self._clean_expired_archives()
+            finally:
+                session.close()
         except Exception as e:
             print(f"[{datetime.now(timezone(timedelta(hours=8))).strftime('%Y-%m-%d %H:%M:%S')}] - log_worker - ARCHIVE ERROR - {str(e)}")
     

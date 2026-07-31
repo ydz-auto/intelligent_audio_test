@@ -1,85 +1,104 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.testcase_controller import TestCaseController
+from api_gateway.routes._response import to_response
 
-testcase_bp = Blueprint('testcases', __name__)
+router = APIRouter()
 
-@testcase_bp.route('', methods=['GET'])
+
+@router.get('')
 def get_all():
-    return TestCaseController.get_all()
+    return to_response(TestCaseController.get_all())
 
-@testcase_bp.route('/<tc_id>', methods=['GET'])
-def get_one(tc_id):
-    return TestCaseController.get_one(tc_id)
 
-@testcase_bp.route('', methods=['POST'])
+@router.get('/{tc_id}')
+def get_one(tc_id: str):
+    return to_response(TestCaseController.get_one(tc_id))
+
+
+@router.post('')
 def create():
-    return TestCaseController.create()
+    return to_response(TestCaseController.create())
 
-@testcase_bp.route('/<tc_id>', methods=['PUT'])
-def update(tc_id):
-    return TestCaseController.update(tc_id)
 
-@testcase_bp.route('/<tc_id>', methods=['DELETE'])
-def delete(tc_id):
-    return TestCaseController.delete(tc_id)
+@router.put('/{tc_id}')
+def update(tc_id: str):
+    return to_response(TestCaseController.update(tc_id))
 
-@testcase_bp.route('/<tc_id>/copy', methods=['POST'])
-def copy(tc_id):
-    return TestCaseController.copy(tc_id)
 
-@testcase_bp.route('/<tc_id>/preview', methods=['POST'])
-def preview(tc_id):
-    return TestCaseController.preview(tc_id)
+@router.delete('/{tc_id}')
+def delete(tc_id: str):
+    return to_response(TestCaseController.delete(tc_id))
 
-@testcase_bp.route('/<tc_id>/stop_preview', methods=['POST'])
-def stop_preview(tc_id):
-    return TestCaseController.stop_preview(tc_id)
 
-@testcase_bp.route('/<tc_id>/stop-preview', methods=['POST'])
-def stop_preview_hyphen(tc_id):
-    return TestCaseController.stop_preview(tc_id)
+@router.post('/{tc_id}/copy')
+def copy(tc_id: str):
+    return to_response(TestCaseController.copy(tc_id))
 
-@testcase_bp.route('/batch', methods=['POST'])
+
+@router.post('/{tc_id}/preview')
+def preview(tc_id: str):
+    return to_response(TestCaseController.preview(tc_id))
+
+
+@router.post('/{tc_id}/stop_preview')
+def stop_preview(tc_id: str):
+    return to_response(TestCaseController.stop_preview(tc_id))
+
+
+@router.post('/{tc_id}/stop-preview')
+def stop_preview_hyphen(tc_id: str):
+    return to_response(TestCaseController.stop_preview(tc_id))
+
+
+@router.post('/batch')
 def batch_action():
-    return TestCaseController.batch_action()
+    return to_response(TestCaseController.batch_action())
 
-@testcase_bp.route('/stats', methods=['GET'])
+
+@router.get('/stats')
 def get_stats():
-    return TestCaseController.get_stats()
+    return to_response(TestCaseController.get_stats())
 
-@testcase_bp.route('/tags', methods=['GET'])
+
+@router.get('/tags')
 def get_tags():
-    return TestCaseController.get_tags()
+    return to_response(TestCaseController.get_tags())
 
-@testcase_bp.route('/export', methods=['POST'])
+
+@router.post('/export')
 def export_cases():
-    return TestCaseController.export_cases()
+    return to_response(TestCaseController.export_cases())
 
-@testcase_bp.route('/import', methods=['POST'])
+
+@router.post('/import')
 def import_cases():
-    return TestCaseController.import_cases()
+    return to_response(TestCaseController.import_cases())
 
-@testcase_bp.route('/template/download', methods=['GET'])
+
+@router.get('/template/download')
 def download_template():
-    return TestCaseController.download_template()
+    return to_response(TestCaseController.download_template())
 
-@testcase_bp.route('/import/preview', methods=['POST'])
+
+@router.post('/import/preview')
 def preview_import():
-    return TestCaseController.preview_import()
+    return to_response(TestCaseController.preview_import())
 
-@testcase_bp.route('/refresh_task/<task_id>', methods=['GET'])
-def get_refresh_task_status(task_id):
+
+@router.get('/refresh_task/{task_id}')
+def get_refresh_task_status(task_id: str):
     from shared.utils.reference_refresh_task import get_reference_refresh_task_status
-    return get_reference_refresh_task_status(task_id)
+    return to_response(get_reference_refresh_task_status(task_id))
 
 
 # ---- reference_params 文件读写 API ----
 
-@testcase_bp.route('/<tc_id>/rounds/<int:round_number>/ref-params', methods=['GET'])
-def get_ref_params(tc_id, round_number):
-    return TestCaseController.get_ref_params(tc_id, round_number)
+@router.get('/{tc_id}/rounds/{round_number}/ref-params')
+def get_ref_params(tc_id: str, round_number: int):
+    return to_response(TestCaseController.get_ref_params(tc_id, round_number))
 
-@testcase_bp.route('/<tc_id>/rounds/<int:round_number>/ref-params', methods=['PUT'])
-def update_ref_params(tc_id, round_number):
-    return TestCaseController.update_ref_params(tc_id, round_number)
 
+@router.put('/{tc_id}/rounds/{round_number}/ref-params')
+def update_ref_params(tc_id: str, round_number: int):
+    return to_response(TestCaseController.update_ref_params(tc_id, round_number))

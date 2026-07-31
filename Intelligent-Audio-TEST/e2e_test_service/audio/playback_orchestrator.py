@@ -13,14 +13,14 @@ import os
 import time
 import threading
 
-from e2e_test_service.audio.audio_engine import (
-    audio_service as _default_audio_service,
+from e2e_test_service.audio.audio_engine import audio_service as _default_audio_service
+from e2e_test_service.audio.audio_timeline import (
     build_audio_timelines,
     build_speakers_map_from_dry_audios,
     get_audio_configs_for_offset,
     calculate_speaker_aware_audio_delays,
-    log_not_emit,
 )
+from shared.utils.log_handler import log_not_emit
 from e2e_test_service.audio.playback_config_builder import (
     resolve_dry_audios,
     build_noise_info,
@@ -319,7 +319,7 @@ class PlaybackOrchestrator:
         if not vp_config or not vp_config.get('enabled'):
             return True
 
-        from shared.models import db
+        from shared.models.database import db
         from shared.models.models import Audio, PlaybackDevice
 
         audio_id = vp_config.get('audio_id')
@@ -417,11 +417,7 @@ class PlaybackOrchestrator:
     # ------------------------------------------------------------------ #
 
     def _get_flask_app(self):
-        try:
-            from flask import current_app
-            return current_app._get_current_object()
-        except Exception:
-            return None
+        return None
 
     # 委托方法，保持向后兼容
     def _find_device_obj(self, device_id, devices):

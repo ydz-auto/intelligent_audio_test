@@ -1,70 +1,117 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.report_controller import ReportController
 from shared.utils.log_handler import log_and_emit
+from api_gateway.routes._response import to_response
 
-report_bp = Blueprint('reports', __name__)
+router = APIRouter()
 
-@report_bp.route('', methods=['GET'])
+@router.get('')
 def get_all():
-    return ReportController.get_all()
+    result = ReportController.get_all()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/<int:report_id>', methods=['GET'])
-def get_one(report_id):
-    return ReportController.get_one(report_id)
+@router.get('/{report_id}')
+def get_one(report_id: int):
+    result = ReportController.get_one(report_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/<int:report_id>', methods=['DELETE'])
-def delete(report_id):
-    return ReportController.delete(report_id)
+@router.delete('/{report_id}')
+def delete(report_id: int):
+    result = ReportController.delete(report_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/<int:report_id>', methods=['PUT'])
-def update(report_id):
-    return ReportController.update(report_id)
+@router.put('/{report_id}')
+def update(report_id: int):
+    result = ReportController.update(report_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/<int:report_id>/publish', methods=['POST'])
-def publish(report_id):
-    return ReportController.publish(report_id)
+@router.post('/{report_id}/publish')
+def publish(report_id: int):
+    result = ReportController.publish(report_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/batch-delete', methods=['POST'])
+@router.post('/batch-delete')
 def batch_delete():
-    return ReportController.batch_delete()
+    result = ReportController.batch_delete()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/<int:report_id>/progress', methods=['GET'])
-def get_progress(report_id):
-    return ReportController.get_progress(report_id)
+@router.get('/{report_id}/progress')
+def get_progress(report_id: int):
+    result = ReportController.get_progress(report_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/compare', methods=['POST'])
+@router.post('/compare')
 def compare():
-    return ReportController.compare()
+    result = ReportController.compare()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/secondary-compare', methods=['POST'])
+@router.post('/secondary-compare')
 def secondary_compare():
-    return ReportController.secondary_compare()
+    result = ReportController.secondary_compare()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/generate-task', methods=['POST'])
+@router.post('/generate-task')
 def generate_task_report():
-    return ReportController.generate_task_report()
+    result = ReportController.generate_task_report()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/export', methods=['POST'])
+@router.post('/export')
 def export():
-    return ReportController.export()
+    result = ReportController.export()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/case-averages', methods=['POST'])
+@router.post('/case-averages')
 def get_case_averages_by_filters():
-    return ReportController.get_case_averages_by_filters()
+    result = ReportController.get_case_averages_by_filters()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/<int:report_id>/cases', methods=['GET'])
-def get_report_cases(report_id):
-    return ReportController.get_report_cases(report_id)
+@router.get('/{report_id}/cases')
+def get_report_cases(report_id: int):
+    result = ReportController.get_report_cases(report_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/<int:report_id>/cases/search', methods=['POST'])
-def search_report_cases(report_id):
-    return ReportController.search_report_cases(report_id)
+@router.post('/{report_id}/cases/search')
+def search_report_cases(report_id: int):
+    result = ReportController.search_report_cases(report_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@report_bp.route('/<int:report_id>/cases/<case_id>/logs/download', methods=['GET'])
-def download_case_logs(report_id, case_id):
+@router.get('/{report_id}/cases/{case_id}/logs/download')
+def download_case_logs(report_id: int, case_id: str):
     log_and_emit(
         level='INFO',
         module='report',
         content=f'收到下载日志请求 - report_id: {report_id}, case_id: {case_id}'
     )
-    return ReportController.download_case_logs(report_id, case_id)
+    result = ReportController.download_case_logs(report_id, case_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result

@@ -6,7 +6,6 @@ try:
 except ImportError:
     from dummy_threading import Lock
 
-from flask import Flask
 
 class ConfigManager:
     """

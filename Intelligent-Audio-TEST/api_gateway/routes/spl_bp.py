@@ -1,52 +1,66 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.spl_controller import SPLController
+from api_gateway.routes._response import to_response
 
-spl_bp = Blueprint('spl', __name__)
+router = APIRouter()
 
-@spl_bp.route('', methods=['GET'])
+
+@router.get('')
 def get_all():
-    return SPLController.get_all()
+    return to_response(SPLController.get_all())
 
-@spl_bp.route('/<int:mapping_id>', methods=['GET'])
-def get_one(mapping_id):
-    return SPLController.get_one(mapping_id)
 
-@spl_bp.route('', methods=['POST'])
+@router.get('/{mapping_id}')
+def get_one(mapping_id: int):
+    return to_response(SPLController.get_one(mapping_id))
+
+
+@router.post('')
 def create():
-    return SPLController.create()
+    return to_response(SPLController.create())
 
-@spl_bp.route('/<int:mapping_id>', methods=['PUT'])
-def update(mapping_id):
-    return SPLController.update(mapping_id)
 
-@spl_bp.route('/<int:mapping_id>', methods=['DELETE'])
-def delete(mapping_id):
-    return SPLController.delete(mapping_id)
+@router.put('/{mapping_id}')
+def update(mapping_id: int):
+    return to_response(SPLController.update(mapping_id))
 
-@spl_bp.route('/<int:mapping_id>/calibrate', methods=['POST'])
-def calibrate(mapping_id):
-    return SPLController.calibrate(mapping_id)
 
-@spl_bp.route('/<int:mapping_id>/history', methods=['GET'])
-def get_history(mapping_id):
-    return SPLController.get_history(mapping_id)
+@router.delete('/{mapping_id}')
+def delete(mapping_id: int):
+    return to_response(SPLController.delete(mapping_id))
 
-@spl_bp.route('/<int:mapping_id>/calibration-data', methods=['GET'])
-def get_calibration_data(mapping_id):
-    return SPLController.get_calibration_data(mapping_id)
 
-@spl_bp.route('/stats', methods=['GET'])
+@router.post('/{mapping_id}/calibrate')
+def calibrate(mapping_id: int):
+    return to_response(SPLController.calibrate(mapping_id))
+
+
+@router.get('/{mapping_id}/history')
+def get_history(mapping_id: int):
+    return to_response(SPLController.get_history(mapping_id))
+
+
+@router.get('/{mapping_id}/calibration-data')
+def get_calibration_data(mapping_id: int):
+    return to_response(SPLController.get_calibration_data(mapping_id))
+
+
+@router.get('/stats')
 def get_stats():
-    return SPLController.get_stats()
+    return to_response(SPLController.get_stats())
 
-@spl_bp.route('/by-device/<int:device_id>', methods=['GET'])
-def get_by_device(device_id):
-    return SPLController.get_by_device(device_id)
 
-@spl_bp.route('/test-tone', methods=['POST'])
+@router.get('/by-device/{device_id}')
+def get_by_device(device_id: int):
+    return to_response(SPLController.get_by_device(device_id))
+
+
+@router.post('/test-tone')
 def play_test_tone():
-    return SPLController.play_test_tone()
+    return to_response(SPLController.play_test_tone())
 
-@spl_bp.route('/test-tone/stop', methods=['POST'])
+
+@router.post('/test-tone/stop')
 def stop_test_tone():
-    return SPLController.stop_test_tone()
+    return to_response(SPLController.stop_test_tone())

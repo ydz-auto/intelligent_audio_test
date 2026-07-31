@@ -1,4 +1,4 @@
-import { ref } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { reportService } from '../../services/reportService';
 import type { Task } from '../../shared/types';
@@ -86,6 +86,59 @@ export function useTasks() {
   const resetAllStates = () => {
     listModule.resetAllStates();
   };
+
+  // ========== 图表与生命周期协调（从 .vue 迁入） ==========
+
+  const handleNameUpdated = ({ taskId, newName }: { taskId: string | number; newName: string }) => {
+    console.log('[DEBUG] handleUpdateTaskName called:', { taskId, newName });
+    controlModule.updateTaskName(taskId, newName);
+  };
+
+  const canMerge = computed(() => {
+    if (listModule.selectedTasks.value.size < 2) return false;
+    const selectedTasksArray = listModule.tasks.value.filter(t => listModule.selectedTasks.value.has(t.id));
+    return selectedTasksArray.every(t => t.status === 'completed');
+  });
+
+  const mergeButtonTitle = computed(() => {
+    if (listModule.selectedTasks.value.size < 2) {
+      return '请至少选择两个任务进行合并';
+    }
+    const selectedTasksArray = listModule.tasks.value.filter(t => listModule.selectedTasks.value.has(t.id));
+    const incompleteTasks = selectedTasksArray.filter(t => t.status !== 'completed');
+    if (incompleteTasks.length > 0) {
+      const names = incompleteTasks.map(t => t.name).join(', ');
+      return `以下任务未完成，无法合并: ${names}`;
+    }
+    return '点击将选中的已完成任务合并为一个新任务';
+  });
+
+  // 监听图表容器ref变化，初始化图表
+  watch([chartsModule.taskTypeChartRef, chartsModule.taskTrendChartRef, chartsModule.taskStatusChartRef], () => {
+    if (chartsModule.taskTypeChartRef.value && chartsModule.taskTrendChartRef.value && chartsModule.taskStatusChartRef.value) {
+      chartsModule.updateCharts();
+    }
+  }, { deep: true });
+
+  onMounted(async () => {
+    await listModule.fetchTasks();
+    listModule.applyFilters();
+    // 初始化时获取日志
+    await logsModule.refreshTaskLogs();
+
+    // 初始化图表
+    setTimeout(() => {
+      if (chartsModule.taskTypeChartRef.value) {
+        chartsModule.createTaskTypeChart(chartsModule.taskTypeChartRef.value);
+      }
+      if (chartsModule.taskTrendChartRef.value) {
+        chartsModule.createTaskTrendChart(chartsModule.taskTrendChartRef.value);
+      }
+      if (chartsModule.taskStatusChartRef.value) {
+        chartsModule.createTaskStatusChart(chartsModule.taskStatusChartRef.value);
+      }
+    }, 100);
+  });
 
   // ========== 暴露统一接口（与原 useTasks 完全兼容） ==========
 
@@ -218,5 +271,10 @@ export function useTasks() {
     // 生命周期
     initTasks,
     resetAllStates,
+
+    // 协调逻辑
+    handleNameUpdated,
+    canMerge,
+    mergeButtonTitle,
   };
 }

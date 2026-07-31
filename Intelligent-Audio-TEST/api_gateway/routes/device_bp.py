@@ -1,52 +1,66 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.device_controller import DeviceController
+from api_gateway.routes._response import to_response
 
-device_bp = Blueprint('devices', __name__)
+router = APIRouter()
 
-@device_bp.route('', methods=['GET'])
+
+@router.get('')
 def get_all():
-    return DeviceController.get_all()
+    return to_response(DeviceController.get_all())
 
-@device_bp.route('/status', methods=['GET'])
+
+@router.get('/status')
 def get_statuses():
-    return DeviceController.get_statuses()
+    return to_response(DeviceController.get_statuses())
 
-@device_bp.route('/<int:device_id>', methods=['GET'])
-def get_one(device_id):
-    return DeviceController.get_one(device_id)
 
-@device_bp.route('', methods=['POST'])
+@router.get('/{device_id}')
+def get_one(device_id: int):
+    return to_response(DeviceController.get_one(device_id))
+
+
+@router.post('')
 def create():
-    return DeviceController.create()
+    return to_response(DeviceController.create())
 
-@device_bp.route('/<int:device_id>', methods=['PUT'])
-def update(device_id):
-    return DeviceController.update(device_id)
 
-@device_bp.route('/<int:device_id>', methods=['DELETE'])
-def delete(device_id):
-    return DeviceController.delete(device_id)
+@router.put('/{device_id}')
+def update(device_id: int):
+    return to_response(DeviceController.update(device_id))
 
-@device_bp.route('/health-check', methods=['POST'])
+
+@router.delete('/{device_id}')
+def delete(device_id: int):
+    return to_response(DeviceController.delete(device_id))
+
+
+@router.post('/health-check')
 def health_check():
-    return DeviceController.health_check()
+    return to_response(DeviceController.health_check())
 
-@device_bp.route('/scan', methods=['POST'])
+
+@router.post('/scan')
 def scan():
-    return DeviceController.scan()
+    return to_response(DeviceController.scan())
 
-@device_bp.route('/<int:device_id>/test', methods=['POST'])
-def test(device_id):
-    return DeviceController.test(device_id)
 
-@device_bp.route('/<int:device_id>/stop-test', methods=['POST'])
-def stop_test(device_id):
-    return DeviceController.stop_test(device_id)
+@router.post('/{device_id}/test')
+def test(device_id: int):
+    return to_response(DeviceController.test(device_id))
 
-@device_bp.route('/driver-keywords', methods=['GET'])
+
+@router.post('/{device_id}/stop-test')
+def stop_test(device_id: int):
+    return to_response(DeviceController.stop_test(device_id))
+
+
+@router.get('/driver-keywords')
 def get_driver_keywords():
-    return DeviceController.get_driver_keywords()
+    return to_response(DeviceController.get_driver_keywords())
 
-@device_bp.route('/serials', methods=['GET'])
+
+@router.get('/serials')
 def get_available_serials():
-    return DeviceController.get_available_serials()
+    return to_response(DeviceController.get_available_serials())

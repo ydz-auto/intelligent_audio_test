@@ -1,77 +1,112 @@
+# -*- coding: utf-8 -*-
+"""FastAPI application factory for task_service.
+
+职责：任务调度、分发、进度管理、结果汇总、评估计算。
+保留原有的 gRPC server 启动、调度器、评估服务、Redis 注册等初始化逻辑，
+仅将原 http.server HTTP 入口替换为 FastAPI + uvicorn。
 """
-Task Service 服务启动入口
-职责：任务调度、分发、进度管理、结果汇总、评估计算
-"""
-from flask import Flask
+
 import os
 import sys
 import logging
+from contextlib import asynccontextmanager
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(current_dir)
 sys.path.insert(0, project_dir)
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(project_dir, '.env'))
+except ImportError:
+    pass
+
+from fastapi import FastAPI
+
 from shared.models.database import init_db
 from shared.utils.service_registry import RedisServiceRegistry
 from task_service.config.config import Config
 
-app = None
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s %(name)s: %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-def create_app(config_name='default'):
-    global app
-    Config.validate()  # 启动前校验必填环境变量
-    app = Flask(__name__)
-    app.config['SQLALCHEMY_DATABASE_URI'] = Config.DATABASE_URL
-    init_db(app, pool_size=20)
+# 全局引用，防止 GC（gRPC server 需要在 lifespan 之外保持引用）
+_grpc_server = None
 
-    # 健康检查
-    @app.route('/health')
-    def health():
-        return {'status': 'ok', 'service': 'task_service'}
 
-    @app.route('/internal/health')
-    def internal_health():
-        return {'status': 'ok'}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """启动时初始化 DB / 调度器 / 评估服务 / 服务注册 / gRPC server，关闭时清理。"""
+    global _grpc_server
 
-    # 初始化任务调度器（参考原 backend/app.py 第 250-256 行）
+    Config.validate()
+    init_db(pool_size=20)
+    logger.info("数据库连接池已初始化 (pool_size=20)")
+
+    # 初始化任务调度器
     from task_service.core.execution_engine import execution_engine
-    execution_engine.set_scheduler_app(app)
     execution_engine._init_scheduler()
-    app.logger.info("任务调度器初始化完成")
+    logger.info("任务调度器初始化完成")
 
     # 初始化评估服务
-    from task_service.evaluation.evaluation_service import EvaluationService, evaluation_service
-    app.logger.info("评估服务初始化完成")
+    from task_service.evaluation.evaluation_service import evaluation_service
+    logger.info("评估服务初始化完成")
 
-    # 任务相关 API 路由占位
-    @app.route('/api/v1/tasks/start', methods=['POST'])
-    def start_task():
-        """启动测试任务"""
-        return {'status': 'ok', 'message': 'task start placeholder'}
-
-    @app.route('/api/v1/tasks/<task_id>/stop', methods=['POST'])
-    def stop_task(task_id):
-        """停止测试任务"""
-        return {'status': 'ok', 'message': f'task {task_id} stop placeholder'}
-
-    @app.route('/api/v1/tasks/<task_id>/status', methods=['GET'])
-    def get_task_status(task_id):
-        """查询任务状态"""
-        return {'status': 'ok', 'task_id': task_id, 'message': 'task status placeholder'}
-
+    # 服务注册
     registry = RedisServiceRegistry()
     registry.register('task_service', Config.SERVICE_HOST, Config.PORT)
 
-    # 启动 gRPC server（在 create_app 内启动，确保任何调用方式都会启动）
+    # 启动 gRPC server
     from task_service.grpc.server import start_grpc_server
     try:
-        app.config['_grpc_server'] = start_grpc_server(port=Config.GRPC_PORT)
-        app.logger.info("gRPC server started on port %s", Config.GRPC_PORT)
+        _grpc_server = start_grpc_server(port=Config.GRPC_PORT)
+        logger.info("gRPC server started on port %s", Config.GRPC_PORT)
     except Exception as e:
-        app.logger.warning("gRPC server failed to start: %s", e)
+        logger.warning("gRPC server failed to start: %s", e)
+
+    logger.info("task_service FastAPI app started")
+    yield
+
+    # 关闭 gRPC server
+    if _grpc_server is not None:
+        try:
+            _grpc_server.stop(0)
+            logger.info("gRPC server stopped")
+        except Exception as e:
+            logger.warning("gRPC server stop error: %s", e)
+
+    logger.info("task_service shutting down")
+
+
+def create_app(config_name='default') -> FastAPI:
+    """Create and configure the FastAPI application for task_service."""
+    app = FastAPI(
+        title="Intelligent Audio Test - Task Service",
+        lifespan=lifespan,
+    )
+
+    @app.get('/health')
+    def health():
+        return {
+            'status': 'ok',
+            'service': 'task_service',
+        }
 
     return app
 
+
+app = create_app()
+
+
 if __name__ == '__main__':
-    app = create_app()
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    import uvicorn
+    uvicorn.run(
+        "task_service.app:app",
+        host="0.0.0.0",
+        port=Config.PORT,
+        workers=1,
+        log_level="info",
+    )

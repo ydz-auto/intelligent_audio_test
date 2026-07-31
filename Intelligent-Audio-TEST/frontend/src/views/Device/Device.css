@@ -1,0 +1,39 @@
+.no-devices {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: #64748b;
+  background-color: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.no-devices i {
+  font-size: 32px;
+  margin-bottom: 16px;
+  color: #94a3b8;
+}
+
+.no-devices p {
+  font-size: 16px;
+  margin: 0;
+}
+
+.device-algorithms {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 0;
+}
+
+.algo-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}

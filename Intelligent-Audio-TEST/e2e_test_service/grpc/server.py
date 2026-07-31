@@ -17,7 +17,7 @@ from concurrent import futures
 import grpc
 
 from shared.proto import e2e_service_pb2_grpc as e2e_grpc
-from shared.infrastructure.grpc_interceptors import server_log_interceptor
+from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
 from e2e_test_service.grpc.servicers import (
     AudioServiceServicer,
     DeviceServiceServicer,
@@ -41,7 +41,7 @@ def start_grpc_server(port=50051):
     """
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=5),
-        interceptors=[server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor],
     )
     e2e_grpc.add_AudioServiceServicer_to_server(AudioServiceServicer(), server)
     e2e_grpc.add_DeviceServiceServicer_to_server(DeviceServiceServicer(), server)

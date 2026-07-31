@@ -1,4 +1,4 @@
-from .e2e_service_pb2_grpc import *
-from .task_service_pb2_grpc import *
-from .api_test_service_pb2_grpc import *
-from .adapter_service_pb2_grpc import *
+# gRPC 生成桩模块包
+# 直接从子模块导入：
+#     from shared.proto import task_service_pb2_grpc
+#     from shared.proto import e2e_service_pb2

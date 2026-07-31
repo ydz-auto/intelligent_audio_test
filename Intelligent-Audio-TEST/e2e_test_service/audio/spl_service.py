@@ -1,7 +1,6 @@
 import numpy as np
 from shared.models.models import SPLMapping
 from typing import Optional
-from flask import current_app
 
 
 class SPLMappingService:
@@ -30,13 +29,12 @@ class SPLMappingService:
             float: 线性增益值
         """
         from shared.models.database import db
-        from flask import has_app_context
 
         def _do_lookup():
             """执行实际的数据库查询和增益计算"""
             local_db_session = db.session()
             try:
-                mapping = local_db_session.query(SPLMapping).get(mapping_id)
+                mapping = local_db_session.get(SPLMapping, mapping_id)
                 if not mapping:
                     return 1.0
 
@@ -99,19 +97,7 @@ class SPLMappingService:
             finally:
                 local_db_session.close()
 
-        if app is not None:
-            with app.app_context():
-                return _do_lookup()
-        elif has_app_context():
-            return _do_lookup()
-        else:
-            try:
-                from flask.globals import _app_ctx_stack
-                if _app_ctx_stack.top:
-                    return _do_lookup()
-            except:
-                pass
-            return 1.0
+        return _do_lookup()
 
     @staticmethod
     def _apply_gain_limit(gain_linear):

@@ -5,7 +5,7 @@
 提供算法分组的 CRUD API
 """
 
-from flask import request
+from api_gateway.controllers.request_adapter import request
 from shared.models.algorithm_models import AlgorithmGroup, AlgorithmDefinition
 from shared.models.database import db
 from shared.utils.response import success_response, error_response

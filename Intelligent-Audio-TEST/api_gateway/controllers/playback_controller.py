@@ -1,4 +1,5 @@
-from flask import request, current_app
+from api_gateway.controllers.request_adapter import request
+from api_gateway.config.config import Config
 from sqlalchemy import cast, String
 from shared.models.models import PlaybackDevice
 from shared.models.database import db
@@ -19,7 +20,7 @@ import os
 logger = logging.getLogger(__name__)
 
 # 导入全局app实例，用于在线程中创建应用上下文
-from flask import current_app as app
+app = None
 
 # 全局音频服务单例，确保驱动不被重复初始化
 audio_service = AudioService()
@@ -329,7 +330,7 @@ class PlaybackController:
             audio_id = validated_data.audio_id
             spl = validated_data.spl
             
-            sample_audio = os.path.join(current_app.config.get('AUDIO_STORAGE_PATH'), 'test.wav')
+            sample_audio = os.path.join(Config.AUDIO_STORAGE_PATH, 'test.wav')
             
             audio_name = os.path.basename(sample_audio)
             if audio_id:
@@ -340,7 +341,7 @@ class PlaybackController:
                     audio_name = audio.name
             
             if not os.path.isabs(sample_audio):
-                sample_audio = os.path.join(app.root_path,  sample_audio)
+                sample_audio = os.path.join(os.getcwd(), sample_audio)
             
             if not os.path.exists(sample_audio):
                 return error_response(f"音频文件不存在: {sample_audio}。请先确保音频文件存在。")

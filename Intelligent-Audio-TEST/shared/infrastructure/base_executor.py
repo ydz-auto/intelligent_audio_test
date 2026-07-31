@@ -17,7 +17,7 @@ from sqlalchemy import text
 from shared.utils.log_handler import log_and_emit
 from shared.algorithm.field_mapper import get_field_mapper
 from shared.algorithm.algorithm_config_loader import get_config_loader
-from shared.models.database import db
+from shared.models.database import db, _engine_ref
 from shared.models.models import utc8now, Task, TaskCase, TestCase
 import json
 
@@ -123,7 +123,7 @@ class BaseExecutor:
                 if format_str and param_value and db_model:
                     local_db_session = db.session()
                     try:
-                        db_record = local_db_session.query(db_model).get(param_value)
+                        db_record = local_db_session.get(db_model, param_value)
                         if db_record:
                             format_kwargs = {}
                             for key, field in db_lang_fields.items():
@@ -514,13 +514,13 @@ class BaseExecutor:
     def _validate_and_get_data(self, task_id, tc_rel_id):
         local_db_session = db.session()
         try:
-            task = local_db_session.query(Task).get(task_id)
+            task = local_db_session.get(Task, task_id)
             if not task:
                 return {'success': False, 'error': "任务不存在"}
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if not tc_rel:
                 return {'success': False, 'error': "找不到测试用例关联"}
-            case = local_db_session.query(TestCase).get(tc_rel.test_case_id)
+            case = local_db_session.get(TestCase, tc_rel.test_case_id)
             if not case:
                 return {'success': False, "error": "找不到测试用例"}
 
@@ -606,7 +606,7 @@ class BaseExecutor:
     def _update_tc_rel_status(self, tc_rel_id, **kwargs):
         local_db_session = db.session()
         try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if tc_rel:
                 for key, value in kwargs.items():
                     setattr(tc_rel, key, value)
@@ -625,6 +625,39 @@ class BaseExecutor:
                     self.execution_engine._emit_progress(task_id, force=True)
         finally:
             local_db_session.close()
+
+    def _save_result(self, task_id, test_case_id, result_data, algo_result, algorithm_type,
+                     device_id=None, api_id=None, execution_status='completed', response_time=0,
+                     error_message=None, extra_data=None, result_data_path=None):
+        """保存测试结果到数据库"""
+        insert_sql = text("""
+            INSERT INTO test_results (task_id, test_case_id, device_id, api_id, algorithm_type, execution_status, response_time, algorithm_result, execution_steps, result_data, result_data_path, error_message, created_at)
+            VALUES (:task_id, :test_case_id, :device_id, :api_id, :algorithm_type, :execution_status, :response_time, :algorithm_result, :execution_steps, :result_data, :result_data_path, :error_message, :created_at)
+            RETURNING id
+        """)
+
+        params = {
+            'task_id': task_id,
+            'test_case_id': test_case_id,
+            'device_id': device_id,
+            'api_id': api_id,
+            'algorithm_type': algorithm_type,
+            'execution_status': execution_status,
+            'response_time': response_time,
+            'algorithm_result': json.dumps(algo_result) if algo_result else None,
+            'execution_steps': '[]',
+            'result_data': json.dumps(result_data) if result_data else None,
+            'result_data_path': result_data_path or None,
+            'error_message': error_message,
+            'created_at': utc8now()
+        }
+
+        with _engine_ref[0].connect() as conn:
+            result = conn.execute(insert_sql, params)
+            result_id = result.scalar()
+            conn.commit()
+
+        return result_id
 
 
 class _DeviceResultCollectorProxy:
@@ -670,12 +703,17 @@ class _DeviceResultCollectorProxy:
     def collect_raw_results(self, task_id, test_case_id, device_info_list, extra_params, log_callback=None, **kwargs):
         import json as _json
         from shared.proto import e2e_service_pb2
+        # device_info_list 中的 driver 对象不可序列化，序列化前剥离 driver 对象
+        serializable_device_info = [
+            {k: v for k, v in info.items() if k != 'driver'}
+            for info in device_info_list
+        ]
         req = e2e_service_pb2.CollectResultRequest(
             task_id=str(task_id),
             collect_config=_json.dumps({
                 'action': 'collect_raw_results',
                 'test_case_id': test_case_id,
-                'device_info_list': device_info_list,
+                'device_info_list': serializable_device_info,
                 'extra_params': extra_params,
                 'kwargs': kwargs,
             })
@@ -684,36 +722,3 @@ class _DeviceResultCollectorProxy:
         if not resp.success or not resp.data:
             return []
         return _json.loads(resp.data)
-
-    def _save_result(self, task_id, test_case_id, result_data, algo_result, algorithm_type,
-                     device_id=None, api_id=None, execution_status='completed', response_time=0,
-                     error_message=None, extra_data=None, result_data_path=None):
-        """保存测试结果到数据库"""
-        insert_sql = text("""
-            INSERT INTO test_results (task_id, test_case_id, device_id, api_id, algorithm_type, execution_status, response_time, algorithm_result, execution_steps, result_data, result_data_path, error_message, created_at)
-            VALUES (:task_id, :test_case_id, :device_id, :api_id, :algorithm_type, :execution_status, :response_time, :algorithm_result, :execution_steps, :result_data, :result_data_path, :error_message, :created_at)
-            RETURNING id
-        """)
-
-        params = {
-            'task_id': task_id,
-            'test_case_id': test_case_id,
-            'device_id': device_id,
-            'api_id': api_id,
-            'algorithm_type': algorithm_type,
-            'execution_status': execution_status,
-            'response_time': response_time,
-            'algorithm_result': json.dumps(algo_result) if algo_result else None,
-            'execution_steps': '[]',
-            'result_data': json.dumps(result_data) if result_data else None,
-            'result_data_path': result_data_path or None,
-            'error_message': error_message,
-            'created_at': utc8now()
-        }
-
-        with db.engine.connect() as conn:
-            result = conn.execute(insert_sql, params)
-            result_id = result.scalar()
-            conn.commit()
-
-        return result_id

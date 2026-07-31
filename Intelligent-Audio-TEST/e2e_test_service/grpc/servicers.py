@@ -200,33 +200,80 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
     @property
     def factory(self):
         if self._factory is None:
-            from e2e_test_service.drivers import device_driver_factory
+            from e2e_test_service.drivers.device_driver import device_driver_factory
             self._factory = device_driver_factory
         return self._factory
 
     def CreateDriver(self, request, context=None):
-        """创建设备驱动（连接设备）"""
+        """创建设备驱动 / 分发设备操作
+
+        根据 device_config 的 action 字段分发：
+        - 无 action 或 action='initialize': 创建/初始化 driver
+        - action='pre_process': 预处理
+        - action='post_process': 后处理
+        - action='get_results': 采集结果
+        - action='teardown': 销毁 driver
+        """
         try:
             device_config = _loads(request.device_config, {})
             task_id = request.task_id
-            system = device_config.get('system')
-            keywords = device_config.get('keywords')
+            action = device_config.get('action', 'initialize')
             device_sn = device_config.get('device_sn')
-            device_info_list = device_config.get('device_info_list', [])
+            test_case_id = device_config.get('test_case_id')
+            kwargs = device_config.get('kwargs', {})
 
-            # 注册任务设备
-            if device_info_list:
-                self.factory.register_task_devices(task_id, device_info_list)
+            # action=initialize 时可能传入 device_info_list（列表）
+            if action == 'initialize':
+                system = device_config.get('system')
+                keywords = device_config.get('keywords')
+                device_info_list_raw = device_config.get('device_info_list', [])
 
-            driver = self.factory.get_driver(system, keywords=keywords, device_sn=device_sn)
-            driver_info = {
-                "system": system,
-                "keywords": keywords,
-                "device_sn": device_sn,
-                "driver_found": driver is not None,
-                "driver_name": driver.__class__.__name__ if driver else None,
-            }
-            return e2e_pb.CreateDriverResponse(success=True, message="ok", data=_dumps(driver_info))
+                # 注册任务设备
+                if device_info_list_raw:
+                    self.factory.register_task_devices(task_id, device_info_list_raw)
+
+                driver = self.factory.get_driver(system, keywords=keywords, device_sn=device_sn)
+                if driver and hasattr(driver, 'initialize'):
+                    driver.initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+                driver_info = {
+                    "system": system,
+                    "keywords": keywords,
+                    "device_sn": device_sn,
+                    "driver_found": driver is not None,
+                    "driver_name": driver.__class__.__name__ if driver else None,
+                }
+                return e2e_pb.CreateDriverResponse(success=True, message="ok", data=_dumps(driver_info))
+
+            # 根据设备 SN 查找已注册的 driver
+            driver = self.factory.get_driver_by_sn(device_sn, task_id)
+
+            if action == 'pre_process':
+                if driver and hasattr(driver, 'pre_process'):
+                    driver.pre_process(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+                return e2e_pb.CreateDriverResponse(success=True, message="ok",
+                    data=_dumps({"device_sn": device_sn, "action": "pre_process", "executed": driver is not None}))
+
+            if action == 'post_process':
+                if driver and hasattr(driver, 'post_process'):
+                    driver.post_process(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+                return e2e_pb.CreateDriverResponse(success=True, message="ok",
+                    data=_dumps({"device_sn": device_sn, "action": "post_process", "executed": driver is not None}))
+
+            if action == 'get_results':
+                if driver and hasattr(driver, 'get_results'):
+                    results = driver.get_results(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
+                    return e2e_pb.CreateDriverResponse(success=True, message="ok",
+                        data=_dumps({"device_sn": device_sn, "results": results}))
+                return e2e_pb.CreateDriverResponse(success=True, message="ok",
+                    data=_dumps({"device_sn": device_sn, "results": {}}))
+
+            if action == 'teardown':
+                return e2e_pb.CreateDriverResponse(success=True, message="ok",
+                    data=_dumps({"device_sn": device_sn, "action": "teardown"}))
+
+            # 未知 action，返回基本信息
+            return e2e_pb.CreateDriverResponse(success=True, message="ok",
+                data=_dumps({"device_sn": device_sn, "action": action, "executed": False}))
         except Exception as e:
             return e2e_pb.CreateDriverResponse(success=False, message=str(e), data="")
 
@@ -244,7 +291,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
     def RegisterTaskEvents(self, request, context=None):
         """注册任务事件回调"""
         try:
-            from e2e_test_service.drivers import register_task_events, get_task_events
+            from e2e_test_service.drivers.utils import register_task_events, get_task_events
             callback_config = _loads(request.callback_config, {})
             task_id = request.task_id
 
@@ -282,7 +329,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
     def UnregisterTaskEvents(self, request, context=None):
         """注销任务事件回调"""
         try:
-            from e2e_test_service.drivers import unregister_task_events
+            from e2e_test_service.drivers.utils import unregister_task_events
             task_id = request.task_id
             unregister_task_events(task_id)
             return e2e_pb.UnregisterTaskEventsResponse(
@@ -295,7 +342,7 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
     def GetTaskEvents(self, request, context=None):
         """获取任务事件"""
         try:
-            from e2e_test_service.drivers import get_task_events
+            from e2e_test_service.drivers.utils import get_task_events
             task_id = request.task_id
             events = get_task_events(task_id)
             events_info = {"exists": events is not None}

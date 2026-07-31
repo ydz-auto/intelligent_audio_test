@@ -67,8 +67,10 @@ class _EventManagerProxy:
     """
 
     def calculate_time_estimate(self, task):
-        from shared.utils.event_manager import event_manager
-        return event_manager.calculate_time_estimate(task)
+        from shared.utils.event_manager import EventManager
+        # calculate_time_estimate 是纯算法函数，不依赖 execution_engine 实例状态，
+        # 传 None 实例化即可（该方法内只用 self._log 和 db 查询）
+        return EventManager(None).calculate_time_estimate(task)
 
 
 # 模块级单例，供外部直接使用（替代原 execution_engine）

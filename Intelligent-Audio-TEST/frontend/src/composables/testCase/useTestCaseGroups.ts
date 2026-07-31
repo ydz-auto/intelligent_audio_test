@@ -16,6 +16,7 @@ interface GroupPaginationInfo {
   perPage: number;
   total: number;
   algorithmType?: string;
+  testType?: string;
 }
 
 /**
@@ -139,6 +140,7 @@ export function useTestCaseGroups(store: {
         keyword: params.keyword,
         tag: params.tag,
         algorithm_type: params.algorithmType,
+        type: params.testType,
         include_deleted: params.includeDeleted || false
       })
 
@@ -168,7 +170,8 @@ export function useTestCaseGroups(store: {
         pages: response?.pages || 1,
         perPage: response?.perPage || perPage,
         total: response?.total || 0,
-        algorithmType: params.algorithmType
+        algorithmType: params.algorithmType,
+        testType: params.testType
       }
 
       const group = fullGroupsMap.value[groupKey]
@@ -210,7 +213,8 @@ export function useTestCaseGroups(store: {
 
     return fetchCasesByGroup(groupId, {
       page: currentPagination.page + 1,
-      algorithmType: currentPagination.algorithmType
+      algorithmType: currentPagination.algorithmType,
+      testType: currentPagination.testType
     })
   }
 

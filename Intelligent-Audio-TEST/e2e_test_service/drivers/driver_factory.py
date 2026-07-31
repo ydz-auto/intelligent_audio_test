@@ -3,10 +3,12 @@ from .android_plaud import PlaudDriver
 from .android_doubao_asr_driver import DouBaoAndroidAsrDriver
 from .utils import log_and_emit
 
-# 鸿蒙驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
-# hypium 不可时跳过这些驱动，不影响其他功能
+# HarmonyDriver 的 scan() 仅依赖 hdc 命令，不需要 hypium，始终可用
+from .harmony_driver import HarmonyDriver
+
+# 专用驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
+# hypium 不可时跳过这些专用驱动，不影响基础扫描功能
 try:
-    from .harmony_driver import HarmonyDriver
     from .harmony_translation_driver import (
         XiaoyiFace2FaceDriver,
         XiaoyiSimultaneousInterpretationDriver
@@ -17,7 +19,6 @@ try:
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
     _HYPium_AVAILABLE = True
 except ImportError:
-    HarmonyDriver = None
     XiaoyiFace2FaceDriver = None
     XiaoyiSimultaneousInterpretationDriver = None
     HarmonyHardenXiaoyiHuiJiDriver = None
@@ -41,10 +42,8 @@ class DeviceDriverFactory:
 
         self._base_drivers = {
             'Android': AndroidDriver(),
+            'HarmonyOS': HarmonyDriver(),
         }
-        # 鸿蒙基础驱动仅在 hypium 可用时注册
-        if _HYPium_AVAILABLE and HarmonyDriver is not None:
-            self._base_drivers['HarmonyOS'] = HarmonyDriver()
 
         self._specialized_drivers = []
         self._task_device_map = {}  # task_id -> [device_sn, ...]
@@ -195,14 +194,38 @@ class DeviceDriverFactory:
                 return driver
         return None
 
+    def get_driver_by_sn(self, device_sn, task_id=None):
+        """根据设备 SN 查找已注册的 driver 实例
+
+        遍历所有基础驱动和专用驱动，返回持有该 device_sn 的 driver。
+        """
+        # 先从专用驱动找
+        for entry in self._specialized_drivers:
+            driver = entry['driver']
+            if hasattr(driver, '_drivers') and device_sn in driver._drivers:
+                return driver
+            # 专用驱动可能不按 device_sn 索引，但也可能是目标
+            if hasattr(driver, 'pre_process'):
+                return driver
+
+        # 再从基础驱动找
+        for key, driver in self._base_drivers.items():
+            if hasattr(driver, '_drivers') and device_sn in driver._drivers:
+                return driver
+            # 如果设备已注册到 task_device_map，返回对应系统的基础 driver
+            if task_id and task_id in self._task_device_map:
+                if device_sn in self._task_device_map[task_id]:
+                    return driver
+        return None
+
     def get_driver(self, system, keywords=None, device_sn=None):
         """获取驱动实例
-        
+
         Args:
             system: 系统类型
             keywords: 关键字列表
             device_sn: 设备序列号
-            
+
         Returns:
             BaseDeviceDriver: 驱动实例
         """
@@ -326,3 +349,7 @@ class DeviceDriverFactory:
             except Exception as e:
                 print(f"Error scanning devices with {driver.__class__.__name__}: {e}")
         return devices
+
+
+# 全局单例
+driver_factory = DeviceDriverFactory()
