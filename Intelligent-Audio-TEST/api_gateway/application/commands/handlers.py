@@ -183,7 +183,7 @@ class UploadAudioHandler:
 
     def handle(self, cmd: UploadAudioCommand) -> tuple:
         try:
-            from shared.utils.storage import storage
+            from shared.infrastructure.storage import storage
             import os
 
             # 上传到存储（OSS 可用时走 OSS，不可用时降级到本地）

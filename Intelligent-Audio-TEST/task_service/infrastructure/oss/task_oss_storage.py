@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 
 
 class TaskOSSStorage:

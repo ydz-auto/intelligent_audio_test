@@ -388,7 +388,7 @@ class DatabaseLogHandler(logging.Handler):
             other/{date}.json
         归档完成后从数据库删除对应日志。
         """
-        from shared.utils.storage import storage
+        from shared.infrastructure.storage import storage
 
         cutoff_date = datetime.now(timezone(timedelta(hours=8))) - timedelta(days=LOG_HOT_DATA_DAYS)
         old_logs = session.query(Log).filter(Log.time < cutoff_date).order_by(Log.time.asc()).limit(100000).all()

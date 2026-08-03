@@ -27,7 +27,7 @@ class AudioStorage:
     @property
     def storage(self):
         if self._storage is None:
-            from shared.utils.storage import storage
+            from shared.infrastructure.storage import storage
             self._storage = storage
         return self._storage
 

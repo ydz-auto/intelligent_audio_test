@@ -111,7 +111,7 @@ class RecordAudioHandler:
     @property
     def storage_client(self):
         if self._storage_client is None:
-            from shared.utils.storage import storage
+            from shared.infrastructure.storage import storage
             self._storage_client = storage
         return self._storage_client
 

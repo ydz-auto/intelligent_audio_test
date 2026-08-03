@@ -10,7 +10,7 @@ import json
 import os
 import re
 
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from shared.utils.log_handler import log_not_emit
 
 HEAVY_KEYS = ['adjusted_reference_params', 'raw_results', 'alignment_info']

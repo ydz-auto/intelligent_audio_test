@@ -7,7 +7,7 @@ from shared.utils.log_handler import log_not_emit
 from shared.utils.report.report_utils import ReportUtils
 from shared.utils.query_utils import escape_like_pattern, sanitize_keyword, normalize_sort_field, normalize_sort_order, now_cst
 from shared.utils.result_data_store import load_full_result_data
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from shared.clients.oss_client import oss  # 仅用于 list_objects（OSS 专有）
 from api_gateway.schemas.report import ReportDetailData, ReportListData, ReportListItem, ReportListItemSummary, ReportSummarySimplified, ReportListQuery, ReportCaseListQuery, ReportSearchCasesRequest
 from datetime import datetime

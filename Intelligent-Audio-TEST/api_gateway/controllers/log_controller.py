@@ -8,7 +8,7 @@ from shared.models.models import Log
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from shared.clients.oss_client import oss  # 仅用于 list_objects（OSS 专有）
 from api_gateway.schemas.log import LogItem, LogListData, LogRefreshData, LogRefreshRequest, LogMarkRequest, LogClearRequest, LogExportRequest, LogArchiveRequest, LogArchiveStatus, LogArchiveResult
 from datetime import datetime, timezone, timedelta

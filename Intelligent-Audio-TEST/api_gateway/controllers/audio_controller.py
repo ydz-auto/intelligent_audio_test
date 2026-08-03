@@ -16,7 +16,7 @@ from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
 from shared.utils.task_utils import has_running_e2e_tasks
 from shared.clients.oss_client import oss  # 仅用于 Multipart Upload 等 OSS 专有操作
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from shared.algorithm.case_parameter_extractor import _normalize_algorithm_params_to_list
 from api_gateway.schemas.audio import (
     AudioIdsData,

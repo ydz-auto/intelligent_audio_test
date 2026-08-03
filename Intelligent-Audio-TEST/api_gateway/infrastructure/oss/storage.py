@@ -6,7 +6,7 @@ OSS 不可用时自动降级到本地磁盘存储。
 import os
 from typing import Optional
 
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from shared.utils.log_handler import log_and_emit
 
 

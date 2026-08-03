@@ -3,7 +3,7 @@ import time
 import json
 import requests
 import traceback
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from task_service.evaluation.evaluation_mixin import EvaluationLoggerMixin
 
 

@@ -19,7 +19,7 @@ from .reference_params_generator import (
     normalize_reference_params,
     ReferenceParamsGenerator as RefGenerator
 )
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from shared.utils.log_handler import log_not_emit
 
 # 参考参数存储的 OSS bucket 类别

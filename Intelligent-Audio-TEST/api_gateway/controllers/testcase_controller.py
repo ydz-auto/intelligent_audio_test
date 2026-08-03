@@ -1086,7 +1086,7 @@ class TestCaseController:
 
         # 前端播放模式：返回所有音频的预签名 URL，前端连续播放
         if playback_mode == 'frontend':
-            from shared.utils.storage import storage
+            from shared.infrastructure.storage import storage
             from shared.models.models import Audio
 
             # 生成预签名 URL 的辅助函数（兼容旧数据裸 OSS key）

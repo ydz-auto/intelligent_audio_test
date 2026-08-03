@@ -11,7 +11,7 @@ from api_gateway.controllers._grpc_proxies import (
     execution_engine, _ReevaluationExecutorProxy,
 )
 from shared.utils.result_data_store import load_full_result_data
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from shared.clients.oss_client import oss  # 仅用于 list_objects（OSS 专有）
 from api_gateway.schemas.common import IdData, TaskStatusData
 from api_gateway.schemas.task import (

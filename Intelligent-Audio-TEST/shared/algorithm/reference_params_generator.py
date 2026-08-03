@@ -13,7 +13,7 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, List, Any
-from shared.utils.storage import storage
+from shared.infrastructure.storage import storage
 from shared.models.database import db
 from shared.models.models import Audio, AudioAnnotation
 from shared.utils.log_handler import log_not_emit
