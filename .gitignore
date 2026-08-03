@@ -85,6 +85,8 @@ CLAUDE.md
 eval_server/app/database/tasks/
 eval_server/app/database/uploads/
 eval_server/app/database/endpoints.json
+/static/
+
 
 # Runtime data - test results & ref params
 Intelligent-Audio-TEST/static/ref_params/
