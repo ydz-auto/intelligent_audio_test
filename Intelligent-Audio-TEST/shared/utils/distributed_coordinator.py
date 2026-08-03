@@ -50,7 +50,7 @@ def _client():
 def _enabled():
     """是否启用分布式协调（默认关闭，单实例无需开启）"""
     import os
-    return os.environ.get('DISTRIBUTED_COORDINATOR_ENABLED', 'false').lower() in ('true', '1', 'yes')
+    return os.environ.get('DISTRIBUTED_COORDINATOR_ENABLED', 'true').lower() in ('true', '1', 'yes')
 
 
 # Lua 脚本：CAS 式释放锁（只有持有者才能删）

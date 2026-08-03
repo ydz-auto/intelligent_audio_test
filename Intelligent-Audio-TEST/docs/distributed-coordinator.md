@@ -1,0 +1,122 @@
+# 分布式协调器
+
+基于 Redis 的分布式锁 / 信号量 / 控制标志位，用于多实例部署场景。
+
+源码：[shared/utils/distributed_coordinator.py](../shared/utils/distributed_coordinator.py)
+
+## 设计原则
+
+- **安全降级**：Redis 不可达时所有方法返回安全默认值（放行/不阻塞业务），并打印 WARNING 日志
+- **TTL 防死锁**：锁和信号量都带 TTL，持有者崩溃后自动过期
+- **原子操作**：锁用 `SET NX EX` + Lua 释放；信号量用 Lua 原子 INCR/DECR
+- **开关可控**：`DISTRIBUTED_COORDINATOR_ENABLED=false`（默认）时纯内存模式，零 Redis 开销
+
+## 开关
+
+```env
+# .env
+DISTRIBUTED_COORDINATOR_ENABLED=false  # 单实例（默认）
+DISTRIBUTED_COORDINATOR_ENABLED=true   # 多实例
+```
+
+关闭时：所有 `acquire`/`is_flag_set` 直接返回 True/False，不连接 Redis。
+
+## API
+
+### DistributedLock — 分布式互斥锁
+
+```python
+from shared.utils.distributed_coordinator import DistributedLock
+
+# with 语法
+with DistributedLock('lock:resource_name', ttl=30) as lock:
+    # 临界区
+
+# 手动控制
+lock = DistributedLock('lock:resource_name', ttl=30, retry_timeout=10)
+if lock.acquire(blocking=False):
+    try:
+        ...
+    finally:
+        lock.release()
+```
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `key` | — | Redis key（建议 `lock:` 前缀） |
+| `ttl` | 30 | 锁 TTL（秒），防死锁 |
+| `retry_interval` | 0.1 | 重试间隔（秒） |
+| `retry_timeout` | 30 | 最大等待时间（秒） |
+
+实现：`SET key token NX EX ttl`，释放时用 Lua 脚本校验 token 防误删。
+
+### DistributedSemaphore — 分布式信号量
+
+```python
+from shared.utils.distributed_coordinator import DistributedSemaphore
+
+sem = DistributedSemaphore('api:sem:api_123', max_count=5, ttl=300)
+if sem.acquire(timeout=10):
+    try:
+        ...  # 最多 5 个并发
+    finally:
+        sem.release()
+```
+
+实现：Lua 脚本原子执行 `INCR → 判超限 → 回退 DECR → EXPIRE`，多进程并发安全。
+
+### 控制标志位 — stop/pause 信号
+
+```python
+from shared.utils import distributed_coordinator as dc
+
+dc.set_flag(f'task:stop:{task_id}')        # 设置停止标志
+dc.is_flag_set(f'task:stop:{task_id}')     # 检查是否被设置 → True
+dc.clear_flag(f'task:stop:{task_id}')      # 清除
+
+dc.set_flag(f'task:pause:{task_id}')       # 设置暂停
+dc.clear_flag(f'task:pause:{task_id}')     # 清除（恢复）
+```
+
+### try_claim_task — 任务抢占
+
+```python
+from shared.utils import distributed_coordinator as dc
+
+if dc.try_claim_task(task_id, holder_id='instance-A'):
+    # 抢占成功
+    ...
+    dc.release_task_claim(task_id)
+else:
+    # 已被其它实例抢占
+```
+
+> 注意：任务级防重复推荐用 DB CAS（`UPDATE ... WHERE status IN ('pending','queued')`），比 Redis 锁更可靠。此函数供特殊场景使用。
+
+## Redis Key 命名
+
+| 用途 | Key 格式 | TTL |
+|---|---|---|
+| 分布式锁 | `lock:{name}` | 30s（可配） |
+| API 信号量 | `api:sem:{api_id}` | 300s（可配） |
+| 停止标志 | `task:stop:{task_id}` | 86400s |
+| 暂停标志 | `task:pause:{task_id}` | 86400s |
+| 任务抢占 | `task:claim:{task_id}` | 600s |
+
+## 各服务使用情况
+
+| 服务 | 使用点 | 说明 |
+|---|---|---|
+| **task_service** | `execution_engine.py` | 任务级 DB CAS 防重复启动；stop/pause 信号 Redis 广播（gRPC 之前）；原子统计 |
+| **api_test_service** | `api_concurrency_manager.py` | Redis 分布式信号量限制 API 全局并发；`base_executor._handle_control` 检查 Redis stop/pause |
+| **e2e_test_service** | `base_executor._handle_control` | 通过共享基类检查 Redis stop/pause 标志位 |
+
+## 降级策略
+
+```
+Redis 可达 + 开关 ON  → 正常分布式协调
+Redis 不可达 + 开关 ON → 降级放行（WARNING 日志，不阻塞业务）
+开关 OFF              → 纯内存模式，零 Redis 连接
+```
+
+降级时锁/信号量返回 True（放行），标志位返回 False/None（不触发）。单实例下行为等价于无锁。
