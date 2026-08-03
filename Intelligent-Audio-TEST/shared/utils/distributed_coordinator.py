@@ -81,13 +81,17 @@ class DistributedLock:
         if client is None:
             return True  # Redis 不可用：降级放行，不阻塞业务
 
-        self._token = uuid.uuid4().hex
+        token = uuid.uuid4().hex
         if not blocking:
-            return bool(client.set(self.key, self._token, nx=True, ex=self.ttl))
+            if client.set(self.key, token, nx=True, ex=self.ttl):
+                self._token = token
+                return True
+            return False
 
         start = time.time()
         while time.time() - start < self.retry_timeout:
-            if client.set(self.key, self._token, nx=True, ex=self.ttl):
+            if client.set(self.key, token, nx=True, ex=self.ttl):
+                self._token = token
                 return True
             time.sleep(self.retry_interval)
         return False
