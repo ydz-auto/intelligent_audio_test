@@ -10,7 +10,7 @@ from hypium.model import UiParam
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from e2e_test_service.config.config import Config
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
 
 class Xiaoyilivechat(HarmonyDriver):
@@ -198,14 +198,27 @@ class Xiaoyilivechat(HarmonyDriver):
                           f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
                   task_id=task_id, test_case_id=test_case_id)
         # 等待小艺回复结束（带超时和停止检查）
-        self._wait_for_condition(
-            lambda: driver.find_component(By.text('说话可打断')),
-            timeout=60, interval=1, operation_name="post_process_说话可打断"
+        replied = self._wait_for_condition(
+            lambda: driver.find_component(By.text("说话可打断")) is None,
+            timeout=60, interval=1,
+            operation_name='等待回复开始',
         )
-        self._wait_for_condition(
-            lambda: driver.find_component(By.text('正在听…')),
-            timeout=60, interval=1, operation_name="post_process_正在听"
-        )
+
+        if not replied:
+            self._log(level='INFO', content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
+            self.question_text = '小艺识别为空'
+            self.answer_text = '小艺回复为空'
+        else:
+            self._log(level='INFO', content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
+            # 等待小艺回复结束（带超时和停止检查）
+            self._wait_for_condition(
+                lambda: driver.find_component(By.text('说话可打断')),
+                timeout=60, interval=1, operation_name="post_process_说话可打断"
+            )
+            self._wait_for_condition(
+                lambda: driver.find_component(By.text('正在听…')),
+                timeout=60, interval=1, operation_name="post_process_正在听"
+            )
         # 停止录屏
         if not self._stop_recorder(device_sn):
             self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
@@ -222,6 +235,8 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception as e:
             self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
         driver.wait(5)
+        if not replied:
+            return True
         # 提取聊天文本，取最后一条（本轮），未识别到则返回 None
         question_components = driver.find_all_components(By.xpath(
             '//ListItem//GridRow/GridCol/Row/__Common__/__Common__/Row/Text'))
@@ -305,7 +320,7 @@ class Xiaoyilivechat(HarmonyDriver):
             print(f"[录屏] wav 路径: {wav_path}")
             # 采集完后上传到 OSS，然后清理本地临时目录
             for fname in os.listdir(local_dir):
-                oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+                storage.save_file(os.path.join(local_dir, fname), 'case_result',
                                  f'{oss_key_prefix}/{fname}')
             shutil.rmtree(local_dir, ignore_errors=True)
             result = {

@@ -9,9 +9,8 @@ from hypium.model import UiParam
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from e2e_test_service.config.config import Config
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
-
 
 class XiaoyilivechatV2(HarmonyDriver):
     """小艺通话 live 态驱动
@@ -392,7 +391,7 @@ class XiaoyilivechatV2(HarmonyDriver):
             print(f"[录屏] wav 路径: {wav_path}")
             # 采集完后上传到 OSS，然后清理本地临时目录
             for fname in os.listdir(local_dir):
-                oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+                storage.save_file(os.path.join(local_dir, fname), 'case_result',
                                  f'{oss_key_prefix}/{fname}')
             shutil.rmtree(local_dir, ignore_errors=True)
             return [{

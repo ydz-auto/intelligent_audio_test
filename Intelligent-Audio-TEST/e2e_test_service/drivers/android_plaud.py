@@ -12,7 +12,7 @@ except ImportError:
     MatchPattern = None
 
 from e2e_test_service.config.config import Config
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
 from .android_driver import AndroidDriver
 from .device_config import get_device_config
 from .utils import check_stop, u2, log_and_emit, By
@@ -318,7 +318,7 @@ class PlaudDriver(AndroidDriver):
         # 采集完后上传到 OSS，然后清理本地临时目录
         oss_key_prefix = f'{task_id_path}/{test_case_id_path}/{device_sn}'
         for fname in os.listdir(local_dir):
-            oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+            storage.save_file(os.path.join(local_dir, fname), 'case_result',
                              f'{oss_key_prefix}/{fname}')
         shutil.rmtree(local_dir, ignore_errors=True)
 
@@ -437,7 +437,7 @@ class PlaudDriver(AndroidDriver):
         local_dir = tempfile.mkdtemp(prefix=f'archive_{task_id}_{test_case_id}_')
         srt_file_path = os.path.join(local_dir, f'{test_case_id}.srt')
         try:
-            oss.download_file('case_result', srt_oss_key, srt_file_path)
+            storage.load_file(f'case_result/{srt_oss_key}', srt_file_path)
         except Exception as e:
             shutil.rmtree(local_dir, ignore_errors=True)
             self._log(level='ERROR', content=f"从OSS下载存档SRT失败: {srt_oss_key}, error: {e}", task_id=task_id, test_case_id=test_case_id)
@@ -482,7 +482,7 @@ class PlaudDriver(AndroidDriver):
             f.write(recording_rttm_content)
 
         for fname in os.listdir(local_dir):
-            oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+            storage.save_file(os.path.join(local_dir, fname), 'case_result',
                              f'{oss_key_prefix}/{fname}')
         shutil.rmtree(local_dir, ignore_errors=True)
 
