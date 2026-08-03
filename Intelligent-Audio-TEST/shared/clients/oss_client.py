@@ -39,8 +39,27 @@ class OSSClient:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._init()
+                    cls._instance._initialized = False
         return cls._instance
+
+    def _ensure_init(self):
+        """延迟初始化（双重检查锁），首次使用时才连接 OSS。"""
+        if self._initialized:
+            return
+        with self._lock:
+            if self._initialized:
+                return
+            self._init()
+            self._initialized = True
+
+    def is_available(self) -> bool:
+        """探测 OSS 是否可用（head_bucket 探活）。"""
+        try:
+            self._ensure_init()
+            self._client.head_bucket(Bucket=self._bucket('audios'))
+            return True
+        except Exception:
+            return False
 
     def _init(self):
         endpoint = BaseConfig.OSS_ENDPOINT
@@ -132,6 +151,7 @@ class OSSClient:
         :param key: 逻辑 key（如 task_123/case_456/device_sn/audio.wav）
         :return: 逻辑 key（单桶模式下实际存储 key 带前缀，返回值与输入一致）
         """
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         self._client.upload_file(local_path, bucket, full_key)
@@ -139,6 +159,7 @@ class OSSClient:
 
     def upload_bytes(self, data: bytes, category: str, key: str, content_type: Optional[str] = None) -> str:
         """上传字节数据到 OSS"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         extra_args = {'ContentType': content_type} if content_type else {}
@@ -147,6 +168,7 @@ class OSSClient:
 
     def upload_stream(self, stream: BinaryIO, category: str, key: str, content_type: Optional[str] = None) -> str:
         """上传文件流到 OSS"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         extra_args = {'ContentType': content_type} if content_type else {}
@@ -164,6 +186,7 @@ class OSSClient:
         :param local_path: 本地目标路径
         :return: 本地文件路径
         """
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
@@ -172,6 +195,7 @@ class OSSClient:
 
     def download_bytes(self, category: str, key: str) -> bytes:
         """从 OSS 下载文件为字节"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         obj = self._client.get_object(Bucket=bucket, Key=full_key)
@@ -179,6 +203,7 @@ class OSSClient:
 
     def download_stream(self, category: str, key: str) -> BinaryIO:
         """从 OSS 下载文件流（不读入内存）"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         obj = self._client.get_object(Bucket=bucket, Key=full_key)
@@ -196,6 +221,7 @@ class OSSClient:
             oss.upload_file(resampled_path, 'audios', new_key)
             os.remove(tmp); os.remove(resampled_path)
         """
+        self._ensure_init()
         import tempfile
         local_path = tempfile.mktemp(suffix=suffix)
         return self.download_file(category, key, local_path)
@@ -204,6 +230,7 @@ class OSSClient:
 
     def exists(self, category: str, key: str) -> bool:
         """检查对象是否存在"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         try:
@@ -214,12 +241,14 @@ class OSSClient:
 
     def delete(self, category: str, key: str):
         """删除对象"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         self._client.delete_object(Bucket=bucket, Key=full_key)
 
     def list_objects(self, category: str, prefix: str = '') -> list:
         """列出对象 key 列表（返回逻辑 key，已去掉前缀）"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_prefix = self._full_key(category, prefix)
         resp = self._client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)
@@ -232,6 +261,7 @@ class OSSClient:
         :param expires: 过期秒数（默认 1 小时）
         :return: 预签名 URL
         """
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         return self._client.generate_presigned_url(
@@ -242,6 +272,7 @@ class OSSClient:
 
     def get_upload_presigned_url(self, category: str, key: str, expires: int = 3600) -> str:
         """生成上传预签名 URL（前端直传）"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         return self._client.generate_presigned_url(
@@ -254,6 +285,7 @@ class OSSClient:
 
     def create_multipart_upload(self, category: str, key: str) -> str:
         """初始化分片上传，返回 Upload ID"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         resp = self._client.create_multipart_upload(Bucket=bucket, Key=full_key)
@@ -262,6 +294,7 @@ class OSSClient:
     def get_part_upload_presigned_url(self, category: str, key: str, upload_id: str,
                                        part_number: int, expires: int = 3600) -> str:
         """生成单个分片上传的预签名 URL（前端直传分片到 OSS）"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         return self._client.generate_presigned_url(
@@ -282,6 +315,7 @@ class OSSClient:
         :param parts: [{'PartNumber': 1, 'ETag': '"xxx"'}, ...]
         :return: CompleteMultipartUpload 响应
         """
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         resp = self._client.complete_multipart_upload(
@@ -294,6 +328,7 @@ class OSSClient:
 
     def abort_multipart_upload(self, category: str, key: str, upload_id: str):
         """取消分片上传，清理已上传的分片"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         self._client.abort_multipart_upload(
@@ -304,6 +339,7 @@ class OSSClient:
 
     def list_multipart_parts(self, category: str, key: str, upload_id: str) -> list:
         """列出已上传的分片（用于断点续传）"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         resp = self._client.list_parts(
@@ -315,12 +351,14 @@ class OSSClient:
 
     def delete_object(self, category: str, key: str):
         """删除单个对象"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_key = self._full_key(category, key)
         self._client.delete_object(Bucket=bucket, Key=full_key)
 
     def delete_prefix(self, category: str, prefix: str):
         """批量删除指定前缀下的所有对象"""
+        self._ensure_init()
         bucket = self._bucket(category)
         full_prefix = self._full_key(category, prefix)
         resp = self._client.list_objects_v2(Bucket=bucket, Prefix=full_prefix)

@@ -11,7 +11,8 @@ from api_gateway.controllers._grpc_proxies import (
     execution_engine, _ReevaluationExecutorProxy,
 )
 from shared.utils.result_data_store import load_full_result_data
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
+from shared.clients.oss_client import oss  # 仅用于 list_objects（OSS 专有）
 from api_gateway.schemas.common import IdData, TaskStatusData
 from api_gateway.schemas.task import (
     TaskApiBrief,
@@ -89,7 +90,7 @@ class TaskController:
                 try:
                     oss_keys = oss.list_objects('case_result', prefix=oss_prefix)
                     for oss_key in oss_keys:
-                        oss.delete('case_result', oss_key)
+                        storage.delete(f'case_result/{oss_key}')
                 except Exception as e:
                     errors.append(f"删除用例 {tc.test_case_id} OSS文件失败: {str(e)}")
 
@@ -625,9 +626,7 @@ class TaskController:
                                 # 将 OSS key 转为预签名 URL
                                 if raw_url:
                                     try:
-                                        from shared.clients.oss_client import oss
-                                        bucket = 'case_result' if raw_url.startswith('case_result/') else 'audios'
-                                        presigned = oss.get_presigned_url(bucket, raw_url, expires=3600)
+                                        presigned = storage.get_url(raw_url, expires=3600)
                                     except Exception:
                                         presigned = raw_url
                                 else:

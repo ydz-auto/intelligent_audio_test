@@ -3,7 +3,7 @@ import time
 import json
 import requests
 import traceback
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
 from task_service.evaluation.evaluation_mixin import EvaluationLoggerMixin
 
 
@@ -155,9 +155,10 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         # 绝对路径（本地文件）
         if os.path.isabs(value):
             return os.path.exists(value)
-        # OSS key（audios bucket）
+        # 存储路径（兼容裸 OSS key）
         try:
-            return oss.exists('audios', value)
+            path = value if value.startswith(('oss://', 'local://')) else f'audios/{value}'
+            return storage.exists(path)
         except Exception:
             return False
 
@@ -213,10 +214,10 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         if os.path.exists(norm):
             return os.path.abspath(norm)
 
-        # 作为 OSS key 下载到临时文件
+        # 作为存储路径下载到临时文件
         try:
-            ext = os.path.splitext(value)[1] or '.wav'
-            return oss.download_to_temp('audios', value, ext)
+            path = value if value.startswith(('oss://', 'local://')) else f'audios/{value}'
+            return storage.load_file(path)
         except Exception:
             return None
 

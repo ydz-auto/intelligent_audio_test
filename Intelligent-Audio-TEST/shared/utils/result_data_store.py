@@ -10,14 +10,14 @@ import json
 import os
 import re
 
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
 from shared.utils.log_handler import log_not_emit
 
 HEAVY_KEYS = ['adjusted_reference_params', 'raw_results', 'alignment_info']
 
 _MODULE_NAME = 'result_data_store'
 
-# OSS bucket 类别（对应 OSSClient._buckets 中的 key）
+# 存储类别（对应 OSSClient._buckets 中的 key）
 _RESULT_BUCKET = 'case_result'
 
 
@@ -49,15 +49,16 @@ def write_result_data_file(task_id, test_case_id, device_sn, result_data):
     try:
         key = _build_result_key(task_id, test_case_id, device_sn)
         data = json.dumps(result_data, ensure_ascii=False, indent=2).encode('utf-8')
-        oss.upload_bytes(data, _RESULT_BUCKET, key, content_type='application/json')
+        stored_path = storage.save_bytes(data, _RESULT_BUCKET, key,
+                                         content_type='application/json')
 
         log_not_emit(
             'DEBUG', _MODULE_NAME,
-            f'write_result_data_file: uploaded to oss://{_RESULT_BUCKET}/{key}',
+            f'write_result_data_file: saved to {stored_path}',
             category='system', task_id=task_id, test_case_id=test_case_id
         )
 
-        return key
+        return stored_path
 
     except Exception as e:
         log_not_emit(
@@ -82,15 +83,15 @@ def read_result_data_file(path):
         if not path:
             return {}
 
-        if not oss.exists(_RESULT_BUCKET, path):
+        if not storage.exists(path):
             log_not_emit(
                 'WARNING', _MODULE_NAME,
-                f'read_result_data_file: object not found: oss://{_RESULT_BUCKET}/{path}',
+                f'read_result_data_file: object not found: {path}',
                 category='system'
             )
             return {}
 
-        raw = oss.download_bytes(_RESULT_BUCKET, path)
+        raw = storage.load_bytes(path)
         data = json.loads(raw.decode('utf-8'))
 
         if isinstance(data, dict):
@@ -98,7 +99,7 @@ def read_result_data_file(path):
 
         log_not_emit(
             'WARNING', _MODULE_NAME,
-            f'read_result_data_file: unexpected data type from oss://{_RESULT_BUCKET}/{path}',
+            f'read_result_data_file: unexpected data type from {path}',
             category='system'
         )
         return {}

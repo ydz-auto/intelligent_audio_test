@@ -7,7 +7,8 @@ from shared.utils.log_handler import log_not_emit
 from shared.utils.report.report_utils import ReportUtils
 from shared.utils.query_utils import escape_like_pattern, sanitize_keyword, normalize_sort_field, normalize_sort_order, now_cst
 from shared.utils.result_data_store import load_full_result_data
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
+from shared.clients.oss_client import oss  # 仅用于 list_objects（OSS 专有）
 from api_gateway.schemas.report import ReportDetailData, ReportListData, ReportListItem, ReportListItemSummary, ReportSummarySimplified, ReportListQuery, ReportCaseListQuery, ReportSearchCasesRequest
 from datetime import datetime
 from sqlalchemy.orm import joinedload, load_only
@@ -758,7 +759,7 @@ class ReportControllerBase:
                         for oss_key in oss_keys:
                             # 下载文件内容
                             try:
-                                file_data = oss.download_bytes('case_result', oss_key)
+                                file_data = storage.load_bytes(f'case_result/{oss_key}')
                                 arcname = oss_key[len(oss_prefix):]  # 去掉前缀
                                 if len(task_ids_to_search) > 1:
                                     arcname = os.path.join(f"task_{search_task_id}", arcname)

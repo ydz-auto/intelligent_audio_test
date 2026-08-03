@@ -8,7 +8,8 @@ from shared.models.models import Log
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
+from shared.clients.oss_client import oss  # 仅用于 list_objects（OSS 专有）
 from api_gateway.schemas.log import LogItem, LogListData, LogRefreshData, LogRefreshRequest, LogMarkRequest, LogClearRequest, LogExportRequest, LogArchiveRequest, LogArchiveStatus, LogArchiveResult
 from datetime import datetime, timezone, timedelta
 from shared.utils.query_utils import now_cst
@@ -486,14 +487,14 @@ class LogController:
             logs = []
 
             def load_oss_json_files(prefix):
-                """从 OSS archives bucket 读取指定前缀下所有 JSON 文件"""
+                """从存储 archives 类目读取指定前缀下所有 JSON 文件"""
                 result = []
                 keys = oss.list_objects('archives', prefix=prefix)
                 for key in keys:
                     if not key.endswith('.json'):
                         continue
                     try:
-                        data = oss.download_bytes('archives', key)
+                        data = storage.load_bytes(f'archives/{key}')
                         result.extend(json.loads(data))
                     except Exception:
                         continue
@@ -512,7 +513,7 @@ class LogController:
                         if not key.endswith('.json'):
                             continue
                         try:
-                            data = oss.download_bytes('archives', key)
+                            data = storage.load_bytes(f'archives/{key}')
                             logs.extend(json.loads(data))
                         except Exception:
                             continue
@@ -631,40 +632,40 @@ class LogController:
             
             archived_count = 0
 
-            def save_archive_oss(oss_key, logs):
-                """上传归档到 OSS（合并已存在的）"""
+            def save_archive(stored_path, logs):
+                """上传归档到存储（合并已存在的）"""
                 existing_logs = []
-                if oss.exists('archives', oss_key):
+                if storage.exists(stored_path):
                     try:
-                        data = oss.download_bytes('archives', oss_key)
+                        data = storage.load_bytes(stored_path)
                         existing_logs = json.loads(data)
                     except Exception:
                         existing_logs = []
                 existing_logs.extend(logs)
                 existing_logs.sort(key=lambda x: x.get('time', '') or '')
-                oss.upload_bytes(
+                storage.save_bytes(
                     json.dumps(existing_logs, ensure_ascii=False, indent=2).encode('utf-8'),
-                    'archives', oss_key, content_type='application/json'
+                    'archives', stored_path, content_type='application/json'
                 )
 
             for (task_id, case_id, log_date), logs in task_case_logs.items():
-                oss_key = f'tasks/{task_id}/{case_id}/{log_date}.json'
-                save_archive_oss(oss_key, logs)
+                stored_path = f'archives/tasks/{task_id}/{case_id}/{log_date}.json'
+                save_archive(stored_path, logs)
                 archived_count += len(logs)
 
             for (task_id, log_date), logs in task_only_logs.items():
-                oss_key = f'tasks/{task_id}/{log_date}.json'
-                save_archive_oss(oss_key, logs)
+                stored_path = f'archives/tasks/{task_id}/{log_date}.json'
+                save_archive(stored_path, logs)
                 archived_count += len(logs)
 
             for (case_id, log_date), logs in case_only_logs.items():
-                oss_key = f'cases/{case_id}/{log_date}.json'
-                save_archive_oss(oss_key, logs)
+                stored_path = f'archives/cases/{case_id}/{log_date}.json'
+                save_archive(stored_path, logs)
                 archived_count += len(logs)
 
             for log_date, logs in other_logs.items():
-                oss_key = f'other/{log_date}.json'
-                save_archive_oss(oss_key, logs)
+                stored_path = f'archives/other/{log_date}.json'
+                save_archive(stored_path, logs)
                 archived_count += len(logs)
             
             log_ids = [log.id for log in cold_logs]
@@ -697,7 +698,7 @@ class LogController:
             # 下载到临时文件再返回
             import tempfile
             tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.json')
-            oss.download_file('archives', matching_keys[0], tmp.name)
+            storage.load_file(f'archives/{matching_keys[0]}', tmp.name)
             return FileResponse(tmp.name, headers={"Content-Disposition": f"attachment; filename={filename}"})
         except Exception as e:
             return error_response(f"下载失败: {str(e)}", code=500)
@@ -712,7 +713,7 @@ class LogController:
             if not matching_keys:
                 return error_response("归档文件不存在", code=404)
 
-            oss.delete('archives', matching_keys[0])
+            storage.delete(f'archives/{matching_keys[0]}')
             return success_response(None, f"已删除归档文件: {filename}")
         except Exception as e:
             return error_response(f"删除失败: {str(e)}", code=500)

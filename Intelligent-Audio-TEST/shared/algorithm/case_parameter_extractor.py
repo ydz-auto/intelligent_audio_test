@@ -19,7 +19,7 @@ from .reference_params_generator import (
     normalize_reference_params,
     ReferenceParamsGenerator as RefGenerator
 )
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
 from shared.utils.log_handler import log_not_emit
 
 # 参考参数存储的 OSS bucket 类别
@@ -424,13 +424,13 @@ class CaseParameterExtractor:
                 with open(reference_params_path, 'r', encoding='utf-8') as f:
                     data = _json.load(f)
             else:
-                # 从 OSS 读取
-                if not oss.exists(_REF_PARAMS_BUCKET, reference_params_path):
+                # 从存储读取（OSS 或本地降级）
+                if not storage.exists(reference_params_path):
                     log_not_emit('WARNING', 'case_parameter_extractor',
-                                 f'Reference params object not found: oss://{_REF_PARAMS_BUCKET}/{reference_params_path}',
+                                 f'Reference params object not found: {reference_params_path}',
                                  category='algorithm')
                     return {}
-                raw = oss.download_bytes(_REF_PARAMS_BUCKET, reference_params_path)
+                raw = storage.load_bytes(reference_params_path)
                 data = _json.loads(raw.decode('utf-8'))
 
             # 如果文件内容是列表 [{code, type, value}]，转为 dict 格式方便查找

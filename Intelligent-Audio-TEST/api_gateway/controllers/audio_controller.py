@@ -15,7 +15,8 @@ from shared.models.database import db
 from shared.utils.response import success_response, error_response
 from shared.utils.log_handler import log_not_emit
 from shared.utils.task_utils import has_running_e2e_tasks
-from shared.clients.oss_client import oss
+from shared.clients.oss_client import oss  # 仅用于 Multipart Upload 等 OSS 专有操作
+from shared.utils.storage import storage
 from shared.algorithm.case_parameter_extractor import _normalize_algorithm_params_to_list
 from api_gateway.schemas.audio import (
     AudioIdsData,
@@ -729,19 +730,19 @@ class AudioController:
             else:
                 oss_key = f"direct/{wav_filename}"
             # 同名去重
-            if oss.exists('audios', oss_key):
+            if storage.exists(f'audios/{oss_key}'):
                 base, ext_part = os.path.splitext(oss_key)
                 counter = 1
-                while oss.exists('audios', f"{base}_{counter}{ext_part}"):
+                while storage.exists(f'audios/{base}_{counter}{ext_part}'):
                     counter += 1
                 oss_key = f"{base}_{counter}{ext_part}"
-            oss.upload_file(wav_file_path, 'audios', oss_key)
+            file_path = storage.save_file(wav_file_path, 'audios', oss_key)
             # 上传完成后删除本地临时 WAV
             if os.path.exists(wav_file_path):
                 retry_file_operation(os.remove, wav_file_path)
-            
-            # DB 记录 OSS key（复用 file_path 字段，语义为音频文件在 OSS 上的 key）
-            file_path = oss_key
+
+            # DB 记录存储路径（复用 file_path 字段，带 scheme 前缀）
+            # file_path 已由 save_file 返回带前缀的路径
             # 更新文件名为WAV文件名
             original_filename = wav_filename
             
@@ -753,11 +754,13 @@ class AudioController:
                 retry_file_operation(os.remove, wav_file_path)
             raise ValueError(f"音频转换/上传OSS失败: {str(e)}")
         
-        # 提取WAV文件元数据（从 OSS 下载到临时后解析，避免依赖本地持久文件）
+        # 提取WAV文件元数据（从存储下载到临时后解析，避免依赖本地持久文件）
         # 先下载到临时用于元数据提取，提取后删除
         meta_tmp_path = None
         try:
-            meta_tmp_path = oss.download_to_temp('audios', oss_key, '.wav')
+            import tempfile
+            meta_tmp_path = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
+            storage.load_file(f'audios/{oss_key}', meta_tmp_path)
             file_size = os.path.getsize(meta_tmp_path)
             audio_seg = AudioSegment.from_file(meta_tmp_path)
             duration = len(audio_seg) / 1000.0
@@ -771,9 +774,9 @@ class AudioController:
                 
         except Exception as e:
             # 如果元数据提取失败，说明不是有效的音频文件
-            # 删除已上传到 OSS 的对象，避免残留无效数据
+            # 删除已上传到存储的对象，避免残留无效数据
             try:
-                oss.delete('audios', oss_key)
+                storage.delete(f'audios/{oss_key}')
             except Exception:
                 pass
             raise ValueError(f"无法识别的音频格式或文件已损坏: {str(e)}")
@@ -858,11 +861,11 @@ class AudioController:
                 # 没有目录信息（单文件上传），用原始文件名
                 oss_key = f"direct/{validated.filename}"
 
-            # 同名去重：如果 OSS key 已存在，加序号后缀（如 sample_1.wav, sample_2.wav）
-            if oss.exists(category, oss_key):
+            # 同名去重：如果 key 已存在，加序号后缀（如 sample_1.wav, sample_2.wav）
+            if storage.exists(f'{category}/{oss_key}'):
                 base, ext_part = os.path.splitext(oss_key)
                 counter = 1
-                while oss.exists(category, f"{base}_{counter}{ext_part}"):
+                while storage.exists(f'{category}/{base}_{counter}{ext_part}'):
                     counter += 1
                 oss_key = f"{base}_{counter}{ext_part}"
 
@@ -960,7 +963,9 @@ class AudioController:
                 )
 
             # 2. 下载到临时文件提取元数据
-            temp_file = oss.download_to_temp('audios', validated.oss_key, '.wav')
+            import tempfile as _tmp2
+            temp_file = _tmp2.NamedTemporaryFile(delete=False, suffix='.wav').name
+            storage.load_file(f'audios/{validated.oss_key}', temp_file)
             file_size = os.path.getsize(temp_file)
 
             # 从 WAV 头读采样率/位深
@@ -1478,15 +1483,17 @@ class AudioController:
                         'raw_chunks', validated.oss_key,
                         validated.oss_upload_id, normalized_oss_parts
                     )
-                # 从 OSS 下载到本地临时文件（用于转码）
+                # 从存储下载到本地临时文件（用于转码）
                 dirs = AudioController._init_upload_dirs()
                 ext = os.path.splitext(validated.oss_key)[1].lower() or '.tmp'
-                final_path = oss.download_to_temp('raw_chunks', validated.oss_key, ext)
-                # 下载后清理 OSS raw-chunks 中的源文件
+                import tempfile as _tmp3
+                final_path = _tmp3.NamedTemporaryFile(delete=False, suffix=ext).name
+                storage.load_file(f'raw_chunks/{validated.oss_key}', final_path)
+                # 下载后清理 raw-chunks 中的源文件
                 try:
-                    oss.delete_object('raw_chunks', validated.oss_key)
+                    storage.delete(f'raw_chunks/{validated.oss_key}')
                 except Exception as e:
-                    logger.warning(f"清理 OSS raw-chunks 失败: {e}")
+                    logger.warning(f"清理 raw-chunks 失败: {e}")
             else:
                 # 本地分片模式（兼容旧前端）
                 chunk_dir = os.path.join(dirs['chunk'], file_id)
@@ -1546,19 +1553,19 @@ class AudioController:
                     stem = os.path.splitext(upload_file.filename)[0]
                     oss_key = f"direct/{stem}.wav"
                 # 同名去重
-                if oss.exists('audios', oss_key):
+                if storage.exists(f'audios/{oss_key}'):
                     base, ext_part = os.path.splitext(oss_key)
                     counter = 1
-                    while oss.exists('audios', f"{base}_{counter}{ext_part}"):
+                    while storage.exists(f'audios/{base}_{counter}{ext_part}'):
                         counter += 1
                     oss_key = f"{base}_{counter}{ext_part}"
-                oss.upload_file(wav_file_path, 'audios', oss_key)
+                final_path = storage.save_file(wav_file_path, 'audios', oss_key)
                 # 上传完成后删除本地临时 WAV
                 if os.path.exists(wav_file_path):
                     retry_file_operation(os.remove, wav_file_path)
 
-                # DB 记录 OSS key（复用 file_path 字段）
-                final_path = oss_key
+                # DB 记录存储路径（复用 file_path 字段，带 scheme 前缀）
+                # final_path 已由 save_file 返回带前缀的路径
                 # 更新文件名为WAV文件名
                 upload_file.filename = wav_filename
                 upload_file.original_filename = wav_filename
@@ -1574,16 +1581,18 @@ class AudioController:
                         pass
                 if oss_key:
                     try:
-                        oss.delete('audios', oss_key)
+                        storage.delete(f'audios/{oss_key}')
                     except Exception:
                         pass
                 sample_rate = 44100
                 bits_per_sample = 16
 
-            # 提取音频元数据：若已上传 OSS，从 OSS 下载到临时提取；否则用本地 final_path
+            # 提取音频元数据：若已上传存储，从存储下载到临时提取；否则用本地 final_path
             meta_source_path = final_path
             if oss_key:
-                meta_tmp_path = oss.download_to_temp('audios', oss_key, '.wav')
+                import tempfile as _tmp
+                meta_tmp_path = _tmp.NamedTemporaryFile(delete=False, suffix='.wav').name
+                storage.load_file(f'audios/{oss_key}', meta_tmp_path)
                 meta_source_path = meta_tmp_path
             file_size = os.path.getsize(meta_source_path)
             
@@ -3026,30 +3035,18 @@ class AudioController:
         if not audio or audio.deleted:
             return error_response("音频不存在", 404)
 
-        # file_path 现在存的是 OSS key（如 direct/sample.wav），从 OSS 流式返回
-        oss_key = audio.file_path
-        if not oss_key:
+        # file_path 存的是带 scheme 前缀的存储路径（如 oss://audios/xxx）
+        file_path = audio.file_path
+        if not file_path:
             return error_response("音频文件路径缺失", 404)
 
-        # 生成预签名 URL，让前端直接从 OSS 拉取（支持 Range 请求）
-        presigned_url = oss.get_presigned_url('audios', oss_key, expires=3600)
-        # 兼容旧数据：单桶模式下旧文件不带前缀，如果带前缀的 key 不存在，
-        # 用 boto3 原始 client 直接对桶生成预签名（绕过前缀逻辑）
-        if not oss.exists('audios', oss_key):
-            import boto3
-            from shared.infrastructure.config import BaseConfig
-            s3 = boto3.client('s3',
-                endpoint_url=BaseConfig.OSS_ENDPOINT,
-                aws_access_key_id=BaseConfig.OSS_ACCESS_KEY,
-                aws_secret_access_key=BaseConfig.OSS_SECRET_KEY,
-                region_name=BaseConfig.OSS_REGION)
-            bucket = BaseConfig.OSS_BUCKET_NAME or 'audios'
-            presigned_url = s3.generate_presigned_url(
-                'get_object',
-                Params={'Bucket': bucket, 'Key': oss_key},
-                ExpiresIn=3600,
-            )
-        return {"url": presigned_url}
+        # 生成预签名 URL（OSS 可用时），让前端直接从 OSS 拉取（支持 Range 请求）
+        # 兼容旧数据：file_path 可能是裸 OSS key（无 scheme 前缀）
+        presigned_url = storage.get_url(f'audios/{file_path}' if not file_path.startswith(('oss://', 'local://')) else file_path, expires=3600)
+        if presigned_url:
+            return {"url": presigned_url}
+        # OSS 不可用或本地降级模式：返回本地文件路径供前端下载
+        return {"url": f"/api/audio/download?path={file_path}"}
 
     @staticmethod
     def stream_by_path():
@@ -3065,10 +3062,10 @@ class AudioController:
             bucket = 'audios'
 
         try:
-            presigned_url = oss.get_presigned_url(bucket, oss_key, expires=3600)
+            presigned_url = storage.get_url(oss_key, expires=3600)
             return {"url": presigned_url}
         except Exception as e:
-            logging.getLogger(__name__).error(f"stream_by_path 获取 OSS 预签名 URL 失败: {e}, key={oss_key}, bucket={bucket}")
+            logging.getLogger(__name__).error(f"stream_by_path 获取存储 URL 失败: {e}, key={oss_key}")
             return error_response(f"获取音频失败: {e}", 404)
 
     # 试听音频 (前端或后端播放)

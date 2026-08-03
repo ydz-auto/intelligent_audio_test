@@ -388,7 +388,7 @@ class DatabaseLogHandler(logging.Handler):
             other/{date}.json
         归档完成后从数据库删除对应日志。
         """
-        from shared.clients.oss_client import oss
+        from shared.utils.storage import storage
 
         cutoff_date = datetime.now(timezone(timedelta(hours=8))) - timedelta(days=LOG_HOT_DATA_DAYS)
         old_logs = session.query(Log).filter(Log.time < cutoff_date).order_by(Log.time.asc()).limit(100000).all()
@@ -446,34 +446,34 @@ class DatabaseLogHandler(logging.Handler):
             else:
                 other_logs.setdefault(log_date, []).append(log_data)
 
-        def _save_archive_oss(oss_key, logs):
-            """上传归档到 OSS（合并已存在文件，按时间排序）"""
+        def _save_archive(stored_path, logs):
+            """上传归档到存储（合并已存在文件，按时间排序）"""
             existing_logs = []
-            if oss.exists('archives', oss_key):
+            if storage.exists(stored_path):
                 try:
-                    data = oss.download_bytes('archives', oss_key)
+                    data = storage.load_bytes(stored_path)
                     existing_logs = json.loads(data)
                 except Exception:
                     existing_logs = []
             existing_logs.extend(logs)
             existing_logs.sort(key=lambda x: x.get('time', '') or '')
-            oss.upload_bytes(
+            storage.save_bytes(
                 json.dumps(existing_logs, ensure_ascii=False, indent=2).encode('utf-8'),
-                'archives', oss_key, content_type='application/json'
+                'archives', stored_path, content_type='application/json'
             )
 
         archived_count = 0
         for (task_id, case_id, log_date), logs in task_case_logs.items():
-            _save_archive_oss(f'tasks/{task_id}/{case_id}/{log_date}.json', logs)
+            _save_archive(f'tasks/{task_id}/{case_id}/{log_date}.json', logs)
             archived_count += len(logs)
         for (task_id, log_date), logs in task_only_logs.items():
-            _save_archive_oss(f'tasks/{task_id}/{log_date}.json', logs)
+            _save_archive(f'tasks/{task_id}/{log_date}.json', logs)
             archived_count += len(logs)
         for (case_id, log_date), logs in case_only_logs.items():
-            _save_archive_oss(f'cases/{case_id}/{log_date}.json', logs)
+            _save_archive(f'cases/{case_id}/{log_date}.json', logs)
             archived_count += len(logs)
         for log_date, logs in other_logs.items():
-            _save_archive_oss(f'other/{log_date}.json', logs)
+            _save_archive(f'other/{log_date}.json', logs)
             archived_count += len(logs)
 
         log_ids_to_delete = [log.id for log in old_logs]
@@ -490,11 +490,17 @@ class DatabaseLogHandler(logging.Handler):
         """清理 OSS 上过期的归档对象（LastModified 超过 LOG_ARCHIVE_RETENTION_DAYS 天）"""
         from shared.clients.oss_client import oss
 
+        # OSS 不可用时跳过清理（本地存储无 TTL 语义）
+        if not oss.is_available():
+            return
+
         bucket = oss._bucket('archives')
         cutoff_time = time.time() - LOG_ARCHIVE_RETENTION_DAYS * 86400
         deleted_count = 0
 
         # 分页列出全部对象（list_objects_v2 单次最多 1000 条）
+        # 注意：_client 可能未初始化，使用 _ensure_init() 确保可用
+        oss._ensure_init()
         paginator = oss._client.get_paginator('list_objects_v2')
         try:
             for page in paginator.paginate(Bucket=bucket):

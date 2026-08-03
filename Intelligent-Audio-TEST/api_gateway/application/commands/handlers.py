@@ -179,23 +179,23 @@ class GenerateReportHandler:
 
 
 class UploadAudioHandler:
-    """上传音频 —— 存储到 OSS"""
+    """上传音频 —— 存储到 OSS 或本地降级"""
 
     def handle(self, cmd: UploadAudioCommand) -> tuple:
         try:
-            from shared.clients.oss_client import oss
+            from shared.utils.storage import storage
             import os
 
-            # 上传到 OSS
-            object_key = f'audios/{cmd.file_name}'
-            oss.upload_file(cmd.file_path, object_key)
+            # 上传到存储（OSS 可用时走 OSS，不可用时降级到本地）
+            key = cmd.file_name
+            file_path = storage.save_file(cmd.file_path, 'audios', key)
 
             # 保存到 DB
             audio = Audio(
                 file_name=cmd.file_name,
-                file_path=object_key,
+                file_path=file_path,
                 md5=cmd.md5 or '',
-                storage_type='oss',
+                storage_type='storage',
             )
             db.session.add(audio)
             db.session.commit()

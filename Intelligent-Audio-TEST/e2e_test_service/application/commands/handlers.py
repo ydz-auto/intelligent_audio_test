@@ -94,12 +94,12 @@ class RecordAudioHandler:
     """处理 RecordAudioCommand
 
     委托给已有的 audio_service（audio/audio_engine.py）执行音频播放/采集，
-    并通过 OSS 上传采集结果。
+    并通过统一存储上传采集结果。
     """
 
-    def __init__(self, audio_service=None, oss_client=None):
+    def __init__(self, audio_service=None, storage_client=None):
         self._audio_service = audio_service
-        self._oss_client = oss_client
+        self._storage_client = storage_client
 
     @property
     def audio_service(self):
@@ -109,11 +109,11 @@ class RecordAudioHandler:
         return self._audio_service
 
     @property
-    def oss_client(self):
-        if self._oss_client is None:
-            from shared.clients.oss_client import OSSClient
-            self._oss_client = OSSClient()
-        return self._oss_client
+    def storage_client(self):
+        if self._storage_client is None:
+            from shared.utils.storage import storage
+            self._storage_client = storage
+        return self._storage_client
 
     def handle(self, command: RecordAudioCommand) -> Dict:
         """执行音频录制命令"""
@@ -131,19 +131,19 @@ class RecordAudioHandler:
                 play_config=play_config,
             )
 
-            # 上传采集的音频到 OSS
+            # 上传采集的音频到存储
             oss_key = f"{command.task_id}/{command.tc_rel_id}/{command.device_id}/audio.wav"
-            self.oss_client.upload_file(
-                local_path=command.audio_file_path,
-                category='audios',
-                key=oss_key,
+            file_path = self.storage_client.save_file(
+                command.audio_file_path,
+                'audios',
+                oss_key,
             )
 
             return {
                 'success': True,
                 'task_id': command.task_id,
                 'device_id': command.device_id,
-                'audio_key': oss_key,
+                'audio_key': file_path,
             }
         except Exception as e:
             return {

@@ -58,6 +58,10 @@ class BaseConfig:
     OSS_BUCKET_TEMP: str = _get_env('OSS_BUCKET_TEMP', 'temp')
     OSS_BUCKET_RAW_CHUNKS: str = _get_env('OSS_BUCKET_RAW_CHUNKS', 'raw-chunks')  # 前端直传分片临时存储，带 TTL
 
+    # --- 统一存储降级 ---
+    STORAGE_FALLBACK_ENABLED: bool = _get_bool('STORAGE_FALLBACK_ENABLED', True)  # OSS 不可用时降级到本地磁盘
+    STORAGE_LOCAL_ROOT: str = _get_env('STORAGE_LOCAL_ROOT', './storage_local')   # 本地降级存储根目录
+
     # --- 服务发现 ---
     SERVICE_HOST: str = _get_env('SERVICE_HOST', '0.0.0.0')
     SERVICE_NAME: str = _get_env('SERVICE_NAME', 'unknown')

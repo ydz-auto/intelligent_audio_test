@@ -1084,29 +1084,16 @@ class TestCaseController:
         except:
             pass
 
-        # 前端播放模式：返回所有音频的 OSS 预签名 URL，前端连续播放
+        # 前端播放模式：返回所有音频的预签名 URL，前端连续播放
         if playback_mode == 'frontend':
-            from shared.clients.oss_client import oss
-            from shared.infrastructure.config import BaseConfig
+            from shared.utils.storage import storage
             from shared.models.models import Audio
-            import boto3
 
-            # 生成预签名 URL 的辅助函数
-            def _make_presigned_url(oss_key):
-                url = oss.get_presigned_url('audios', oss_key, expires=3600)
-                if not oss.exists('audios', oss_key):
-                    s3 = boto3.client('s3',
-                        endpoint_url=BaseConfig.OSS_ENDPOINT,
-                        aws_access_key_id=BaseConfig.OSS_ACCESS_KEY,
-                        aws_secret_access_key=BaseConfig.OSS_SECRET_KEY,
-                        region_name=BaseConfig.OSS_REGION)
-                    bucket = BaseConfig.OSS_BUCKET_NAME or 'audios'
-                    url = s3.generate_presigned_url(
-                        'get_object',
-                        Params={'Bucket': bucket, 'Key': oss_key},
-                        ExpiresIn=3600,
-                    )
-                return url
+            # 生成预签名 URL 的辅助函数（兼容旧数据裸 OSS key）
+            def _make_presigned_url(file_path):
+                path = f'audios/{file_path}' if not file_path.startswith(('oss://', 'local://')) else file_path
+                url = storage.get_url(path, expires=3600)
+                return url or f'/api/audio/download?path={file_path}'
 
             audio_stream_urls = []
             for aid in audio_ids:
