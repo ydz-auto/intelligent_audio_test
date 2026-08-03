@@ -12,7 +12,6 @@ from e2e_test_service.config.config import Config
 from shared.clients.oss_client import oss
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
 
-
 class XiaoyilivechatV2(HarmonyDriver):
     """小艺通话 live 态驱动
 

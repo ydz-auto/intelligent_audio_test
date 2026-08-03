@@ -269,8 +269,8 @@ class TaskService:
             )
         except Exception as e:
             TaskModel.update_task_status(
-                eval_task_id, 
-                'failed', 
+                eval_task_id,
+                'failed',
                 completed_at=datetime.now().isoformat(),
                 error_msg=str(e)
             )
