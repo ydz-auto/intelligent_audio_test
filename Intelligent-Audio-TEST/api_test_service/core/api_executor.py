@@ -52,24 +52,23 @@ class APIExecutor(BaseExecutor):
         return self._concurrency.release(api_id, task_id)
 
     # ── 入口方法 ──
-    def execute_api_case(self, app, task_id, tc_rel_id):
+    def execute_api_case(self, task_id, tc_rel_id):
         """执行 API 测试用例"""
         try:
-            with app.app_context():
-                self._log(level='DEBUG', content=f"开始执行测试用例: {tc_rel_id}", task_id=task_id)
-                self._handle_control(task_id)
+            self._log(level='DEBUG', content=f"开始执行测试用例: {tc_rel_id}", task_id=task_id)
+            self._handle_control(task_id)
 
-                if not self._claim_tc_rel_running(task_id, tc_rel_id):
-                    return True
+            if not self._claim_tc_rel_running(task_id, tc_rel_id):
+                return True
 
-                task_lock = self._get_task_lock(task_id)
-                with task_lock:
-                    validate_result, data = self._validate_and_get_data(app, task_id, tc_rel_id)
-                    if not validate_result:
-                        self._handle_validation_failure(task_id, tc_rel_id, data)
-                        return False
+            task_lock = self._get_task_lock(task_id)
+            with task_lock:
+                validate_result, data = self._validate_and_get_data(task_id, tc_rel_id)
+                if not validate_result:
+                    self._handle_validation_failure(task_id, tc_rel_id, data)
+                    return False
 
-                    return self._execute_single_or_multi(app, task_id, tc_rel_id, data)
+                return self._execute_single_or_multi(task_id, tc_rel_id, data)
 
         except Exception as e:
             import traceback
@@ -108,25 +107,32 @@ class APIExecutor(BaseExecutor):
             local_db_session.close()
 
     def _handle_validation_failure(self, task_id, tc_rel_id, data):
-        """验证失败时更新 TaskCase 统计信息"""
-        local_db_session = db.session()
+        """验证失败时更新 TaskCase 统计信息（原子刷新，多实例安全）"""
+        # 用 SQL 子查询原子更新统计，避免读-改-写的丢失更新
+        from sqlalchemy import text
+        from shared.models.database import _engine_ref
         try:
-            task = local_db_session.query(Task).get(task_id)
-            if task:
-                success_count = local_db_session.query(TaskCase).filter(
-                    TaskCase.task_id == task_id, TaskCase.status == 'completed'
-                ).count()
-                failed_count = local_db_session.query(TaskCase).filter_by(
-                    task_id=task_id, status='failed'
-                ).count()
-                task.completed_cases = success_count
-                task.failed_cases = failed_count
-                local_db_session.commit()
-                self.execution_engine._emit_progress(task, force=True)
+            sql = text("""
+                UPDATE test_tasks SET
+                    completed_cases = (
+                        SELECT COUNT(*) FROM task_case_relations
+                        WHERE task_id = :task_id AND status = 'completed'
+                    ),
+                    failed_cases = (
+                        SELECT COUNT(*) FROM task_case_relations
+                        WHERE task_id = :task_id AND status = 'failed'
+                    )
+                WHERE id = :task_id
+            """)
+            with _engine_ref[0].connect() as conn:
+                conn.execute(sql, {'task_id': task_id})
+                conn.commit()
+        except Exception as e:
+            self._log(level='WARNING', content=f"原子刷新任务统计失败: {str(e)}", task_id=task_id)
         finally:
-            local_db_session.close()
+            self.execution_engine._emit_progress(task_id, force=True)
 
-    def _execute_single_or_multi(self, app, task_id, tc_rel_id, data):
+    def _execute_single_or_multi(self, task_id, tc_rel_id, data):
         """根据是否配置 rounds 分发到多轮会话或线性流程"""
         test_case_id = data['test_case_id']
         case_name = data['case_name']
@@ -140,7 +146,7 @@ class APIExecutor(BaseExecutor):
             self._log(level='INFO',
                       content=f"用例 {case_name} 配置了 {len(rounds)} 轮，进入多轮会话模式",
                       task_id=task_id, test_case_id=test_case_id)
-            return self._session_executor.execute(app, task_id, tc_rel_id, data, case_config)
+            return self._session_executor.execute(task_id, tc_rel_id, data, case_config)
 
         return self._execute_linear(task_id, tc_rel_id, data, case_config, algorithm_type, case_algorithm_params)
 
@@ -151,7 +157,6 @@ class APIExecutor(BaseExecutor):
         api_configs = data['api_configs']
         audio = data['audio']
         api_specific_config = data['api_specific_config']
-        current_app = data['current_app']
         total_audio_duration = data['total_audio_duration']
 
         local_db_session = db.session()
@@ -182,7 +187,7 @@ class APIExecutor(BaseExecutor):
                 try:
                     self._run_single_api(
                         task_id, tc_rel_id, test_case_id, case_name, algorithm_type,
-                        api_config, api_specific_config, audio, current_app,
+                        api_config, api_specific_config, audio,
                         total_audio_duration, case_config, case_algorithm_params,
                         local_db_session, tc_rel
                     )
@@ -205,12 +210,12 @@ class APIExecutor(BaseExecutor):
         return True
 
     def _run_single_api(self, task_id, tc_rel_id, test_case_id, case_name, algorithm_type,
-                        api_config, api_specific_config, audio, current_app,
+                        api_config, api_specific_config, audio,
                         total_audio_duration, case_config, case_algorithm_params,
                         local_db_session, tc_rel):
         """执行单个 API 的完整流程：健康检查 -> 创建任务 -> 等待 -> 结果 -> 评估"""
         api_paths, select_base_url, release_base_url = self._task_runner.setup_endpoints(
-            task_id, tc_rel_id, case_name, api_config, current_app
+            task_id, tc_rel_id, case_name, api_config
         )
         if not api_paths:
             return
@@ -228,7 +233,7 @@ class APIExecutor(BaseExecutor):
         try:
             start_wait_time, task_success, task_error_msg = self._task_runner.wait_for_completion(
                 task_id, api_task_id, api_config, api_specific_config,
-                api_paths, select_base_url, release_base_url, current_app, total_audio_duration
+                api_paths, select_base_url, release_base_url, total_audio_duration
             )
 
             if not task_success:
@@ -350,14 +355,9 @@ class APIExecutor(BaseExecutor):
         finally:
             local_db_session.close()
 
-    def _validate_and_get_data(self, app, task_id, tc_rel_id):
+    def _validate_and_get_data(self, task_id, tc_rel_id):
         """验证并获取执行数据"""
-        if app is None:
-            raise ValueError("app参数不能为空")
-
         self._handle_control(task_id)
-
-        from flask import current_app
 
         local_db_session = db.session()
         try:
@@ -428,7 +428,6 @@ class APIExecutor(BaseExecutor):
                 'api_configs': processed_api_configs,
                 'audio': audio_data,
                 'api_specific_config': api_specific_config,
-                'current_app': current_app,
                 'total_audio_duration': total_audio_duration,
                 'case_algorithm_params': algorithm_params
             }
