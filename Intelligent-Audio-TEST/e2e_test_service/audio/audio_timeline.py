@@ -105,11 +105,7 @@ def extract_speakers_from_annotations(audio_id, app=None):
             deleted=False
         ).all()
     
-    if app:
-        with app.app_context():
-            annotations = _query_annotations()
-    else:
-        annotations = _query_annotations()
+    annotations = _query_annotations()
     
     for ann in annotations:
         if not ann.data:

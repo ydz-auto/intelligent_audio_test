@@ -3,8 +3,8 @@
 
 时间轴纯函数已拆分到 audio_timeline.py，
 驱动层（AudioDriver / PyAudioDriver）已拆分到 audio_driver.py。
-本文件保留 AudioService 和模块级单例 audio_service，
-并 re-export 所有公开接口以保持向后兼容。
+本文件仅保留 AudioService 和模块级单例 audio_service。
+时间轴/驱动相关函数请直接从对应子模块导入。
 """
 
 import pyaudio
@@ -13,10 +13,8 @@ import threading
 import time
 import numpy as np
 import os
-from flask import current_app
 from shared.utils.log_handler import log_and_emit, log_not_emit
-
-# 从拆分模块 re-export，保持向后兼容
+from e2e_test_service.audio.audio_driver import PyAudioDriver
 from e2e_test_service.audio.audio_timeline import (
     get_audio_duration,
     calculate_overlap_time,
@@ -28,10 +26,6 @@ from e2e_test_service.audio.audio_timeline import (
     is_overlap_playback,
     build_audio_timelines,
     get_audio_configs_for_offset,
-)
-from e2e_test_service.audio.audio_driver import (
-    AudioDriver,
-    PyAudioDriver,
 )
 
 

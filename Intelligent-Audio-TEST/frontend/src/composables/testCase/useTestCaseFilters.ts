@@ -83,15 +83,15 @@ export function useTestCaseFilters(
     options.currentPage.value = 1;
   });
 
-  // 标签视图模式下，筛选条件变化时通知父组件重新请求后端
-  watch([debouncedSearchQuery, testTypeFilter, algorithmTypeFilter, options.innerViewMode], () => {
-    if (options.innerViewMode.value === 'tag') {
-      options.emitTagFilterChange({
-        keyword: debouncedSearchQuery.value || undefined,
-        testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
-        algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
-      });
-    }
+  // 筛选条件变化时通知父组件重新请求后端:
+  // - 标签视图:刷新标签聚合数据
+  // - 分组视图:刷新分组列表(test_case_count 按筛选统计),否则徽标计数不随筛选更新
+  watch([debouncedSearchQuery, testTypeFilter, algorithmTypeFilter], () => {
+    options.emitTagFilterChange({
+      keyword: debouncedSearchQuery.value || undefined,
+      testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
+      algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
+    });
   });
 
   const resetFilters = () => {

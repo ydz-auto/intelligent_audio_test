@@ -3,14 +3,13 @@
 
 提供自动刷新统计缓存的功能，在数据变化时调用。
 """
-from flask import Blueprint
 from sqlalchemy import func, or_
 from sqlalchemy.dialects.postgresql import JSONB
 from shared.models.database import db
 from shared.models.models import TestCase, Task, Device, Audio, PlaybackDevice, API, Report, TestCaseGroup, Dimension
 from datetime import datetime, timezone, timedelta
 
-stats_cache_bp = Blueprint('stats_cache', __name__)
+# FastAPI 版：不再用 Blueprint，改为普通函数工具
 
 
 def utc8now():
@@ -196,3 +195,4 @@ def refresh_stats_cache():
         db.session.rollback()
         print(f"刷新统计缓存失败: {str(e)}")
         return False
+

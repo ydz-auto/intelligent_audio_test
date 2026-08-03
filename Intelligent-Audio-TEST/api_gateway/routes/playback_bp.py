@@ -1,44 +1,56 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.playback_controller import PlaybackController
+from api_gateway.routes._response import to_response
 
-playback_bp = Blueprint('playback-devices', __name__)
+router = APIRouter()
 
-@playback_bp.route('', methods=['GET'])
+
+@router.get('')
 def get_all():
-    return PlaybackController.get_all()
+    return to_response(PlaybackController.get_all())
 
-@playback_bp.route('/<int:device_id>', methods=['GET'])
-def get_one(device_id):
-    return PlaybackController.get_one(device_id)
 
-@playback_bp.route('', methods=['POST'])
+@router.get('/{device_id}')
+def get_one(device_id: int):
+    return to_response(PlaybackController.get_one(device_id))
+
+
+@router.post('')
 def create():
-    return PlaybackController.create()
+    return to_response(PlaybackController.create())
 
-@playback_bp.route('/<int:device_id>', methods=['PUT'])
-def update(device_id):
-    return PlaybackController.update(device_id)
 
-@playback_bp.route('/<int:device_id>', methods=['DELETE'])
-def delete(device_id):
-    return PlaybackController.delete(device_id)
+@router.put('/{device_id}')
+def update(device_id: int):
+    return to_response(PlaybackController.update(device_id))
 
-@playback_bp.route('/scan', methods=['POST'])
+
+@router.delete('/{device_id}')
+def delete(device_id: int):
+    return to_response(PlaybackController.delete(device_id))
+
+
+@router.post('/scan')
 def scan():
-    return PlaybackController.scan()
+    return to_response(PlaybackController.scan())
 
-@playback_bp.route('/<int:device_id>/associate-spl', methods=['POST'])
-def associate_spl(device_id):
-    return PlaybackController.associate_spl(device_id)
 
-@playback_bp.route('/<int:device_id>/test', methods=['POST'])
-def test(device_id):
-    return PlaybackController.test(device_id)
+@router.post('/{device_id}/associate-spl')
+def associate_spl(device_id: int):
+    return to_response(PlaybackController.associate_spl(device_id))
 
-@playback_bp.route('/<int:device_id>/stop-test', methods=['POST'])
-def stop_test(device_id):
-    return PlaybackController.stop_test(device_id)
 
-@playback_bp.route('/check-status', methods=['GET'])
+@router.post('/{device_id}/test')
+def test(device_id: int):
+    return to_response(PlaybackController.test(device_id))
+
+
+@router.post('/{device_id}/stop-test')
+def stop_test(device_id: int):
+    return to_response(PlaybackController.stop_test(device_id))
+
+
+@router.get('/check-status')
 def check_status():
-    return PlaybackController.check_status()
+    return to_response(PlaybackController.check_status())

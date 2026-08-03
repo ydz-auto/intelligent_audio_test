@@ -1,4 +1,4 @@
-from flask import request
+from api_gateway.controllers.request_adapter import request
 from shared.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, ReportStatus, ReportType, TaskStatus
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
@@ -12,11 +12,19 @@ from api_gateway.schemas.report import GenerateTaskReportRequest, ReportDetailDa
 from datetime import datetime, timedelta, timezone
 from shared.utils.query_utils import now_cst
 from api_gateway.controllers.report_controller_base import ReportControllerBase
-from api_gateway.app import socketio
 import json
 import traceback
 import threading
 from concurrent.futures import ThreadPoolExecutor
+
+
+def _emit_report_event(event_name, data):
+    """通过 SSE 推送报告生成事件（替代 socketio.emit）"""
+    try:
+        from api_gateway.routes.sse_bp import event_cache
+        event_cache.add_event(event_name, data)
+    except Exception:
+        pass
 
 _report_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='report_gen')
 _generating_tasks = set()
@@ -559,210 +567,198 @@ class ReportControllerTask(ReportControllerBase):
 
     @staticmethod
     def _generate_task_report_async(task_id, name, description):
-        from flask import current_app as flask_app
-        if flask_app is None:
-            log_and_emit('ERROR', 'report', f'[generate_task_report_async] Flask app is None, cannot create context', task_id=task_id)
-            with _generating_lock:
-                _generating_tasks.discard(task_id)
-            socketio.emit('report_generated', {
-                'taskId': task_id,
-                'success': False,
-                'error': '服务器内部错误'
-            })
-            return
-            
-        with flask_app.app_context():
-            try:
-                log_and_emit('INFO', 'report', f'[generate_task_report_async] Starting for task_id={task_id}', task_id=task_id)
+        # FastAPI: 不再需要 app context，直接执行
+        try:
+            log_and_emit('INFO', 'report', f'[generate_task_report_async] Starting for task_id={task_id}', task_id=task_id)
 
-                task, results, error = ReportControllerTask._validate_task_and_get_results(task_id)
-                if error:
-                    with _generating_lock:
-                        _generating_tasks.discard(task_id)
-                    socketio.emit('report_generated', {
-                        'taskId': task_id,
-                        'success': False,
-                        'error': '任务验证失败'
-                    })
-                    return
-
-                existing_report = Report.query.filter_by(task_id=task_id).first()
-                if existing_report:
-                    with _generating_lock:
-                        _generating_tasks.discard(task_id)
-                    socketio.emit('report_generated', {
-                        'taskId': task_id,
-                        'reportId': existing_report.id,
-                        'success': True,
-                        'status': 'exists'
-                    })
-                    return
-
-                if not name:
-                    name = f"任务报告_{task.name}_{now_cst().strftime('%Y%m%d%H%M%S')}"
-
-                source_task_ids = ReportControllerTask._get_source_task_ids(task)
-                task_ids_for_query = source_task_ids if source_task_ids else [task_id]
-
-                total_cases = task.total_cases
-                completed_cases = task.completed_cases - task.failed_cases
-                failed_cases = task.failed_cases
-                success_rate = (completed_cases / total_cases * 100) if total_cases > 0 else 0
-
-                res_ids = [r.id for r in results]
-                
-                dim_results_map, dim_stats = ReportControllerTask._get_dimension_results_batch(res_ids)
-                
-                if not dim_results_map:
-                    socketio.emit('report_generated', {
-                        'taskId': task_id,
-                        'success': False,
-                        'error': '未找到维度得分数据'
-                    })
-                    return
-
-                all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).all()
-                summary_dim_values = ReportControllerTask._calculate_summary_dimensions(dim_stats)
-
-                if dim_stats:
-                    all_dimensions = [d for d in all_dimensions_all if d.id in dim_stats]
-                else:
-                    all_dimensions = all_dimensions_all
-
-                test_cases, test_case_ids = ReportControllerTask._get_task_test_cases(task_ids_for_query)
-                devices_list, apis_list, device_ids, api_ids = ReportControllerTask._get_task_resources(task_ids_for_query)
-
-                device_result_types, api_result_types = ReportControllerTask._get_resource_result_types_batch(
-                    task_ids_for_query, device_ids, api_ids
-                )
-                
-                resources = ReportControllerTask._build_resources_list(
-                    [d for d in Device.query.filter(Device.id.in_(device_ids)).all()] if device_ids else [],
-                    [a for a in API.query.filter(API.id.in_(api_ids)).all()] if api_ids else [],
-                    task, device_result_types, api_result_types
-                )
-
-                all_metrics = ReportControllerTask._build_all_metrics(all_dimensions)
-
-                if not devices_list and not apis_list:
-                    socketio.emit('report_generated', {
-                        'taskId': task_id,
-                        'success': False,
-                        'error': '任务没有关联任何设备或API'
-                    })
-                    return
-
-                if not all_metrics:
-                    socketio.emit('report_generated', {
-                        'taskId': task_id,
-                        'success': False,
-                        'error': '任务没有关联任何评估维度'
-                    })
-                    return
-
-                tasks_map = {task.id: task}
-                if source_task_ids:
-                    source_tasks = Task.query.filter(Task.id.in_(source_task_ids)).all()
-                    for st in source_tasks:
-                        tasks_map[st.id] = st
-                
-                core_metrics = ReportUtils.calculate_core_metrics(
-                    results=results,
-                    all_dimensions=all_dimensions,
-                    resources=resources,
-                    dim_results_map=dim_results_map,
-                    tasks_map=tasks_map,
-                    use_time_prefix=False
-                )
-                
-                metric_data = core_metrics['metric_data']
-                tag_metric_data = core_metrics['tag_metric_data']
-                raw_data = core_metrics['raw_data']
-                case_type_stats = core_metrics['case_type_stats']
-                resources = core_metrics['resources']
-                
-                resource_headers = ReportUtils.build_resource_headers(
-                    resources=resources,
-                    results=results,
-                    tasks_map=tasks_map,
-                    use_time_prefix=False,
-                )
-
-                device_stats, api_stats = ReportUtils.calculate_device_api_stats(
-                    results=results,
-                    all_dimensions=all_dimensions,
-                    dim_results_map=dim_results_map
-                )
-
-                cases = ReportControllerTask._build_case_data(
-                    test_cases, results, all_dimensions, dim_results_map, task
-                )
-
-                case_categories_list, case_tags_list = ReportQueryBuilder.extract_case_categories_and_tags(test_cases)
-
-                summary = {
-                    "total_cases": total_cases,
-                    "completed_cases": completed_cases,
-                    "failed_cases": failed_cases,
-                    "overall_success_rate": round(success_rate, 2),
-                    "dimension_values": summary_dim_values,
-                    "duration": task.actual_duration,
-                    "started_at": task.started_at.isoformat() if task.started_at else None,
-                    "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-                    "case_categories": case_categories_list,
-                    "all_case_tags": case_tags_list,
-                    "all_tags": case_tags_list,
-                    "devices": devices_list,
-                    "apis": apis_list,
-                    "resources": resources,
-                    "resource_headers": resource_headers,
-                    "all_metrics": all_metrics,
-                    "metric_data": metric_data,
-                    "tag_metric_data": tag_metric_data,
-                    "raw_data": raw_data,
-                    "device_stats": device_stats,
-                    "api_stats": api_stats,
-                    "case_type_stats": case_type_stats,
-                    "cases": cases,
-                    "source_task_ids": source_task_ids,
-                    "is_merged": bool(source_task_ids)
-                }
-                
-                summary = ReportUtils.normalize_summary_metrics(summary)
-
-                new_report = ReportControllerTask._create_report_record(name, task_id, description)
-                log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created report id={new_report.id}', task_id=task_id)
-                
-                summary_info, summary_meta = ReportControllerTask._create_report_summary(new_report.id, task, summary)
-                log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created summary_info id={summary_info.id}, report_id={summary_info.report_id}', task_id=task_id)
-                
-                raw_data_record, metric_stats_record = ReportControllerTask._create_report_detail_data(new_report.id, summary)
-                log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report.id}', task_id=task_id)
-
-                report_id = new_report.id
-                db.session.commit()
-                
-                log_and_emit('INFO', 'report', f'[generate_task_report_async] Report generated successfully, report_id={report_id}', task_id=task_id)
-
-                emit_data = {
-                    'taskId': task_id,
-                    'reportId': report_id,
-                    'success': True,
-                    'status': 'completed'
-                }
-                log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting report_generated: {emit_data}', task_id=task_id)
-                socketio.emit('report_generated', emit_data)
-
-            except Exception as e:
-                db.session.rollback()
-                log_and_emit('ERROR', 'report', f'[generate_task_report_async] Error: {e}\n{traceback.format_exc()}', task_id=task_id)
-                emit_data = {
-                    'taskId': task_id,
-                    'success': False,
-                    'error': '报告生成失败，请稍后重试'
-                }
-                log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting error: {emit_data}', task_id=task_id)
-                socketio.emit('report_generated', emit_data)
-            finally:
+            task, results, error = ReportControllerTask._validate_task_and_get_results(task_id)
+            if error:
                 with _generating_lock:
                     _generating_tasks.discard(task_id)
+                _emit_report_event('report_generated', {
+                    'taskId': task_id,
+                    'success': False,
+                    'error': '任务验证失败'
+                })
+                return
+
+            existing_report = Report.query.filter_by(task_id=task_id).first()
+            if existing_report:
+                with _generating_lock:
+                    _generating_tasks.discard(task_id)
+                _emit_report_event('report_generated', {
+                    'taskId': task_id,
+                    'reportId': existing_report.id,
+                    'success': True,
+                    'status': 'exists'
+                })
+                return
+
+            if not name:
+                name = f"任务报告_{task.name}_{now_cst().strftime('%Y%m%d%H%M%S')}"
+
+            source_task_ids = ReportControllerTask._get_source_task_ids(task)
+            task_ids_for_query = source_task_ids if source_task_ids else [task_id]
+
+            total_cases = task.total_cases
+            completed_cases = task.completed_cases - task.failed_cases
+            failed_cases = task.failed_cases
+            success_rate = (completed_cases / total_cases * 100) if total_cases > 0 else 0
+
+            res_ids = [r.id for r in results]
+
+            dim_results_map, dim_stats = ReportControllerTask._get_dimension_results_batch(res_ids)
+
+            if not dim_results_map:
+                _emit_report_event('report_generated', {
+                    'taskId': task_id,
+                    'success': False,
+                    'error': '未找到维度得分数据'
+                })
+                return
+
+            all_dimensions_all = Dimension.query.filter_by(status=True, deleted=False).all()
+            summary_dim_values = ReportControllerTask._calculate_summary_dimensions(dim_stats)
+
+            if dim_stats:
+                all_dimensions = [d for d in all_dimensions_all if d.id in dim_stats]
+            else:
+                all_dimensions = all_dimensions_all
+
+            test_cases, test_case_ids = ReportControllerTask._get_task_test_cases(task_ids_for_query)
+            devices_list, apis_list, device_ids, api_ids = ReportControllerTask._get_task_resources(task_ids_for_query)
+
+            device_result_types, api_result_types = ReportControllerTask._get_resource_result_types_batch(
+                task_ids_for_query, device_ids, api_ids
+            )
+
+            resources = ReportControllerTask._build_resources_list(
+                [d for d in Device.query.filter(Device.id.in_(device_ids)).all()] if device_ids else [],
+                [a for a in API.query.filter(API.id.in_(api_ids)).all()] if api_ids else [],
+                task, device_result_types, api_result_types
+            )
+
+            all_metrics = ReportControllerTask._build_all_metrics(all_dimensions)
+
+            if not devices_list and not apis_list:
+                _emit_report_event('report_generated', {
+                    'taskId': task_id,
+                    'success': False,
+                    'error': '任务没有关联任何设备或API'
+                })
+                return
+
+            if not all_metrics:
+                _emit_report_event('report_generated', {
+                    'taskId': task_id,
+                    'success': False,
+                    'error': '任务没有关联任何评估维度'
+                })
+                return
+
+            tasks_map = {task.id: task}
+            if source_task_ids:
+                source_tasks = Task.query.filter(Task.id.in_(source_task_ids)).all()
+                for st in source_tasks:
+                    tasks_map[st.id] = st
+
+            core_metrics = ReportUtils.calculate_core_metrics(
+                results=results,
+                all_dimensions=all_dimensions,
+                resources=resources,
+                dim_results_map=dim_results_map,
+                tasks_map=tasks_map,
+                use_time_prefix=False
+            )
+
+            metric_data = core_metrics['metric_data']
+            tag_metric_data = core_metrics['tag_metric_data']
+            raw_data = core_metrics['raw_data']
+            case_type_stats = core_metrics['case_type_stats']
+            resources = core_metrics['resources']
+
+            resource_headers = ReportUtils.build_resource_headers(
+                resources=resources,
+                results=results,
+                tasks_map=tasks_map,
+                use_time_prefix=False,
+            )
+
+            device_stats, api_stats = ReportUtils.calculate_device_api_stats(
+                results=results,
+                all_dimensions=all_dimensions,
+                dim_results_map=dim_results_map
+            )
+
+            cases = ReportControllerTask._build_case_data(
+                test_cases, results, all_dimensions, dim_results_map, task
+            )
+
+            case_categories_list, case_tags_list = ReportQueryBuilder.extract_case_categories_and_tags(test_cases)
+
+            summary = {
+                "total_cases": total_cases,
+                "completed_cases": completed_cases,
+                "failed_cases": failed_cases,
+                "overall_success_rate": round(success_rate, 2),
+                "dimension_values": summary_dim_values,
+                "duration": task.actual_duration,
+                "started_at": task.started_at.isoformat() if task.started_at else None,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
+                "case_categories": case_categories_list,
+                "all_case_tags": case_tags_list,
+                "all_tags": case_tags_list,
+                "devices": devices_list,
+                "apis": apis_list,
+                "resources": resources,
+                "resource_headers": resource_headers,
+                "all_metrics": all_metrics,
+                "metric_data": metric_data,
+                "tag_metric_data": tag_metric_data,
+                "raw_data": raw_data,
+                "device_stats": device_stats,
+                "api_stats": api_stats,
+                "case_type_stats": case_type_stats,
+                "cases": cases,
+                "source_task_ids": source_task_ids,
+                "is_merged": bool(source_task_ids)
+            }
+
+            summary = ReportUtils.normalize_summary_metrics(summary)
+
+            new_report = ReportControllerTask._create_report_record(name, task_id, description)
+            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created report id={new_report.id}', task_id=task_id)
+
+            summary_info, summary_meta = ReportControllerTask._create_report_summary(new_report.id, task, summary)
+            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created summary_info id={summary_info.id}, report_id={summary_info.report_id}', task_id=task_id)
+
+            raw_data_record, metric_stats_record = ReportControllerTask._create_report_detail_data(new_report.id, summary)
+            log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report.id}', task_id=task_id)
+
+            report_id = new_report.id
+            db.session.commit()
+
+            log_and_emit('INFO', 'report', f'[generate_task_report_async] Report generated successfully, report_id={report_id}', task_id=task_id)
+
+            emit_data = {
+                'taskId': task_id,
+                'reportId': report_id,
+                'success': True,
+                'status': 'completed'
+            }
+            log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting report_generated: {emit_data}', task_id=task_id)
+            _emit_report_event('report_generated', emit_data)
+
+        except Exception as e:
+            db.session.rollback()
+            log_and_emit('ERROR', 'report', f'[generate_task_report_async] Error: {e}\n{traceback.format_exc()}', task_id=task_id)
+            emit_data = {
+                'taskId': task_id,
+                'success': False,
+                'error': '报告生成失败，请稍后重试'
+            }
+            log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting error: {emit_data}', task_id=task_id)
+            _emit_report_event('report_generated', emit_data)
+        finally:
+            with _generating_lock:
+                _generating_tasks.discard(task_id)

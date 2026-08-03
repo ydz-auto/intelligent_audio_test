@@ -588,11 +588,11 @@
 <script setup>
 // 只导入主样式文件，所有组件样式已包含在main.css中
 import '../../assets/styles/main.css';
-import { useDevice } from './device';
+import { useDevice } from './Device';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
 import AlgorithmTag from '../../components/algorithm/AlgorithmTag.vue';
 
-// 使用组合式函数获取所有状态和函数
+// 使用组合式函数获取所有状态和函数（onMounted 已在 useDevice 内部处理）
 const {
   // 基本状态
   tabs,
@@ -624,32 +624,32 @@ const {
   getDelayClass,
   toggleDeviceSelection,
   resetAllStates,
-  
+
   // 数据获取
   fetchAllDevices,
-  
+
   // 编辑设备相关
   openEditModal,
-  
+
   // 设备操作相关
   deleteDevice,
   testDevice,
   stopTest,
   healthCheckDevice,
-  
+
   // 扫描设备相关
   scanDevices,
-  
+
   // 批量操作相关
   batchEnableDevices,
   batchDisableDevices,
   batchDeleteDevices,
   batchHealthCheck,
-  
+
   // 导入导出相关
   importDevices,
   exportDevices,
-  
+
   // 播放设备分页
   playbackCurrentPage,
   playbackPageSize,
@@ -659,7 +659,7 @@ const {
   handlePlaybackPageSizeChange,
   handlePlaybackPrevPage,
   handlePlaybackNextPage,
-  
+
   // 测试设备分页
   testCurrentPage,
   testPageSize,
@@ -669,7 +669,7 @@ const {
   handleTestPageSizeChange,
   handleTestPrevPage,
   handleTestNextPage,
-  
+
   // API设备分页
   apiCurrentPage,
   apiPageSize,
@@ -680,53 +680,8 @@ const {
   handleAPIPrevPage,
   handleAPINextPage
 } = useDevice();
-
-import { onMounted } from 'vue';
-
-onMounted(async () => {
-  // 页面加载时获取所有设备数据
-  await fetchAllDevices();
-});
 </script>
 
 <style scoped>
-.no-devices {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  text-align: center;
-  color: #64748b;
-  background-color: #f8fafc;
-  border: 1px dashed #cbd5e1;
-  border-radius: 8px;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.no-devices i {
-  font-size: 32px;
-  margin-bottom: 16px;
-  color: #94a3b8;
-}
-
-.no-devices p {
-  font-size: 16px;
-  margin: 0;
-}
-
-.device-algorithms {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 8px 0;
-}
-
-.algo-label {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
+@import './Device.css';
 </style>

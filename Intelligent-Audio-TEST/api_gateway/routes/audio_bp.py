@@ -1,123 +1,154 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.audio_controller import AudioController
+from api_gateway.routes._response import to_response
 
-audio_bp = Blueprint('audios', __name__)
+router = APIRouter()
 
-@audio_bp.route('', methods=['GET', 'POST'])
+
+@router.api_route('', methods=['GET', 'POST'])
 def get_all():
-    return AudioController.get_all()
+    return to_response(AudioController.get_all())
 
-@audio_bp.route('/ids', methods=['GET', 'POST'])
+
+@router.api_route('/ids', methods=['GET', 'POST'])
 def get_all_ids():
-    return AudioController.get_all_ids()
+    return to_response(AudioController.get_all_ids())
 
-@audio_bp.route('/by-ids', methods=['POST'])
+
+@router.post('/by-ids')
 def get_by_ids():
-    return AudioController.get_by_ids()
+    return to_response(AudioController.get_by_ids())
 
-@audio_bp.route('/by-md5', methods=['POST'])
+
+@router.post('/by-md5')
 def get_by_md5():
-    return AudioController.get_by_md5()
+    return to_response(AudioController.get_by_md5())
 
-@audio_bp.route('/<audio_id>', methods=['GET'])
-def get_one(audio_id):
-    return AudioController.get_one(audio_id)
 
-@audio_bp.route('/tags', methods=['GET'])
+@router.get('/tags')
 def get_all_tags():
-    return AudioController.get_all_tags()
+    return to_response(AudioController.get_all_tags())
 
-@audio_bp.route('/url-import', methods=['POST'])
+
+@router.get('/{audio_id}')
+def get_one(audio_id: str):
+    return to_response(AudioController.get_one(audio_id))
+
+
+@router.post('/url-import')
 def url_import():
-    return AudioController.url_import()
+    return to_response(AudioController.url_import())
 
-@audio_bp.route('/record', methods=['POST'])
+
+@router.post('/record')
 def record():
-    return AudioController.record()
+    return to_response(AudioController.record())
 
-@audio_bp.route('/<audio_id>/convert', methods=['POST'])
-def convert(audio_id):
-    return AudioController.convert(audio_id)
 
-@audio_bp.route('/<audio_id>/metadata', methods=['PUT'])
-def update_metadata(audio_id):
-    return AudioController.update_metadata(audio_id)
+@router.post('/{audio_id}/convert')
+def convert(audio_id: str):
+    return to_response(AudioController.convert(audio_id))
 
-@audio_bp.route('/batch/annotations', methods=['POST'])
+
+@router.put('/{audio_id}/metadata')
+def update_metadata(audio_id: str):
+    return to_response(AudioController.update_metadata(audio_id))
+
+
+@router.post('/batch/annotations')
 def batch_update_annotations():
-    return AudioController.batch_update_annotations()
+    return to_response(AudioController.batch_update_annotations())
 
-@audio_bp.route('/batch-action', methods=['POST'])
+
+@router.post('/batch-action')
 def batch_action():
-    return AudioController.batch_action()
+    return to_response(AudioController.batch_action())
 
-@audio_bp.route('/<audio_id>/stream', methods=['GET'])
-def stream(audio_id):
-    return AudioController.stream(audio_id)
 
-@audio_bp.route('/<audio_id>/preview', methods=['POST'])
-def preview(audio_id):
-    return AudioController.preview(audio_id)
+@router.get('/{audio_id}/stream')
+def stream(audio_id: str):
+    return to_response(AudioController.stream(audio_id))
 
-@audio_bp.route('/<audio_id>/stop-preview', methods=['POST'])
-def stop_preview(audio_id):
-    return AudioController.stop_preview(audio_id)
 
-@audio_bp.route('/stream-by-path', methods=['GET'])
+@router.post('/{audio_id}/preview')
+def preview(audio_id: str):
+    return to_response(AudioController.preview(audio_id))
+
+
+@router.post('/{audio_id}/stop-preview')
+def stop_preview(audio_id: str):
+    return to_response(AudioController.stop_preview(audio_id))
+
+
+@router.get('/stream-by-path')
 def stream_by_path():
-    return AudioController.stream_by_path()
+    return to_response(AudioController.stream_by_path())
 
-@audio_bp.route('/<audio_id>', methods=['DELETE'])
-def delete(audio_id):
-    return AudioController.delete(audio_id)
+
+@router.delete('/{audio_id}')
+def delete(audio_id: str):
+    return to_response(AudioController.delete(audio_id))
+
 
 # 分片上传相关接口
-@audio_bp.route('/upload/init', methods=['POST'])
+@router.post('/upload/init')
 def init_upload():
-    return AudioController.init_upload_task()
+    return to_response(AudioController.init_upload_task())
 
-@audio_bp.route('/upload/register', methods=['POST'])
+
+@router.post('/upload/register')
 def register_upload():
-    return AudioController.register_upload_file()
+    return to_response(AudioController.register_upload_file())
 
-@audio_bp.route('/upload/chunk', methods=['POST'])
+
+@router.post('/upload/chunk')
 def upload_chunk():
-    return AudioController.upload_chunk()
+    return to_response(AudioController.upload_chunk())
 
-@audio_bp.route('/upload/merge', methods=['POST'])
+
+@router.post('/upload/merge')
 def merge_chunks():
-    return AudioController.merge_chunks()
+    return to_response(AudioController.merge_chunks())
 
-@audio_bp.route('/upload/progress', methods=['GET'])
+
+@router.get('/upload/progress')
 def get_upload_progress():
-    return AudioController.get_upload_progress()
+    return to_response(AudioController.get_upload_progress())
+
 
 # 前端直传 OSS 相关接口（生产环境多实例部署）
-@audio_bp.route('/upload/presign', methods=['POST'])
+@router.post('/upload/presign')
 def presign_upload():
-    return AudioController.presign_upload()
+    return to_response(AudioController.presign_upload())
 
-@audio_bp.route('/upload/presign-part', methods=['POST'])
+
+@router.post('/upload/presign-part')
 def presign_part():
-    return AudioController.presign_part()
+    return to_response(AudioController.presign_part())
 
-@audio_bp.route('/upload/complete-direct', methods=['POST'])
+
+@router.post('/upload/complete-direct')
 def complete_direct_upload():
-    return AudioController.complete_direct_upload()
+    return to_response(AudioController.complete_direct_upload())
+
 
 # 音频算法关联接口
-@audio_bp.route('/<int:audio_id>/algorithms', methods=['GET'])
-def get_audio_algorithms(audio_id):
-    return AudioController.get_audio_algorithms(audio_id)
+@router.get('/{audio_id}/algorithms')
+def get_audio_algorithms(audio_id: int):
+    return to_response(AudioController.get_audio_algorithms(audio_id))
 
-@audio_bp.route('/<int:audio_id>/algorithms', methods=['PUT'])
-def update_audio_algorithms(audio_id):
-    return AudioController.update_audio_algorithms(audio_id)
 
-@audio_bp.route('/batch/algorithms', methods=['PUT'])
+@router.put('/{audio_id}/algorithms')
+def update_audio_algorithms(audio_id: int):
+    return to_response(AudioController.update_audio_algorithms(audio_id))
+
+
+@router.put('/batch/algorithms')
 def batch_update_audio_algorithms():
-    return AudioController.batch_update_audio_algorithms()
+    return to_response(AudioController.batch_update_audio_algorithms())
 
-@audio_bp.route('/folder-tree', methods=['POST'])
+
+@router.post('/folder-tree')
 def get_folder_tree():
-    return AudioController.get_folder_tree()
+    return to_response(AudioController.get_folder_tree())

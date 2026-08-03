@@ -383,81 +383,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, nextTick, watch, type Ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref } from 'vue';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
+import { useLogView } from './logView';
 
 // 日期时间选择器的引用
 const startDateTimeRef = ref<HTMLInputElement | null>(null);
 const endDateTimeRef = ref<HTMLInputElement | null>(null);
 const startContainerRef = ref<HTMLElement | null>(null);
 const endContainerRef = ref<HTMLElement | null>(null);
-
-// 打开日期时间选择器
-const openDateTimePicker = (inputRef: Ref<HTMLInputElement | null>) => {
-  if (inputRef && inputRef.value) {
-    // 直接调用输入框的showPicker方法（现代浏览器支持）
-    if (typeof (inputRef.value as any).showPicker === 'function') {
-      try {
-        (inputRef.value as any).showPicker();
-      } catch (error) {
-        // 如果showPicker不可用，回退到模拟点击
-        inputRef.value.focus();
-        const event = new MouseEvent('click', {
-          bubbles: true,
-          cancelable: true,
-          view: window
-        });
-        inputRef.value.dispatchEvent(event);
-      }
-    } else {
-      // 回退方案：模拟点击
-      inputRef.value.focus();
-      const event = new MouseEvent('click', {
-        bubbles: true,
-        cancelable: true,
-        view: window
-      });
-      inputRef.value.dispatchEvent(event);
-    }
-  }
-};
-
-// 定义命名事件处理函数
-const handleStartDateClick = () => {
-  openDateTimePicker(startDateTimeRef);
-};
-
-const handleEndDateClick = () => {
-  openDateTimePicker(endDateTimeRef);
-};
-
-// 添加事件监听器
-onMounted(() => {
-  // 为开始时间容器添加点击事件
-  if (startContainerRef.value) {
-    startContainerRef.value.addEventListener('click', handleStartDateClick);
-  }
-  
-  // 为结束时间容器添加点击事件
-  if (endContainerRef.value) {
-    endContainerRef.value.addEventListener('click', handleEndDateClick);
-  }
-});
-
-// 清理事件监听器
-onBeforeUnmount(() => {
-  if (startContainerRef.value) {
-    startContainerRef.value.removeEventListener('click', handleStartDateClick);
-  }
-  
-  // 为结束时间容器添加点击事件
-  if (endContainerRef.value) {
-    endContainerRef.value.removeEventListener('click', handleEndDateClick);
-  }
-});
-
-import { useLogView } from './logView';
 
 const {
   realTimeLogEnabled,
@@ -488,6 +422,10 @@ const {
   advancedFilterText,
   autoScrollText,
   selectedLevelObjects,
+  LOGCategoryOptions,
+  LOGModuleOptions,
+  LOGMarkOptions,
+  getAlgorithmLabel,
   filterLogs,
   searchLogs,
   clearSearch,
@@ -511,60 +449,8 @@ const {
   sortLogs,
   removeLevel,
   toggleLevel,
-  initLogView,
-  cleanupLogView,
   algorithmOptions
-} = useLogView();
-
-// 日志配置默认值
-const LOGCategoryOptions = [{ value: 'all', label: '所有分类' }, { value: 'system', label: '系统日志' }, { value: 'test', label: '测试日志' }, { value: 'error', label: '错误日志' }];
-const LOGModuleOptions = [{ value: 'all', label: '所有模块' }, { value: 'api', label: 'API模块' }, { value: 'e2e', label: 'E2E测试' }, { value: 'device', label: '设备管理' }];
-const LOGMarkOptions = [{ value: 'all', label: '所有标记' }, { value: 'yellow', label: '黄色标记' }, { value: 'red', label: '红色标记' }, { value: 'green', label: '绿色标记' }, { value: 'blue', label: '蓝色标记' }];
-
-const getAlgorithmLabel = (algorithmType: string): string => {
-  const option = algorithmOptions.value.find(opt => opt.value === algorithmType);
-  return option ? option.label : algorithmType;
-};
-
-// 组件挂载时初始化日志视图
-onMounted(async () => {
-  await initLogView();
-  // 组件挂载后强制重新计算高度
-  nextTick(() => {
-    adjustFilterCardHeight();
-  });
-});
-
-// 组件卸载时清理
-onBeforeUnmount(() => {
-  cleanupLogView();
-});
-
-// 监听路由变化，确保组件可见时重新计算高度
-const route = useRoute();
-watch(
-  () => route.path,
-  () => {
-    if (route.path === '/LogView') {
-      nextTick(() => {
-        adjustFilterCardHeight();
-      });
-    }
-  }
-);
-
-// 调整筛选卡片高度的函数
-function adjustFilterCardHeight() {
-  const filterBar = document.querySelector('.log-view > .filter-section > .filter-bar') as HTMLElement;
-  if (filterBar) {
-    // 重置高度以触发重新计算
-    filterBar.style.height = 'auto';
-    // 强制重排
-    filterBar.offsetHeight;
-    // 再次设置为auto确保内容能正确撑开
-    filterBar.style.height = 'auto';
-  }
-}
+} = useLogView({ startDateTimeRef, endDateTimeRef, startContainerRef, endContainerRef });
 </script>
 
 <style>
@@ -572,45 +458,5 @@ function adjustFilterCardHeight() {
 </style>
 
 <style scoped>
-.single-column-layout {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-  width: 100%;
-}
-
-.logs-content {
-  width: 100%;
-}
-
-.logs-content .card {
-  width: 100%;
-}
-
-.log-algorithm {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.log-algorithm.translation {
-  background: #e6f7ff;
-  color: #1890ff;
-}
-
-.log-algorithm.asr {
-  background: #f6ffed;
-  color: #52c41a;
-}
-
-.log-algorithm.speaker_recognition {
-  background: #fff7e6;
-  color: #fa8c16;
-}
-
-.log-algorithm.tts {
-  background: #fff1f0;
-  color: #f5222d;
-}
+@import './LogView.css';
 </style>

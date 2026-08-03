@@ -1,4 +1,4 @@
-from flask import request
+from api_gateway.controllers.request_adapter import request
 from shared.models.models import (
     Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase,
     ReportMetricStats, ReportComparisonMatrix, Task, TestResult, TestResultDimension,
@@ -15,7 +15,6 @@ from api_gateway.schemas.report import SecondaryCompareRequest
 from api_gateway.schemas.common import IdData
 from api_gateway.controllers.report_controller_base import ReportControllerBase
 from api_gateway.controllers.report_controller_task import ReportControllerTask
-from api_gateway.app import socketio
 from datetime import datetime, timedelta, timezone
 from shared.utils.query_utils import now_cst
 import json
@@ -26,6 +25,15 @@ from concurrent.futures import ThreadPoolExecutor
 _secondary_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='secondary_compare')
 _generating_secondary = {}
 _generating_secondary_lock = threading.Lock()
+
+
+def _emit_secondary_compare_event(event_name, data):
+    """通过 SSE 推送二次对比报告生成事件（替代 socketio.emit）"""
+    try:
+        from api_gateway.routes.sse_bp import event_cache
+        event_cache.add_event(event_name, data)
+    except Exception:
+        pass
 
 
 class ReportControllerSecondary(ReportControllerBase):
@@ -317,148 +325,136 @@ class ReportControllerSecondary(ReportControllerBase):
 
     @staticmethod
     def _secondary_compare_async(report_ids, description, report_key):
-        from flask import current_app as flask_app
-        if flask_app is None:
-            log_and_emit('ERROR', 'report', '[secondary_compare_async] Flask app is None')
-            with _generating_secondary_lock:
-                _generating_secondary.pop(report_key, None)
-            socketio.emit('secondary_compare_generated', {
-                'reportIds': report_ids,
-                'success': False,
-                'error': '服务器内部错误'
-            })
-            return
+        # FastAPI: 不再需要 app context，直接执行
+        try:
+            log_and_emit('INFO', 'report', f'[secondary_compare_async] Starting for report_ids={report_ids}')
 
-        with flask_app.app_context():
-            try:
-                log_and_emit('INFO', 'report', f'[secondary_compare_async] Starting for report_ids={report_ids}')
-
-                reports, tasks, task_ids, error = ReportControllerSecondary._validate_reports_and_get_tasks(report_ids)
-                if error:
-                    with _generating_secondary_lock:
-                        _generating_secondary.pop(report_key, None)
-                    socketio.emit('secondary_compare_generated', {
-                        'reportIds': report_ids,
-                        'success': False,
-                        'error': error
-                    })
-                    return
-
-                report_task_type = ReportControllerSecondary._get_task_type(tasks)
-
-                results, resources, devices_list, apis_list, device_ids, api_ids, error = \
-                    ReportControllerSecondary._collect_all_resources(task_ids, tasks)
-                if error:
-                    with _generating_secondary_lock:
-                        _generating_secondary.pop(report_key, None)
-                    socketio.emit('secondary_compare_generated', {
-                        'reportIds': report_ids,
-                        'success': False,
-                        'error': error
-                    })
-                    return
-
-                res_ids = [r.id for r in results]
-                all_dimensions, all_metrics, error = ReportControllerSecondary._build_all_dimensions(res_ids)
-                if error:
-                    with _generating_secondary_lock:
-                        _generating_secondary.pop(report_key, None)
-                    socketio.emit('secondary_compare_generated', {
-                        'reportIds': report_ids,
-                        'success': False,
-                        'error': error
-                    })
-                    return
-
-                dim_results_map, _ = ReportControllerTask._get_dimension_results_batch(res_ids)
-
-                tasks_map = {t.id: t for t in tasks}
-                core_metrics = ReportUtils.calculate_core_metrics(
-                    results=results,
-                    all_dimensions=all_dimensions,
-                    resources=resources,
-                    dim_results_map=dim_results_map,
-                    tasks_map=tasks_map,
-                    use_time_prefix=False
-                )
-
-                metric_data = core_metrics['metric_data']
-                tag_metric_data = core_metrics['tag_metric_data']
-                raw_data = core_metrics['raw_data']
-                case_type_stats = core_metrics['case_type_stats']
-                resources = core_metrics['resources']
-
-                resource_headers = ReportUtils.build_resource_headers(
-                    resources=resources,
-                    results=results,
-                    tasks_map=tasks_map,
-                    use_time_prefix=False,
-                )
-
-                device_stats, api_stats = ReportUtils.calculate_device_api_stats(
-                    results=results,
-                    all_dimensions=all_dimensions,
-                    dim_results_map=dim_results_map
-                )
-
-                test_cases, _ = ReportControllerTask._get_task_test_cases(task_ids)
-                case_categories_list, case_tags_list = [], []
-                if test_cases:
-                    from shared.utils.report.report_query_builder import ReportQueryBuilder
-                    case_categories_list, case_tags_list = ReportQueryBuilder.extract_case_categories_and_tags(test_cases)
-
-                if not case_categories_list:
-                    case_categories_list = [{"id": "default_group", "name": "无分组"}]
-                if not case_tags_list:
-                    case_tags_list = [{"id": "default_tag", "name": "无标签"}]
-
-                source_cases = ReportControllerSecondary._get_source_cases_from_reports(reports)
-                if not source_cases:
-                    cases = ReportControllerTask._build_case_data(
-                        test_cases, results, all_dimensions, dim_results_map, tasks[0] if tasks else None
-                    )
-                    source_cases = cases
-
-                comparison_matrix_data = ReportControllerSecondary._build_comparison_matrix(
-                    task_ids, reports, all_dimensions
-                )
-
-                name = f"二次对比报告_{now_cst().strftime('%Y%m%d%H%M%S')}"
-                new_report = Report(
-                    name=name,
-                    type=ReportType.SECONDARY_COMPARISON.value,
-                    description=description,
-                    status=ReportStatus.DRAFT.value
-                )
-                db.session.add(new_report)
-                db.session.flush()
-
-                ReportControllerSecondary._create_secondary_report_records(
-                    new_report.id, task_ids, tasks, reports,
-                    case_categories_list, case_tags_list,
-                    devices_list, apis_list, resources, resource_headers, all_metrics,
-                    raw_data, metric_data, tag_metric_data, case_type_stats,
-                    device_stats, api_stats, source_cases, comparison_matrix_data
-                )
-
-                db.session.commit()
-                log_and_emit('INFO', 'report', f'[secondary_compare_async] Report generated successfully, report_id={new_report.id}')
-
-                socketio.emit('secondary_compare_generated', {
-                    'reportIds': report_ids,
-                    'reportId': new_report.id,
-                    'success': True,
-                    'status': 'completed'
-                })
-
-            except Exception as e:
-                db.session.rollback()
-                log_and_emit('ERROR', 'report', f'[secondary_compare_async] Error: {e}\n{traceback.format_exc()}')
-                socketio.emit('secondary_compare_generated', {
-                    'reportIds': report_ids,
-                    'success': False,
-                    'error': '对比报告生成失败，请稍后重试'
-                })
-            finally:
+            reports, tasks, task_ids, error = ReportControllerSecondary._validate_reports_and_get_tasks(report_ids)
+            if error:
                 with _generating_secondary_lock:
                     _generating_secondary.pop(report_key, None)
+                _emit_secondary_compare_event('secondary_compare_generated', {
+                    'reportIds': report_ids,
+                    'success': False,
+                    'error': error
+                })
+                return
+
+            report_task_type = ReportControllerSecondary._get_task_type(tasks)
+
+            results, resources, devices_list, apis_list, device_ids, api_ids, error = \
+                ReportControllerSecondary._collect_all_resources(task_ids, tasks)
+            if error:
+                with _generating_secondary_lock:
+                    _generating_secondary.pop(report_key, None)
+                _emit_secondary_compare_event('secondary_compare_generated', {
+                    'reportIds': report_ids,
+                    'success': False,
+                    'error': error
+                })
+                return
+
+            res_ids = [r.id for r in results]
+            all_dimensions, all_metrics, error = ReportControllerSecondary._build_all_dimensions(res_ids)
+            if error:
+                with _generating_secondary_lock:
+                    _generating_secondary.pop(report_key, None)
+                _emit_secondary_compare_event('secondary_compare_generated', {
+                    'reportIds': report_ids,
+                    'success': False,
+                    'error': error
+                })
+                return
+
+            dim_results_map, _ = ReportControllerTask._get_dimension_results_batch(res_ids)
+
+            tasks_map = {t.id: t for t in tasks}
+            core_metrics = ReportUtils.calculate_core_metrics(
+                results=results,
+                all_dimensions=all_dimensions,
+                resources=resources,
+                dim_results_map=dim_results_map,
+                tasks_map=tasks_map,
+                use_time_prefix=False
+            )
+
+            metric_data = core_metrics['metric_data']
+            tag_metric_data = core_metrics['tag_metric_data']
+            raw_data = core_metrics['raw_data']
+            case_type_stats = core_metrics['case_type_stats']
+            resources = core_metrics['resources']
+
+            resource_headers = ReportUtils.build_resource_headers(
+                resources=resources,
+                results=results,
+                tasks_map=tasks_map,
+                use_time_prefix=False,
+            )
+
+            device_stats, api_stats = ReportUtils.calculate_device_api_stats(
+                results=results,
+                all_dimensions=all_dimensions,
+                dim_results_map=dim_results_map
+            )
+
+            test_cases, _ = ReportControllerTask._get_task_test_cases(task_ids)
+            case_categories_list, case_tags_list = [], []
+            if test_cases:
+                from shared.utils.report.report_query_builder import ReportQueryBuilder
+                case_categories_list, case_tags_list = ReportQueryBuilder.extract_case_categories_and_tags(test_cases)
+
+            if not case_categories_list:
+                case_categories_list = [{"id": "default_group", "name": "无分组"}]
+            if not case_tags_list:
+                case_tags_list = [{"id": "default_tag", "name": "无标签"}]
+
+            source_cases = ReportControllerSecondary._get_source_cases_from_reports(reports)
+            if not source_cases:
+                cases = ReportControllerTask._build_case_data(
+                    test_cases, results, all_dimensions, dim_results_map, tasks[0] if tasks else None
+                )
+                source_cases = cases
+
+            comparison_matrix_data = ReportControllerSecondary._build_comparison_matrix(
+                task_ids, reports, all_dimensions
+            )
+
+            name = f"二次对比报告_{now_cst().strftime('%Y%m%d%H%M%S')}"
+            new_report = Report(
+                name=name,
+                type=ReportType.SECONDARY_COMPARISON.value,
+                description=description,
+                status=ReportStatus.DRAFT.value
+            )
+            db.session.add(new_report)
+            db.session.flush()
+
+            ReportControllerSecondary._create_secondary_report_records(
+                new_report.id, task_ids, tasks, reports,
+                case_categories_list, case_tags_list,
+                devices_list, apis_list, resources, resource_headers, all_metrics,
+                raw_data, metric_data, tag_metric_data, case_type_stats,
+                device_stats, api_stats, source_cases, comparison_matrix_data
+            )
+
+            db.session.commit()
+            log_and_emit('INFO', 'report', f'[secondary_compare_async] Report generated successfully, report_id={new_report.id}')
+
+            _emit_secondary_compare_event('secondary_compare_generated', {
+                'reportIds': report_ids,
+                'reportId': new_report.id,
+                'success': True,
+                'status': 'completed'
+            })
+
+        except Exception as e:
+            db.session.rollback()
+            log_and_emit('ERROR', 'report', f'[secondary_compare_async] Error: {e}\n{traceback.format_exc()}')
+            _emit_secondary_compare_event('secondary_compare_generated', {
+                'reportIds': report_ids,
+                'success': False,
+                'error': '对比报告生成失败，请稍后重试'
+            })
+        finally:
+            with _generating_secondary_lock:
+                _generating_secondary.pop(report_key, None)

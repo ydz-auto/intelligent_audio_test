@@ -1,0 +1,167 @@
+/* 只导入主样式文件，所有组件样式已包含在main.css中 */
+@import '../../assets/styles/main.css';
+
+/* 搜索框样式 - 确保外框为明显的灰色 */
+.filter-sort-section :deep(.search-input) {
+  border: 2px solid #D1D5DB !important;
+  background-color: white !important;
+  border-radius: var(--border-radius-lg) !important;
+  padding: var(--spacing-sm) var(--spacing-md) !important;
+  font-size: var(--font-size-md) !important;
+}
+
+/* 搜索框聚焦状态样式 */
+.filter-sort-section :deep(.search-input:focus) {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 3px var(--primary-light) !important;
+  background-color: white !important;
+}
+
+/* 下拉选择框样式 - 确保外框为明显的灰色 */
+.filter-sort-section :deep(.filter-select) {
+  border: 2px solid #D1D5DB !important;
+  background-color: white !important;
+  border-radius: var(--border-radius-md) !important;
+  padding: var(--spacing-sm) var(--spacing-md) !important;
+  font-size: var(--font-size-md) !important;
+}
+
+/* 下拉选择框聚焦状态样式 */
+.filter-sort-section :deep(.filter-select:focus) {
+  border-color: var(--primary-color) !important;
+  box-shadow: 0 0 0 3px var(--primary-light) !important;
+  background-color: white !important;
+}
+
+/* 全选按钮样式 */
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.batch-select-all {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  cursor: pointer;
+}
+
+.select-all-label {
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.batch-action-buttons {
+  display: flex;
+  gap: var(--spacing-md);
+}
+
+/* 报告区域样式 */
+.reports-section {
+  margin-bottom: 32px;
+}
+
+.reports-section.draft-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 2px dashed #e2e8f0;
+}
+
+.section-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-title i {
+  font-size: 1rem;
+}
+
+/* 状态标签样式 */
+.report-card-status.published {
+  background-color: var(--success-light, #f0fdf4);
+  color: var(--success-color, #16a34a);
+  border: 1px solid var(--success-color, #16a34a);
+}
+
+.report-card-status.draft {
+  background-color: var(--warning-light, #fffbeb);
+  color: var(--warning-color, #d97706);
+  border: 1px solid var(--warning-color, #d97706);
+}
+
+.report-card-algorithm-type {
+  background-color: #f0f9ff;
+  color: #0284c7;
+  border: 1px solid #0284c7;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 10000;
+  animation: slideIn 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.toast-container i {
+  font-size: 1.2rem;
+}
+
+.toast-success {
+  background-color: #f0fdf4;
+  color: #16a34a;
+  border: 1px solid #16a34a;
+}
+
+.toast-error {
+  background-color: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #dc2626;
+}
+
+.toast-warning {
+  background-color: #fffbeb;
+  color: #d97706;
+  border: 1px solid #d97706;
+}
+
+.toast-info {
+  background-color: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #2563eb;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

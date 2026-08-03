@@ -13,7 +13,7 @@ from concurrent import futures
 import grpc
 
 from shared.proto import api_test_service_pb2_grpc as api_grpc
-from shared.infrastructure.grpc_interceptors import server_log_interceptor
+from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
 from api_test_service.grpc.servicers import APITestServiceServicer
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def start_grpc_server(port=50071):
     """
     server = grpc.server(
         futures.ThreadPoolExecutor(max_workers=8),
-        interceptors=[server_log_interceptor],
+        interceptors=[server_db_scope_interceptor, server_log_interceptor],
     )
     api_grpc.add_APITestServiceServicer_to_server(APITestServiceServicer(), server)
     server.add_insecure_port(f'[::]:{port}')

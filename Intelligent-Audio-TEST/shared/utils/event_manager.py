@@ -2,22 +2,12 @@ import time
 from datetime import datetime, timezone, timedelta
 from shared.models.models import Task, TaskCase, TestCase, Log, TestResult, TestResultDimension, Audio
 from shared.models.database import db
-from shared.utils.log_handler import log_and_emit
-from flask import current_app
+from shared.utils.log_handler import log_and_emit, _cached_socketio
 
 
 def get_socketio():
-    """延迟从应用上下文获取 socketio 实例
-
-    在模块 import 阶段 current_app 尚无上下文，无法直接读取 extensions。
-    每次 emit 时通过当前请求/应用上下文动态获取，避免绑定到过期的 app 实例。
-    """
-    try:
-        if current_app and hasattr(current_app, 'extensions'):
-            return current_app.extensions.get('socketio')
-    except Exception:
-        pass
-    return None
+    """获取全局 socketio 实例（由 api_gateway 通过 set_socketio 设置）"""
+    return _cached_socketio
 
 
 class EventManager:
@@ -62,10 +52,8 @@ class EventManager:
         self.execution_engine = execution_engine
         self._last_progress = {}
         try:
-            if current_app and hasattr(current_app, 'config'):
-                self._min_update_interval = current_app.config.get('WEBSOCKET_MIN_UPDATE_INTERVAL', 0.1)
-            else:
-                self._min_update_interval = 0.1
+            import os
+            self._min_update_interval = float(os.environ.get('WEBSOCKET_MIN_UPDATE_INTERVAL', '0.1'))
         except Exception as e:
             self._min_update_interval = 0.1
 
@@ -328,7 +316,7 @@ class EventManager:
                 try:
                     _socketio = get_socketio()
                     if _socketio:
-                        _socketio.emit('task_progress', progress_data)
+                        _socketio.emit_sync('task_progress', progress_data)
                         self._log(level='DEBUG', content=f"使用缓存发送进度更新，task_id={task_id}", task_id=task_id)
                 except Exception as emit_error:
                     self._log(level='WARNING', content=f"使用缓存发送进度更新失败: {str(emit_error)}", task_id=task_id)
@@ -343,7 +331,7 @@ class EventManager:
         
         try:
             task_id_int = int(task_id) if isinstance(task_id, str) else task_id
-            db_task = local_db_session.query(Task).get(task_id_int)
+            db_task = local_db_session.get(Task, task_id_int)
             if not db_task:
                 self._log(level='WARNING', content=f"找不到任务，跳过进度更新，task_id={task_id}", task_id=task_id)
                 return
@@ -352,7 +340,7 @@ class EventManager:
             
             current_tc = local_db_session.query(TaskCase).filter_by(task_id=db_task.id, execution_status='running').first()
             if current_tc:
-                case_info = local_db_session.query(TestCase).get(current_tc.test_case_id)
+                case_info = local_db_session.get(TestCase, current_tc.test_case_id)
                 current_case_data = {
                     "caseId": str(current_tc.test_case_id),
                     "name": case_info.name if case_info else "未知用例",
@@ -432,7 +420,7 @@ class EventManager:
                 from shared.models.models import TaskAPI, API
                 task_api = local_db_session.query(TaskAPI).filter_by(task_id=db_task.id).first()
                 if task_api:
-                    api = local_db_session.query(API).get(task_api.api_id)
+                    api = local_db_session.get(API, task_api.api_id)
                     if api:
                         api_executor = getattr(self.execution_engine, 'api_executors', {}).get(str(db_task.id)) if self.execution_engine is not None else None
                         if api_executor:
@@ -649,7 +637,8 @@ class EventManager:
             try:
                 _socketio = get_socketio()
                 if _socketio:
-                    _socketio.emit('task_progress', progress_data)
+                    _socketio.emit_sync('task_progress', progress_data)
+                    self._log(level='DEBUG', content=f"成功发送 task_progress 事件，task_id={task_id}, progress={progress_data.get('totalProgress', 0)}%", task_id=task_id)
                     self._log(level='DEBUG', content=f"成功发送 task_progress 事件，task_id={task_id}, progress={progress_data.get('totalProgress', 0)}%", task_id=task_id)
             except Exception as emit_error:
                 self._log(level='ERROR', content=f"发送 task_progress 事件失败: {str(emit_error)}", task_id=task_id)
@@ -671,6 +660,6 @@ class EventManager:
             }
             _socketio = get_socketio()
             if _socketio:
-                _socketio.emit('error_alert', alert_data)
+                _socketio.emit_sync('error_alert', alert_data)
         except Exception:
             pass

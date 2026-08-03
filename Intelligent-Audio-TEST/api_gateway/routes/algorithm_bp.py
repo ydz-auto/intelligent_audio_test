@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.algorithm_controller import (
     list_algorithms, get_algorithm, create_algorithm, update_algorithm,
     delete_algorithm, list_params, get_param, create_param, update_param,
@@ -12,172 +13,213 @@ from api_gateway.controllers.algorithm_controller import (
     list_case_params, get_case_param, create_case_param, update_case_param, delete_case_param
 )
 from api_gateway.controllers.algorithm_group_controller import AlgorithmGroupController
+from api_gateway.routes._response import to_response
 
-algorithm_bp = Blueprint('algorithm', __name__)
+router = APIRouter()
+
 
 # 算法定义相关路由
-@algorithm_bp.route('/definitions', methods=['GET'])
+@router.get('/definitions')
 def get_definitions():
-    return list_algorithms()
+    return to_response(list_algorithms())
 
-@algorithm_bp.route('/definitions/<algo_type>', methods=['GET'])
-def get_definition(algo_type):
-    return get_algorithm(algo_type)
 
-@algorithm_bp.route('/definitions', methods=['POST'])
+@router.get('/definitions/{algo_type}')
+def get_definition(algo_type: str):
+    return to_response(get_algorithm(algo_type))
+
+
+@router.post('/definitions')
 def post_definition():
-    return create_algorithm()
+    return to_response(create_algorithm())
 
-@algorithm_bp.route('/definitions/<algo_type>', methods=['PUT'])
-def put_definition(algo_type):
-    return update_algorithm(algo_type)
 
-@algorithm_bp.route('/definitions/<algo_type>', methods=['DELETE'])
-def delete_definition(algo_type):
-    return delete_algorithm(algo_type)
+@router.put('/definitions/{algo_type}')
+def put_definition(algo_type: str):
+    return to_response(update_algorithm(algo_type))
+
+
+@router.delete('/definitions/{algo_type}')
+def delete_definition(algo_type: str):
+    return to_response(delete_algorithm(algo_type))
+
 
 # 算法分组相关路由
-@algorithm_bp.route('/groups', methods=['GET'])
+@router.get('/groups')
 def get_groups():
-    return AlgorithmGroupController.get_all()
+    return to_response(AlgorithmGroupController.get_all())
 
-@algorithm_bp.route('/groups/<int:group_id>', methods=['GET'])
-def get_group(group_id):
-    return AlgorithmGroupController.get_by_id(group_id)
 
-@algorithm_bp.route('/groups', methods=['POST'])
+@router.get('/groups/{group_id}')
+def get_group(group_id: int):
+    return to_response(AlgorithmGroupController.get_by_id(group_id))
+
+
+@router.post('/groups')
 def post_group():
-    return AlgorithmGroupController.create()
+    return to_response(AlgorithmGroupController.create())
 
-@algorithm_bp.route('/groups/<int:group_id>', methods=['PUT'])
-def put_group(group_id):
-    return AlgorithmGroupController.update(group_id)
 
-@algorithm_bp.route('/groups/<int:group_id>', methods=['DELETE'])
-def delete_group(group_id):
-    return AlgorithmGroupController.delete(group_id)
+@router.put('/groups/{group_id}')
+def put_group(group_id: int):
+    return to_response(AlgorithmGroupController.update(group_id))
+
+
+@router.delete('/groups/{group_id}')
+def delete_group(group_id: int):
+    return to_response(AlgorithmGroupController.delete(group_id))
+
 
 # 参数相关路由
-@algorithm_bp.route('/params', methods=['GET'])
+@router.get('/params')
 def get_params():
-    return list_params()
+    return to_response(list_params())
 
-@algorithm_bp.route('/params/<int:param_id>', methods=['GET'])
-def get_param_by_id(param_id):
-    return get_param(param_id)
 
-@algorithm_bp.route('/params', methods=['POST'])
+@router.get('/params/{param_id}')
+def get_param_by_id(param_id: int):
+    return to_response(get_param(param_id))
+
+
+@router.post('/params')
 def post_param():
-    return create_param()
+    return to_response(create_param())
 
-@algorithm_bp.route('/params/<int:param_id>', methods=['PUT'])
-def put_param(param_id):
-    return update_param(param_id)
 
-@algorithm_bp.route('/params/<int:param_id>', methods=['DELETE'])
-def delete_param_by_id(param_id):
-    return delete_param(param_id)
+@router.put('/params/{param_id}')
+def put_param(param_id: int):
+    return to_response(update_param(param_id))
+
+
+@router.delete('/params/{param_id}')
+def delete_param_by_id(param_id: int):
+    return to_response(delete_param(param_id))
+
 
 # 用例专属参数相关路由
-@algorithm_bp.route('/case-params', methods=['GET'])
+@router.get('/case-params')
 def get_case_params():
-    return list_case_params()
+    return to_response(list_case_params())
 
-@algorithm_bp.route('/case-params/<int:param_id>', methods=['GET'])
-def get_case_param_by_id(param_id):
-    return get_case_param(param_id)
 
-@algorithm_bp.route('/case-params', methods=['POST'])
+@router.get('/case-params/{param_id}')
+def get_case_param_by_id(param_id: int):
+    return to_response(get_case_param(param_id))
+
+
+@router.post('/case-params')
 def post_case_param():
-    return create_case_param()
+    return to_response(create_case_param())
 
-@algorithm_bp.route('/case-params/<int:param_id>', methods=['PUT'])
-def put_case_param(param_id):
-    return update_case_param(param_id)
 
-@algorithm_bp.route('/case-params/<int:param_id>', methods=['DELETE'])
-def delete_case_param_by_id(param_id):
-    return delete_case_param(param_id)
+@router.put('/case-params/{param_id}')
+def put_case_param(param_id: int):
+    return to_response(update_case_param(param_id))
+
+
+@router.delete('/case-params/{param_id}')
+def delete_case_param_by_id(param_id: int):
+    return to_response(delete_case_param(param_id))
+
 
 # 参考参数相关路由
-@algorithm_bp.route('/reference-params', methods=['GET'])
+@router.get('/reference-params')
 def get_reference_params():
-    return list_reference_params()
+    return to_response(list_reference_params())
 
-@algorithm_bp.route('/reference-params', methods=['POST'])
+
+@router.post('/reference-params')
 def post_reference_param():
-    return create_reference_param()
+    return to_response(create_reference_param())
 
-@algorithm_bp.route('/reference-params/<int:param_id>', methods=['PUT'])
-def put_reference_param(param_id):
-    return update_reference_param(param_id)
 
-@algorithm_bp.route('/reference-params/<int:param_id>', methods=['DELETE'])
-def delete_reference_param_by_id(param_id):
-    return delete_reference_param(param_id)
+@router.put('/reference-params/{param_id}')
+def put_reference_param(param_id: int):
+    return to_response(update_reference_param(param_id))
+
+
+@router.delete('/reference-params/{param_id}')
+def delete_reference_param_by_id(param_id: int):
+    return to_response(delete_reference_param(param_id))
+
 
 # 映射相关路由
-@algorithm_bp.route('/mappings', methods=['GET'])
+@router.get('/mappings')
 def get_mappings():
-    return list_mappings()
+    return to_response(list_mappings())
 
-@algorithm_bp.route('/mappings', methods=['POST'])
+
+@router.post('/mappings')
 def post_mapping():
-    return create_mapping()
+    return to_response(create_mapping())
 
-@algorithm_bp.route('/mappings/<int:mapping_id>', methods=['PUT'])
-def put_mapping(mapping_id):
-    return update_mapping(mapping_id)
 
-@algorithm_bp.route('/mappings/<int:mapping_id>', methods=['DELETE'])
-def delete_mapping_by_id(mapping_id):
-    return delete_mapping(mapping_id)
+@router.put('/mappings/{mapping_id}')
+def put_mapping(mapping_id: int):
+    return to_response(update_mapping(mapping_id))
+
+
+@router.delete('/mappings/{mapping_id}')
+def delete_mapping_by_id(mapping_id: int):
+    return to_response(delete_mapping(mapping_id))
+
 
 # 其他功能路由
-@algorithm_bp.route('/options', methods=['GET'])
+@router.get('/options')
 def get_options():
-    return get_algorithm_options()
+    return to_response(get_algorithm_options())
 
-@algorithm_bp.route('/form-schema/<algo_type>', methods=['GET'])
-def get_algo_form_schema(algo_type):
-    return get_form_schema(algo_type)
 
-@algorithm_bp.route('/dimensions/<algo_type>', methods=['GET'])
-def get_dimensions(algo_type):
-    return get_algorithm_dimensions(algo_type)
+@router.get('/form-schema/{algo_type}')
+def get_algo_form_schema(algo_type: str):
+    return to_response(get_form_schema(algo_type))
 
-@algorithm_bp.route('/dimensions/<algo_type>', methods=['POST'])
-def post_dimensions(algo_type):
-    return associate_dimensions(algo_type)
 
-@algorithm_bp.route('/dimension-relations', methods=['POST'])
+@router.get('/dimensions/{algo_type}')
+def get_dimensions(algo_type: str):
+    return to_response(get_algorithm_dimensions(algo_type))
+
+
+@router.post('/dimensions/{algo_type}')
+def post_dimensions(algo_type: str):
+    return to_response(associate_dimensions(algo_type))
+
+
+@router.post('/dimension-relations')
 def post_dimension_relation():
-    return create_dimension_relation()
+    return to_response(create_dimension_relation())
 
-@algorithm_bp.route('/dimension-relations/<int:relation_id>', methods=['PUT'])
-def put_dimension_relation(relation_id):
-    return update_dimension_relation(relation_id)
 
-@algorithm_bp.route('/dimension-relations/<int:relation_id>', methods=['DELETE'])
-def delete_dimension_relation_by_id(relation_id):
-    return delete_dimension_relation(relation_id)
+@router.put('/dimension-relations/{relation_id}')
+def put_dimension_relation(relation_id: int):
+    return to_response(update_dimension_relation(relation_id))
 
-@algorithm_bp.route('/reload', methods=['POST'])
+
+@router.delete('/dimension-relations/{relation_id}')
+def delete_dimension_relation_by_id(relation_id: int):
+    return to_response(delete_dimension_relation(relation_id))
+
+
+@router.post('/reload')
 def reload():
-    return reload_config()
+    return to_response(reload_config())
 
-@algorithm_bp.route('/import', methods=['POST'])
+
+@router.post('/import')
 def import_algo():
-    return import_algorithms()
+    return to_response(import_algorithms())
 
-@algorithm_bp.route('/bulk-delete', methods=['POST'])
+
+@router.post('/bulk-delete')
 def bulk_delete_algos():
-    return bulk_delete()
+    return to_response(bulk_delete())
 
-@algorithm_bp.route('/extract-params', methods=['POST'])
+
+@router.post('/extract-params')
 def extract():
-    return extract_params()
+    return to_response(extract_params())
 
-@algorithm_bp.route('/dimension-params/<int:dimension_id>', methods=['GET'])
-def get_dim_params(dimension_id):
-    return get_dimension_params(dimension_id)
+
+@router.get('/dimension-params/{dimension_id}')
+def get_dim_params(dimension_id: int):
+    return to_response(get_dimension_params(dimension_id))

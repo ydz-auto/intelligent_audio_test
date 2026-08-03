@@ -1,48 +1,85 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.log_controller import LogController
+from api_gateway.routes._response import to_response
 
-log_bp = Blueprint('logs', __name__)
+router = APIRouter()
 
-@log_bp.route('', methods=['GET'])
+@router.get('')
 def get_logs():
-    return LogController.get_logs()
+    result = LogController.get_logs()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/stats', methods=['GET'])
+@router.get('/stats')
 def get_stats():
-    return LogController.get_stats()
+    result = LogController.get_stats()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/mark', methods=['PUT'])
+@router.put('/mark')
 def mark_logs():
-    return LogController.mark_logs()
+    result = LogController.mark_logs()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/export', methods=['GET', 'POST'])
+@router.api_route('/export', methods=['GET', 'POST'])
 def export_logs():
-    return LogController.export_logs()
+    result = LogController.export_logs()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/refresh', methods=['POST'])
+@router.post('/refresh')
 def refresh_logs():
-    return LogController.refresh_logs()
+    result = LogController.refresh_logs()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/clear', methods=['POST'])
+@router.post('/clear')
 def clear_logs():
-    return LogController.clear_logs()
+    result = LogController.clear_logs()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/archive/status', methods=['GET'])
+@router.get('/archive/status')
 def get_archive_status():
-    return LogController.get_archive_status()
+    result = LogController.get_archive_status()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/archive', methods=['POST'])
+@router.post('/archive')
 def archive_logs():
-    return LogController.archive_logs()
+    result = LogController.archive_logs()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/archive/logs', methods=['GET'])
+@router.get('/archive/logs')
 def get_archived_logs():
-    return LogController.get_archived_logs()
+    result = LogController.get_archived_logs()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/archive/<filename>', methods=['GET'])
-def download_archive(filename):
-    return LogController.download_archive(filename)
+@router.get('/archive/{filename}')
+def download_archive(filename: str):
+    result = LogController.download_archive(filename)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@log_bp.route('/archive/<filename>', methods=['DELETE'])
-def delete_archive(filename):
-    return LogController.delete_archive(filename)
+@router.delete('/archive/{filename}')
+def delete_archive(filename: str):
+    result = LogController.delete_archive(filename)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
+
+from api_gateway.websocket.connection_manager import ws_router

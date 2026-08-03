@@ -1,4 +1,4 @@
-from flask import request
+from api_gateway.controllers.request_adapter import request
 from shared.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, \
     TaskDevice, TaskAPI, ReportStatus, ReportType, TaskStatus
 from shared.models.database import db

@@ -11,7 +11,7 @@ def run_server(port):
     subprocess.run([sys.executable, "-u", "app.py", "--port", str(port)], env=env)
 
 def main():
-    ports = [5000]
+    ports = [8888]
     threads = []
     
     for port in ports:

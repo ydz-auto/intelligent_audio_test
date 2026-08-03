@@ -1,0 +1,296 @@
+.rce-step {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.rce-step:last-child { border-bottom: none; }
+
+.rce-step-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.rce-step-icon { font-size: 14px; color: var(--primary-color, #ff6a00); }
+.rce-step-title { font-size: 14px; font-weight: 600; color: var(--text-primary, #333); }
+
+.rce-tag {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.rce-tag-gray { background: #f5f5f5; color: #999; }
+
+.rce-audio-count {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  margin-left: auto;
+}
+
+/* 工具栏 */
+.rce-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background: var(--background-secondary, #f5f6f8);
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+.rce-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  background: var(--background-primary, #fff);
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.rce-tool-btn:hover {
+  border-color: var(--primary-color, #ff6a00);
+  color: var(--primary-color, #ff6a00);
+}
+.rce-tool-btn-danger:hover {
+  border-color: var(--danger-color, #f44336);
+  color: var(--danger-color, #f44336);
+}
+.rce-tool-divider {
+  width: 1px;
+  height: 18px;
+  background: var(--border-color, #e0e0e0);
+  margin: 0 4px;
+}
+
+/* 标签交错面板 */
+.rce-tag-selector-panel,
+.rce-tag-device-panel {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--background-primary, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+}
+.rce-tag-selector-hint,
+.rce-tag-device-hint {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  margin-bottom: 8px;
+}
+.rce-tag-selector-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.rce-tag-chip {
+  padding: 4px 12px;
+  font-size: 12px;
+  background: var(--secondary-light, #f0f0f0);
+  color: var(--text-secondary, #666);
+  border-radius: 12px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+.rce-tag-chip:hover {
+  border-color: var(--primary-color, #ff6a00);
+}
+.rce-tag-chip.selected {
+  background: var(--primary-color, #ff6a00);
+  color: #fff;
+}
+.rce-tag-selector-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* 标签-设备映射 */
+.rce-tag-device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.rce-tag-device-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.rce-tag-name {
+  min-width: 60px;
+  font-weight: 500;
+  color: var(--text-primary, #333);
+}
+.rce-arrow { color: var(--text-light, #999); }
+.rce-device-select { flex: 1; max-width: 300px; }
+
+/* 空状态 */
+.rce-empty-state {
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--text-secondary, #999);
+}
+.rce-empty-state i {
+  font-size: 36px;
+  margin-bottom: 10px;
+  opacity: 0.4;
+}
+.rce-empty-state p {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
+/* 音频列表 */
+.rce-audio-list { display: flex; flex-direction: column; gap: 8px; }
+
+.rce-audio-card {
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.rce-audio-card.is-dragging {
+  opacity: 0.5;
+  border-style: dashed;
+}
+.rce-audio-card.drag-over {
+  border-color: var(--primary-color, #ff6a00);
+  box-shadow: 0 0 0 2px rgba(255, 106, 0, 0.15);
+}
+
+.rce-audio-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--background-secondary, #f5f6f8);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  font-size: 13px;
+  font-weight: 500;
+}
+.rce-audio-card-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+.rce-drag-handle {
+  cursor: grab;
+  color: var(--text-light, #ccc);
+  font-size: 12px;
+}
+.rce-drag-handle:active { cursor: grabbing; }
+.rce-audio-index {
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+}
+.rce-audio-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary, #333);
+  font-weight: 400;
+}
+.rce-audio-card-actions {
+  display: flex;
+  gap: 4px;
+}
+.rce-icon-btn {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  transition: all 0.15s ease;
+}
+.rce-icon-btn:hover {
+  border-color: var(--primary-color, #ff6a00);
+  color: var(--primary-color, #ff6a00);
+}
+.rce-icon-btn-danger:hover {
+  border-color: var(--danger-color, #f44336);
+  color: var(--danger-color, #f44336);
+}
+
+.rce-audio-card-body {
+  padding: 10px 12px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rce-field { display: flex; flex-direction: column; gap: 3px; }
+.rce-field-full { flex: 1 1 100%; }
+.rce-field-sm { max-width: 120px; }
+.rce-field-label { font-size: 12px; font-weight: 500; color: var(--text-secondary, #666); }
+.rce-required { color: var(--danger-color, #f44336); }
+
+.rce-audio-input { display: flex; gap: 4px; align-items: center; }
+.rce-audio-input input {
+  flex: 1;
+  cursor: pointer;
+  background: var(--background-primary, #fff) !important;
+}
+
+.rce-audio-tags {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: var(--background-secondary, #f9f9f9);
+  border-radius: 4px;
+  flex-wrap: wrap;
+}
+.rce-audio-tags-label {
+  font-size: 11px;
+  color: var(--text-secondary, #999);
+  flex-shrink: 0;
+}
+.rce-audio-tag {
+  padding: 1px 8px;
+  font-size: 11px;
+  background: var(--primary-light, #fff0e6);
+  color: var(--primary-color, #ff6a00);
+  border-radius: 10px;
+}
+
+.rce-add-btn { align-self: flex-start; margin-top: 4px; }
+
+.rce-audio-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 11px;
+  background: var(--background-secondary, #f0f0f0);
+  color: var(--text-secondary, #666);
+  border-radius: 10px;
+  white-space: nowrap;
+}
+.rce-audio-duration i {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.rce-device-input {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.rce-device-input select {
+  flex: 1;
+}

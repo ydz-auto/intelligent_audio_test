@@ -6,7 +6,7 @@
 """
 
 from typing import List, Dict, Any
-from flask import request
+from api_gateway.controllers.request_adapter import request
 from shared.models.algorithm_models import (
     AlgorithmDefinition, AlgorithmDeviceParam, AlgorithmApiParam,
     ParamMapping, AlgorithmDimensionRelation, CaseAlgorithmParam, EvaluationDimensionParam,

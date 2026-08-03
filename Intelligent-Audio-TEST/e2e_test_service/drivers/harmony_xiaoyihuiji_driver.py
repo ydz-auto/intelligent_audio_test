@@ -8,7 +8,7 @@ from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from e2e_test_service.config.config import Config
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
 
 # 日志目录路径
 LOG_DEVICE_PATH = "/data/app/el2/100/base/com.huawei.hmos.vassistant/haps/voice_pc/files/log"
@@ -275,7 +275,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
 
         # 采集完后上传到 OSS，然后清理本地临时目录（extract_results_from_archive 会从 OSS 读取）
         for fname in os.listdir(local_dir):
-            oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+            storage.save_file(os.path.join(local_dir, fname), 'case_result',
                              f'{oss_key_prefix}/{fname}')
         shutil.rmtree(local_dir, ignore_errors=True)
 
@@ -322,6 +322,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         # 从 OSS 下载 log/ 前缀下的所有对象到本地临时 log 目录
         oss_log_prefix = f'{oss_key_prefix}/log/'
         try:
+            from shared.clients.oss_client import oss
             oss_keys = oss.list_objects('case_result', prefix=oss_log_prefix)
         except Exception as e:
             self._log(level='ERROR', content=f"列出OSS log对象失败: {oss_log_prefix}, error: {e}", task_id=task_id, test_case_id=test_case_id)
@@ -330,7 +331,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             fname = k[len(oss_log_prefix):] if k.startswith(oss_log_prefix) else os.path.basename(k)
             if fname:
                 try:
-                    oss.download_file('case_result', k, str(log_dir / fname))
+                    storage.load_file(f'case_result/{k}', str(log_dir / fname))
                 except Exception as e:
                     self._log(level='WARNING', content=f"下载OSS对象失败: {k}, error: {e}", task_id=task_id, test_case_id=test_case_id)
 
@@ -830,7 +831,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
 
         # 写完后上传 stm/rttm 到 OSS，然后清理本地临时目录
         for fname in os.listdir(local_dir):
-            oss.upload_file(os.path.join(local_dir, fname), 'case_result',
+            storage.save_file(os.path.join(local_dir, fname), 'case_result',
                              f'{oss_key_prefix}/{fname}')
         shutil.rmtree(local_dir, ignore_errors=True)
 

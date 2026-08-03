@@ -18,17 +18,18 @@ class APITaskRunner:
     def _log(self):
         return self._executor._log
 
-    def setup_endpoints(self, task_id, tc_rel_id, case_name, api_config, current_app):
+    def setup_endpoints(self, task_id, tc_rel_id, case_name, api_config):
         """设置 API 端点和负载均衡"""
-        api_paths = current_app.config.get('API_PATHS', {
-            'health': '/health',
-            'status': '/api/status',
-            'create_task': '/api/create_task',
-            'get_status': '/api/get_status/{task_id}',
-            'get_frame_results': '/api/get_frame_results/{task_id}',
-            'get_final_result': '/api/get_final_result/{task_id}',
-            'delete_task': '/api/delete_task/{task_id}'
-        })
+        import os
+        api_paths = {
+            'health': os.environ.get('API_PATH_HEALTH', '/health'),
+            'status': os.environ.get('API_PATH_STATUS', '/api/status'),
+            'create_task': os.environ.get('API_PATH_CREATE_TASK', '/api/create_task'),
+            'get_status': os.environ.get('API_PATH_GET_STATUS', '/api/get_status/{task_id}'),
+            'get_frame_results': os.environ.get('API_PATH_GET_FRAME_RESULTS', '/api/get_frame_results/{task_id}'),
+            'get_final_result': os.environ.get('API_PATH_GET_FINAL_RESULT', '/api/get_final_result/{task_id}'),
+            'delete_task': os.environ.get('API_PATH_DELETE_TASK', '/api/delete_task/{task_id}')
+        }
 
         base_urls = []
         endpoints = api_config.api_endpoints if hasattr(api_config, 'api_endpoints') and api_config.api_endpoints else []
@@ -201,12 +202,13 @@ class APITaskRunner:
             release_base_url(selected_url)
 
     def wait_for_completion(self, task_id, api_task_id, api_config, api_specific_config, api_paths,
-                            select_base_url, release_base_url, current_app, total_audio_duration):
+                            select_base_url, release_base_url, total_audio_duration):
         """异步轮询等待任务完成"""
+        import os
         dynamic_max_wait_time = total_audio_duration * 1.5
-        default_max_wait_time = current_app.config.get('API_MAX_WAIT_TIME', 43200)
+        default_max_wait_time = int(os.environ.get('API_MAX_WAIT_TIME', '43200'))
         max_wait_time = min(dynamic_max_wait_time, default_max_wait_time)
-        poll_interval = current_app.config.get('API_POLL_INTERVAL', 5)
+        poll_interval = int(os.environ.get('API_POLL_INTERVAL', '5'))
         max_wait_time = max(max_wait_time, 30)
         max_wait_time = max(max_wait_time, poll_interval * 2)
         start_wait_time = time.time()

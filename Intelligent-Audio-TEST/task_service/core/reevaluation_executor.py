@@ -6,7 +6,6 @@ from shared.utils.log_handler import log_and_emit
 from task_service.evaluation.evaluation_service import evaluation_service
 from shared.utils.result_data_store import load_full_result_data
 from sqlalchemy import and_
-from flask import current_app
 
 
 class ReevaluationExecutor:
@@ -54,7 +53,7 @@ class ReevaluationExecutor:
                 'reevaluate_type': reevaluate_type
             })
 
-            task = db.session.query(Task).get(task_id)
+            task = db.session.get(Task, task_id)
             if task:
                 task.status = 'reevaluate_queued'
                 db.session.commit()
@@ -80,11 +79,10 @@ class ReevaluationExecutor:
             reextract_device_output = task_info['reextract_device_output']
             reevaluate_type = task_info['reevaluate_type']
 
-        with current_app.app_context():
-            task = db.session.query(Task).get(task_id)
-            if task:
-                task.status = 'reevaluating'
-                db.session.commit()
+        task = db.session.get(Task, task_id)
+        if task:
+            task.status = 'reevaluating'
+            db.session.commit()
 
         log_and_emit('INFO', 'reevaluator',
                      f"开始执行重新评估: task_id={task_id}",
@@ -101,289 +99,51 @@ class ReevaluationExecutor:
         success = False
 
         try:
-            with current_app.app_context():
+            # 1. 重新提取设备输出（如果需要）
+            if reextract_device_output:
+                test_results = self._reextract_device_output(task_id, reevaluate_type)
+            else:
+                test_results = db.session.query(TestResult).filter_by(task_id=task_id).all()
+
+            # 2. 收集需要重新评估的用例
+            if reevaluate_type == 'all':
+                cases_to_reevaluate = self._collect_reevaluation_cases_all(
+                    task_id, test_results, reextract_device_output
+                )
+            elif reevaluate_type == 'failed':
+                cases_to_reevaluate = self._collect_reevaluation_cases_failed(
+                    task_id, test_results, reextract_device_output
+                )
+            else:
                 cases_to_reevaluate = []
-                test_results = []
 
-                if reextract_device_output:
-                    # 跨服务调用：通过 gRPC DeviceResultService 重新提取设备结果
-                    from shared.clients.grpc_clients import get_device_result_service_stub
-                    import json as _json_re
-                    from shared.proto import e2e_service_pb2 as _e2e_pb2
-                    _stub = get_device_result_service_stub()
-                    _reeextract_config = {
-                        'evaluation_status': None if reevaluate_type == 'all' else 'failed',
-                    }
-                    _resp = _stub.ReextractResult(_e2e_pb2.ReextractResultRequest(
-                        task_id=str(task_id),
-                        reextract_config=_json_re.dumps(_reeextract_config)
-                    ))
-                    reextract_result = {
-                        'success': _resp.success,
-                        'message': _resp.message,
-                        'data': _json_re.loads(_resp.data) if _resp.data else None,
-                    }
-
-                    if not reextract_result.get('success'):
-                        log_and_emit('WARNING', 'reevaluator',
-                                     f"重新提取设备输出失败: {reextract_result.get('message')}",
-                                     task_id=task_id)
-                    else:
-                        log_and_emit('INFO', 'reevaluator',
-                                     f"重新提取设备输出完成: {reextract_result.get('message')}",
-                                     task_id=task_id)
-
-                    test_results = db.session.query(TestResult).filter_by(task_id=task_id).all()
-                else:
-                    test_results = db.session.query(TestResult).filter_by(task_id=task_id).all()
-
-                if reevaluate_type == 'all':
-                    for result in test_results:
-                        if result.execution_status != 'completed':
-                            continue
-
-                        if not result.algorithm_result:
-                            continue
-
-                        algo_result = result.algorithm_result or {}
-                        # 循环反序列化，处理可能的双重序列化旧数据
-                        while isinstance(algo_result, str):
-                            try:
-                                algo_result = json.loads(algo_result)
-                            except (json.JSONDecodeError, ValueError):
-                                algo_result = {}
-                        if not isinstance(algo_result, dict):
-                            algo_result = {}
-                        full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
-                        reference_params = full_data.get(
-                            'adjusted_reference_params', []
-                        ) if full_data else []
-
-                        # DEBUG: 重新评估读取状态
-                        _rr_out = algo_result.get('rounds', [{}])[0].get('output', {}) if isinstance(algo_result, dict) else {}
-                        log_and_emit('DEBUG', 'reevaluator',
-                                     f"[reevaluate READ] result_id={result.id}, result_data_path={getattr(result, 'result_data_path', None)!r}, full_data_keys={list(full_data.keys()) if full_data else 'None'}, output_record_file={_rr_out.get('record_file', '<MISSING>')!r}",
-                                     task_id=task_id, test_case_id=result.test_case_id)
-
-                        # 从文件恢复 raw_results，重新映射字段（修复多对一映射字段丢失问题）
-                        raw_results_list = full_data.get('raw_results_list') if full_data else None
-                        if raw_results_list:
-                            # 跨服务调用：通过 gRPC DeviceResultService 转换结果
-                            from shared.clients.grpc_clients import get_device_result_service_stub
-                            from shared.infrastructure.base_executor import _DeviceResultCollectorProxy
-                            from shared.models.models import TestCase
-                            test_case = db.session.get(TestCase, result.test_case_id)
-                            algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
-                            collector = _DeviceResultCollectorProxy(get_device_result_service_stub())
-                            remapped_results = collector.convert_results(
-                                [dict(r, raw_results=r.get('raw_results', {})) for r in raw_results_list],
-                                algorithm_type
-                            )
-                            # 用重新映射的字段更新 algo_result.rounds[].output
-                            rounds_in_algo = algo_result.get('rounds', [])
-                            for ri, remapped in enumerate(remapped_results):
-                                if ri < len(rounds_in_algo):
-                                    from shared.algorithm.field_mapper import get_field_mapper
-                                    fm = get_field_mapper()
-                                    mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
-                                    round_output = rounds_in_algo[ri].setdefault('output', {})
-                                    if isinstance(mapped_fields, list):
-                                        for f in mapped_fields:
-                                            target = f.get('code')
-                                            dim_id = f.get('dimension_id')
-                                            # 维度专属 key
-                                            if dim_id is not None:
-                                                dim_key = f'{target}__dim_{dim_id}'
-                                                dim_val = remapped.get(dim_key)
-                                                if dim_val is not None:
-                                                    round_output[dim_key] = dim_val
-                                            # 通用 key
-                                            val = remapped.get(target)
-                                            if val is not None:
-                                                if target not in round_output or not round_output[target]:
-                                                    round_output[target] = val
-
-                        tc_rel = db.session.query(TaskCase).filter_by(
-                            task_id=task_id,
-                            test_case_id=result.test_case_id
-                        ).first()
-
-                        if tc_rel:
-                            case_info = {
-                                'test_case_id': result.test_case_id,
-                                'result_id': result.id,
-                                'algorithm_result': algo_result,
-                                'reference_params': reference_params,
-                                'device_id': result.device_id,
-                                'task_id': task_id,
-                                'reextracted': reextract_device_output
-                            }
-                            cases_to_reevaluate.append(case_info)
-
-                elif reevaluate_type == 'failed':
-                    for result in test_results:
-                        if result.execution_status != 'completed':
-                            continue
-
-                        tc_rel = db.session.query(TaskCase).filter_by(
-                            task_id=task_id,
-                            test_case_id=result.test_case_id
-                        ).first()
-
-                        if not tc_rel or tc_rel.evaluation_status != 'failed':
-                            continue
-
-                        if not result.algorithm_result:
-                            continue
-
-                        algo_result = result.algorithm_result or {}
-                        # 循环反序列化，处理可能的双重序列化旧数据
-                        while isinstance(algo_result, str):
-                            try:
-                                algo_result = json.loads(algo_result)
-                            except (json.JSONDecodeError, ValueError):
-                                algo_result = {}
-                        if not isinstance(algo_result, dict):
-                            algo_result = {}
-                        full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
-                        reference_params = full_data.get(
-                            'adjusted_reference_params', []
-                        ) if full_data else []
-
-                        # DEBUG: 重新评估读取状态
-                        _rr_out = algo_result.get('rounds', [{}])[0].get('output', {}) if isinstance(algo_result, dict) else {}
-                        log_and_emit('DEBUG', 'reevaluator',
-                                     f"[reevaluate READ] result_id={result.id}, result_data_path={getattr(result, 'result_data_path', None)!r}, full_data_keys={list(full_data.keys()) if full_data else 'None'}, output_record_file={_rr_out.get('record_file', '<MISSING>')!r}",
-                                     task_id=task_id, test_case_id=result.test_case_id)
-
-                        # 从文件恢复 raw_results，重新映射字段（修复多对一映射字段丢失问题）
-                        raw_results_list = full_data.get('raw_results_list') if full_data else None
-                        if raw_results_list:
-                            # 跨服务调用：通过 gRPC DeviceResultService 转换结果
-                            from shared.clients.grpc_clients import get_device_result_service_stub
-                            from shared.infrastructure.base_executor import _DeviceResultCollectorProxy
-                            from shared.models.models import TestCase
-                            test_case = db.session.get(TestCase, result.test_case_id)
-                            algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
-                            collector = _DeviceResultCollectorProxy(get_device_result_service_stub())
-                            remapped_results = collector.convert_results(
-                                [dict(r, raw_results=r.get('raw_results', {})) for r in raw_results_list],
-                                algorithm_type
-                            )
-                            # 用重新映射的字段更新 algo_result.rounds[].output
-                            rounds_in_algo = algo_result.get('rounds', [])
-                            for ri, remapped in enumerate(remapped_results):
-                                if ri < len(rounds_in_algo):
-                                    from shared.algorithm.field_mapper import get_field_mapper
-                                    fm = get_field_mapper()
-                                    mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
-                                    round_output = rounds_in_algo[ri].setdefault('output', {})
-                                    if isinstance(mapped_fields, list):
-                                        for f in mapped_fields:
-                                            target = f.get('code')
-                                            dim_id = f.get('dimension_id')
-                                            # 维度专属 key
-                                            if dim_id is not None:
-                                                dim_key = f'{target}__dim_{dim_id}'
-                                                dim_val = remapped.get(dim_key)
-                                                if dim_val is not None:
-                                                    round_output[dim_key] = dim_val
-                                            # 通用 key
-                                            val = remapped.get(target)
-                                            if val is not None:
-                                                if target not in round_output or not round_output[target]:
-                                                    round_output[target] = val
-                        result_type = full_data.get(
-                            'result_type', 'unknown'
-                        ) if full_data else 'unknown'
-
-                        case_info = {
-                            'test_case_id': result.test_case_id,
-                            'result_id': result.id,
-                            'algorithm_result': algo_result,
-                            'reference_params': reference_params,
-                            'device_id': result.device_id,
-                            'task_id': task_id,
-                            'reextracted': reextract_device_output,
-                            'result_type': result_type
-                        }
-                        cases_to_reevaluate.append(case_info)
-
-                if not cases_to_reevaluate:
-                    log_and_emit('WARNING', 'reevaluator',
-                                 f"没有需要重新评估的用例: task_id={task_id}, test_results_count={len(test_results)}",
-                                 task_id=task_id)
-                    success = True
-                    return
-
-                # 将不满足重新评估条件的用例的评估状态标记为已完成，避免状态不一致
-                reevaluated_case_ids = {c['test_case_id'] for c in cases_to_reevaluate}
-                skipped_tc_rels = db.session.query(TaskCase).filter(
-                    TaskCase.task_id == task_id,
-                    ~TaskCase.test_case_id.in_(reevaluated_case_ids),
-                    TaskCase.execution_status == 'completed',
-                    TaskCase.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
-                ).all()
-                for tc_rel in skipped_tc_rels:
-                    tc_rel.evaluation_status = 'completed'
-                if skipped_tc_rels:
-                    db.session.commit()
-
-                from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
-
-                for case_info in cases_to_reevaluate:
-                    test_case_id = case_info['test_case_id']
-                    result_id = case_info['result_id']
-                    algorithm_result = case_info['algorithm_result']
-                    reference_params = case_info.get('reference_params', [])
-                    device_id = case_info['device_id']
-
-                    try:
-                        task = db.session.query(Task).get(task_id)
-                        test_type = task.type if task and task.type else 'api'
-
-                        from shared.models.models import TestCase
-                        test_case = db.session.get(TestCase, test_case_id)
-                        algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
-                        reference_params_col = getattr(test_case, 'reference_params', None) if test_case else None
-
-                        # 检查是否为多轮结果
-                        if algorithm_result and 'rounds' in algorithm_result:
-                            self._reevaluate_multi_round(
-                                task_id=task_id,
-                                result=result_id,
-                                test_case_id=test_case_id,
-                                algorithm_result=algorithm_result,
-                                test_type=test_type,
-                                algorithm_type=algorithm_type,
-                                reference_params_col=reference_params_col,
-                            )
-                        else:
-                            self._reevaluate_single(
-                                task_id=task_id,
-                                result_id=result_id,
-                                test_case_id=test_case_id,
-                                algorithm_result=algorithm_result,
-                                reference_params=reference_params,
-                                test_type=test_type,
-                                algorithm_type=algorithm_type,
-                                reference_params_col=reference_params_col,
-                            )
-
-                        log_and_emit('INFO', 'reevaluator',
-                                     f"已提交评估: test_case_id={test_case_id}, device_id={device_id}",
-                                     task_id=task_id, test_case_id=test_case_id)
-
-                    except Exception as e:
-                        import traceback
-                        log_and_emit('ERROR', 'reevaluator',
-                                     f"重新评估用例失败: {str(e)}, traceback: {traceback.format_exc()}",
-                                     task_id=task_id, test_case_id=test_case_id)
-
-                success = True
-                log_and_emit('INFO', 'reevaluator',
-                             f"重新评估任务已提交: {len(cases_to_reevaluate)} 个用例",
+            if not cases_to_reevaluate:
+                log_and_emit('WARNING', 'reevaluator',
+                             f"没有需要重新评估的用例: task_id={task_id}, test_results_count={len(test_results)}",
                              task_id=task_id)
+                success = True
+                return
+
+            # 将不满足重新评估条件的用例的评估状态标记为已完成，避免状态不一致
+            reevaluated_case_ids = {c['test_case_id'] for c in cases_to_reevaluate}
+            skipped_tc_rels = db.session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                ~TaskCase.test_case_id.in_(reevaluated_case_ids),
+                TaskCase.execution_status == 'completed',
+                TaskCase.evaluation_status.in_(['pending', 'queued', 'running', 'calculating'])
+            ).all()
+            for tc_rel in skipped_tc_rels:
+                tc_rel.evaluation_status = 'completed'
+            if skipped_tc_rels:
+                db.session.commit()
+
+            # 3. 提交用例进行重新评估
+            self._submit_cases_for_reevaluation(task_id, cases_to_reevaluate)
+
+            success = True
+            log_and_emit('INFO', 'reevaluator',
+                         f"重新评估任务已提交: {len(cases_to_reevaluate)} 个用例",
+                         task_id=task_id)
 
         except Exception as e:
             import traceback
@@ -393,6 +153,240 @@ class ReevaluationExecutor:
 
         finally:
             self._on_complete(task_id, success)
+
+    def _reextract_device_output(self, task_id, reevaluate_type):
+        """通过gRPC重新提取设备输出"""
+        # 跨服务调用：通过 gRPC DeviceResultService 重新提取设备结果
+        from shared.clients.grpc_clients import get_device_result_service_stub
+        import json as _json_re
+        from shared.proto import e2e_service_pb2 as _e2e_pb2
+        _stub = get_device_result_service_stub()
+        _reeextract_config = {
+            'evaluation_status': None if reevaluate_type == 'all' else 'failed',
+        }
+        _resp = _stub.ReextractResult(_e2e_pb2.ReextractResultRequest(
+            task_id=str(task_id),
+            reextract_config=_json_re.dumps(_reeextract_config)
+        ))
+        reextract_result = {
+            'success': _resp.success,
+            'message': _resp.message,
+            'data': _json_re.loads(_resp.data) if _resp.data else None,
+        }
+
+        if not reextract_result.get('success'):
+            log_and_emit('WARNING', 'reevaluator',
+                         f"重新提取设备输出失败: {reextract_result.get('message')}",
+                         task_id=task_id)
+        else:
+            log_and_emit('INFO', 'reevaluator',
+                         f"重新提取设备输出完成: {reextract_result.get('message')}",
+                         task_id=task_id)
+
+        test_results = db.session.query(TestResult).filter_by(task_id=task_id).all()
+        return test_results
+
+    def _collect_reevaluation_cases_all(self, task_id, test_results, reextract_device_output):
+        """收集所有需要重新评估的用例(all类型)"""
+        cases_to_reevaluate = []
+        for result in test_results:
+            if result.execution_status != 'completed':
+                continue
+
+            if not result.algorithm_result:
+                continue
+
+            algo_result = result.algorithm_result or {}
+            # 循环反序列化，处理可能的双重序列化旧数据
+            while isinstance(algo_result, str):
+                try:
+                    algo_result = json.loads(algo_result)
+                except (json.JSONDecodeError, ValueError):
+                    algo_result = {}
+            if not isinstance(algo_result, dict):
+                algo_result = {}
+            full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+
+            # DEBUG: 重新评估读取状态
+            _rr_out = algo_result.get('rounds', [{}])[0].get('output', {}) if isinstance(algo_result, dict) else {}
+            log_and_emit('DEBUG', 'reevaluator',
+                         f"[reevaluate READ] result_id={result.id}, result_data_path={getattr(result, 'result_data_path', None)!r}, full_data_keys={list(full_data.keys()) if full_data else 'None'}, output_record_file={_rr_out.get('record_file', '<MISSING>')!r}",
+                         task_id=task_id, test_case_id=result.test_case_id)
+
+            # 从文件恢复 raw_results，重新映射字段（修复多对一映射字段丢失问题）
+            self._remap_fields_from_raw(algo_result, full_data, result.test_case_id)
+
+            tc_rel = db.session.query(TaskCase).filter_by(
+                task_id=task_id,
+                test_case_id=result.test_case_id
+            ).first()
+
+            if tc_rel:
+                case_info = self._prepare_case_info(
+                    result, task_id, algo_result, full_data, reextract_device_output, tc_rel
+                )
+                cases_to_reevaluate.append(case_info)
+        return cases_to_reevaluate
+
+    def _collect_reevaluation_cases_failed(self, task_id, test_results, reextract_device_output):
+        """收集失败的用例(failed类型)"""
+        cases_to_reevaluate = []
+        for result in test_results:
+            if result.execution_status != 'completed':
+                continue
+
+            tc_rel = db.session.query(TaskCase).filter_by(
+                task_id=task_id,
+                test_case_id=result.test_case_id
+            ).first()
+
+            if not tc_rel or tc_rel.evaluation_status != 'failed':
+                continue
+
+            if not result.algorithm_result:
+                continue
+
+            algo_result = result.algorithm_result or {}
+            # 循环反序列化，处理可能的双重序列化旧数据
+            while isinstance(algo_result, str):
+                try:
+                    algo_result = json.loads(algo_result)
+                except (json.JSONDecodeError, ValueError):
+                    algo_result = {}
+            if not isinstance(algo_result, dict):
+                algo_result = {}
+            full_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+
+            # DEBUG: 重新评估读取状态
+            _rr_out = algo_result.get('rounds', [{}])[0].get('output', {}) if isinstance(algo_result, dict) else {}
+            log_and_emit('DEBUG', 'reevaluator',
+                         f"[reevaluate READ] result_id={result.id}, result_data_path={getattr(result, 'result_data_path', None)!r}, full_data_keys={list(full_data.keys()) if full_data else 'None'}, output_record_file={_rr_out.get('record_file', '<MISSING>')!r}",
+                         task_id=task_id, test_case_id=result.test_case_id)
+
+            # 从文件恢复 raw_results，重新映射字段（修复多对一映射字段丢失问题）
+            self._remap_fields_from_raw(algo_result, full_data, result.test_case_id)
+
+            result_type = full_data.get(
+                'result_type', 'unknown'
+            ) if full_data else 'unknown'
+
+            case_info = self._prepare_case_info(
+                result, task_id, algo_result, full_data, reextract_device_output, tc_rel, result_type
+            )
+            cases_to_reevaluate.append(case_info)
+        return cases_to_reevaluate
+
+    def _prepare_case_info(self, result, task_id, algo_result, full_data, reextract_device_output, tc_rel, result_type=None):
+        """构建case_info字典的公共逻辑"""
+        reference_params = full_data.get(
+            'adjusted_reference_params', []
+        ) if full_data else []
+
+        case_info = {
+            'test_case_id': result.test_case_id,
+            'result_id': result.id,
+            'algorithm_result': algo_result,
+            'reference_params': reference_params,
+            'device_id': result.device_id,
+            'task_id': task_id,
+            'reextracted': reextract_device_output,
+        }
+        if result_type is not None:
+            case_info['result_type'] = result_type
+        return case_info
+
+    def _remap_fields_from_raw(self, algo_result, full_data, test_case_id):
+        """从raw_results重新映射字段的公共逻辑（修复多对一映射字段丢失问题）"""
+        raw_results_list = full_data.get('raw_results_list') if full_data else None
+        if not raw_results_list:
+            return
+        # 跨服务调用：通过 gRPC DeviceResultService 转换结果
+        from shared.clients.grpc_clients import get_device_result_service_stub
+        from shared.infrastructure.base_executor import _DeviceResultCollectorProxy
+        from shared.models.models import TestCase
+        test_case = db.session.get(TestCase, test_case_id)
+        algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
+        collector = _DeviceResultCollectorProxy(get_device_result_service_stub())
+        remapped_results = collector.convert_results(
+            [dict(r, raw_results=r.get('raw_results', {})) for r in raw_results_list],
+            algorithm_type
+        )
+        # 用重新映射的字段更新 algo_result.rounds[].output
+        rounds_in_algo = algo_result.get('rounds', [])
+        for ri, remapped in enumerate(remapped_results):
+            if ri < len(rounds_in_algo):
+                from shared.algorithm.field_mapper import get_field_mapper
+                fm = get_field_mapper()
+                mapped_fields = fm.get_mapped_device_output_fields(algorithm_type)
+                round_output = rounds_in_algo[ri].setdefault('output', {})
+                if isinstance(mapped_fields, list):
+                    for f in mapped_fields:
+                        target = f.get('code')
+                        dim_id = f.get('dimension_id')
+                        # 维度专属 key
+                        if dim_id is not None:
+                            dim_key = f'{target}__dim_{dim_id}'
+                            dim_val = remapped.get(dim_key)
+                            if dim_val is not None:
+                                round_output[dim_key] = dim_val
+                        # 通用 key
+                        val = remapped.get(target)
+                        if val is not None:
+                            if target not in round_output or not round_output[target]:
+                                round_output[target] = val
+
+    def _submit_cases_for_reevaluation(self, task_id, cases_to_reevaluate):
+        """提交用例进行重新评估"""
+        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
+
+        for case_info in cases_to_reevaluate:
+            test_case_id = case_info['test_case_id']
+            result_id = case_info['result_id']
+            algorithm_result = case_info['algorithm_result']
+            reference_params = case_info.get('reference_params', [])
+            device_id = case_info['device_id']
+
+            try:
+                task = db.session.get(Task, task_id)
+                test_type = task.type if task and task.type else 'api'
+
+                from shared.models.models import TestCase
+                test_case = db.session.get(TestCase, test_case_id)
+                algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
+                reference_params_col = getattr(test_case, 'reference_params', None) if test_case else None
+
+                # 检查是否为多轮结果
+                if algorithm_result and 'rounds' in algorithm_result:
+                    self._reevaluate_multi_round(
+                        task_id=task_id,
+                        result=result_id,
+                        test_case_id=test_case_id,
+                        algorithm_result=algorithm_result,
+                        test_type=test_type,
+                        algorithm_type=algorithm_type,
+                        reference_params_col=reference_params_col,
+                    )
+                else:
+                    self._reevaluate_single(
+                        task_id=task_id,
+                        result_id=result_id,
+                        test_case_id=test_case_id,
+                        algorithm_result=algorithm_result,
+                        reference_params=reference_params,
+                        test_type=test_type,
+                        algorithm_type=algorithm_type,
+                        reference_params_col=reference_params_col,
+                    )
+
+                log_and_emit('INFO', 'reevaluator',
+                             f"已提交评估: test_case_id={test_case_id}, device_id={device_id}",
+                             task_id=task_id, test_case_id=test_case_id)
+
+            except Exception as e:
+                import traceback
+                log_and_emit('ERROR', 'reevaluator',
+                             f"重新评估用例失败: {str(e)}, traceback: {traceback.format_exc()}",
+                             task_id=task_id, test_case_id=test_case_id)
 
     def _reevaluate_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
                                reference_params_col=None):
@@ -433,19 +427,90 @@ class ReevaluationExecutor:
 
         test_case = db.session.get(TestCase, test_case_id)
 
+        # 分派到具体的多轮评估实现
         if is_e2e:
-            # E2E: 一次性评估所有轮（不传 round_number，evaluate_case 构建完整 rounds_list）
+            self._reevaluate_e2e_multi_round(
+                task_id, result, test_case_id, algorithm_result,
+                test_type, algorithm_type, reference_params_col, rounds, test_case
+            )
+        else:
+            self._reevaluate_api_multi_round(
+                task_id, result, test_case_id, algorithm_result,
+                test_type, algorithm_type, reference_params_col, rounds, test_case
+            )
+
+    def _reevaluate_e2e_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
+                                     reference_params_col, rounds, test_case):
+        """E2E多轮评估"""
+        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
+
+        # E2E: 一次性评估所有轮（不传 round_number，evaluate_case 构建完整 rounds_list）
+        algo_params = {}
+        if test_case and test_case.config:
+            config = test_case.config
+            config_rounds = config.get('rounds', [])
+            if config_rounds and isinstance(config_rounds[0], dict):
+                algo_params = config_rounds[0].get('algorithm_params', {})
+
+        full_case_params = {
+            'algorithm_type': algorithm_type,
+            'algorithm_params': algo_params,
+            'reference_params': rounds[0].get('reference_params', []) if rounds else [],
+            'reference_params_col': reference_params_col,
+        }
+
+        try:
+            eval_params = CaseParameterExtractor.get_evaluation_params(
+                case_config=full_case_params,
+                algorithm_result=algorithm_result,
+                test_type=test_type,
+            )
+            eval_params['algorithm_type'] = algorithm_type
+            eval_params['test_type'] = test_type
+            if reference_params_col is not None:
+                eval_params['reference_params_col'] = reference_params_col
+
+            evaluation_service.evaluate_case(
+                task_id=task_id,
+                result_id=result,
+                test_case_id=test_case_id,
+                algorithm_result=algorithm_result,
+                **eval_params,
+            )
+
+            log_and_emit('INFO', 'reevaluator',
+                        f"已提交 E2E 多轮评估: test_case_id={test_case_id}, rounds={len(rounds)}",
+                        task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            import traceback
+            log_and_emit('ERROR', 'reevaluator',
+                        f"E2E 多轮重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
+                        task_id=task_id, test_case_id=test_case_id)
+
+    def _reevaluate_api_multi_round(self, task_id, result, test_case_id, algorithm_result, test_type, algorithm_type,
+                                     reference_params_col, rounds, test_case):
+        """API多轮逐轮评估"""
+        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
+
+        # API: 逐轮评估
+        for round_idx, round_data in enumerate(rounds):
+            evaluation = round_data.get('round_evaluation', {})
+            round_number = round_data.get('round_number', round_idx + 1) - 1
+
+            if not evaluation:
+                continue
+
             algo_params = {}
             if test_case and test_case.config:
                 config = test_case.config
                 config_rounds = config.get('rounds', [])
-                if config_rounds and isinstance(config_rounds[0], dict):
-                    algo_params = config_rounds[0].get('algorithm_params', {})
+                if round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
+                    algo_params = config_rounds[round_idx].get('algorithm_params', {})
 
             full_case_params = {
                 'algorithm_type': algorithm_type,
                 'algorithm_params': algo_params,
-                'reference_params': rounds[0].get('reference_params', []) if rounds else [],
+                'reference_params': round_data.get('reference_params', []),
                 'reference_params_col': reference_params_col,
             }
 
@@ -465,73 +530,22 @@ class ReevaluationExecutor:
                     result_id=result,
                     test_case_id=test_case_id,
                     algorithm_result=algorithm_result,
+                    round_number=round_number,
                     **eval_params,
                 )
 
                 log_and_emit('INFO', 'reevaluator',
-                            f"已提交 E2E 多轮评估: test_case_id={test_case_id}, rounds={len(rounds)}",
+                            f"已提交轮次评估: test_case_id={test_case_id}, round={round_number}",
                             task_id=task_id, test_case_id=test_case_id)
             except Exception as e:
                 import traceback
                 log_and_emit('ERROR', 'reevaluator',
-                            f"E2E 多轮重新评估失败: error={str(e)}, traceback={traceback.format_exc()}",
+                            f"轮次重新评估失败: round={round_number}, error={str(e)}, traceback={traceback.format_exc()}",
                             task_id=task_id, test_case_id=test_case_id)
 
-        else:
-            # API: 逐轮评估
-            for round_idx, round_data in enumerate(rounds):
-                evaluation = round_data.get('round_evaluation', {})
-                round_number = round_data.get('round_number', round_idx + 1) - 1
-
-                if not evaluation:
-                    continue
-
-                algo_params = {}
-                if test_case and test_case.config:
-                    config = test_case.config
-                    config_rounds = config.get('rounds', [])
-                    if round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
-                        algo_params = config_rounds[round_idx].get('algorithm_params', {})
-
-                full_case_params = {
-                    'algorithm_type': algorithm_type,
-                    'algorithm_params': algo_params,
-                    'reference_params': round_data.get('reference_params', []),
-                    'reference_params_col': reference_params_col,
-                }
-
-                try:
-                    eval_params = CaseParameterExtractor.get_evaluation_params(
-                        case_config=full_case_params,
-                        algorithm_result=algorithm_result,
-                        test_type=test_type,
-                    )
-                    eval_params['algorithm_type'] = algorithm_type
-                    eval_params['test_type'] = test_type
-                    if reference_params_col is not None:
-                        eval_params['reference_params_col'] = reference_params_col
-
-                    evaluation_service.evaluate_case(
-                        task_id=task_id,
-                        result_id=result,
-                        test_case_id=test_case_id,
-                        algorithm_result=algorithm_result,
-                        round_number=round_number,
-                        **eval_params,
-                    )
-
-                    log_and_emit('INFO', 'reevaluator',
-                                f"已提交轮次评估: test_case_id={test_case_id}, round={round_number}",
-                                task_id=task_id, test_case_id=test_case_id)
-                except Exception as e:
-                    import traceback
-                    log_and_emit('ERROR', 'reevaluator',
-                                f"轮次重新评估失败: round={round_number}, error={str(e)}, traceback={traceback.format_exc()}",
-                                task_id=task_id, test_case_id=test_case_id)
-
-            # API 结果没有顶层 aggregated，需从 rounds 中计算
-            if not algorithm_result.get('aggregated'):
-                self._compute_and_store_api_aggregated(result, algorithm_result)
+        # API 结果没有顶层 aggregated，需从 rounds 中计算
+        if not algorithm_result.get('aggregated'):
+            self._compute_and_store_api_aggregated(result, algorithm_result)
 
     def _reevaluate_single(self, task_id, result_id, test_case_id, algorithm_result, reference_params, test_type, algorithm_type,
                            reference_params_col=None):
@@ -634,11 +648,10 @@ class ReevaluationExecutor:
             self.is_reevaluating = False
             self.running_task_id = None
 
-        with current_app.app_context():
-            task = db.session.query(Task).get(task_id)
-            if task:
-                task.status = 'completed' if success else 'failed'
-                db.session.commit()
+        task = db.session.get(Task, task_id)
+        if task:
+            task.status = 'completed' if success else 'failed'
+            db.session.commit()
 
         log_and_emit('INFO', 'reevaluator',
                      f"重新评估完成: task_id={task_id}, success={success}",

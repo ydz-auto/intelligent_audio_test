@@ -1,4 +1,4 @@
-from flask import request, current_app
+from api_gateway.controllers.request_adapter import request
 from shared.models.models import Task, TaskCase
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
@@ -21,7 +21,7 @@ class ExecutionController:
             return error_response("该任务中没有待运行的用例")
 
         # 开始异步执行（通过 gRPC ExecutionService 启动任务）
-        app = current_app._get_current_object()
+        app = None
         success, message = execution_engine.start_task(app, task_id)
 
         if success:
@@ -36,7 +36,7 @@ class ExecutionController:
 
         action = req.action
         # 通过 gRPC ExecutionService 控制任务
-        app = current_app._get_current_object()
+        app = None
         success, message = execution_engine.control_task(app, task_id, action)
         
         if success:

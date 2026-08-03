@@ -343,7 +343,7 @@ class ExecutionEngine:
         # 获取任务类型和关联的API
         local_db_session = db.session()
         try:
-            task = local_db_session.query(Task).get(task_id)
+            task = local_db_session.get(Task, task_id)
             if not task:
                 return False, "任务不存在"
             
@@ -433,7 +433,7 @@ class ExecutionEngine:
             # 更新任务状态为queued
             local_db_session = db.session()
             try:
-                task = local_db_session.query(Task).get(task_id)
+                task = local_db_session.get(Task, task_id)
                 if task:
                     task.status = 'queued'
                     local_db_session.commit()
@@ -460,7 +460,7 @@ class ExecutionEngine:
                     task_type = queued_task['type']
                     api_ids = queued_task['api_ids']
 
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     task_status = task.status if task else None
                     
                     if task_status == 'stopped':
@@ -551,7 +551,7 @@ class ExecutionEngine:
         # 使用本地会话确保独立可靠的会话
         local_db_session = db.session()
         try:
-            task = local_db_session.query(Task).get(task_id)
+            task = local_db_session.get(Task, task_id)
             if not task:
                 return False, "任务不存在"
 
@@ -755,7 +755,7 @@ class ExecutionEngine:
             local_db_session = db.session()
             try:
                 # 获取任务对象
-                task = local_db_session.query(Task).get(task_id)
+                task = local_db_session.get(Task, task_id)
                 if not task:
                     self._log(
                         level='ERROR', 
@@ -785,7 +785,7 @@ class ExecutionEngine:
                 local_db_session = db.session()
                 try:
                     # 重新获取任务对象，确保它在有效会话中
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     if not task:
                         self._log(
                             level='ERROR', 
@@ -800,7 +800,7 @@ class ExecutionEngine:
                             from shared.models.models import TaskAPI
                             # 获取API配置
                             task_api = local_db_session.query(TaskAPI).filter_by(task_id=task.id).first()
-                            api_config = local_db_session.query(API).get(task_api.api_id) if task_api else None
+                            api_config = local_db_session.get(API, task_api.api_id) if task_api else None
                             
                             # 获取可用的API端点
                             available_endpoints = []
@@ -850,7 +850,7 @@ class ExecutionEngine:
                     local_db_session = db.session()
                     try:
                         # 重新获取任务对象，确保它在有效会话中
-                        task = local_db_session.query(Task).get(task_id)
+                        task = local_db_session.get(Task, task_id)
                         if not task:
                             self._log(
                                 level='ERROR', 
@@ -987,7 +987,7 @@ class ExecutionEngine:
                                 task_id=task_id
                             )
                             from shared.models.models import PlaybackDevice
-                            case = local_db_session.query(TestCase).get(tc_rel.test_case_id)
+                            case = local_db_session.get(TestCase, tc_rel.test_case_id)
                             if case:
                                 playback_devices = set()
                                 # 从配置中获取音频播放设备
@@ -1018,7 +1018,7 @@ class ExecutionEngine:
                                 
                                 # 检查播放设备状态
                                 for device_id in playback_devices:
-                                    playback_dev = local_db_session.query(PlaybackDevice).get(device_id)
+                                    playback_dev = local_db_session.get(PlaybackDevice, device_id)
                                     if playback_dev:
                                         pb_dev_status = playback_dev.status
                                         self._log(
@@ -1079,7 +1079,7 @@ class ExecutionEngine:
                         # 注意：只有真正进入等待队列的用例才会被统计为"排队中"
 
                         # 重新获取任务对象以避免 detached instance 问题
-                        task = local_db_session.query(Task).get(task_id)
+                        task = local_db_session.get(Task, task_id)
                         if not task:
                             continue
                         
@@ -1126,7 +1126,7 @@ class ExecutionEngine:
                             success = self._execute_e2e_case(task_id, tc_rel.id)
                             
                             # 重新获取tc_rel对象，因为execute_e2e_case方法内部可能已经更新了它
-                            tc_rel = local_db_session.query(TaskCase).get(tc_rel.id)
+                            tc_rel = local_db_session.get(TaskCase, tc_rel.id)
                             
                             # 更新任务统计信息
                             success_count = local_db_session.query(TaskCase).filter(
@@ -1157,7 +1157,7 @@ class ExecutionEngine:
                 # 检查是否所有测试用例都已执行完成，提前更新任务状态
                 local_db_session = db.session()
                 try:
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     if task:
                         # 获取所有测试用例
                         all_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id).count()
@@ -1434,7 +1434,7 @@ class ExecutionEngine:
                     local_db_session = db.session()
                     try:
                         # 重新获取任务对象，确保它在有效会话中
-                        task = local_db_session.query(Task).get(task_id)
+                        task = local_db_session.get(Task, task_id)
                         if not task:
                             # 任务不存在，直接返回，不继续处理
                             return
@@ -1513,7 +1513,7 @@ class ExecutionEngine:
                 local_db_session = db.session()
                 try:
                     # 重新获取任务对象，确保它在有效会话中
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     if not task:
                         self._log(
                             level='ERROR', 
@@ -1609,7 +1609,7 @@ class ExecutionEngine:
                 should_cleanup = True
                 local_db_session = db.session()
                 try:
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     # 只有当任务明确处于 'paused' 状态时，才保留资源（以便恢复）
                     # 如果任务被停止 ('stopped')、完成 ('completed') 或失败 ('failed')，必须清理
                     if task and task.status == 'paused' and not stop_event.is_set():
@@ -1729,7 +1729,7 @@ class ExecutionEngine:
             # 更新任务统计信息（基于 api_test_service 已写入数据库的 TaskCase 状态）
             local_db_session = db.session()
             try:
-                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+                tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 if tc_rel:
                     # 若 api_test_service 未设置 started_at，在此兜底
                     if not tc_rel.started_at:
@@ -1754,7 +1754,7 @@ class ExecutionEngine:
             # 更新测试用例状态为失败
             local_db_session = db.session()
             try:
-                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+                tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 if tc_rel:
                     tc_rel.status = 'failed'
                     tc_rel.execution_status = 'failed'
@@ -1771,7 +1771,7 @@ class ExecutionEngine:
                     local_db_session.commit()
 
                     # 更新任务统计信息
-                    task = local_db_session.query(Task).get(task_id)
+                    task = local_db_session.get(Task, task_id)
                     if task:
                         task.completed_cases = local_db_session.query(TaskCase).filter(
                             TaskCase.task_id == task_id,

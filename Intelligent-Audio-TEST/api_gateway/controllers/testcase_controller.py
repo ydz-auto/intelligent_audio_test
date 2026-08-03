@@ -1,5 +1,6 @@
 import os
-from flask import request, send_file, current_app
+from api_gateway.controllers.request_adapter import request
+from fastapi.responses import FileResponse
 from shared.models.models import TestCase, TestCaseGroup, Tag, Dimension, Audio, PlaybackDevice
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
@@ -2014,7 +2015,7 @@ class TestCaseController:
                     mimetype = 'text/csv'
                     download_name = f"testcases_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
                     output.seek(0)
-                    return send_file(
+                    return FileResponse(
                         output,
                         mimetype=mimetype,
                         as_attachment=True,
@@ -2134,7 +2135,7 @@ class TestCaseController:
                     output.seek(0)
                     mimetype = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                     download_name = f"testcases_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    return send_file(
+                    return FileResponse(
                         output,
                         mimetype=mimetype,
                         as_attachment=True,
@@ -2560,7 +2561,7 @@ class TestCaseController:
                 case_tags_df.to_excel(writer, sheet_name='CaseTags', index=False)
             
             output.seek(0)
-            return send_file(
+            return FileResponse(
                 output,
                 mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                 as_attachment=True,

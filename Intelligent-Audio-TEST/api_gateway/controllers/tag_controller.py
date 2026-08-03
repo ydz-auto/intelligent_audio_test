@@ -1,4 +1,4 @@
-from flask import request
+from api_gateway.controllers.request_adapter import request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from shared.models.models import Tag, TagCategory

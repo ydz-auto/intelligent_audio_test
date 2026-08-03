@@ -163,7 +163,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
 
       const [groupsResponse, testCasesResponse] = await Promise.all([
-        testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType }),
+        testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType, type: params.testType }),
         testcasesApi.getAll({
           page,
           perPage,
@@ -455,6 +455,12 @@ export const useTestCaseStore = defineStore('testCase', () => {
     handleError
   });
 
+  // 清空分组已加载用例缓存与分页,使下次展开时按最新筛选条件重新拉取
+  const resetGroupCache = () => {
+    loadedGroupCases.value = {};
+    groupPagination.value = {};
+  };
+
   return {
     // 核心状态
     testCases,
@@ -486,6 +492,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     removeTestCaseLocal,
     organizeTestCasesByGroup,
     extractTags,
+    resetGroupCache,
     // 委托：批量操作
     ...batchOps,
     // 委托：分组管理

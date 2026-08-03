@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
-"""Flask routes for api_adapter_service.
+"""FastAPI routes for api_adapter_service.
 
 Key endpoints:
 - POST /api/v1/tasks            — dialog task (synchronous, called by api_executor)
 - POST /api/create_dialog_task  — async dialog task creation
-- GET  /api/get_status/<task_id> — query task status
-- GET  /api/get_final_result/<task_id> — query task result
-- GET  /health                   — health check
+- GET  /api/get_status/{task_id} — query task status
+- GET  /api/get_final_result/{task_id} — query task result
+- GET  /api/sessions             — list active sessions
+- DELETE /api/sessions/{session_id} — destroy session
 """
 
 import uuid
 import threading
-from flask import Blueprint, request, jsonify
+from typing import Optional
+
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from api_adapter_service.services.session_store import session_store
 from api_adapter_service.services.task_manager import task_manager
@@ -19,64 +23,30 @@ from api_adapter_service.adapters.factory import select_adapter
 from api_adapter_service.utils.config import config
 from api_adapter_service.utils.logger import logger
 
-api_bp = Blueprint('api', __name__)
+router = APIRouter()
 
 
-# ── Health ──────────────────────────────────────────────────────────
-
-@api_bp.route('/health')
-def api_health():
-    return jsonify({
-        'status': 'healthy',
-        'service': 'api_adapter_service',
-        'dialog_sessions': session_store.get_session_count(),
-        'total_tasks': task_manager.get_task_count(),
-        'supported_modes': ['streaming', 'dialog'],
-    })
+def _json(data: dict, status: int = 200):
+    return JSONResponse(content=data, status_code=status)
 
 
 # ── Synchronous dialog task (called by api_executor) ────────────────
 
-@api_bp.route('/api/v1/tasks', methods=['POST'])
-def api_v1_create_task():
+@router.post('/api/v1/tasks')
+async def api_v1_create_task(request: Request):
     """
     Synchronous dialog task endpoint.
 
     Called by the main backend's api_executor for each round of a
     multi-round voice_llm session.
-
-    Request body (from api_executor._send_round_request):
-    {
-        "task_type": "voice_llm",
-        "session_id": "uuid",
-        "round": 1,
-        "total_rounds": 3,
-        "input": {"type": "text", "text": "hello"},
-        "context": [{"role": "user", "content": "..."}, ...],
-        "context_for_request": [...],
-        "algorithm_params": [...],
-        "case_algorithm_params": {...},
-        "translation_direction": "zh2en",
-        "vendor": "voice_llm",
-        "vendor_config": {"api_url": "...", "headers": {...}, "timeout": 60}
-    }
-
-    Response:
-    {
-        "output_content": "...",
-        "output_audio_path": null,
-        "response_metrics": {"latency": 0.5},
-        "asr_text": "...",
-        "trans_text": "..."
-    }
     """
-    data = request.get_json()
+    data = await request.json()
     if not data:
-        return jsonify({'code': 4000, 'msg': 'request body is required'}), 400
+        return _json({'code': 4000, 'msg': 'request body is required'}, 400)
 
     session_id = data.get('session_id')
     if not session_id:
-        return jsonify({'code': 4000, 'msg': 'session_id is required'}), 400
+        return _json({'code': 4000, 'msg': 'session_id is required'}, 400)
 
     round_idx = data.get('round', 0)
     total_rounds = data.get('total_rounds', 1)
@@ -182,7 +152,7 @@ def api_v1_create_task():
         task_manager.update_task_status(task_id, 'completed')
 
         # Return response to api_executor
-        return jsonify({
+        return _json({
             'code': 0,
             'msg': 'success',
             'task_id': task_id,
@@ -199,39 +169,25 @@ def api_v1_create_task():
     except Exception as e:
         logger.error(f'Task processing failed: {e}', exc_info=True)
         task_manager.update_task_status(task_id, 'failed', str(e))
-        return jsonify({
+        return _json({
             'code': 5000,
             'msg': f'Task processing failed: {str(e)}',
             'task_id': task_id,
-        }), 500
+        }, 500)
 
 
 # ── Async dialog task creation ──────────────────────────────────────
 
-@api_bp.route('/api/create_dialog_task', methods=['POST'])
-def api_create_dialog_task():
-    """
-    Async dialog task creation.
-
-    Request body:
-    {
-        "session_id": "sess-001",
-        "round": 0,
-        "input_type": "text",
-        "input_data": "hello",
-        "source_lang": "zh",
-        "target_lang": "en",
-        "vendor": "voice_llm",
-        "context": [...]
-    }
-    """
-    data = request.get_json()
+@router.post('/api/create_dialog_task')
+async def api_create_dialog_task(request: Request):
+    """Async dialog task creation."""
+    data = await request.json()
     if not data:
-        return jsonify({'code': 4000, 'msg': 'request body is required'}), 400
+        return _json({'code': 4000, 'msg': 'request body is required'}, 400)
 
     session_id = data.get('session_id')
     if not session_id:
-        return jsonify({'code': 4000, 'msg': 'session_id is required'}), 400
+        return _json({'code': 4000, 'msg': 'session_id is required'}, 400)
 
     task_id = str(uuid.uuid4())
 
@@ -256,7 +212,7 @@ def api_create_dialog_task():
     )
     thread.start()
 
-    return jsonify({
+    return _json({
         'code': 0,
         'msg': 'success',
         'data': {'task_id': task_id, 'session_id': session_id},
@@ -305,14 +261,14 @@ def _process_dialog_task(task):
 
 # ── Status / Result queries ─────────────────────────────────────────
 
-@api_bp.route('/api/get_status/<task_id>')
-def api_get_status(task_id):
+@router.get('/api/get_status/{task_id}')
+def api_get_status(task_id: str):
     """Query task status."""
     task = task_manager.get_task(task_id)
     if not task:
-        return jsonify({'code': 4004, 'msg': 'task not found'}), 404
+        return _json({'code': 4004, 'msg': 'task not found'}, 404)
 
-    return jsonify({
+    return _json({
         'code': 0,
         'data': {
             'task_id': task_id,
@@ -322,25 +278,22 @@ def api_get_status(task_id):
     })
 
 
-@api_bp.route('/api/get_final_result/<task_id>')
-def api_get_final_result(task_id):
+@router.get('/api/get_final_result/{task_id}')
+def api_get_final_result(task_id: str):
     """Query final result (dialog or streaming)."""
     result = task_manager.get_final_result(task_id)
     if not result:
-        return jsonify({'code': 4004, 'msg': 'result not found'}), 404
+        return _json({'code': 4004, 'msg': 'result not found'}, 404)
 
-    return jsonify({
-        'code': 0,
-        'data': result,
-    })
+    return _json({'code': 0, 'data': result})
 
 
 # ── Session management ──────────────────────────────────────────────
 
-@api_bp.route('/api/sessions', methods=['GET'])
+@router.get('/api/sessions')
 def api_list_sessions():
     """List active sessions."""
-    return jsonify({
+    return _json({
         'code': 0,
         'data': {
             'active_count': session_store.get_session_count(),
@@ -348,11 +301,11 @@ def api_list_sessions():
     })
 
 
-@api_bp.route('/api/sessions/<session_id>', methods=['DELETE'])
-def api_destroy_session(session_id):
+@router.delete('/api/sessions/{session_id}')
+def api_destroy_session(session_id: str):
     """Destroy a session."""
     session_store.destroy_session(session_id)
-    return jsonify({
+    return _json({
         'code': 0,
         'msg': f'session {session_id} destroyed',
     })

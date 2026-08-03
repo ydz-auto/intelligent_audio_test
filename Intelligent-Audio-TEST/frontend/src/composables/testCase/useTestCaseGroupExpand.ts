@@ -20,6 +20,7 @@ import type { TestCase } from '../../shared/types';
  */
 export function useTestCaseGroupExpand(
   algorithmTypeFilter: Ref<string>,
+  testTypeFilter: Ref<string>,
   innerViewMode: Ref<'group' | 'tag'>,
   paginatedGroups: Ref<string[]>,
   paginatedTags: Ref<string[]>,
@@ -49,10 +50,11 @@ export function useTestCaseGroupExpand(
       const store = useTestCaseStore();
       const groupInfo = store.groupsList.find(g => g.name === group);
       if (groupInfo && (!store.loadedGroupCases[groupInfo.id] || store.loadedGroupCases[groupInfo.id].length === 0)) {
-        // 传当前算法过滤值,使拉取的用例与徽标计数(按算法统计)及 filteredTestCases 过滤一致,
-        // 否则拉取的是分组下所有算法用例,经算法过滤后可能为空(显示"已加载 0/N 条")。
+        // 传当前算法/测试类型过滤值,使拉取的用例与徽标计数(按算法+测试类型统计)及 filteredTestCases 过滤一致,
+        // 否则拉取的是分组下所有用例,经筛选后可能为空(显示"已加载 0/N 条")。
         const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
-        await store.fetchCasesByGroup(groupInfo.id, { algorithmType });
+        const testType = testTypeFilter.value === 'all' ? undefined : testTypeFilter.value;
+        await store.fetchCasesByGroup(groupInfo.id, { algorithmType, testType });
       }
     }
   };

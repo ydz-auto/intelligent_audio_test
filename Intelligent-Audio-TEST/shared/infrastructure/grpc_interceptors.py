@@ -149,6 +149,38 @@ class ClientLogInterceptor(grpc.UnaryUnaryClientInterceptor):
             raise
 
 
+# ==================== DB scope 拦截器 ====================
+
+class ServerDbScopeInterceptor(grpc.ServerInterceptor):
+    """服务端 DB scope 拦截器：在每次 RPC 结束时清理本线程的 DB session。
+
+    取代 `with app.app_context():` 的作用 —— scoped_session 基于
+    threading.get_ident()，gRPC 线程内复用、RPC 结束时 remove() 释放回连接池。
+    """
+
+    def intercept_service(self, continuation, handler_call_details):
+        def wrapper(behavior, request, context):
+            try:
+                resp = behavior(request, context)
+                return resp
+            finally:
+                try:
+                    from shared.models.database import remove_db_session
+                    remove_db_session()
+                except Exception:
+                    pass
+
+        if hasattr(handler_call_details, 'unary_unary'):
+            inner = handler_call_details.unary_unary
+            return grpc.unary_unary_rpc_method_handler(
+                functools.partial(wrapper, inner) if inner else inner,
+                request_deserializer=handler_call_details.request_deserializer,
+                response_serializer=handler_call_details.response_serializer,
+            )
+        return continuation(handler_call_details)
+
+
 # 单例
 client_log_interceptor = ClientLogInterceptor()
 server_log_interceptor = ServerLogInterceptor()
+server_db_scope_interceptor = ServerDbScopeInterceptor()

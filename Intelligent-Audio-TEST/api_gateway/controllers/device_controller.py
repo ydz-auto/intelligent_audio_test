@@ -1,4 +1,5 @@
-from flask import request, current_app
+from api_gateway.controllers.request_adapter import request
+from api_gateway.config.config import Config
 from shared.models.models import Device, DeviceTag, TaskDevice
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
@@ -194,7 +195,7 @@ class DeviceController:
                 {"serial": "mock-harmony-1", "model": "Mock HarmonyOS Device", "system": "HarmonyOS", "status": "online"}
             ]
         # 如果在 DEBUG 模式且没有任何设备，返回调试用的模拟数据
-        elif not all_devices and current_app.config.get('DEBUG'):
+        elif not all_devices and Config.DEBUG:
             all_devices = [
                 {"serial": "emulator-5554", "model": "Pixel 6 Pro", "system": "Android", "status": "online"},
                 {"serial": "00008101-001A246C0A02001E", "model": "iPhone 13", "system": "iOS", "status": "online"},
@@ -556,7 +557,7 @@ class DeviceController:
                 {"serial": "mock-harmony-1", "model": "Mock HarmonyOS Device", "system": "harmonyos", "system_version": "Unknown", "app_name": "com.larus.harmony", "app_version": "1.0.0"}
             ]
         # 如果在 DEBUG 模式且没有任何设备，返回调试用的模拟数据
-        elif not all_devices and current_app.config.get('DEBUG'):
+        elif not all_devices and Config.DEBUG:
             all_devices = [
                 {"serial": "MOCK-ADB-123456", "model": "Pixel 6 Pro", "system": "android", "system_version": "13.0", "app_name": "Default App", "app_version": "1.0.0"},
                 {"serial": "MOCK-IOS-789012", "model": "iPhone 14", "system": "ios", "system_version": "16.5", "app_name": "Default App", "app_version": "1.0.0"}

@@ -1,6 +1,6 @@
 import json
 import logging
-from flask import request, current_app
+from api_gateway.controllers.request_adapter import request
 from shared.models.models import Task, Tag, TaskCase, TaskDevice, TaskAPI, TestCase, TestResult, TestResultDimension, Log, Dimension
 from shared.models.database import db
 from shared.utils.response import success_response, error_response, convert_keys_to_camel
@@ -844,11 +844,14 @@ class TaskController:
         if not task:
             return error_response("任务 ID 不存在", code=ErrorCode.NOT_FOUND, http_code=404)
 
-        if task.status == 'running':
+        # 任务已在运行或排队中，直接返回成功（幂等）
+        # 场景：前端创建任务后，调度器已自动将其启动为 running/queued，
+        # 此时前端再调 /start 应幂等返回成功，而非 400 非法状态
+        if task.status in ('running', 'queued'):
             return success_response({
                 "id": task.id,
                 "status": task.status,
-                "message": "任务已在运行中"
+                "message": "任务已在运行中" if task.status == 'running' else "任务已在队列中"
             })
 
         if task.status not in ['pending', 'failed', 'stopped', 'completed']:
@@ -905,7 +908,7 @@ class TaskController:
                         return error_response(f"API 端点 {api.name} 当前不可用", code=ErrorCode.OPERATION_FAILED, http_code=400)
 
             # 4. 调用执行引擎启动任务
-            app = current_app._get_current_object()
+            app = None
             success, message = execution_engine.start_task(app, task.id)
             
             if not success:
@@ -939,7 +942,7 @@ class TaskController:
             from shared.models.models import TaskCase
 
             if task.status in ['running', 'paused', 'queued']:
-                app = current_app._get_current_object()
+                app = None
                 execution_engine.control_task(app, task_id, 'stop')
                 task = db.session.get(Task, task_id)
             
@@ -1022,7 +1025,7 @@ class TaskController:
                 TaskController._trigger_reevaluate(task_id, completed_cases)
 
             # 6. 调用执行引擎启动任务（处理未执行完成的用例 + 等待所有评估完成）
-            app = current_app._get_current_object()
+            app = None
             success, message = execution_engine.start_task(app, task.id)
             
             if not success:
@@ -1107,13 +1110,13 @@ class TaskController:
 
                 # 如果任务当前没在运行，且是 retry 操作，则尝试重新启动任务
                 if action == 'retry' and task.status not in ['running', 'paused']:
-                    app = current_app._get_current_object()
+                    app = None
                     execution_engine.start_task(app, task_id)
 
                 return success_response(None, f"Action '{action}' executed successfully")
 
             # 处理全局任务控制 (pause/resume/stop)
-            app = current_app._get_current_object()
+            app = None
             success, message = execution_engine.control_task(app, task_id, action)
             if not success:
                 return error_response(message, code=ErrorCode.OPERATION_FAILED)
@@ -1233,7 +1236,7 @@ class TaskController:
 
         try:
             if action == 'delete':
-                app = current_app._get_current_object()
+                app = None
                 
                 # 获取所有待删除任务，包括运行中的
                 tasks = Task.query.filter(Task.id.in_(task_ids)).all()
@@ -1293,24 +1296,23 @@ class TaskController:
                 if format_ == 'excel':
                     import pandas as pd
                     import io
-                    from flask import send_file
-                    
+                    from fastapi.responses import FileResponse
+
                     df = pd.DataFrame(export_data)
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='openpyxl') as writer:
                         df.to_excel(writer, index=False, sheet_name='Tasks')
                     output.seek(0)
-                    
-                    return send_file(
+
+                    return FileResponse(
                         output,
-                        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        as_attachment=True,
-                        download_name=f"tasks_export_{now_cst().strftime('%Y%m%d%H%M%S')}.xlsx"
+                        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        headers={"Content-Disposition": f"attachment; filename=tasks_export_{now_cst().strftime('%Y%m%d%H%M%S')}.xlsx"}
                     )
                 
                 if format_ == 'pdf':
                     import io
-                    from flask import send_file
+                    from fastapi.responses import FileResponse
                     from reportlab.lib import colors
                     from reportlab.lib.pagesizes import A4, landscape
                     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
@@ -1362,11 +1364,10 @@ class TaskController:
                     doc.build(elements)
                     output.seek(0)
                     
-                    return send_file(
+                    return FileResponse(
                         output,
-                        mimetype='application/pdf',
-                        as_attachment=True,
-                        download_name=f"tasks_export_{now_cst().strftime('%Y%m%d%H%M%S')}.pdf"
+                        media_type='application/pdf',
+                        headers={"Content-Disposition": f"attachment; filename=tasks_export_{now_cst().strftime('%Y%m%d%H%M%S')}.pdf"}
                     )
                 
                 return success_response(export_data, "数据准备就绪")
@@ -1437,7 +1438,7 @@ class TaskController:
             return error_response("未找到任务", 404)
 
         try:
-            app = current_app._get_current_object()
+            app = None
             success, message = execution_engine.control_task(app, task_id, 'stop')
             if not success:
                 return error_response(message, code=ErrorCode.OPERATION_FAILED, http_code=400)
@@ -1454,7 +1455,7 @@ class TaskController:
             return error_response("未找到任务", 404)
 
         try:
-            app = current_app._get_current_object()
+            app = None
 
             if task.status in ['running', 'paused']:
                 # 跨服务调用：通过 gRPC ExecutionService 停止任务

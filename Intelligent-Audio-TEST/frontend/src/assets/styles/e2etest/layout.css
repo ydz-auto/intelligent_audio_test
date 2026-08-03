@@ -1,7 +1,0 @@
-/* 单栏布局样式 */
-.single-column-layout {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    width: 100%;
-}

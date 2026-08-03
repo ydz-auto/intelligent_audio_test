@@ -1,3 +1,4 @@
+import { onMounted, onBeforeUnmount } from 'vue';
 import { useEvaluationDimensions } from '../../composables/evaluation/useEvaluationDimensions';
 import { useEvaluationCategories } from '../../composables/evaluation/useEvaluationCategories';
 import { useEvaluationBatchOps } from '../../composables/evaluation/useEvaluationBatchOps';
@@ -38,6 +39,20 @@ export function useEvaluation() {
   const modalsModule = useEvaluationModals(dimensionsModule);
 
   // ========== 协调逻辑 ==========
+
+  // 判断是否为 LLM Judge 维度
+  function isLlmJudge(dimension: any) {
+    return dimension.resultType === 'llm_judge';
+  }
+
+  // 生命周期：初始化与清理
+  onMounted(() => {
+    batchOpsModule.initEvaluation();
+  });
+
+  onBeforeUnmount(() => {
+    batchOpsModule.cleanupEvaluation();
+  });
 
   // 重置所有状态：跨模块重置
   function resetAllStates() {
@@ -157,5 +172,8 @@ export function useEvaluation() {
 
     // 状态重置（协调层）
     resetAllStates,
+
+    // 工具方法（协调层）
+    isLlmJudge,
   };
 }

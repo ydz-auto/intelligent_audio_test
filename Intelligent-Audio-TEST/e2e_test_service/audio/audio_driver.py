@@ -15,7 +15,7 @@ import traceback
 from abc import ABC, abstractmethod
 from pydub import AudioSegment
 from shared.utils.log_handler import log_and_emit
-from shared.clients.oss_client import oss
+from shared.utils.storage import storage
 
 
 class AudioDriver(ABC):
@@ -151,16 +151,17 @@ class PyAudioDriver(AudioDriver):
 
             audio_delays.append(delay)
 
-            # 源文件读取改造：若本地不存在，则视为 OSS key（audios bucket）下载到临时
+            # 源文件读取改造：若本地不存在，则视为存储路径（audios 类目）下载到临时
             if not os.path.exists(file_path):
                 try:
-                    file_path = oss.download_to_temp('audios', file_path, '.wav')
+                    path = file_path if file_path.startswith(('oss://', 'local://')) else f'audios/{file_path}'
+                    file_path = storage.load_file(path)
                     downloaded_temp_sources.append(file_path)
                     # 回写 config['file'] 为本地临时路径，供后续增益补偿等环节使用
                     config['file'] = file_path
-                    log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Downloaded audio from OSS to temp: {file_path}", category='audio')
+                    log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Downloaded audio from storage to temp: {file_path}", category='audio')
                 except Exception as e:
-                    log_and_emit('ERROR', 'audio_engine', f"Failed to download audio from OSS (key={config.get('file')}): {e}", category='audio')
+                    log_and_emit('ERROR', 'audio_engine', f"Failed to download audio from storage (key={config.get('file')}): {e}", category='audio')
                     continue
 
             if not os.path.exists(file_path):
@@ -215,14 +216,11 @@ class PyAudioDriver(AudioDriver):
         """
         resample_temp_dir = None
         if app:
-            resample_temp_dir = app.config.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
+            resample_temp_dir = getattr(app, 'config', {}).get('RESAMPLE_TEMP_PATH', os.environ.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample')))
         else:
-            try:
-                from flask import current_app
-                resample_temp_dir = current_app.config.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
-            except RuntimeError as e:
-                resample_temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample')
-                log_and_emit('WARNING', 'audio_engine', f"[play_multi] current_app.config.get('RESAMPLE_TEMP_PATH') failed: {e}, using fallback: {resample_temp_dir}", category='audio')
+            resample_temp_dir = os.environ.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
+            if not os.environ.get('RESAMPLE_TEMP_PATH'):
+                log_and_emit('WARNING', 'audio_engine', f"[play_multi] os.environ.get('RESAMPLE_TEMP_PATH') not set, using fallback: {resample_temp_dir}", category='audio')
 
         os.makedirs(resample_temp_dir, exist_ok=True)
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Pre-resampling audio files to target rate {target_rate}, temp_dir={resample_temp_dir}", category='audio')

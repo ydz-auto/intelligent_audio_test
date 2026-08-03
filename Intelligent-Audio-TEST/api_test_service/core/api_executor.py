@@ -161,7 +161,7 @@ class APIExecutor(BaseExecutor):
 
         local_db_session = db.session()
         try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if not tc_rel:
                 self._log(level='ERROR', content=f"找不到 TaskCase: {tc_rel_id}", task_id=task_id)
                 return False
@@ -335,7 +335,7 @@ class APIExecutor(BaseExecutor):
         """加载用例配置，注入 algorithm_params 和 reference_params"""
         local_db_session = db.session()
         try:
-            case_obj = local_db_session.query(TestCase).get(test_case_id)
+            case_obj = local_db_session.get(TestCase, test_case_id)
             if not case_obj:
                 return {}
             case_config = case_obj.config or {}
@@ -361,15 +361,15 @@ class APIExecutor(BaseExecutor):
 
         local_db_session = db.session()
         try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if not tc_rel:
                 raise ValueError(f"找不到测试用例关联记录，ID: {tc_rel_id}")
 
-            task = local_db_session.query(Task).get(task_id)
+            task = local_db_session.get(Task, task_id)
             if not task:
                 raise ValueError(f"找不到任务，ID: {task_id}")
 
-            case = local_db_session.query(TestCase).get(tc_rel.test_case_id)
+            case = local_db_session.get(TestCase, tc_rel.test_case_id)
             if not case:
                 raise ValueError(f"找不到测试用例，ID: {tc_rel.test_case_id}")
 
@@ -404,7 +404,7 @@ class APIExecutor(BaseExecutor):
 
         local_db_session = db.session()
         try:
-            case_obj = local_db_session.query(TestCase).get(tc_rel_test_case_id)
+            case_obj = local_db_session.get(TestCase, tc_rel_test_case_id)
             case_config = case_obj.config or {} if case_obj else {}
 
             algorithm_params = {}
@@ -415,7 +415,7 @@ class APIExecutor(BaseExecutor):
                     algorithm_params = ap_dict
 
             api_specific_config = case_config.get('api', {})
-            task_obj = local_db_session.query(Task).get(task_id)
+            task_obj = local_db_session.get(Task, task_id)
             if task_obj and not api_specific_config and task_obj.type == 'api':
                 api_specific_config = case_config
 
@@ -480,7 +480,7 @@ class APIExecutor(BaseExecutor):
         """获取音频数据，返回 (audio_data, total_duration, error_msg)"""
         local_db_session = db.session()
         try:
-            case = local_db_session.query(TestCase).get(test_case_id)
+            case = local_db_session.get(TestCase, test_case_id)
             if not case:
                 error_msg = "找不到测试用例"
                 self._log('ERROR', f"API 用例执行失败: {error_msg}", task_id)
@@ -510,13 +510,13 @@ class APIExecutor(BaseExecutor):
             for audio_config in target_audios:
                 audio_id = audio_config.get('audio_id')
                 if audio_id:
-                    audio_obj = local_db_session.query(Audio).get(audio_id)
+                    audio_obj = local_db_session.get(Audio, audio_id)
                     if audio_obj:
                         total_audio_duration += audio_obj.duration
 
             audio_config = target_audios[0]
             audio_id = audio_config.get('audio_id')
-            audio = local_db_session.query(Audio).get(audio_id) if audio_id else None
+            audio = local_db_session.get(Audio, audio_id) if audio_id else None
 
             if not audio:
                 error_msg = f"找不到ID为 {audio_id} 的音频文件"
@@ -540,7 +540,7 @@ class APIExecutor(BaseExecutor):
         utc_plus_8 = timezone(timedelta(hours=8))
         local_db_session = db.session()
         try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if tc_rel:
                 tc_rel.status = 'failed'
                 tc_rel.execution_status = 'failed'

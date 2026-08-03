@@ -1,4 +1,5 @@
-from flask import request, send_file, current_app
+from api_gateway.controllers.request_adapter import request
+from fastapi.responses import FileResponse, StreamingResponse
 from shared.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, ReportComparisonMatrix, Task, Audio
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
@@ -704,7 +705,6 @@ class ReportControllerBase:
     def download_case_logs(report_id, case_id):
         from shared.utils.log_handler import log_and_emit
         from shared.models.models import TestResult, TaskMergeRelation
-        from flask import Response, stream_with_context
 
         log_and_emit(
             level='INFO',
@@ -793,9 +793,9 @@ class ReportControllerBase:
                     yield zip_data[offset:offset + CHUNK_SIZE]
                     offset += CHUNK_SIZE
 
-            response = Response(
-                stream_with_context(generate()),
-                mimetype='application/zip',
+            response = StreamingResponse(
+                generate(),
+                media_type='application/zip',
                 headers={
                     'Content-Disposition': f'attachment; filename*=UTF-8\'\'{zip_filename}',
                     'Content-Length': str(total_size),

@@ -1,4 +1,4 @@
-from flask import request
+from api_gateway.controllers.request_adapter import request
 from shared.models.models import TestCaseGroup, TestCase
 from shared.models.database import db
 from shared.utils.response import success_response, error_response
@@ -15,20 +15,28 @@ class GroupController:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', None, type=int) or request.args.get('page_size', 100, type=int)
         algorithm_type = request.args.get('algorithm_type')
-        
+        test_type = request.args.get('type') or request.args.get('test_type')
+
         query = TestCaseGroup.query
 
-        case_counts = {}
+        # 用例级过滤条件:同时支持 algorithm_type 和 test_type 过滤,
+        # 否则分组数量徽标会显示全量用例数,与列表经筛选后的实际数量不一致。
+        case_filters = [TestCase.deleted == False]
         if algorithm_type:
-            # 按用例级 algorithm_type 统计:分组自身 algorithm_type 可能为空,
+            case_filters.append(TestCase.algorithm_type == algorithm_type)
+        if test_type:
+            case_filters.append(TestCase.test_type == test_type)
+
+        case_counts = {}
+        if algorithm_type or test_type:
+            # 按用例级 algorithm_type/test_type 统计:分组自身 algorithm_type 可能为空,
             # 不能用它过滤,否则会漏掉含该算法用例的分组(导致数量徽标恒为 0)。
-            # 只返回含该算法用例的分组,计数为该算法下的用例数。
+            # 只返回含符合条件用例的分组,计数为该筛选条件下的用例数。
             counts_query = db.session.query(
                 TestCase.group_id,
                 func.count(TestCase.id)
             ).filter(
-                TestCase.deleted == False,
-                TestCase.algorithm_type == algorithm_type
+                *case_filters
             ).group_by(TestCase.group_id).all()
 
             case_counts = {str(gid): count for gid, count in counts_query}
@@ -39,7 +47,7 @@ class GroupController:
         groups = query.order_by(TestCaseGroup.created_at.desc())
         groups = groups.paginate(page=page, per_page=per_page, error_out=False)
 
-        if not algorithm_type:
+        if not algorithm_type and not test_type:
             group_ids = [g.id for g in groups.items]
             if group_ids:
                 counts_query = db.session.query(

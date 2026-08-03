@@ -115,7 +115,7 @@ def _extract_device_output_from_archive(device, task_id, test_case_id, device_sn
         list: 提取的算法结果列表，每个元素包含 recording_stm_content, recording_rttm_content 等字段
     """
     try:
-        from e2e_test_service.drivers import device_driver_factory
+        from e2e_test_service.drivers.device_driver import device_driver_factory
 
         device_system = device.system or ''
         device_keywords = device.keywords
@@ -180,7 +180,7 @@ class DeviceResultReextractor:
                 }
             }
         """
-        from shared.models.database import db
+        from shared.models.database import db, _engine_ref
         from shared.models.models import TaskCase
 
         try:
@@ -216,7 +216,7 @@ class DeviceResultReextractor:
 
     def _filter_reextractable_devices(self, task_id, task_devices):
         """筛选支持重新提取的设备"""
-        from e2e_test_service.drivers import device_driver_factory
+        from e2e_test_service.drivers.device_driver import device_driver_factory
 
         if not task_devices:
             return {}
@@ -236,7 +236,7 @@ class DeviceResultReextractor:
 
     def _query_task_cases(self, task_id, execution_status, evaluation_status):
         """查询符合条件的用例关联"""
-        from shared.models.database import db
+        from shared.models.database import db, _engine_ref
         from shared.models.models import TaskCase
 
         query = db.session.query(TaskCase).filter(
@@ -249,7 +249,7 @@ class DeviceResultReextractor:
 
     def _reextract_single_case(self, task_id, tc_rel, device_map):
         """重新提取单个用例的所有设备结果"""
-        from shared.models.database import db
+        from shared.models.database import db, _engine_ref
         from shared.models.models import TestResult, TestCase
 
         test_case_id = tc_rel.test_case_id
@@ -388,7 +388,7 @@ class DeviceResultReextractor:
 
     def _replace_old_results(self, old_ids, tc_rel, task_id, test_case_id, device_id):
         """删除旧结果并标记评估状态为 pending"""
-        from shared.models.database import db
+        from shared.models.database import db, _engine_ref
         from shared.models.models import TestResult, TestResultDimension
 
         for old_id in old_ids:
@@ -405,7 +405,7 @@ class DeviceResultReextractor:
         """创建新的 TestResult 记录"""
         from sqlalchemy import text
         from shared.models.models import utc8now
-        from shared.models.database import db
+        from shared.models.database import db, _engine_ref
         from shared.utils.result_data_store import write_result_data_file, split_result_data
         import json
 
@@ -433,7 +433,7 @@ class DeviceResultReextractor:
             'created_at': utc8now()
         }
 
-        with db.engine.connect() as conn:
+        with _engine_ref[0].connect() as conn:
             result = conn.execute(insert_sql, params)
             result_id = result.scalar()
             conn.commit()

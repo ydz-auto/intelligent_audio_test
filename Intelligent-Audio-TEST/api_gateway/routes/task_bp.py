@@ -1,72 +1,125 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.task_controller import TaskController
+from api_gateway.routes._response import to_response
 
-task_bp = Blueprint('tasks', __name__)
+router = APIRouter()
 
-@task_bp.route('', methods=['GET'])
+@router.get('')
 def get_all():
-    return TaskController.get_all()
+    result = TaskController.get_all()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>', methods=['GET'])
-def get_one(task_id):
-    return TaskController.get_one(task_id)
+@router.get('/{task_id}')
+def get_one(task_id: int):
+    result = TaskController.get_one(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/cases/<string:case_id>/detail', methods=['GET'])
-def get_case_detail(task_id, case_id):
-    return TaskController.get_case_detail(task_id, case_id)
+@router.get('/{task_id}/cases/{case_id}/detail')
+def get_case_detail(task_id: int, case_id: str):
+    result = TaskController.get_case_detail(task_id, case_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/cases/<string:case_id>/results', methods=['GET'])
-def get_case_results(task_id, case_id):
-    return TaskController.get_case_results(task_id, case_id)
+@router.get('/{task_id}/cases/{case_id}/results')
+def get_case_results(task_id: int, case_id: str):
+    result = TaskController.get_case_results(task_id, case_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/progress', methods=['GET'])
-def get_progress(task_id):
-    return TaskController.get_progress(task_id)
+@router.get('/{task_id}/progress')
+def get_progress(task_id: int):
+    result = TaskController.get_progress(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('', methods=['POST'])
+@router.post('')
 def create():
-    return TaskController.create()
+    result = TaskController.create()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/start', methods=['POST'])
-def start(task_id):
-    return TaskController.start(task_id)
+@router.post('/{task_id}/start')
+def start(task_id: int):
+    result = TaskController.start(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/retry', methods=['POST'])
-def retry(task_id):
-    return TaskController.retry(task_id)
+@router.post('/{task_id}/retry')
+def retry(task_id: int):
+    result = TaskController.retry(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/control', methods=['POST'])
-def control(task_id):
-    return TaskController.control(task_id)
+@router.post('/{task_id}/control')
+def control(task_id: int):
+    result = TaskController.control(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/cases', methods=['PATCH'])
-def update_cases(task_id):
-    return TaskController.update_cases(task_id)
+@router.patch('/{task_id}/cases')
+def update_cases(task_id: int):
+    result = TaskController.update_cases(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/stats', methods=['GET'])
-def stats(task_id):
-    return TaskController.stats(task_id)
+@router.get('/{task_id}/stats')
+def stats(task_id: int):
+    result = TaskController.stats(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/batch-action', methods=['POST'])
+@router.post('/batch-action')
 def batch_action():
-    return TaskController.batch_action()
+    result = TaskController.batch_action()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/merge', methods=['POST'])
+@router.post('/merge')
 def merge():
-    return TaskController.merge()
+    result = TaskController.merge()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/stop', methods=['POST'])
-def stop(task_id):
-    return TaskController.stop(task_id)
+@router.post('/{task_id}/stop')
+def stop(task_id: int):
+    result = TaskController.stop(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>/reextract', methods=['POST'])
-def reextract(task_id):
-    return TaskController.reextract(task_id)
+@router.post('/{task_id}/reextract')
+def reextract(task_id: int):
+    result = TaskController.reextract(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>', methods=['DELETE'])
-def delete(task_id):
-    return TaskController.delete(task_id)
+@router.delete('/{task_id}')
+def delete(task_id: int):
+    result = TaskController.delete(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@task_bp.route('/<int:task_id>', methods=['PUT'])
-def update(task_id):
-    return TaskController.update(task_id)
+@router.put('/{task_id}')
+def update(task_id: int):
+    result = TaskController.update(task_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result

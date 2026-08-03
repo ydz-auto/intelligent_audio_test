@@ -1,66 +1,113 @@
-from flask import Blueprint
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from api_gateway.controllers.evaluation_controller import EvaluationController
+from api_gateway.routes._response import to_response
 
-evaluation_bp = Blueprint('evaluation', __name__)
+router = APIRouter()
 
-@evaluation_bp.route('/task/reevaluate', methods=['POST'])
+@router.post('/task/reevaluate')
 def reevaluate_task():
-    return EvaluationController.reevaluate_task_results()
+    result = EvaluationController.reevaluate_task_results()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions/options', methods=['GET'])
+@router.get('/dimensions/options')
 def get_dimension_options():
-    return EvaluationController.get_dimension_options()
+    result = EvaluationController.get_dimension_options()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions', methods=['GET'])
+@router.get('/dimensions')
 def get_all():
-    return EvaluationController.get_all()
+    result = EvaluationController.get_all()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions', methods=['POST'])
+@router.post('/dimensions')
 def create():
-    return EvaluationController.create()
+    result = EvaluationController.create()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions/<int:dim_id>', methods=['PUT'])
-def update(dim_id):
-    return EvaluationController.update(dim_id)
+@router.put('/dimensions/{dim_id}')
+def update(dim_id: int):
+    result = EvaluationController.update(dim_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions/<int:dim_id>', methods=['DELETE'])
-def delete(dim_id):
-    return EvaluationController.delete(dim_id)
+@router.delete('/dimensions/{dim_id}')
+def delete(dim_id: int):
+    result = EvaluationController.delete(dim_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions/<int:dim_id>/health', methods=['GET', 'POST'])
-def health_check(dim_id):
-    return EvaluationController.health_check(dim_id)
+@router.api_route('/dimensions/{dim_id}/health', methods=['GET', 'POST'])
+def health_check(dim_id: int):
+    result = EvaluationController.health_check(dim_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions/<int:dim_id>/calculate', methods=['POST'])
-def calculate_score(dim_id):
-    return EvaluationController.calculate_score(dim_id)
+@router.post('/dimensions/{dim_id}/calculate')
+def calculate_score(dim_id: int):
+    result = EvaluationController.calculate_score(dim_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions/batch', methods=['POST'])
+@router.post('/dimensions/batch')
 def batch_action():
-    return EvaluationController.batch_action()
+    result = EvaluationController.batch_action()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions/export', methods=['GET'])
+@router.get('/dimensions/export')
 def export_dimensions():
-    return EvaluationController.export_to_file()
+    result = EvaluationController.export_to_file()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/dimensions/import', methods=['POST'])
+@router.post('/dimensions/import')
 def import_dimensions():
-    return EvaluationController.import_from_file()
+    result = EvaluationController.import_from_file()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
 # --- 分类管理 (Category Management) ---
 
-@evaluation_bp.route('/categories', methods=['GET'])
+@router.get('/categories')
 def get_categories():
-    return EvaluationController.get_categories()
+    result = EvaluationController.get_categories()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/categories', methods=['POST'])
+@router.post('/categories')
 def create_category():
-    return EvaluationController.create_category()
+    result = EvaluationController.create_category()
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/categories/<int:cat_id>', methods=['PUT'])
-def update_category(cat_id):
-    return EvaluationController.update_category(cat_id)
+@router.put('/categories/{cat_id}')
+def update_category(cat_id: int):
+    result = EvaluationController.update_category(cat_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result
 
-@evaluation_bp.route('/categories/<int:cat_id>', methods=['DELETE'])
-def delete_category(cat_id):
-    return EvaluationController.delete_category(cat_id)
+@router.delete('/categories/{cat_id}')
+def delete_category(cat_id: int):
+    result = EvaluationController.delete_category(cat_id)
+    if isinstance(result, tuple) and len(result) == 2:
+        return to_response(result)
+    return result

@@ -6,6 +6,7 @@ import threading
 import os
 import sys
 import time
+from shared.utils.log_handler import log_and_emit
 
 
 class _E2EEngineContext:
@@ -84,9 +85,12 @@ class E2EService:
                     cls._instance._initialized = False
         return cls._instance
 
-    def init_app(self, app):
-        """初始化服务"""
-        self.app = app
+    def init_app(self, app=None):
+        """初始化服务
+
+        Args:
+            app: 保留参数以兼容旧调用，内部不再使用（DB session 由 gRPC 拦截器/线程管理）
+        """
         self._engine_ctx = _E2EEngineContext()
         self._executor = None
         self._task_status = {}
@@ -118,6 +122,7 @@ class E2EService:
         """启动单个 E2E 用例执行（gRPC StartE2ETask 调用入口）
 
         同步执行 E2EExecutor.execute_e2e_case，返回执行结果。
+        DB session 由 gRPC 线程的 scoped_session 提供，无需 app context。
         """
         if not self._initialized:
             return {'success': False, 'message': 'E2EService 未初始化'}
@@ -144,6 +149,15 @@ class E2EService:
             }
         except Exception as e:
             import traceback
+            tb = traceback.format_exc()
+            log_and_emit(
+                level='ERROR',
+                module='E2EService',
+                content=f"start_e2e_case 执行异常: task_id={task_id}, tc_rel_id={tc_rel_id}, error={e}\n{tb}",
+                category='execution',
+                source='e2e_test_service',
+                task_id=str(task_id),
+            )
             with self._task_lock:
                 self._task_status[task_id] = {
                     'status': 'failed',
@@ -155,7 +169,7 @@ class E2EService:
                 'task_id': str(task_id),
                 'tc_rel_id': str(tc_rel_id),
                 'message': f'E2E 用例执行异常: {e}',
-                'traceback': traceback.format_exc(),
+                'traceback': tb,
             }
 
     def stop_e2e_case(self, task_id):

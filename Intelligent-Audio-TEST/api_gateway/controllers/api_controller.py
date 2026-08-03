@@ -2,7 +2,7 @@ import requests
 import time
 import websocket
 from urllib.parse import urlparse
-from flask import request
+from api_gateway.controllers.request_adapter import request
 from shared.models.models import API
 from shared.models.database import db
 from shared.utils.response import success_response, error_response

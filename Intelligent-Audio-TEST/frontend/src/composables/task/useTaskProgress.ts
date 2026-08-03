@@ -318,19 +318,30 @@ export function useTaskProgress(options: TaskProgressOptions) {
   onMounted(() => {
     console.log('[TaskProgress] 正在监听 task_progress 事件，testType:', testType)
     socketService.on('task_progress', handleTaskProgress)
-    
-    console.log('[TaskProgress] 正在监听 task_log 事件')
-    socketService.on('task_log', taskLogHandler)
-    
+
+    console.log('[TaskProgress] 正在监听 task_log 事件 (namespace=/ws/logs)')
+    socketService.on('task_log', taskLogHandler, '/ws/logs')
+
+    // 订阅当前 task 的日志房间
+    if (currentTaskId.value) {
+      console.log('[TaskProgress] 订阅 task 日志房间, task_id:', currentTaskId.value)
+      socketService.emit('subscribe_task', { task_id: currentTaskId.value }, '/ws/logs')
+    }
+
     console.log('[TaskProgress] Socket 连接状态:', socketService.isConnected)
   })
 
   onUnmounted(() => {
     console.log('[TaskProgress] 移除 task_progress 事件监听')
     socketService.off('task_progress', handleTaskProgress)
-    
+
     console.log('[TaskProgress] 移除 task_log 事件监听')
-    socketService.off('task_log', taskLogHandler)
+    socketService.off('task_log', taskLogHandler, '/ws/logs')
+
+    // 取消订阅 task 日志房间
+    if (currentTaskId.value) {
+      socketService.emit('unsubscribe_task', { task_id: currentTaskId.value }, '/ws/logs')
+    }
   })
 
   return {

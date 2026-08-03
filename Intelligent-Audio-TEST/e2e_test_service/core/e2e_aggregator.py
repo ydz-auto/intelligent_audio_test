@@ -3,7 +3,7 @@ import json
 
 from sqlalchemy import text
 from shared.models.models import TaskCase, TestResult, TestResultDimension, Dimension, utc8now
-from shared.models.database import db
+from shared.models.database import db, _engine_ref
 
 
 class E2EAggregator:
@@ -172,7 +172,7 @@ class E2EAggregator:
             for dr in dim_results:
                 if dr.round_number is None:
                     continue
-                dim_obj = local_db_session.query(Dimension).get(dr.dimension_id) if dr.dimension_id else None
+                dim_obj = local_db_session.get(Dimension, dr.dimension_id) if dr.dimension_id else None
                 dim_key = dim_obj.name if dim_obj else str(dr.dimension_id)
                 dim_key_lower = dim_key.lower().replace(' ', '_').replace('-', '_')
                 if dr.round_number not in round_evals:
@@ -271,7 +271,7 @@ class E2EAggregator:
             content=f"[update_test_result] result_id={result_id}, exec_status={execution_status}, output_keys={_out_keys_dbg}, record_file={_rf_dbg}, has_path={result_data_path is not None}",
             task_id=task_id
         )
-        with db.engine.connect() as conn:
+        with _engine_ref[0].connect() as conn:
             conn.execute(update_sql, params)
             conn.commit()
 
@@ -310,7 +310,7 @@ class E2EAggregator:
 
         local_db_session = db.session()
         try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if not tc_rel:
                 return False
 
@@ -342,7 +342,7 @@ class E2EAggregator:
                     test_case_id=test_case_id
                 )
 
-                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+                tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 tc_rel.execution_status = 'completed' if execution_success else 'failed'
                 if not execution_success:
                     tc_rel.evaluation_status = 'failed'
@@ -371,7 +371,7 @@ class E2EAggregator:
 
                 # super()._process_results() 同样会调用 db.session().close()，
                 # 重新查询 tc_rel 确保它重新进入 identity map
-                tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+                tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 tc_rel.execution_status = 'completed' if execution_success else 'failed'
                 if not execution_success:
                     tc_rel.evaluation_status = 'failed'

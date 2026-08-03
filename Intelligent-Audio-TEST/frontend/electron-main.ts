@@ -22,7 +22,7 @@ function createWindow() {
   });
 
   const startUrl = isDev
-    ? 'http://localhost:5173'
+    ? 'http://localhost:6173'
     : `file://${path.join(__dirname, 'dist/index.html')}`;
 
   mainWindow.loadURL(startUrl);
@@ -52,7 +52,7 @@ app.on('activate', () => {
 
 ipcMain.handle('api-request', async (_event, options: any) => {
   const { method, url, data, params, headers, isMultipart } = options;
-  const baseUrl = 'http://127.0.0.1:5000';
+  const baseUrl = 'http://127.0.0.1:6000';
   const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
 
   try {

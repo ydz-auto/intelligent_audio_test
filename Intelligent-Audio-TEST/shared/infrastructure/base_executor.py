@@ -145,7 +145,7 @@ class BaseExecutor:
                 if format_str and param_value and db_model:
                     local_db_session = db.session()
                     try:
-                        db_record = local_db_session.query(db_model).get(param_value)
+                        db_record = local_db_session.get(db_model, param_value)
                         if db_record:
                             format_kwargs = {}
                             for key, field in db_lang_fields.items():
@@ -536,13 +536,13 @@ class BaseExecutor:
     def _validate_and_get_data(self, task_id, tc_rel_id):
         local_db_session = db.session()
         try:
-            task = local_db_session.query(Task).get(task_id)
+            task = local_db_session.get(Task, task_id)
             if not task:
                 return {'success': False, 'error': "任务不存在"}
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if not tc_rel:
                 return {'success': False, 'error': "找不到测试用例关联"}
-            case = local_db_session.query(TestCase).get(tc_rel.test_case_id)
+            case = local_db_session.get(TestCase, tc_rel.test_case_id)
             if not case:
                 return {'success': False, "error": "找不到测试用例"}
 
@@ -628,7 +628,7 @@ class BaseExecutor:
     def _update_tc_rel_status(self, tc_rel_id, **kwargs):
         local_db_session = db.session()
         try:
-            tc_rel = local_db_session.query(TaskCase).get(tc_rel_id)
+            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
             if tc_rel:
                 for key, value in kwargs.items():
                     setattr(tc_rel, key, value)
@@ -725,7 +725,7 @@ class _DeviceResultCollectorProxy:
     def collect_raw_results(self, task_id, test_case_id, device_info_list, extra_params, log_callback=None, **kwargs):
         import json as _json
         from shared.proto import e2e_service_pb2
-        # device_info_list 中的 driver 对象不可序列化，只传递元数据
+        # device_info_list 中的 driver 对象不可序列化，序列化前剥离 driver 对象
         serializable_device_info = [
             {k: v for k, v in info.items() if k != 'driver'}
             for info in device_info_list
