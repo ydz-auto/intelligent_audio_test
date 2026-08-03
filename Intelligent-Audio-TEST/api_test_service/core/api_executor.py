@@ -107,23 +107,29 @@ class APIExecutor(BaseExecutor):
             local_db_session.close()
 
     def _handle_validation_failure(self, task_id, tc_rel_id, data):
-        """验证失败时更新 TaskCase 统计信息"""
-        local_db_session = db.session()
+        """验证失败时更新 TaskCase 统计信息（原子刷新，多实例安全）"""
+        from sqlalchemy import text
+        from shared.models.database import _engine_ref
         try:
-            task = local_db_session.get(Task, task_id)
-            if task:
-                success_count = local_db_session.query(TaskCase).filter(
-                    TaskCase.task_id == task_id, TaskCase.status == 'completed'
-                ).count()
-                failed_count = local_db_session.query(TaskCase).filter_by(
-                    task_id=task_id, status='failed'
-                ).count()
-                task.completed_cases = success_count
-                task.failed_cases = failed_count
-                local_db_session.commit()
-                self.execution_engine._emit_progress(task, force=True)
+            sql = text("""
+                UPDATE test_tasks SET
+                    completed_cases = (
+                        SELECT COUNT(*) FROM task_case_relations
+                        WHERE task_id = :task_id AND status = 'completed'
+                    ),
+                    failed_cases = (
+                        SELECT COUNT(*) FROM task_case_relations
+                        WHERE task_id = :task_id AND status = 'failed'
+                    )
+                WHERE id = :task_id
+            """)
+            with _engine_ref[0].connect() as conn:
+                conn.execute(sql, {'task_id': task_id})
+                conn.commit()
+        except Exception as e:
+            self._log(level='WARNING', content=f"原子刷新任务统计失败: {str(e)}", task_id=task_id)
         finally:
-            local_db_session.close()
+            self.execution_engine._emit_progress(task_id, force=True)
 
     def _execute_single_or_multi(self, task_id, tc_rel_id, data):
         """根据是否配置 rounds 分发到多轮会话或线性流程"""

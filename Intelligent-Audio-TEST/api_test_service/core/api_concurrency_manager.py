@@ -4,10 +4,15 @@ import threading
 from threading import Lock
 
 from shared.utils.config_manager import config_manager
+from shared.utils import distributed_coordinator as dc
 
 
 class APIConcurrencyManager:
-    """API 并发管理器"""
+    """API 并发管理器
+
+    单实例下用进程内 threading.Semaphore；
+    多实例下叠加 Redis 分布式信号量，限制同一 API 的全局并发数。
+    """
 
     def __init__(self, executor):
         self._executor = executor
@@ -25,6 +30,11 @@ class APIConcurrencyManager:
         return self._executor._log
 
     def get_task_lock(self, task_id):
+        """获取任务级锁。
+
+        单实例下返回进程内 threading.Lock；
+        多实例下应使用分布式锁，此处仍提供进程内锁用于本进程内的线程同步。
+        """
         task_id_str = str(task_id)
         with self.task_lock:
             if task_id_str not in self.task_locks:
@@ -76,7 +86,10 @@ class APIConcurrencyManager:
             return self.api_waiting_counts[api_id]
 
     def acquire(self, api_id, task_id, current_test_case_id, max_process=5, timeout=None):
-        """获取 API 执行权"""
+        """获取 API 执行权
+
+        单实例下用进程内信号量；多实例下先抢分布式信号量，再抢进程内信号量。
+        """
         wait_timeout = timeout or self.max_wait_time
         self._log(
             level='DEBUG',
@@ -84,6 +97,21 @@ class APIConcurrencyManager:
             task_id=task_id,
             api_id=api_id
         )
+
+        # 分布式信号量（多实例下限制全局并发数）
+        dist_sem = dc.DistributedSemaphore(f'api:sem:{api_id}', max_process)
+        if not dist_sem.acquire(timeout=wait_timeout):
+            self._log(
+                level='WARNING',
+                content=f"获取 API {api_id} 的分布式执行权超时",
+                task_id=task_id,
+                api_id=api_id
+            )
+            return False
+
+        # 注意：dist_sem 在成功获取进程内信号量时由 release() 释放，
+        # 失败/异常时由 finally 块释放
+        local_acquired = False
 
         semaphore = self._get_or_create_semaphore(api_id, max_process)
         start_time = time.time()
@@ -98,6 +126,7 @@ class APIConcurrencyManager:
                     task_id=task_id,
                     api_id=api_id
                 )
+                local_acquired = True
                 return True
 
             waiting_now = self._inc_waiting(api_id)
@@ -135,6 +164,7 @@ class APIConcurrencyManager:
                             task_id=task_id,
                             api_id=api_id
                         )
+                        local_acquired = True
                         return True
                 except Exception as e:
                     self._dec_waiting(api_id)
@@ -157,9 +187,16 @@ class APIConcurrencyManager:
                 api_id=api_id
             )
             return False
+        finally:
+            # 失败/异常路径：释放分布式信号量
+            # 成功路径：dist_sem 由 release() 释放
+            if not local_acquired:
+                dist_sem.release()
 
     def release(self, api_id, task_id):
         """释放 API 执行权"""
+        # 释放分布式信号量
+        dc.DistributedSemaphore(f'api:sem:{api_id}', 0).release()
         if api_id in self.api_semaphores:
             try:
                 self.api_semaphores[api_id].release()

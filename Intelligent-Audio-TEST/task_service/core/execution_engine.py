@@ -11,6 +11,7 @@ from shared.utils.log_handler import log_and_emit
 from shared.clients.grpc_clients import get_audio_service_stub
 from shared.utils.event_manager import EventManager
 from shared.utils.config_manager import config_manager
+from shared.utils import distributed_coordinator as _dc
 # 跨服务调用：通过 gRPC DeviceService 调用设备驱动工厂
 from shared.clients.grpc_clients import get_device_service_stub
 # 跨服务调用：通过 gRPC 调用 E2E/API 测试执行（e2e_test_service / api_test_service）
@@ -211,7 +212,7 @@ class ExecutionEngine:
 
     def _emit_progress(self, task, force=False):
         """发送任务进度更新
-        
+
         Args:
             task: 任务对象，包含当前任务状态信息
             force: 是否强制更新，跳过节流逻辑
@@ -224,7 +225,7 @@ class ExecutionEngine:
         elif hasattr(task, 'id'):
             task_id = str(task.id)
             task_status = getattr(task, 'status', None)
-        
+
         if task_id and not force:
             if task_status in ['running', 'completed', 'failed', 'stopped', 'paused']:
                 force = True
@@ -234,8 +235,37 @@ class ExecutionEngine:
                 if current_time - last_update < 0.5:
                     return
                 self.last_progress_update[task_id] = current_time
-        
+
         self.event_manager.emit_progress(task, force=force)
+
+    @staticmethod
+    def refresh_task_counts_atomic(task_id):
+        """原子刷新任务的 completed/failed/total_cases 计数（多实例安全）
+
+        用 SQL 子查询一次性 UPDATE，避免读-改-写的丢失更新问题。
+        所有需要更新任务统计的地方都应调用此方法，而非直接赋值。
+        """
+        from sqlalchemy import text
+        from shared.models.database import _engine_ref
+        sql = text("""
+            UPDATE test_tasks SET
+                completed_cases = (
+                    SELECT COUNT(*) FROM task_case_relations
+                    WHERE task_id = :task_id AND status = 'completed'
+                ),
+                failed_cases = (
+                    SELECT COUNT(*) FROM task_case_relations
+                    WHERE task_id = :task_id AND status = 'failed'
+                )
+            WHERE id = :task_id
+        """)
+        try:
+            with _engine_ref[0].connect() as conn:
+                conn.execute(sql, {'task_id': task_id})
+                conn.commit()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"原子刷新任务 {task_id} 计数失败: {e}")
 
     def update_case_round_progress(self, task_id, tc_rel_id, current_round, total_rounds):
         """
@@ -345,13 +375,13 @@ class ExecutionEngine:
                 stop_event = threading.Event()
                 pause_event = threading.Event()
                 pause_event.set()  # 初始状态为非暂停
-                
+
                 # 创建任务完成事件（用于替代忙等待）
                 self.task_completion_events[task_id] = threading.Event()
-                
+
                 # 注册任务控制事件（通过 gRPC 同步到 e2e_test_service）
                 _register_task_events_via_grpc(task_id, stop_event, pause_event)
-                
+
                 # 更新运行状态
                 self.running_tasks[task_id] = task_type
                 if task_type == 'e2e':
@@ -360,12 +390,25 @@ class ExecutionEngine:
                     self.running_apis.update(api_ids)
 
                 # 更新任务状态为running
+                # 多实例下用 DB 条件 UPDATE 做任务抢占 CAS，避免重复启动
                 local_db_session = db.session()
                 try:
-                    task = local_db_session.get(Task, task_id)
-                    if task:
-                        task.status = 'running'
-                        local_db_session.commit()
+                    # CAS: 只有 pending/queued 状态才能翻转为 running
+                    claimed = local_db_session.query(Task).filter(
+                        Task.id == task_id,
+                        Task.status.in_(['pending', 'queued'])
+                    ).update({Task.status: 'running'}, synchronize_session=False)
+                    if claimed != 1:
+                        # 已被其它实例抢占，回滚本地运行状态
+                        local_db_session.rollback()
+                        with self.queue_lock:
+                            self.running_tasks.pop(task_id, None)
+                            if task_type == 'e2e':
+                                self.running_e2e = False
+                            else:
+                                self.running_apis.difference_update(api_ids)
+                        return False, "任务已被其它实例启动"
+                    local_db_session.commit()
                 finally:
                     local_db_session.close()
 
@@ -374,7 +417,7 @@ class ExecutionEngine:
                 self.workers[task_id] = thread
                 self.stop_flags[task_id] = stop_event
                 self.pause_flags[task_id] = pause_event
-                
+
                 # 启动线程
                 thread.start()
                 return True, "任务已启动"
@@ -520,8 +563,8 @@ class ExecutionEngine:
                 if task.status != 'paused':
                     return False, "只有已暂停的任务才能恢复"
             elif action == 'stop':
-                if task.status not in ['running', 'paused', 'queued']:
-                    return False, "只有执行中、已暂停或排队中的任务才能停止"
+                if task.status not in ['running', 'paused', 'queued', 'evaluating']:
+                    return False, "只有执行中、已暂停、排队中或评估中的任务才能停止"
 
             # 对于停止操作，即使任务不在workers中，也应该执行
             if action == 'stop':
@@ -544,20 +587,39 @@ class ExecutionEngine:
                     tc.error_message = '任务被手动停止'
                 
                 local_db_session.commit()
-                # 停止所有音频播放（通过 gRPC 调用 e2e_test_service 的 AudioService）
-                _stop_task_audio_via_grpc(task_id)
-                self._emit_progress(task)  # 发送进度更新
-                
+
+                # 分布式停止信号（多实例下通知所有实例的执行线程）
+                # 优先广播，确保 gRPC 调用失败时不阻塞停止信号传播
+                _dc.set_flag(f'task:stop:{task_id}')
+                _dc.clear_flag(f'task:pause:{task_id}')
+
                 # 如果任务在workers中，设置停止标志
                 if task_id in self.workers:
                     self.stop_flags[task_id].set()  # 设置停止标志
                     self.pause_flags[task_id].set()  # 确保任务不处于暂停状态，以便能响应停止指令
-                    # 通过 gRPC 通知 e2e_test_service 同步停止事件
-                    _register_task_events_via_grpc(
-                        task_id, self.stop_flags[task_id], self.pause_flags[task_id]
-                    )
                     # 唤醒等待线程，使其能立即检测到 stop_event
                     self.notify_case_completed(task_id)
+
+                # 停止所有音频播放（通过 gRPC 调用 e2e_test_service 的 AudioService）
+                # 放在 Redis 标志位之后，gRPC 失败不影响停止信号传播
+                try:
+                    _stop_task_audio_via_grpc(task_id)
+                except Exception as e:
+                    self._log(level='WARNING',
+                              content=f"停止音频播放 gRPC 调用失败(不阻塞停止流程): {e}",
+                              task_id=task_id)
+                self._emit_progress(task)  # 发送进度更新
+
+                # 通过 gRPC 通知 e2e_test_service 同步停止事件
+                if task_id in self.workers:
+                    try:
+                        _register_task_events_via_grpc(
+                            task_id, self.stop_flags[task_id], self.pause_flags[task_id]
+                        )
+                    except Exception as e:
+                        self._log(level='WARNING',
+                                  content=f"同步停止事件 gRPC 调用失败(不阻塞停止流程): {e}",
+                                  task_id=task_id)
                 
                 # 立即清理运行状态，避免新任务进入排队
                 with self.queue_lock:
@@ -636,6 +698,8 @@ class ExecutionEngine:
                 if action == 'pause':
                     # 暂停任务
                     self.pause_flags[task_id].clear()  # 清除暂停标志，触发暂停
+                    # 分布式暂停信号（多实例下通知所有实例的执行线程）
+                    _dc.set_flag(f'task:pause:{task_id}')
                     # 通过 gRPC 通知 e2e_test_service 同步暂停事件
                     _register_task_events_via_grpc(
                         task_id, self.stop_flags[task_id], self.pause_flags[task_id]
@@ -674,8 +738,10 @@ class ExecutionEngine:
                             self.stop_flags[task_id] = threading.Event()
                         # 跨服务调用：通过 gRPC DeviceService 注册任务事件
                         _register_task_events_via_grpc(task_id, self.stop_flags[task_id], self.pause_flags[task_id])
-                    
+
                     self.pause_flags[task_id].set()  # 设置暂停标志，恢复执行
+                    # 清除分布式暂停信号（多实例下通知所有实例恢复执行）
+                    _dc.clear_flag(f'task:pause:{task_id}')
                     # 通过 gRPC 通知 e2e_test_service 同步恢复事件
                     _register_task_events_via_grpc(
                         task_id, self.stop_flags[task_id], self.pause_flags[task_id]
