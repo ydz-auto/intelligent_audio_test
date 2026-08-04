@@ -3,7 +3,10 @@ import subprocess
 import os
 import re
 
-from hypium.model import UiParam
+try:
+    from hypium.model import UiParam
+except Exception:
+    UiParam = None
 
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
@@ -121,12 +124,51 @@ class Xiaoyilivechat(HarmonyDriver):
         self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
         return True
 
+    def _pull_record_file(self, device_sn, task_id=None, test_case_id=None):
+        """从设备拉取录屏文件到本地并转 wav，返回 local_path（失败返回 None）。teardown 兜底用。"""
+        record_file_name = getattr(self, '_record_file_name', None)
+        if not record_file_name:
+            return None
+        try:
+            query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
+            lines = query.stdout.strip().split('\n')
+            device_path = lines[1].strip() if len(lines) > 1 else ''
+            if 'uri' in query.stdout and len(lines) > 2:
+                subprocess.run(
+                    ['hdc', '-t', device_sn, 'shell', 'mediatool', 'recv', lines[2].strip(), '/data/local/tmp'],
+                    check=False, capture_output=True, text=True, timeout=120
+                )
+                device_path = f'/data/local/tmp/{record_file_name}'
+            local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result',
+                                     str(task_id) if task_id else 'default_task_id',
+                                     str(test_case_id) if test_case_id else 'default_id', device_sn)
+            os.makedirs(local_dir, exist_ok=True)
+            local_path = os.path.join(local_dir, record_file_name)
+            recv_result = subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', device_path, local_path],
+                                         check=False, capture_output=True, text=True, timeout=120)
+            if not os.path.exists(local_path):
+                self._log(level='WARNING', content=f"teardown兜底拉取录屏失败: {recv_result.stderr}",
+                          task_id=task_id, test_case_id=test_case_id)
+                return None
+            self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
+            return local_path
+        except Exception as e:
+            self._log(level='WARNING', content=f"teardown兜底拉取录屏异常: {e}", task_id=task_id, test_case_id=test_case_id)
+            return None
+
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         if not super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs):
             return False
         driver = self._get_driver(device_sn)
         if not driver:
             return False
+        # 重置跨用例残留的录屏状态（驱动为单例，跨用例复用，避免上个用例的标志位污染本次）
+        self._recording = False
+        self._record_mode = 'round'
+        self._total_rounds = 1
+        self._round_number = 0
+        self._record_file_name = None
+        self._record_pulled = False
         # 点开小艺聊天窗口
         user_center = driver.find_component(By.text("小艺"))
         if user_center:
@@ -159,8 +201,23 @@ class Xiaoyilivechat(HarmonyDriver):
 
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
-        # 开启通话聊天
+        # 录屏模式: round=每轮一段（默认）; case=整用例一段
+        record_mode = kwargs.get('record_mode', 'round')
+        total_rounds = kwargs.get('total_rounds', 1)
+        round_number = kwargs.get('round_number', 0)
+        self._record_mode = record_mode
+        self._total_rounds = total_rounds
+        self._round_number = round_number
+        is_first = not getattr(self, '_recording', False)
 
+        # case 模式非首轮：通话与录屏已在进行，无需重复启动
+        if record_mode == 'case' and not is_first:
+            self._log(level='DEBUG',
+                      content=f"case模式非首轮,跳过启动录屏(录屏进行中): r{round_number}/{total_rounds}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return True
+
+        # 开启通话聊天（首轮）
         driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type(
             'SymbolGlyph'))
         driver.wait(2)
@@ -170,9 +227,13 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception:
             self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
             return False
-        # 开启录屏（文件名含轮次号，避免多轮冲突）
-        round_number = kwargs.get('round_number', 0)
-        self._record_file_name = f"{test_case_id}_r{round_number}.mp4"
+        # 开启录屏
+        if record_mode == 'case':
+            # 整用例一个文件，不带轮次后缀
+            self._record_file_name = f"{test_case_id}.mp4"
+        else:
+            # 每轮一个文件，文件名含轮次号避免多轮冲突
+            self._record_file_name = f"{test_case_id}_r{round_number}.mp4"
         if not self._start_recorder(device_sn, file_name=self._record_file_name):
             self._log(level='ERROR', content=f"启动录屏失败,服务未运行: {self._record_file_name}",
                       task_id=task_id, test_case_id=test_case_id)
@@ -216,22 +277,38 @@ class Xiaoyilivechat(HarmonyDriver):
                 lambda: driver.find_component(By.text('正在听…')),
                 timeout=60, interval=1, operation_name="post_process_正在听"
             )
-        # 停止录屏
-        if not self._stop_recorder(device_sn):
-            self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
+        record_mode = getattr(self, '_record_mode', 'round')
+        round_number = getattr(self, '_round_number', 0)
+        total_rounds = getattr(self, '_total_rounds', 1)
+        is_last = (total_rounds and round_number == total_rounds - 1)
+
+        if record_mode == 'case':
+            # case 模式：中间轮不停录屏、不挂断（保持通话与录屏连续）；
+            # 仅末轮停止录屏，以便 get_results 拉取完整文件；全程不在此挂断，交给 teardown 兜底
+            if is_last:
+                if not self._stop_recorder(device_sn):
+                    self._log(level='WARNING', content="末轮停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
+                else:
+                    self._log(level='INFO', content="末轮停止录屏成功", task_id=task_id, test_case_id=test_case_id)
+                self._recording = False
+                time.sleep(5)
         else:
-            self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
-        self._recording = False
-        time.sleep(5)
-        # 通话挂断
-        try:
-            hangup_btn = driver.find_component(
-                By.isAfter(By.key('live.tool_bar.hangup_button')).isBefore(By.key('GuideText')).type('SymbolGlyph'))
-            if hangup_btn:
-                hangup_btn.click()
-        except Exception as e:
-            self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
-        driver.wait(5)
+            # round 模式：每轮停止录屏 + 挂断（原逻辑）
+            if not self._stop_recorder(device_sn):
+                self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
+            else:
+                self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
+            self._recording = False
+            time.sleep(5)
+            # 通话挂断
+            try:
+                hangup_btn = driver.find_component(
+                    By.isAfter(By.key('live.tool_bar.hangup_button')).isBefore(By.key('GuideText')).type('SymbolGlyph'))
+                if hangup_btn:
+                    hangup_btn.click()
+            except Exception as e:
+                self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
+            driver.wait(5)
         if not replied:
             return True
         # 提取聊天文本，取最后一条（本轮），未识别到则返回 None
@@ -275,6 +352,21 @@ class Xiaoyilivechat(HarmonyDriver):
         device_path = ''
         local_path = ''
         recv_result = None
+        # case 模式且录屏仍在进行（非末轮）：不拉取半截文件，只返回本轮问答文本
+        if getattr(self, '_record_mode', 'round') == 'case' and getattr(self, '_recording', False):
+            self._log(level='DEBUG', content="case模式录屏进行中,跳过拉取半截文件",
+                      task_id=task_id, test_case_id=test_case_id)
+            return [{
+                'success': True,
+                'message': 'recording in progress',
+                'record_path': '',
+                'wav_path': '',
+                'start_ms': ts['start_ms'],
+                'end_ms': ts['end_ms'],
+                'first_frame_ms': first_frame_ms,
+                'question': question_text or '',
+                'answer': answer_text or ''
+            }]
         try:
             query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
             lines = query.stdout.strip().split('\n')
@@ -311,6 +403,7 @@ class Xiaoyilivechat(HarmonyDriver):
             wav_path = self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
             print(f"[录屏] mp4 路径: {local_path}")
             print(f"[录屏] wav 路径: {wav_path}")
+            self._record_pulled = True
             result = {
                 'success': True,
                 'message': 'Success',
@@ -376,6 +469,14 @@ class Xiaoyilivechat(HarmonyDriver):
                 self._recording = False
             except Exception as e:
                 self._log(level='WARNING', content=f"teardown: 停止录屏失败: {e}", task_id=task_id, test_case_id=test_case_id)
+
+        # case 模式兜底：末轮 post_process 异常未拉取时，此处补拉一次单视频，避免整段录屏丢失
+        if getattr(self, '_record_mode', 'round') == 'case' and not getattr(self, '_record_pulled', False):
+            pulled = self._pull_record_file(device_sn, task_id=task_id, test_case_id=test_case_id)
+            if pulled:
+                self._log(level='INFO', content=f"teardown: 兜底拉取录屏成功: {pulled}",
+                          task_id=task_id, test_case_id=test_case_id)
+                self._record_pulled = True
 
         driver = self._get_driver(device_sn)
         if not driver:

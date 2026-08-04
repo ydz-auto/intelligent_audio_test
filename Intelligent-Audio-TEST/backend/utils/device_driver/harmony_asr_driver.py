@@ -8,7 +8,11 @@ from nacl.pwhash import PASSWD_MAX
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
-from hypium import UiDriver, BY
+try:
+    from hypium import UiDriver, BY
+except Exception:
+    UiDriver = None
+    BY = None
 
 
 # 日志目录路径

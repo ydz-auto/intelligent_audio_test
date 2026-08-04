@@ -211,6 +211,11 @@ export interface TestCaseConfig {
   source_audio?: string;
   /** 是否自动生成 */
   auto_generated?: boolean;
+  /**
+   * 录屏模式：'round'=每轮一段（默认）；'case'=整用例多轮合并为一段录屏。
+   * 仅对走真实设备录屏的用例（如小艺通话 livechat）生效。
+   */
+  record_mode?: 'round' | 'case';
   [key: string]: unknown;
 }
 

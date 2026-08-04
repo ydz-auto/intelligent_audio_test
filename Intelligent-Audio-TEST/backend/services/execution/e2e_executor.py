@@ -249,7 +249,9 @@ class E2EExecutor(BaseExecutor):
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
         self._device_manager.pre_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
-            extra_params={**self.current_extra_params, 'round_number': round_idx},
+            extra_params={**self.current_extra_params, 'round_number': round_idx,
+                          'record_mode': case_config.get('record_mode', 'round'),
+                          'total_rounds': len(rounds)},
         )
 
         play_result = playback_orchestrator.play_round(
@@ -275,7 +277,9 @@ class E2EExecutor(BaseExecutor):
         playback_ts = self._playback_timestamps.get(task_id, {})
         round_start_ms = playback_ts.get('current_round_start_ms')
         round_end_ms = playback_ts.get('current_round_end_ms')
-        post_extra_params = {**self.current_extra_params, 'round_number': round_idx}
+        post_extra_params = {**self.current_extra_params, 'round_number': round_idx,
+                             'record_mode': case_config.get('record_mode', 'round'),
+                             'total_rounds': len(rounds)}
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms
             post_extra_params['playback_end_time_ms'] = round_end_ms

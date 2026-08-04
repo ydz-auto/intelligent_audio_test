@@ -4,7 +4,10 @@ import os
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
-from hypium.model import UiParam
+try:
+    from hypium.model import UiParam
+except Exception:
+    UiParam = None
 
 
 class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
