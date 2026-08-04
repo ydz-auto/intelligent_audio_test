@@ -33,7 +33,7 @@ class AlgorithmGroup(db.Model):
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
-    algorithms = relationship('AlgorithmDefinition', back_populates='group', lazy='dynamic')
+    algorithms = relationship('AlgorithmDefinition', back_populates='group', lazy='dynamic', foreign_keys='AlgorithmDefinition.group_id')
 
     def to_dict(self):
         return {
@@ -56,7 +56,7 @@ class AlgorithmDefinition(db.Model):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     type = Column(String(50), unique=True, nullable=False, comment='算法类型代码')
     name = Column(String(100), nullable=False, comment='算法显示名称')
-    group_id = Column(BigInteger, ForeignKey('algorithm_groups.id', ondelete='SET NULL'), comment='关联分组ID')
+    group_id = Column(BigInteger, comment='关联分组ID')
     description = Column(Text, comment='算法描述')
     status = Column(String(20), default='online', comment='状态：online, offline')
     icon = Column(String(200), comment='图标URL')
@@ -65,11 +65,11 @@ class AlgorithmDefinition(db.Model):
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
-    group = relationship('AlgorithmGroup', back_populates='algorithms')
-    device_params = relationship('AlgorithmDeviceParam', back_populates='algorithm', cascade='all, delete-orphan')
-    api_params = relationship('AlgorithmApiParam', back_populates='algorithm', cascade='all, delete-orphan')
-    mappings = relationship('ParamMapping', back_populates='algorithm', cascade='all, delete-orphan')
-    dimension_relations = relationship('AlgorithmDimensionRelation', back_populates='algorithm', cascade='all, delete-orphan')
+    group = relationship('AlgorithmGroup', back_populates='algorithms', foreign_keys='AlgorithmDefinition.group_id')
+    device_params = relationship('AlgorithmDeviceParam', back_populates='algorithm', cascade='all, delete-orphan', foreign_keys='AlgorithmDeviceParam.algorithm_type')
+    api_params = relationship('AlgorithmApiParam', back_populates='algorithm', cascade='all, delete-orphan', foreign_keys='AlgorithmApiParam.algorithm_type')
+    mappings = relationship('ParamMapping', back_populates='algorithm', cascade='all, delete-orphan', foreign_keys='ParamMapping.algorithm_type')
+    dimension_relations = relationship('AlgorithmDimensionRelation', back_populates='algorithm', cascade='all, delete-orphan', foreign_keys='AlgorithmDimensionRelation.algorithm_type')
 
     def to_dict(self):
         return {
@@ -93,7 +93,7 @@ class AlgorithmDeviceParam(db.Model):
     __tablename__ = 'algorithm_device_params'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
+    algorithm_type = Column(String(50), nullable=False, comment='关联算法类型')
     param_code = Column(String(50), nullable=False, comment='参数代码')
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称（用于映射配置中的显示）')
@@ -109,7 +109,7 @@ class AlgorithmDeviceParam(db.Model):
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
-    algorithm = relationship('AlgorithmDefinition', back_populates='device_params')
+    algorithm = relationship('AlgorithmDefinition', back_populates='device_params', foreign_keys='AlgorithmDeviceParam.algorithm_type')
 
     __table_args__ = (
         UniqueConstraint('algorithm_type', 'param_code', 'direction', name='uq_algorithm_device_param_direction'),
@@ -148,7 +148,7 @@ class AlgorithmApiParam(db.Model):
     __tablename__ = 'algorithm_api_params'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
+    algorithm_type = Column(String(50), nullable=False, comment='关联算法类型')
     param_code = Column(String(50), nullable=False, comment='参数代码')
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称（用于映射配置中的显示）')
@@ -164,7 +164,7 @@ class AlgorithmApiParam(db.Model):
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
-    algorithm = relationship('AlgorithmDefinition', back_populates='api_params')
+    algorithm = relationship('AlgorithmDefinition', back_populates='api_params', foreign_keys='AlgorithmApiParam.algorithm_type')
 
     __table_args__ = (
         UniqueConstraint('algorithm_type', 'param_code', 'direction', name='uq_algorithm_api_param_direction'),
@@ -203,7 +203,7 @@ class AlgorithmReferenceParam(db.Model):
     __tablename__ = 'algorithm_reference_params'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
+    algorithm_type = Column(String(50), nullable=False, comment='关联算法类型')
     code = Column(String(50), nullable=False, comment='参数代码')
     name = Column(String(100), comment='参数显示名称')
     param_type = Column(String(30), default='text', comment='参考类型：text, audio, json, rttm, stm')
@@ -243,7 +243,7 @@ class EvaluationDimensionParam(db.Model):
     __tablename__ = 'evaluation_dimension_params'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    dimension_id = Column(Integer, ForeignKey('dimensions.id', ondelete='CASCADE'), nullable=False, comment='关联评估维度ID')
+    dimension_id = Column(Integer, nullable=False, comment='关联评估维度ID')
     param_code = Column(String(50), nullable=False, comment='参数代码（评估API需要的字段名）')
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称')
@@ -261,7 +261,7 @@ class EvaluationDimensionParam(db.Model):
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
-    dimension = relationship('Dimension')
+    dimension = relationship('Dimension', foreign_keys='EvaluationDimensionParam.dimension_id')
 
     __table_args__ = (
         UniqueConstraint('dimension_id', 'param_code', 'param_direction', name='uq_dimension_param_code_direction'),
@@ -303,19 +303,19 @@ class ParamMapping(db.Model):
     __tablename__ = 'param_mappings'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
+    algorithm_type = Column(String(50), nullable=False, comment='关联算法类型')
     source = Column(String(20), nullable=False, default='api', comment='参数来源：case=用例参数, reference=参考参数, device=设备输出, api=API输出')
     source_param = Column(String(50), nullable=False, comment='源参数代码')
     source_direction = Column(String(10), default='output', comment='源参数方向：input, output')
-    dimension_id = Column(Integer, ForeignKey('dimensions.id', ondelete='CASCADE'), nullable=True, comment='目标评估维度ID(可为空)')
+    dimension_id = Column(Integer, nullable=True, comment='目标评估维度ID(可为空)')
     target_param = Column(String(50), nullable=False, comment='目标评估维度参数代码')
     transform_type = Column(String(20), default='none', comment='转换类型：none, uppercase, lowercase, json_parse, base64')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
-    algorithm = relationship('AlgorithmDefinition', back_populates='mappings')
-    dimension = relationship('Dimension')
+    algorithm = relationship('AlgorithmDefinition', back_populates='mappings', foreign_keys='ParamMapping.algorithm_type')
+    dimension = relationship('Dimension', foreign_keys='ParamMapping.dimension_id')
 
     __table_args__ = (
         UniqueConstraint('algorithm_type', 'source', 'source_param', 'dimension_id', name='uq_algorithm_source_to_dimension'),
@@ -341,16 +341,16 @@ class AlgorithmDimensionRelation(db.Model):
     __tablename__ = 'algorithm_dimension_relations'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
-    dimension_id = Column(Integer, ForeignKey('dimensions.id', ondelete='CASCADE'), nullable=False, comment='关联评估维度ID')
+    algorithm_type = Column(String(50), nullable=False, comment='关联算法类型')
+    dimension_id = Column(Integer, nullable=False, comment='关联评估维度ID')
     is_default = Column(Boolean, default=False, comment='是否默认评估维度')
     weight = Column(Float, default=1.0, comment='权重')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
-    algorithm = relationship('AlgorithmDefinition', back_populates='dimension_relations')
-    dimension = relationship('Dimension')
+    algorithm = relationship('AlgorithmDefinition', back_populates='dimension_relations', foreign_keys='AlgorithmDimensionRelation.algorithm_type')
+    dimension = relationship('Dimension', foreign_keys='AlgorithmDimensionRelation.dimension_id')
 
     __table_args__ = (
         UniqueConstraint('algorithm_type', 'dimension_id', name='uq_algorithm_dimension'),
@@ -373,7 +373,7 @@ class CaseAlgorithmParam(db.Model):
     __tablename__ = 'case_algorithm_params'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type', ondelete='CASCADE'), nullable=False, comment='关联算法类型')
+    algorithm_type = Column(String(50), nullable=False, comment='关联算法类型')
     param_code = Column(String(50), nullable=False, comment='参数代码')
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称')
@@ -394,7 +394,7 @@ class CaseAlgorithmParam(db.Model):
     created_at = Column(DateTime, default=datetime.now, comment='创建时间')
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
-    algorithm = relationship('AlgorithmDefinition')
+    algorithm = relationship('AlgorithmDefinition', foreign_keys='CaseAlgorithmParam.algorithm_type')
 
     __table_args__ = (
         UniqueConstraint('algorithm_type', 'param_code', name='uq_case_algorithm_param_code'),

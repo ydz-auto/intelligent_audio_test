@@ -59,7 +59,8 @@ class PlaybackOrchestrator:
     # ------------------------------------------------------------------ #
 
     def play_round(self, round_config, task_id,
-                   case_config=None, test_case_id=None, round_number=None):
+                   case_config=None, test_case_id=None, round_number=None,
+                   audio_local_paths=None):
         """
         播放一轮 E2E 测试音频（主讲人 + 噪声 + 干扰人）。
 
@@ -69,6 +70,8 @@ class PlaybackOrchestrator:
             case_config: 用例全局配置（用于 fallback 噪声配置）
             test_case_id: 测试用例关联ID
             round_number: 本轮轮次号（从1开始），用于日志区分不同轮次
+            audio_local_paths: 准备阶段预下载的 audio_id→本地路径 映射，
+                有映射时直接用本地文件，不再查 OSS。
 
         Returns:
             dict: {'audio_timelines': [...], 'playback_result': ...}
@@ -94,7 +97,8 @@ class PlaybackOrchestrator:
             # 3. 构建主讲人 audio_to_play 配置
             #    playback_device_id 指向 PlaybackDevice 表，build_dry_configs 内部从 DB 加载
             dry_configs, playback_devices_map = build_dry_configs(
-                dry_audios_info, self.audio_service, task_id=task_id
+                dry_audios_info, self.audio_service, task_id=task_id,
+                audio_local_paths=audio_local_paths,
             )
             if not dry_configs:
                 self._log('WARNING', f'[play_round {round_tag}] no dry configs built', task_id=task_id)
@@ -102,7 +106,8 @@ class PlaybackOrchestrator:
 
             # 4. 构建噪声 audio_to_play 配置
             noise_configs = build_noise_play_configs(
-                noise_audio_info, noise_devices, self.audio_service
+                noise_audio_info, noise_devices, self.audio_service,
+                audio_local_paths=audio_local_paths,
             )
 
             # 5. 构建干扰人 audio_to_play 配置（从 algorithmParams 读取）
@@ -110,7 +115,8 @@ class PlaybackOrchestrator:
             round_algo_params = _normalize_algorithm_params(round_config.get('algorithm_params', []))
             interferers = round_algo_params.get('interferers', [])
             interferer_configs = build_interferer_configs(
-                task_id, interferers, self.audio_service
+                task_id, interferers, self.audio_service,
+                audio_local_paths=audio_local_paths,
             )
 
             # 6. 构建时间轴（主讲人 + speaker 感知）

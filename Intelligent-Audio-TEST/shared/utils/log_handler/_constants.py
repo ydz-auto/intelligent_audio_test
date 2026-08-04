@@ -1,0 +1,9 @@
+"""日志处理器相关常量。
+
+从原 log_handler.py 拆分而来，保持行为不变。
+"""
+
+LOG_ARCHIVE_THRESHOLD = 300000
+LOG_HOT_DATA_DAYS = 7
+LOG_ARCHIVE_RETENTION_DAYS = 90
+CONSOLE_LOG_MAX_LENGTH = 20000

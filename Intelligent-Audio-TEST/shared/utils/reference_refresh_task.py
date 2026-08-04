@@ -43,7 +43,7 @@ class ReferenceRefreshTask:
 
         Args:
             refresher: 可调用对象，签名为 refresher(test_case)，用于刷新单个用例的参考参数。
-                        如果未提供，将尝试延迟导入 TestCaseController.refresh_reference_texts。
+                        如果未提供，将尝试延迟导入 TestCaseCommandService.refresh_reference_texts。
         """
         self.status = 'running'
         self.started_at = datetime.now(timezone(timedelta(hours=8)))
@@ -51,10 +51,10 @@ class ReferenceRefreshTask:
         try:
             if refresher is None:
                 try:
-                    from api_gateway.controllers.testcase_controller import TestCaseController
-                    refresher = TestCaseController.refresh_reference_texts
+                    from api_gateway.application.services.testcase_command_service import TestCaseCommandService
+                    refresher = TestCaseCommandService.refresh_reference_texts
                 except ImportError:
-                    raise RuntimeError("refresher 未提供且 TestCaseController 不可用")
+                    raise RuntimeError("refresher 未提供且 TestCaseCommandService 不可用")
 
             test_cases = TestCase.query.filter(
                 TestCase.id.in_(self.case_ids),

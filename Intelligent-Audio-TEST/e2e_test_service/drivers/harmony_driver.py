@@ -25,6 +25,10 @@ class HarmonyDriver(BaseDeviceDriver):
 
     def _get_driver(self, device_sn):
         if not UiDriver:
+            # hypium 导入失败 → UiDriver 为 None，无法连接鸿蒙设备
+            # 根因请见 utils.py 中 "Failed to import hypium" 的 ERROR 日志
+            self._log(level='ERROR',
+                      content=f"UiDriver is None (hypium 未成功导入)，无法获取设备 {device_sn} 的驱动")
             return None
         if device_sn not in self._drivers:
             try:
@@ -187,7 +191,8 @@ class HarmonyDriver(BaseDeviceDriver):
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...")
         driver = self._get_driver(device_sn)
         if not driver:
-            self._log(level='ERROR', content=f"Failed to get driver for device {device_sn}")
+            self._log(level='ERROR',
+                      content=f"Failed to get driver for device {device_sn}（原因：hypium/devicetest 未安装导致 UiDriver=None）")
             return False
 
         try:

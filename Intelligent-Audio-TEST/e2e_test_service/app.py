@@ -34,6 +34,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# 将 DatabaseLogHandler 挂到 root logger，使标准 logging.getLogger() 调用也走分流逻辑
+from shared.utils.log_handler import get_db_handler
+logging.getLogger().addHandler(get_db_handler())
+
 # 全局引用，防止 GC（gRPC server 需要在 lifespan 之外保持引用）
 _grpc_server = None
 

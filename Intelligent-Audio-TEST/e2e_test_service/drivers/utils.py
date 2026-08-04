@@ -13,7 +13,12 @@ _task_control_lock = threading.Lock()
 try:
     from hypium import UiDriver, BY as By, MatchPattern
 except Exception as e:
-    log_and_emit(level='DEBUG', module='DeviceDriver', content=f"Failed to import hypium: {e}")
+    # 提升到 ERROR 级别：hypium 依赖 devicetest 包，缺失会导致所有鸿蒙设备初始化失败
+    _hint = ""
+    if "No module named 'devicetest'" in str(e):
+        _hint = "（根因：devicetest 包未安装，请执行 pip install devicetest 或安装 DevEco Testing 框架）"
+    log_and_emit(level='ERROR', module='DeviceDriver',
+                 content=f"Failed to import hypium: {e}{_hint} → UiDriver=None，鸿蒙驱动将不可用")
     UiDriver = None
     By = None
     MatchPattern = None

@@ -139,11 +139,15 @@ def build_noise_info(round_config, case_config):
     return None, noise_devices
 
 
-def build_dry_configs(dry_audios_info, audio_service, task_id=None):
+def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_paths=None):
     """
     构建主讲人 audio_to_play 配置。
 
     playback_device_id 指向 PlaybackDevice 表主键，直接从 DB 加载 ORM 对象。
+
+    Args:
+        audio_local_paths: 准备阶段预下载的 audio_id→本地路径 映射，
+            有映射时直接用本地文件路径，不再走 OSS。
 
     Returns:
         (configs, playback_devices_map)
@@ -155,7 +159,12 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None):
     configs = []
 
     for audio_config, audio_obj in dry_audios_info:
-        file_path = getattr(audio_obj, 'file_path', None) or audio_config.get('file_path')
+        audio_id = audio_config.get('audio_id')
+        # 优先使用预下载的本地路径
+        if audio_local_paths and audio_id and audio_id in audio_local_paths:
+            file_path = audio_local_paths[audio_id]
+        else:
+            file_path = getattr(audio_obj, 'file_path', None) or audio_config.get('file_path')
         if not file_path:
             continue
 
@@ -226,15 +235,21 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None):
     return configs, playback_devices_map
 
 
-def build_noise_play_configs(noise_audio_info, noise_devices, audio_service):
+def build_noise_play_configs(noise_audio_info, noise_devices, audio_service,
+                             audio_local_paths=None):
     """构建噪声 audio_to_play 配置列表。"""
     if not noise_audio_info or not noise_devices:
         return []
 
     n_config, n_audio = noise_audio_info
-    file_path = (
-        n_audio.file_path if hasattr(n_audio, 'file_path') else n_audio.get('file_path')
-    )
+    # 优先使用预下载的本地路径
+    noise_audio_id = n_config.get('audio_id') if n_config else None
+    if audio_local_paths and noise_audio_id and noise_audio_id in audio_local_paths:
+        file_path = audio_local_paths[noise_audio_id]
+    else:
+        file_path = (
+            n_audio.file_path if hasattr(n_audio, 'file_path') else n_audio.get('file_path')
+        )
     noise_spl = n_config.get('spl', 60) if n_config else 60
 
     configs = []
@@ -272,7 +287,8 @@ def build_noise_play_configs(noise_audio_info, noise_devices, audio_service):
     return configs
 
 
-def build_interferer_configs(task_id, interferer_config, audio_service):
+def build_interferer_configs(task_id, interferer_config, audio_service,
+                             audio_local_paths=None):
     """
     构建干扰人 audio_to_play 配置。
 
@@ -349,14 +365,19 @@ def build_interferer_configs(task_id, interferer_config, audio_service):
         spl_mapping_id = getattr(dev_obj, 'current_spl_mapping_id', None)
         gain = resolve_spl_gain(spl_mapping_id, spl) if spl_mapping_id and spl else 1.0
 
-        file_path = _resolve_audio_file_path(audio_info)
-        if not file_path and audio_info.get('id'):
-            try:
-                audio_obj = db.session.get(Audio, audio_info['id'])
-                if audio_obj:
-                    file_path = audio_obj.file_path
-            except Exception:
-                pass
+        # 优先使用预下载的本地路径
+        interferer_audio_id = audio_info.get('id') or audio_info.get('audio_id')
+        if audio_local_paths and interferer_audio_id and interferer_audio_id in audio_local_paths:
+            file_path = audio_local_paths[interferer_audio_id]
+        else:
+            file_path = _resolve_audio_file_path(audio_info)
+            if not file_path and audio_info.get('id'):
+                try:
+                    audio_obj = db.session.get(Audio, audio_info['id'])
+                    if audio_obj:
+                        file_path = audio_obj.file_path
+                except Exception:
+                    pass
 
         if not file_path:
             _log('WARNING',

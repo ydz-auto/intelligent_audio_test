@@ -1,12 +1,12 @@
 """
 FastAPI 中间件 —— 将当前请求注入 request_adapter 的 ContextVar
 
-使旧控制器中的 `from api_gateway.controllers.request_adapter import request`
+使旧控制器中的 `from api_gateway.infrastructure.request_adapter import request`
 能够访问 FastAPI 的请求参数。
 """
 import json
 from starlette.middleware.base import BaseHTTPMiddleware
-from api_gateway.controllers.request_adapter import set_current_request
+from api_gateway.infrastructure.request_adapter import set_current_request
 
 
 class RequestAdapterMiddleware(BaseHTTPMiddleware):

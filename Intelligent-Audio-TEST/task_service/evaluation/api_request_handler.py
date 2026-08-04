@@ -157,7 +157,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             return os.path.exists(value)
         # 存储路径（兼容裸 OSS key）
         try:
-            path = value if value.startswith(('oss://', 'local://')) else f'audios/{value}'
+            path = value if value.startswith(('oss://', 'local://')) else storage.build_path('audios', value)
             return storage.exists(path)
         except Exception:
             return False
@@ -216,7 +216,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
 
         # 作为存储路径下载到临时文件
         try:
-            path = value if value.startswith(('oss://', 'local://')) else f'audios/{value}'
+            path = value if value.startswith(('oss://', 'local://')) else storage.build_path('audios', value)
             return storage.load_file(path)
         except Exception:
             return None

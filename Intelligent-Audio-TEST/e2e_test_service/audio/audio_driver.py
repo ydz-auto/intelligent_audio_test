@@ -15,7 +15,7 @@ import traceback
 from abc import ABC, abstractmethod
 from pydub import AudioSegment
 from shared.utils.log_handler import log_and_emit
-from shared.clients.oss_client import oss
+from shared.infrastructure.storage import storage
 
 
 class AudioDriver(ABC):
@@ -151,16 +151,18 @@ class PyAudioDriver(AudioDriver):
 
             audio_delays.append(delay)
 
-            # 源文件读取改造：若本地不存在，则视为 OSS key（audios bucket）下载到临时
+            # 源文件读取改造：若本地不存在，则通过 storage 抽象层下载
+            # storage.load_file 会自动解析 oss:// / local:// scheme 前缀，
+            # 并在 OSS 下载失败时回退到本地降级副本
             if not os.path.exists(file_path):
                 try:
-                    file_path = oss.download_to_temp('audios', file_path, '.wav')
+                    file_path = storage.load_file(file_path)
                     downloaded_temp_sources.append(file_path)
                     # 回写 config['file'] 为本地临时路径，供后续增益补偿等环节使用
                     config['file'] = file_path
-                    log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Downloaded audio from OSS to temp: {file_path}", category='audio')
+                    log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Downloaded audio via storage to temp: {file_path}", category='audio')
                 except Exception as e:
-                    log_and_emit('ERROR', 'audio_engine', f"Failed to download audio from OSS (key={config.get('file')}): {e}", category='audio')
+                    log_and_emit('ERROR', 'audio_engine', f"Failed to load audio via storage (key={config.get('file')}): {e}", category='audio')
                     continue
 
             if not os.path.exists(file_path):

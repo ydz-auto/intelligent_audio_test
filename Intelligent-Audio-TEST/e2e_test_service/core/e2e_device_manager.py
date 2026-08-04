@@ -95,7 +95,7 @@ class E2EDeviceManager:
                 if info["driver"]:
                     ok = info["driver"].initialize(info["device_sn"], task_id=task_id, test_case_id=test_case_id, **extra_params)
                     if not ok:
-                        err = "Initialize returned False"
+                        err = "Initialize returned False（常见根因：hypium/devicetest 包未安装 → UiDriver=None → 无法获取驱动，详见驱动层日志）"
                 else:
                     err = "Driver not available"
             except Exception as e:

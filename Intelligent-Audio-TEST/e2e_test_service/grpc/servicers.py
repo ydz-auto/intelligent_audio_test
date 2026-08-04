@@ -217,6 +217,15 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
         try:
             device_config = _loads(request.device_config, {})
             task_id = request.task_id
+
+            # 兼容调用方直接传 list 格式: [{device_id, device_sn, ...}, ...]
+            if isinstance(device_config, list):
+                device_info_list_raw = device_config
+                device_config = {
+                    'action': 'initialize',
+                    'device_info_list': device_info_list_raw,
+                }
+
             action = device_config.get('action', 'initialize')
             device_sn = device_config.get('device_sn')
             test_case_id = device_config.get('test_case_id')
@@ -226,11 +235,16 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             if action == 'initialize':
                 system = device_config.get('system')
                 keywords = device_config.get('keywords')
-                device_info_list_raw = device_config.get('device_info_list', [])
+                if not device_info_list_raw:
+                    device_info_list_raw = device_config.get('device_info_list', [])
 
                 # 注册任务设备
                 if device_info_list_raw:
                     self.factory.register_task_devices(task_id, device_info_list_raw)
+
+                # 如果没有显式传 device_sn,从 device_info_list 取第一个
+                if not device_sn and device_info_list_raw:
+                    device_sn = device_info_list_raw[0].get('device_sn')
 
                 driver = self.factory.get_driver(system, keywords=keywords, device_sn=device_sn)
                 if driver and hasattr(driver, 'initialize'):
@@ -452,11 +466,13 @@ class PlaybackServiceServicer(e2e_grpc.PlaybackServiceServicer):
                 case_config = playback_config.get('case_config')
                 test_case_id = playback_config.get('test_case_id')
                 round_number = playback_config.get('round_number')
+                audio_local_paths = playback_config.get('audio_local_paths', {})
                 result = self.orchestrator.play_round(
                     round_config, task_id,
                     case_config=case_config,
                     test_case_id=test_case_id,
                     round_number=round_number,
+                    audio_local_paths=audio_local_paths,
                 )
             return e2e_pb.StartPlaybackResponse(
                 success=True, message="ok",

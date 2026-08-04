@@ -40,10 +40,15 @@ async def lifespan(app: FastAPI):
     # 初始化 WebSocket 日志推送回调
     # 使用 Socket.IO 服务端（兼容前端 socket.io-client），替代原生 WS
     from api_gateway.websocket.socketio_server import ws_manager, sio
-    from shared.utils.log_handler import set_ws_broadcast_callback
+    from shared.utils.log_handler import set_ws_broadcast_callback, get_db_handler
     set_ws_broadcast_callback(ws_manager.broadcast_log_sync)
     from shared.utils.log_handler import set_socketio
     set_socketio(ws_manager)
+
+    # 将 DatabaseLogHandler 挂到 root logger，使标准 logging.getLogger() 调用也走分流逻辑
+    root_logger = logging.getLogger()
+    root_logger.addHandler(get_db_handler())
+    root_logger.setLevel(logging.INFO)
 
     # 保存主线程事件循环，供后台线程的 broadcast_log_sync 使用
     import asyncio as _asyncio
@@ -59,9 +64,14 @@ async def lifespan(app: FastAPI):
     # 启动 Redis PubSub 订阅线程：转发 task_service / e2e_test_service 等子服务发来的日志和进度
     _start_redis_subscriber(sio, ws_manager)
 
+    # 启动软删除硬清理守护线程（60天后物理删除逻辑删除记录）
+    from shared.utils.soft_delete_cleaner import start_soft_delete_cleaner, stop_soft_delete_cleaner
+    start_soft_delete_cleaner()
+
     logger.info("API Gateway (FastAPI + DDD) started on port %s", Config.PORT)
     yield
     logger.info("API Gateway shutting down")
+    stop_soft_delete_cleaner()
 
 
 def _start_redis_subscriber(sio, ws_manager):

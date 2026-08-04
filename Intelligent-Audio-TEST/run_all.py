@@ -101,6 +101,84 @@ def _wait_port(host, port, name, timeout=30):
     return False
 
 
+def _find_pids_on_port(port):
+    """查找占用指定端口的进程 PID 集合。"""
+    pids = set()
+    # 优先用 psutil（跨平台）
+    try:
+        import psutil
+        for conn in psutil.net_connections(kind='inet'):
+            if (conn.status == psutil.CONN_LISTEN
+                    and conn.laddr.port == port
+                    and conn.pid):
+                pids.add(conn.pid)
+        if pids:
+            return pids
+    except Exception:
+        pass
+    # 回退：Windows netstat
+    if os.name == 'nt':
+        try:
+            result = subprocess.run(
+                ['netstat', '-ano'], capture_output=True, text=True, timeout=5
+            )
+            for line in result.stdout.splitlines():
+                if f':{port} ' in line and 'LISTEN' in line.upper():
+                    parts = line.split()
+                    if parts and parts[-1].isdigit():
+                        pids.add(int(parts[-1]))
+        except Exception:
+            pass
+    return pids
+
+
+def _kill_pid(pid):
+    """杀掉指定 PID 的进程，返回是否成功。"""
+    try:
+        if os.name == 'nt':
+            r = subprocess.run(
+                ['taskkill', '/F', '/PID', str(pid)],
+                capture_output=True, text=True, timeout=5
+            )
+            return r.returncode == 0
+        else:
+            import signal as _sig
+            os.kill(pid, _sig.SIGKILL)
+            return True
+    except Exception:
+        return False
+
+
+def cleanup_occupied_ports():
+    """启动前检查并清理被占用的服务端口（HTTP + gRPC + 前端，不含 infra）。"""
+    ports_to_check = {FRONTEND_PORT}
+    for svc in services:
+        ports_to_check.add(svc['port'])
+        if svc.get('grpc_port'):
+            ports_to_check.add(svc['grpc_port'])
+
+    killed_any = False
+    for port in sorted(ports_to_check):
+        pids = _find_pids_on_port(port)
+        if not pids:
+            continue
+        for pid in pids:
+            proc_name = ''
+            try:
+                import psutil
+                proc_name = psutil.Process(pid).name()
+            except Exception:
+                pass
+            print(f"[CLEAN] port {port} occupied by PID {pid} ({proc_name}), killing...",
+                  flush=True)
+            if _kill_pid(pid):
+                killed_any = True
+
+    if killed_any:
+        time.sleep(1)  # 等端口释放
+        print("[OK] occupied ports cleaned.", flush=True)
+
+
 def start_service(svc):
     """启动一个 FastAPI 服务（uvicorn）。"""
     name = svc['name']
@@ -297,6 +375,7 @@ def start_frontend():
 
 
 def start_all():
+    cleanup_occupied_ports()
     start_redis()
     start_postgres()
     start_minio()

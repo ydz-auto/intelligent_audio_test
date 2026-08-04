@@ -88,10 +88,9 @@ class TaskOSSStorage:
 
         注意：此操作依赖 OSS list_objects，OSS 不可用时返回空列表。
         """
-        from shared.clients.oss_client import oss
         prefix = f"task_{task_id}/"
         try:
-            return oss.list_objects(self.CATEGORY_REPORTS, prefix)
+            return storage.list_objects(self.CATEGORY_REPORTS, prefix)
         except Exception:
             return []
 
@@ -126,12 +125,11 @@ class TaskOSSStorage:
 
         用于任务删除时的级联清理。幂等操作。
         """
-        from shared.clients.oss_client import oss
         prefix = f"task_{task_id}/"
         for category in [self.CATEGORY_CASE_RESULT, self.CATEGORY_REPORTS,
                          self.CATEGORY_ARCHIVES, self.CATEGORY_TEMP]:
             try:
-                keys = oss.list_objects(category, prefix)
+                keys = storage.list_objects(category, prefix)
                 for key in keys:
                     try:
                         self._storage.delete(f'{category}/{key}')

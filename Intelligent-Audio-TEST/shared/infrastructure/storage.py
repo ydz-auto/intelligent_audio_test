@@ -313,6 +313,32 @@ class Storage:
             except Exception:
                 pass
 
+    def list_objects(self, category: str, prefix: str = '') -> list:
+        """列出指定类别+前缀下的对象 key 列表。
+
+        :param category: 存储类别（如 'case_result', 'archives'）
+        :param prefix: key 前缀
+        :return: 逻辑 key 列表（不含 category/ 前缀）
+        """
+        try:
+            return self._oss.list_objects(category, prefix)
+        except Exception as e:
+            log_not_emit('WARNING', _MODULE_NAME,
+                         f'list_objects OSS failed: {e}',
+                         category=category)
+            # 回退：列举本地降级副本
+            local_base = self._local_path(category, '')
+            local_root = os.path.join(local_base, prefix) if prefix else local_base
+            results = []
+            if os.path.isdir(local_root):
+                for root, _dirs, files in os.walk(local_root):
+                    for fname in files:
+                        full = os.path.join(root, fname)
+                        rel = os.path.relpath(full, local_base)
+                        rel = rel.replace(os.sep, '/')
+                        results.append(rel)
+            return results
+
     def get_url(self, path: str, expires: int = 3600) -> Optional[str]:
         """获取文件访问 URL。
 
