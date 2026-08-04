@@ -58,21 +58,33 @@ DIMENSIONS = [
         'statistic_method': 'average',
         'params': [
             # ─── 输入参数 ───
+            ('input_lastword', '输入音频最后一词时间戳', '输入音频最后一词时间戳', 'json', 'input',
+             None, None, None, True,
+             False, None, '输入音频最后一词时间戳（主服务参数传递）', 5),
+            ('start_ms', '音频开启时刻', '音频开启时刻', 'number', 'input',
+             None, None, None, True,
+             False, None, '本轮音频播放开始的绝对时刻(毫秒 Unix 时间戳)', 6),
+            ('query', '用例问题', '用例问题', 'text', 'input',
+             None, None, None, True,
+             False, None, '用例问题', 7),
+            ('question', '模型识别问题结果', '模型识别问题结果', 'text', 'input',
+             None, None, None, True,
+             False, None, '模型识别问题结果', 8),
             ('record_file', '录音文件', '录音文件', 'audio', 'input',
-             None, None, None, False,
+             None, None, None, True,
              False, None, 'wav 录音文件路径(eval_server 调用 asr_server.py /asr 接口获取 ASR 结果)', 10),
             ('pause', '停顿区间', '停顿区间', 'json', 'input',
-             None, None, None, False,
+             None, None, None, True,
              False, None, '停顿区间数据(主服务用例参数传递)', 20),
             ('first_frame_ms', '录屏首帧时刻', '录屏首帧时刻', 'number', 'input',
-             None, None, None, False,
+             None, None, None, True,
              False, None, '录屏首帧写入的绝对时刻(毫秒 Unix 时间戳)', 30),
             ('end_ms', '音频结束时刻', '音频结束时刻', 'number', 'input',
-             None, None, None, False,
+             None, None, None, True,
              False, None, '本轮音频播放结束的绝对时刻(毫秒 Unix 时间戳)', 40),
             ('offset_ms', '时延补偿', '时延补偿', 'number', 'input',
-             None, None, None, False,
-             False, 40, '音响结束播放与音频最后内容词的时延补偿(毫秒)', 50),
+             None, None, None, True,
+             False, '40', '音响结束播放与音频最后内容词的时延补偿(毫秒)', 50),
 
             # ─── 输出参数: tor (接话率) ───
             ('tor', 'TOR接话率', 'TOR接话率', 'number', 'output',
@@ -125,14 +137,16 @@ DIMENSIONS = [
              'message', None, 'aux', False,
              False, None, 'takeover_latency: 错误/成功说明', 84),
         ],
-        # record_path, first_frame_ms, end_ms 从 device 输出映射
-        # pause 从 reference 映射
+        # wav_path, first_frame_ms, end_ms, start_ms 从 device 输出映射
+        # pause, input_lastword 从 reference 映射
         # ASR 结果由 eval_server 内部调用 asr_server.py 获取，通过返回值传递，三个子指标共享
         'param_mappings': [
-            ('device', 'output', 'record_path', 'record_file', 'none'),
+            ('device', 'output', 'wav_path', 'record_file', 'none'),
             ('reference', 'output', 'pause', 'pause', 'none'),
             ('device', 'output', 'first_frame_ms', 'first_frame_ms', 'none'),
             ('device', 'output', 'end_ms', 'end_ms', 'none'),
+            ('device', 'output', 'start_ms', 'start_ms', 'none'),
+            ('reference', 'output', 'input_lastword', 'input_lastword', 'none'),
         ],
     },
 ]
@@ -158,7 +172,27 @@ def seed_xiaoyi_dimensions():
                 "WHERE task_type_code = :tc AND deleted = FALSE"
             ), {'tc': task_code}).fetchone()
 
-            api_settings = json.dumps({}, ensure_ascii=False)
+            api_settings = json.dumps({
+                'method': 'POST',
+                'headers': {},
+                'body_template': {
+                    'rounds': [
+                        {
+                            'end_ms': '{{end_ms}}',
+                            'first_frame_ms': '{{first_frame_ms}}',
+                            'input_lastword': '{{input_lastword}}',
+                            'offset_ms': '{{offset_ms}}',
+                            'pause': '{{pause}}',
+                            'record_file': '{{record_file}}',
+                            'start_ms': '{{start_ms}}',
+                            'query': '{{query}}',
+                            'question': '{{question}}'
+                        }
+                    ]
+                },
+                'timeout': 30000
+            }, ensure_ascii=False)
+            rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
 
             if existing_dim:
                 dim_id = existing_dim[0]
@@ -170,6 +204,7 @@ def seed_xiaoyi_dimensions():
                     "  result_max = :rmax, decimal_places = :dp, weight = :w, "
                     "  estimated_exec_time = :et, score_unit = :su, "
                     "  statistic_method = :sm, api_settings = :apis, "
+                    "  rule = :rule, "
                     "  updated_at = NOW() "
                     "WHERE id = :did"
                 ), {
@@ -179,7 +214,7 @@ def seed_xiaoyi_dimensions():
                     'rmax': dim_def['result_max'], 'dp': dim_def['decimal_places'],
                     'w': dim_def['weight'], 'et': dim_def['estimated_exec_time'],
                     'su': dim_def['score_unit'], 'sm': dim_def['statistic_method'],
-                    'apis': api_settings, 'did': dim_id,
+                    'apis': api_settings, 'rule': rule, 'did': dim_id,
                 })
             else:
                 result = conn.execute(text(
@@ -203,7 +238,7 @@ def seed_xiaoyi_dimensions():
                     'rmin': dim_def['result_min'], 'rmax': dim_def['result_max'],
                     'dp': dim_def['decimal_places'], 'w': dim_def['weight'],
                     'et': dim_def['estimated_exec_time'],
-                    'rule': '{}', 'apis': api_settings,
+                    'rule': rule, 'apis': api_settings,
                     'su': dim_def['score_unit'], 'sm': dim_def['statistic_method'],
                 })
                 dim_id = result.fetchone()[0]
@@ -356,7 +391,7 @@ if __name__ == '__main__':
     print("1. xiaoyi_metrics 维度 — 小艺评估统一指标")
     print("   调一次 ASR，三个子指标共享结果")
     print()
-    print("   输入: record_path(wav), pause(停顿区间), first_frame_ms, end_ms, offset_ms")
+    print("   输入: input_lastword, start_ms, query, question, record_file(wav), pause(停顿区间), first_frame_ms, end_ms, offset_ms")
     print()
     print("   子指标1: tor (接话率)")
     print("     输出: tor, tor_takeover_count, tor_total_pauses, tor_per_pause")

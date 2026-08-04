@@ -57,7 +57,7 @@ def seed_llm_judge_dimension():
             # 更新已有维度的 api_settings，确保 body_template 包含 prompt 字段映射
             default_api_settings = json.dumps({
                 'method': 'POST',
-                'headers': {'Content-Type': 'application/json'},
+                'headers': {'content_type': 'application/json'},
                 'body_template': {
                     'model': '{{model}}',
                     'prompt': '{{prompt}}',
@@ -67,21 +67,24 @@ def seed_llm_judge_dimension():
                             'correct_answer': '{{correct_answer}}',
                             'question': '{{question}}',
                             'query': '{{query}}',
-                            'record_file': '{{record_file}}'
+                            'record_file': '{{record_file}}',
+                            'prompt': '{{prompt}}'
                         }
                     ]
-                }
+                },
+                'timeout': 30000
             }, ensure_ascii=False)
+            default_rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
             conn.execute(text(
-                "UPDATE dimensions SET api_settings = :settings, updated_at = NOW() "
+                "UPDATE dimensions SET api_settings = :settings, rule = :rule, updated_at = NOW() "
                 "WHERE id = :did"
-            ), {'settings': default_api_settings, 'did': dim_id})
-            print(f"  + 已更新 llm_judge 维度 api_settings (body_template 含 rounds 结构)")
+            ), {'settings': default_api_settings, 'rule': default_rule, 'did': dim_id})
+            print(f"  + 已更新 llm_judge 维度 api_settings/rule (body_template 含 rounds 结构)")
         else:
             # 默认 body_template：rounds 外放维度级配置，rounds 内放数据字段
             default_api_settings = json.dumps({
                 'method': 'POST',
-                'headers': {'Content-Type': 'application/json'},
+                'headers': {'content_type': 'application/json'},
                 'body_template': {
                     'model': '{{model}}',
                     'prompt': '{{prompt}}',
@@ -91,11 +94,14 @@ def seed_llm_judge_dimension():
                             'correct_answer': '{{correct_answer}}',
                             'question': '{{question}}',
                             'query': '{{query}}',
-                            'record_file': '{{record_file}}'
+                            'record_file': '{{record_file}}',
+                            'prompt': '{{prompt}}'
                         }
                     ]
-                }
+                },
+                'timeout': 30000
             }, ensure_ascii=False)
+            default_rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
 
             result = conn.execute(text(
                 "INSERT INTO dimensions "
@@ -114,7 +120,7 @@ def seed_llm_judge_dimension():
                 "   FALSE, NOW(), NOW()) "
                 "RETURNING id"
             ), {
-                'rule': '{}',
+                'rule': default_rule,
                 'api_settings': default_api_settings
             })
             dim_id = result.fetchone()[0]
@@ -130,22 +136,22 @@ def seed_llm_judge_dimension():
             #  field_path, agg_role, output_role, visible_in_report,
             #  required, default_value, help_text, ui_order)
             ('record_file', '录屏文件', '录屏文件', 'text', 'input',
-             None, None, None, False,
+             None, None, None, True,
              False, None, '录屏文件路径', 10),
             ('correct_answer', '参考答案', '参考答案', 'text', 'input',
              None, None, None, True,
              False, None, 'LLM Judge 评估的标准答案', 20),
             ('query', '用户提问', '用户提问', 'text', 'input',
-             None, None, None, False,
+             None, None, None, True,
              False, None, '用户提问文本', 30),
             ('question', '设备识别提问', '设备识别提问', 'text', 'input',
-             None, None, None, False,
+             None, None, None, True,
              False, None, '设备识别到的用户提问', 40),
             ('answer', '设备回答', '设备回答', 'text', 'input',
              None, None, None, True,
              False, None, '设备/被测系统的回答文本', 50),
             ('prompt', '评估提示词', '评估提示词', 'text', 'input',
-             None, None, None, False,
+             None, None, None, True,
              False, None, 'LLM Judge 评估提示词模板，可含 {hypothesis} 和 {reference} 占位符', 55),
             # 输出字段：LLM 评分结果
             ('llm_judge_score', 'LLM评分', 'LLM评分', 'number', 'output',
@@ -216,7 +222,7 @@ def seed_llm_judge_dimension():
                 "  (algorithm_type, dimension_id, is_default, weight, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
-                "  ('voice_llm', :did, TRUE, 1.0, FALSE, NOW(), NOW())"
+                "  ('voice_llm', :did, FALSE, 1.0, FALSE, NOW(), NOW())"
             ), {'did': dim_id})
             print(f"  + 关联已插入 (voice_llm → llm_judge id={dim_id})")
 
@@ -229,7 +235,6 @@ def seed_llm_judge_dimension():
         # 这样 evaluation_service 能按维度提取对应的输入参数
         judge_mappings = [
             # (source, source_direction, source_param, target_param, transform_type)
-            ('device', 'output', 'record_path', 'record_file', 'none'),
             ('reference', 'output', 'correct_answer', 'correct_answer', 'none'),
             ('reference', 'output', 'query', 'query', 'none'),
             ('device', 'output', 'question', 'question', 'none'),

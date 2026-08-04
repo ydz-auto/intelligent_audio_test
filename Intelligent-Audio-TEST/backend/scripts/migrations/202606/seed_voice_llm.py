@@ -80,170 +80,48 @@ def seed_voice_llm():
                 "INSERT INTO algorithm_definitions "
                 "  (type, name, description, status, display_order, deleted, created_at, updated_at) "
                 "VALUES "
-                "  ('voice_llm', 'Voice LLM', '语音大模型交互测试', 'online', 100, false, NOW(), NOW())"
+                "  ('voice_llm', '小艺语音大模型', '语音大模型交互测试', 'online', 100, false, NOW(), NOW())"
             ))
             print("  + voice_llm 算法定义已插入")
 
         # ============================================================
-        # Step 3: 注册用例专属参数（case_algorithm_params）
+        # Step 3: 清理用例专属参数（case_algorithm_params）
         # ============================================================
-        print("\n=== Step 3: 注册 voice_llm 用例参数 (case_algorithm_params) ===")
+        print("\n=== Step 3: 清理 voice_llm 用例参数 (case_algorithm_params) ===")
 
-        # 清理 input_audio（后端自动用音频 ID 填入，不需要作为用例参数定义）
-        deleted_inputAudio = conn.execute(text(
-            "DELETE FROM case_algorithm_params "
-            "WHERE algorithm_type = 'voice_llm' AND param_code = 'input_audio'"
+        # 数据库中 voice_llm 的 case_algorithm_params 全部已软删除
+        # 用例参数已迁移到其他表管理，这里仅做清理
+        deleted_count = conn.execute(text(
+            "UPDATE case_algorithm_params SET deleted = true, updated_at = NOW() "
+            "WHERE algorithm_type = 'voice_llm' AND deleted = false"
         )).rowcount
-        if deleted_inputAudio:
-            print(f"  清理 {deleted_inputAudio} 条 input_audio（后端自动填入，无需定义）")
-
-        case_params = [
-            # (algo_type, param_code, param_name, label, param_type, scope,
-            #  required, default_value, help_text, ui_order, hidden, deleted,
-            #  min_value, max_value, step, unit,
-            #  annotation_code, field_path)
-            #  annotation_code 默认=algorithm_type, field_path 默认=param_code
-
-            # --- 通用参数（scope=common） ---
-            ('voice_llm', 'prompt_audio_id', 'Prompt 音频', 'Prompt 音频', 'audio_select', 'common',
-             False, None, '在干声播放之前播放的引导音频', 30, False, False,
-             None, None, None, None,
-             None, None),  # 不从标注提取
-
-            # --- E2E 专用参数（scope=e2e） ---
-            ('voice_llm', 'interferers', '干扰人列表', '干扰人', 'json', 'e2e',
-             False, '[]', '干扰人配置列表，支持多路独立干扰', 20, False, False,
-             None, None, None, None,
-             None, None),  # 默认 annotation_code=voice_llm, field_path=interferers
-            ('voice_llm', 'rail_distance', '导轨距离(cm)', '导轨距离', 'slider', 'e2e',
-             False, None, '导轨距离，本轮结束后自动复位。不填则不控制导轨', 40, False, False,
-             10, 200, 5, 'cm',
-             None, None),  # 默认 annotation_code=voice_llm, field_path=rail_distance
-            ('voice_llm', 'volume_level', '被测设备音量', '设备音量', 'slider', 'e2e',
-             False, None, '被测设备音量(0-100)，本轮结束后自动恢复。不填则不控制音量', 41, False, False,
-             0, 100, 1, None,
-             None, None),  # 默认 annotation_code=voice_llm, field_path=volume_level
-            ('voice_llm', 'voiceprint_enabled', '声纹注册', '声纹注册', 'switch', 'e2e',
-             False, 'false', '是否在本轮播放声纹注册音频', 50, False, False,
-             None, None, None, None,
-             None, None),
-            ('voice_llm', 'voiceprint_audio_id', '声纹注册音频', '声纹音频', 'audio_select', 'e2e',
-             False, None, '声纹注册音频文件', 51, False, False,
-             None, None, None, None,
-             None, None),
-            ('voice_llm', 'voiceprint_playback_device_id', '声纹播放设备', '播放设备', 'device_select', 'e2e',
-             False, None, '声纹注册音频播放设备', 52, False, False,
-             None, None, None, None,
-             None, None),
-            ('voice_llm', 'voiceprint_spl', '声纹播放声压级', '声压级', 'number', 'e2e',
-             False, '70.0', '声纹注册音频播放声压级', 53, False, False,
-             20, 100, 1, 'dB',
-             None, None),
-            ('voice_llm', 'voiceprint_wait_time', '声纹等待时间(秒)', '等待时间', 'number', 'e2e',
-             False, '5.0', '声纹注册后等待时间', 54, False, False,
-             0, 60, 1, 's',
-             None, None),
-
-            # --- 结果收集模式参数（scope=e2e） ---
-            ('voice_llm', 'collect_per_round', '轮次内收集结果', '轮次内收集', 'switch', 'e2e',
-             False, 'true', '每轮结束后立即收集设备结果（默认开启）', 45, False, False,
-             None, None, None, None,
-             None, None),
-            ('voice_llm', 'collect_final', '最终收集结果', '最终收集', 'switch', 'e2e',
-             False, 'false', '所有轮次执行完毕后一次性收集未收集的轮次结果', 46, False, False,
-             None, None, None, None,
-             None, None),
-
-            # --- API 专用参数（scope=api） ---
-            ('voice_llm', 'input_text', '输入文本', '输入文本', 'text', 'api',
-             False, None, '发送给 API 的文本内容（可与输入音频共存）', 70, False, False,
-             None, None, None, None,
-             None, 'query'),  # annotation_code 默认=voice_llm, field_path=query（标注 JSON 里字段名是 query）
-            # input_audio 不作为用例参数定义，后端创建用例时自动用音频本身 ID 填入 algorithm_params
-        ]
-
-        inserted_count = 0
-        skipped_count = 0
-        for p in case_params:
-            (algo_type, param_code, param_name, label, param_type, scope,
-             required, default_value, help_text, ui_order, hidden, deleted,
-             min_value, max_value, step, unit,
-             ann_code, f_path) = p
-
-            # annotation_code 默认 = algorithm_type, field_path 默认 = param_code
-            effective_ann_code = ann_code if ann_code is not None else algo_type
-            effective_f_path = f_path if f_path is not None else param_code
-
-            existing = conn.execute(text(
-                "SELECT id FROM case_algorithm_params "
-                "WHERE algorithm_type = :at AND param_code = :pc"
-            ), {'at': algo_type, 'pc': param_code}).fetchone()
-
-            if existing:
-                conn.execute(text(
-                    "UPDATE case_algorithm_params SET "
-                    "  param_type = :pt, scope = :scope, min_value = :mn, max_value = :mx, "
-                    "  step = :st, unit = :un, annotation_code = :ac, field_path = :fp "
-                    "WHERE id = :id"
-                ), {'pt': param_type, 'scope': scope, 'mn': min_value, 'mx': max_value,
-                    'st': step, 'un': unit, 'ac': effective_ann_code, 'fp': effective_f_path,
-                    'id': existing[0]})
-                print(f"  - {param_code} 已存在，已更新 param_type/scope/min/max/step/unit/annotation_code/field_path")
-                skipped_count += 1
-            else:
-                conn.execute(text(
-                    "INSERT INTO case_algorithm_params "
-                    "  (algorithm_type, param_code, param_name, label, param_type, scope, "
-                    "   required, default_value, help_text, ui_order, hidden, deleted, "
-                    "   min_value, max_value, step, unit, annotation_code, field_path, "
-                    "   created_at, updated_at) "
-                    "VALUES "
-                    "  (:at, :pc, :pn, :lb, :pt, :scope, "
-                    "   :req, :dv, :ht, :uo, :hid, :del, "
-                    "   :mn, :mx, :st, :un, :ac, :fp, "
-                    "   NOW(), NOW())"
-                ), {
-                    'at': algo_type, 'pc': param_code, 'pn': param_name, 'lb': label,
-                    'pt': param_type, 'scope': scope, 'req': required, 'dv': default_value,
-                    'ht': help_text, 'uo': ui_order, 'hid': hidden, 'del': deleted,
-                    'mn': min_value, 'mx': max_value, 'st': step, 'un': unit,
-                    'ac': effective_ann_code, 'fp': effective_f_path
-                })
-                print(f"  + {param_code} (scope={scope}, ann_code={effective_ann_code}, field_path={effective_f_path})")
-                inserted_count += 1
-
-        print(f"  插入 {inserted_count} 条，跳过/更新 {skipped_count} 条")
-
-        # 清理不在当前定义里的旧残留字段（软删除）
-        valid_codes = [p[1] for p in case_params]  # p[1] = param_code
-        placeholders = ','.join([f"'{c}'" for c in valid_codes])
-        deleted_old = conn.execute(text(
-            f"UPDATE case_algorithm_params SET deleted = true, updated_at = NOW() "
-            f"WHERE algorithm_type = 'voice_llm' AND deleted = false "
-            f"AND param_code NOT IN ({placeholders})"
-        )).rowcount
-        if deleted_old:
-            print(f"  清理 {deleted_old} 条旧残留字段（NOT IN {valid_codes}）")
+        if deleted_count:
+            print(f"  清理 {deleted_count} 条残留用例参数（已迁移到其他表管理）")
+        else:
+            print("  无残留用例参数需要清理")
 
         # ============================================================
         # Step 4: 注册设备输出字段（algorithm_device_params）
         # ============================================================
         print("\n=== Step 4: 注册 voice_llm 设备输出字段 (algorithm_device_params) ===")
 
-        # 清理旧的 asr_text/asr_rttm/asr_stm（voice_llm 不使用这些字段）
-        obsolete_device_codes = ['asr_text', 'asr_rttm', 'asr_stm']
+        # 清理旧的 asr_text/asr_rttm/asr_stm/record_path/device_status（voice_llm 不使用这些字段）
+        obsolete_device_codes = ['asr_text', 'asr_rttm', 'asr_stm', 'record_path', 'device_status']
         deleted_dev = conn.execute(text(
             "DELETE FROM algorithm_device_params "
             "WHERE algorithm_type = 'voice_llm' AND param_code IN :codes"
         ), {'codes': tuple(obsolete_device_codes)}).rowcount
         if deleted_dev:
-            print(f"  清理 {deleted_dev} 条旧设备输出字段（asr_text/asr_rttm/asr_stm）")
+            print(f"  清理 {deleted_dev} 条旧设备输出字段（asr_text/asr_rttm/asr_stm/record_path/device_status）")
 
         device_params = [
-            ('voice_llm', 'record_path', '录屏文件', 'text', 'output', False, None, 10, False),
+            ('voice_llm', 'start_ms', '输入音频开始播放时间', 'text', 'output', False, None, 0, False),
+            ('voice_llm', 'end_ms', '输入音频停止播放时间', 'text', 'output', False, None, 0, False),
+            ('voice_llm', 'first_frame_ms', '录屏开始世界时间', 'text', 'output', False, None, 0, False),
+            ('voice_llm', 'wav_path', '录音文件', 'text', 'output', False, None, 0, False),
+            ('voice_llm', 'input_text', '录屏文件', 'text', 'output', False, None, 10, False),
             ('voice_llm', 'question', '用户提问', 'text', 'output', False, None, 11, False),
             ('voice_llm', 'answer', '小艺回答', 'text', 'output', False, None, 12, False),
-            ('voice_llm', 'device_status', '设备状态', 'json', 'output', False, None, 13, False),
         ]
 
         dev_inserted = 0
@@ -350,6 +228,12 @@ def seed_voice_llm():
             ('voice_llm', 'query', '用户提问', 'text',
              'query', 'text', 'query', 'join',
              '用户提问文本，从音频标注提取或手动填写'),
+            ('voice_llm', 'pause', '停顿点', 'json',
+             'pause', 'json', 'pause', 'first',
+             '停顿点'),
+            ('voice_llm', 'input_lastword', '输入末尾词时间戳', 'json',
+             'input_lastword', 'json', 'input_lastword', 'first',
+             '输入末尾词时间戳'),
         ]
 
         ref_inserted = 0
@@ -388,52 +272,20 @@ def seed_voice_llm():
         print(f"  插入 {ref_inserted} 条，跳过 {ref_skipped} 条")
 
         # ============================================================
-        # Step 7: 注册参数映射（param_mappings）
+        # Step 7: 清理无维度参数映射（param_mappings where dimension_id IS NULL）
         # ============================================================
-        print("\n=== Step 7: 注册 voice_llm 参数映射 (param_mappings) ===")
+        print("\n=== Step 7: 清理 voice_llm 无维度参数映射 (param_mappings) ===")
 
-        mappings = [
-            # 参考答案（从音频标注提取）
-            ('voice_llm', 'reference', 'output', 'correct_answer', 'asr_ref', 'none'),
-            # 用户提问（从音频标注提取）
-            ('voice_llm', 'reference', 'output', 'query', 'query_ref', 'none'),
-            # 设备输出映射
-            ('voice_llm', 'device', 'output', 'answer', 'output_text', 'none'),
-            ('voice_llm', 'device', 'output', 'question', 'question_text', 'none'),
-            ('voice_llm', 'device', 'output', 'record_path', 'record_path', 'none'),
-        ]
-
-        map_inserted = 0
-        map_skipped = 0
-        for m in mappings:
-            (algo_type, source, source_direction, source_param, target_param,
-             transform_type) = m
-
-            existing = conn.execute(text(
-                "SELECT id FROM param_mappings "
-                "WHERE algorithm_type = :at AND source = :src "
-                "AND source_param = :sp AND dimension_id IS NULL"
-            ), {'at': algo_type, 'src': source, 'sp': source_param}).fetchone()
-
-            if existing:
-                print(f"  - {source}.{source_param} → {target_param} 已存在")
-                map_skipped += 1
-            else:
-                conn.execute(text(
-                    "INSERT INTO param_mappings "
-                    "  (algorithm_type, source, source_direction, source_param, "
-                    "   dimension_id, target_param, transform_type, "
-                    "   deleted, created_at, updated_at) "
-                    "VALUES "
-                    "  (:at, :src, :sd, :sp, NULL, :tp, :tt, false, NOW(), NOW())"
-                ), {
-                    'at': algo_type, 'src': source, 'sd': source_direction,
-                    'sp': source_param, 'tp': target_param, 'tt': transform_type
-                })
-                print(f"  + {source}.{source_param} → {target_param}")
-                map_inserted += 1
-
-        print(f"  插入 {map_inserted} 条，跳过 {map_skipped} 条")
+        # 数据库中 dimension_id IS NULL 的 param_mappings 全部已软删除
+        # 维度级映射由各维度种子脚本管理（seed_xiaoyi_dimensions / seed_llm_judge_dimension）
+        deleted_maps = conn.execute(text(
+            "UPDATE param_mappings SET deleted = true, updated_at = NOW() "
+            "WHERE algorithm_type = 'voice_llm' AND dimension_id IS NULL AND deleted = false"
+        )).rowcount
+        if deleted_maps:
+            print(f"  清理 {deleted_maps} 条无维度参数映射（已由维度级映射管理）")
+        else:
+            print("  无无维度参数映射需要清理")
 
         # ============================================================
         # Step 8: 注册算法-维度关联（algorithm_dimension_relations）
@@ -442,13 +294,13 @@ def seed_voice_llm():
 
         dim_rows = conn.execute(text(
             "SELECT id, name FROM dimensions "
-            "WHERE task_type_code = 'llm_judge' AND deleted = FALSE"
+            "WHERE deleted = FALSE ORDER BY id"
         )).fetchall()
 
         rel_inserted = 0
         rel_skipped = 0
         if not dim_rows:
-            print("  未找到 task_type_code='llm_judge' 的维度，跳过")
+            print("  未找到维度，跳过")
         else:
             for dim_id, dim_name in dim_rows:
                 existing = conn.execute(text(
@@ -462,10 +314,10 @@ def seed_voice_llm():
                 else:
                     conn.execute(text(
                         "INSERT INTO algorithm_dimension_relations "
-                        "  (algorithm_type, dimension_id, is_active, deleted, "
+                        "  (algorithm_type, dimension_id, is_default, weight, deleted, "
                         "   created_at, updated_at) "
                         "VALUES "
-                        "  ('voice_llm', :did, TRUE, FALSE, NOW(), NOW())"
+                        "  ('voice_llm', :did, FALSE, 1.0, FALSE, NOW(), NOW())"
                     ), {'did': dim_id})
                     print(f"  + 关联维度 '{dim_name}' (id={dim_id})")
                     rel_inserted += 1
@@ -484,12 +336,12 @@ if __name__ == '__main__':
     print()
     print("此脚本将注册：")
     print("1. voice_llm 算法定义")
-    print("2. 用例参数（scope=common/api/e2e，含 min/max/step/unit）")
-    print("3. 4 个设备输出字段（record_path/question/answer/device_status）")
+    print("2. 清理用例参数（case_algorithm_params，已迁移到其他表管理）")
+    print("3. 7 个设备输出字段（start_ms/end_ms/first_frame_ms/wav_path/input_text/question/answer）")
     print("4. 3 个 API 输入/输出字段（会话协议字段由执行引擎管理）")
-    print("5. 2 个参考参数定义（correct_answer/query，从音频标注提取）")
-    print("6. 5 条参数映射（reference/device → evaluation input）")
-    print("7. 算法-维度关联（llm_judge 维度）")
+    print("5. 4 个参考参数定义（correct_answer/query/pause/input_lastword，从音频标注提取）")
+    print("6. 清理无维度参数映射（已由维度级映射管理）")
+    print("7. 算法-维度关联（所有维度）")
     print()
     print("脚本可重复执行（幂等）")
     print()
