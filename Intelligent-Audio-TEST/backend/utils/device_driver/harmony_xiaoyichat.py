@@ -2,6 +2,7 @@ import time
 import subprocess
 import os
 import re
+import wave
 
 try:
     from hypium.model import UiParam
@@ -16,6 +17,29 @@ from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 class Xiaoyilivechat(HarmonyDriver):
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
+
+    # 各 app 的 pcm 缓存目录、用户输入后缀、AI 回复后缀
+    # 当前驱动仅抓取小艺(xiaoyi)数据；通过 app 参数可切换到 doubao/chatgpt
+    PCM_APP_CONFIG = {
+        'xiaoyi': {
+            'cache_dirs': ['/data/app/el2/100/base/com.huawei.hmos.aibase/cache',
+                           '/data/app/el2/100/base/com.huawei.hmos.vassistant/cache'],
+            'user_suffix': 'cap_client_process_out.pcm',
+            'ai_suffix': 'cap_client_ec_out.pcm',
+        },
+        'doubao': {
+            'cache_dirs': ['/data/app/el2/100/base/com.larus.nova.hm/cache'],
+            'user_suffix': 'cap_client_out.pcm',
+            'ai_suffix': 'client_in.pcm',
+        },
+        'chatgpt': {
+            'cache_dirs': ['/data/local/tmp'],
+            'user_suffix': 'cap_client_out.pcm',
+            'ai_suffix': 'cap_client_in.pcm',
+        },
+    }
+    # 清理时一并清的公共目录
+    PCM_COMMON_CLEAR_DIRS = ['/data/data/.pulse_dir', '/data/local/tmp']
 
     def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
         """将 mp4 无损转换为 wav（pcm_s16le，44.1kHz，双声道）。
@@ -37,6 +61,65 @@ class Xiaoyilivechat(HarmonyDriver):
             return wav_path
         except Exception as e:
             self._log(level='ERROR', content=f"mp4转wav异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+
+    def _pcm_to_wav(self, pcm_path, task_id=None, test_case_id=None):
+        """将裸 pcm 转 wav（pcm_s16le）。
+
+        pcm 文件名数字前缀格式: <流ID>_<采样率>_<声道数>_<位深>_...
+        例如 100188_48000_2_1_cap_client_out.pcm 表示:
+          - 100188: 流ID
+          - 48000:  采样率
+          - 2:      声道数
+          - 1:      位深标志(1=16位, 2=32位)
+        目前仅支持 16 位。成功返回 wav 绝对路径, 失败返回 None。
+        """
+        if not os.path.exists(pcm_path):
+            return None
+        # 从文件名解析采样参数
+        base = os.path.basename(pcm_path)
+        parts = base.split('_')
+        try:
+            sample_rate = int(parts[1])
+            channels = int(parts[2])
+            bit_depth_flag = int(parts[3])
+        except (IndexError, ValueError):
+            self._log(level='ERROR', content=f"pcm文件名无法解析采样参数: {base}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+
+        # 位深标志 -> 每采样字节数
+        if bit_depth_flag == 1:
+            sample_width = 2  # 16-bit
+        elif bit_depth_flag == 2:
+            self._log(level='ERROR', content=f"暂不支持32位pcm转换: {base}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+        else:
+            self._log(level='ERROR', content=f"未知位深标志 bit_depth={bit_depth_flag}: {base}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+
+        wav_path = os.path.splitext(pcm_path)[0] + '.wav'
+        try:
+            with open(pcm_path, 'rb') as f:
+                pcm_data = f.read()
+            # 校验数据长度对齐到帧大小, 避免尾部不完整帧导致 wave 写入异常
+            frame_size = sample_width * channels
+            if frame_size > 0 and len(pcm_data) % frame_size != 0:
+                pcm_data = pcm_data[:len(pcm_data) - (len(pcm_data) % frame_size)]
+            with wave.open(wav_path, 'wb') as wf:
+                wf.setnchannels(channels)
+                wf.setsampwidth(sample_width)
+                wf.setframerate(sample_rate)
+                wf.writeframes(pcm_data)
+            self._log(level='INFO',
+                      content=f"pcm转wav成功: {wav_path} (sr={sample_rate} ch={channels} bw={sample_width})",
+                      task_id=task_id, test_case_id=test_case_id)
+            return wav_path
+        except Exception as e:
+            self._log(level='ERROR', content=f"pcm转wav异常: {e}",
                       task_id=task_id, test_case_id=test_case_id)
             return None
 
@@ -156,6 +239,133 @@ class Xiaoyilivechat(HarmonyDriver):
             self._log(level='WARNING', content=f"teardown兜底拉取录屏异常: {e}", task_id=task_id, test_case_id=test_case_id)
             return None
 
+    def _clear_pcm(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None):
+        """清理设备上指定 app 的 pcm 缓存文件（连同公共目录一并清理）。
+
+        app: xiaoyi(默认) / doubao / chatgpt
+        """
+        cfg = self.PCM_APP_CONFIG.get(app)
+        if not cfg:
+            self._log(level='WARNING', content=f"未知 pcm app: {app}, 跳过清理",
+                      task_id=task_id, test_case_id=test_case_id)
+            return
+        # 去重保序: app 专属目录 + 公共目录
+        dirs = list(cfg['cache_dirs']) + self.PCM_COMMON_CLEAR_DIRS
+        seen = set()
+        dirs = [d for d in dirs if not (d in seen or seen.add(d))]
+        rm_args = []
+        for d in dirs:
+            rm_args.extend(['rm', '-f', f'{d}/*.pcm', '&&'])
+        if rm_args and rm_args[-1] == '&&':
+            rm_args.pop()
+        if not rm_args:
+            return
+        result = self._hdc_shell(device_sn, *rm_args)
+        self._log(level='DEBUG',
+                  content=f"清理 {app} pcm 完成: rc={result.returncode}",
+                  task_id=task_id, test_case_id=test_case_id)
+
+    def _list_dir_pcm(self, device_sn, remote_dir):
+        """列出设备指定目录下所有 pcm 文件路径（用于按后缀匹配区分用户输入/AI回复）"""
+        r = self._hdc_shell(device_sn, 'find', remote_dir, '-name', '*.pcm', '-type', 'f')
+        if r.returncode != 0:
+            return []
+        return [line.strip() for line in (r.stdout or '').splitlines() if line.strip()]
+
+    def _pick_pcm(self, files, suffix, exclude=None):
+        """从文件列表中按后缀匹配一个 pcm 路径，多个匹配时取最后一个，无匹配返回 None"""
+        matches = [f for f in files if f.endswith(suffix) and f != exclude]
+        if not matches:
+            return None
+        matches.sort()
+        return matches[-1]
+
+    def _recv_pcm(self, device_sn, remote_path, local_path, task_id=None, test_case_id=None, app='', role=''):
+        """从设备拉取单个 pcm 文件到本地，成功返回 local_path，失败返回 None"""
+        if not remote_path:
+            return None
+        try:
+            subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', remote_path, local_path],
+                           check=False, capture_output=True, text=True, timeout=120)
+        except Exception as e:
+            self._log(level='WARNING', content=f"{app} {role} pcm 拉取异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+        if not os.path.exists(local_path):
+            self._log(level='WARNING', content=f"{app} {role} pcm 拉取失败: remote={remote_path}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+        self._log(level='INFO', content=f"{app} {role} pcm 拉取成功: {local_path}",
+                  task_id=task_id, test_case_id=test_case_id)
+        return local_path
+
+    def _pull_pcm(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None):
+        # 获取小艺对话pcm,文件位置:/data/app/el2/100/base/com.huawei.hmos.aibase/cache/。用户输入名称格式100184_16000_1_1_cap_client_process_out.pcm。 AI助手回复名称格式100184_16000_2_1_cap_client_ec_out.pcm
+        # 获取豆包对话PCM，文件位置:/data/app/el2/100/base/com.larus.nova.hm/cache/, 用户输入名称格式100186_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100184_48000_2_1_client_in.pcm
+        # 获取chagpt对话PCM，文件位置：/data/local/tmp/。用户输入名称格式100174_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100175_48000_2_1_cap_client_in.pcm
+        #
+        # 按 app 参数选择对应 app 的缓存目录与文件后缀:
+        # - 小艺(xiaoyi):   .../com.huawei.hmos.aibase/cache  用户 cap_client_process_out.pcm / AI cap_client_ec_out.pcm
+        # - 豆包(doubao):   .../com.larus.nova.hm/cache      用户 cap_client_out.pcm        / AI client_in.pcm
+        # - chatgpt:        /data/local/tmp                  用户 cap_client_out.pcm        / AI cap_client_in.pcm
+        # 返回: {'user': local_path_or_None, 'ai': local_path_or_None, 'user_remote':..., 'ai_remote':...}
+        result = {'user': None, 'ai': None, 'user_remote': None, 'ai_remote': None}
+        cfg = self.PCM_APP_CONFIG.get(app)
+        if not cfg:
+            self._log(level='WARNING', content=f"未知 pcm app: {app}, 跳过拉取",
+                      task_id=task_id, test_case_id=test_case_id)
+            return result
+        user_suffix = cfg['user_suffix']
+        ai_suffix = cfg['ai_suffix']
+
+        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_pcm',
+                                 str(task_id) if task_id else 'default_task_id',
+                                 str(test_case_id) if test_case_id else 'default_id',
+                                 device_sn)
+        os.makedirs(local_dir, exist_ok=True)
+
+        # 聚合该 app 所有缓存目录下的 pcm 文件
+        files = []
+        for remote_dir in cfg['cache_dirs']:
+            files.extend(self._list_dir_pcm(device_sn, remote_dir))
+        if not files:
+            self._log(level='DEBUG', content=f"{app} 目录无 pcm 文件: {cfg['cache_dirs']}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return result
+
+        # 用户输入与 AI 回复按后缀区分；ai 排除已选中的用户文件避免后缀包含导致误匹配
+        user_remote = self._pick_pcm(files, user_suffix)
+        ai_remote = self._pick_pcm(files, ai_suffix, exclude=user_remote)
+
+        for role, remote in (('user', user_remote), ('ai', ai_remote)):
+            if not remote:
+                self._log(level='DEBUG',
+                          content=f"{app} 未匹配到 {role} pcm (后缀 user={user_suffix} ai={ai_suffix})",
+                          task_id=task_id, test_case_id=test_case_id)
+                continue
+            local_path = os.path.join(local_dir, os.path.basename(remote))
+            pulled = self._recv_pcm(device_sn, remote, local_path,
+                                    task_id=task_id, test_case_id=test_case_id, app=app, role=role)
+            if pulled:
+                result[role] = pulled
+                result[f'{role}_remote'] = remote
+        return result
+
+    def _pull_pcm_wav(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None):
+        """拉取指定 app 的用户输入/AI 回复 pcm 并转为 wav。
+
+        返回 (user_wav_path_or_None, ai_wav_path_or_None)。
+        """
+        pulled = self._pull_pcm(device_sn, app=app, task_id=task_id, test_case_id=test_case_id)
+        user_pcm = pulled.get('user')
+        ai_pcm = pulled.get('ai')
+        user_wav = self._pcm_to_wav(user_pcm, task_id=task_id, test_case_id=test_case_id) if user_pcm else None
+        ai_wav = self._pcm_to_wav(ai_pcm, task_id=task_id, test_case_id=test_case_id) if ai_pcm else None
+        return user_wav, ai_wav
+
+
+
+
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         if not super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs):
             return False
@@ -169,6 +379,10 @@ class Xiaoyilivechat(HarmonyDriver):
         self._round_number = 0
         self._record_file_name = None
         self._record_pulled = False
+        # pcm 抓取目标 app（当前驱动默认只抓小艺；可通过 kwargs.pcm_app 切换 doubao/chatgpt）
+        self._pcm_app = kwargs.get('pcm_app', 'xiaoyi')
+        # 用例开始前清理设备上目标 app 的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
+        self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         # 点开小艺聊天窗口
         user_center = driver.find_component(By.text("小艺"))
         if user_center:
@@ -352,6 +566,8 @@ class Xiaoyilivechat(HarmonyDriver):
         device_path = ''
         local_path = ''
         recv_result = None
+        user_wav = None
+        ai_wav = None
         # case 模式且录屏仍在进行（非末轮）：不拉取半截文件，只返回本轮问答文本
         if getattr(self, '_record_mode', 'round') == 'case' and getattr(self, '_recording', False):
             self._log(level='DEBUG', content="case模式录屏进行中,跳过拉取半截文件",
@@ -365,8 +581,14 @@ class Xiaoyilivechat(HarmonyDriver):
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,
                 'question': question_text or '',
-                'answer': answer_text or ''
+                'answer': answer_text or '',
+                'user_wav': '',
+                'ai_wav': ''
             }]
+        # 拉取对话 pcm 并转 wav（用户输入 + AI 回复），抓取目标 app 由 _pcm_app 指定
+        pcm_app = getattr(self, '_pcm_app', 'xiaoyi')
+        user_wav, ai_wav = self._pull_pcm_wav(device_sn, app=pcm_app,
+                                              task_id=task_id, test_case_id=test_case_id)
         try:
             query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
             lines = query.stdout.strip().split('\n')
@@ -396,7 +618,9 @@ class Xiaoyilivechat(HarmonyDriver):
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,
                 'question': question_text or '',
-                'answer': answer_text or ''
+                'answer': answer_text or '',
+                'user_wav': user_wav or '',
+                'ai_wav': ai_wav or ''
                 }
                 return [result]
             # mp4 无损转 wav
@@ -413,7 +637,9 @@ class Xiaoyilivechat(HarmonyDriver):
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,
                 'question': question_text,
-                'answer': answer_text
+                'answer': answer_text,
+                'user_wav': user_wav or '',
+                'ai_wav': ai_wav or ''
             }
             return [result]
         except Exception as e:
@@ -445,7 +671,9 @@ class Xiaoyilivechat(HarmonyDriver):
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,
                 'question': question_text or '',
-                'answer': answer_text or ''
+                'answer': answer_text or '',
+                'user_wav': user_wav or '',
+                'ai_wav': ai_wav or ''
             }
             return [result]
 
