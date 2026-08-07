@@ -14,6 +14,7 @@ try:
     from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
     from .harmony_xiaoyichat import Xiaoyilivechat
     from .harmony_xiaoyilivechat import XiaoyilivechatV2
+    from .harmony_chatgpt import ChatGptVoiceChat
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
     _HYPium_AVAILABLE = True
 except ImportError:
@@ -23,6 +24,7 @@ except ImportError:
     HarmonyHardenXiaoyiHuiJiDriver = None
     Xiaoyilivechat = None
     XiaoyilivechatV2 = None
+    ChatGptVoiceChat = None
     HarmonyHardenXiaoyi_Input_MethodDriver = None
     _HYPium_AVAILABLE = False
 
@@ -126,6 +128,13 @@ class DeviceDriverFactory:
                 ['xiaoyilivechatv2', '小艺通话live', 'livechatv2'],
                 'HarmonyOS',
                 '小艺通话live专用驱动(V2)'
+            )
+
+            self.register_specialized_driver(
+                ChatGptVoiceChat(),
+                ['chatgpt', 'chatgptvoice', 'ChatGPT语音'],
+                'HarmonyOS',
+                'ChatGPT语音通话专用驱动'
             )
 
             self.register_specialized_driver(
