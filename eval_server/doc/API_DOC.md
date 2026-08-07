@@ -24,6 +24,7 @@
 | der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_res, stm_res | JSON |
 | llm_judge | LLM 语义评分 | answer, correct_answer | JSON |
 | xiaoyi_metrics | 小艺指标(tor+false_takeover+takeover_latency) | record_path, pause, first_frame_ms, end_ms | multipart |
+| interruption_metrics | 打断指标(打断成功率+检查时延+恢复时延) | user_asr, model_asr | JSON |
 
 ---
 
@@ -41,7 +42,7 @@
   "status": "healthy",
   "service": "wer-ser-calculator",
   "role": "master",
-  "supported_task_types": ["wer", "ser", "cpwer", "tcpwer", "stm_wer", "der", "llm_judge", "xiaoyi_metrics"],
+  "supported_task_types": ["wer", "ser", "cpwer", "tcpwer", "stm_wer", "der", "llm_judge", "xiaoyi_metrics", "interruption_metrics"],
   "local": {
     "max_concurrency": 10,
     "current_concurrency": 2,
@@ -317,6 +318,7 @@ curl http://localhost:5001/api/status
 - **更新内容**：
   - 新增 llm_judge 任务类型（LLM 语义评分）
   - 新增 xiaoyi_metrics 任务类型（tor + false_takeover + takeover_latency）
+  - 新增 interruption_metrics 任务类型（打断成功率 + 打断检查时延 + 打断恢复时延，入参 user_asr + model_asr 两路对齐 ASR）
   - 新增 `/api/create_task_upload` 接口支持 multipart 文件上传
   - ASR 结果通过返回值传递，不读写中间 JSON 文件
   - 三个小艺子指标共享一次 ASR 推理结果

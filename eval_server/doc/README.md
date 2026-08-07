@@ -88,6 +88,7 @@ python app.py
 | der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_res, stm_res |
 | llm_judge | LLM 语义评分 | answer, correct_answer |
 | xiaoyi_metrics | 小艺指标(tor+false_takeover+takeover_latency) | record_path, pause, first_frame_ms, end_ms |
+| interruption_metrics | 打断指标(打断成功率+检查时延+恢复时延) | user_asr, model_asr |
 
 ## 快速开始
 

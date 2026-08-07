@@ -15,6 +15,7 @@ from .tor import compute_tor_during_pauses
 from .false_takeover import compute_false_takeover
 from .takeover_latency import compute_takeover_latency_from_raw
 from .input_asr import compute_input_asr_match
+from .interruption import compute_interruption_metrics
 
 logger = logging.getLogger(__name__)
 
@@ -139,3 +140,60 @@ def calculate_xiaoyi_metrics(task_params):
     logger.info(f"[input_asr] {_format_input_asr(results['input_asr'])}")
 
     return results
+
+
+def calculate_interruption_metrics(task_params):
+    """打断指标统一入口：用户流 + 模型恢复流 ASR 词级时间戳，直接算三项指标
+
+    与 calculate_xiaoyi_metrics 不同：不内部调 ASR，由调用方直接传两路已对齐的 ASR 结果。
+
+    Args:
+        task_params (dict): 包含以下字段
+            - user_asr  (list|dict): 用户提问/打断 ASR（chunks 或 {text, chunks}）
+            - model_asr (list|dict): 模型恢复 ASR（同上，与 user_asr 等长、同一时间轴）
+            - seg_merge_gap_s  (float, 可选): 词合并为段的间隙阈值(秒)，默认 0.3
+
+    Returns:
+        dict: {
+            'interruption_success_rate': float, 打断成功率
+            'stop_rate': float,                 停下率
+            'resume_rate': float,               恢复率
+            'avg_stop_latency_s': float|None,   平均打断检查时延(秒)
+            'avg_recovery_latency_s': float|None, 平均打断恢复时延(秒)
+            'avg_overlap_s': float|None,        平均双方同时说话时长(秒)
+            'avg_silence_gap_s': float|None,    平均静默时长(秒)
+            'n_events': int, 'n_user_segments': int,
+            'n_recovery_only': int, 'n_no_model_speech': int,
+            'per_event': list, 'message': str,
+        }
+    """
+    import json as _json
+
+    logger.info(f"[interruption_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
+
+    user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or task_params.get('input_asr')
+    model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or task_params.get('recovery_asr')
+
+    if user_asr is None:
+        raise ValueError("interruption_metrics: 缺少 user_asr（用户提问/打断 ASR）")
+    if model_asr is None:
+        raise ValueError("interruption_metrics: 缺少 model_asr（模型恢复 ASR）")
+
+    stop_tol = task_params.get('stop_tolerance_s')
+    merge_gap = task_params.get('seg_merge_gap_s')
+
+    kwargs = {}
+    if stop_tol is not None:
+        # 兼容旧入参；当前 success 不再被容差门控，该值仅保留不报错
+        logger.info("[interruption_metrics] stop_tolerance_s 已废弃（success 改为让出+恢复），忽略")
+    if merge_gap is not None:
+        kwargs['seg_merge_gap_s'] = merge_gap
+
+    result = compute_interruption_metrics(user_asr, model_asr, **kwargs)
+    logger.info(
+        f"[interruption_metrics] success_rate={result['interruption_success_rate']} "
+        f"stop_rate={result['stop_rate']} resume_rate={result['resume_rate']} "
+        f"avg_stop={result['avg_stop_latency_s']}s avg_recovery={result['avg_recovery_latency_s']}s "
+        f"message={result['message']}"
+    )
+    return result

@@ -171,6 +171,25 @@ asr_server (port 10095, 独立主机 100.70.20.135)
 - 主流程函数：`compute_takeover_latency_from_raw(first_frame_ms, asr_result, end_ms)`
 - CLI 函数：`compute_takeover_latency(first_frame_ms, asr_json_path, end_ms)`
 
+## 5.5 interruption_metrics（打断指标）
+
+用户打断正在说话的小艺时，衡量"停得下、恢复得来"。与 `xiaoyi_metrics` 不同：**不内部调 ASR**，由调用方直接传两路已对齐的 ASR 词级时间戳。
+
+- 输入：`user_asr`（用户提问/打断 ASR）、`model_asr`（模型恢复 ASR，与 user_asr 等长、同一时间轴）
+  - 两路均可为 chunks 列表或 `{text, chunks}`
+  - 可选：`seg_merge_gap_s`（默认 0.3）
+- 三个子指标（对每个用户打断段 u=[u_s, u_e]）：
+  - **打断检查时延** `avg_stop_latency_s`：用户开始打断 → 模型当前语音段结束（停下）。对应 FDB v1.5 `latency_stop_list`
+  - **打断恢复时延** `avg_recovery_latency_s`：用户说完 → 模型重新开口。对应 FDB v1.5 `latency_resp_list`
+  - **打断成功率** `interruption_success_rate`：模型让出（没说穿整个打断区间）且之后恢复。仅 `event_type='interruption'` 计入分母。对应 FDB v1.0 user_interruption 的 TOR↑
+  - 辅助：`stop_rate`（让出率）、`resume_rate`（恢复率）、`avg_overlap_s`（双方同时说话时长，越短越好）、`avg_silence_gap_s`（静默时长）
+- 退化情形：若 `model_asr` 只含恢复段（用户打断时模型未在说话），停止时延/成功率记为 None，仅给出恢复时延，事件标为 `recovery_only`
+- 输出：`{interruption_success_rate, stop_rate, resume_rate, avg_stop_latency_s, avg_recovery_latency_s, avg_overlap_s, avg_silence_gap_s, n_events, per_event, ...}`
+- 主流程函数：`compute_interruption_metrics(user_asr, model_asr)`
+- 统一入口：`calculate_interruption_metrics(task_params)`（`xiaoyi_metrics/__init__.py`）
+- 路由：`task_service.calculate(task_type='interruption_metrics', ...)`
+- 维度注册：`Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_interruption_dimensions.py`
+
 ## 6. 关键设计决策
 
 1. **ASR 只调一次**：三个子指标共享同一次 ASR 推理结果，通过返回值传递
