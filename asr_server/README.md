@@ -1,12 +1,12 @@
 # ASR Server
 
-独立部署的 ASR（自动语音识别）HTTP 服务，基于 ModelScope Paraformer-large-vad-punc 模型。
+独立部署的 ASR（自动语音识别）HTTP 服务：**Silero VAD + SenseVoiceSmall**（段级时间戳）。
 
 ## 目录
 
 | 文件 | 说明 |
 |------|------|
-| [asr_server.py](asr_server.py) | 本地 ASR HTTP 服务（ModelScope Paraformer，主服务） |
+| [asr_server.py](asr_server.py) | 本地 ASR HTTP 服务（Silero VAD 切段 + SenseVoice 出文本） |
 | [asr_transcribe.py](asr_transcribe.py) | 阿里云百炼录音文件转写示例（云端方案，可选） |
 
 ## 设计目标
@@ -14,6 +14,7 @@
 - **独立部署**：运行在专用 ASR 主机上（纯 CPU 推理），避免 ASR 推理占用自动化测试主机的 CPU，从而保证时延测量的准确性
 - **HTTP 调用**：测试主机通过 HTTP 上传 wav 文件获取识别结果，解耦推理与测试
 - **结构化输出**：返回 `{text, chunks:[{text, timestamp:[start_s, end_s]}]}`，与 [asr_adapator.py](../eval_server/app/utils/asr_adapator.py) 的 `parse_result` 完全兼容
+- **真实时间戳**：Silero VAD 出段级真实语音边界（不含标点造假时间戳），段级 chunks 也治了"标点单独成 chunk"的根因
 
 ## 架构
 
@@ -21,9 +22,9 @@
 ┌──────────────────────┐        HTTP (wav 上传)        ┌──────────────────────┐
 │  自动化测试主机       │  POST /asr  (multipart)      │  ASR 主机             │
 │  (eval_server)       │ ──────────────────────────▶  │  asr_server.py       │
-│                      │                              │  ModelScope Paraformer│
-│  asr_adapator.py     │ ◀──────────────────────────  │  (CPU 推理)           │
-│  call_modelscope_asr │  JSON {text, chunks}         │                      │
+│                      │                              │  Silero VAD 切段      │
+│  asr_adapator.py     │ ◀──────────────────────────  │  + SenseVoice 出文本 │
+│  call_modelscope_asr │  JSON {text, chunks}         │  (CPU 推理)           │
 └──────────────────────┘                              └──────────────────────┘
 ```
 
@@ -31,14 +32,14 @@
 
 ### 环境要求
 
-- Python 3.8+
+- Python 3.10+（3.14 亦可，funasr/torch 需有对应 wheel）
 - 纯 CPU 即可运行（无需 GPU）
-- 首次启动需联网下载模型（约 3GB），之后可直接读本地缓存
+- 首次启动需联网下载 SenseVoice（~900MB），之后读本地缓存
 
 ### 安装
 
 ```bash
-pip install funasr torch fastapi uvicorn python-multipart
+pip install funasr torch fastapi uvicorn python-multipart soundfile librosa silero-vad
 ```
 
 ### 配置
@@ -49,7 +50,10 @@ pip install funasr torch fastapi uvicorn python-multipart
 cp .env.example .env
 ```
 
-所有配置项均通过 `.env` 文件管理，参考 [.env.example](.env.example)。
+关键配置：
+- `ASR_SENSEVOICE_MODEL=iic/SenseVoiceSmall`
+- `ASR_SV_LANGUAGE=auto`（语言，可设 zh/en/ja/ko）
+- `ASR_SILERO_MIN_SILENCE_MS=200`（静默阈值，打断检测建议 200；越小越细越碎）
 
 ### 启动
 
@@ -57,7 +61,7 @@ cp .env.example .env
 python asr_server.py
 ```
 
-启动时会预加载模型（首次从 ModelScope 下载，约 3GB，需要几分钟），随后监听 `0.0.0.0:10095`。
+启动时预加载模型（首次下载 SenseVoice ~900MB），随后监听 `0.0.0.0:10095`。
 
 > **代理注意**：ModelScope 为国内站点，代码已自动清除 `HTTP_PROXY` / `HTTPS_PROXY` 等代理环境变量，避免 SSL 握手失败。如仍遇到下载问题，请检查系统代理设置。
 

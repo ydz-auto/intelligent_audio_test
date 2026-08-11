@@ -1,36 +1,36 @@
 # -*- coding: utf-8 -*-
 """
 asr_server.py
-在 ASR 主机上独立部署的 ASR HTTP 服务（基于 ModelScope Paraformer-large-vad-punc）。
+在 ASR 主机上独立部署的 ASR HTTP 服务（Silero VAD + SenseVoiceSmall）。
 
-设计目标:
-    - 部署到另一台 Windows 电脑（纯 CPU 推理）
-    - 自动化测试主机通过 HTTP 调用，避免 CPU 占用影响测试
-    - 返回结构 {text, chunks:[{text, timestamp:[start_s, end_s]}]} 与 ASR_JSON.parse_result 兼容
+架构:
+    Silero VAD 切段（真实语音边界、~30ms 帧级、不含标点造假时间戳）
+    + SenseVoiceSmall 逐段出文本（中文/多语言，质量好、ITN）
+    → 段级 chunks: [{text: 整句, timestamp: [start_s, end_s]}, ...]
+
+为什么这样组合:
+    SenseVoiceSmall 是非自回归 AED 模型，原生不输出词级时间戳。
+    单独用会丢时间戳，而打断/接管时延等指标强依赖时间戳、且要求识别模型在打断处的
+    短暂停（~0.3s）。Silero VAD 的 min_silence_duration_ms 可调（默认 200ms），能精确
+    切出"停下→恢复"边界。段级 chunks 也治了"标点单独成 chunk"的根因（标点内联在段文本里）。
 
 部署:
-    1. pip install funasr torch fastapi uvicorn python-multipart
-    2. 配置 .env 文件（参考 .env.example）
-    3. python asr_server.py
-    4. 首次启动会从 ModelScope 下载模型到本地缓存（~3GB），之后直接读本地
-    5. 监听 0.0.0.0:10095，对外提供 /asr 接口
+    1. pip install funasr torch fastapi uvicorn python-multipart soundfile librosa silero-vad
+    2. python asr_server.py
+    3. 首次启动从 ModelScope 下载 SenseVoice（~900MB），Silero 内置于包内
+    4. 监听 0.0.0.0:10095，对外提供 /asr 接口
 
-调用方式（测试主机）:
-    import requests
-    with open(wav_path, "rb") as f:
-        resp = requests.post("http://<ASR主机IP>:10095/asr",
-                             files={"file": ("audio.wav", f, "audio/wav")})
-    result = resp.json()
-    # result = {"text": "...", "chunks":[{"text":"字","timestamp":[start_s, end_s]}]}
+返回结构:
+    {"text": "全文", "chunks": [{"text": "段文本", "timestamp": [start_s, end_s]}, ...]}
+    时间戳单位秒，段级（一句一 chunk）。
 
 接口:
     GET  /health        健康检查
     POST /asr           上传 wav 文件，返回 ASR 结果
-    POST /asr_file      传 wav 文件路径（仅本机使用，非远程调用）
+    POST /asr_file      传 wav 文件路径（仅本机使用）
 """
 import os
-import sys
-import json
+import re
 import logging
 import tempfile
 import time
@@ -56,7 +56,6 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 # ─────────── 配置 ───────────
-# 项目根目录（与 eval_server / Intelligent-Audio-TEST 对齐）
 _BASE_DIR = Path(__file__).resolve().parent.parent
 _STATIC_DIR = _BASE_DIR / 'static'
 
@@ -71,18 +70,16 @@ ASR_CACHE_DIR = os.environ.get(
 os.environ.setdefault("MODELSCOPE_CACHE", ASR_CACHE_DIR)
 os.makedirs(ASR_CACHE_DIR, exist_ok=True)
 
-ASR_MODELSCOPE_MODEL = os.environ.get(
-    "ASR_MODELSCOPE_MODEL",
-    "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
-)
-ASR_VAD_MODEL = os.environ.get(
-    "ASR_VAD_MODEL",
-    "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
-)
-ASR_PUNC_MODEL = os.environ.get(
-    "ASR_PUNC_MODEL",
-    "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"
-)
+# SenseVoice 模型
+ASR_SENSEVOICE_MODEL = os.environ.get("ASR_SENSEVOICE_MODEL", "iic/SenseVoiceSmall")
+ASR_SV_LANGUAGE = os.environ.get("ASR_SV_LANGUAGE", "auto")   # auto|zh|en|ja|ko|...
+ASR_SV_USE_ITN = os.environ.get("ASR_SV_USE_ITN", "true").lower() == "true"
+
+# ─── Silero VAD 参数 ───
+ASR_SILERO_MIN_SILENCE_MS = int(os.environ.get("ASR_SILERO_MIN_SILENCE_MS", "200"))
+ASR_SILERO_THRESHOLD = float(os.environ.get("ASR_SILERO_THRESHOLD", "0.5"))
+ASR_SILERO_MIN_SPEECH_MS = int(os.environ.get("ASR_SILERO_MIN_SPEECH_MS", "0"))
+ASR_SILERO_SPEECH_PAD_MS = int(os.environ.get("ASR_SILERO_SPEECH_PAD_MS", "30"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -91,95 +88,146 @@ logging.basicConfig(
 logger = logging.getLogger("asr_server")
 
 # ─────────── 模型懒加载 ───────────
-_model = None
+_silero_model = None    # Silero VAD
+_sv_model = None        # SenseVoice
 
 
-def get_model():
-    """懒加载 AutoModel，避免启动时就阻塞进程。"""
-    global _model
-    if _model is None:
-        logger.info(f"加载 ModelScope ASR 模型: {ASR_MODELSCOPE_MODEL}")
-        logger.info(f"模型缓存目录: {ASR_CACHE_DIR}")
+def _load_silero_vad():
+    global _silero_model
+    if _silero_model is None:
+        from silero_vad import load_silero_vad
+        logger.info("加载 Silero VAD")
+        _silero_model = load_silero_vad()
+        logger.info("Silero VAD 加载完成")
+    return _silero_model
+
+
+def _load_sensevoice():
+    global _sv_model
+    if _sv_model is None:
         from funasr import AutoModel
-        kwargs = dict(model=ASR_MODELSCOPE_MODEL, model_revision="v2.0.4")
-        if ASR_VAD_MODEL:
-            kwargs["vad_model"] = ASR_VAD_MODEL
-            kwargs["vad_revision"] = "v2.0.4"
-        if ASR_PUNC_MODEL:
-            kwargs["punc_model"] = ASR_PUNC_MODEL
-            kwargs["punc_revision"] = "v2.0.4"
-        _model = AutoModel(**kwargs)
-        logger.info("ASR 模型加载完成")
-    return _model
+        logger.info(f"加载 SenseVoice 模型: {ASR_SENSEVOICE_MODEL}")
+        _sv_model = AutoModel(model=ASR_SENSEVOICE_MODEL)
+        logger.info("SenseVoice 模型加载完成")
+    return _sv_model
 
 
-# ─────────── ASR 推理 + 结果解析 ───────────
+# ─────────── 音频加载 ───────────
+def _load_audio_16k_mono(wav_path):
+    """读 wav → 16kHz 单通道 float32 numpy"""
+    import soundfile as sf
+    audio, sr = sf.read(wav_path, dtype="float32")
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    if sr != 16000:
+        import librosa
+        audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+        sr = 16000
+    return audio, sr
 
-def call_modelscope_asr(wav_path):
-    """调用 ModelScope Paraformer 进行本地 ASR 推理。"""
-    model = get_model()
-    res = model.generate(input=wav_path, batch_size_s=300)
-    if not res:
-        raise RuntimeError(f"ModelScope ASR 返回空结果: {wav_path}")
-    return res
+
+# ─────────── Silero VAD 切段 ───────────
+def _vad_segments(audio_np, sr):
+    """返回语音段列表 [(start_s, end_s), ...]"""
+    import torch
+    from silero_vad import get_speech_timestamps
+    model = _load_silero_vad()
+    w = torch.from_numpy(audio_np)
+    ts = get_speech_timestamps(
+        w, model, sampling_rate=sr,
+        min_silence_duration_ms=ASR_SILERO_MIN_SILENCE_MS,
+        threshold=ASR_SILERO_THRESHOLD,
+        min_speech_duration_ms=ASR_SILERO_MIN_SPEECH_MS,
+        speech_pad_ms=ASR_SILERO_SPEECH_PAD_MS,
+        return_seconds=True,
+    )
+    return [(s["start"], s["end"]) for s in ts]
 
 
-def parse_result(raw_res):
-    """
-    解析 ModelScope ASR 结果为 {text, chunks:[{text, timestamp:[start_s, end_s]}]}。
-    时间戳从毫秒转成秒，与 ASR_JSON.parse_result 输出结构完全一致。
-    """
-    item = raw_res[0]
-    text = item.get("text", "")
-    timestamp = item.get("timestamp") or []
+# ─────────── SenseVoice 特殊 token 剥离 ───────────
+_SV_TOKEN_RE = re.compile(r"<\|[^|]*\|>")
+
+
+def _strip_sv_tokens(text: str) -> str:
+    """去掉 SenseVoice 输出里的 <|zh|><|NEUTRAL|><|Speech|><|withitn|> 等特殊 token"""
+    if not text:
+        return ""
+    return _SV_TOKEN_RE.sub("", text).strip()
+
+
+# ─────────── 转写：VAD 切段 → 逐段 SenseVoice 出文本 ───────────
+def _transcribe(wav_path):
+    """Silero VAD 切段 → 每段 SenseVoice 出文本 → 段级 chunks（真实时间戳）"""
+    audio, sr = _load_audio_16k_mono(wav_path)
+    duration_s = len(audio) / sr
+
+    sv = _load_sensevoice()
+    segs = _vad_segments(audio, sr)   # [(start_s, end_s), ...]
 
     chunks = []
-    text_chars = list(text)
-    n = min(len(text_chars), len(timestamp))
-    for i in range(n):
-        char = text_chars[i]
-        if char.strip() == "":
+    full_text_parts = []
+    for s_s, e_s in segs:
+        if e_s <= s_s:
             continue
-        start_ms, end_ms = timestamp[i][0], timestamp[i][1]
+        s_idx = int(s_s * sr)
+        e_idx = int(e_s * sr)
+        seg_audio = audio[s_idx:e_idx]
+        if len(seg_audio) == 0:
+            continue
+        r = sv.generate(
+            input=seg_audio, cache={},
+            language=ASR_SV_LANGUAGE, use_itn=ASR_SV_USE_ITN,
+        )
+        txt = r[0].get("text", "") if r else ""
+        txt = _strip_sv_tokens(txt)
         chunks.append({
-            "text": char,
-            "timestamp": [start_ms / 1000.0, end_ms / 1000.0],
+            "text": txt,
+            "timestamp": [round(s_s, 3), round(e_s, 3)],
         })
+        if txt:
+            full_text_parts.append(txt)
 
+    text = "".join(full_text_parts)
+    logger.info(f"转写完成: {len(segs)} 段, {duration_s:.1f}s -> {text[:80]}")
     return {"text": text, "chunks": chunks}
 
 
-# ─────────── FastAPI 服务 ───────────
+# ─────────── 统一入口 ───────────
+def call_modelscope_asr(wav_path):
+    """返回 {text, chunks}（chunks 时间戳单位秒，段级）"""
+    return _transcribe(wav_path)
 
-app = FastAPI(title="ModelScope ASR Service", version="1.0")
+
+def parse_result(raw_res):
+    """兼容旧调用：raw_res 为 [result] 或 result，透传 {text, chunks}"""
+    item = raw_res[0] if isinstance(raw_res, list) else raw_res
+    return {
+        "text": item.get("text", ""),
+        "chunks": item.get("chunks", []),
+    }
+
+
+# ─────────── FastAPI 服务 ───────────
+app = FastAPI(title="ASR Service", version="3.0")
 
 
 @app.get("/health")
 def health():
     """健康检查。"""
-    loaded = _model is not None
-    return {"status": "ok", "model_loaded": loaded}
+    return {
+        "status": "ok",
+        "engine": "sensevoice+silero",
+        "vad_loaded": _silero_model is not None,
+        "asr_loaded": _sv_model is not None,
+    }
 
 
 @app.post("/asr")
 async def asr(file: UploadFile = File(...)):
-    """
-    接收上传的 wav 文件，执行 ASR 推理，返回 {text, chunks} 结构。
-
-    返回示例:
-        {
-          "text": "你好世界",
-          "chunks": [
-            {"text": "你", "timestamp": [0.1, 0.25]},
-            {"text": "好", "timestamp": [0.25, 0.4]},
-            ...
-          ]
-        }
-    """
+    """接收上传的 wav 文件，返回 {text, chunks}。"""
     if not file.filename.lower().endswith(".wav"):
         raise HTTPException(400, "只支持 wav 文件")
 
-    # 保存上传文件到临时路径
     suffix = os.path.splitext(file.filename)[1]
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         content = await file.read()
@@ -189,10 +237,9 @@ async def asr(file: UploadFile = File(...)):
     try:
         t0 = time.time()
         logger.info(f"收到 ASR 请求: {file.filename} ({len(content)} bytes)")
-        raw = call_modelscope_asr(tmp_path)
-        result = parse_result(raw)
+        result = call_modelscope_asr(tmp_path)
         elapsed = time.time() - t0
-        logger.info(f"ASR 完成 ({elapsed:.2f}s): {result['text'][:80]}")
+        logger.info(f"ASR 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 段): {result.get('text', '')[:80]}")
         return JSONResponse(result)
     except Exception as e:
         logger.exception(f"ASR 失败: {e}")
@@ -206,17 +253,11 @@ async def asr(file: UploadFile = File(...)):
 
 @app.post("/asr_file")
 def asr_file(wav_path: str):
-    """
-    本机调用：传 wav 文件绝对路径，返回 ASR 结果。
-    适用于 ASR 主机本地测试（不需要上传文件）。
-
-    请求示例: POST /asr_file?wav_path=C:/xxx/audio.wav
-    """
+    """本机调用：传 wav 文件绝对路径，返回 ASR 结果。"""
     if not os.path.isfile(wav_path):
         raise HTTPException(404, f"文件不存在: {wav_path}")
     try:
-        raw = call_modelscope_asr(wav_path)
-        return JSONResponse(parse_result(raw))
+        return JSONResponse(call_modelscope_asr(wav_path))
     except Exception as e:
         logger.exception(f"ASR 失败: {e}")
         raise HTTPException(500, f"ASR 失败: {e}")
@@ -225,8 +266,9 @@ def asr_file(wav_path: str):
 @app.get("/")
 def root():
     return {
-        "service": "ModelScope ASR Service",
-        "model": ASR_MODELSCOPE_MODEL,
+        "service": "ASR Service",
+        "engine": "sensevoice+silero",
+        "sensevoice_model": ASR_SENSEVOICE_MODEL,
         "endpoints": {
             "health": "GET /health",
             "asr": "POST /asr (上传 wav 文件)",
@@ -236,14 +278,11 @@ def root():
 
 
 # ─────────── 启动 ───────────
-
 if __name__ == "__main__":
-    logger.info(f"启动 ASR 服务: http://{HOST}:{PORT}")
-    logger.info(f"模型: {ASR_MODELSCOPE_MODEL}")
+    logger.info(f"启动 ASR 服务: http://{HOST}:{PORT}  engine=sensevoice+silero")
+    logger.info(f"模型: Silero VAD + SenseVoice={ASR_SENSEVOICE_MODEL}")
+    logger.info("预加载模型，首次会从 ModelScope 下载 SenseVoice（~900MB）...")
+    _load_silero_vad()
+    _load_sensevoice()
 
-    # 预加载模型（首次会下载，约 3GB，需要几分钟）
-    logger.info("预加载 ASR 模型，首次会从 ModelScope 下载...")
-    get_model()
-
-    # 启动 HTTP 服务
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
