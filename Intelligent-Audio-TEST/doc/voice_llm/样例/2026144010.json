@@ -1,6 +1,6 @@
 {
 
-      "path": "sample_single_round_0.wav",
+      "audio": "sample_single_round_0.wav",
       "caseId": 1001,
       "content": "",
       "query": "请播放斐波那契数列前10项对应的音频片段",
