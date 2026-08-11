@@ -119,27 +119,6 @@
       </div>
     </div>
 
-    <!-- ===== 录屏模式（仅 E2E，多轮用例生效） ===== -->
-    <div class="form-section record-mode-section" v-if="localFormData.test_type === 'e2e'">
-      <div class="form-row">
-        <div class="form-group">
-          <label for="recordMode">录屏模式</label>
-          <select
-            id="recordMode"
-            class="form-control"
-            :value="localFormData.config.record_mode ?? 'round'"
-            @change="onRecordModeChange(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="round">每轮一段（默认）</option>
-            <option value="case">整用例多轮合并为一段</option>
-          </select>
-          <small class="form-text text-muted">
-            「整用例合并」适用于小艺通话等多轮对话用例：整段通话连续录制为一个视频，中间不挂断、不切断录屏。
-          </small>
-        </div>
-      </div>
-    </div>
-
     <!-- ===== 轮次配置编辑器（替换旧的音频/噪声/维度三大区块） ===== -->
     <div class="form-section round-editor-section">
       <RoundConfigEditor
