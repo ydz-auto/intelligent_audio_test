@@ -45,7 +45,6 @@ import {
 
 import {
   saveReport,
-  createComparisonReport,
   exportReport,
   publishReport
 } from './reportApi';
@@ -70,7 +69,6 @@ export const reportService = {
   saveReport,
   exportReport,
   publishReport,
-  createComparisonReport,
   viewTaskReport,
   batchCompare,
   formatStatsForCharts,

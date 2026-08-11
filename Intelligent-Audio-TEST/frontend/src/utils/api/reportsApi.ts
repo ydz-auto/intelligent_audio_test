@@ -51,10 +51,6 @@ export const reportsApi = {
     return request('POST', '/reports/case-averages', { taskId, ...filters }, options);
   },
 
-  async create(reportData: any) {
-    return request('POST', '/reports', reportData);
-  },
-
   async update(id: string | number, reportData: any) {
     return request('PUT', `/reports/${id}`, reportData);
   },
