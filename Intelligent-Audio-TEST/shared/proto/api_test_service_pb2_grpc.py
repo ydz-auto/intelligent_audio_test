@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import api_test_service_pb2 as api__test__service__pb2
+import api_test_service_pb2 as api__test__service__pb2
 
 GRPC_GENERATED_VERSION = '1.83.0'
 GRPC_VERSION = grpc.__version__
@@ -55,6 +55,41 @@ class APITestServiceStub:
                 request_serializer=api__test__service__pb2.GetAPITestStatusRequest.SerializeToString,
                 response_deserializer=api__test__service__pb2.APITestStatusResponse.FromString,
                 _registered_method=True)
+        self.CreateAPIConfig = channel.unary_unary(
+                '/api_test_service.APITestService/CreateAPIConfig',
+                request_serializer=api__test__service__pb2.CreateAPIConfigRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.CreateAPIConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateAPIConfig = channel.unary_unary(
+                '/api_test_service.APITestService/UpdateAPIConfig',
+                request_serializer=api__test__service__pb2.UpdateAPIConfigRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.UpdateAPIConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteAPIConfig = channel.unary_unary(
+                '/api_test_service.APITestService/DeleteAPIConfig',
+                request_serializer=api__test__service__pb2.DeleteAPIConfigRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.DeleteAPIConfigResponse.FromString,
+                _registered_method=True)
+        self.ListAPIConfigs = channel.unary_unary(
+                '/api_test_service.APITestService/ListAPIConfigs',
+                request_serializer=api__test__service__pb2.ListAPIConfigsRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.ListAPIConfigsResponse.FromString,
+                _registered_method=True)
+        self.GetAPIConfig = channel.unary_unary(
+                '/api_test_service.APITestService/GetAPIConfig',
+                request_serializer=api__test__service__pb2.GetAPIConfigRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.GetAPIConfigResponse.FromString,
+                _registered_method=True)
+        self.TestAPIConnection = channel.unary_unary(
+                '/api_test_service.APITestService/TestAPIConnection',
+                request_serializer=api__test__service__pb2.TestAPIConnectionRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.TestAPIConnectionResponse.FromString,
+                _registered_method=True)
+        self.StopAPITestConfig = channel.unary_unary(
+                '/api_test_service.APITestService/StopAPITestConfig',
+                request_serializer=api__test__service__pb2.StopAPITestConfigRequest.SerializeToString,
+                response_deserializer=api__test__service__pb2.StopAPITestConfigResponse.FromString,
+                _registered_method=True)
 
 
 class APITestServiceServicer:
@@ -89,6 +124,56 @@ class APITestServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateAPIConfig(self, request, context):
+        """===== API 配置 CRUD =====
+        创建 API 配置
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateAPIConfig(self, request, context):
+        """更新 API 配置
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteAPIConfig(self, request, context):
+        """删除 API 配置（软删除）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAPIConfigs(self, request, context):
+        """分页查询 API 列表
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAPIConfig(self, request, context):
+        """查询单个 API 详情
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TestAPIConnection(self, request, context):
+        """测试 API 连接（含 WebSocket/HTTP 健康检查）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopAPITestConfig(self, request, context):
+        """停止 API 测试连接
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_APITestServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -111,6 +196,41 @@ def add_APITestServiceServicer_to_server(servicer, server):
                     servicer.GetAPITestStatus,
                     request_deserializer=api__test__service__pb2.GetAPITestStatusRequest.FromString,
                     response_serializer=api__test__service__pb2.APITestStatusResponse.SerializeToString,
+            ),
+            'CreateAPIConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateAPIConfig,
+                    request_deserializer=api__test__service__pb2.CreateAPIConfigRequest.FromString,
+                    response_serializer=api__test__service__pb2.CreateAPIConfigResponse.SerializeToString,
+            ),
+            'UpdateAPIConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAPIConfig,
+                    request_deserializer=api__test__service__pb2.UpdateAPIConfigRequest.FromString,
+                    response_serializer=api__test__service__pb2.UpdateAPIConfigResponse.SerializeToString,
+            ),
+            'DeleteAPIConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteAPIConfig,
+                    request_deserializer=api__test__service__pb2.DeleteAPIConfigRequest.FromString,
+                    response_serializer=api__test__service__pb2.DeleteAPIConfigResponse.SerializeToString,
+            ),
+            'ListAPIConfigs': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAPIConfigs,
+                    request_deserializer=api__test__service__pb2.ListAPIConfigsRequest.FromString,
+                    response_serializer=api__test__service__pb2.ListAPIConfigsResponse.SerializeToString,
+            ),
+            'GetAPIConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAPIConfig,
+                    request_deserializer=api__test__service__pb2.GetAPIConfigRequest.FromString,
+                    response_serializer=api__test__service__pb2.GetAPIConfigResponse.SerializeToString,
+            ),
+            'TestAPIConnection': grpc.unary_unary_rpc_method_handler(
+                    servicer.TestAPIConnection,
+                    request_deserializer=api__test__service__pb2.TestAPIConnectionRequest.FromString,
+                    response_serializer=api__test__service__pb2.TestAPIConnectionResponse.SerializeToString,
+            ),
+            'StopAPITestConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopAPITestConfig,
+                    request_deserializer=api__test__service__pb2.StopAPITestConfigRequest.FromString,
+                    response_serializer=api__test__service__pb2.StopAPITestConfigResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -222,6 +342,195 @@ class APITestService:
             '/api_test_service.APITestService/GetAPITestStatus',
             api__test__service__pb2.GetAPITestStatusRequest.SerializeToString,
             api__test__service__pb2.APITestStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateAPIConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.APITestService/CreateAPIConfig',
+            api__test__service__pb2.CreateAPIConfigRequest.SerializeToString,
+            api__test__service__pb2.CreateAPIConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateAPIConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.APITestService/UpdateAPIConfig',
+            api__test__service__pb2.UpdateAPIConfigRequest.SerializeToString,
+            api__test__service__pb2.UpdateAPIConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteAPIConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.APITestService/DeleteAPIConfig',
+            api__test__service__pb2.DeleteAPIConfigRequest.SerializeToString,
+            api__test__service__pb2.DeleteAPIConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAPIConfigs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.APITestService/ListAPIConfigs',
+            api__test__service__pb2.ListAPIConfigsRequest.SerializeToString,
+            api__test__service__pb2.ListAPIConfigsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAPIConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.APITestService/GetAPIConfig',
+            api__test__service__pb2.GetAPIConfigRequest.SerializeToString,
+            api__test__service__pb2.GetAPIConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TestAPIConnection(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.APITestService/TestAPIConnection',
+            api__test__service__pb2.TestAPIConnectionRequest.SerializeToString,
+            api__test__service__pb2.TestAPIConnectionResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopAPITestConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/api_test_service.APITestService/StopAPITestConfig',
+            api__test__service__pb2.StopAPITestConfigRequest.SerializeToString,
+            api__test__service__pb2.StopAPITestConfigResponse.FromString,
             options,
             channel_credentials,
             insecure,

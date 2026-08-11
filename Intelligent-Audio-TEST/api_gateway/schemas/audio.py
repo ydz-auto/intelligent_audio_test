@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Union
 from pydantic import Field
 
-from shared.schemas.base import APIModel
+from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 from api_gateway.schemas.testcase import AlgorithmParamItem, RoundConfigItem
 

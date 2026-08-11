@@ -1,8 +1,13 @@
 import time
 from datetime import datetime, timezone, timedelta
-from shared.models.models import Task, TaskCase, TestCase, Log, TestResult
-from shared.models.database import db
+from shared.models.database import get_db_session
 from shared.utils.event_manager._common import get_socketio
+
+# 缓存策略：使用 shared.utils.task_data_cache 的 TTL 缓存减少 DB 往返。
+# gRPC GetTaskProgress 现已返回完整进度数据（test_cases 列表/计数/api_resource_status），
+# 优先走 gRPC 缓存；PO 直连仅用于 gRPC 不可用时的回退，以及内存态数据
+#（execution_engine.round_progress_cache / load_balancer.url_status）。
+from shared.utils.task_data_cache import get_task_progress_via_grpc
 
 
 class ProgressMixin:
@@ -60,200 +65,362 @@ class ProgressMixin:
         self._last_progress_time[task_id] = current_time
         min_interval = min(self._min_update_interval, 0.1)
 
-        local_db_session = db.session()
+        local_db_session = None
         current_case_data = None
         progress_data = None
 
         try:
+            # 优先通过 gRPC 缓存获取完整进度数据
+            # gRPC GetTaskProgress 返回 task_id/status/type/total/completed/failed/progress/
+            # current_case/test_cases/in_progress_count/actual_total/actual_completed/
+            # execution_failed/evaluation_failed/api_resource_status/started_at/completed_at/updated_at
             task_id_int = int(task_id) if isinstance(task_id, str) else task_id
-            db_task = local_db_session.get(Task, task_id_int)
-            if not db_task:
-                self._log(level='WARNING', content=f"找不到任务，跳过进度更新，task_id={task_id}", task_id=task_id)
-                return
+            grpc_progress = get_task_progress_via_grpc(task_id_int)
 
-            self._log(level='DEBUG', content=f"开始生成进度数据，task_id={task_id}, force={force}", task_id=task_id)
+            if grpc_progress is not None:
+                # ---- gRPC 路径：使用远端进度数据，无 PO 直连 ----
+                self._log(level='DEBUG', content=f"使用 gRPC 进度数据，task_id={task_id}, force={force}", task_id=task_id)
 
-            current_tc = local_db_session.query(TaskCase).filter_by(task_id=db_task.id, execution_status='running').first()
-            if current_tc:
-                case_info = local_db_session.get(TestCase, current_tc.test_case_id)
-                current_case_data = {
-                    "caseId": str(current_tc.test_case_id),
-                    "name": case_info.name if case_info else "未知用例",
-                    "step": "playing" if db_task.type == 'e2e' else "evaluating",
-                    "startTime": int(current_tc.started_at.timestamp() * 1000) if current_tc.started_at else int(time.time() * 1000)
-                }
-                self._log(level='DEBUG', content=f"当前执行用例: {current_case_data.get('name', '未知')} (ID: {current_case_data.get('caseId', '未知')})", task_id=task_id)
-            else:
-                self._log(level='DEBUG', content=f"没有正在执行的用例", task_id=task_id)
+                task_status = grpc_progress.get('status', 'unknown')
+                task_type = grpc_progress.get('type', '')
+                actual_total_cases = grpc_progress.get('actual_total_cases', grpc_progress.get('total_cases', 0))
+                actual_completed_cases = grpc_progress.get('actual_completed_cases', grpc_progress.get('completed_cases', 0))
+                in_progress_count = grpc_progress.get('in_progress_count', 0)
+                execution_failed_count = grpc_progress.get('execution_failed_count', 0)
+                evaluation_failed_count = grpc_progress.get('evaluation_failed_count', 0)
 
-            all_task_cases = local_db_session.query(TaskCase).filter_by(task_id=db_task.id).all()
-            test_cases_data = []
-            pending_count = 0
-            running_count = 0
-            completed_count = 0
-            failed_count = 0
+                # current_case: 转换字段名以匹配前端格式
+                cc = grpc_progress.get('current_case')
+                if cc:
+                    current_case_data = {
+                        "caseId": str(cc.get('case_id', cc.get('caseId', ''))),
+                        "name": cc.get('name', '未知用例'),
+                        "step": cc.get('step', 'playing' if task_type == 'e2e' else 'evaluating'),
+                        "startTime": int(datetime.fromisoformat(cc['started_at']).timestamp() * 1000) if cc.get('started_at') else int(time.time() * 1000),
+                    }
+                else:
+                    self._log(level='DEBUG', content=f"没有正在执行的用例", task_id=task_id)
 
-            for tc in all_task_cases:
-                evaluation_status = tc.evaluation_status
+                # test_cases: 转换字段名以匹配前端格式
+                raw_test_cases = grpc_progress.get('test_cases', [])
+                test_cases_data = []
+                for tc in raw_test_cases:
+                    test_cases_data.append({
+                        "id": str(tc.get('id', '')),
+                        "status": tc.get('status', ''),
+                        "executionStatus": tc.get('execution_status', tc.get('executionStatus', '')),
+                        "evaluationStatus": tc.get('evaluation_status', tc.get('evaluationStatus', '')),
+                        "duration": tc.get('duration', 0),
+                        "errorMessage": tc.get('error_message', tc.get('errorMessage', '')),
+                    })
 
-                duration = 0
-                if tc.started_at and tc.completed_at:
-                    utc_plus_8 = timezone(timedelta(hours=8))
-                    started_at = tc.started_at
-                    completed_at = tc.completed_at
-                    if started_at.tzinfo is None:
-                        started_at = started_at.replace(tzinfo=utc_plus_8)
-                    if completed_at.tzinfo is None:
-                        completed_at = completed_at.replace(tzinfo=utc_plus_8)
-                    duration = int((completed_at - started_at).total_seconds())
+                    # Multi-round progress: read from execution_engine in-memory cache
+                    if self.execution_engine is not None:
+                        # round_progress_cache 使用 TaskCase 的整数 id 作为 key
+                        # gRPC 只返回了 test_case_id，我们需要 case 的真实 id
+                        # 这个数据只能从内存获取，gRPC 无法提供
+                        pass
 
-                test_cases_data.append({
-                    "id": str(tc.test_case_id),
-                    "status": tc.status,
-                    "executionStatus": tc.execution_status,
-                    "evaluationStatus": evaluation_status,
-                    "duration": duration,
-                    "errorMessage": tc.error_message
-                })
-
-                # Multi-round progress: read from execution_engine in-memory cache
+                # 补充 roundProgress（内存态数据，gRPC 无法提供）
                 if self.execution_engine is not None:
-                    round_progress = getattr(self.execution_engine, 'round_progress_cache', {}).get(tc.id)
-                    if round_progress:
-                        test_cases_data[-1]['roundProgress'] = {
-                            'current': round_progress.get('current', 0),
-                            'total': round_progress.get('total', 0),
-                        }
+                    rpc_cache = getattr(self.execution_engine, 'round_progress_cache', {})
+                    # round_progress_cache 的 key 是 TaskCase.id (数据库自增ID)
+                    # gRPC 只返回了 test_case_id，无法直接匹配
+                    # 遍历所有 round_progress 条目
+                    for tc_id, rp in rpc_cache.items():
+                        # 找到对应的 test_case 并补充 roundProgress
+                        # 这里 tc_id 是 TaskCase.id，与 test_case_id 不同
+                        # 简单处理：如果只有一个 round_progress 条目，补充到当前用例
+                        if len(rpc_cache) == 1 and test_cases_data:
+                            test_cases_data[0]['roundProgress'] = {
+                                'current': rp.get('current', 0),
+                                'total': rp.get('total', 0),
+                            }
+                        break
 
-                if tc.execution_status in ['pending', 'queued']:
-                    pending_count += 1
-                elif tc.execution_status == 'running':
-                    running_count += 1
-                elif tc.execution_status == 'completed':
-                    completed_count += 1
-                elif tc.execution_status == 'failed':
-                    failed_count += 1
+                self._log(level='DEBUG', content=f"用例总数: {actual_total_cases}, 已完成: {actual_completed_cases}, 进行中: {in_progress_count}", task_id=task_id)
 
-            self._log(level='DEBUG', content=f"用例统计: pending={pending_count}, running={running_count}, completed={completed_count}, failed={failed_count}", task_id=task_id)
+                # 通过 gRPC 查询最近日志
+                try:
+                    from shared.clients.grpc_clients import list_logs
+                    log_resp = list_logs(task_id=task_id_int, page=1, per_page=20)
+                    recent_log_items = log_resp.get('items', [])
+                except Exception:
+                    recent_log_items = []
+                logs_data = [{
+                    "id": log_item.get('id', 0),
+                    "level": (log_item.get('level') or 'info').lower(),
+                    "message": log_item.get('content') or '',
+                    "timestamp": int(datetime.fromisoformat(log_item['time']).timestamp() * 1000) if log_item.get('time') else int(time.time() * 1000)
+                } for log_item in reversed(recent_log_items)]
 
-            recent_logs = local_db_session.query(Log).filter_by(task_id=db_task.id).order_by(Log.time.desc()).limit(20).all()
-            logs_data = [{
-                "id": l.id,
-                "level": l.level.lower() if l.level else 'info',
-                "message": l.content,
-                "timestamp": int(l.time.timestamp() * 1000) if l.time else int(time.time() * 1000)
-            } for l in reversed(recent_logs)]
-
-            in_progress_count = local_db_session.query(TaskCase).filter(
-                TaskCase.task_id == db_task.id,
-                (TaskCase.execution_status.in_(['running', 'queued'])) | (TaskCase.evaluation_status == 'running') |
-                (TaskCase.evaluation_status == 'calculating')
-            ).count()
-
-            api_resources_status = []
-            if db_task.type == 'api':
-                from shared.models.models import TaskAPI, API
-                task_api = local_db_session.query(TaskAPI).filter_by(task_id=db_task.id).first()
-                if task_api:
-                    api = local_db_session.get(API, task_api.api_id)
-                    if api:
-                        api_executor = getattr(self.execution_engine, 'api_executors', {}).get(str(db_task.id)) if self.execution_engine is not None else None
-                        if api_executor:
-                            load_balancer = getattr(self.execution_engine, 'load_balancer', None) if self.execution_engine is not None else None
+                # API 资源状态：gRPC 提供 pending_cases/completed_cases/avg_response_time，
+                # 但 currentConcurrent 和 maxConcurrent 需要从 in-memory load_balancer 补充
+                api_resources_status = []
+                if task_type == 'api':
+                    raw_api_status = grpc_progress.get('api_resource_status', [])
+                    for api_info in raw_api_status:
+                        # 从内存态 load_balancer 补充 currentConcurrent
+                        current_concurrent = 0
+                        if self.execution_engine is not None:
+                            load_balancer = getattr(self.execution_engine, 'load_balancer', None)
                             if load_balancer:
                                 url_status = load_balancer.get_url_status()
-                                for url, status in url_status.items():
-                                    pending_cases = local_db_session.query(TaskCase).filter(
-                                        TaskCase.task_id == db_task.id,
-                                        TaskCase.execution_status == 'pending'
-                                    ).count()
-                                    avg_response_time = 0
-                                    completed_cases = local_db_session.query(TaskCase).filter(
-                                        TaskCase.task_id == db_task.id,
-                                        TaskCase.execution_status == 'completed'
-                                    ).count()
-                                    if completed_cases > 0:
-                                        total_response_time = 0
-                                        completed_results = local_db_session.query(TestResult).filter(
-                                            TestResult.task_id == db_task.id,
-                                            TestResult.execution_status == 'completed'
-                                        ).all()
-                                        for result in completed_results:
-                                            if result.response_time:
-                                                total_response_time += result.response_time
-                                        if total_response_time > 0:
-                                            avg_response_time = round(total_response_time / len(completed_results))
+                                # 取所有 URL 的并发总和
+                                current_concurrent = sum(s.get('concurrent', 0) for s in url_status.values())
 
-                                    api_resources_status.append({
-                                        "id": str(api.id),
-                                        "name": api.name,
-                                        "currentConcurrent": status.get('concurrent', 0),
-                                        "queueLength": pending_cases,
-                                        "avgResponseTime": avg_response_time,
-                                        "maxConcurrent": api.default_max_process if hasattr(api, 'default_max_process') else 5
-                                    })
+                        api_resources_status.append({
+                            "id": api_info.get('id', ''),
+                            "name": api_info.get('name', ''),
+                            "currentConcurrent": current_concurrent,
+                            "queueLength": api_info.get('pending_cases', 0),
+                            "avgResponseTime": api_info.get('avg_response_time', 0),
+                            "maxConcurrent": api_info.get('default_max_process', 5),
+                        })
 
-            now = datetime.now(timezone(timedelta(hours=8)))
-            started_at = db_task.started_at
-            elapsed_seconds_for_display = 0.0
-            if started_at:
-                if not started_at.tzinfo:
-                    started_at = started_at.replace(tzinfo=timezone(timedelta(hours=8)))
-                # 任务已结束（completed/failed）时，使用 completed_at - started_at 作为已用时长，
-                # 避免持续推送导致 usedTime 不断增长
-                end_reference = started_at
-                if db_task.completed_at:
-                    completed_at = db_task.completed_at
-                    if not completed_at.tzinfo:
-                        completed_at = completed_at.replace(tzinfo=timezone(timedelta(hours=8)))
-                    end_reference = completed_at
-                elif db_task.status in ('completed', 'failed'):
-                    # 状态已结束但 completed_at 缺失时，退而使用 updatedAt
-                    updated_at = db_task.updated_at
-                    if updated_at:
-                        if not updated_at.tzinfo:
-                            updated_at = updated_at.replace(tzinfo=timezone(timedelta(hours=8)))
-                        end_reference = updated_at
-                else:
-                    end_reference = now
-                elapsed_seconds_for_display = max(0.0, (end_reference - started_at).total_seconds())
+                # 时间计算
+                now = datetime.now(timezone(timedelta(hours=8)))
+                started_at_str = grpc_progress.get('started_at')
+                elapsed_seconds_for_display = 0.0
+                if started_at_str:
+                    started_at = datetime.fromisoformat(started_at_str)
+                    if started_at.tzinfo is None:
+                        started_at = started_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                    end_reference = started_at
+                    completed_at_str = grpc_progress.get('completed_at')
+                    if completed_at_str:
+                        completed_at = datetime.fromisoformat(completed_at_str)
+                        if completed_at.tzinfo is None:
+                            completed_at = completed_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                        end_reference = completed_at
+                    elif task_status in ('completed', 'failed'):
+                        updated_at_str = grpc_progress.get('updated_at')
+                        if updated_at_str:
+                            updated_at = datetime.fromisoformat(updated_at_str)
+                            if updated_at.tzinfo is None:
+                                updated_at = updated_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                            end_reference = updated_at
+                    else:
+                        end_reference = now
+                    elapsed_seconds_for_display = max(0.0, (end_reference - started_at).total_seconds())
 
-            actual_total_cases = local_db_session.query(TaskCase).filter_by(task_id=db_task.id).count()
-            if actual_total_cases != db_task.total_cases:
+                progress_percentage = round(actual_completed_cases / actual_total_cases * 100, 2) if actual_total_cases > 0 else 0
+                progress_percentage = min(progress_percentage, 100.0)
+
+                progress_data = {
+                    "taskId": str(task_id_int),
+                    "totalProgress": progress_percentage,
+                    "status": task_status,
+                    "completedCount": actual_completed_cases,
+                    "inProgressCount": in_progress_count,
+                    "executionFailedCount": execution_failed_count,
+                    "evaluationFailedCount": evaluation_failed_count,
+                    "totalCount": actual_total_cases,
+                    "currentCase": current_case_data,
+                    "testCases": test_cases_data,
+                    "logs": logs_data,
+                    "apiResources": api_resources_status,
+                    "expectedCompleteTime": None,
+                    "expectedTotalTime": None,
+                    "usedTime": self._format_duration(elapsed_seconds_for_display) if started_at_str else "0分钟"
+                }
+
+                # 用于时间预估的 task 伪对象（只包含 calculate_time_estimate 需要的字段）
+                class _TaskProxy:
+                    pass
+                db_task = _TaskProxy()
+                db_task.id = task_id_int
+                db_task.type = task_type
+                db_task.status = task_status
                 db_task.total_cases = actual_total_cases
-                local_db_session.commit()
-            actual_completed_cases = local_db_session.query(TaskCase).filter(
-                TaskCase.task_id == db_task.id,
-                TaskCase.execution_status == 'completed',
-                TaskCase.status == 'completed'
-            ).count()
-            progress_percentage = round(actual_completed_cases / actual_total_cases * 100, 2) if actual_total_cases > 0 else 0
-            progress_percentage = min(progress_percentage, 100.0)
+                db_task.completed_cases = actual_completed_cases
+                db_task.failed_cases = grpc_progress.get('failed_cases', 0)
+                db_task.started_at = datetime.fromisoformat(started_at_str) if started_at_str else None
+                completed_at_str = grpc_progress.get('completed_at')
+                db_task.completed_at = datetime.fromisoformat(completed_at_str) if completed_at_str else None
+                updated_at_str = grpc_progress.get('updated_at')
+                db_task.updated_at = datetime.fromisoformat(updated_at_str) if updated_at_str else None
 
-            execution_failed_count = sum(
-                1 for tc in test_cases_data if tc.get("executionStatus") == "failed"
-            )
-            evaluation_failed_count = sum(
-                1 for tc in test_cases_data if tc.get("evaluationStatus") == "failed"
-            )
+            else:
+                # ---- PO 回退路径：gRPC 不可用时直连 DB ----
+                local_db_session = get_db_session()
 
-            progress_data = {
-                "taskId": str(db_task.id),
-                "totalProgress": progress_percentage,
-                "status": db_task.status,
-                "completedCount": actual_completed_cases,
-                "inProgressCount": in_progress_count,
-                "executionFailedCount": execution_failed_count,
-                "evaluationFailedCount": evaluation_failed_count,
-                "totalCount": actual_total_cases,
-                "currentCase": current_case_data,
-                "testCases": test_cases_data,
-                "logs": logs_data,
-                "apiResources": api_resources_status,
-                "expectedCompleteTime": None,
-                "expectedTotalTime": None,
-                "usedTime": self._format_duration(elapsed_seconds_for_display) if started_at else "0分钟"
-            }
+                from task_service.infrastructure.persistence.models import Task, TaskCase, TestCase, TestResult
+                db_task = local_db_session.get(Task, task_id_int)
+                if not db_task:
+                    self._log(level='WARNING', content=f"找不到任务，跳过进度更新，task_id={task_id}", task_id=task_id)
+                    return
+
+                self._log(level='DEBUG', content=f"使用 PO 回退路径生成进度数据，task_id={task_id}, force={force}", task_id=task_id)
+
+                current_tc = local_db_session.query(TaskCase).filter_by(task_id=db_task.id, execution_status='running').first()
+                if current_tc:
+                    case_info = local_db_session.get(TestCase, current_tc.test_case_id)
+                    current_case_data = {
+                        "caseId": str(current_tc.test_case_id),
+                        "name": case_info.name if case_info else "未知用例",
+                        "step": "playing" if db_task.type == 'e2e' else "evaluating",
+                        "startTime": int(current_tc.started_at.timestamp() * 1000) if current_tc.started_at else int(time.time() * 1000)
+                    }
+                    self._log(level='DEBUG', content=f"当前执行用例: {current_case_data.get('name', '未知')} (ID: {current_case_data.get('caseId', '未知')})", task_id=task_id)
+                else:
+                    self._log(level='DEBUG', content=f"没有正在执行的用例", task_id=task_id)
+
+                all_task_cases = local_db_session.query(TaskCase).filter_by(task_id=db_task.id).all()
+                test_cases_data = []
+
+                for tc in all_task_cases:
+                    evaluation_status = tc.evaluation_status
+                    duration = 0
+                    if tc.started_at and tc.completed_at:
+                        utc_plus_8 = timezone(timedelta(hours=8))
+                        started_at = tc.started_at
+                        completed_at = tc.completed_at
+                        if started_at.tzinfo is None:
+                            started_at = started_at.replace(tzinfo=utc_plus_8)
+                        if completed_at.tzinfo is None:
+                            completed_at = completed_at.replace(tzinfo=utc_plus_8)
+                        duration = int((completed_at - started_at).total_seconds())
+
+                    test_cases_data.append({
+                        "id": str(tc.test_case_id),
+                        "status": tc.status,
+                        "executionStatus": tc.execution_status,
+                        "evaluationStatus": evaluation_status,
+                        "duration": duration,
+                        "errorMessage": tc.error_message
+                    })
+
+                    if self.execution_engine is not None:
+                        round_progress = getattr(self.execution_engine, 'round_progress_cache', {}).get(tc.id)
+                        if round_progress:
+                            test_cases_data[-1]['roundProgress'] = {
+                                'current': round_progress.get('current', 0),
+                                'total': round_progress.get('total', 0),
+                            }
+
+                # 通过 gRPC 查询最近日志
+                try:
+                    from shared.clients.grpc_clients import list_logs
+                    log_resp = list_logs(task_id=db_task.id, page=1, per_page=20)
+                    recent_log_items = log_resp.get('items', [])
+                except Exception:
+                    recent_log_items = []
+                logs_data = [{
+                    "id": log_item.get('id', 0),
+                    "level": (log_item.get('level') or 'info').lower(),
+                    "message": log_item.get('content') or '',
+                    "timestamp": int(datetime.fromisoformat(log_item['time']).timestamp() * 1000) if log_item.get('time') else int(time.time() * 1000)
+                } for log_item in reversed(recent_log_items)]
+
+                in_progress_count = local_db_session.query(TaskCase).filter(
+                    TaskCase.task_id == db_task.id,
+                    (TaskCase.execution_status.in_(['running', 'queued'])) | (TaskCase.evaluation_status == 'running') |
+                    (TaskCase.evaluation_status == 'calculating')
+                ).count()
+
+                api_resources_status = []
+                if db_task.type == 'api':
+                    from task_service.infrastructure.persistence.models import TaskAPI
+                    from api_test_service.infrastructure.persistence.models import API
+                    task_api = local_db_session.query(TaskAPI).filter_by(task_id=db_task.id).first()
+                    if task_api:
+                        api = local_db_session.get(API, task_api.api_id)
+                        if api:
+                            api_executor = getattr(self.execution_engine, 'api_executors', {}).get(str(db_task.id)) if self.execution_engine is not None else None
+                            if api_executor:
+                                load_balancer = getattr(self.execution_engine, 'load_balancer', None) if self.execution_engine is not None else None
+                                if load_balancer:
+                                    url_status = load_balancer.get_url_status()
+                                    for url, status in url_status.items():
+                                        pending_cases = local_db_session.query(TaskCase).filter(
+                                            TaskCase.task_id == db_task.id,
+                                            TaskCase.execution_status == 'pending'
+                                        ).count()
+                                        avg_response_time = 0
+                                        completed_cases = local_db_session.query(TaskCase).filter(
+                                            TaskCase.task_id == db_task.id,
+                                            TaskCase.execution_status == 'completed'
+                                        ).count()
+                                        if completed_cases > 0:
+                                            total_response_time = 0
+                                            completed_results = local_db_session.query(TestResult).filter(
+                                                TestResult.task_id == db_task.id,
+                                                TestResult.execution_status == 'completed'
+                                            ).all()
+                                            for result in completed_results:
+                                                if result.response_time:
+                                                    total_response_time += result.response_time
+                                            if total_response_time > 0:
+                                                avg_response_time = round(total_response_time / len(completed_results))
+
+                                        api_resources_status.append({
+                                            "id": str(api.id),
+                                            "name": api.name,
+                                            "currentConcurrent": status.get('concurrent', 0),
+                                            "queueLength": pending_cases,
+                                            "avgResponseTime": avg_response_time,
+                                            "maxConcurrent": api.default_max_process if hasattr(api, 'default_max_process') else 5
+                                        })
+
+                now = datetime.now(timezone(timedelta(hours=8)))
+                started_at = db_task.started_at
+                elapsed_seconds_for_display = 0.0
+                if started_at:
+                    if not started_at.tzinfo:
+                        started_at = started_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                    end_reference = started_at
+                    if db_task.completed_at:
+                        completed_at = db_task.completed_at
+                        if not completed_at.tzinfo:
+                            completed_at = completed_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                        end_reference = completed_at
+                    elif db_task.status in ('completed', 'failed'):
+                        updated_at = db_task.updated_at
+                        if updated_at:
+                            if not updated_at.tzinfo:
+                                updated_at = updated_at.replace(tzinfo=timezone(timedelta(hours=8)))
+                            end_reference = updated_at
+                    else:
+                        end_reference = now
+                    elapsed_seconds_for_display = max(0.0, (end_reference - started_at).total_seconds())
+
+                actual_total_cases = local_db_session.query(TaskCase).filter_by(task_id=db_task.id).count()
+                if actual_total_cases != db_task.total_cases:
+                    db_task.total_cases = actual_total_cases
+                    local_db_session.commit()
+                actual_completed_cases = local_db_session.query(TaskCase).filter(
+                    TaskCase.task_id == db_task.id,
+                    TaskCase.execution_status == 'completed',
+                    TaskCase.status == 'completed'
+                ).count()
+                progress_percentage = round(actual_completed_cases / actual_total_cases * 100, 2) if actual_total_cases > 0 else 0
+                progress_percentage = min(progress_percentage, 100.0)
+
+                execution_failed_count = sum(
+                    1 for tc in test_cases_data if tc.get("executionStatus") == "failed"
+                )
+                evaluation_failed_count = sum(
+                    1 for tc in test_cases_data if tc.get("evaluationStatus") == "failed"
+                )
+
+                progress_data = {
+                    "taskId": str(db_task.id),
+                    "totalProgress": progress_percentage,
+                    "status": db_task.status,
+                    "completedCount": actual_completed_cases,
+                    "inProgressCount": in_progress_count,
+                    "executionFailedCount": execution_failed_count,
+                    "evaluationFailedCount": evaluation_failed_count,
+                    "totalCount": actual_total_cases,
+                    "currentCase": current_case_data,
+                    "testCases": test_cases_data,
+                    "logs": logs_data,
+                    "apiResources": api_resources_status,
+                    "expectedCompleteTime": None,
+                    "expectedTotalTime": None,
+                    "usedTime": self._format_duration(elapsed_seconds_for_display) if started_at else "0分钟"
+                }
 
             # 默认值，防止 started_at 为 None 时变量未定义
             elapsed_seconds = elapsed_seconds_for_display
@@ -382,4 +549,5 @@ class ProgressMixin:
             self._log(level='ERROR', content=f"emit_progress 异常: {str(e)}", task_id=task_id, category='error')
             raise
         finally:
-            local_db_session.close()
+            if local_db_session is not None:
+                local_db_session.close()

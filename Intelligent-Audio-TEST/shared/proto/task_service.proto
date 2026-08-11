@@ -18,16 +18,14 @@ service ExecutionService {
   rpc RemoveFromQueue(RemoveFromQueueRequest) returns (RemoveFromQueueResponse);
   // 获取任务状态
   rpc GetTaskStatus(GetTaskStatusRequest) returns (TaskStatusResponse);
-  // 重新评估（任务级批量重新评估）
-  rpc Reevaluate(ReevaluateRequest) returns (ReevaluateResponse);
-  // 多轮用例重新评估
-  rpc ReevaluateMultiRound(ReevaluateMultiRoundRequest) returns (ReevaluateMultiRoundResponse);
-  // 单轮用例重新评估
-  rpc ReevaluateSingle(ReevaluateSingleRequest) returns (ReevaluateSingleResponse);
   // 获取执行引擎实例信息（如线程池状态）
   rpc GetEngineInfo(GetEngineInfoRequest) returns (EngineInfoResponse);
-  // 评估单个用例结果（供 e2e_test_service / api_test_service 跨服务调用）
-  rpc EvaluateCase(EvaluateCaseRequest) returns (EvaluateCaseResponse);
+  // 通知进度更新（evaluation_service 评估完成后调用）
+  rpc NotifyProgress(NotifyProgressRequest) returns (NotifyProgressResponse);
+  // 通知用例已完成（唤醒等待线程）
+  rpc NotifyCaseCompleted(NotifyCaseCompletedRequest) returns (NotifyCaseCompletedResponse);
+  // 注：EvaluateCase / Reevaluate / ReevaluateMultiRound / ReevaluateSingle
+  // 已迁移至 evaluation_service.proto 的 EvaluationService
 }
 
 // ==================== ExecutionService Messages ====================
@@ -103,48 +101,9 @@ message TaskStatusResponse {
   string data = 3;  // JSON 序列化的任务状态
 }
 
-message ReevaluateRequest {
-  string task_id = 1;
-  bool reextract_device_output = 2;
-  string reevaluate_type = 3;  // all / failed / passed
-}
-
-message ReevaluateResponse {
-  bool success = 1;
-  string message = 2;
-  string data = 3;  // JSON 序列化的重新评估结果
-}
-
-message ReevaluateMultiRoundRequest {
-  string task_id = 1;
-  string result_json = 2;       // JSON 序列化的结果对象
-  string test_case_id = 3;
-  string algorithm_result = 4;  // JSON 序列化的算法结果
-  string test_type = 5;
-  string algorithm_type = 6;
-}
-
-message ReevaluateMultiRoundResponse {
-  bool success = 1;
-  string message = 2;
-  string data = 3;
-}
-
-message ReevaluateSingleRequest {
-  string task_id = 1;
-  string result_id = 2;
-  string test_case_id = 3;
-  string algorithm_result = 4;    // JSON 序列化的算法结果
-  string reference_params = 5;    // JSON 序列化的参考参数
-  string test_type = 6;
-  string algorithm_type = 7;
-}
-
-message ReevaluateSingleResponse {
-  bool success = 1;
-  string message = 2;
-  string data = 3;
-}
+// 注：ReevaluateRequest/Response, ReevaluateMultiRoundRequest/Response,
+// ReevaluateSingleRequest/Response, EvaluateCaseRequest/Response
+// 已迁移至 evaluation_service.proto
 
 message GetEngineInfoRequest {
   string task_id = 1;
@@ -156,16 +115,696 @@ message EngineInfoResponse {
   string data = 3;  // JSON 序列化的引擎信息（线程池状态等）
 }
 
-message EvaluateCaseRequest {
+message NotifyProgressRequest {
   string task_id = 1;
-  string result_id = 2;
-  string test_case_id = 3;
-  string algorithm_result = 4;  // JSON 序列化的算法结果
-  string eval_params = 5;  // JSON 序列化的评估参数 (algorithm_type, test_type, round_number 等)
+  bool force = 2;
 }
 
-message EvaluateCaseResponse {
+message NotifyProgressResponse {
   bool success = 1;
   string message = 2;
-  string data = 3;  // JSON 序列化的评估结果
 }
+
+message NotifyCaseCompletedRequest {
+  string task_id = 1;
+}
+
+message NotifyCaseCompletedResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// ===== 任务配置 CRUD 服务 =====
+service TaskConfigService {
+  // ---- 写操作 ----
+  rpc CreateTaskConfig(CreateTaskConfigRequest) returns (TaskConfigResponse);
+  rpc UpdateTaskConfig(UpdateTaskConfigRequest) returns (TaskConfigResponse);
+  rpc DeleteTaskConfig(DeleteTaskConfigRequest) returns (TaskConfigResponse);
+  rpc UpdateTaskCases(UpdateTaskCasesRequest) returns (TaskConfigResponse);
+  rpc BatchActionTasks(BatchActionTasksRequest) returns (TaskConfigResponse);
+  rpc MergeTasks(MergeTasksRequest) returns (TaskConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListTasks(ListTasksRequest) returns (TaskConfigResponse);
+  rpc GetTaskDetail(GetTaskDetailRequest) returns (TaskConfigResponse);
+  rpc GetTaskProgress(GetTaskProgressRequest) returns (TaskConfigResponse);
+  rpc GetTaskStats(GetTaskStatsRequest) returns (TaskConfigResponse);
+  rpc GetCaseDetail(GetCaseDetailRequest) returns (TaskConfigResponse);
+  rpc GetCaseResults(GetCaseResultsRequest) returns (TaskConfigResponse);
+
+  // ---- 生命周期操作（内部调用 execution_engine）----
+  rpc StartTaskLifecycle(StartTaskLifecycleRequest) returns (TaskConfigResponse);
+  rpc RetryTaskLifecycle(RetryTaskLifecycleRequest) returns (TaskConfigResponse);
+  rpc ControlTaskLifecycle(ControlTaskLifecycleRequest) returns (TaskConfigResponse);
+  rpc StopTaskLifecycle(StopTaskLifecycleRequest) returns (TaskConfigResponse);
+  rpc RextractTaskLifecycle(RextractTaskLifecycleRequest) returns (TaskConfigResponse);
+}
+
+// ==================== TaskConfigService Messages ====================
+
+message CreateTaskConfigRequest {
+  string data = 1;  // JSON: {name, description, type, config, case_ids, device_ids, api_ids, tags, created_by}
+}
+message UpdateTaskConfigRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {name, description}
+}
+message DeleteTaskConfigRequest {
+  int32 task_id = 1;
+}
+message UpdateTaskCasesRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {action: add/remove, case_ids}
+}
+message BatchActionTasksRequest {
+  string data = 1;  // JSON: {action: delete/export, task_ids, format}
+}
+message MergeTasksRequest {
+  string data = 1;  // JSON: {task_ids}
+}
+message ListTasksRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string status = 3;
+  string type = 4;
+  string algorithm_type = 5;
+  string search = 6;
+  string start_date = 7;
+  string end_date = 8;
+}
+message GetTaskDetailRequest {
+  int32 task_id = 1;
+}
+message GetTaskProgressRequest {
+  int32 task_id = 1;
+}
+message GetTaskStatsRequest {
+  int32 task_id = 1;
+}
+message GetCaseDetailRequest {
+  int32 task_id = 1;
+  int32 case_id = 2;
+}
+message GetCaseResultsRequest {
+  int32 task_id = 1;
+  int32 case_id = 2;
+}
+message StartTaskLifecycleRequest {
+  int32 task_id = 1;
+}
+message RetryTaskLifecycleRequest {
+  int32 task_id = 1;
+}
+message ControlTaskLifecycleRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {action, case_id}
+}
+message StopTaskLifecycleRequest {
+  int32 task_id = 1;
+}
+message RextractTaskLifecycleRequest {
+  int32 task_id = 1;
+  string data = 2;  // JSON: {execution_status, evaluation_status}
+}
+message TaskConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ===== 测试用例配置 CRUD 服务 =====
+service TestCaseConfigService {
+  // ---- 写操作 ----
+  rpc CreateTestCaseConfig(CreateTestCaseConfigRequest) returns (TestCaseConfigResponse);
+  rpc UpdateTestCaseConfig(UpdateTestCaseConfigRequest) returns (TestCaseConfigResponse);
+  rpc DeleteTestCaseConfig(DeleteTestCaseConfigRequest) returns (TestCaseConfigResponse);
+  rpc CopyTestCaseConfig(CopyTestCaseConfigRequest) returns (TestCaseConfigResponse);
+  rpc BatchActionTestCases(BatchActionTestCasesRequest) returns (TestCaseConfigResponse);
+  rpc UpdateTestCaseRefParams(UpdateTestCaseRefParamsRequest) returns (TestCaseConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListTestCases(ListTestCasesRequest) returns (TestCaseConfigResponse);
+  rpc GetTestCaseDetail(GetTestCaseDetailRequest) returns (TestCaseConfigResponse);
+  rpc GetTestCaseStats(GetTestCaseStatsRequest) returns (TestCaseConfigResponse);
+  rpc GetTestCaseTags(GetTestCaseTagsRequest) returns (TestCaseConfigResponse);
+  rpc GetTestCaseRefParams(GetTestCaseRefParamsRequest) returns (TestCaseConfigResponse);
+}
+
+// ==================== TestCaseConfigService Messages ====================
+
+message CreateTestCaseConfigRequest {
+  string data = 1;  // JSON: 完整创建请求体
+}
+message UpdateTestCaseConfigRequest {
+  string tc_id = 1;
+  string data = 2;  // JSON: 完整更新请求体
+}
+message DeleteTestCaseConfigRequest {
+  string tc_id = 1;
+}
+message CopyTestCaseConfigRequest {
+  string tc_id = 1;
+}
+message BatchActionTestCasesRequest {
+  string data = 1;  // JSON: {action, ids, ...}
+}
+message UpdateTestCaseRefParamsRequest {
+  string tc_id = 1;
+  int32 round_number = 2;
+  string data = 3;  // JSON: {referenceParams}
+}
+message ListTestCasesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string tag = 4;
+  string group_id = 5;
+  string type = 6;       // api / e2e
+  string algorithm_type = 7;
+  string view = 8;       // 'tag' or none
+  bool include_deleted = 9;
+}
+message GetTestCaseDetailRequest {
+  string tc_id = 1;
+}
+message GetTestCaseStatsRequest {}
+message GetTestCaseTagsRequest {}
+message GetTestCaseRefParamsRequest {
+  string tc_id = 1;
+  int32 round_number = 2;
+}
+message TestCaseConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ===== 标签配置 CRUD 服务 =====
+service TagConfigService {
+  // ---- TagCategory 写操作 ----
+  rpc CreateTagCategory(CreateTagCategoryRequest) returns (TagConfigResponse);
+  rpc UpdateTagCategory(UpdateTagCategoryRequest) returns (TagConfigResponse);
+  rpc DeleteTagCategory(DeleteTagCategoryRequest) returns (TagConfigResponse);
+
+  // ---- Tag 写操作 ----
+  rpc CreateTag(CreateTagRequest) returns (TagConfigResponse);
+  rpc UpdateTag(UpdateTagRequest) returns (TagConfigResponse);
+  rpc DeleteTag(DeleteTagRequest) returns (TagConfigResponse);
+  rpc BatchUpdateTagCategory(BatchUpdateTagCategoryRequest) returns (TagConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListTagCategories(ListTagCategoriesRequest) returns (TagConfigResponse);
+  rpc GetTagCategory(GetTagCategoryRequest) returns (TagConfigResponse);
+  rpc ListTags(ListTagsRequest) returns (TagConfigResponse);
+  rpc ListTagNames(ListTagNamesRequest) returns (TagConfigResponse);
+  rpc GetTag(GetTagRequest) returns (TagConfigResponse);
+  rpc GetTagsByCategory(GetTagsByCategoryRequest) returns (TagConfigResponse);
+}
+
+// ==================== TagConfigService Messages ====================
+
+message CreateTagCategoryRequest {
+  string data = 1;  // JSON: {name, description, color, sort_order}
+}
+message UpdateTagCategoryRequest {
+  int32 category_id = 1;
+  string data = 2;  // JSON: {name, description, color, sort_order}
+}
+message DeleteTagCategoryRequest {
+  int32 category_id = 1;
+}
+message CreateTagRequest {
+  string data = 1;  // JSON: {name, description, color, category_id}
+}
+message UpdateTagRequest {
+  int32 tag_id = 1;
+  string data = 2;  // JSON: {name, description, color, category_id}
+}
+message DeleteTagRequest {
+  int32 tag_id = 1;
+}
+message BatchUpdateTagCategoryRequest {
+  string data = 1;  // JSON: {tag_ids, category_id}
+}
+message ListTagCategoriesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+}
+message GetTagCategoryRequest {
+  int32 category_id = 1;
+}
+message ListTagsRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  int32 category_id = 3;
+  string keyword = 4;
+}
+message ListTagNamesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+}
+message GetTagRequest {
+  int32 tag_id = 1;
+}
+message GetTagsByCategoryRequest {}
+message TagConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ===== 算法配置 CRUD 服务 =====
+service AlgorithmConfigService {
+  // ---- 算法定义 写操作 ----
+  rpc CreateAlgorithm(CreateAlgorithmRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateAlgorithm(UpdateAlgorithmRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteAlgorithm(DeleteAlgorithmRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 算法分组 写操作 ----
+  rpc CreateAlgorithmGroup(CreateAlgorithmGroupRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateAlgorithmGroup(UpdateAlgorithmGroupRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteAlgorithmGroup(DeleteAlgorithmGroupRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 参数(device/api) 写操作 ----
+  rpc CreateParam(CreateParamRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateParam(UpdateParamRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteParam(DeleteParamRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 用例专属参数 写操作 ----
+  rpc CreateCaseParam(CreateCaseParamRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateCaseParam(UpdateCaseParamRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteCaseParam(DeleteCaseParamRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 参考参数 写操作 ----
+  rpc CreateReferenceParam(CreateReferenceParamRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateReferenceParam(UpdateReferenceParamRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteReferenceParam(DeleteReferenceParamRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 参数映射 写操作 ----
+  rpc CreateMapping(CreateMappingRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateMapping(UpdateMappingRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteMapping(DeleteMappingRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 维度关联 写操作 ----
+  rpc AssociateDimensions(AssociateDimensionsRequest) returns (AlgorithmConfigResponse);
+  rpc CreateDimensionRelation(CreateDimensionRelationRequest) returns (AlgorithmConfigResponse);
+  rpc UpdateDimensionRelation(UpdateDimensionRelationRequest) returns (AlgorithmConfigResponse);
+  rpc DeleteDimensionRelation(DeleteDimensionRelationRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 批量操作 ----
+  rpc ImportAlgorithms(ImportAlgorithmsRequest) returns (AlgorithmConfigResponse);
+  rpc BulkDeleteAlgorithms(BulkDeleteAlgorithmsRequest) returns (AlgorithmConfigResponse);
+  rpc ExtractParams(ExtractParamsRequest) returns (AlgorithmConfigResponse);
+  rpc ReloadAlgorithmConfig(ReloadAlgorithmConfigRequest) returns (AlgorithmConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListAlgorithms(ListAlgorithmsRequest) returns (AlgorithmConfigResponse);
+  rpc GetAlgorithm(GetAlgorithmRequest) returns (AlgorithmConfigResponse);
+  rpc GetAlgorithmOptions(GetAlgorithmOptionsRequest) returns (AlgorithmConfigResponse);
+  rpc ListAlgorithmGroups(ListAlgorithmGroupsRequest) returns (AlgorithmConfigResponse);
+  rpc GetAlgorithmGroup(GetAlgorithmGroupRequest) returns (AlgorithmConfigResponse);
+  rpc ListParams(ListParamsRequest) returns (AlgorithmConfigResponse);
+  rpc GetParam(GetParamRequest) returns (AlgorithmConfigResponse);
+  rpc ListCaseParams(ListCaseParamsRequest) returns (AlgorithmConfigResponse);
+  rpc GetCaseParam(GetCaseParamRequest) returns (AlgorithmConfigResponse);
+  rpc ListReferenceParams(ListReferenceParamsRequest) returns (AlgorithmConfigResponse);
+  rpc ListMappings(ListMappingsRequest) returns (AlgorithmConfigResponse);
+  rpc GetFormSchema(GetFormSchemaRequest) returns (AlgorithmConfigResponse);
+  rpc GetAlgorithmDimensions(GetAlgorithmDimensionsRequest) returns (AlgorithmConfigResponse);
+  rpc GetDimensionParams(GetDimensionParamsRequest) returns (AlgorithmConfigResponse);
+}
+
+// ==================== AlgorithmConfigService Messages ====================
+
+// ---- 算法定义 ----
+message CreateAlgorithmRequest {
+  string data = 1;  // JSON: 完整创建请求体
+}
+message UpdateAlgorithmRequest {
+  string algo_type = 1;
+  string data = 2;  // JSON: 完整更新请求体
+}
+message DeleteAlgorithmRequest {
+  string algo_type = 1;
+}
+
+// ---- 算法分组 ----
+message CreateAlgorithmGroupRequest {
+  string data = 1;  // JSON: {name, description, icon, display_order}
+}
+message UpdateAlgorithmGroupRequest {
+  int32 group_id = 1;
+  string data = 2;  // JSON: {name, description, icon, display_order}
+}
+message DeleteAlgorithmGroupRequest {
+  int32 group_id = 1;
+}
+
+// ---- 参数(device/api) ----
+message CreateParamRequest {
+  string data = 1;  // JSON: 完整参数对象（含 param_type_source: device/api）
+}
+message UpdateParamRequest {
+  int32 param_id = 1;
+  string data = 2;  // JSON: 完整更新请求体
+}
+message DeleteParamRequest {
+  int32 param_id = 1;
+}
+
+// ---- 用例专属参数 ----
+message CreateCaseParamRequest {
+  string data = 1;
+}
+message UpdateCaseParamRequest {
+  int32 param_id = 1;
+  string data = 2;
+}
+message DeleteCaseParamRequest {
+  int32 param_id = 1;
+}
+
+// ---- 参考参数 ----
+message CreateReferenceParamRequest {
+  string data = 1;
+}
+message UpdateReferenceParamRequest {
+  int32 param_id = 1;
+  string data = 2;
+}
+message DeleteReferenceParamRequest {
+  int32 param_id = 1;
+}
+
+// ---- 参数映射 ----
+message CreateMappingRequest {
+  string data = 1;
+}
+message UpdateMappingRequest {
+  int32 mapping_id = 1;
+  string data = 2;
+}
+message DeleteMappingRequest {
+  int32 mapping_id = 1;
+}
+
+// ---- 维度关联 ----
+message AssociateDimensionsRequest {
+  string algo_type = 1;
+  string data = 2;  // JSON: {dimensions: [...]}
+}
+message CreateDimensionRelationRequest {
+  string data = 1;
+}
+message UpdateDimensionRelationRequest {
+  int32 relation_id = 1;
+  string data = 2;
+}
+message DeleteDimensionRelationRequest {
+  int32 relation_id = 1;
+}
+
+// ---- 批量操作 ----
+message ImportAlgorithmsRequest {
+  string data = 1;  // JSON: {algorithms: [...]}
+}
+message BulkDeleteAlgorithmsRequest {
+  string data = 1;  // JSON: {algorithm_types: [...]}
+}
+message ExtractParamsRequest {
+  string data = 1;  // JSON: {case_config}
+}
+message ReloadAlgorithmConfigRequest {}
+
+// ---- 读操作 ----
+message ListAlgorithmsRequest {
+  string status = 1;
+  int32 group_id = 2;
+}
+message GetAlgorithmRequest {
+  string algo_type = 1;
+}
+message GetAlgorithmOptionsRequest {}
+message ListAlgorithmGroupsRequest {}
+message GetAlgorithmGroupRequest {
+  int32 group_id = 1;
+}
+message ListParamsRequest {
+  string algorithm_type = 1;
+  string param_type = 2;  // device / api
+}
+message GetParamRequest {
+  int32 param_id = 1;
+}
+message ListCaseParamsRequest {
+  string algorithm_type = 1;
+  string scope = 2;
+}
+message GetCaseParamRequest {
+  int32 param_id = 1;
+}
+message ListReferenceParamsRequest {
+  string algorithm_type = 1;
+}
+message ListMappingsRequest {
+  string algorithm_type = 1;
+  string source_type = 2;
+  int32 dimension_id = 3;
+}
+message GetFormSchemaRequest {
+  string algo_type = 1;
+}
+message GetAlgorithmDimensionsRequest {
+  string algo_type = 1;
+}
+message GetDimensionParamsRequest {
+  int32 dimension_id = 1;
+}
+message AlgorithmConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// 注：EvaluationConfigService（Dimension/Category CRUD）已迁移至 evaluation_service.proto
+
+
+// ===== 任务数据查询服务（P1.5 新增，供 evaluation_service / api_test_service / e2e_test_service 跨服务读 task_service 数据）=====
+service TaskDataService {
+  // 按 ID 读取单个 TestResult（归属 task_service，其他服务禁止直连 DB 查此表）
+  rpc GetTestResultById(GetTestResultByIdRequest) returns (TaskDataResponse);
+  // 按 task_id + case_ids 批量读取 TaskCase
+  rpc GetTaskCaseByIds(GetTaskCaseByIdsRequest) returns (TaskDataResponse);
+  // 按 task_id 读取 Task 详情
+  rpc GetTaskById(GetTaskByIdRequest) returns (TaskDataResponse);
+  // 按 task_id 读取关联设备
+  rpc GetTaskDevices(GetTaskDevicesRequest) returns (TaskDataResponse);
+  // 按 task_id 读取关联 API
+  rpc GetTaskApis(GetTaskApisRequest) returns (TaskDataResponse);
+  // 写入测试结果（api_test_service / e2e_test_service / evaluation_service 执行完成后调用）
+  rpc SubmitResult(SubmitResultRequest) returns (TaskDataResponse);
+  // 更新 TaskCase 状态（evaluation_service 评估完成后调用）
+  rpc UpdateTaskCaseStatus(UpdateTaskCaseStatusRequest) returns (TaskDataResponse);
+  // 更新 TestResult 的 algorithm_result（evaluation_service 多轮聚合后调用）
+  rpc UpdateTestResultAlgorithmResult(UpdateTestResultAlgorithmResultRequest) returns (TaskDataResponse);
+  // 按 task_id + test_case_id 批量读取 TestResult
+  rpc GetTestResultsByTaskAndCase(GetTestResultsByTaskAndCaseRequest) returns (TaskDataResponse);
+  // 更新 TestResult 的 execution_status（evaluation_service 标记完成时调用）
+  rpc UpdateTestResultStatus(UpdateTestResultStatusRequest) returns (TaskDataResponse);
+  // 更新 Task 的 status（evaluation_service 重新评估流转时调用）
+  rpc UpdateTaskStatus(UpdateTaskStatusRequest) returns (TaskDataResponse);
+  // 查询 TaskMergeRelation（api_gateway 报告对比用）
+  rpc GetTaskMergeRelations(GetTaskMergeRelationsRequest) returns (TaskDataResponse);
+  // 查询 Log 列表（api_gateway 日志用）
+  rpc ListLogs(ListLogsRequest) returns (TaskDataResponse);
+  // 批量写入日志（shared/utils/log_handler 后台 worker 用，替代直连 DB）
+  rpc BatchCreateLogs(BatchCreateLogsRequest) returns (TaskDataResponse);
+  // 查询日志统计（group_by level + count）
+  rpc GetLogStats(GetLogStatsRequest) returns (TaskDataResponse);
+  // 增量查询日志（id > last_id，返回 max_id）
+  rpc ListLogsAfterId(ListLogsAfterIdRequest) returns (TaskDataResponse);
+  // 按 id 列表/条件查询日志（导出用）
+  rpc GetLogsForExport(GetLogsForExportRequest) returns (TaskDataResponse);
+  // 查询日志总数（含按日期范围）
+  rpc GetLogCount(GetLogCountRequest) returns (TaskDataResponse);
+  // 批量更新日志标记
+  rpc UpdateLogsMark(UpdateLogsMarkRequest) returns (TaskDataResponse);
+  // 批量清除日志（按日期/标记）
+  rpc ClearLogs(ClearLogsRequest) returns (TaskDataResponse);
+  // 归档日志（按天数，dry_run 预检）
+  rpc ArchiveLogs(ArchiveLogsRequest) returns (TaskDataResponse);
+  // 查询 TestCaseGroup 列表（api_gateway 分组管理用）
+  rpc ListTestCaseGroups(ListTestCaseGroupsRequest) returns (TaskDataResponse);
+  // 按 ID 列表批量查询 TestCaseGroup（导入导出用）
+  rpc GetTestCaseGroupsByIds(GetTestCaseGroupsByIdsRequest) returns (TaskDataResponse);
+  // 按名称列表批量查询 TestCaseGroup（导入导出用）
+  rpc GetTestCaseGroupsByNames(GetTestCaseGroupsByNamesRequest) returns (TaskDataResponse);
+  // 按 ID 查询单个 TestCaseGroup
+  rpc GetTestCaseGroupById(GetTestCaseGroupByIdRequest) returns (TaskDataResponse);
+  // 按名称查询单个 TestCaseGroup（导入时查重用）
+  rpc GetTestCaseGroupByName(GetTestCaseGroupByNameRequest) returns (TaskDataResponse);
+  // 创建 TestCaseGroup（导入时新建分组用）
+  rpc CreateTestCaseGroup(CreateTestCaseGroupRequest) returns (TaskDataResponse);
+  // 更新 TestCaseGroup（名称/描述/算法类型）
+  rpc UpdateTestCaseGroup(UpdateTestCaseGroupRequest) returns (TaskDataResponse);
+  // 软删除 TestCaseGroup（含 cascade 选项）
+  rpc DeleteTestCaseGroup(DeleteTestCaseGroupRequest) returns (TaskDataResponse);
+  // 聚合统计（供 stats_cache / home_service 用）— count/group_by
+  rpc GetTaskStats(TaskAggStatsRequest) returns (TaskDataResponse);
+  rpc GetTestCaseStats(TestCaseAggStatsRequest) returns (TaskDataResponse);
+}
+
+message GetTestResultByIdRequest {
+  int32 result_id = 1;
+}
+message GetTaskCaseByIdsRequest {
+  int32 task_id = 1;
+  repeated string case_ids = 2;
+}
+message GetTaskByIdRequest {
+  int32 task_id = 1;
+}
+message GetTaskDevicesRequest {
+  int32 task_id = 1;
+}
+message GetTaskApisRequest {
+  int32 task_id = 1;
+}
+message SubmitResultRequest {
+  int32 task_id = 1;
+  string result_data = 2;  // JSON：TestResult 字段
+}
+message UpdateTaskCaseStatusRequest {
+  int32 task_id = 1;
+  string case_id = 2;
+  string status = 3;          // pending/completed/failed/skipped
+  string execution_status = 4;  // pending/running/completed/stopped/failed
+  string evaluation_status = 5; // queued/pending/running/calculating/completed/stopped/failed
+  string error_message = 6;
+}
+message UpdateTestResultAlgorithmResultRequest {
+  int32 result_id = 1;
+  string algorithm_result = 2;  // JSON：完整的 algorithm_result 字段
+}
+message GetTestResultsByTaskAndCaseRequest {
+  int32 task_id = 1;
+  string test_case_id = 2;  // 可选，为空返回该 task 下所有
+}
+message UpdateTestResultStatusRequest {
+  int32 result_id = 1;
+  string execution_status = 2;  // pending/running/completed/stopped/failed
+}
+message UpdateTaskStatusRequest {
+  int32 task_id = 1;
+  string status = 2;  // pending/queued/running/evaluating/reevaluate_queued/reevaluating/completed/failed/stopped/paused/skipped
+}
+message TaskDataResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+}
+
+message GetTaskMergeRelationsRequest {
+  int32 task_id = 1;  // 按 task_id 查询合并关系
+}
+message ListLogsRequest {
+  int32 task_id = 1;          // 可选，按 task_id 过滤
+  string level = 2;           // 可选，按级别过滤
+  int32 page = 3;             // 分页页码
+  int32 per_page = 4;        // 每页条数
+  string start_date = 5;     // 可选，开始日期
+  string end_date = 6;       // 可选，结束日期
+}
+message ListTestCaseGroupsRequest {
+  string algorithm_type = 1;  // 可选，按算法类型过滤
+  string search = 2;          // 可选，搜索关键词
+}
+message GetTestCaseGroupsByIdsRequest {
+  repeated string group_ids = 1;  // TestCaseGroup ID 列表
+}
+message GetTestCaseGroupsByNamesRequest {
+  repeated string group_names = 1;  // TestCaseGroup 名称列表
+}
+message GetTestCaseGroupByIdRequest {
+  string group_id = 1;
+}
+message GetTestCaseGroupByNameRequest {
+  string group_name = 1;
+}
+message CreateTestCaseGroupRequest {
+  string name = 1;
+  string description = 2;
+  string algorithm_type = 3;
+  string group_id = 4;  // 可选，指定 ID（导入用）
+}
+message UpdateTestCaseGroupRequest {
+  string group_id = 1;
+  string name = 2;              // 新名称（可选，空则不更新）
+  string description = 3;      // 新描述（可选，空则不更新）
+  string algorithm_type = 4;   // 新算法类型（可选，空则不更新）
+}
+message DeleteTestCaseGroupRequest {
+  string group_id = 1;
+  bool cascade = 2;            // true: 同时软删该分组下所有 TestCase
+}
+
+// ===== TaskDataService 聚合统计 Request（供 stats_cache / home_service 用）=====
+// 注：名称带 Agg 前缀以避免与 TaskConfigService.GetTaskStatsRequest /
+// TestCaseConfigService.GetTestCaseStatsRequest 同名冲突。
+message TaskAggStatsRequest {
+  string status = 1;          // 可选，按状态过滤
+  string algorithm_type = 2;  // 可选
+  string group_by = 3;        // 可选，分组字段（如 status / algorithm_type）
+}
+message TestCaseAggStatsRequest {
+  string algorithm_type = 1;  // 可选
+  int32 group_id = 2;         // 可选
+  string group_by = 3;        // 可选，分组字段（如 algorithm_type / group_id）
+}
+
+// ===== Log CRUD RPC（P0-3 新增，替代 api_gateway/shared/utils 直连 DB）=====
+
+message BatchCreateLogsRequest {
+  string logs_json = 1;  // JSON: [{time, level, category, module, source, content, task_id?, ...}, ...]
+}
+message GetLogStatsRequest {
+  string level = 1;           // 可选，按级别过滤（支持逗号分隔多级别）
+  string module = 2;          // 可选
+  string category = 3;        // 可选
+  string mark = 4;            // 可选
+  int32 device_id = 5;       // 可选
+  int32 task_id = 6;          // 可选
+  string keyword = 7;         // 可选
+  string content_include = 8; // 可选
+  string content_exclude = 9; // 可选
+  string start_time = 10;     // 可选 ISO
+  string end_time = 11;       // 可选 ISO
+  string algorithm_type = 12; // 可选
+}
+message ListLogsAfterIdRequest {
+  int32 last_id = 1;   // 增量基准 ID
+  int32 limit = 2;     // 返回条数上限
+}
+message GetLogsForExportRequest {
+  repeated int32 log_ids = 1;  // 可选，按 id 列表查询
+  string level = 2;             // 可选
+  string module = 3;             // 可选
+}
+message GetLogCountRequest {
+  string start_date = 1;  // 可选 ISO，统计 >= 此日期的 hot 日志
+}
+message UpdateLogsMarkRequest {
+  repeated int32 log_ids = 1;
+  string mark = 2;
+}
+message ClearLogsRequest {
+  string before_datetime = 1;  // 可选 ISO，删除此时间之前的日志
+  bool keep_marked = 2;        // 为 true 时保留有 mark 的日志
+}
+message ArchiveLogsRequest {
+  int32 days = 1;     // 归档 days 天前的日志
+  bool dry_run = 2;   // 为 true 时只统计不执行
+}
+

@@ -140,6 +140,17 @@
       />
     </div>
 
+    <!-- ===== 全局背景噪声（config.background_noise，多轮共享）===== -->
+    <div v-if="localFormData.config.rounds && localFormData.config.rounds.length > 1" class="form-section global-noise-section">
+      <GlobalNoiseEditor
+        v-model="localFormData.config.background_noise as any"
+        :playback-devices="playbackDevices"
+        @update:model-value="handleGlobalNoiseUpdate"
+        @open-audio-select="handleAudioSelectRequest"
+        @preview-audio="(audioId: string) => emit('previewAudio', audioId)"
+      />
+    </div>
+
     <!-- ===== 整体评估维度（config.dimensions）===== -->
     <div v-if="localFormData.config.rounds && localFormData.config.rounds.length > 1" class="form-section overall-eval-section">
       <OverallEvaluationEditor
@@ -158,6 +169,7 @@
 import AlgorithmSelector from '../../audio/AlgorithmSelector.vue';
 import RoundConfigEditor from './RoundConfigEditor.vue';
 import OverallEvaluationEditor from './OverallEvaluationEditor.vue';
+import GlobalNoiseEditor from './GlobalNoiseEditor.vue';
 import type { TestCaseFormData } from './types';
 import { useCaseForm } from './CaseForm';
 

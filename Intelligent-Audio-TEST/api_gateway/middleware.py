@@ -1,12 +1,18 @@
 """
-FastAPI 中间件 —— 将当前请求注入 request_adapter 的 ContextVar
+FastAPI 中间件
 
-使旧控制器中的 `from api_gateway.infrastructure.request_adapter import request`
-能够访问 FastAPI 的请求参数。
+- RequestAdapterMiddleware: 将当前请求注入 request_adapter 的 ContextVar
+- AuthMiddleware: 认证与权限注入（JWT 解析 → request.state.user_id / permissions）
 """
 import json
+import logging
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+
 from api_gateway.infrastructure.request_adapter import set_current_request
+from shared.infrastructure.config import BaseConfig
+
+logger = logging.getLogger(__name__)
 
 
 class RequestAdapterMiddleware(BaseHTTPMiddleware):
@@ -34,3 +40,66 @@ class RequestAdapterMiddleware(BaseHTTPMiddleware):
         # 清理
         set_current_request(None)
         return response
+
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    """认证中间件 — 解析 JWT 并注入用户信息到 request.state"""
+
+    # 无需认证的路由前缀（白名单）
+    PUBLIC_PATHS = (
+        '/api/v1/auth/login',
+        '/api/v1/auth/callback',
+        '/api/v1/auth/register',
+        '/docs',
+        '/openapi.json',
+        '/redoc',
+        '/health',
+        '/socket.io',
+    )
+
+    def __init__(self, app, auth_mode: str = 'off'):
+        super().__init__(app)
+        self.auth_mode = auth_mode
+
+    async def dispatch(self, request, call_next):
+        # off 模式：完全跳过认证，注入默认开发用户
+        if self.auth_mode == 'off':
+            request.state.user_id = 0
+            request.state.username = 'dev_user'
+            request.state.role_id = 1
+            request.state.permissions = ['*']
+            return await call_next(request)
+
+        # 白名单路由：跳过认证
+        path = request.url.path
+        if any(path.startswith(p) for p in self.PUBLIC_PATHS):
+            return await call_next(request)
+
+        # 从 Authorization 头提取 Bearer token
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return self._unauthorized('缺少认证令牌')
+
+        token = auth_header[7:]
+
+        # JWT 校验
+        try:
+            from api_gateway.application.services.auth.token_service import TokenService
+            payload = TokenService.verify(token)
+        except Exception as e:
+            return self._unauthorized(f'令牌无效: {e}')
+
+        # 注入用户信息到 request.state
+        request.state.user_id = payload.get('user_id', 0)
+        request.state.username = payload.get('username', '')
+        request.state.role_id = payload.get('role_id', 0)
+        request.state.permissions = payload.get('permissions', [])
+
+        return await call_next(request)
+
+    @staticmethod
+    def _unauthorized(detail: str) -> JSONResponse:
+        return JSONResponse(
+            status_code=401,
+            content={'detail': detail},
+        )

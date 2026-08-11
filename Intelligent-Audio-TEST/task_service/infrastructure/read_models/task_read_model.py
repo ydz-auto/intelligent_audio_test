@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional  # noqa: F401
 
-from shared.models.database import db
-from shared.models.models import Task, TaskCase
+from shared.models.database import get_db_session
+from task_service.infrastructure.persistence.models import Task, TaskCase
+from shared.utils.query_utils import now_cst
+from sqlalchemy import and_, or_
 
 
 class TaskReadModel:
@@ -21,12 +23,25 @@ class TaskReadModel:
 
     def find_by_id(self, task_id: int) -> Optional[Dict[str, Any]]:
         """按 ID 查询单个任务（扁平 DTO）。"""
-        session = db.session()
+        session = get_db_session()
         try:
             task = session.get(Task, task_id)
             if task is None:
                 return None
             return self._to_dto(task)
+        finally:
+            session.close()
+
+    def find_by_id_with_relations(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """按 ID 查询单个任务，含关联用例/设备/API/标签详情。"""
+        session = get_db_session()
+        try:
+            task = session.query(Task).filter(
+                Task.id == task_id, Task.deleted == False  # noqa: E712
+            ).first()
+            if task is None:
+                return None
+            return self._to_detail_dto(task, session)
         finally:
             session.close()
 
@@ -39,7 +54,7 @@ class TaskReadModel:
                page: int = 1,
                page_size: int = 20) -> Dict[str, Any]:
         """多条件过滤分页查询。"""
-        session = db.session()
+        session = get_db_session()
         try:
             q = session.query(Task)
             if not include_deleted:
@@ -69,9 +84,125 @@ class TaskReadModel:
         finally:
             session.close()
 
+    def search_tasks(self, page: int = 1, per_page: int = 10,
+                     status: Optional[str] = None,
+                     task_type: Optional[str] = None,
+                     algorithm_type: Optional[str] = None,
+                     search: Optional[str] = None,
+                     start_date: Optional[str] = None,
+                     end_date: Optional[str] = None) -> Dict[str, Any]:
+        """网关 get_all 使用的查询逻辑：含 Report 关联。"""
+        from datetime import datetime
+
+        session = get_db_session()
+        try:
+            query = session.query(Task).filter(Task.deleted == False)  # noqa: E712
+            if status:
+                query = query.filter(Task.status == status)
+            if task_type:
+                query = query.filter(Task.type == task_type)
+            if algorithm_type:
+                query = query.filter(Task.algorithm_type == algorithm_type)
+            if search:
+                query = query.filter(
+                    or_(
+                        Task.name.ilike(f'%{search}%'),
+                        Task.id.cast(String).ilike(f'%{search}%')
+                    )
+                )
+            if start_date:
+                try:
+                    dt_start = datetime.fromisoformat(start_date)
+                    query = query.filter(Task.created_at >= dt_start)
+                except ValueError:
+                    pass
+            if end_date:
+                try:
+                    dt_end = datetime.fromisoformat(end_date)
+                    query = query.filter(Task.created_at <= dt_end)
+                except ValueError:
+                    pass
+
+            query = query.order_by(Task.created_at.desc())
+            pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+            tasks = pagination.items
+
+            items = []
+            from task_service.infrastructure.persistence.models import TaskDevice, TaskAPI
+            for task in tasks:
+                # 通过 gRPC 查询任务的报告（替代直连 report_service PO）
+                reports = []
+                try:
+                    from shared.clients.grpc_clients import get_report_config_service_stub
+                    from shared.proto import report_service_pb2 as report_pb
+                    from shared.utils.grpc_json import loads as _loads
+
+                    stub = get_report_config_service_stub()
+                    resp = stub.ListReports(report_pb.ListReportsRequest(
+                        task_id=int(task.id), page=1, per_page=100))
+                    if resp.success:
+                        payload = _loads(resp.data, {}) or {}
+                        reports = payload.get('items', []) or []
+                except Exception:
+                    reports = []
+                report_info = {
+                    'count': len(reports),
+                    'reports': [
+                        {
+                            'id': r.get('id'),
+                            'name': r.get('name'),
+                            'status': r.get('status'),
+                            'type': r.get('type'),
+                            'created_at': r.get('created_at'),
+                        }
+                        for r in reports
+                    ],
+                }
+                # P3 改造：task.devices / task.apis 关系已移除，
+                # 通过 TaskDevice/TaskAPI 关联表 + gRPC 查询设备/API 信息
+                task_device_ids = [td.device_id for td in
+                                   session.query(TaskDevice).filter_by(task_id=task.id).all()]
+                task_api_ids = [ta.api_id for ta in
+                                session.query(TaskAPI).filter_by(task_id=task.id).all()]
+                devices = self._fetch_device_list(task_device_ids)
+                apis = self._fetch_api_list(task_api_ids)
+                items.append({
+                    'id': task.id,
+                    'name': task.name,
+                    'description': task.description,
+                    'status': task.status,
+                    'type': task.type,
+                    'config': task.config or {},
+                    'algorithm_type': task.algorithm_type,
+                    'algorithm_params': task.algorithm_params,
+                    'started_at': task.started_at.isoformat() if task.started_at else None,
+                    'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+                    'total_cases': task.total_cases,
+                    'case_count': task.total_cases,
+                    'device_count': len(devices),
+                    'completed_cases': task.completed_cases,
+                    'failed_cases': task.failed_cases,
+                    'tags': [tag.name for tag in task.tags],
+                    'created_at': task.created_at.isoformat() if task.created_at else None,
+                    'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+                    'reports': report_info,
+                    'devices': devices,
+                    'apis': apis,
+                })
+
+            return {
+                'items': items,
+                'total': pagination.total,
+                'page': pagination.page,
+                'per_page': pagination.per_page,
+                'pages': pagination.pages,
+            }
+        finally:
+            session.close()
+
     def get_progress(self, task_id: int) -> Optional[Dict[str, Any]]:
         """查询任务进度（轻量级，仅进度字段）。"""
-        session = db.session()
+        session = get_db_session()
         try:
             result = (session.query(
                 Task.id, Task.status, Task.total_cases,
@@ -104,9 +235,164 @@ class TaskReadModel:
         finally:
             session.close()
 
+    def get_progress_detailed(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """网关 get_progress 使用的详细进度（含当前用例、用例列表、计数）。
+
+        返回字段：
+        - task_id / status / total_cases / completed_cases / failed_cases / progress
+        - current_case: 当前正在执行的用例
+        - test_cases: 全部用例列表（id/status/execution_status/evaluation_status/duration/error_message）
+        - in_progress_count: 正在执行/排队中的用例数
+        - actual_total_cases: TaskCase 表实际总数
+        - actual_completed_cases: 执行和评估均完成的用例数
+        - started_at / completed_at / updated_at: 任务时间戳
+        - type: 任务类型（api/e2e）
+        - api_resource_status: API 任务的资源状态
+        """
+        from task_service.infrastructure.persistence.models import TestCase
+
+        session = get_db_session()
+        try:
+            task = session.get(Task, task_id)
+            if task is None:
+                return None
+
+            current_case = session.query(TaskCase).filter_by(
+                task_id=task_id, execution_status='running'
+            ).first()
+            current_case_data = None
+            if current_case:
+                case_info = session.get(TestCase, current_case.test_case_id)
+                current_case_data = {
+                    'case_id': str(current_case.test_case_id),
+                    'name': case_info.name if case_info else "未知用例",
+                    'step': "playing" if task.type == 'e2e' else "evaluating",
+                    'started_at': current_case.started_at.isoformat() if current_case.started_at else None,
+                }
+
+            # 全部用例列表
+            all_task_cases = session.query(TaskCase).filter_by(task_id=task_id).all()
+            test_cases_data = []
+            pending_count = 0
+            running_count = 0
+            completed_count = 0
+            failed_count = 0
+            from datetime import timezone, timedelta
+            utc_plus_8 = timezone(timedelta(hours=8))
+            for tc in all_task_cases:
+                duration = 0
+                if tc.started_at and tc.completed_at:
+                    started_at = tc.started_at
+                    completed_at = tc.completed_at
+                    if started_at.tzinfo is None:
+                        started_at = started_at.replace(tzinfo=utc_plus_8)
+                    if completed_at.tzinfo is None:
+                        completed_at = completed_at.replace(tzinfo=utc_plus_8)
+                    duration = int((completed_at - started_at).total_seconds())
+
+                test_cases_data.append({
+                    'id': str(tc.test_case_id),
+                    'status': tc.status,
+                    'execution_status': tc.execution_status,
+                    'evaluation_status': tc.evaluation_status,
+                    'duration': duration,
+                    'error_message': tc.error_message,
+                })
+
+                if tc.execution_status in ['pending', 'queued']:
+                    pending_count += 1
+                elif tc.execution_status == 'running':
+                    running_count += 1
+                elif tc.execution_status == 'completed':
+                    completed_count += 1
+                elif tc.execution_status == 'failed':
+                    failed_count += 1
+
+            in_progress_count = session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                (TaskCase.execution_status.in_(['running', 'queued'])) | (TaskCase.evaluation_status == 'running') |
+                (TaskCase.evaluation_status == 'calculating')
+            ).count()
+
+            actual_total_cases = len(all_task_cases)
+            actual_completed_cases = session.query(TaskCase).filter(
+                TaskCase.task_id == task_id,
+                TaskCase.execution_status == 'completed',
+                TaskCase.status == 'completed',
+            ).count()
+
+            # API 资源状态
+            api_resource_status = []
+            if task.type == 'api':
+                from task_service.infrastructure.persistence.models import TaskAPI
+                task_api = session.query(TaskAPI).filter_by(task_id=task_id).first()
+                if task_api:
+                    from api_test_service.infrastructure.persistence.models import API
+                    api = session.get(API, task_api.api_id)
+                    if api:
+                        pending_cases = session.query(TaskCase).filter(
+                            TaskCase.task_id == task_id,
+                            TaskCase.execution_status == 'pending',
+                        ).count()
+                        completed_cases = session.query(TaskCase).filter(
+                            TaskCase.task_id == task_id,
+                            TaskCase.execution_status == 'completed',
+                        ).count()
+                        avg_response_time = 0
+                        if completed_cases > 0:
+                            from task_service.infrastructure.persistence.models import TestResult
+                            completed_results = session.query(TestResult).filter(
+                                TestResult.task_id == task_id,
+                                TestResult.execution_status == 'completed',
+                            ).all()
+                            total_response_time = sum(
+                                r.response_time for r in completed_results if r.response_time
+                            )
+                            if total_response_time > 0 and completed_results:
+                                avg_response_time = round(total_response_time / len(completed_results))
+                        api_resource_status.append({
+                            'id': str(api.id),
+                            'name': api.name,
+                            'pending_cases': pending_cases,
+                            'completed_cases': completed_cases,
+                            'avg_response_time': avg_response_time,
+                            'default_max_process': getattr(api, 'default_max_process', 5),
+                        })
+
+            total = task.total_cases or 0
+            completed = task.completed_cases or 0
+
+            # 如果实际总数与记录值不同，返回实际值
+            if actual_total_cases != total:
+                total = actual_total_cases
+
+            return {
+                'task_id': str(task.id),
+                'status': task.status,
+                'type': task.type,
+                'total_cases': total,
+                'completed_cases': completed,
+                'failed_cases': task.failed_cases or 0,
+                'progress': round(actual_completed_cases / total * 100, 2) if total > 0 else 0,
+                'current_case': current_case_data,
+                'test_cases': test_cases_data,
+                'in_progress_count': in_progress_count,
+                'actual_total_cases': actual_total_cases,
+                'actual_completed_cases': actual_completed_cases,
+                'execution_failed_count': sum(1 for tc in test_cases_data if tc['execution_status'] == 'failed'),
+                'evaluation_failed_count': sum(1 for tc in test_cases_data if tc['evaluation_status'] == 'failed'),
+                'api_resource_status': api_resource_status,
+                'started_at': task.started_at.isoformat() if task.started_at else None,
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+                'updated_at': task.updated_at.isoformat() if task.updated_at else None,
+                'updated_at_iso': now_cst().isoformat(),
+            }
+        finally:
+            session.close()
+
     def get_case_stats(self, task_id: int) -> Dict[str, int]:
         """统计任务下各状态的用例数量。"""
-        session = db.session()
+        session = get_db_session()
         try:
             rows = (session.query(TaskCase.status)
                     .filter(TaskCase.task_id == task_id).all())
@@ -117,10 +403,67 @@ class TaskReadModel:
         finally:
             session.close()
 
+    def get_task_stats(self, task_id: int) -> Optional[Dict[str, Any]]:
+        """网关 stats 使用的完整统计（含标签统计）。"""
+        from task_service.infrastructure.persistence.models import Tag, TestCase
+
+        session = get_db_session()
+        try:
+            task = session.query(Task).filter(
+                Task.id == task_id, Task.deleted == False  # noqa: E712
+            ).first()
+            if task is None:
+                return None
+
+            total = task.total_cases or 0
+            completed = task.completed_cases or 0
+            failed = task.failed_cases or 0
+            pending = session.query(TaskCase).filter_by(
+                task_id=task_id, execution_status='pending'
+            ).count()
+            skipped = session.query(TaskCase).filter_by(
+                task_id=task_id, status='skipped'
+            ).count()
+
+            # 按标签统计通过率和平均耗时
+            tag_stats = {}
+            results = session.query(Tag.name, TaskCase.status, TaskCase.duration)\
+                .join(TestCase, TaskCase.test_case_id == TestCase.id)\
+                .join(TestCase.tags)\
+                .filter(TaskCase.task_id == task_id).all()
+
+            for tag_name, status, duration in results:
+                if tag_name not in tag_stats:
+                    tag_stats[tag_name] = {"total": 0, "completed": 0, "durations": []}
+                tag_stats[tag_name]["total"] += 1
+                if status == 'completed':
+                    tag_stats[tag_name]["completed"] += 1
+                if duration:
+                    tag_stats[tag_name]["durations"].append(duration)
+
+            for tag_name in tag_stats:
+                s = tag_stats[tag_name]
+                s["pass_rate"] = round((s["completed"] / s["total"] * 100), 2) if s["total"] > 0 else 0
+                s["avg_duration"] = round(sum(s["durations"]) / len(s["durations"]), 2) if s["durations"] else 0
+                del s["durations"]
+
+            return {
+                "total": total,
+                "completed": completed,
+                "failed": failed,
+                "pending": pending,
+                "skipped": skipped,
+                "pass_rate": round((completed / total * 100), 2) if total > 0 else 0,
+                "tag_stats": tag_stats,
+                "duration": task.actual_duration or 0,
+            }
+        finally:
+            session.close()
+
     def list_cases(self, task_id: int, status: Optional[str] = None,
                    page: int = 1, page_size: int = 50) -> Dict[str, Any]:
         """分页查询任务下用例列表。"""
-        session = db.session()
+        session = get_db_session()
         try:
             q = session.query(TaskCase).filter(TaskCase.task_id == task_id)
             if status:
@@ -140,6 +483,344 @@ class TaskReadModel:
             }
         finally:
             session.close()
+
+    def get_case_detail(self, task_id: int, case_id: str) -> Optional[Dict[str, Any]]:
+        """网关 get_case_detail 使用的完整用例详情查询。
+
+        P1.7 改造：TestResultDimension / Dimension 是 evaluation_service 自有 PO，
+        改为通过 gRPC 调 evaluation_service.EvaluationDataService.GetDimensionResultsByResultIds。
+        """
+        from task_service.infrastructure.persistence.models import TestCase, TestResult
+        from shared.utils.result_data_store import load_full_result_data
+
+        session = get_db_session()
+        try:
+            tc = session.query(TaskCase).filter_by(
+                task_id=task_id, test_case_id=case_id
+            ).first()
+            if tc is None:
+                return None
+
+            case_info = session.get(TestCase, case_id)
+            task = session.get(Task, task_id)
+            test_type = task.type if task else 'api'
+
+            results = session.query(TestResult).filter_by(
+                task_id=task_id, test_case_id=case_id
+            ).all()
+
+            # P1.7: 一次性通过 gRPC 获取所有 result 的维度评估结果
+            result_ids = [r.id for r in results]
+            dim_map = self._fetch_dim_results_grouped(result_ids)
+
+            # P3 改造：收集 device_id / api_id，通过 gRPC 批量查询名称，替代直连 PO
+            device_name_map = self._fetch_device_names({r.device_id for r in results if r.device_id})
+            api_name_map = self._fetch_api_names({r.api_id for r in results if r.api_id})
+
+            processed_results = []
+            for result in results:
+                device_name = device_name_map.get(result.device_id) if result.device_id else None
+                api_name = api_name_map.get(result.api_id) if result.api_id else None
+
+                dim_data = dim_map.get(result.id, [])
+
+                full_result_data = load_full_result_data(
+                    result.result_data, getattr(result, 'result_data_path', None)
+                )
+                processed_results.append({
+                    "id": result.id,
+                    "device_id": result.device_id,
+                    "device_name": device_name,
+                    "api_id": result.api_id,
+                    "api_name": api_name,
+                    "execution_status": result.execution_status,
+                    "response_time": result.response_time,
+                    "algorithm_result": result.algorithm_result,
+                    "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
+                    "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
+                    "result_data": full_result_data,
+                    "error_message": result.error_message,
+                    "dimensions": dim_data,
+                    "created_at": result.created_at.isoformat()
+                })
+
+            return {
+                "task_id": task_id,
+                "case_id": case_id,
+                "case_info": {
+                    "id": case_info.id,
+                    "name": case_info.name if case_info else "未知用例",
+                    "algorithm_type": case_info.algorithm_type if case_info else '',
+                    "config": case_info.config if case_info else {},
+                } if case_info else None,
+                "test_type": test_type,
+                "tc": self._case_to_dto(tc),
+                "results": processed_results,
+            }
+        finally:
+            session.close()
+
+    def get_case_results(self, task_id: int, case_id: str) -> Optional[Dict[str, Any]]:
+        """网关 get_case_results 使用的查询。
+
+        P1.7 改造：TestResultDimension / Dimension 改为 gRPC 调 evaluation_service。
+        """
+        from task_service.infrastructure.persistence.models import TestCase, TestResult
+        from shared.utils.result_data_store import load_full_result_data
+
+        session = get_db_session()
+        try:
+            tc = session.query(TaskCase).filter_by(
+                task_id=task_id, test_case_id=case_id
+            ).first()
+            if tc is None:
+                return None
+
+            case_info = session.get(TestCase, case_id)
+            results = session.query(TestResult).filter_by(
+                task_id=task_id, test_case_id=case_id
+            ).all()
+
+            # P1.7: 一次性通过 gRPC 获取所有 result 的维度评估结果
+            result_ids = [r.id for r in results]
+            dim_map = self._fetch_dim_results_grouped(result_ids)
+
+            # P3 改造：收集 device_id / api_id，通过 gRPC 批量查询名称，替代直连 PO
+            device_name_map = self._fetch_device_names({r.device_id for r in results if r.device_id})
+            api_name_map = self._fetch_api_names({r.api_id for r in results if r.api_id})
+
+            processed_results = []
+            for result in results:
+                device_name = device_name_map.get(result.device_id) if result.device_id else None
+                api_name = api_name_map.get(result.api_id) if result.api_id else None
+
+                dim_data = dim_map.get(result.id, [])
+
+                processed_results.append({
+                    "id": result.id,
+                    "device_id": result.device_id,
+                    "device_name": device_name,
+                    "api_id": result.api_id,
+                    "api_name": api_name,
+                    "execution_status": result.execution_status,
+                    "response_time": result.response_time,
+                    "algorithm_result": result.algorithm_result,
+                    "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
+                    "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
+                    "result_data": load_full_result_data(result.result_data, getattr(result, 'result_data_path', None)),
+                    "error_message": result.error_message,
+                    "dimensions": dim_data,
+                    "created_at": result.created_at.isoformat()
+                })
+
+            return {
+                "task_id": task_id,
+                "case_id": case_id,
+                "case_name": case_info.name if case_info else "未知用例",
+                "results": processed_results,
+            }
+        finally:
+            session.close()
+
+    @staticmethod
+    def _fetch_device_list(device_ids):
+        """通过 gRPC 批量获取设备列表（含 id/name/status），替代 task.devices 关系。
+
+        P3 改造：Device 是 e2e_test_service 自有 PO，通过
+        DeviceConfigService.GetDeviceStatuses 批量查询。
+        注：GetDeviceStatuses 不返回 model 字段，列表视图可接受缺失。
+        失败时返回空列表（仅日志告警）。
+        """
+        if not device_ids:
+            return []
+
+        import json as _json
+        import logging
+        from shared.clients.grpc_clients import get_device_config_service_stub
+        from shared.proto import device_service_pb2 as e2e_pb
+        from shared.utils.grpc_json import loads as _loads
+
+        try:
+            stub = get_device_config_service_stub()
+            resp = stub.GetDeviceStatuses(e2e_pb.GetDeviceStatusesRequest(
+                data=_json.dumps({'ids': list(device_ids)}),
+            ))
+            if not resp.success:
+                logging.getLogger(__name__).warning(
+                    "GetDeviceStatuses gRPC 失败: %s", resp.message
+                )
+                return []
+            payload = _loads(resp.data, {}) if resp.data else {}
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "GetDeviceStatuses gRPC 异常: %s", e
+            )
+            return []
+
+        items = payload.get('items', []) if isinstance(payload, dict) else []
+        return [
+            {
+                'id': item.get('id'),
+                'name': item.get('name'),
+                'status': item.get('status'),
+                'model': None,  # GetDeviceStatuses 不返回 model
+            }
+            for item in items
+        ]
+
+    @staticmethod
+    def _fetch_api_list(api_ids):
+        """通过 gRPC 批量获取 API 列表（含 id/name/status），替代 task.apis 关系。
+
+        P3 改造：API 是 api_test_service 自有 PO，通过
+        APITestService.GetAPIConfig 逐个查询（无批量按 ids 查询接口）。
+        失败时返回空列表（仅日志告警）。
+        """
+        if not api_ids:
+            return []
+
+        import logging
+        from shared.clients.grpc_clients import get_api_test_service_stub
+        from shared.proto import api_test_service_pb2 as api_pb
+        from shared.utils.grpc_json import loads as _loads
+
+        result = []
+        stub = get_api_test_service_stub()
+        for api_id in api_ids:
+            try:
+                resp = stub.GetAPIConfig(api_pb.GetAPIConfigRequest(api_id=api_id))
+                if resp.success and resp.data:
+                    api_data = _loads(resp.data, {})
+                    if isinstance(api_data, dict):
+                        result.append({
+                            'id': api_data.get('id'),
+                            'name': api_data.get('name'),
+                            'status': api_data.get('status'),
+                        })
+            except Exception as e:
+                logging.getLogger(__name__).warning(
+                    "GetAPIConfig gRPC 异常 (api_id=%s): %s", api_id, e
+                )
+        return result
+
+    @staticmethod
+    def _fetch_device_names(device_ids):
+        """通过 gRPC 批量获取设备名称，返回 {device_id: name} 映射。
+
+        P3 改造：Device 是 e2e_test_service 自有 PO，通过
+        DeviceConfigService.GetDeviceStatuses 批量查询，替代直连 DB。
+        失败时返回空 dict（仅日志告警）。
+        """
+        if not device_ids:
+            return {}
+
+        import json as _json
+        import logging
+        from shared.clients.grpc_clients import get_device_config_service_stub
+        from shared.proto import device_service_pb2 as e2e_pb
+        from shared.utils.grpc_json import loads as _loads
+
+        try:
+            stub = get_device_config_service_stub()
+            resp = stub.GetDeviceStatuses(e2e_pb.GetDeviceStatusesRequest(
+                data=_json.dumps({'ids': list(device_ids)}),
+            ))
+            if not resp.success:
+                logging.getLogger(__name__).warning(
+                    "GetDeviceStatuses gRPC 失败: %s", resp.message
+                )
+                return {}
+            payload = _loads(resp.data, {}) if resp.data else {}
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "GetDeviceStatuses gRPC 异常: %s", e
+            )
+            return {}
+
+        items = payload.get('items', []) if isinstance(payload, dict) else []
+        return {item.get('id'): item.get('name') for item in items if item.get('id') is not None}
+
+    @staticmethod
+    def _fetch_api_names(api_ids):
+        """通过 gRPC 批量获取 API 名称，返回 {api_id: name} 映射。
+
+        P3 改造：API 是 api_test_service 自有 PO，通过
+        APITestService.GetAPIConfig 逐个查询（无批量按 ids 查询接口），
+        替代直连 DB。失败时返回空 dict（仅日志告警）。
+        """
+        if not api_ids:
+            return {}
+
+        import logging
+        from shared.clients.grpc_clients import get_api_test_service_stub
+        from shared.proto import api_test_service_pb2 as api_pb
+        from shared.utils.grpc_json import loads as _loads
+
+        name_map = {}
+        stub = get_api_test_service_stub()
+        for api_id in api_ids:
+            try:
+                resp = stub.GetAPIConfig(api_pb.GetAPIConfigRequest(api_id=api_id))
+                if resp.success and resp.data:
+                    api_data = _loads(resp.data, {})
+                    if isinstance(api_data, dict):
+                        name_map[api_id] = api_data.get('name')
+            except Exception as e:
+                logging.getLogger(__name__).warning(
+                    "GetAPIConfig gRPC 异常 (api_id=%s): %s", api_id, e
+                )
+        return name_map
+
+    @staticmethod
+    def _fetch_dim_results_grouped(result_ids):
+        """通过 gRPC 批量获取维度评估结果，按 test_result_id 分组返回。
+
+        P1.7: TestResultDimension / Dimension 是 evaluation_service 自有 PO，
+        通过 evaluation_service.EvaluationDataService.GetDimensionResultsByResultIds 获取。
+        失败时返回空 dict（不影响主流程，仅日志告警）。
+        """
+        if not result_ids:
+            return {}
+
+        import json as _json
+        import logging
+        from shared.clients.grpc_clients import get_evaluation_data_service_stub
+        from shared.proto import evaluation_service_pb2 as eval_pb
+
+        try:
+            stub = get_evaluation_data_service_stub()
+            resp = stub.GetDimensionResultsByResultIds(eval_pb.GetDimensionResultsByResultIdsRequest(
+                result_ids=_json.dumps(list(result_ids)),
+            ))
+            if not resp.success:
+                logging.getLogger(__name__).warning(
+                    "GetDimensionResultsByResultIds gRPC 失败: %s", resp.message
+                )
+                return {}
+            payload = _json.loads(resp.data) if resp.data else {}
+        except Exception as e:
+            logging.getLogger(__name__).warning(
+                "GetDimensionResultsByResultIds gRPC 异常: %s", e
+            )
+            return {}
+
+        items = payload.get('items', []) if isinstance(payload, dict) else []
+        grouped = {}
+        for item in items:
+            rid = item.get('test_result_id')
+            if rid is None:
+                continue
+            grouped.setdefault(rid, []).append({
+                "id": item.get('id'),
+                "name": item.get('dimension_name'),
+                "value": item.get('dimension_value'),
+                "score": item.get('score'),
+                "status": item.get('status'),
+                "evaluation_status": item.get('evaluation_status'),
+                "error_message": item.get('error_message'),
+                "round_number": item.get('round_number'),
+            })
+        return grouped
 
     # ---- 内部序列化 ----
 
@@ -172,6 +853,60 @@ class TaskReadModel:
             'estimated_time': task.estimated_time,
             'actual_duration': task.actual_duration,
             'deleted': task.deleted or False,
+        }
+
+    def _to_detail_dto(self, task: Task, session) -> Dict[str, Any]:
+        """含关联的详情 DTO。"""
+        from task_service.infrastructure.persistence.models import TestCase, TaskDevice, TaskAPI
+
+        cases = []
+        task_cases = session.query(TaskCase).filter_by(task_id=task.id).all()
+        for tc in task_cases:
+            case_info = session.get(TestCase, tc.test_case_id)
+            cases.append({
+                'case_id': tc.test_case_id,
+                'name': case_info.name if case_info else "未知用例",
+                'status': tc.status,
+                'execution_status': tc.execution_status,
+                'evaluation_status': tc.evaluation_status,
+                'started_at': tc.started_at.isoformat() if tc.started_at else None,
+                'completed_at': tc.completed_at.isoformat() if tc.completed_at else None,
+                'duration': tc.duration,
+                'error_message': tc.error_message,
+            })
+
+        # P3 改造：task.devices / task.apis 关系已移除，
+        # 通过 TaskDevice/TaskAPI 关联表 + gRPC 查询设备/API 信息
+        task_device_ids = [td.device_id for td in
+                           session.query(TaskDevice).filter_by(task_id=task.id).all()]
+        task_api_ids = [ta.api_id for ta in
+                        session.query(TaskAPI).filter_by(task_id=task.id).all()]
+        devices = self._fetch_device_list(task_device_ids)
+        apis = self._fetch_api_list(task_api_ids)
+        tag_names = [tag.name for tag in task.tags]
+
+        return {
+            'id': task.id,
+            'name': task.name,
+            'description': task.description,
+            'status': task.status,
+            'type': task.type,
+            'config': task.config or {},
+            'algorithm_type': task.algorithm_type,
+            'algorithm_params': task.algorithm_params,
+            'started_at': task.started_at.isoformat() if task.started_at else None,
+            'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+            'total_cases': task.total_cases,
+            'case_count': task.total_cases,
+            'device_count': len(devices),
+            'completed_cases': task.completed_cases,
+            'failed_cases': task.failed_cases,
+            'tags': tag_names,
+            'cases': cases,
+            'devices': devices,
+            'apis': apis,
+            'created_at': task.created_at.isoformat() if task.created_at else None,
+            'updated_at': task.updated_at.isoformat() if task.updated_at else None,
         }
 
     @staticmethod

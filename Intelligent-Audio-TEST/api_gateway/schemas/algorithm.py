@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, AliasChoices
 
-from shared.schemas.base import APIModel
+from api_gateway.schemas.base import APIModel
 
 
 class AlgorithmReferenceParam(BaseModel):

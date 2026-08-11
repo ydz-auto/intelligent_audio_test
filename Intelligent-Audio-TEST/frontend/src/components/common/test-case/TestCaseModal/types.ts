@@ -205,8 +205,8 @@ export interface TestCaseConfig {
     spl?: number;
     waitTime?: number;
   };
-  /** 背景噪声音频路径 */
-  background_noise?: string;
+  /** 全局背景噪声（所有轮次共享，轮次内未配置时回退使用） */
+  background_noise?: BackgroundNoiseConfig | Record<string, unknown>;
   /** 源音频路径 */
   source_audio?: string;
   /** 是否自动生成 */

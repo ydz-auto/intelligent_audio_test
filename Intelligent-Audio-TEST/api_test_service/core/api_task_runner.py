@@ -2,10 +2,17 @@
 import time
 import os
 import json
+import logging
 import random
 
+_logger = logging.getLogger(__name__)
+
 from api_test_service.clients.api_driver import APIDriver
-from shared.algorithm.field_mapper import get_field_mapper
+from shared.utils.dto_utils import dto_to_dict
+from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
+
+# 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
+_algo_acl = AlgorithmQueryAclRepositoryImpl()
 
 
 class APITaskRunner:
@@ -147,18 +154,49 @@ class APITaskRunner:
             max_process = getattr(api_config, 'default_max_process', 5) or 5
             max_timeout = getattr(api_config, 'max_timeout', 30) or 30
 
-            field_mapper = get_field_mapper()
+            field_mappings = dto_to_dict(_algo_acl.get_field_mappings(algorithm_type)) or {}
+            api_input_fields = (field_mappings.get('original', {}) or {}).get('api', {}).get('input', {})
             case_config = api_specific_config.get('case_config', {})
 
-            create_task_data = field_mapper.build_create_task_data(
-                algorithm_type=algorithm_type,
-                case_config=case_config,
-                audio_path=audio_path,
-                vendor=vendor,
-                max_process=max_process,
-                max_timeout=max_timeout,
-                endpoints=endpoints
-            )
+            # 内联实现 build_create_task_data 逻辑
+            import base64 as _b64
+            case_params = case_config.get('algorithm_params', {}) if case_config else {}
+            param_sources = {**case_params}
+            explicit_params = {
+                'audio_path': audio_path,
+                'audio_url': audio_path,
+                'vendor': vendor,
+                'max_process': max_process,
+                'max_timeout': max_timeout,
+                'endpoints': endpoints
+            }
+            for k, v in explicit_params.items():
+                if v is not None:
+                    param_sources[k] = v
+
+            _transforms = {
+                'none': lambda x: x,
+                'json_parse': lambda x: json.loads(x) if isinstance(x, str) else x,
+                'base64': lambda x: _b64.b64encode(x.encode()).decode() if isinstance(x, str) else x,
+                'to_string': lambda x: str(x) if x is not None else '',
+                'to_int': lambda x: int(x) if x is not None else 0,
+                'to_float': lambda x: float(x) if x is not None else 0.0,
+                'to_bool': lambda x: bool(x) if x is not None else False,
+            }
+
+            create_task_data = {}
+            for field_code, field_def in api_input_fields.items():
+                transform = field_def.get('transform', 'none') if isinstance(field_def, dict) else 'none'
+                value = param_sources.get(field_code)
+                if value is not None:
+                    transform_func = _transforms.get(transform, lambda x: x)
+                    try:
+                        create_task_data[field_code] = transform_func(value)
+                    except Exception:
+                        create_task_data[field_code] = value
+
+            if vendor and 'vendor' not in create_task_data:
+                create_task_data['vendor'] = vendor
 
             if 'audio_path' not in create_task_data:
                 create_task_data['audio_path'] = audio_path
@@ -172,8 +210,8 @@ class APITaskRunner:
             if 'raw_response' in result_for_log and isinstance(result_for_log['raw_response'], str):
                 try:
                     result_for_log['raw_response'] = json.loads(result_for_log['raw_response'])
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _logger.debug("raw_response JSON parse failed: %s", _e)
 
             self._log(level='DEBUG', content=f"创建任务响应结果: {json.dumps(result_for_log, ensure_ascii=False)}",
                       task_id=task_id, api_config=api_config)
@@ -351,9 +389,45 @@ class APITaskRunner:
 
     def extract_final_result(self, task_id, final_result_result, algorithm_type='translation'):
         """提取最终结果 — 使用字段映射器动态获取字段"""
-        field_mapper = get_field_mapper()
-        field_codes = field_mapper.get_reference_field_codes(algorithm_type)
-        output_field_keys = list(field_mapper.get_api_output_fields(algorithm_type).keys())
+        # 通过 ACL 仓储获取字段定义与参数，内联实现 get_reference_field_codes + get_api_output_fields 逻辑
+        field_mappings = dto_to_dict(_algo_acl.get_field_mappings(algorithm_type)) or {}
+        output_field_keys = list(((field_mappings.get('original', {}) or {}).get('api', {}).get('output', {}) or {}).keys())
+
+        # 内联实现 get_reference_field_codes 逻辑
+        device_params = [dto_to_dict(d) for d in _algo_acl.get_device_params(algorithm_type)]
+        api_params = [dto_to_dict(d) for d in _algo_acl.get_api_params(algorithm_type)]
+        all_params = device_params + api_params
+        field_codes = {
+            'reference': [],
+            'input_reference': None,
+            'output_reference': None,
+            'input_field': None,
+            'output_field': None,
+        }
+        for param in all_params:
+            code = param.get('code', '')
+            param_type = param.get('param_type', '')
+            ui_group = param.get('ui_group', '')
+            if param_type == 'reference':
+                field_codes['reference'].append(code)
+                if ui_group == 'input':
+                    field_codes['input_reference'] = code
+                elif ui_group == 'output':
+                    field_codes['output_reference'] = code
+            if 'input' in code.lower() and not field_codes['input_field']:
+                field_codes['input_field'] = code
+            if 'output' in code.lower() or 'result' in code.lower():
+                if not field_codes['output_field']:
+                    field_codes['output_field'] = code
+        for comp_type in ['device', 'api', 'evaluation']:
+            comp_mappings = [dto_to_dict(d) for d in _algo_acl.get_param_mapping(algorithm_type, comp_type)]
+            for mapping in comp_mappings:
+                direction = mapping.get('source_direction', mapping.get('direction', 'output'))
+                target_key = mapping.get('target_key', mapping.get('source_param'))
+                if direction == 'output' and not field_codes.get('output_field'):
+                    field_codes['output_field'] = target_key
+                elif direction == 'input' and not field_codes.get('input_field'):
+                    field_codes['input_field'] = target_key
 
         output_field = field_codes.get('output_field')
         input_field = field_codes.get('input_field')

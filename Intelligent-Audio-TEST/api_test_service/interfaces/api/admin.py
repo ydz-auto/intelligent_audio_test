@@ -9,12 +9,12 @@ from api_test_service.application.commands.api_test_commands import (
     CreateAPITestCommand,
     StopAPITestCommand,
 )
-from api_test_service.application.commands.handlers import (
+from api_test_service.application.handlers import (
     create_api_test_handler,
     stop_api_test_handler,
 )
 from api_test_service.application.queries.api_test_queries import GetAPITestStatusQuery
-from api_test_service.application.queries.handlers import get_api_test_status_handler
+from api_test_service.application.handlers import get_api_test_status_handler
 
 router = APIRouter(prefix="/admin/api-tests", tags=["api-test-admin"])
 

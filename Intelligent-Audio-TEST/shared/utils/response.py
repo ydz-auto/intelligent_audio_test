@@ -97,16 +97,16 @@ def format_response(code=ErrorCode.SUCCESS, message="Success", data=None, detail
 def db_transaction(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        from shared.models.database import db
+        from shared.models.database import get_db_session
         try:
             result = func(*args, **kwargs)
             if isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], dict):
                 return result
             if isinstance(result, dict):
                 return result
-            db.session.commit()
+            get_db_session().commit()
             return success_response(None, result)
         except Exception as e:
-            db.session.rollback()
+            get_db_session().rollback()
             return error_response(str(e))
     return wrapper

@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x61pi_test_service.proto\x12\x10\x61pi_test_service\"<\n\x14\x43reateAPITestRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x13\n\x0btest_config\x18\x02 \x01(\t\"G\n\x15\x43reateAPITestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"&\n\x13StartAPITestRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"F\n\x14StartAPITestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"%\n\x12StopAPITestRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"E\n\x13StopAPITestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"*\n\x17GetAPITestStatusRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"G\n\x15\x41PITestStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t2\x95\x03\n\x0e\x41PITestService\x12`\n\rCreateAPITest\x12&.api_test_service.CreateAPITestRequest\x1a\'.api_test_service.CreateAPITestResponse\x12]\n\x0cStartAPITest\x12%.api_test_service.StartAPITestRequest\x1a&.api_test_service.StartAPITestResponse\x12Z\n\x0bStopAPITest\x12$.api_test_service.StopAPITestRequest\x1a%.api_test_service.StopAPITestResponse\x12\x66\n\x10GetAPITestStatus\x12).api_test_service.GetAPITestStatusRequest\x1a\'.api_test_service.APITestStatusResponseB\x03\x90\x01\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16\x61pi_test_service.proto\x12\x10\x61pi_test_service\"<\n\x14\x43reateAPITestRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\x12\x13\n\x0btest_config\x18\x02 \x01(\t\"G\n\x15\x43reateAPITestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"&\n\x13StartAPITestRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"F\n\x14StartAPITestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"%\n\x12StopAPITestRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"E\n\x13StopAPITestResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"*\n\x17GetAPITestStatusRequest\x12\x0f\n\x07task_id\x18\x01 \x01(\t\"G\n\x15\x41PITestStatusResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"&\n\x16\x43reateAPIConfigRequest\x12\x0c\n\x04\x64\x61ta\x18\x01 \x01(\t\"I\n\x17\x43reateAPIConfigResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"6\n\x16UpdateAPIConfigRequest\x12\x0e\n\x06\x61pi_id\x18\x01 \x01(\x05\x12\x0c\n\x04\x64\x61ta\x18\x02 \x01(\t\"I\n\x17UpdateAPIConfigResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"(\n\x16\x44\x65leteAPIConfigRequest\x12\x0e\n\x06\x61pi_id\x18\x01 \x01(\x05\"I\n\x17\x44\x65leteAPIConfigResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"p\n\x15ListAPIConfigsRequest\x12\x0c\n\x04page\x18\x01 \x01(\x05\x12\x10\n\x08per_page\x18\x02 \x01(\x05\x12\x0f\n\x07keyword\x18\x03 \x01(\t\x12\x0e\n\x06status\x18\x04 \x01(\t\x12\x16\n\x0e\x61lgorithm_type\x18\x05 \x01(\t\"H\n\x16ListAPIConfigsResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"%\n\x13GetAPIConfigRequest\x12\x0e\n\x06\x61pi_id\x18\x01 \x01(\x05\"F\n\x14GetAPIConfigResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"*\n\x18TestAPIConnectionRequest\x12\x0e\n\x06\x61pi_id\x18\x01 \x01(\x05\"K\n\x19TestAPIConnectionResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t\"*\n\x18StopAPITestConfigRequest\x12\x0e\n\x06\x61pi_id\x18\x01 \x01(\x05\"K\n\x19StopAPITestConfigResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\t2\xed\x08\n\x0e\x41PITestService\x12`\n\rCreateAPITest\x12&.api_test_service.CreateAPITestRequest\x1a\'.api_test_service.CreateAPITestResponse\x12]\n\x0cStartAPITest\x12%.api_test_service.StartAPITestRequest\x1a&.api_test_service.StartAPITestResponse\x12Z\n\x0bStopAPITest\x12$.api_test_service.StopAPITestRequest\x1a%.api_test_service.StopAPITestResponse\x12\x66\n\x10GetAPITestStatus\x12).api_test_service.GetAPITestStatusRequest\x1a\'.api_test_service.APITestStatusResponse\x12\x66\n\x0f\x43reateAPIConfig\x12(.api_test_service.CreateAPIConfigRequest\x1a).api_test_service.CreateAPIConfigResponse\x12\x66\n\x0fUpdateAPIConfig\x12(.api_test_service.UpdateAPIConfigRequest\x1a).api_test_service.UpdateAPIConfigResponse\x12\x66\n\x0f\x44\x65leteAPIConfig\x12(.api_test_service.DeleteAPIConfigRequest\x1a).api_test_service.DeleteAPIConfigResponse\x12\x63\n\x0eListAPIConfigs\x12\'.api_test_service.ListAPIConfigsRequest\x1a(.api_test_service.ListAPIConfigsResponse\x12]\n\x0cGetAPIConfig\x12%.api_test_service.GetAPIConfigRequest\x1a&.api_test_service.GetAPIConfigResponse\x12l\n\x11TestAPIConnection\x12*.api_test_service.TestAPIConnectionRequest\x1a+.api_test_service.TestAPIConnectionResponse\x12l\n\x11StopAPITestConfig\x12*.api_test_service.StopAPITestConfigRequest\x1a+.api_test_service.StopAPITestConfigResponseB\x03\x90\x01\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -48,7 +48,35 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_GETAPITESTSTATUSREQUEST']._serialized_end=443
   _globals['_APITESTSTATUSRESPONSE']._serialized_start=445
   _globals['_APITESTSTATUSRESPONSE']._serialized_end=516
-  _globals['_APITESTSERVICE']._serialized_start=519
-  _globals['_APITESTSERVICE']._serialized_end=924
+  _globals['_CREATEAPICONFIGREQUEST']._serialized_start=518
+  _globals['_CREATEAPICONFIGREQUEST']._serialized_end=556
+  _globals['_CREATEAPICONFIGRESPONSE']._serialized_start=558
+  _globals['_CREATEAPICONFIGRESPONSE']._serialized_end=631
+  _globals['_UPDATEAPICONFIGREQUEST']._serialized_start=633
+  _globals['_UPDATEAPICONFIGREQUEST']._serialized_end=687
+  _globals['_UPDATEAPICONFIGRESPONSE']._serialized_start=689
+  _globals['_UPDATEAPICONFIGRESPONSE']._serialized_end=762
+  _globals['_DELETEAPICONFIGREQUEST']._serialized_start=764
+  _globals['_DELETEAPICONFIGREQUEST']._serialized_end=804
+  _globals['_DELETEAPICONFIGRESPONSE']._serialized_start=806
+  _globals['_DELETEAPICONFIGRESPONSE']._serialized_end=879
+  _globals['_LISTAPICONFIGSREQUEST']._serialized_start=881
+  _globals['_LISTAPICONFIGSREQUEST']._serialized_end=993
+  _globals['_LISTAPICONFIGSRESPONSE']._serialized_start=995
+  _globals['_LISTAPICONFIGSRESPONSE']._serialized_end=1067
+  _globals['_GETAPICONFIGREQUEST']._serialized_start=1069
+  _globals['_GETAPICONFIGREQUEST']._serialized_end=1106
+  _globals['_GETAPICONFIGRESPONSE']._serialized_start=1108
+  _globals['_GETAPICONFIGRESPONSE']._serialized_end=1178
+  _globals['_TESTAPICONNECTIONREQUEST']._serialized_start=1180
+  _globals['_TESTAPICONNECTIONREQUEST']._serialized_end=1222
+  _globals['_TESTAPICONNECTIONRESPONSE']._serialized_start=1224
+  _globals['_TESTAPICONNECTIONRESPONSE']._serialized_end=1299
+  _globals['_STOPAPITESTCONFIGREQUEST']._serialized_start=1301
+  _globals['_STOPAPITESTCONFIGREQUEST']._serialized_end=1343
+  _globals['_STOPAPITESTCONFIGRESPONSE']._serialized_start=1345
+  _globals['_STOPAPITESTCONFIGRESPONSE']._serialized_end=1420
+  _globals['_APITESTSERVICE']._serialized_start=1423
+  _globals['_APITESTSERVICE']._serialized_end=2556
 _builder.BuildServices(DESCRIPTOR, 'api_test_service_pb2', _globals)
 # @@protoc_insertion_point(module_scope)

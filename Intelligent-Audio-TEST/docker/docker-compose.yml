@@ -77,6 +77,12 @@ services:
       - E2E_TEST_SERVICE_GRPC_PORT=50051
       - API_TEST_SERVICE_HOST=api_test_service
       - API_TEST_SERVICE_GRPC_PORT=50071
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=50091
+      - AUDIO_SERVICE_HOST=audio_service
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=device_service
+      - DEVICE_SERVICE_GRPC_PORT=50053
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,6 +113,41 @@ services:
       - API_TEST_SERVICE_HOST=api_test_service
       - API_TEST_SERVICE_PORT=5003
       - API_TEST_SERVICE_GRPC_PORT=50071
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=50091
+      - AUDIO_SERVICE_HOST=audio_service
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=device_service
+      - DEVICE_SERVICE_GRPC_PORT=50053
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  evaluation_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.evaluation_service
+    ports:
+      - "5004:5004"
+      - "50091:50091"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://minio:9000
+      - OSS_ACCESS_KEY=minio
+      - OSS_SECRET_KEY=minio123
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=evaluation_service
+      - GRPC_PORT=50091
+      - TASK_SERVICE_HOST=task_service
+      - TASK_SERVICE_GRPC_PORT=50061
+      - AUDIO_SERVICE_HOST=audio_service
+      - AUDIO_SERVICE_GRPC_PORT=50052
     depends_on:
       postgres:
         condition: service_healthy
@@ -135,10 +176,70 @@ services:
       - SERVICE_HOST=e2e_test_service
       - TASK_SERVICE_HOST=task_service
       - TASK_SERVICE_GRPC_PORT=50061
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=50091
+      - AUDIO_SERVICE_HOST=audio_service
+      - AUDIO_SERVICE_GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=device_service
+      - DEVICE_SERVICE_GRPC_PORT=50053
     depends_on:
       - postgres
       - redis
       - minio
+    devices:
+      - /dev/bus/usb:/dev/bus/usb
+
+  audio_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.audio_service
+    ports:
+      - "50052:50052"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://minio:9000
+      - OSS_ACCESS_KEY=minio
+      - OSS_SECRET_KEY=minio123
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=audio_service
+      - GRPC_PORT=50052
+      - DEVICE_SERVICE_HOST=device_service
+      - DEVICE_SERVICE_GRPC_PORT=50053
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  device_service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.device_service
+    ports:
+      - "50053:50053"
+    environment:
+      - DATABASE_URL=postgresql://intelligent_audio_test:intelligent_audio_test666@postgres:5432/intelligent_audio_test
+      - REDIS_URL=redis://redis:6379
+      - OSS_ENDPOINT=http://minio:9000
+      - OSS_ACCESS_KEY=minio
+      - OSS_SECRET_KEY=minio123
+      - OSS_BUCKET_NAME=intelligent-audio-test
+      - OSS_KEY_PREFIX=intelligent_audio_test
+      - SERVICE_HOST=device_service
+      - GRPC_PORT=50053
+      - AUDIO_SERVICE_HOST=audio_service
+      - AUDIO_SERVICE_GRPC_PORT=50052
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     devices:
       - /dev/bus/usb:/dev/bus/usb
 
@@ -176,6 +277,8 @@ services:
       - GRPC_PORT=50071
       - API_ADAPTER_SERVICE_HOST=api_adapter_service
       - API_ADAPTER_SERVICE_PORT=8000
+      - EVALUATION_SERVICE_HOST=evaluation_service
+      - EVALUATION_SERVICE_GRPC_PORT=50091
     depends_on:
       - postgres
       - redis

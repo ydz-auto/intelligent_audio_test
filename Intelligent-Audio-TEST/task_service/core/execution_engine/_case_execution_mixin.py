@@ -1,6 +1,6 @@
 from datetime import datetime
-from shared.models.models import Task, TaskCase
-from shared.models.database import db
+from task_service.infrastructure.persistence.models import Task, TaskCase
+from shared.models.database import get_db_session
 
 # gRPC 调用封装函数（模块级）
 from task_service.core.execution_engine._grpc_helpers import (
@@ -65,7 +65,7 @@ class CaseExecutionMixin:
                 raise RuntimeError(f"api_test_service 执行失败: {resp.message}")
 
             # 更新任务统计信息（基于 api_test_service 已写入数据库的 TaskCase 状态）
-            local_db_session = db.session()
+            local_db_session = get_db_session()
             try:
                 tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 if tc_rel:
@@ -90,7 +90,7 @@ class CaseExecutionMixin:
             )
 
             # 更新测试用例状态为失败
-            local_db_session = db.session()
+            local_db_session = get_db_session()
             try:
                 tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 if tc_rel:

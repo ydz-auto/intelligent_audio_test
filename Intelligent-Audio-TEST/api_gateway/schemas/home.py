@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 from pydantic import Field
 
-from shared.schemas.base import APIModel
+from api_gateway.schemas.base import APIModel
 
 
 class HomeStatsRefreshRequest(APIModel):

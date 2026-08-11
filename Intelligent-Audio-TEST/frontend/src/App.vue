@@ -15,60 +15,21 @@
 
       <nav>
         <ul>
-          <li><router-link to="/" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-home navIcon"></i>
-            <span v-if="!sidebarCollapsed">首页</span>
-          </router-link></li>
-          <li><router-link to="/E2ETest" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-project-diagram navIcon"></i>
-            <span v-if="!sidebarCollapsed">端到端测试</span>
-          </router-link></li>
-          <li><router-link to="/APITest" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-exchange-alt navIcon"></i>
-            <span v-if="!sidebarCollapsed">API测试</span>
-          </router-link></li>
-          <li><router-link to="/AlgorithmConfig" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-cogs navIcon"></i>
-            <span v-if="!sidebarCollapsed">算法配置</span>
-          </router-link></li>
-          <li><router-link to="/tasks" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-tasks navIcon"></i>
-            <span v-if="!sidebarCollapsed">测试任务记录</span>
-          </router-link></li>
-          <li><router-link to="/history-reports" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-history navIcon"></i>
-            <span v-if="!sidebarCollapsed">历史报告</span>
-          </router-link></li>
-          <li><router-link to="/TestCaseManager" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-tasks navIcon"></i>
-            <span v-if="!sidebarCollapsed">用例管理</span>
-          </router-link></li>
-          <li><router-link to="/Evaluation" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-star navIcon"></i>
-            <span v-if="!sidebarCollapsed">评估维度管理</span>
-          </router-link></li>
-          <li><router-link to="/Device" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-headphones navIcon"></i>
-            <span v-if="!sidebarCollapsed">设备管理</span>
-          </router-link></li>
-          <li><router-link to="/AudioImport" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-music navIcon"></i>
-            <span v-if="!sidebarCollapsed">导入音频管理</span>
-          </router-link></li>
-          <li><router-link to="/SPLMapping" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-sliders-h navIcon"></i>
-            <span v-if="!sidebarCollapsed">声压级映射管理</span>
-          </router-link></li>
-          <li><router-link to="/LogView" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-file-alt navIcon"></i>
-            <span v-if="!sidebarCollapsed">日志查看</span>
-          </router-link></li>
-          <li><router-link to="/TagManagement" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
-            <i class="fas fa-tags navIcon"></i>
-            <span v-if="!sidebarCollapsed">标签管理</span>
-          </router-link></li>
+          <li v-for="item in visibleNavItems" :key="item.path">
+            <router-link :to="item.path" class="navLink" :class="{ 'justify-center': sidebarCollapsed }">
+              <i :class="item.icon"></i>
+              <span v-if="!sidebarCollapsed">{{ item.label }}</span>
+            </router-link>
+          </li>
         </ul>
       </nav>
+
+      <!-- 用户信息 + 登出 -->
+      <div v-if="authStore.isLoggedIn && !sidebarCollapsed" class="sidebar-footer">
+        <span class="user-name">{{ authStore.username }}</span>
+        <span class="user-role" v-if="authStore.roleName">{{ authStore.roleName }}</span>
+        <button class="logout-btn" @click="handleLogout">登出</button>
+      </div>
     </aside>
 
     <div class="sidebar-hover-trigger" v-if="sidebarCollapsed || isHomePage" @mouseenter="handleTriggerEnter" @mouseleave="handleTriggerLeave">
@@ -77,215 +38,144 @@
       </div>
     </div>
 
-    <main class="main-content" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+    <main class="main-content" :class="{ 'sidebar-collapsed': sidebarCollapsed }" ref="mainContentRef">
       <router-view :key="$route.fullPath"></router-view>
     </main>
 
-    <!-- 全局固定元素容器 -->
-    <div id="global-fixed-elements">
-      <!-- 这里放置全局固定定位的元素 -->
-    </div>
-
+    <div id="global-fixed-elements"></div>
     <GlobalModalContainer />
     <Notification ref="notificationRef" />
   </div>
 </template>
 
-<script setup>
-import { watch, computed, ref, onMounted, onUnmounted } from 'vue'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { provideModal } from './composables/index'
 import { registerGlobalModals } from './composables/modal/modalRegistration'
-import { GlobalModalContainer, modalConfirm } from './composables/modalIndex'
-import { useModalStore } from './store/modalStore'
+import { GlobalModalContainer } from './composables/modalIndex'
+import { useAuthStore } from './store/authStore'
 import Notification from './components/common/modal/Notification.vue'
 import { provideNotification } from './composables/modal/useNotification'
 
+// ===== 导航配置 =====
+interface NavItem {
+  path: string
+  label: string
+  icon: string
+  permission: string
+}
+
+const navItems: NavItem[] = [
+  { path: '/', label: '首页', icon: 'fas fa-home navIcon', permission: 'home:read' },
+  { path: '/E2ETest', label: '端到端测试', icon: 'fas fa-project-diagram navIcon', permission: 'task:execute' },
+  { path: '/APITest', label: 'API测试', icon: 'fas fa-exchange-alt navIcon', permission: 'task:execute' },
+  { path: '/AlgorithmConfig', label: '算法配置', icon: 'fas fa-cogs navIcon', permission: 'algorithm:read' },
+  { path: '/tasks', label: '测试任务记录', icon: 'fas fa-tasks navIcon', permission: 'task:read' },
+  { path: '/history-reports', label: '历史报告', icon: 'fas fa-history navIcon', permission: 'report:read' },
+  { path: '/TestCaseManager', label: '用例管理', icon: 'fas fa-tasks navIcon', permission: 'testcase:read' },
+  { path: '/Evaluation', label: '评估维度管理', icon: 'fas fa-star navIcon', permission: 'evaluation:read' },
+  { path: '/Device', label: '设备管理', icon: 'fas fa-headphones navIcon', permission: 'device:read' },
+  { path: '/AudioImport', label: '导入音频管理', icon: 'fas fa-music navIcon', permission: 'audio:read' },
+  { path: '/SPLMapping', label: '声压级映射管理', icon: 'fas fa-sliders-h navIcon', permission: 'spl:read' },
+  { path: '/LogView', label: '日志查看', icon: 'fas fa-file-alt navIcon', permission: 'log:read' },
+  { path: '/TagManagement', label: '标签管理', icon: 'fas fa-tags navIcon', permission: 'tag:read' },
+]
+
+// ===== Stores & refs =====
+const authStore = useAuthStore()
+const router = useRouter()
+const route = useRoute()
 const notificationRef = ref(null)
+const mainContentRef = ref<HTMLElement | null>(null)
+
+// 按权限过滤导航
+const visibleNavItems = computed(() => {
+  if (!authStore.isLoggedIn) {
+    // 未登录（AUTH_MODE=off 兼容）：显示全部
+    return navItems
+  }
+  return navItems.filter(item => authStore.hasPermission(item.permission))
+})
+
+// 侧边栏折叠状态
+const sidebarCollapsed = ref(true)
+let hideTimeout: ReturnType<typeof setTimeout> | null = null
+let autoHideTimeout: ReturnType<typeof setTimeout> | null = null
+let isMouseOverSidebar = false
+
+const isHomePage = computed(() => route.path === '/')
+
+function clearTimers() {
+  if (hideTimeout) clearTimeout(hideTimeout)
+  if (autoHideTimeout) clearTimeout(autoHideTimeout)
+}
+
+function handleTriggerEnter() {
+  isMouseOverSidebar = true
+  clearTimers()
+  sidebarCollapsed.value = false
+}
+
+function handleTriggerLeave() {
+  isMouseOverSidebar = false
+  hideTimeout = setTimeout(() => {
+    if (!isMouseOverSidebar) sidebarCollapsed.value = true
+  }, 300)
+}
+
+function handleSidebarEnter() {
+  isMouseOverSidebar = true
+  clearTimers()
+  sidebarCollapsed.value = false
+}
+
+function handleSidebarLeave() {
+  isMouseOverSidebar = false
+  hideTimeout = setTimeout(() => {
+    if (!isMouseOverSidebar) sidebarCollapsed.value = true
+  }, 300)
+}
+
+function handleLogout() {
+  authStore.logout()
+  router.push('/')
+}
+
+// 路由切换：重置滚动 + 侧边栏自动折叠
+watch(() => route.fullPath, () => {
+  if (mainContentRef.value) {
+    mainContentRef.value.scrollTop = 0
+  }
+  clearTimers()
+  isMouseOverSidebar = false
+  sidebarCollapsed.value = isHomePage.value
+  if (!isHomePage.value) {
+    autoHideTimeout = setTimeout(() => {
+      if (!isMouseOverSidebar) sidebarCollapsed.value = true
+    }, 1000)
+  }
+})
 
 onMounted(() => {
   provideNotification(notificationRef.value)
-})
+  provideModal()
+  registerGlobalModals()
 
-provideModal()
+  // 恢复用户信息：token 存在时从后端 /auth/me 拉取最新权限
+  authStore.init()
 
-registerGlobalModals()
-
-const router = useRouter()
-const route = useRoute()
-const modalStore = useModalStore()
-
-const sidebarCollapsed = ref(true)
-let hideTimeout = null
-let autoHideTimeout = null
-let isMouseOverSidebar = false
-
-const isHomePage = computed(() => {
-  return route.path === '/'
-})
-
-const handleTriggerEnter = () => {
-  isMouseOverSidebar = true
-  clearTimeout(hideTimeout)
-  clearTimeout(autoHideTimeout)
-  sidebarCollapsed.value = false
-}
-
-const handleTriggerLeave = () => {
-  isMouseOverSidebar = false
-  hideTimeout = setTimeout(() => {
-    if (!isMouseOverSidebar) {
-      sidebarCollapsed.value = true
-    }
-  }, 300)
-}
-
-const handleSidebarEnter = () => {
-  isMouseOverSidebar = true
-  clearTimeout(hideTimeout)
-  clearTimeout(autoHideTimeout)
-  sidebarCollapsed.value = false
-}
-
-const handleSidebarLeave = () => {
-  isMouseOverSidebar = false
-  hideTimeout = setTimeout(() => {
-    if (!isMouseOverSidebar) {
-      sidebarCollapsed.value = true
-    }
-  }, 300)
-}
-
-const resetScroll = () => {
-  setTimeout(() => {
-    // 只重置主内容区域的滚动位置，不影响导航栏
-    const mainContent = document.querySelector('.main-content')
-    if (mainContent) {
-      mainContent.scrollTop = 0
-    }
-  }, 100)
-}
-
-// 保存侧边栏滚动位置到sessionStorage
-let sidebarScrollTop = 0
-
-// 保存侧边栏滚动位置
-const saveSidebarScrollPosition = () => {
-  const container = document.querySelector('.sidebar')
-  if (container) {
-    sidebarScrollTop = container.scrollTop
-    localStorage.setItem('sidebarScrollTop', sidebarScrollTop.toString())
-    console.log('Saved scroll position:', sidebarScrollTop)
-  }
-}
-
-// 恢复侧边栏滚动位置
-const restoreSidebarScrollPosition = () => {
-  const container = document.querySelector('.sidebar')
-  if (container && sidebarCollapsed.value === false) {
-    // 只有当侧边栏展开时才恢复滚动位置
-    const savedPosition = localStorage.getItem('sidebarScrollTop')
-    if (savedPosition) {
-      const scrollTop = parseInt(savedPosition, 10)
-      container.scrollTop = scrollTop
-      console.log('Restored scroll position:', scrollTop)
-    }
-  }
-}
-
-// 监听侧边栏滚动事件，实时保存滚动位置
-const setupSidebarScrollListener = () => {
-  const sidebar = document.querySelector('.sidebar')
-  if (sidebar) {
-    sidebar.addEventListener('scroll', saveSidebarScrollPosition)
-  }
-}
-
-// 展开侧边栏并恢复滚动位置
-const expandSidebarAndRestoreScroll = () => {
-  const sidebar = document.querySelector('.sidebar')
-  if (sidebar && sidebarCollapsed.value === false) {
-    // 确保侧边栏完全展开
-    setTimeout(() => {
-      console.log('Restoring scroll position:', localStorage.getItem('sidebarScrollTop'))
-      const savedPosition = localStorage.getItem('sidebarScrollTop')
-      if (savedPosition) {
-        const scrollTop = parseInt(savedPosition, 10)
-        sidebar.scrollTop = scrollTop
-        console.log('Set scrollTop to:', scrollTop, 'actual:', sidebar.scrollTop)
-      }
-    }, 300)
-  }
-}
-
-// 监听sidebarCollapsed状态变化
-watch(sidebarCollapsed, (newValue, oldValue) => {
-  if (newValue !== oldValue) {
-    if (newValue === false) {
-      // 侧边栏展开时，恢复滚动位置
-      expandSidebarAndRestoreScroll()
-    }
-    // 不再在侧边栏折叠时保存滚动位置，避免滚动位置被重置为0
-  }
-})
-
-router.afterEach(() => {
-  resetScroll()
-  clearTimeout(autoHideTimeout)
-  // 重置鼠标悬停状态
-  isMouseOverSidebar = false
-  
-  // 首页默认收起，其他页默认展开后自动收起
-  const shouldCollapse = isHomePage.value
-  if (sidebarCollapsed.value !== shouldCollapse) {
-    sidebarCollapsed.value = shouldCollapse
-  }
-  
-  if (!isHomePage.value) {
-    // 从首页切换到其他页面时，导航栏显示时间更长
-    autoHideTimeout = setTimeout(() => {
-      if (!isMouseOverSidebar) {
-        sidebarCollapsed.value = true
-      }
-    }, 1000) // 1秒后自动收起
-  }
-  
-  // 不在页面切换时恢复滚动位置，避免与状态变化时的恢复冲突
-})
-
-onMounted(() => {
-  clearTimeout(autoHideTimeout)
-  // 首页默认收起，其他页默认展开后自动收起
   sidebarCollapsed.value = isHomePage.value
   if (!isHomePage.value) {
-    // 从首页切换到其他页面时，导航栏显示时间更长
     autoHideTimeout = setTimeout(() => {
-      if (!isMouseOverSidebar) {
-        sidebarCollapsed.value = true
-      }
-    }, 1000) // 1秒后自动收起
+      if (!isMouseOverSidebar) sidebarCollapsed.value = true
+    }, 1000)
   }
-  
-  // 设置侧边栏滚动监听器
-  setupSidebarScrollListener()
-  
-  // 页面加载时恢复滚动位置
-  setTimeout(() => {
-    restoreSidebarScrollPosition()
-  }, 100)
 })
 
 onUnmounted(() => {
-  clearTimeout(hideTimeout)
-  clearTimeout(autoHideTimeout)
-  // 清理侧边栏滚动监听器
-  const sidebar = document.querySelector('.sidebar')
-  if (sidebar) {
-    sidebar.removeEventListener('scroll', saveSidebarScrollPosition)
-  }
+  clearTimers()
 })
-
-window.addEventListener('hashchange', resetScroll)
 </script>
 
 <style scoped>
@@ -318,6 +208,45 @@ window.addEventListener('hashchange', resetScroll)
 .logo-icon-only i {
   font-size: 20px;
   color: var(--primary-color);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--gray-light-color);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 13px;
+}
+
+.user-name {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.user-role {
+  color: var(--text-secondary);
+  background: var(--gray-light-color);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.logout-btn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--gray-color);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.logout-btn:hover {
+  border-color: var(--danger-color);
+  color: var(--danger-color);
 }
 
 .navLink.justify-center {

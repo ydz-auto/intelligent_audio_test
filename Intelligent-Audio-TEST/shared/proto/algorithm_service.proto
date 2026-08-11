@@ -1,0 +1,568 @@
+syntax = "proto3";
+
+package algorithm;
+
+// ===== 算法分组服务 =====
+service AlgorithmGroupService {
+  rpc CreateAlgorithmGroup(CreateAlgorithmGroupRequest) returns (AlgorithmResponse);
+  rpc UpdateAlgorithmGroup(UpdateAlgorithmGroupRequest) returns (AlgorithmResponse);
+  rpc DeleteAlgorithmGroup(DeleteAlgorithmGroupRequest) returns (AlgorithmResponse);
+  rpc ListAlgorithmGroups(ListAlgorithmGroupsRequest) returns (AlgorithmResponse);
+  rpc GetAlgorithmGroup(GetAlgorithmGroupRequest) returns (AlgorithmResponse);
+}
+
+// ===== 算法定义服务 =====
+service AlgorithmDefinitionService {
+  // CRUD
+  rpc CreateAlgorithm(CreateAlgorithmRequest) returns (AlgorithmResponse);
+  rpc UpdateAlgorithm(UpdateAlgorithmRequest) returns (AlgorithmResponse);
+  rpc DeleteAlgorithm(DeleteAlgorithmRequest) returns (AlgorithmResponse);
+  rpc ListAlgorithms(ListAlgorithmsRequest) returns (AlgorithmResponse);
+  rpc GetAlgorithm(GetAlgorithmRequest) returns (AlgorithmResponse);
+  rpc GetAlgorithmOptions(GetAlgorithmOptionsRequest) returns (AlgorithmResponse);
+
+  // 参数 CRUD
+  rpc ListParams(ListParamsRequest) returns (AlgorithmResponse);
+  rpc GetParam(GetParamRequest) returns (AlgorithmResponse);
+  rpc ListCaseParams(ListCaseParamsRequest) returns (AlgorithmResponse);
+  rpc ListReferenceParams(ListReferenceParamsRequest) returns (AlgorithmResponse);
+
+  // 设备/API 参数写操作
+  rpc CreateParam(CreateParamRequest) returns (AlgorithmResponse);
+  rpc UpdateParam(UpdateParamRequest) returns (AlgorithmResponse);
+  rpc DeleteParam(DeleteParamRequest) returns (AlgorithmResponse);
+  rpc FindParamByCode(FindParamByCodeRequest) returns (AlgorithmResponse);
+
+  // 用例参数写操作
+  rpc CreateCaseParam(CreateCaseParamRequest) returns (AlgorithmResponse);
+  rpc UpdateCaseParam(UpdateCaseParamRequest) returns (AlgorithmResponse);
+  rpc DeleteCaseParam(DeleteCaseParamRequest) returns (AlgorithmResponse);
+  rpc FindCaseParamByCode(FindCaseParamByCodeRequest) returns (AlgorithmResponse);
+  rpc ReviveCaseParam(ReviveCaseParamRequest) returns (AlgorithmResponse);
+
+  // 参考参数写操作
+  rpc CreateReferenceParam(CreateReferenceParamRequest) returns (AlgorithmResponse);
+  rpc UpdateReferenceParam(UpdateReferenceParamRequest) returns (AlgorithmResponse);
+  rpc DeleteReferenceParam(DeleteReferenceParamRequest) returns (AlgorithmResponse);
+  rpc FindReferenceParam(FindReferenceParamRequest) returns (AlgorithmResponse);
+
+  // 映射
+  rpc ListMappings(ListMappingsRequest) returns (AlgorithmResponse);
+  rpc GetDimensionParams(GetDimensionParamsRequest) returns (AlgorithmResponse);
+  rpc GetAlgorithmDimensions(GetAlgorithmDimensionsRequest) returns (AlgorithmResponse);
+
+  // 参数映射写操作
+  rpc CreateMapping(CreateMappingRequest) returns (AlgorithmResponse);
+  rpc UpdateMapping(UpdateMappingRequest) returns (AlgorithmResponse);
+  rpc DeleteMapping(DeleteMappingRequest) returns (AlgorithmResponse);
+  rpc GetMapping(GetMappingRequest) returns (AlgorithmResponse);
+
+  // 维度关系
+  rpc CreateDimensionRelation(CreateDimensionRelationRequest) returns (AlgorithmResponse);
+  rpc UpdateDimensionRelation(UpdateDimensionRelationRequest) returns (AlgorithmResponse);
+  rpc DeleteDimensionRelation(DeleteDimensionRelationRequest) returns (AlgorithmResponse);
+  rpc DeleteRelationsByDimension(DeleteRelationsByDimensionRequest) returns (AlgorithmResponse);
+  rpc GetRelationsByDimension(GetRelationsByDimensionRequest) returns (AlgorithmResponse);
+  rpc SyncDimensionRelations(SyncDimensionRelationsRequest) returns (AlgorithmResponse);
+
+  // 评估维度参数管理
+  rpc CreateDimensionParam(CreateDimensionParamRequest) returns (AlgorithmResponse);
+  rpc DeleteDimensionParamsByDirection(DeleteDimensionParamsByDirectionRequest) returns (AlgorithmResponse);
+  rpc FindAudioDimensionIds(FindAudioDimensionIdsRequest) returns (AlgorithmResponse);
+
+  // 参数映射同步
+  rpc SyncParamMappings(SyncParamMappingsRequest) returns (AlgorithmResponse);
+  rpc ListParamMappingsForDimension(ListParamMappingsForDimensionRequest) returns (AlgorithmResponse);
+
+  // 导入/导出
+  rpc ImportAlgorithms(ImportAlgorithmsRequest) returns (AlgorithmResponse);
+  rpc ReloadAlgorithmConfig(ReloadAlgorithmConfigRequest) returns (AlgorithmResponse);
+
+  // 算法定义写操作（flush 语义，供 task_service 旧 servicer 委托）
+  rpc CreateAlgorithmDefinition(CreateAlgorithmDefinitionRequest) returns (AlgorithmResponse);
+  rpc UpdateAlgorithmDefinitionAttrs(UpdateAlgorithmDefinitionAttrsRequest) returns (AlgorithmResponse);
+  rpc SoftDeleteAlgorithm(SoftDeleteAlgorithmRequest) returns (AlgorithmResponse);
+  rpc FindAlgorithmByType(FindAlgorithmByTypeRequest) returns (AlgorithmResponse);
+  rpc ListAlgorithmDefinitions(ListAlgorithmDefinitionsRequest) returns (AlgorithmResponse);
+  rpc ListOnlineAlgorithmDefinitions(ListOnlineAlgorithmDefinitionsRequest) returns (AlgorithmResponse);
+  rpc CountAlgorithmsInGroup(CountAlgorithmsInGroupRequest) returns (AlgorithmResponse);
+  rpc CreateImportDeviceParam(CreateImportDeviceParamRequest) returns (AlgorithmResponse);
+  rpc ListAlgorithmDefinitionsForBulkDelete(ListAlgorithmDefinitionsForBulkDeleteRequest) returns (AlgorithmResponse);
+  rpc BulkDeleteAlgorithms(BulkDeleteAlgorithmsRequest) returns (AlgorithmResponse);
+
+  // 算法分组写操作（flush 语义）
+  rpc FindGroupByName(FindGroupByNameRequest) returns (AlgorithmResponse);
+  rpc GetGroup(GetGroupRequest) returns (AlgorithmResponse);
+  rpc CreateGroup(CreateGroupRequest) returns (AlgorithmResponse);
+  rpc UpdateGroupAttrs(UpdateGroupAttrsRequest) returns (AlgorithmResponse);
+  rpc SoftDeleteGroup(SoftDeleteGroupRequest) returns (AlgorithmResponse);
+  rpc ListGroups(ListGroupsRequest) returns (AlgorithmResponse);
+  rpc CountAlgorithmsInGroupForGroup(CountAlgorithmsInGroupForGroupRequest) returns (AlgorithmResponse);
+
+  // 维度关联写操作（flush 语义）
+  rpc SoftDeleteAlgorithmDimensionRelations(SoftDeleteAlgorithmDimensionRelationsRequest) returns (AlgorithmResponse);
+  rpc FindDimensionRelation(FindDimensionRelationRequest) returns (AlgorithmResponse);
+  rpc GetDimensionRelation(GetDimensionRelationRequest) returns (AlgorithmResponse);
+  rpc ListDimensionRelations(ListDimensionRelationsRequest) returns (AlgorithmResponse);
+  rpc UpdateDimensionRelationAttrs(UpdateDimensionRelationAttrsRequest) returns (AlgorithmResponse);
+  rpc SoftDeleteDimensionRelation(SoftDeleteDimensionRelationRequest) returns (AlgorithmResponse);
+
+  // 评估维度参数读
+  rpc ListDimensionParams(ListDimensionParamsRequest) returns (AlgorithmResponse);
+
+  // 事务控制
+  rpc CommitTransaction(CommitTransactionRequest) returns (AlgorithmResponse);
+  rpc RollbackTransaction(RollbackTransactionRequest) returns (AlgorithmResponse);
+  rpc FlushTransaction(FlushTransactionRequest) returns (AlgorithmResponse);
+}
+
+// ===== 算法领域查询服务（CQRS 读侧，迁移自 shared/algorithm）=====
+service AlgorithmQueryService {
+  // 配置加载器（原 algorithm_config_loader）
+  rpc GetAlgorithmConfig(GetAlgorithmConfigRequest) returns (AlgorithmResponse);
+  rpc GetAllAlgorithmsList(GetAllAlgorithmsListRequest) returns (AlgorithmResponse);
+  rpc GetAlgorithmParamsMerged(GetAlgorithmParamsMergedRequest) returns (AlgorithmResponse);
+  rpc GetDeviceParamsList(GetDeviceParamsListRequest) returns (AlgorithmResponse);
+  rpc GetApiParamsList(GetApiParamsListRequest) returns (AlgorithmResponse);
+  rpc GetCaseParamsList(GetCaseParamsListRequest) returns (AlgorithmResponse);
+  rpc GetReferenceParamsList(GetReferenceParamsListRequest) returns (AlgorithmResponse);
+  rpc GetParamMappingForComponent(GetParamMappingForComponentRequest) returns (AlgorithmResponse);
+  rpc GetEvaluationDimensionParams(GetEvaluationDimensionParamsRequest) returns (AlgorithmResponse);
+  rpc GetAlgorithmDefinitionInfo(GetAlgorithmDefinitionInfoRequest) returns (AlgorithmResponse);
+  rpc ReloadConfig(ReloadConfigRequest) returns (AlgorithmResponse);
+
+  // 字段映射器（原 field_mapper）
+  rpc GetFieldMappings(GetFieldMappingsRequest) returns (AlgorithmResponse);
+  rpc GetEvaluationFieldMappings(GetEvaluationFieldMappingsRequest) returns (AlgorithmResponse);
+  rpc BuildApiRequestData(BuildApiRequestDataRequest) returns (AlgorithmResponse);
+  rpc ConvertFieldValue(ConvertFieldValueRequest) returns (AlgorithmResponse);
+
+  // 结果字段映射器（原 algorithm_result_field_mapper）
+  rpc GetOutputFields(GetOutputFieldsRequest) returns (AlgorithmResponse);
+  rpc GetReferenceOutputFields(GetReferenceOutputFieldsRequest) returns (AlgorithmResponse);
+  rpc ExtractResultFields(ExtractResultFieldsRequest) returns (AlgorithmResponse);
+  rpc GetTimelineFields(GetTimelineFieldsRequest) returns (AlgorithmResponse);
+  rpc GetFullFieldMapping(GetFullFieldMappingRequest) returns (AlgorithmResponse);
+  rpc MapApiResults(MapApiResultsRequest) returns (AlgorithmResponse);
+  rpc ExtractRoundResults(ExtractRoundResultsRequest) returns (AlgorithmResponse);
+
+  // 用例参数提取器（原 case_parameter_extractor）
+  rpc ExtractCaseAllParams(ExtractCaseAllParamsRequest) returns (AlgorithmResponse);
+  rpc NormalizeAlgorithmParams(NormalizeAlgorithmParamsRequest) returns (AlgorithmResponse);
+  rpc NormalizeAlgorithmParamsToList(NormalizeAlgorithmParamsToListRequest) returns (AlgorithmResponse);
+  rpc GetRoundAlgoParams(GetRoundAlgoParamsRequest) returns (AlgorithmResponse);
+  rpc GetAlgoParam(GetAlgoParamRequest) returns (AlgorithmResponse);
+  rpc BuildCaseFormSchema(BuildCaseFormSchemaRequest) returns (AlgorithmResponse);
+
+  // 参考参数生成器（原 reference_params_generator）
+  rpc GenerateReferenceParams(GenerateReferenceParamsRequest) returns (AlgorithmResponse);
+  rpc LoadReferenceParamsFile(LoadReferenceParamsFileRequest) returns (AlgorithmResponse);
+  rpc GetReferenceTextValue(GetReferenceTextValueRequest) returns (AlgorithmResponse);
+  rpc GetAllReferenceParams(GetAllReferenceParamsRequest) returns (AlgorithmResponse);
+  rpc GetReferenceParamsForReport(GetReferenceParamsForReportRequest) returns (AlgorithmResponse);
+}
+
+// ===== 通用响应 =====
+message AlgorithmResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+}
+
+// ===== 分组请求 =====
+message CreateAlgorithmGroupRequest {
+  string data = 1;  // JSON: name/description/algorithm_type
+}
+message UpdateAlgorithmGroupRequest {
+  int32 group_id = 1;
+  string data = 2;
+}
+message DeleteAlgorithmGroupRequest {
+  int32 group_id = 1;
+}
+message ListAlgorithmGroupsRequest {
+  string algorithm_type = 1;  // 可选
+}
+message GetAlgorithmGroupRequest {
+  int32 group_id = 1;
+}
+
+// ===== 算法定义请求 =====
+message CreateAlgorithmRequest {
+  string data = 1;  // JSON: 算法字段
+}
+message UpdateAlgorithmRequest {
+  int32 algorithm_id = 1;
+  string data = 2;
+}
+message DeleteAlgorithmRequest {
+  int32 algorithm_id = 1;
+}
+message ListAlgorithmsRequest {
+  string algorithm_type = 1;  // 可选
+  int32 group_id = 2;         // 可选
+  bool active_only = 3;
+  int32 page = 4;
+  int32 per_page = 5;
+  string search = 6;
+}
+message GetAlgorithmRequest {
+  int32 algorithm_id = 1;
+}
+message GetAlgorithmOptionsRequest {
+  string algorithm_type = 1;
+}
+
+// ===== 参数请求 =====
+message ListParamsRequest {
+  string algorithm_type = 1;
+  string param_type = 2;  // device / api / reference / case
+}
+message GetParamRequest {
+  int32 param_id = 1;
+}
+message ListCaseParamsRequest {
+  string algorithm_type = 1;
+}
+message ListReferenceParamsRequest {
+  string algorithm_type = 1;
+}
+
+// ===== 映射请求 =====
+message ListMappingsRequest {
+  string algorithm_type = 1;
+}
+message GetDimensionParamsRequest {
+  int32 dimension_id = 1;
+  string algorithm_type = 2;
+}
+message GetAlgorithmDimensionsRequest {
+  string algorithm_type = 1;
+}
+
+// ===== 维度关系请求 =====
+message CreateDimensionRelationRequest {
+  string data = 1;
+}
+message UpdateDimensionRelationRequest {
+  int32 relation_id = 1;
+  string data = 2;
+}
+message DeleteDimensionRelationRequest {
+  int32 relation_id = 1;
+}
+
+// ===== 导入/重载 =====
+message ImportAlgorithmsRequest {
+  string data = 1;  // JSON: 导入数据
+}
+message ReloadAlgorithmConfigRequest {}
+
+// ===== 维度关系批量管理 =====
+message DeleteRelationsByDimensionRequest {
+  int32 dimension_id = 1;
+}
+message GetRelationsByDimensionRequest {
+  int32 dimension_id = 1;
+}
+message SyncDimensionRelationsRequest {
+  int32 dimension_id = 1;
+  string data = 2;  // JSON: [{algorithm_type, is_default, weight}]
+}
+
+// ===== 评估维度参数管理 =====
+message CreateDimensionParamRequest {
+  string data = 1;  // JSON: EvaluationDimensionParam 字段
+}
+message DeleteDimensionParamsByDirectionRequest {
+  int32 dimension_id = 1;
+  string param_direction = 2;  // input / output
+}
+message FindAudioDimensionIdsRequest {
+  string dimension_ids = 1;  // JSON: [int, ...]
+}
+
+// ===== 参数映射同步 =====
+message SyncParamMappingsRequest {
+  int32 dimension_id = 1;
+  string data = 2;  // JSON: {params, direction, algorithm_type}
+}
+message ListParamMappingsForDimensionRequest {
+  int32 dimension_id = 1;
+}
+
+// ===== 设备/API 参数写操作 =====
+message CreateParamRequest {
+  string data = 1;  // JSON: 完整参数字段 + param_type_source(device/api)
+}
+message UpdateParamRequest {
+  int32 param_id = 1;
+  string data = 2;  // JSON: 待更新字段
+}
+message DeleteParamRequest {
+  int32 param_id = 1;
+}
+message FindParamByCodeRequest {
+  string algorithm_type = 1;
+  string param_code = 2;
+  string direction = 3;
+  string param_type_source = 4;  // device/api
+}
+
+// ===== 用例参数写操作 =====
+message CreateCaseParamRequest {
+  string data = 1;
+}
+message UpdateCaseParamRequest {
+  int32 param_id = 1;
+  string data = 2;
+}
+message DeleteCaseParamRequest {
+  int32 param_id = 1;
+}
+message FindCaseParamByCodeRequest {
+  string algorithm_type = 1;
+  string param_code = 2;
+  bool include_deleted = 3;
+}
+message ReviveCaseParamRequest {
+  int32 param_id = 1;
+  string data = 2;
+}
+
+// ===== 参考参数写操作 =====
+message CreateReferenceParamRequest {
+  string data = 1;
+}
+message UpdateReferenceParamRequest {
+  int32 param_id = 1;
+  string data = 2;
+}
+message DeleteReferenceParamRequest {
+  int32 param_id = 1;
+}
+message FindReferenceParamRequest {
+  string algorithm_type = 1;
+  string code = 2;
+}
+
+// ===== 参数映射写操作 =====
+message CreateMappingRequest {
+  string data = 1;
+}
+message UpdateMappingRequest {
+  int32 mapping_id = 1;
+  string data = 2;
+}
+message DeleteMappingRequest {
+  int32 mapping_id = 1;
+}
+message GetMappingRequest {
+  int32 mapping_id = 1;
+}
+
+// ===== 算法定义写操作 =====
+message CreateAlgorithmDefinitionRequest {
+  string data = 1;
+}
+message UpdateAlgorithmDefinitionAttrsRequest {
+  int32 algorithm_id = 1;
+  string data = 2;
+}
+message SoftDeleteAlgorithmRequest {
+  int32 algorithm_id = 1;
+}
+message FindAlgorithmByTypeRequest {
+  string algorithm_type = 1;
+}
+message ListAlgorithmDefinitionsRequest {
+  string status = 1;
+  int32 group_id = 2;
+}
+message ListOnlineAlgorithmDefinitionsRequest {}
+message CountAlgorithmsInGroupRequest {
+  int32 group_id = 1;
+}
+message CreateImportDeviceParamRequest {
+  string data = 1;
+}
+message ListAlgorithmDefinitionsForBulkDeleteRequest {
+  string algorithm_types = 1;  // JSON: [str, ...]
+}
+message BulkDeleteAlgorithmsRequest {
+  string algorithm_types = 1;  // JSON: [str, ...]
+}
+
+// ===== 算法分组写操作 =====
+message FindGroupByNameRequest {
+  string name = 1;
+}
+message GetGroupRequest {
+  int32 group_id = 1;
+}
+message CreateGroupRequest {
+  string data = 1;
+}
+message UpdateGroupAttrsRequest {
+  int32 group_id = 1;
+  string data = 2;
+}
+message SoftDeleteGroupRequest {
+  int32 group_id = 1;
+}
+message ListGroupsRequest {}
+message CountAlgorithmsInGroupForGroupRequest {
+  int32 group_id = 1;
+}
+
+// ===== 维度关联写操作 =====
+message SoftDeleteAlgorithmDimensionRelationsRequest {
+  string algorithm_type = 1;
+}
+message FindDimensionRelationRequest {
+  string algorithm_type = 1;
+  int32 dimension_id = 2;
+}
+message GetDimensionRelationRequest {
+  int32 relation_id = 1;
+}
+message ListDimensionRelationsRequest {
+  string algorithm_type = 1;
+}
+message UpdateDimensionRelationAttrsRequest {
+  int32 relation_id = 1;
+  string data = 2;
+}
+message SoftDeleteDimensionRelationRequest {
+  int32 relation_id = 1;
+}
+
+// ===== 评估维度参数读 =====
+message ListDimensionParamsRequest {
+  int32 dimension_id = 1;
+}
+
+// ===== 事务控制 =====
+message CommitTransactionRequest {}
+message RollbackTransactionRequest {}
+message FlushTransactionRequest {}
+
+// ===== 算法领域查询服务请求（迁移自 shared/algorithm）=====
+
+// 配置加载器请求
+message GetAlgorithmConfigRequest {
+  string algorithm_type = 1;
+}
+message GetAllAlgorithmsListRequest {}
+message GetAlgorithmParamsMergedRequest {
+  string algorithm_type = 1;
+}
+message GetDeviceParamsListRequest {
+  string algorithm_type = 1;
+}
+message GetApiParamsListRequest {
+  string algorithm_type = 1;
+}
+message GetCaseParamsListRequest {
+  string algorithm_type = 1;
+}
+message GetReferenceParamsListRequest {
+  string algorithm_type = 1;
+}
+message GetParamMappingForComponentRequest {
+  string algorithm_type = 1;
+  string component_type = 2;  // device/api/case/reference/evaluation
+}
+message GetEvaluationDimensionParamsRequest {
+  int32 dimension_id = 1;
+}
+message GetAlgorithmDefinitionInfoRequest {
+  string algorithm_type = 1;
+}
+message ReloadConfigRequest {}
+
+// 字段映射器请求
+message GetFieldMappingsRequest {
+  string algorithm_type = 1;
+  string component_type = 2;  // device/api/evaluation
+}
+message GetEvaluationFieldMappingsRequest {
+  string algorithm_type = 1;
+}
+message BuildApiRequestDataRequest {
+  string algorithm_type = 1;
+  string data = 2;  // JSON: 设备参数 + API 参数
+}
+message ConvertFieldValueRequest {
+  string transform_type = 1;
+  string data = 2;  // JSON: {value, ...}
+}
+
+// 结果字段映射器请求
+message GetOutputFieldsRequest {
+  string algorithm_type = 1;
+  string test_type = 2;  // 可选，voice_llm 区分 api/e2e
+}
+message GetReferenceOutputFieldsRequest {
+  string algorithm_type = 1;
+}
+message ExtractResultFieldsRequest {
+  string algorithm_type = 1;
+  string algorithm_result = 2;  // JSON: 算法执行结果
+  string result_data = 3;        // JSON: 结果数据
+}
+message GetTimelineFieldsRequest {
+  string algorithm_type = 1;
+}
+message GetFullFieldMappingRequest {
+  string algorithm_type = 1;
+}
+message MapApiResultsRequest {
+  string algorithm_type = 1;
+  string raw_results = 2;  // JSON: 原始结果
+  string test_type = 3;     // voice_llm 时使用
+}
+message ExtractRoundResultsRequest {
+  string algorithm_result = 1;  // JSON
+  string test_type = 2;
+}
+
+// 用例参数提取器请求
+message ExtractCaseAllParamsRequest {
+  string case_config = 1;  // JSON: 用例配置
+}
+message NormalizeAlgorithmParamsRequest {
+  string algorithm_params = 1;  // JSON: list 或 dict
+}
+message NormalizeAlgorithmParamsToListRequest {
+  string algorithm_params = 1;  // JSON: list 或 dict
+}
+message GetRoundAlgoParamsRequest {
+  string algorithm_params_col = 1;  // JSON: 按轮分组
+  int32 round_number = 2;
+}
+message GetAlgoParamRequest {
+  string algorithm_params = 1;  // JSON: [{field_code, field_value}]
+  string field_code = 2;
+}
+message BuildCaseFormSchemaRequest {
+  string algorithm_type = 1;
+}
+
+// 参考参数生成器请求
+message GenerateReferenceParamsRequest {
+  string data = 1;  // JSON: {test_case_config, round_data}
+}
+message LoadReferenceParamsFileRequest {
+  string filepath = 1;
+}
+message GetReferenceTextValueRequest {
+  string reference_params_col = 1;  // JSON: test_case.reference_params
+  string code = 2;
+}
+message GetAllReferenceParamsRequest {
+  string reference_params_col = 1;  // JSON
+}
+message GetReferenceParamsForReportRequest {
+  string reference_params_col = 1;  // JSON
+}

@@ -2,7 +2,7 @@
 """E2E 测试管理 REST API。
 
 提供 HTTP 接口供运维/管理端使用，委托给应用层的命令/查询处理器。
-gRPC 接口仍由 grpc/servicers.py 处理。
+gRPC 接口仍由 infrastructure/grpc/servicers.py 处理。
 
 路由注册方式：
     from e2e_test_service.interfaces.api.admin import router
@@ -16,17 +16,15 @@ from e2e_test_service.application.commands.e2e_commands import (
     StartE2ETestCommand,
     StopE2ETestCommand,
 )
-from e2e_test_service.application.commands.handlers import (
+from e2e_test_service.application.handlers import (
     StartE2ETestHandler,
     StopE2ETestHandler,
+    GetDeviceStatusHandler,
+    GetTestProgressHandler,
 )
 from e2e_test_service.application.queries.e2e_queries import (
     GetDeviceStatusQuery,
     GetTestProgressQuery,
-)
-from e2e_test_service.application.queries.handlers import (
-    GetDeviceStatusHandler,
-    GetTestProgressHandler,
 )
 
 

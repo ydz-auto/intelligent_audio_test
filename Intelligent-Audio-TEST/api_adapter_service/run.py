@@ -20,7 +20,7 @@ except ImportError:
     pass
 
 from api_adapter_service.utils.logger import logger
-from api_adapter_service.grpc.server import start_grpc_server
+from api_adapter_service.interfaces.grpc.server import start_grpc_server
 
 
 def main():

@@ -1,8 +1,8 @@
 import threading
 from datetime import datetime
 from collections import deque
-from shared.models.models import Task, TaskCase
-from shared.models.database import db
+from task_service.infrastructure.persistence.models import Task, TaskCase
+from shared.models.database import get_db_session
 from shared.utils import distributed_coordinator as _dc
 
 # gRPC 调用封装函数（模块级）
@@ -36,7 +36,7 @@ class TaskControlMixin:
                 return False, "任务已在队列中"
 
         # 获取任务类型和关联的API
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             task = local_db_session.get(Task, task_id)
             if not task:
@@ -45,7 +45,7 @@ class TaskControlMixin:
             task_type = task.type
             
             # 获取任务关联的API ID
-            from shared.models.models import TaskAPI
+            from task_service.infrastructure.persistence.models import TaskAPI
             task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
             api_ids = [task_api.api_id for task_api in task_apis]
         finally:
@@ -86,7 +86,7 @@ class TaskControlMixin:
 
                 # 更新任务状态为running
                 # 多实例下用 DB 条件 UPDATE 做任务抢占 CAS，避免重复启动
-                local_db_session = db.session()
+                local_db_session = get_db_session()
                 try:
                     # CAS: 只有 pending/queued 状态才能翻转为 running
                     claimed = local_db_session.query(Task).filter(
@@ -126,7 +126,7 @@ class TaskControlMixin:
                 })
             
             # 更新任务状态为queued
-            local_db_session = db.session()
+            local_db_session = get_db_session()
             try:
                 task = local_db_session.get(Task, task_id)
                 if task:
@@ -142,7 +142,7 @@ class TaskControlMixin:
     
     def _check_queue(self):
         """检查任务队列，启动可以执行的任务，一次启动多个可执行任务"""
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             tasks_to_start = []
             
@@ -244,7 +244,7 @@ class TaskControlMixin:
             self.remove_from_queue(task_id)
 
         # 使用本地会话确保独立可靠的会话
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             task = local_db_session.get(Task, task_id)
             if not task:
@@ -327,7 +327,7 @@ class TaskControlMixin:
                         else:
                             # 释放占用的 API ID
                             try:
-                                from shared.models.models import TaskAPI
+                                from task_service.infrastructure.persistence.models import TaskAPI
                                 task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
                                 for api_rel in task_apis:
                                     if api_rel.api_id in self.running_apis:
@@ -373,7 +373,7 @@ class TaskControlMixin:
 
                 if action == 'resume' and task_id not in self.workers:
                     if task.type == 'api':
-                        from shared.models.models import TaskAPI
+                        from task_service.infrastructure.persistence.models import TaskAPI
                         api_ids = [
                             rel.api_id
                             for rel in local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()

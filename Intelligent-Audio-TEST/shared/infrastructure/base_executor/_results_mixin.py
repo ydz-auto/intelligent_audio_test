@@ -3,8 +3,12 @@
 import json
 import copy
 
-from shared.algorithm.field_mapper import get_field_mapper
-from shared.algorithm.algorithm_config_loader import get_config_loader
+from shared.clients.grpc_clients import (
+    algo_get_field_mappings,
+    algo_get_device_params,
+    algo_get_api_params,
+    algo_extract_case_all_params,
+)
 
 
 class ResultsMixin:
@@ -52,19 +56,15 @@ class ResultsMixin:
                     case_reference_params = adjusted_reference_params
                 break
 
-        field_mapper = get_field_mapper()
-
         if result_data_extra is None:
             result_data_extra = {}
 
         if case_config:
-            extra_config = field_mapper._get_algorithm_extra_config(algorithm_type)
-            output_keys = extra_config.get('output_keys', {})
+            output_keys = _get_algorithm_output_keys(algorithm_type)
             for key, config_key in output_keys.items():
                 if config_key not in result_data_extra and config_key in case_config:
                     result_data_extra[config_key] = case_config[config_key]
 
-        config_loader = get_config_loader()
         all_results = copy.deepcopy(all_results)
 
         self._log(
@@ -99,7 +99,7 @@ class ResultsMixin:
             test_case_id=test_case_id
         )
 
-        mapped_output_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
+        mapped_output_keys = _get_mapped_device_output_field_keys(algorithm_type)
 
         self._log(
             level='DEBUG',
@@ -217,7 +217,7 @@ class ResultsMixin:
                         reference_params_col=None):
         """提交评估 - 通用方法
 
-        迁移后改为通过 gRPC 调用 task_service 的 ExecutionService.EvaluateCase。
+        迁移后改为通过 gRPC 调用 evaluation_service 的 EvaluationService.EvaluateCase。
         """
         self._log(
             level='DEBUG',
@@ -265,8 +265,6 @@ class ResultsMixin:
                 test_case_id=test_case_id
             )
 
-        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
-
         case_params = case_config or {}
         algorithm_params = case_params.get('algorithm_params', case_params)
 
@@ -310,11 +308,7 @@ class ResultsMixin:
             test_case_id=test_case_id
         )
 
-        eval_params = CaseParameterExtractor.get_evaluation_params(
-            case_config=full_case_params,
-            algorithm_result=algo_result,
-            test_type=test_type
-        )
+        eval_params = algo_extract_case_all_params(full_case_params).get('evaluation', {}) or {}
 
         eval_params['algorithm_type'] = algorithm_type
         eval_params['test_type'] = test_type
@@ -330,7 +324,7 @@ class ResultsMixin:
             test_case_id=test_case_id
         )
 
-        # 通过 gRPC 调用 task_service 的 EvaluateCase
+        # 通过 gRPC 调用 evaluation_service 的 EvaluateCase
         from shared.clients.grpc_clients import submit_evaluate_case
         submit_evaluate_case(
             task_id=task_id,
@@ -365,3 +359,33 @@ class ResultsMixin:
             device_id=res.get('device_id'),
             api_id=res.get('api_id')
         )
+
+
+def _get_algorithm_output_keys(algorithm_type):
+    """从算法配置派生 output_keys（迁移自 FieldMapper._get_algorithm_extra_config 的 output_keys 部分）
+
+    output_keys 形如 {'direction': 'direction', 'source_lang': 'source_lang', 'target_lang': 'target_lang'}
+    """
+    output_keys = {}
+    params = (algo_get_device_params(algorithm_type) or []) + (algo_get_api_params(algorithm_type) or [])
+    for param in params:
+        code = param.get('code', '')
+        if 'direction' in code.lower():
+            output_keys['direction'] = code
+        elif 'source' in code.lower() and 'lang' in code.lower():
+            output_keys['source_lang'] = code
+        elif 'target' in code.lower() and 'lang' in code.lower():
+            output_keys['target_lang'] = code
+    return output_keys
+
+
+def _get_mapped_device_output_field_keys(algorithm_type):
+    """获取设备输出字段键列表（映射后）（迁移自 FieldMapper.get_mapped_device_output_field_keys）
+
+    从 algo_get_field_mappings 结果的 mapped.device 提取 key 列表。
+    """
+    field_defs = algo_get_field_mappings(algorithm_type) or {}
+    output_fields = (field_defs.get('mapped', {}) or {}).get('device', {}) or {}
+    if isinstance(output_fields, list):
+        return [f.get('code') for f in output_fields if f.get('code')]
+    return list(output_fields.keys())

@@ -43,6 +43,24 @@ function applyResponseInterceptors(response: any): any {
   return currentResponse;
 }
 
+// ===== JWT 认证拦截器 =====
+// 自动在请求头注入 Authorization: Bearer <token>
+addRequestInterceptor(async (config) => {
+  const token = localStorage.getItem('auth_token')
+  if (token) {
+    if (!config.options.headers) {
+      config.options.headers = {} as Record<string, string>
+    }
+    ;(config.options.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`
+  }
+  return config
+})
+
+// ===== 401 自动登出拦截器 =====
+addResponseInterceptor((response: any) => {
+  return response
+})
+
 /**
  * Core Request function that bridges Electron IPC or Fetch
  */
@@ -223,6 +241,18 @@ async function handleResponse(response: Response, responseType: string = 'json',
   }
 
   if (!response.ok) {
+    // 401 未授权：清除登录态并跳转登录页（仅当后端开启认证模式时）
+    if (response.status === 401) {
+      const authMode = (import.meta as any).env?.VITE_AUTH_MODE || 'off'
+      if (authMode !== 'off') {
+        import('../../store/authStore').then(({ useAuthStore }) => {
+          const auth = useAuthStore()
+          auth.logout()
+          const redirect = window.location.hash.slice(1) || '/'
+          window.location.hash = `#/login?redirect=${encodeURIComponent(redirect)}`
+        })
+      }
+    }
     const error : any = new Error(data.message || 'API Request failed');
     error.code = data.code;
     error.detail = data.detail;

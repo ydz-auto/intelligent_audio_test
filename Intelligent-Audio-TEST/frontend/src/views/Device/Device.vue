@@ -48,12 +48,12 @@
 
     <!-- 设备类型切换标签页 -->
     <div class="device-type-tabs">
-      <button 
-        v-for="tab in tabs" 
-        :key="tab.type" 
-        class="tab-btn" 
-        :class="{ active: activeTab === tab.type }" 
-        :data-device-type="tab.type" 
+      <button
+        v-for="tab in tabs"
+        :key="tab.type"
+        class="tab-btn"
+        :class="{ active: activeTab === tab.type }"
+        :data-device-type="tab.type"
         @click="switchDeviceType(tab.type)"
       >
         <i :class="tab.icon + ' tab-icon'"></i>
@@ -77,25 +77,15 @@
     <!-- 播放设备管理内容区域 -->
     <div id="playbackDeviceContent" v-show="activeTab === 'playback'">
       <div class="device-three-column-layout">
-        <!-- 中间设备列表区 -->
         <div class="middle-content">
           <div class="card">
             <div class="card-header">
-              <h3 class="card-title">
-                <i class="fas fa-headphones"></i>
-                设备列表
-              </h3>
+              <h3 class="card-title"><i class="fas fa-headphones"></i> 设备列表</h3>
               <div class="card-actions">
                 <div class="filter-bar">
                   <div class="search-box">
                     <i class="fas fa-search search-icon"></i>
-                    <input 
-                      type="text" 
-                      class="search-input" 
-                      placeholder="搜索设备名称或型号..." 
-                      v-model="searchQuery"
-                      @input="searchDevices"
-                    >
+                    <input type="text" class="search-input" placeholder="搜索设备名称或型号..." v-model="searchQuery" @input="searchDevices">
                   </div>
                   <div class="filter-select">
                     <select class="form-input" v-model="statusFilter" @change="filterDevices" id="statusFilter">
@@ -116,116 +106,40 @@
               </div>
             </div>
             <div class="card-body">
-              <!-- 设备卡片网格 -->
               <div class="devices-grid">
-                <!-- 无设备时显示 -->
                 <div v-if="filteredPlaybackDevices.length === 0" class="no-devices">
                   <i class="fas fa-info-circle"></i>
                   <p>无可用设备</p>
                 </div>
-                
-                <!-- 设备卡片 -->
-                <div 
+                <DeviceCard
                   v-else
-                  v-for="device in filteredPlaybackDevices" 
-                  :key="device.id" 
-                  class="device-card fade-in"
-                  @click="toggleDeviceSelection(device.id)"
-                  :class="{ 'highlighted': selectedDevices.includes(device.id) }"
+                  v-for="device in filteredPlaybackDevices"
+                  :key="device.id"
+                  :device="device"
+                  :selected="selectedDevices.includes(device.id)"
+                  :status-text-map="deviceStatusText"
+                  @toggle-select="toggleDeviceSelection(device.id)"
+                  @edit="openEditModal(device.id)"
+                  @delete="deleteDevice(device.id)"
+                  @test="device.status === 'testing' ? stopTest(device.id) : testDevice(device.id)"
+                  @health-check="healthCheckDevice(device.id)"
                 >
-                  <div class="device-card-header">
-                    <div class="device-select">
-                      <input type="checkbox" class="device-checkbox" :value="device.id" v-model="selectedDevices" @click.stop>
+                  <template #meta="{ device }">
+                    <div class="device-meta">
+                      <span class="meta-item"><i class="fas fa-tags"></i> {{ device.category }}</span>
+                      <span class="meta-item"><i class="fas fa-volume-up"></i> {{ device.type }}</span>
+                      <span class="meta-item"><i class="fas fa-wifi"></i> {{ device.ip }}</span>
                     </div>
-                    <div class="device-status">
-                      <span class="status-badge" :class="device.status">
-                        <i :class="device.status === 'testing' ? 'fas fa-play-circle testing-indicator' : 'fas fa-circle online-indicator'"></i>
-                        {{ deviceStatusText[device.status] }}
-                      </span>
-                    </div>
-                  </div>
-                  <div class="device-card-content">
-                    <div class="device-info">
-                      <h3 class="device-name">{{ device.name }}</h3>
-                      <p class="device-model">{{ device.model }}</p>
-                      <div class="device-description" v-if="device.description" style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
-                        {{ device.description }}
-                      </div>
-                      <div class="device-algorithms" v-if="device.supportedAlgorithms && device.supportedAlgorithms.length > 0">
-                        <span class="algo-label">支持算法:</span>
-                        <AlgorithmTag :algorithms="device.supportedAlgorithms" :max-display="3" />
-                      </div>
-                      <div class="device-meta">
-                        <span class="meta-item">
-                          <i class="fas fa-tags"></i>
-                          {{ device.category }}
-                        </span>
-                        <span class="meta-item">
-                          <i class="fas fa-volume-up"></i>
-                          {{ device.type }}
-                        </span>
-                        <span class="meta-item">
-                          <i class="fas fa-wifi"></i>
-                          {{ device.ip }}
-                        </span>
-                      </div>
-                    </div>
-                    <div class="device-specs">
-                      <div class="spec-item">
-                        <label>固件版本</label>
-                        <span>{{ device.firmwareVersion }}</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>最后在线</label>
-                        <span>{{ device.lastOnline }}</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>播放延迟</label>
-                        <span :class="getDelayClass(device.delay)">{{ device.delay }}ms</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>音量水平</label>
-                        <span class="status-good">{{ device.volume }}dB</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>连接稳定性</label>
-                        <span class="status-good">{{ device.stability }}%</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="device-card-footer">
-                    <div class="connection-controls">
-                      <button class="btn btn-secondary" @click="openEditModal(device.id); $event.stopPropagation();">
-                        <i class="fas fa-edit btn-icon"></i>
-                        编辑
-                      </button>
-                      <button class="btn btn-danger" @click="deleteDevice(device.id); $event.stopPropagation();">
-                        <i class="fas fa-trash btn-icon"></i>
-                        删除
-                      </button>
-                      <button 
-                        class="btn gradient-btn" 
-                        :class="device.status === 'testing' ? 'btn-danger' : 'btn-success'" 
-                        :disabled="device.status === 'offline'"
-                        @click="device.status === 'testing' ? stopTest(device.id) : testDevice(device.id); $event.stopPropagation();"
-                      >
-                        <i :class="device.status === 'testing' ? 'fas fa-stop btn-icon' : 'fas fa-play btn-icon'"
-                        ></i>
-                        {{ device.status === 'testing' ? '停止测试' : device.status === 'offline' ? '离线' : '测试' }}
-                      </button>
-                      <button 
-                        class="btn btn-info"
-                        @click="healthCheckDevice(device.id); $event.stopPropagation();"
-                      >
-                        <i class="fas fa-heartbeat btn-icon"></i>
-                        健康检查
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  </template>
+                  <template #specs="{ device }">
+                    <div class="spec-item"><label>固件版本</label><span>{{ device.firmwareVersion }}</span></div>
+                    <div class="spec-item"><label>最后在线</label><span>{{ device.lastOnline }}</span></div>
+                    <div class="spec-item"><label>播放延迟</label><span :class="getDelayClass(device.delay)">{{ device.delay }}ms</span></div>
+                    <div class="spec-item"><label>音量水平</label><span class="status-good">{{ device.volume }}dB</span></div>
+                    <div class="spec-item"><label>连接稳定性</label><span class="status-good">{{ device.stability }}%</span></div>
+                  </template>
+                </DeviceCard>
               </div>
-              
-              <!-- 分页控件 -->
               <div class="pagination-container" v-if="playbackTotalItems > playbackPageSize">
                 <PaginationComponent
                   :current-page="playbackCurrentPage"
@@ -247,25 +161,15 @@
     <!-- 测试设备管理内容区域 -->
     <div id="testDeviceContent" v-show="activeTab === 'test'">
       <div class="device-three-column-layout">
-        <!-- 中间测试设备区 -->
         <div class="middle-content">
           <div class="card">
             <div class="card-header">
-              <h3 class="card-title">
-                <i class="fas fa-microphone"></i>
-                测试设备列表
-              </h3>
+              <h3 class="card-title"><i class="fas fa-microphone"></i> 测试设备列表</h3>
               <div class="card-actions">
                 <div class="filter-bar">
                   <div class="search-box">
                     <i class="fas fa-search search-icon"></i>
-                    <input 
-                      type="text" 
-                      class="search-input" 
-                      placeholder="搜索测试设备名称或型号..." 
-                      v-model="searchQuery"
-                      @input="searchDevices"
-                    >
+                    <input type="text" class="search-input" placeholder="搜索测试设备名称或型号..." v-model="searchQuery" @input="searchDevices">
                   </div>
                   <div class="filter-select">
                     <select class="form-input" v-model="statusFilter" @change="filterDevices" id="testStatusFilter">
@@ -278,132 +182,49 @@
                   <div class="filter-select">
                     <select class="form-input" v-model="algorithmFilter" @change="filterDevices" id="algorithmFilter">
                       <option value="all">支持算法: 全部</option>
-                      <option v-for="algo in algorithmTypeOptions" :key="algo.value" :value="algo.value">
-                        {{ algo.label }}
-                      </option>
+                      <option v-for="algo in algorithmTypeOptions" :key="algo.value" :value="algo.value">{{ algo.label }}</option>
                     </select>
                   </div>
                 </div>
               </div>
             </div>
             <div class="card-body">
-              <!-- 测试设备卡片网格 -->
               <div class="devices-grid">
-                <!-- 无设备时显示 -->
                 <div v-if="filteredTestDevices.length === 0" class="no-devices">
                   <i class="fas fa-info-circle"></i>
                   <p>无可用设备</p>
                 </div>
-                
-                <!-- 测试设备卡片 -->
-                <div 
+                <DeviceCard
                   v-else
-                  v-for="device in filteredTestDevices" 
-                  :key="device.id" 
-                  class="device-card fade-in"
-                  @click="toggleDeviceSelection(device.id)"
-                  :class="{ 'highlighted': selectedDevices.includes(device.id) }"
+                  v-for="device in filteredTestDevices"
+                  :key="device.id"
+                  :device="device"
+                  :selected="selectedDevices.includes(device.id)"
+                  :status-text-map="deviceStatusText"
+                  @toggle-select="toggleDeviceSelection(device.id)"
+                  @edit="openEditModal(device.id)"
+                  @delete="deleteDevice(device.id)"
+                  @test="device.status === 'testing' ? stopTest(device.id) : testDevice(device.id)"
+                  @health-check="healthCheckDevice(device.id)"
                 >
-                  <div class="device-card-header">
-                    <div class="device-select">
-                      <input type="checkbox" class="device-checkbox" :value="device.id" v-model="selectedDevices" @click.stop>
+                  <template #meta="{ device }">
+                    <div class="device-meta">
+                      <span class="meta-item"><i class="fas fa-tags"></i> {{ device.category }}</span>
+                      <span class="meta-item"><i class="fas fa-microphone"></i> 测试设备</span>
+                      <span class="meta-item"><i class="fas fa-wifi"></i> {{ device.ip }}</span>
+                      <span class="meta-item"><i class="fas fa-serial"></i> {{ device.serialNumber }}</span>
+                      <span class="meta-item" v-if="device.driverName || device.keywords"><i class="fas fa-key"></i> {{ device.driverName || device.keywords }}</span>
                     </div>
-                    <div class="device-status">
-                      <span class="status-badge" :class="device.status">
-                        <i :class="device.status === 'testing' ? 'fas fa-play-circle testing-indicator' : 'fas fa-circle online-indicator'"></i>
-                        {{ deviceStatusText[device.status] }}
-                      </span>
-                    </div>
-                  </div>
-                  <div class="device-card-content">
-                    <div class="device-info">
-                      <h3 class="device-name">{{ device.name }}</h3>
-                      <p class="device-model">{{ device.model }}</p>
-                      <div class="device-description" v-if="device.description" style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
-                        {{ device.description }}
-                      </div>
-                      <div class="device-algorithms" v-if="device.supportedAlgorithms && device.supportedAlgorithms.length > 0">
-                        <span class="algo-label">支持算法:</span>
-                        <AlgorithmTag :algorithms="device.supportedAlgorithms" :max-display="3" />
-                      </div>
-                      <div class="device-meta">
-                        <span class="meta-item">
-                          <i class="fas fa-tags"></i>
-                          {{ device.category }}
-                        </span>
-                        <span class="meta-item">
-                          <i class="fas fa-microphone"></i>
-                          测试设备
-                        </span>
-                        <span class="meta-item">
-                          <i class="fas fa-wifi"></i>
-                          {{ device.ip }}
-                        </span>
-                        <span class="meta-item">
-                          <i class="fas fa-serial"></i>
-                          {{ device.serialNumber }}
-                        </span>
-                        <span class="meta-item" v-if="device.driverName || device.keywords">
-                          <i class="fas fa-key"></i>
-                          {{ device.driverName || device.keywords }}
-                        </span>
-                      </div>
-                    </div>
-                    <div class="device-specs">
-                      <div class="spec-item">
-                        <label>固件版本</label>
-                        <span>{{ device.firmwareVersion }}</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>最后在线</label>
-                        <span>{{ device.lastOnline }}</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>测试延迟</label>
-                        <span :class="getDelayClass(device.delay)">{{ device.delay }}ms</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>采样率</label>
-                        <span class="status-good">{{ device.sampleRate }}kHz</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>连接稳定性</label>
-                        <span class="status-good">{{ device.stability }}%</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="device-card-footer">
-                    <div class="connection-controls">
-                      <button class="btn btn-secondary" @click="openEditModal(device.id); $event.stopPropagation();">
-                        <i class="fas fa-edit btn-icon"></i>
-                        编辑
-                      </button>
-                      <button class="btn btn-danger" @click="deleteDevice(device.id); $event.stopPropagation();">
-                        <i class="fas fa-trash btn-icon"></i>
-                        删除
-                      </button>
-                      <button 
-                        class="btn gradient-btn" 
-                        :class="device.status === 'testing' ? 'btn-danger' : 'btn-success'" 
-                        @click="device.status === 'testing' ? stopTest(device.id) : testDevice(device.id); $event.stopPropagation();"
-                      >
-                        <i :class="device.status === 'testing' ? 'fas fa-stop btn-icon' : 'fas fa-play btn-icon'"
-                        ></i>
-                        {{ device.status === 'testing' ? '停止测试' : '测试' }}
-                      </button>
-                      <button 
-                        class="btn btn-info"
-                        @click="healthCheckDevice(device.id); $event.stopPropagation();"
-                      >
-                        <i class="fas fa-heartbeat btn-icon"></i>
-                        健康检查
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  </template>
+                  <template #specs="{ device }">
+                    <div class="spec-item"><label>固件版本</label><span>{{ device.firmwareVersion }}</span></div>
+                    <div class="spec-item"><label>最后在线</label><span>{{ device.lastOnline }}</span></div>
+                    <div class="spec-item"><label>测试延迟</label><span :class="getDelayClass(device.delay)">{{ device.delay }}ms</span></div>
+                    <div class="spec-item"><label>采样率</label><span class="status-good">{{ device.sampleRate }}kHz</span></div>
+                    <div class="spec-item"><label>连接稳定性</label><span class="status-good">{{ device.stability }}%</span></div>
+                  </template>
+                </DeviceCard>
               </div>
-              
-              <!-- 分页控件 -->
               <div class="pagination-container" v-if="testTotalItems > testPageSize">
                 <PaginationComponent
                   :current-page="testCurrentPage"
@@ -425,25 +246,15 @@
     <!-- 测试API管理内容区域 -->
     <div id="apiDeviceContent" v-show="activeTab === 'api'">
       <div class="device-three-column-layout">
-        <!-- 中间API设备区 -->
         <div class="middle-content">
           <div class="card">
             <div class="card-header">
-              <h3 class="card-title">
-                <i class="fas fa-exchange-alt"></i>
-                测试API列表
-              </h3>
+              <h3 class="card-title"><i class="fas fa-exchange-alt"></i> 测试API列表</h3>
               <div class="card-actions">
                 <div class="filter-bar">
                   <div class="search-box">
                     <i class="fas fa-search search-icon"></i>
-                    <input 
-                      type="text" 
-                      class="search-input" 
-                      placeholder="搜索测试API名称或URL..." 
-                      v-model="searchQuery"
-                      @input="searchDevices"
-                    >
+                    <input type="text" class="search-input" placeholder="搜索测试API名称或URL..." v-model="searchQuery" @input="searchDevices">
                   </div>
                   <div class="filter-select">
                     <select class="form-input" v-model="statusFilter" @change="filterDevices" id="apiStatusFilter">
@@ -456,111 +267,47 @@
                   <div class="filter-select">
                     <select class="form-input" v-model="algorithmTypeFilter" @change="filterDevices" id="apiAlgorithmTypeFilter">
                       <option value="all">所有算法类型</option>
-                      <option v-for="algo in algorithmTypeOptions" :key="algo.value" :value="algo.value">
-                        {{ algo.label }}
-                      </option>
+                      <option v-for="algo in algorithmTypeOptions" :key="algo.value" :value="algo.value">{{ algo.label }}</option>
                     </select>
                   </div>
                 </div>
               </div>
             </div>
             <div class="card-body">
-              <!-- API设备卡片网格 -->
               <div class="devices-grid">
-                <!-- 无设备时显示 -->
                 <div v-if="filteredAPIDevices.length === 0" class="no-devices">
                   <i class="fas fa-info-circle"></i>
                   <p>无可用设备</p>
                 </div>
-                
-                <!-- API设备卡片 -->
-                <div 
+                <DeviceCard
                   v-else
-                  v-for="device in filteredAPIDevices" 
-                  :key="device.id" 
-                  class="device-card fade-in"
-                  @click="toggleDeviceSelection(device.id)"
-                  :class="{ 'highlighted': selectedDevices.includes(device.id) }"
+                  v-for="device in filteredAPIDevices"
+                  :key="device.id"
+                  :device="device"
+                  :selected="selectedDevices.includes(device.id)"
+                  :status-text-map="deviceStatusText"
+                  :show-test="false"
+                  @toggle-select="toggleDeviceSelection(device.id)"
+                  @edit="openEditModal(device.id)"
+                  @delete="deleteDevice(device.id)"
+                  @health-check="healthCheckDevice(device.id)"
                 >
-                  <div class="device-card-header">
-                    <div class="device-select">
-                      <input type="checkbox" class="device-checkbox" :value="device.id" v-model="selectedDevices" @click.stop>
+                  <template #meta="{ device }">
+                    <div class="device-meta">
+                      <span class="meta-item" v-if="device.algorithmType || device.algorithm_type"><i class="fas fa-microchip"></i> {{ getAlgorithmTypeName(device.algorithmType || device.algorithm_type) }}</span>
+                      <span class="meta-item"><i class="fas fa-tags"></i> {{ device.category }}</span>
+                      <span class="meta-item"><i class="fas fa-exchange-alt"></i> {{ device.method }}</span>
+                      <span class="meta-item"><i class="fas fa-clock"></i> {{ device.responseTime }}ms</span>
                     </div>
-                    <div class="device-status">
-                      <span class="status-badge" :class="device.status">
-                        <i :class="device.status === 'testing' ? 'fas fa-play-circle testing-indicator' : 'fas fa-circle online-indicator'"></i>
-                        {{ deviceStatusText[device.status] }}
-                      </span>
-                    </div>
-                  </div>
-                  <div class="device-card-content">
-                    <div class="device-info">
-                      <h3 class="device-name">{{ device.name }}</h3>
-                      <p class="device-model">{{ device.url }}</p>
-                      <div class="device-description" v-if="device.description" style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
-                        {{ device.description }}
-                      </div>
-                      <div class="device-meta">
-                        <span class="meta-item" v-if="device.algorithmType || device.algorithm_type">
-                          <i class="fas fa-microchip"></i>
-                          {{ getAlgorithmTypeName(device.algorithmType || device.algorithm_type) }}
-                        </span>
-                        <span class="meta-item">
-                          <i class="fas fa-tags"></i>
-                          {{ device.category }}
-                        </span>
-                        <span class="meta-item">
-                          <i class="fas fa-exchange-alt"></i>
-                          {{ device.method }}
-                        </span>
-                        <span class="meta-item">
-                          <i class="fas fa-clock"></i>
-                          {{ device.responseTime }}ms
-                        </span>
-                      </div>
-                    </div>
-                    <div class="device-specs">
-                      <div class="spec-item">
-                        <label>API版本</label>
-                        <span>{{ device.version }}</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>最后测试时间</label>
-                        <span>{{ device.lastTested }}</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>成功率</label>
-                        <span class="status-good">{{ device.successRate }}%</span>
-                      </div>
-                      <div class="spec-item">
-                        <label>认证类型</label>
-                        <span>{{ device.authType }}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="device-card-footer">
-                    <div class="connection-controls">
-                      <button class="btn btn-secondary" @click="openEditModal(device.id); $event.stopPropagation();">
-                        <i class="fas fa-edit btn-icon"></i>
-                        编辑
-                      </button>
-                      <button class="btn btn-danger" @click="deleteDevice(device.id); $event.stopPropagation();">
-                        <i class="fas fa-trash btn-icon"></i>
-                        删除
-                      </button>
-                      <button 
-                        class="btn btn-info"
-                        @click="healthCheckDevice(device.id); $event.stopPropagation();"
-                      >
-                        <i class="fas fa-heartbeat btn-icon"></i>
-                        健康检查
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                  </template>
+                  <template #specs="{ device }">
+                    <div class="spec-item"><label>API版本</label><span>{{ device.version }}</span></div>
+                    <div class="spec-item"><label>最后测试时间</label><span>{{ device.lastTested }}</span></div>
+                    <div class="spec-item"><label>成功率</label><span class="status-good">{{ device.successRate }}%</span></div>
+                    <div class="spec-item"><label>认证类型</label><span>{{ device.authType }}</span></div>
+                  </template>
+                </DeviceCard>
               </div>
-              
-              <!-- 分页控件 -->
               <div class="pagination-container" v-if="apiTotalItems > apiPageSize">
                 <PaginationComponent
                   :current-page="apiCurrentPage"
@@ -579,22 +326,15 @@
       </div>
     </div>
   </div>
-
-
-
-
 </template>
 
-<script setup>
-// 只导入主样式文件，所有组件样式已包含在main.css中
+<script setup lang="ts">
 import '../../assets/styles/main.css';
 import { useDevice } from './Device';
 import PaginationComponent from '../../components/common/data/PaginationComponent.vue';
-import AlgorithmTag from '../../components/algorithm/AlgorithmTag.vue';
+import DeviceCard from './DeviceCard.vue';
 
-// 使用组合式函数获取所有状态和函数（onMounted 已在 useDevice 内部处理）
 const {
-  // 基本状态
   tabs,
   activeTab,
   dropdowns,
@@ -624,33 +364,19 @@ const {
   getDelayClass,
   toggleDeviceSelection,
   resetAllStates,
-
-  // 数据获取
   fetchAllDevices,
-
-  // 编辑设备相关
   openEditModal,
-
-  // 设备操作相关
   deleteDevice,
   testDevice,
   stopTest,
   healthCheckDevice,
-
-  // 扫描设备相关
   scanDevices,
-
-  // 批量操作相关
   batchEnableDevices,
   batchDisableDevices,
   batchDeleteDevices,
   batchHealthCheck,
-
-  // 导入导出相关
   importDevices,
   exportDevices,
-
-  // 播放设备分页
   playbackCurrentPage,
   playbackPageSize,
   playbackTotalItems,
@@ -659,8 +385,6 @@ const {
   handlePlaybackPageSizeChange,
   handlePlaybackPrevPage,
   handlePlaybackNextPage,
-
-  // 测试设备分页
   testCurrentPage,
   testPageSize,
   testTotalItems,
@@ -669,8 +393,6 @@ const {
   handleTestPageSizeChange,
   handleTestPrevPage,
   handleTestNextPage,
-
-  // API设备分页
   apiCurrentPage,
   apiPageSize,
   apiTotalItems,

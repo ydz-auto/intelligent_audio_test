@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import adapter_service_pb2 as adapter__service__pb2
+import adapter_service_pb2 as adapter__service__pb2
 
 GRPC_GENERATED_VERSION = '1.83.0'
 GRPC_VERSION = grpc.__version__

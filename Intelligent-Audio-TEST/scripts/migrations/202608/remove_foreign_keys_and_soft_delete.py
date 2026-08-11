@@ -337,6 +337,7 @@ DELETED_AT_TABLES = [
     'test_case_groups',
     'devices',
     'audios',
+    'audio_tags',
     'audio_annotations',
     'audio_algorithm_relations',
     'apis',
@@ -402,6 +403,7 @@ USER_ID_TABLES = [
     'devices',
     'playback_devices',
     'audios',
+    'audio_tags',
     'audio_annotations',
     'audio_algorithm_relations',
     'apis',
@@ -794,6 +796,9 @@ def step10_drop_unique_on_names(engine, dry_run=False):
                 continue
 
             for cname in constraint_names:
+                if not cname.isidentifier():
+                    print(f"  [SKIP] 非法约束名: {cname}")
+                    continue
                 conn.execute(text(
                     f'ALTER TABLE {table} DROP CONSTRAINT IF EXISTS "{cname}"'
                 ))

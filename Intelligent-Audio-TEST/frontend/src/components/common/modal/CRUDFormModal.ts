@@ -1,7 +1,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 
 import { useFormValidation } from '../../../composables/modal/useFormValidation'
-import { useModalStore } from '../../../store/modalStore'
 import { useDeviceSelection } from '../../../composables/device/useDeviceSelection'
 import { useDeviceScanning } from '../../../composables/device/useDeviceScanning'
 import { devicesApi, splApi } from '../../../utils/api'
@@ -10,7 +9,6 @@ export function useCRUDFormModal(props, emit) {
   const formValues = ref({})
   const submitting = ref(false)
   const uploadedFiles = ref({})
-  const isDraftRestored = ref(false)
   const syncing = ref(false)  // 防止 apiSettings ↔ requiredInputs 双向联动死循环
 
   const dynamicFieldOptions = ref({
@@ -87,15 +85,6 @@ export function useCRUDFormModal(props, emit) {
     fetchAddedPlaybackDevices,
     fetchAddedTestDevices
   } = useDeviceScanning()
-
-  const modalStore = useModalStore()
-
-  const draftId = computed(() => {
-    if (props.mode === 'edit' && props.formData && props.formData.id) {
-      return `${props.entityName}_edit_${props.formData.id}`
-    }
-    return `${props.entityName}_${props.mode}`
-  })
 
   const showDeviceSelector = computed(() => {
     return isPlaybackDeviceForm(props.fields) || isTestDeviceForm(props.fields)
@@ -197,16 +186,8 @@ export function useCRUDFormModal(props, emit) {
   }
 
   const initFormData = async () => {
-    const draft = modalStore.getDraft(draftId.value)
-    if (draft) {
-      formValues.value = { ...draft }
-      isDraftRestored.value = true
-      return
-    }
-
-    isDraftRestored.value = false
     const initialValues = {}
-  
+
     if (!Array.isArray(props.fields)) return
   
     props.fields.forEach(field => {
@@ -585,9 +566,8 @@ export function useCRUDFormModal(props, emit) {
       }
     
       const finalPayload = isMultipart ? formData : submitData
-    
+
       emit('confirm', { data: finalPayload, mode: isEditMode.value ? 'edit' : 'create', isMultipart: isMultipart })
-      modalStore.clearDraft(draftId.value)
     } catch (error) {
       console.error('表单准备提交数据失败:', error)
     } finally {

@@ -1,19 +1,29 @@
 # -*- coding: utf-8 -*-
 """API 执行器 — 编排层，持有并发管理器、任务执行器、结果处理器、会话执行器"""
-import time
-import json
-import os
-from datetime import datetime, timezone, timedelta
+import logging
 
-from shared.models.models import TaskAPI, Audio, TestCase, TaskCase, Task, API
-from shared.models.database import db
-from shared.algorithm.field_mapper import get_field_mapper
-from shared.algorithm.reference_params_generator import ReferenceParamsGenerator
+from shared.utils.dto_utils import dto_to_dict
+from shared.models.database import get_db_session
 from shared.infrastructure.base_executor import BaseExecutor
+from api_test_service.infrastructure.acl import (
+    TaskDataAclRepositoryImpl,
+    TestCaseConfigAclRepositoryImpl,
+    AudioConfigAclRepositoryImpl,
+    AlgorithmQueryAclRepositoryImpl,
+)
+from api_test_service.infrastructure.persistence.models import API
 from api_test_service.core.api_concurrency_manager import APIConcurrencyManager
 from api_test_service.core.api_task_runner import APITaskRunner
 from api_test_service.core.api_result_processor import APIResultProcessor
 from api_test_service.core.api_session_executor import APISessionExecutor
+
+logger = logging.getLogger(__name__)
+
+# 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
+_task_data_acl = TaskDataAclRepositoryImpl()
+_testcase_acl = TestCaseConfigAclRepositoryImpl()
+_audio_acl = AudioConfigAclRepositoryImpl()
+_algo_acl = AlgorithmQueryAclRepositoryImpl()
 
 
 class APIExecutor(BaseExecutor):
@@ -83,51 +93,56 @@ class APIExecutor(BaseExecutor):
                 pass
 
     def _claim_tc_rel_running(self, task_id, tc_rel_id):
-        """抢占 TaskCase 状态为 running，避免重复执行"""
-        local_db_session = db.session()
+        """抢占 TaskCase 状态为 running，避免重复执行
+
+        通过 ACL 仓储查询 TaskCase，检查 execution_status 是否为 pending/queued，
+        若是则通过 update_task_case_status 更新为 running。
+        """
         try:
-            claimed = local_db_session.query(TaskCase).filter(
-                TaskCase.id == tc_rel_id,
-                TaskCase.task_id == task_id,
-                TaskCase.execution_status.in_(['pending', 'queued'])
-            ).update({TaskCase.execution_status: 'running'}, synchronize_session=False)
-            if claimed != 1:
-                local_db_session.rollback()
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            tc_rel = next((tc for tc in tcs if tc.get('id') == tc_rel_id), None)
+            if not tc_rel:
+                self._log(level='DEBUG',
+                          content=f"测试用例 {tc_rel_id} 不存在，跳过",
+                          task_id=task_id)
+                return False
+            if tc_rel.get('execution_status') not in ['pending', 'queued']:
                 self._log(level='DEBUG',
                           content=f"测试用例 {tc_rel_id} 已在执行或已完成，跳过",
                           task_id=task_id)
                 return False
-            local_db_session.commit()
+
+            test_case_id = tc_rel.get('test_case_id')
+            if not test_case_id:
+                self._log(level='WARNING', content=f"TaskCase {tc_rel_id} 无 test_case_id", task_id=task_id)
+                return False
+
+            _task_data_acl.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                execution_status='running',
+            )
             self.execution_engine._emit_progress(task_id, force=True)
             return True
         except Exception as e:
             self._log(level='WARNING', content=f"更新测试用例状态失败: {str(e)}", task_id=task_id)
             return False
-        finally:
-            local_db_session.close()
 
     def _handle_validation_failure(self, task_id, tc_rel_id, data):
-        """验证失败时更新 TaskCase 统计信息（原子刷新，多实例安全）"""
-        from sqlalchemy import text
-        from shared.models.database import _engine_ref
+        """验证失败时更新 TaskCase 统计信息
+
+        通过 ACL 仓储查询 TaskCase 统计 completed/failed 数量，
+        然后触发进度更新（计数刷新由 task_service 端负责）。
+        """
         try:
-            sql = text("""
-                UPDATE test_tasks SET
-                    completed_cases = (
-                        SELECT COUNT(*) FROM task_case_relations
-                        WHERE task_id = :task_id AND status = 'completed'
-                    ),
-                    failed_cases = (
-                        SELECT COUNT(*) FROM task_case_relations
-                        WHERE task_id = :task_id AND status = 'failed'
-                    )
-                WHERE id = :task_id
-            """)
-            with _engine_ref[0].connect() as conn:
-                conn.execute(sql, {'task_id': task_id})
-                conn.commit()
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            completed = sum(1 for tc in tcs if tc.get('status') == 'completed')
+            failed = sum(1 for tc in tcs if tc.get('status') == 'failed')
+            self._log(level='DEBUG',
+                      content=f"任务 {task_id} 统计: completed={completed}, failed={failed}",
+                      task_id=task_id)
         except Exception as e:
-            self._log(level='WARNING', content=f"原子刷新任务统计失败: {str(e)}", task_id=task_id)
+            self._log(level='WARNING', content=f"查询任务统计失败: {str(e)}", task_id=task_id)
         finally:
             self.execution_engine._emit_progress(task_id, force=True)
 
@@ -158,60 +173,73 @@ class APIExecutor(BaseExecutor):
         api_specific_config = data['api_specific_config']
         total_audio_duration = data['total_audio_duration']
 
-        local_db_session = db.session()
+        # 通过 ACL 仓储查询 TaskCase 状态
+        tc_rel = None
         try:
-            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            tc_rel = next((tc for tc in tcs if tc.get('id') == tc_rel_id), None)
             if not tc_rel:
                 self._log(level='ERROR', content=f"找不到 TaskCase: {tc_rel_id}", task_id=task_id)
                 return False
 
-            if tc_rel.execution_status in ['pending', 'queued']:
-                utc_plus_8 = timezone(timedelta(hours=8))
-                tc_rel.execution_status = 'running'
-                if not tc_rel.started_at:
-                    tc_rel.started_at = datetime.now(utc_plus_8)
-                local_db_session.commit()
+            if tc_rel.get('execution_status') in ['pending', 'queued']:
+                _task_data_acl.update_task_case_status(
+                    task_id=task_id,
+                    case_id=str(tc_rel.get('test_case_id', test_case_id)),
+                    execution_status='running',
+                )
                 self.execution_engine._emit_progress(task_id, force=True)
+        except Exception as e:
+            self._log(level='WARNING', content=f"查询/更新 TaskCase 状态失败: {e}", task_id=task_id)
 
-            for api_config in api_configs:
-                self._handle_control(task_id)
-                api_id = api_config.id
+        for api_config in api_configs:
+            self._handle_control(task_id)
+            api_id = api_config.id
 
-                max_process = getattr(api_config, 'default_max_process', 5) or 5
-                if not self._concurrency.acquire(api_id, task_id, tc_rel_id, max_process=max_process):
-                    self._log(level='ERROR', content=f"API {api_id} 执行权获取失败，跳过",
-                              task_id=task_id, api_id=api_id)
-                    continue
+            max_process = getattr(api_config, 'default_max_process', 5) or 5
+            if not self._concurrency.acquire(api_id, task_id, tc_rel_id, max_process=max_process):
+                self._log(level='ERROR', content=f"API {api_id} 执行权获取失败，跳过",
+                          task_id=task_id, api_id=api_id)
+                continue
 
+            try:
+                self._run_single_api(
+                    task_id, tc_rel_id, test_case_id, case_name, algorithm_type,
+                    api_config, api_specific_config, audio,
+                    total_audio_duration, case_config, case_algorithm_params
+                )
+            except Exception as e:
+                import traceback
+                self._log(level='ERROR', category='execution',
+                          content=f"API {api_config.id} 用例 {case_name} 执行失败: {str(e)}\n{traceback.format_exc()}",
+                          task_id=task_id, api_id=api_config.id)
+                # 通过 ACL 仓储更新 TaskCase 为失败状态
                 try:
-                    self._run_single_api(
-                        task_id, tc_rel_id, test_case_id, case_name, algorithm_type,
-                        api_config, api_specific_config, audio,
-                        total_audio_duration, case_config, case_algorithm_params,
-                        local_db_session, tc_rel
-                    )
-                except Exception as e:
-                    import traceback
-                    self._log(level='ERROR', category='execution',
-                              content=f"API {api_config.id} 用例 {case_name} 执行失败: {str(e)}\n{traceback.format_exc()}",
-                              task_id=task_id, api_id=api_config.id)
-                    if tc_rel and tc_rel.execution_status not in ['stopped']:
-                        tc_rel.execution_status = 'failed'
-                    if tc_rel and tc_rel.evaluation_status in ['queued', 'pending']:
-                        tc_rel.evaluation_status = 'completed'
-                        tc_rel.status = 'failed'
-                    local_db_session.commit()
-                finally:
-                    self._concurrency.release(api_id, task_id)
-        finally:
-            local_db_session.close()
+                    tc_status = tc_rel.get('execution_status') if tc_rel else None
+                    if tc_status and tc_status not in ['stopped']:
+                        _task_data_acl.update_task_case_status(
+                            task_id=task_id,
+                            case_id=str(tc_rel.get('test_case_id', test_case_id)),
+                            execution_status='failed',
+                        )
+                    eval_status = tc_rel.get('evaluation_status') if tc_rel else None
+                    if eval_status and eval_status in ['queued', 'pending']:
+                        _task_data_acl.update_task_case_status(
+                            task_id=task_id,
+                            case_id=str(tc_rel.get('test_case_id', test_case_id)),
+                            status='failed',
+                            evaluation_status='completed',
+                        )
+                except Exception as ue:
+                    self._log(level='WARNING', content=f"更新 TaskCase 失败状态失败: {ue}", task_id=task_id)
+            finally:
+                self._concurrency.release(api_id, task_id)
 
         return True
 
     def _run_single_api(self, task_id, tc_rel_id, test_case_id, case_name, algorithm_type,
                         api_config, api_specific_config, audio,
-                        total_audio_duration, case_config, case_algorithm_params,
-                        local_db_session, tc_rel):
+                        total_audio_duration, case_config, case_algorithm_params):
         """执行单个 API 的完整流程：健康检查 -> 创建任务 -> 等待 -> 结果 -> 评估"""
         api_paths, select_base_url, release_base_url = self._task_runner.setup_endpoints(
             task_id, tc_rel_id, case_name, api_config
@@ -302,17 +330,13 @@ class APIExecutor(BaseExecutor):
                 if value is not None:
                     ref_fields[key] = value
 
-        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
         full_case_params = {
             'algorithm_params': case_algorithm_params or {},
             'reference_params': case_config.get('reference_params', {}) if case_config else {},
             'algorithm_type': algorithm_type
         }
-        eval_params = CaseParameterExtractor.get_evaluation_params(
-            case_config=full_case_params,
-            algorithm_result=algo_result_dict if algo_result_dict else {},
-            test_type='api'
-        )
+        all_params = dto_to_dict(_algo_acl.extract_case_all_params(full_case_params)) or {}
+        eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
         for key, value in eval_params.items():
             if value is not None and key not in ref_fields:
                 ref_fields[key] = value.get('text', '') if isinstance(value, dict) else value
@@ -332,12 +356,11 @@ class APIExecutor(BaseExecutor):
 
     def _load_case_config(self, test_case_id):
         """加载用例配置，注入 algorithm_params 和 reference_params"""
-        local_db_session = db.session()
         try:
-            case_obj = local_db_session.get(TestCase, test_case_id)
-            if not case_obj:
+            case_data = dto_to_dict(_testcase_acl.get_test_case_detail(test_case_id)) or {}
+            if not case_data:
                 return {}
-            case_config = case_obj.config or {}
+            case_config = case_data.get('config', {}) or {}
             rounds = case_config.get('rounds', [])
             if rounds and isinstance(rounds[0], dict):
                 first_round = rounds[0]
@@ -347,51 +370,64 @@ class APIExecutor(BaseExecutor):
                     case_config['algorithm_params'] = ap_dict
                 ref_path = first_round.get('reference_params_path')
                 if ref_path:
-                    ref_data = ReferenceParamsGenerator.load_from_file(ref_path)
+                    ref_data = _algo_acl.load_reference_params_file(ref_path)
                     if ref_data:
                         case_config['reference_params'] = ref_data
             return case_config
-        finally:
-            local_db_session.close()
+        except Exception as e:
+            self._log(level='WARNING', content=f"加载用例配置失败: {e}", test_case_id=test_case_id)
+            return {}
 
     def _validate_and_get_data(self, task_id, tc_rel_id):
         """验证并获取执行数据"""
         self._handle_control(task_id)
 
-        local_db_session = db.session()
+        # 通过 ACL 仓储查询 TaskCase
+        tc_rel = None
         try:
-            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
-            if not tc_rel:
-                raise ValueError(f"找不到测试用例关联记录，ID: {tc_rel_id}")
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            tc_rel = next((tc for tc in tcs if tc.get('id') == tc_rel_id), None)
+        except Exception as e:
+            self._log(level='WARNING', content=f"查询 TaskCase 失败: {e}", task_id=task_id)
+        if not tc_rel:
+            raise ValueError(f"找不到测试用例关联记录，ID: {tc_rel_id}")
 
-            task = local_db_session.get(Task, task_id)
-            if not task:
-                raise ValueError(f"找不到任务，ID: {task_id}")
+        # 通过 ACL 仓储查询 Task
+        task = None
+        try:
+            task = dto_to_dict(_task_data_acl.get_task_by_id(task_id)) or {}
+        except Exception as e:
+            self._log(level='WARNING', content=f"查询 Task 失败: {e}", task_id=task_id)
+        if not task:
+            raise ValueError(f"找不到任务，ID: {task_id}")
 
-            case = local_db_session.get(TestCase, tc_rel.test_case_id)
-            if not case:
-                raise ValueError(f"找不到测试用例，ID: {tc_rel.test_case_id}")
+        # 通过 ACL 仓储查询 TestCase 详情
+        tc_rel_test_case_id = tc_rel.get('test_case_id')
+        case = None
+        try:
+            case = dto_to_dict(_testcase_acl.get_test_case_detail(tc_rel_test_case_id)) or {}
+        except Exception as e:
+            self._log(level='WARNING', content=f"查询 TestCase 失败: {e}", task_id=task_id)
+        if not case:
+            raise ValueError(f"找不到测试用例，ID: {tc_rel_test_case_id}")
 
-            self.current_test_case_id = case.id
-            self._thread_ctx.current_test_case_id = case.id
-            self._log('INFO', f"开始执行API用例: {case.name}", task_id)
+        self.current_test_case_id = case.get('id')
+        self._thread_ctx.current_test_case_id = case.get('id')
+        self._log('INFO', f"开始执行API用例: {case.get('name')}", task_id)
 
-            api_configs = self._get_api_configs(local_db_session, task_id)
-            processed_api_configs = self._process_api_configs(api_configs)
+        api_configs = self._get_api_configs(task_id)
+        processed_api_configs = self._process_api_configs(api_configs)
 
-            tc_rel_id_local = tc_rel.id
-            tc_rel_test_case_id = tc_rel.test_case_id
-            test_case_id = case.id
-            case_name = case.name
-            task_type = task.type if task else 'api'
-            case_config = case.config or {}
-            algorithm_type = self._get_algorithm_type(case, case_config)
-        finally:
-            local_db_session.close()
+        tc_rel_id_local = tc_rel.get('id')
+        test_case_id = case.get('id')
+        case_name = case.get('name')
+        task_type = task.get('type') if task else 'api'
+        case_config = case.get('config', {}) or {}
+        algorithm_type = self._get_algorithm_type(case, case_config)
 
         if not processed_api_configs:
             error_msg = "找不到API配置"
-            self._fail_tc_rel(tc_rel_id_local, error_msg)
+            self._fail_tc_rel(tc_rel_id_local, error_msg, task_id=task_id)
             self._log('ERROR', f"API 用例 {case_name} 执行失败: {error_msg}", task_id)
             return False, None
 
@@ -401,45 +437,56 @@ class APIExecutor(BaseExecutor):
         if error_msg:
             return False, None
 
-        local_db_session = db.session()
+        # 重新加载 case_config 以获取 algorithm_params
+        case_config2 = case_config
+        algorithm_params = {}
+        rounds = case_config2.get('rounds', [])
+        if rounds and isinstance(rounds[0], dict):
+            ap_dict = rounds[0].get('algorithm_params', {})
+            if ap_dict and isinstance(ap_dict, dict):
+                algorithm_params = ap_dict
+
+        api_specific_config = case_config2.get('api', {})
+        task_type_val = task.get('type') if task else 'api'
+        if not api_specific_config and task_type_val == 'api':
+            api_specific_config = case_config2
+
+        return True, {
+            'tc_rel_id': tc_rel_id_local,
+            'task_id': task_id,
+            'test_case_id': test_case_id,
+            'case_name': case_name,
+            'algorithm_type': algorithm_type,
+            'api_configs': processed_api_configs,
+            'audio': audio_data,
+            'api_specific_config': api_specific_config,
+            'total_audio_duration': total_audio_duration,
+            'case_algorithm_params': algorithm_params
+        }
+
+    def _get_api_configs(self, task_id):
+        """获取任务关联的所有 API 配置
+
+        通过 gRPC GetTaskApis 获取 task_id 关联的 api_id 列表，
+        再通过本地 DB 查询 API（本服务 PO）配置。
+        """
+        # 通过 ACL 仓储获取 TaskAPI 关联
+        api_ids = []
         try:
-            case_obj = local_db_session.get(TestCase, tc_rel_test_case_id)
-            case_config = case_obj.config or {} if case_obj else {}
+            api_ids = [ta.api_id for ta in _task_data_acl.get_task_apis(task_id) if ta.api_id]
+        except Exception as e:
+            self._log(level='WARNING', content=f"查询 TaskApis 失败: {e}", task_id=task_id)
+            return []
 
-            algorithm_params = {}
-            rounds = case_config.get('rounds', [])
-            if rounds and isinstance(rounds[0], dict):
-                ap_dict = rounds[0].get('algorithm_params', {})
-                if ap_dict and isinstance(ap_dict, dict):
-                    algorithm_params = ap_dict
+        if not api_ids:
+            return []
 
-            api_specific_config = case_config.get('api', {})
-            task_obj = local_db_session.get(Task, task_id)
-            if task_obj and not api_specific_config and task_obj.type == 'api':
-                api_specific_config = case_config
-
-            return True, {
-                'tc_rel_id': tc_rel_id_local,
-                'task_id': task_id,
-                'test_case_id': test_case_id,
-                'case_name': case_name,
-                'algorithm_type': algorithm_type,
-                'api_configs': processed_api_configs,
-                'audio': audio_data,
-                'api_specific_config': api_specific_config,
-                'total_audio_duration': total_audio_duration,
-                'case_algorithm_params': algorithm_params
-            }
+        # 查询本地 API PO
+        local_db_session = get_db_session()
+        try:
+            return local_db_session.query(API).filter(API.id.in_(api_ids)).all()
         finally:
             local_db_session.close()
-
-    def _get_api_configs(self, local_db_session, task_id):
-        """获取任务关联的所有 API 配置"""
-        task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
-        if not task_apis:
-            return []
-        api_ids = [task_api.api_id for task_api in task_apis]
-        return local_db_session.query(API).filter(API.id.in_(api_ids)).all()
 
     def _process_api_configs(self, api_configs):
         """将 API 配置转换为本地对象列表，避免分离对象问题"""
@@ -468,7 +515,11 @@ class APIExecutor(BaseExecutor):
 
     def _get_algorithm_type(self, case, case_config):
         """提取 algorithm_type"""
-        algorithm_type = case.algorithm_type if hasattr(case, 'algorithm_type') and case.algorithm_type else None
+        algorithm_type = None
+        if isinstance(case, dict):
+            algorithm_type = case.get('algorithm_type')
+        else:
+            algorithm_type = getattr(case, 'algorithm_type', None)
         if not algorithm_type:
             algorithm_type = case_config.get('algorithm_type')
         if not algorithm_type:
@@ -476,76 +527,106 @@ class APIExecutor(BaseExecutor):
         return algorithm_type
 
     def _get_audio_data(self, test_case_id, task_type, case_name, task_id, tc_rel_id):
-        """获取音频数据，返回 (audio_data, total_duration, error_msg)"""
-        local_db_session = db.session()
+        """获取音频数据，返回 (audio_data, total_duration, error_msg)
+
+        通过 gRPC 查询 TestCase 配置和 Audio 信息。
+        """
+        # 通过 ACL 仓储查询 TestCase 配置
         try:
-            case = local_db_session.get(TestCase, test_case_id)
+            case = dto_to_dict(_testcase_acl.get_test_case_detail(test_case_id)) or {}
             if not case:
                 error_msg = "找不到测试用例"
                 self._log('ERROR', f"API 用例执行失败: {error_msg}", task_id)
-                self._fail_tc_rel(tc_rel_id, error_msg)
+                self._fail_tc_rel(tc_rel_id, error_msg, task_id=task_id)
                 return None, 0, error_msg
+        except Exception as e:
+            error_msg = f"查询测试用例失败: {e}"
+            self._log('ERROR', f"API 用例执行失败: {error_msg}", task_id)
+            self._fail_tc_rel(tc_rel_id, error_msg, task_id=task_id)
+            return None, 0, error_msg
 
-            config = case.config or {}
-            audios = config.get('audios', [])
-            if not audios:
-                rounds = config.get('rounds', [])
-                for round_item in rounds:
-                    if isinstance(round_item, dict):
-                        round_audios = round_item.get('audios', [])
-                        if isinstance(round_audios, list):
-                            audios.extend(round_audios)
+        config = case.get('config', {}) or {}
+        audios = config.get('audios', [])
+        if not audios:
+            rounds = config.get('rounds', [])
+            for round_item in rounds:
+                if isinstance(round_item, dict):
+                    round_audios = round_item.get('audios', [])
+                    if isinstance(round_audios, list):
+                        audios.extend(round_audios)
 
-            target_audios = [a for a in audios if a.get('audio_id')]
-            expected_test_type = 'API' if task_type == 'api' else 'E2E'
+        target_audios = [a for a in audios if a.get('audio_id')]
+        expected_test_type = 'API' if task_type == 'api' else 'E2E'
 
-            if not target_audios:
-                error_msg = f"测试用例未配置有效的 {expected_test_type} 测试音频"
-                self._log('ERROR', f"{expected_test_type} 用例 {case_name} 执行失败: {error_msg}", task_id)
-                self._fail_tc_rel(tc_rel_id, error_msg)
-                return None, 0, error_msg
+        if not target_audios:
+            error_msg = f"测试用例未配置有效的 {expected_test_type} 测试音频"
+            self._log('ERROR', f"{expected_test_type} 用例 {case_name} 执行失败: {error_msg}", task_id)
+            self._fail_tc_rel(tc_rel_id, error_msg, task_id=task_id)
+            return None, 0, error_msg
 
-            total_audio_duration = 0.0
-            for audio_config in target_audios:
-                audio_id = audio_config.get('audio_id')
-                if audio_id:
-                    audio_obj = local_db_session.get(Audio, audio_id)
-                    if audio_obj:
-                        total_audio_duration += audio_obj.duration
-
-            audio_config = target_audios[0]
+        # 通过 ACL 仓储查询 Audio 信息
+        total_audio_duration = 0.0
+        for audio_config in target_audios:
             audio_id = audio_config.get('audio_id')
-            audio = local_db_session.get(Audio, audio_id) if audio_id else None
+            if audio_id:
+                try:
+                    a_data = dto_to_dict(_audio_acl.get_audio(audio_id)) or {}
+                    total_audio_duration += a_data.get('duration', 0) or 0
+                except Exception as e:
+                    self._log(level='WARNING', content=f"查询 Audio {audio_id} 失败: {e}", task_id=task_id)
 
-            if not audio:
-                error_msg = f"找不到ID为 {audio_id} 的音频文件"
-                self._log('ERROR', f"{expected_test_type} 用例 {case_name} 执行失败: {error_msg}", task_id)
-                self._fail_tc_rel(tc_rel_id, error_msg)
-                return None, 0, error_msg
+        audio_config = target_audios[0]
+        audio_id = audio_config.get('audio_id')
+        audio = None
+        if audio_id:
+            try:
+                audio = dto_to_dict(_audio_acl.get_audio(audio_id)) or {}
+            except Exception as e:
+                self._log(level='WARNING', content=f"查询 Audio {audio_id} 失败: {e}", task_id=task_id)
 
-            audio_data = {
-                'id': audio.id,
-                'name': audio.name,
-                'asr_text': audio.asr_text or "",
-                'file_path': audio.file_path
-            }
-            self._log('DEBUG', f"API用例音频总时长: {total_audio_duration}秒", task_id)
-            return audio_data, total_audio_duration, None
-        finally:
-            local_db_session.close()
+        if not audio:
+            error_msg = f"找不到ID为 {audio_id} 的音频文件"
+            self._log('ERROR', f"{expected_test_type} 用例 {case_name} 执行失败: {error_msg}", task_id)
+            self._fail_tc_rel(tc_rel_id, error_msg, task_id=task_id)
+            return None, 0, error_msg
 
-    def _fail_tc_rel(self, tc_rel_id, error_msg):
-        """将 TaskCase 标记为失败"""
-        utc_plus_8 = timezone(timedelta(hours=8))
-        local_db_session = db.session()
+        audio_data = {
+            'id': audio.get('id'),
+            'name': audio.get('name'),
+            'asr_text': audio.get('asr_text') or "",
+            'file_path': audio.get('file_path')
+        }
+        self._log('DEBUG', f"API用例音频总时长: {total_audio_duration}秒", task_id)
+        return audio_data, total_audio_duration, None
+
+    def _fail_tc_rel(self, tc_rel_id, error_msg, task_id=None):
+        """将 TaskCase 标记为失败
+
+        通过 ACL 仓储查询 TaskCase（需要 task_id）后更新状态。
+        若 task_id 未提供，则仅记录日志。
+        """
+        if not task_id:
+            self._log(level='WARNING', content=f"无法更新 TaskCase {tc_rel_id} 失败状态: 缺少 task_id")
+            return
+
         try:
-            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
-            if tc_rel:
-                tc_rel.status = 'failed'
-                tc_rel.execution_status = 'failed'
-                tc_rel.started_at = datetime.now(utc_plus_8)
-                tc_rel.completed_at = datetime.now(utc_plus_8)
-                tc_rel.error_message = error_msg
-                local_db_session.commit()
-        finally:
-            local_db_session.close()
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            tc_rel = next((tc for tc in tcs if tc.get('id') == tc_rel_id), None)
+            if not tc_rel:
+                self._log(level='WARNING', content=f"找不到 TaskCase: {tc_rel_id}", task_id=task_id)
+                return
+
+            test_case_id = tc_rel.get('test_case_id')
+            if not test_case_id:
+                self._log(level='WARNING', content=f"TaskCase {tc_rel_id} 无 test_case_id", task_id=task_id)
+                return
+
+            _task_data_acl.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                status='failed',
+                execution_status='failed',
+                error_message=error_msg,
+            )
+        except Exception as e:
+            self._log(level='WARNING', content=f"更新 TaskCase {tc_rel_id} 失败状态失败: {e}", task_id=task_id)

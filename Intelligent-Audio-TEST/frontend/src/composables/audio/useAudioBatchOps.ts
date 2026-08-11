@@ -1,7 +1,6 @@
-import { reactive, ref, computed, type Ref } from 'vue';
+import { reactive, ref, type Ref } from 'vue';
 import { audiosApi } from '../../utils/api';
 import { getModalManager } from '../../utils/modalManager';
-import { useModalStore } from '../../store/modalStore';
 import { MODAL_TYPES } from '../../shared/types';
 import type { AudioInfo, APIResponse } from '../../shared/types';
 
@@ -22,7 +21,6 @@ export function useAudioBatchOps(
   onRefresh: () => void
 ) {
   const modalManager = getModalManager();
-  const modalStore = useModalStore();
 
   const showConvertModal = ref(false);
   const showAudioPlayerModal = ref(false);
@@ -48,16 +46,6 @@ export function useAudioBatchOps(
     targetSampleRate: '44100',
     targetChannels: '1',
     targetBitDepth: '16'
-  });
-
-  const showDeleteResultModal = computed({
-    get: () => modalStore.showDeleteResultModal,
-    set: (val) => modalStore.showDeleteResultModal = val
-  });
-
-  const deleteResult = computed({
-    get: () => modalStore.deleteResult,
-    set: (val) => modalStore.deleteResult = { ...modalStore.deleteResult, ...val }
   });
 
   // ========== 批量操作 ==========
@@ -324,14 +312,9 @@ export function useAudioBatchOps(
     }
   }
 
-  function closeDeleteResultModal() {
-    showDeleteResultModal.value = false;
-  }
-
   function closeActiveModal() {
     showConvertModal.value = false;
     showAudioPlayerModal.value = false;
-    showDeleteResultModal.value = false;
     modalManager.closeAll?.();
   }
 
@@ -348,8 +331,6 @@ export function useAudioBatchOps(
     currentPreviewAudioType,
     urlImportData,
     convertAudioInfo,
-    showDeleteResultModal,
-    deleteResult,
     // 方法
     batchDelete,
     batchExport,
@@ -360,7 +341,6 @@ export function useAudioBatchOps(
     editMetadata,
     convertAudio,
     closeModal,
-    closeDeleteResultModal,
     closeActiveModal,
     initModalWatchers,
   };

@@ -1,6 +1,6 @@
 import threading
-from shared.models.models import Task
-from shared.models.database import db
+from task_service.infrastructure.persistence.models import Task
+from shared.models.database import get_db_session
 from shared.utils.config_manager import config_manager
 
 
@@ -68,7 +68,7 @@ class SchedulerMixin:
         - E2E 任务：同时只能运行一个
         - API 任务：可以并发运行，但不能使用相同的 API
         """
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             pending_tasks = local_db_session.query(Task).filter_by(
                 status='pending',
@@ -91,7 +91,7 @@ class SchedulerMixin:
                     if any(t['id'] == task_id for t in self.task_queue):
                         continue
 
-                from shared.models.models import TaskAPI
+                from task_service.infrastructure.persistence.models import TaskAPI
                 task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
                 api_ids = [task_api.api_id for task_api in task_apis]
 

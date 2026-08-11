@@ -4,6 +4,7 @@ import json
 import time
 import threading
 from datetime import datetime, timezone, timedelta
+from api_gateway.application.services.auth.dependencies import require_permission
 
 # 创建 SSE 路由
 router = APIRouter()
@@ -86,7 +87,7 @@ def format_sse(data, event=None, event_id=None):
 
 
 @router.get('/events')
-def stream_events():
+def stream_events(_: None = require_permission('sse:read')):
     """SSE 事件流端点"""
     def generate():
         # 发送缓存中的历史事件

@@ -41,7 +41,7 @@ class ProgressMixin:
         所有需要更新任务统计的地方都应调用此方法，而非直接赋值。
         """
         from sqlalchemy import text
-        from shared.models.database import _engine_ref
+        from shared.models.database import get_engine
         sql = text("""
             UPDATE test_tasks SET
                 completed_cases = (
@@ -55,7 +55,7 @@ class ProgressMixin:
             WHERE id = :task_id
         """)
         try:
-            with _engine_ref[0].connect() as conn:
+            with get_engine().connect() as conn:
                 conn.execute(sql, {'task_id': task_id})
                 conn.commit()
         except Exception as e:

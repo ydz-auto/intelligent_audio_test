@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import task_service_pb2 as task__service__pb2
+import task_service_pb2 as task__service__pb2
 
 GRPC_GENERATED_VERSION = '1.83.0'
 GRPC_VERSION = grpc.__version__
@@ -70,30 +70,20 @@ class ExecutionServiceStub:
                 request_serializer=task__service__pb2.GetTaskStatusRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskStatusResponse.FromString,
                 _registered_method=True)
-        self.Reevaluate = channel.unary_unary(
-                '/task_service.ExecutionService/Reevaluate',
-                request_serializer=task__service__pb2.ReevaluateRequest.SerializeToString,
-                response_deserializer=task__service__pb2.ReevaluateResponse.FromString,
-                _registered_method=True)
-        self.ReevaluateMultiRound = channel.unary_unary(
-                '/task_service.ExecutionService/ReevaluateMultiRound',
-                request_serializer=task__service__pb2.ReevaluateMultiRoundRequest.SerializeToString,
-                response_deserializer=task__service__pb2.ReevaluateMultiRoundResponse.FromString,
-                _registered_method=True)
-        self.ReevaluateSingle = channel.unary_unary(
-                '/task_service.ExecutionService/ReevaluateSingle',
-                request_serializer=task__service__pb2.ReevaluateSingleRequest.SerializeToString,
-                response_deserializer=task__service__pb2.ReevaluateSingleResponse.FromString,
-                _registered_method=True)
         self.GetEngineInfo = channel.unary_unary(
                 '/task_service.ExecutionService/GetEngineInfo',
                 request_serializer=task__service__pb2.GetEngineInfoRequest.SerializeToString,
                 response_deserializer=task__service__pb2.EngineInfoResponse.FromString,
                 _registered_method=True)
-        self.EvaluateCase = channel.unary_unary(
-                '/task_service.ExecutionService/EvaluateCase',
-                request_serializer=task__service__pb2.EvaluateCaseRequest.SerializeToString,
-                response_deserializer=task__service__pb2.EvaluateCaseResponse.FromString,
+        self.NotifyProgress = channel.unary_unary(
+                '/task_service.ExecutionService/NotifyProgress',
+                request_serializer=task__service__pb2.NotifyProgressRequest.SerializeToString,
+                response_deserializer=task__service__pb2.NotifyProgressResponse.FromString,
+                _registered_method=True)
+        self.NotifyCaseCompleted = channel.unary_unary(
+                '/task_service.ExecutionService/NotifyCaseCompleted',
+                request_serializer=task__service__pb2.NotifyCaseCompletedRequest.SerializeToString,
+                response_deserializer=task__service__pb2.NotifyCaseCompletedResponse.FromString,
                 _registered_method=True)
 
 
@@ -150,27 +140,6 @@ class ExecutionServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def Reevaluate(self, request, context):
-        """重新评估（任务级批量重新评估）
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def ReevaluateMultiRound(self, request, context):
-        """多轮用例重新评估
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def ReevaluateSingle(self, request, context):
-        """单轮用例重新评估
-        """
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def GetEngineInfo(self, request, context):
         """获取执行引擎实例信息（如线程池状态）
         """
@@ -178,8 +147,17 @@ class ExecutionServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def EvaluateCase(self, request, context):
-        """评估单个用例结果（供 e2e_test_service / api_test_service 跨服务调用）
+    def NotifyProgress(self, request, context):
+        """通知进度更新（evaluation_service 评估完成后调用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def NotifyCaseCompleted(self, request, context):
+        """通知用例已完成（唤醒等待线程）
+        注：EvaluateCase / Reevaluate / ReevaluateMultiRound / ReevaluateSingle
+        已迁移至 evaluation_service.proto 的 EvaluationService
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -223,30 +201,20 @@ def add_ExecutionServiceServicer_to_server(servicer, server):
                     request_deserializer=task__service__pb2.GetTaskStatusRequest.FromString,
                     response_serializer=task__service__pb2.TaskStatusResponse.SerializeToString,
             ),
-            'Reevaluate': grpc.unary_unary_rpc_method_handler(
-                    servicer.Reevaluate,
-                    request_deserializer=task__service__pb2.ReevaluateRequest.FromString,
-                    response_serializer=task__service__pb2.ReevaluateResponse.SerializeToString,
-            ),
-            'ReevaluateMultiRound': grpc.unary_unary_rpc_method_handler(
-                    servicer.ReevaluateMultiRound,
-                    request_deserializer=task__service__pb2.ReevaluateMultiRoundRequest.FromString,
-                    response_serializer=task__service__pb2.ReevaluateMultiRoundResponse.SerializeToString,
-            ),
-            'ReevaluateSingle': grpc.unary_unary_rpc_method_handler(
-                    servicer.ReevaluateSingle,
-                    request_deserializer=task__service__pb2.ReevaluateSingleRequest.FromString,
-                    response_serializer=task__service__pb2.ReevaluateSingleResponse.SerializeToString,
-            ),
             'GetEngineInfo': grpc.unary_unary_rpc_method_handler(
                     servicer.GetEngineInfo,
                     request_deserializer=task__service__pb2.GetEngineInfoRequest.FromString,
                     response_serializer=task__service__pb2.EngineInfoResponse.SerializeToString,
             ),
-            'EvaluateCase': grpc.unary_unary_rpc_method_handler(
-                    servicer.EvaluateCase,
-                    request_deserializer=task__service__pb2.EvaluateCaseRequest.FromString,
-                    response_serializer=task__service__pb2.EvaluateCaseResponse.SerializeToString,
+            'NotifyProgress': grpc.unary_unary_rpc_method_handler(
+                    servicer.NotifyProgress,
+                    request_deserializer=task__service__pb2.NotifyProgressRequest.FromString,
+                    response_serializer=task__service__pb2.NotifyProgressResponse.SerializeToString,
+            ),
+            'NotifyCaseCompleted': grpc.unary_unary_rpc_method_handler(
+                    servicer.NotifyCaseCompleted,
+                    request_deserializer=task__service__pb2.NotifyCaseCompletedRequest.FromString,
+                    response_serializer=task__service__pb2.NotifyCaseCompletedResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -450,87 +418,6 @@ class ExecutionService:
             _registered_method=True)
 
     @staticmethod
-    def Reevaluate(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/task_service.ExecutionService/Reevaluate',
-            task__service__pb2.ReevaluateRequest.SerializeToString,
-            task__service__pb2.ReevaluateResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def ReevaluateMultiRound(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/task_service.ExecutionService/ReevaluateMultiRound',
-            task__service__pb2.ReevaluateMultiRoundRequest.SerializeToString,
-            task__service__pb2.ReevaluateMultiRoundResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def ReevaluateSingle(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/task_service.ExecutionService/ReevaluateSingle',
-            task__service__pb2.ReevaluateSingleRequest.SerializeToString,
-            task__service__pb2.ReevaluateSingleResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
     def GetEngineInfo(request,
             target,
             options=(),
@@ -558,7 +445,7 @@ class ExecutionService:
             _registered_method=True)
 
     @staticmethod
-    def EvaluateCase(request,
+    def NotifyProgress(request,
             target,
             options=(),
             channel_credentials=None,
@@ -571,9 +458,5065 @@ class ExecutionService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/task_service.ExecutionService/EvaluateCase',
-            task__service__pb2.EvaluateCaseRequest.SerializeToString,
-            task__service__pb2.EvaluateCaseResponse.FromString,
+            '/task_service.ExecutionService/NotifyProgress',
+            task__service__pb2.NotifyProgressRequest.SerializeToString,
+            task__service__pb2.NotifyProgressResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def NotifyCaseCompleted(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.ExecutionService/NotifyCaseCompleted',
+            task__service__pb2.NotifyCaseCompletedRequest.SerializeToString,
+            task__service__pb2.NotifyCaseCompletedResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class TaskConfigServiceStub:
+    """===== 任务配置 CRUD 服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateTaskConfig = channel.unary_unary(
+                '/task_service.TaskConfigService/CreateTaskConfig',
+                request_serializer=task__service__pb2.CreateTaskConfigRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateTaskConfig = channel.unary_unary(
+                '/task_service.TaskConfigService/UpdateTaskConfig',
+                request_serializer=task__service__pb2.UpdateTaskConfigRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteTaskConfig = channel.unary_unary(
+                '/task_service.TaskConfigService/DeleteTaskConfig',
+                request_serializer=task__service__pb2.DeleteTaskConfigRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateTaskCases = channel.unary_unary(
+                '/task_service.TaskConfigService/UpdateTaskCases',
+                request_serializer=task__service__pb2.UpdateTaskCasesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.BatchActionTasks = channel.unary_unary(
+                '/task_service.TaskConfigService/BatchActionTasks',
+                request_serializer=task__service__pb2.BatchActionTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.MergeTasks = channel.unary_unary(
+                '/task_service.TaskConfigService/MergeTasks',
+                request_serializer=task__service__pb2.MergeTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ListTasks = channel.unary_unary(
+                '/task_service.TaskConfigService/ListTasks',
+                request_serializer=task__service__pb2.ListTasksRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTaskDetail = channel.unary_unary(
+                '/task_service.TaskConfigService/GetTaskDetail',
+                request_serializer=task__service__pb2.GetTaskDetailRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTaskProgress = channel.unary_unary(
+                '/task_service.TaskConfigService/GetTaskProgress',
+                request_serializer=task__service__pb2.GetTaskProgressRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTaskStats = channel.unary_unary(
+                '/task_service.TaskConfigService/GetTaskStats',
+                request_serializer=task__service__pb2.GetTaskStatsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetCaseDetail = channel.unary_unary(
+                '/task_service.TaskConfigService/GetCaseDetail',
+                request_serializer=task__service__pb2.GetCaseDetailRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.GetCaseResults = channel.unary_unary(
+                '/task_service.TaskConfigService/GetCaseResults',
+                request_serializer=task__service__pb2.GetCaseResultsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.StartTaskLifecycle = channel.unary_unary(
+                '/task_service.TaskConfigService/StartTaskLifecycle',
+                request_serializer=task__service__pb2.StartTaskLifecycleRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.RetryTaskLifecycle = channel.unary_unary(
+                '/task_service.TaskConfigService/RetryTaskLifecycle',
+                request_serializer=task__service__pb2.RetryTaskLifecycleRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.ControlTaskLifecycle = channel.unary_unary(
+                '/task_service.TaskConfigService/ControlTaskLifecycle',
+                request_serializer=task__service__pb2.ControlTaskLifecycleRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.StopTaskLifecycle = channel.unary_unary(
+                '/task_service.TaskConfigService/StopTaskLifecycle',
+                request_serializer=task__service__pb2.StopTaskLifecycleRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+        self.RextractTaskLifecycle = channel.unary_unary(
+                '/task_service.TaskConfigService/RextractTaskLifecycle',
+                request_serializer=task__service__pb2.RextractTaskLifecycleRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskConfigResponse.FromString,
+                _registered_method=True)
+
+
+class TaskConfigServiceServicer:
+    """===== 任务配置 CRUD 服务 =====
+    """
+
+    def CreateTaskConfig(self, request, context):
+        """---- 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTaskConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteTaskConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTaskCases(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchActionTasks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def MergeTasks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListTasks(self, request, context):
+        """---- 读操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskDetail(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskProgress(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCaseDetail(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCaseResults(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartTaskLifecycle(self, request, context):
+        """---- 生命周期操作（内部调用 execution_engine）----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RetryTaskLifecycle(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ControlTaskLifecycle(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopTaskLifecycle(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RextractTaskLifecycle(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_TaskConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateTaskConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateTaskConfig,
+                    request_deserializer=task__service__pb2.CreateTaskConfigRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'UpdateTaskConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTaskConfig,
+                    request_deserializer=task__service__pb2.UpdateTaskConfigRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'DeleteTaskConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteTaskConfig,
+                    request_deserializer=task__service__pb2.DeleteTaskConfigRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'UpdateTaskCases': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTaskCases,
+                    request_deserializer=task__service__pb2.UpdateTaskCasesRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'BatchActionTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchActionTasks,
+                    request_deserializer=task__service__pb2.BatchActionTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'MergeTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.MergeTasks,
+                    request_deserializer=task__service__pb2.MergeTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ListTasks': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListTasks,
+                    request_deserializer=task__service__pb2.ListTasksRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetTaskDetail': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskDetail,
+                    request_deserializer=task__service__pb2.GetTaskDetailRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetTaskProgress': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskProgress,
+                    request_deserializer=task__service__pb2.GetTaskProgressRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetTaskStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskStats,
+                    request_deserializer=task__service__pb2.GetTaskStatsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetCaseDetail': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCaseDetail,
+                    request_deserializer=task__service__pb2.GetCaseDetailRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'GetCaseResults': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCaseResults,
+                    request_deserializer=task__service__pb2.GetCaseResultsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'StartTaskLifecycle': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartTaskLifecycle,
+                    request_deserializer=task__service__pb2.StartTaskLifecycleRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RetryTaskLifecycle': grpc.unary_unary_rpc_method_handler(
+                    servicer.RetryTaskLifecycle,
+                    request_deserializer=task__service__pb2.RetryTaskLifecycleRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'ControlTaskLifecycle': grpc.unary_unary_rpc_method_handler(
+                    servicer.ControlTaskLifecycle,
+                    request_deserializer=task__service__pb2.ControlTaskLifecycleRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'StopTaskLifecycle': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopTaskLifecycle,
+                    request_deserializer=task__service__pb2.StopTaskLifecycleRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+            'RextractTaskLifecycle': grpc.unary_unary_rpc_method_handler(
+                    servicer.RextractTaskLifecycle,
+                    request_deserializer=task__service__pb2.RextractTaskLifecycleRequest.FromString,
+                    response_serializer=task__service__pb2.TaskConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.TaskConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.TaskConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class TaskConfigService:
+    """===== 任务配置 CRUD 服务 =====
+    """
+
+    @staticmethod
+    def CreateTaskConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/CreateTaskConfig',
+            task__service__pb2.CreateTaskConfigRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTaskConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/UpdateTaskConfig',
+            task__service__pb2.UpdateTaskConfigRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteTaskConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/DeleteTaskConfig',
+            task__service__pb2.DeleteTaskConfigRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTaskCases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/UpdateTaskCases',
+            task__service__pb2.UpdateTaskCasesRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchActionTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/BatchActionTasks',
+            task__service__pb2.BatchActionTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def MergeTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/MergeTasks',
+            task__service__pb2.MergeTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListTasks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/ListTasks',
+            task__service__pb2.ListTasksRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskDetail(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/GetTaskDetail',
+            task__service__pb2.GetTaskDetailRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskProgress(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/GetTaskProgress',
+            task__service__pb2.GetTaskProgressRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/GetTaskStats',
+            task__service__pb2.GetTaskStatsRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCaseDetail(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/GetCaseDetail',
+            task__service__pb2.GetCaseDetailRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCaseResults(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/GetCaseResults',
+            task__service__pb2.GetCaseResultsRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartTaskLifecycle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/StartTaskLifecycle',
+            task__service__pb2.StartTaskLifecycleRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RetryTaskLifecycle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/RetryTaskLifecycle',
+            task__service__pb2.RetryTaskLifecycleRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ControlTaskLifecycle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/ControlTaskLifecycle',
+            task__service__pb2.ControlTaskLifecycleRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopTaskLifecycle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/StopTaskLifecycle',
+            task__service__pb2.StopTaskLifecycleRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RextractTaskLifecycle(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskConfigService/RextractTaskLifecycle',
+            task__service__pb2.RextractTaskLifecycleRequest.SerializeToString,
+            task__service__pb2.TaskConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class TestCaseConfigServiceStub:
+    """===== 测试用例配置 CRUD 服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateTestCaseConfig = channel.unary_unary(
+                '/task_service.TestCaseConfigService/CreateTestCaseConfig',
+                request_serializer=task__service__pb2.CreateTestCaseConfigRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateTestCaseConfig = channel.unary_unary(
+                '/task_service.TestCaseConfigService/UpdateTestCaseConfig',
+                request_serializer=task__service__pb2.UpdateTestCaseConfigRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteTestCaseConfig = channel.unary_unary(
+                '/task_service.TestCaseConfigService/DeleteTestCaseConfig',
+                request_serializer=task__service__pb2.DeleteTestCaseConfigRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.CopyTestCaseConfig = channel.unary_unary(
+                '/task_service.TestCaseConfigService/CopyTestCaseConfig',
+                request_serializer=task__service__pb2.CopyTestCaseConfigRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.BatchActionTestCases = channel.unary_unary(
+                '/task_service.TestCaseConfigService/BatchActionTestCases',
+                request_serializer=task__service__pb2.BatchActionTestCasesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateTestCaseRefParams = channel.unary_unary(
+                '/task_service.TestCaseConfigService/UpdateTestCaseRefParams',
+                request_serializer=task__service__pb2.UpdateTestCaseRefParamsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.ListTestCases = channel.unary_unary(
+                '/task_service.TestCaseConfigService/ListTestCases',
+                request_serializer=task__service__pb2.ListTestCasesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseDetail = channel.unary_unary(
+                '/task_service.TestCaseConfigService/GetTestCaseDetail',
+                request_serializer=task__service__pb2.GetTestCaseDetailRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseStats = channel.unary_unary(
+                '/task_service.TestCaseConfigService/GetTestCaseStats',
+                request_serializer=task__service__pb2.GetTestCaseStatsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseTags = channel.unary_unary(
+                '/task_service.TestCaseConfigService/GetTestCaseTags',
+                request_serializer=task__service__pb2.GetTestCaseTagsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseRefParams = channel.unary_unary(
+                '/task_service.TestCaseConfigService/GetTestCaseRefParams',
+                request_serializer=task__service__pb2.GetTestCaseRefParamsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
+
+
+class TestCaseConfigServiceServicer:
+    """===== 测试用例配置 CRUD 服务 =====
+    """
+
+    def CreateTestCaseConfig(self, request, context):
+        """---- 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTestCaseConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteTestCaseConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CopyTestCaseConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchActionTestCases(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTestCaseRefParams(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListTestCases(self, request, context):
+        """---- 读操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseDetail(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseTags(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseRefParams(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_TestCaseConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateTestCaseConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateTestCaseConfig,
+                    request_deserializer=task__service__pb2.CreateTestCaseConfigRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'UpdateTestCaseConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTestCaseConfig,
+                    request_deserializer=task__service__pb2.UpdateTestCaseConfigRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'DeleteTestCaseConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteTestCaseConfig,
+                    request_deserializer=task__service__pb2.DeleteTestCaseConfigRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'CopyTestCaseConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.CopyTestCaseConfig,
+                    request_deserializer=task__service__pb2.CopyTestCaseConfigRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'BatchActionTestCases': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchActionTestCases,
+                    request_deserializer=task__service__pb2.BatchActionTestCasesRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'UpdateTestCaseRefParams': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTestCaseRefParams,
+                    request_deserializer=task__service__pb2.UpdateTestCaseRefParamsRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'ListTestCases': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListTestCases,
+                    request_deserializer=task__service__pb2.ListTestCasesRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'GetTestCaseDetail': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseDetail,
+                    request_deserializer=task__service__pb2.GetTestCaseDetailRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'GetTestCaseStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseStats,
+                    request_deserializer=task__service__pb2.GetTestCaseStatsRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'GetTestCaseTags': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseTags,
+                    request_deserializer=task__service__pb2.GetTestCaseTagsRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'GetTestCaseRefParams': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseRefParams,
+                    request_deserializer=task__service__pb2.GetTestCaseRefParamsRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.TestCaseConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.TestCaseConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class TestCaseConfigService:
+    """===== 测试用例配置 CRUD 服务 =====
+    """
+
+    @staticmethod
+    def CreateTestCaseConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/CreateTestCaseConfig',
+            task__service__pb2.CreateTestCaseConfigRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTestCaseConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/UpdateTestCaseConfig',
+            task__service__pb2.UpdateTestCaseConfigRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteTestCaseConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/DeleteTestCaseConfig',
+            task__service__pb2.DeleteTestCaseConfigRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CopyTestCaseConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/CopyTestCaseConfig',
+            task__service__pb2.CopyTestCaseConfigRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchActionTestCases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/BatchActionTestCases',
+            task__service__pb2.BatchActionTestCasesRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTestCaseRefParams(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/UpdateTestCaseRefParams',
+            task__service__pb2.UpdateTestCaseRefParamsRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListTestCases(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/ListTestCases',
+            task__service__pb2.ListTestCasesRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseDetail(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/GetTestCaseDetail',
+            task__service__pb2.GetTestCaseDetailRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/GetTestCaseStats',
+            task__service__pb2.GetTestCaseStatsRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseTags(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/GetTestCaseTags',
+            task__service__pb2.GetTestCaseTagsRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseRefParams(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/GetTestCaseRefParams',
+            task__service__pb2.GetTestCaseRefParamsRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class TagConfigServiceStub:
+    """===== 标签配置 CRUD 服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateTagCategory = channel.unary_unary(
+                '/task_service.TagConfigService/CreateTagCategory',
+                request_serializer=task__service__pb2.CreateTagCategoryRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateTagCategory = channel.unary_unary(
+                '/task_service.TagConfigService/UpdateTagCategory',
+                request_serializer=task__service__pb2.UpdateTagCategoryRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteTagCategory = channel.unary_unary(
+                '/task_service.TagConfigService/DeleteTagCategory',
+                request_serializer=task__service__pb2.DeleteTagCategoryRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.CreateTag = channel.unary_unary(
+                '/task_service.TagConfigService/CreateTag',
+                request_serializer=task__service__pb2.CreateTagRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateTag = channel.unary_unary(
+                '/task_service.TagConfigService/UpdateTag',
+                request_serializer=task__service__pb2.UpdateTagRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteTag = channel.unary_unary(
+                '/task_service.TagConfigService/DeleteTag',
+                request_serializer=task__service__pb2.DeleteTagRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.BatchUpdateTagCategory = channel.unary_unary(
+                '/task_service.TagConfigService/BatchUpdateTagCategory',
+                request_serializer=task__service__pb2.BatchUpdateTagCategoryRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.ListTagCategories = channel.unary_unary(
+                '/task_service.TagConfigService/ListTagCategories',
+                request_serializer=task__service__pb2.ListTagCategoriesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTagCategory = channel.unary_unary(
+                '/task_service.TagConfigService/GetTagCategory',
+                request_serializer=task__service__pb2.GetTagCategoryRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.ListTags = channel.unary_unary(
+                '/task_service.TagConfigService/ListTags',
+                request_serializer=task__service__pb2.ListTagsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.ListTagNames = channel.unary_unary(
+                '/task_service.TagConfigService/ListTagNames',
+                request_serializer=task__service__pb2.ListTagNamesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTag = channel.unary_unary(
+                '/task_service.TagConfigService/GetTag',
+                request_serializer=task__service__pb2.GetTagRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+        self.GetTagsByCategory = channel.unary_unary(
+                '/task_service.TagConfigService/GetTagsByCategory',
+                request_serializer=task__service__pb2.GetTagsByCategoryRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TagConfigResponse.FromString,
+                _registered_method=True)
+
+
+class TagConfigServiceServicer:
+    """===== 标签配置 CRUD 服务 =====
+    """
+
+    def CreateTagCategory(self, request, context):
+        """---- TagCategory 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTagCategory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteTagCategory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateTag(self, request, context):
+        """---- Tag 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTag(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteTag(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchUpdateTagCategory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListTagCategories(self, request, context):
+        """---- 读操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTagCategory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListTags(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListTagNames(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTag(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTagsByCategory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_TagConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateTagCategory': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateTagCategory,
+                    request_deserializer=task__service__pb2.CreateTagCategoryRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'UpdateTagCategory': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTagCategory,
+                    request_deserializer=task__service__pb2.UpdateTagCategoryRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'DeleteTagCategory': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteTagCategory,
+                    request_deserializer=task__service__pb2.DeleteTagCategoryRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'CreateTag': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateTag,
+                    request_deserializer=task__service__pb2.CreateTagRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'UpdateTag': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTag,
+                    request_deserializer=task__service__pb2.UpdateTagRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'DeleteTag': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteTag,
+                    request_deserializer=task__service__pb2.DeleteTagRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'BatchUpdateTagCategory': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchUpdateTagCategory,
+                    request_deserializer=task__service__pb2.BatchUpdateTagCategoryRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'ListTagCategories': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListTagCategories,
+                    request_deserializer=task__service__pb2.ListTagCategoriesRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'GetTagCategory': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTagCategory,
+                    request_deserializer=task__service__pb2.GetTagCategoryRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'ListTags': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListTags,
+                    request_deserializer=task__service__pb2.ListTagsRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'ListTagNames': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListTagNames,
+                    request_deserializer=task__service__pb2.ListTagNamesRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'GetTag': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTag,
+                    request_deserializer=task__service__pb2.GetTagRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+            'GetTagsByCategory': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTagsByCategory,
+                    request_deserializer=task__service__pb2.GetTagsByCategoryRequest.FromString,
+                    response_serializer=task__service__pb2.TagConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.TagConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.TagConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class TagConfigService:
+    """===== 标签配置 CRUD 服务 =====
+    """
+
+    @staticmethod
+    def CreateTagCategory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/CreateTagCategory',
+            task__service__pb2.CreateTagCategoryRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTagCategory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/UpdateTagCategory',
+            task__service__pb2.UpdateTagCategoryRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteTagCategory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/DeleteTagCategory',
+            task__service__pb2.DeleteTagCategoryRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateTag(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/CreateTag',
+            task__service__pb2.CreateTagRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTag(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/UpdateTag',
+            task__service__pb2.UpdateTagRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteTag(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/DeleteTag',
+            task__service__pb2.DeleteTagRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchUpdateTagCategory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/BatchUpdateTagCategory',
+            task__service__pb2.BatchUpdateTagCategoryRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListTagCategories(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/ListTagCategories',
+            task__service__pb2.ListTagCategoriesRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTagCategory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/GetTagCategory',
+            task__service__pb2.GetTagCategoryRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListTags(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/ListTags',
+            task__service__pb2.ListTagsRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListTagNames(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/ListTagNames',
+            task__service__pb2.ListTagNamesRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTag(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/GetTag',
+            task__service__pb2.GetTagRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTagsByCategory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TagConfigService/GetTagsByCategory',
+            task__service__pb2.GetTagsByCategoryRequest.SerializeToString,
+            task__service__pb2.TagConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class AlgorithmConfigServiceStub:
+    """===== 算法配置 CRUD 服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateAlgorithm = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/CreateAlgorithm',
+                request_serializer=task__service__pb2.CreateAlgorithmRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateAlgorithm = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/UpdateAlgorithm',
+                request_serializer=task__service__pb2.UpdateAlgorithmRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteAlgorithm = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/DeleteAlgorithm',
+                request_serializer=task__service__pb2.DeleteAlgorithmRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.CreateAlgorithmGroup = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/CreateAlgorithmGroup',
+                request_serializer=task__service__pb2.CreateAlgorithmGroupRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateAlgorithmGroup = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/UpdateAlgorithmGroup',
+                request_serializer=task__service__pb2.UpdateAlgorithmGroupRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteAlgorithmGroup = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/DeleteAlgorithmGroup',
+                request_serializer=task__service__pb2.DeleteAlgorithmGroupRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.CreateParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/CreateParam',
+                request_serializer=task__service__pb2.CreateParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/UpdateParam',
+                request_serializer=task__service__pb2.UpdateParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/DeleteParam',
+                request_serializer=task__service__pb2.DeleteParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.CreateCaseParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/CreateCaseParam',
+                request_serializer=task__service__pb2.CreateCaseParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateCaseParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/UpdateCaseParam',
+                request_serializer=task__service__pb2.UpdateCaseParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteCaseParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/DeleteCaseParam',
+                request_serializer=task__service__pb2.DeleteCaseParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.CreateReferenceParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/CreateReferenceParam',
+                request_serializer=task__service__pb2.CreateReferenceParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateReferenceParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/UpdateReferenceParam',
+                request_serializer=task__service__pb2.UpdateReferenceParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteReferenceParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/DeleteReferenceParam',
+                request_serializer=task__service__pb2.DeleteReferenceParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.CreateMapping = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/CreateMapping',
+                request_serializer=task__service__pb2.CreateMappingRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateMapping = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/UpdateMapping',
+                request_serializer=task__service__pb2.UpdateMappingRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteMapping = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/DeleteMapping',
+                request_serializer=task__service__pb2.DeleteMappingRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.AssociateDimensions = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/AssociateDimensions',
+                request_serializer=task__service__pb2.AssociateDimensionsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.CreateDimensionRelation = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/CreateDimensionRelation',
+                request_serializer=task__service__pb2.CreateDimensionRelationRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateDimensionRelation = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/UpdateDimensionRelation',
+                request_serializer=task__service__pb2.UpdateDimensionRelationRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteDimensionRelation = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/DeleteDimensionRelation',
+                request_serializer=task__service__pb2.DeleteDimensionRelationRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ImportAlgorithms = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ImportAlgorithms',
+                request_serializer=task__service__pb2.ImportAlgorithmsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.BulkDeleteAlgorithms = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/BulkDeleteAlgorithms',
+                request_serializer=task__service__pb2.BulkDeleteAlgorithmsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ExtractParams = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ExtractParams',
+                request_serializer=task__service__pb2.ExtractParamsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ReloadAlgorithmConfig = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ReloadAlgorithmConfig',
+                request_serializer=task__service__pb2.ReloadAlgorithmConfigRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ListAlgorithms = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ListAlgorithms',
+                request_serializer=task__service__pb2.ListAlgorithmsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAlgorithm = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetAlgorithm',
+                request_serializer=task__service__pb2.GetAlgorithmRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAlgorithmOptions = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetAlgorithmOptions',
+                request_serializer=task__service__pb2.GetAlgorithmOptionsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ListAlgorithmGroups = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ListAlgorithmGroups',
+                request_serializer=task__service__pb2.ListAlgorithmGroupsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAlgorithmGroup = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetAlgorithmGroup',
+                request_serializer=task__service__pb2.GetAlgorithmGroupRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ListParams = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ListParams',
+                request_serializer=task__service__pb2.ListParamsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.GetParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetParam',
+                request_serializer=task__service__pb2.GetParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ListCaseParams = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ListCaseParams',
+                request_serializer=task__service__pb2.ListCaseParamsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.GetCaseParam = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetCaseParam',
+                request_serializer=task__service__pb2.GetCaseParamRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ListReferenceParams = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ListReferenceParams',
+                request_serializer=task__service__pb2.ListReferenceParamsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.ListMappings = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/ListMappings',
+                request_serializer=task__service__pb2.ListMappingsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.GetFormSchema = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetFormSchema',
+                request_serializer=task__service__pb2.GetFormSchemaRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAlgorithmDimensions = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetAlgorithmDimensions',
+                request_serializer=task__service__pb2.GetAlgorithmDimensionsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+        self.GetDimensionParams = channel.unary_unary(
+                '/task_service.AlgorithmConfigService/GetDimensionParams',
+                request_serializer=task__service__pb2.GetDimensionParamsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.AlgorithmConfigResponse.FromString,
+                _registered_method=True)
+
+
+class AlgorithmConfigServiceServicer:
+    """===== 算法配置 CRUD 服务 =====
+    """
+
+    def CreateAlgorithm(self, request, context):
+        """---- 算法定义 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateAlgorithm(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteAlgorithm(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateAlgorithmGroup(self, request, context):
+        """---- 算法分组 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateAlgorithmGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteAlgorithmGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateParam(self, request, context):
+        """---- 参数(device/api) 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateCaseParam(self, request, context):
+        """---- 用例专属参数 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateCaseParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteCaseParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateReferenceParam(self, request, context):
+        """---- 参考参数 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateReferenceParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteReferenceParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateMapping(self, request, context):
+        """---- 参数映射 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateMapping(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteMapping(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AssociateDimensions(self, request, context):
+        """---- 维度关联 写操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateDimensionRelation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateDimensionRelation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteDimensionRelation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ImportAlgorithms(self, request, context):
+        """---- 批量操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BulkDeleteAlgorithms(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ExtractParams(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReloadAlgorithmConfig(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAlgorithms(self, request, context):
+        """---- 读操作 ----
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAlgorithm(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAlgorithmOptions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAlgorithmGroups(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAlgorithmGroup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListParams(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListCaseParams(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCaseParam(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListReferenceParams(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListMappings(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetFormSchema(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAlgorithmDimensions(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDimensionParams(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_AlgorithmConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateAlgorithm': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateAlgorithm,
+                    request_deserializer=task__service__pb2.CreateAlgorithmRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'UpdateAlgorithm': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAlgorithm,
+                    request_deserializer=task__service__pb2.UpdateAlgorithmRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'DeleteAlgorithm': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteAlgorithm,
+                    request_deserializer=task__service__pb2.DeleteAlgorithmRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'CreateAlgorithmGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateAlgorithmGroup,
+                    request_deserializer=task__service__pb2.CreateAlgorithmGroupRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'UpdateAlgorithmGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAlgorithmGroup,
+                    request_deserializer=task__service__pb2.UpdateAlgorithmGroupRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'DeleteAlgorithmGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteAlgorithmGroup,
+                    request_deserializer=task__service__pb2.DeleteAlgorithmGroupRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'CreateParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateParam,
+                    request_deserializer=task__service__pb2.CreateParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'UpdateParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateParam,
+                    request_deserializer=task__service__pb2.UpdateParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'DeleteParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteParam,
+                    request_deserializer=task__service__pb2.DeleteParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'CreateCaseParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateCaseParam,
+                    request_deserializer=task__service__pb2.CreateCaseParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'UpdateCaseParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateCaseParam,
+                    request_deserializer=task__service__pb2.UpdateCaseParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'DeleteCaseParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteCaseParam,
+                    request_deserializer=task__service__pb2.DeleteCaseParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'CreateReferenceParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateReferenceParam,
+                    request_deserializer=task__service__pb2.CreateReferenceParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'UpdateReferenceParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateReferenceParam,
+                    request_deserializer=task__service__pb2.UpdateReferenceParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'DeleteReferenceParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteReferenceParam,
+                    request_deserializer=task__service__pb2.DeleteReferenceParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'CreateMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateMapping,
+                    request_deserializer=task__service__pb2.CreateMappingRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'UpdateMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateMapping,
+                    request_deserializer=task__service__pb2.UpdateMappingRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'DeleteMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteMapping,
+                    request_deserializer=task__service__pb2.DeleteMappingRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'AssociateDimensions': grpc.unary_unary_rpc_method_handler(
+                    servicer.AssociateDimensions,
+                    request_deserializer=task__service__pb2.AssociateDimensionsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'CreateDimensionRelation': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateDimensionRelation,
+                    request_deserializer=task__service__pb2.CreateDimensionRelationRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'UpdateDimensionRelation': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateDimensionRelation,
+                    request_deserializer=task__service__pb2.UpdateDimensionRelationRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'DeleteDimensionRelation': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteDimensionRelation,
+                    request_deserializer=task__service__pb2.DeleteDimensionRelationRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ImportAlgorithms': grpc.unary_unary_rpc_method_handler(
+                    servicer.ImportAlgorithms,
+                    request_deserializer=task__service__pb2.ImportAlgorithmsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'BulkDeleteAlgorithms': grpc.unary_unary_rpc_method_handler(
+                    servicer.BulkDeleteAlgorithms,
+                    request_deserializer=task__service__pb2.BulkDeleteAlgorithmsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ExtractParams': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExtractParams,
+                    request_deserializer=task__service__pb2.ExtractParamsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ReloadAlgorithmConfig': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReloadAlgorithmConfig,
+                    request_deserializer=task__service__pb2.ReloadAlgorithmConfigRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ListAlgorithms': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAlgorithms,
+                    request_deserializer=task__service__pb2.ListAlgorithmsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetAlgorithm': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAlgorithm,
+                    request_deserializer=task__service__pb2.GetAlgorithmRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetAlgorithmOptions': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAlgorithmOptions,
+                    request_deserializer=task__service__pb2.GetAlgorithmOptionsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ListAlgorithmGroups': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAlgorithmGroups,
+                    request_deserializer=task__service__pb2.ListAlgorithmGroupsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetAlgorithmGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAlgorithmGroup,
+                    request_deserializer=task__service__pb2.GetAlgorithmGroupRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ListParams': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListParams,
+                    request_deserializer=task__service__pb2.ListParamsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetParam,
+                    request_deserializer=task__service__pb2.GetParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ListCaseParams': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCaseParams,
+                    request_deserializer=task__service__pb2.ListCaseParamsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetCaseParam': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCaseParam,
+                    request_deserializer=task__service__pb2.GetCaseParamRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ListReferenceParams': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListReferenceParams,
+                    request_deserializer=task__service__pb2.ListReferenceParamsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'ListMappings': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListMappings,
+                    request_deserializer=task__service__pb2.ListMappingsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetFormSchema': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetFormSchema,
+                    request_deserializer=task__service__pb2.GetFormSchemaRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetAlgorithmDimensions': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAlgorithmDimensions,
+                    request_deserializer=task__service__pb2.GetAlgorithmDimensionsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+            'GetDimensionParams': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDimensionParams,
+                    request_deserializer=task__service__pb2.GetDimensionParamsRequest.FromString,
+                    response_serializer=task__service__pb2.AlgorithmConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.AlgorithmConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.AlgorithmConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class AlgorithmConfigService:
+    """===== 算法配置 CRUD 服务 =====
+    """
+
+    @staticmethod
+    def CreateAlgorithm(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/CreateAlgorithm',
+            task__service__pb2.CreateAlgorithmRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateAlgorithm(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/UpdateAlgorithm',
+            task__service__pb2.UpdateAlgorithmRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteAlgorithm(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/DeleteAlgorithm',
+            task__service__pb2.DeleteAlgorithmRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateAlgorithmGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/CreateAlgorithmGroup',
+            task__service__pb2.CreateAlgorithmGroupRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateAlgorithmGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/UpdateAlgorithmGroup',
+            task__service__pb2.UpdateAlgorithmGroupRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteAlgorithmGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/DeleteAlgorithmGroup',
+            task__service__pb2.DeleteAlgorithmGroupRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/CreateParam',
+            task__service__pb2.CreateParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/UpdateParam',
+            task__service__pb2.UpdateParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/DeleteParam',
+            task__service__pb2.DeleteParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateCaseParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/CreateCaseParam',
+            task__service__pb2.CreateCaseParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateCaseParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/UpdateCaseParam',
+            task__service__pb2.UpdateCaseParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteCaseParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/DeleteCaseParam',
+            task__service__pb2.DeleteCaseParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateReferenceParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/CreateReferenceParam',
+            task__service__pb2.CreateReferenceParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateReferenceParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/UpdateReferenceParam',
+            task__service__pb2.UpdateReferenceParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteReferenceParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/DeleteReferenceParam',
+            task__service__pb2.DeleteReferenceParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/CreateMapping',
+            task__service__pb2.CreateMappingRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/UpdateMapping',
+            task__service__pb2.UpdateMappingRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/DeleteMapping',
+            task__service__pb2.DeleteMappingRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AssociateDimensions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/AssociateDimensions',
+            task__service__pb2.AssociateDimensionsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateDimensionRelation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/CreateDimensionRelation',
+            task__service__pb2.CreateDimensionRelationRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateDimensionRelation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/UpdateDimensionRelation',
+            task__service__pb2.UpdateDimensionRelationRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteDimensionRelation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/DeleteDimensionRelation',
+            task__service__pb2.DeleteDimensionRelationRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ImportAlgorithms(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ImportAlgorithms',
+            task__service__pb2.ImportAlgorithmsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BulkDeleteAlgorithms(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/BulkDeleteAlgorithms',
+            task__service__pb2.BulkDeleteAlgorithmsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ExtractParams(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ExtractParams',
+            task__service__pb2.ExtractParamsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReloadAlgorithmConfig(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ReloadAlgorithmConfig',
+            task__service__pb2.ReloadAlgorithmConfigRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAlgorithms(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ListAlgorithms',
+            task__service__pb2.ListAlgorithmsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAlgorithm(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetAlgorithm',
+            task__service__pb2.GetAlgorithmRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAlgorithmOptions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetAlgorithmOptions',
+            task__service__pb2.GetAlgorithmOptionsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAlgorithmGroups(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ListAlgorithmGroups',
+            task__service__pb2.ListAlgorithmGroupsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAlgorithmGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetAlgorithmGroup',
+            task__service__pb2.GetAlgorithmGroupRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListParams(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ListParams',
+            task__service__pb2.ListParamsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetParam',
+            task__service__pb2.GetParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCaseParams(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ListCaseParams',
+            task__service__pb2.ListCaseParamsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCaseParam(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetCaseParam',
+            task__service__pb2.GetCaseParamRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListReferenceParams(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ListReferenceParams',
+            task__service__pb2.ListReferenceParamsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListMappings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/ListMappings',
+            task__service__pb2.ListMappingsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetFormSchema(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetFormSchema',
+            task__service__pb2.GetFormSchemaRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAlgorithmDimensions(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetAlgorithmDimensions',
+            task__service__pb2.GetAlgorithmDimensionsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDimensionParams(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.AlgorithmConfigService/GetDimensionParams',
+            task__service__pb2.GetDimensionParamsRequest.SerializeToString,
+            task__service__pb2.AlgorithmConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class TaskDataServiceStub:
+    """注：EvaluationConfigService（Dimension/Category CRUD）已迁移至 evaluation_service.proto
+
+    ===== 任务数据查询服务（P1.5 新增，供 evaluation_service / api_test_service / e2e_test_service 跨服务读 task_service 数据）=====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetTestResultById = channel.unary_unary(
+                '/task_service.TaskDataService/GetTestResultById',
+                request_serializer=task__service__pb2.GetTestResultByIdRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTaskCaseByIds = channel.unary_unary(
+                '/task_service.TaskDataService/GetTaskCaseByIds',
+                request_serializer=task__service__pb2.GetTaskCaseByIdsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTaskById = channel.unary_unary(
+                '/task_service.TaskDataService/GetTaskById',
+                request_serializer=task__service__pb2.GetTaskByIdRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTaskDevices = channel.unary_unary(
+                '/task_service.TaskDataService/GetTaskDevices',
+                request_serializer=task__service__pb2.GetTaskDevicesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTaskApis = channel.unary_unary(
+                '/task_service.TaskDataService/GetTaskApis',
+                request_serializer=task__service__pb2.GetTaskApisRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.SubmitResult = channel.unary_unary(
+                '/task_service.TaskDataService/SubmitResult',
+                request_serializer=task__service__pb2.SubmitResultRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.UpdateTaskCaseStatus = channel.unary_unary(
+                '/task_service.TaskDataService/UpdateTaskCaseStatus',
+                request_serializer=task__service__pb2.UpdateTaskCaseStatusRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.UpdateTestResultAlgorithmResult = channel.unary_unary(
+                '/task_service.TaskDataService/UpdateTestResultAlgorithmResult',
+                request_serializer=task__service__pb2.UpdateTestResultAlgorithmResultRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTestResultsByTaskAndCase = channel.unary_unary(
+                '/task_service.TaskDataService/GetTestResultsByTaskAndCase',
+                request_serializer=task__service__pb2.GetTestResultsByTaskAndCaseRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.UpdateTestResultStatus = channel.unary_unary(
+                '/task_service.TaskDataService/UpdateTestResultStatus',
+                request_serializer=task__service__pb2.UpdateTestResultStatusRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.UpdateTaskStatus = channel.unary_unary(
+                '/task_service.TaskDataService/UpdateTaskStatus',
+                request_serializer=task__service__pb2.UpdateTaskStatusRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTaskMergeRelations = channel.unary_unary(
+                '/task_service.TaskDataService/GetTaskMergeRelations',
+                request_serializer=task__service__pb2.GetTaskMergeRelationsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.ListLogs = channel.unary_unary(
+                '/task_service.TaskDataService/ListLogs',
+                request_serializer=task__service__pb2.ListLogsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.BatchCreateLogs = channel.unary_unary(
+                '/task_service.TaskDataService/BatchCreateLogs',
+                request_serializer=task__service__pb2.BatchCreateLogsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetLogStats = channel.unary_unary(
+                '/task_service.TaskDataService/GetLogStats',
+                request_serializer=task__service__pb2.GetLogStatsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.ListLogsAfterId = channel.unary_unary(
+                '/task_service.TaskDataService/ListLogsAfterId',
+                request_serializer=task__service__pb2.ListLogsAfterIdRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetLogsForExport = channel.unary_unary(
+                '/task_service.TaskDataService/GetLogsForExport',
+                request_serializer=task__service__pb2.GetLogsForExportRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetLogCount = channel.unary_unary(
+                '/task_service.TaskDataService/GetLogCount',
+                request_serializer=task__service__pb2.GetLogCountRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.UpdateLogsMark = channel.unary_unary(
+                '/task_service.TaskDataService/UpdateLogsMark',
+                request_serializer=task__service__pb2.UpdateLogsMarkRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.ClearLogs = channel.unary_unary(
+                '/task_service.TaskDataService/ClearLogs',
+                request_serializer=task__service__pb2.ClearLogsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.ArchiveLogs = channel.unary_unary(
+                '/task_service.TaskDataService/ArchiveLogs',
+                request_serializer=task__service__pb2.ArchiveLogsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.ListTestCaseGroups = channel.unary_unary(
+                '/task_service.TaskDataService/ListTestCaseGroups',
+                request_serializer=task__service__pb2.ListTestCaseGroupsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseGroupsByIds = channel.unary_unary(
+                '/task_service.TaskDataService/GetTestCaseGroupsByIds',
+                request_serializer=task__service__pb2.GetTestCaseGroupsByIdsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseGroupsByNames = channel.unary_unary(
+                '/task_service.TaskDataService/GetTestCaseGroupsByNames',
+                request_serializer=task__service__pb2.GetTestCaseGroupsByNamesRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseGroupById = channel.unary_unary(
+                '/task_service.TaskDataService/GetTestCaseGroupById',
+                request_serializer=task__service__pb2.GetTestCaseGroupByIdRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseGroupByName = channel.unary_unary(
+                '/task_service.TaskDataService/GetTestCaseGroupByName',
+                request_serializer=task__service__pb2.GetTestCaseGroupByNameRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.CreateTestCaseGroup = channel.unary_unary(
+                '/task_service.TaskDataService/CreateTestCaseGroup',
+                request_serializer=task__service__pb2.CreateTestCaseGroupRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.UpdateTestCaseGroup = channel.unary_unary(
+                '/task_service.TaskDataService/UpdateTestCaseGroup',
+                request_serializer=task__service__pb2.UpdateTestCaseGroupRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.DeleteTestCaseGroup = channel.unary_unary(
+                '/task_service.TaskDataService/DeleteTestCaseGroup',
+                request_serializer=task__service__pb2.DeleteTestCaseGroupRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTaskStats = channel.unary_unary(
+                '/task_service.TaskDataService/GetTaskStats',
+                request_serializer=task__service__pb2.TaskAggStatsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+        self.GetTestCaseStats = channel.unary_unary(
+                '/task_service.TaskDataService/GetTestCaseStats',
+                request_serializer=task__service__pb2.TestCaseAggStatsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
+
+
+class TaskDataServiceServicer:
+    """注：EvaluationConfigService（Dimension/Category CRUD）已迁移至 evaluation_service.proto
+
+    ===== 任务数据查询服务（P1.5 新增，供 evaluation_service / api_test_service / e2e_test_service 跨服务读 task_service 数据）=====
+    """
+
+    def GetTestResultById(self, request, context):
+        """按 ID 读取单个 TestResult（归属 task_service，其他服务禁止直连 DB 查此表）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskCaseByIds(self, request, context):
+        """按 task_id + case_ids 批量读取 TaskCase
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskById(self, request, context):
+        """按 task_id 读取 Task 详情
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskDevices(self, request, context):
+        """按 task_id 读取关联设备
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskApis(self, request, context):
+        """按 task_id 读取关联 API
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SubmitResult(self, request, context):
+        """写入测试结果（api_test_service / e2e_test_service / evaluation_service 执行完成后调用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTaskCaseStatus(self, request, context):
+        """更新 TaskCase 状态（evaluation_service 评估完成后调用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTestResultAlgorithmResult(self, request, context):
+        """更新 TestResult 的 algorithm_result（evaluation_service 多轮聚合后调用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestResultsByTaskAndCase(self, request, context):
+        """按 task_id + test_case_id 批量读取 TestResult
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTestResultStatus(self, request, context):
+        """更新 TestResult 的 execution_status（evaluation_service 标记完成时调用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTaskStatus(self, request, context):
+        """更新 Task 的 status（evaluation_service 重新评估流转时调用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskMergeRelations(self, request, context):
+        """查询 TaskMergeRelation（api_gateway 报告对比用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListLogs(self, request, context):
+        """查询 Log 列表（api_gateway 日志用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchCreateLogs(self, request, context):
+        """批量写入日志（shared/utils/log_handler 后台 worker 用，替代直连 DB）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetLogStats(self, request, context):
+        """查询日志统计（group_by level + count）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListLogsAfterId(self, request, context):
+        """增量查询日志（id > last_id，返回 max_id）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetLogsForExport(self, request, context):
+        """按 id 列表/条件查询日志（导出用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetLogCount(self, request, context):
+        """查询日志总数（含按日期范围）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateLogsMark(self, request, context):
+        """批量更新日志标记
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ClearLogs(self, request, context):
+        """批量清除日志（按日期/标记）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ArchiveLogs(self, request, context):
+        """归档日志（按天数，dry_run 预检）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListTestCaseGroups(self, request, context):
+        """查询 TestCaseGroup 列表（api_gateway 分组管理用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseGroupsByIds(self, request, context):
+        """按 ID 列表批量查询 TestCaseGroup（导入导出用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseGroupsByNames(self, request, context):
+        """按名称列表批量查询 TestCaseGroup（导入导出用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseGroupById(self, request, context):
+        """按 ID 查询单个 TestCaseGroup
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseGroupByName(self, request, context):
+        """按名称查询单个 TestCaseGroup（导入时查重用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateTestCaseGroup(self, request, context):
+        """创建 TestCaseGroup（导入时新建分组用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTestCaseGroup(self, request, context):
+        """更新 TestCaseGroup（名称/描述/算法类型）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteTestCaseGroup(self, request, context):
+        """软删除 TestCaseGroup（含 cascade 选项）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTaskStats(self, request, context):
+        """聚合统计（供 stats_cache / home_service 用）— count/group_by
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetTestCaseStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_TaskDataServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetTestResultById': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestResultById,
+                    request_deserializer=task__service__pb2.GetTestResultByIdRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTaskCaseByIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskCaseByIds,
+                    request_deserializer=task__service__pb2.GetTaskCaseByIdsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTaskById': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskById,
+                    request_deserializer=task__service__pb2.GetTaskByIdRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTaskDevices': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskDevices,
+                    request_deserializer=task__service__pb2.GetTaskDevicesRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTaskApis': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskApis,
+                    request_deserializer=task__service__pb2.GetTaskApisRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'SubmitResult': grpc.unary_unary_rpc_method_handler(
+                    servicer.SubmitResult,
+                    request_deserializer=task__service__pb2.SubmitResultRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'UpdateTaskCaseStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTaskCaseStatus,
+                    request_deserializer=task__service__pb2.UpdateTaskCaseStatusRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'UpdateTestResultAlgorithmResult': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTestResultAlgorithmResult,
+                    request_deserializer=task__service__pb2.UpdateTestResultAlgorithmResultRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTestResultsByTaskAndCase': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestResultsByTaskAndCase,
+                    request_deserializer=task__service__pb2.GetTestResultsByTaskAndCaseRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'UpdateTestResultStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTestResultStatus,
+                    request_deserializer=task__service__pb2.UpdateTestResultStatusRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'UpdateTaskStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTaskStatus,
+                    request_deserializer=task__service__pb2.UpdateTaskStatusRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTaskMergeRelations': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskMergeRelations,
+                    request_deserializer=task__service__pb2.GetTaskMergeRelationsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'ListLogs': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListLogs,
+                    request_deserializer=task__service__pb2.ListLogsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'BatchCreateLogs': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchCreateLogs,
+                    request_deserializer=task__service__pb2.BatchCreateLogsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetLogStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLogStats,
+                    request_deserializer=task__service__pb2.GetLogStatsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'ListLogsAfterId': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListLogsAfterId,
+                    request_deserializer=task__service__pb2.ListLogsAfterIdRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetLogsForExport': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLogsForExport,
+                    request_deserializer=task__service__pb2.GetLogsForExportRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetLogCount': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetLogCount,
+                    request_deserializer=task__service__pb2.GetLogCountRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'UpdateLogsMark': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateLogsMark,
+                    request_deserializer=task__service__pb2.UpdateLogsMarkRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'ClearLogs': grpc.unary_unary_rpc_method_handler(
+                    servicer.ClearLogs,
+                    request_deserializer=task__service__pb2.ClearLogsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'ArchiveLogs': grpc.unary_unary_rpc_method_handler(
+                    servicer.ArchiveLogs,
+                    request_deserializer=task__service__pb2.ArchiveLogsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'ListTestCaseGroups': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListTestCaseGroups,
+                    request_deserializer=task__service__pb2.ListTestCaseGroupsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTestCaseGroupsByIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseGroupsByIds,
+                    request_deserializer=task__service__pb2.GetTestCaseGroupsByIdsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTestCaseGroupsByNames': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseGroupsByNames,
+                    request_deserializer=task__service__pb2.GetTestCaseGroupsByNamesRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTestCaseGroupById': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseGroupById,
+                    request_deserializer=task__service__pb2.GetTestCaseGroupByIdRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTestCaseGroupByName': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseGroupByName,
+                    request_deserializer=task__service__pb2.GetTestCaseGroupByNameRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'CreateTestCaseGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateTestCaseGroup,
+                    request_deserializer=task__service__pb2.CreateTestCaseGroupRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'UpdateTestCaseGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTestCaseGroup,
+                    request_deserializer=task__service__pb2.UpdateTestCaseGroupRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'DeleteTestCaseGroup': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteTestCaseGroup,
+                    request_deserializer=task__service__pb2.DeleteTestCaseGroupRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTaskStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTaskStats,
+                    request_deserializer=task__service__pb2.TaskAggStatsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'GetTestCaseStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTestCaseStats,
+                    request_deserializer=task__service__pb2.TestCaseAggStatsRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'task_service.TaskDataService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('task_service.TaskDataService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class TaskDataService:
+    """注：EvaluationConfigService（Dimension/Category CRUD）已迁移至 evaluation_service.proto
+
+    ===== 任务数据查询服务（P1.5 新增，供 evaluation_service / api_test_service / e2e_test_service 跨服务读 task_service 数据）=====
+    """
+
+    @staticmethod
+    def GetTestResultById(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTestResultById',
+            task__service__pb2.GetTestResultByIdRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskCaseByIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTaskCaseByIds',
+            task__service__pb2.GetTaskCaseByIdsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskById(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTaskById',
+            task__service__pb2.GetTaskByIdRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskDevices(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTaskDevices',
+            task__service__pb2.GetTaskDevicesRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskApis(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTaskApis',
+            task__service__pb2.GetTaskApisRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SubmitResult(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/SubmitResult',
+            task__service__pb2.SubmitResultRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTaskCaseStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/UpdateTaskCaseStatus',
+            task__service__pb2.UpdateTaskCaseStatusRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTestResultAlgorithmResult(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/UpdateTestResultAlgorithmResult',
+            task__service__pb2.UpdateTestResultAlgorithmResultRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestResultsByTaskAndCase(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTestResultsByTaskAndCase',
+            task__service__pb2.GetTestResultsByTaskAndCaseRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTestResultStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/UpdateTestResultStatus',
+            task__service__pb2.UpdateTestResultStatusRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTaskStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/UpdateTaskStatus',
+            task__service__pb2.UpdateTaskStatusRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskMergeRelations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTaskMergeRelations',
+            task__service__pb2.GetTaskMergeRelationsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListLogs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/ListLogs',
+            task__service__pb2.ListLogsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchCreateLogs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/BatchCreateLogs',
+            task__service__pb2.BatchCreateLogsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetLogStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetLogStats',
+            task__service__pb2.GetLogStatsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListLogsAfterId(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/ListLogsAfterId',
+            task__service__pb2.ListLogsAfterIdRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetLogsForExport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetLogsForExport',
+            task__service__pb2.GetLogsForExportRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetLogCount(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetLogCount',
+            task__service__pb2.GetLogCountRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateLogsMark(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/UpdateLogsMark',
+            task__service__pb2.UpdateLogsMarkRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ClearLogs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/ClearLogs',
+            task__service__pb2.ClearLogsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ArchiveLogs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/ArchiveLogs',
+            task__service__pb2.ArchiveLogsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListTestCaseGroups(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/ListTestCaseGroups',
+            task__service__pb2.ListTestCaseGroupsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseGroupsByIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTestCaseGroupsByIds',
+            task__service__pb2.GetTestCaseGroupsByIdsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseGroupsByNames(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTestCaseGroupsByNames',
+            task__service__pb2.GetTestCaseGroupsByNamesRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseGroupById(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTestCaseGroupById',
+            task__service__pb2.GetTestCaseGroupByIdRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseGroupByName(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTestCaseGroupByName',
+            task__service__pb2.GetTestCaseGroupByNameRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CreateTestCaseGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/CreateTestCaseGroup',
+            task__service__pb2.CreateTestCaseGroupRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTestCaseGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/UpdateTestCaseGroup',
+            task__service__pb2.UpdateTestCaseGroupRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteTestCaseGroup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/DeleteTestCaseGroup',
+            task__service__pb2.DeleteTestCaseGroupRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTaskStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTaskStats',
+            task__service__pb2.TaskAggStatsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetTestCaseStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/GetTestCaseStats',
+            task__service__pb2.TestCaseAggStatsRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
             options,
             channel_credentials,
             insecure,

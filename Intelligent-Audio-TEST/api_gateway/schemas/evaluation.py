@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 from pydantic import Field, field_validator, AliasChoices
 
-from shared.schemas.base import APIModel
+from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 

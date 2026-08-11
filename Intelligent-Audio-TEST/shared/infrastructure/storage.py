@@ -376,3 +376,22 @@ class Storage:
 
 # 模块级单例
 storage = Storage()
+
+
+# ==================== 模块级便捷函数 ====================
+# 供各服务调用，提供 OSS 存储读写能力。
+
+def storage_save_bytes(data: bytes, bucket: str, key: str,
+                      content_type: str = 'application/octet-stream') -> str:
+    """保存字节数据到存储，返回带 scheme 前缀的 path"""
+    return storage.save_bytes(data, bucket, key, content_type=content_type)
+
+
+def storage_load_bytes(path: str) -> bytes:
+    """从存储加载字节数据"""
+    return storage.load_bytes(path)
+
+
+def storage_exists(path: str) -> bool:
+    """检查存储对象是否存在"""
+    return storage.exists(path)

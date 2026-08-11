@@ -55,24 +55,31 @@ async def lifespan(app: FastAPI):
     execution_engine._init_scheduler()
     logger.info("任务调度器初始化完成")
 
-    # 初始化评估服务
-    from task_service.evaluation.evaluation_service import evaluation_service
-    logger.info("评估服务初始化完成")
+    # 注：评估服务已迁移至 evaluation_service 微服务，通过 gRPC 调用
+    logger.info("评估服务已迁移至 evaluation_service（gRPC 调用）")
 
     # 服务注册
     registry = RedisServiceRegistry()
     registry.register('task_service', Config.SERVICE_HOST, Config.PORT)
 
     # 启动 gRPC server
-    from task_service.grpc.server import start_grpc_server
+    from task_service.interfaces.grpc.server import start_grpc_server
     try:
         _grpc_server = start_grpc_server(port=Config.GRPC_PORT)
         logger.info("gRPC server started on port %s", Config.GRPC_PORT)
     except Exception as e:
         logger.warning("gRPC server failed to start: %s", e)
 
+    # 启动软删除硬清理守护线程（60天后物理删除逻辑删除记录，只清理本服务 owned 表）
+    from task_service.infrastructure.persistence.soft_delete_cleaner import get_cleaner as get_soft_delete_cleaner
+    _soft_delete_cleaner = get_soft_delete_cleaner()
+    _soft_delete_cleaner.start()
+
     logger.info("task_service FastAPI app started")
     yield
+
+    # 停止软删除清理线程
+    _soft_delete_cleaner.stop()
 
     # 关闭 gRPC server
     if _grpc_server is not None:

@@ -12,6 +12,22 @@ service APITestService {
   rpc StopAPITest(StopAPITestRequest) returns (StopAPITestResponse);
   // 获取 API 测试状态
   rpc GetAPITestStatus(GetAPITestStatusRequest) returns (APITestStatusResponse);
+
+  // ===== API 配置 CRUD =====
+  // 创建 API 配置
+  rpc CreateAPIConfig(CreateAPIConfigRequest) returns (CreateAPIConfigResponse);
+  // 更新 API 配置
+  rpc UpdateAPIConfig(UpdateAPIConfigRequest) returns (UpdateAPIConfigResponse);
+  // 删除 API 配置（软删除）
+  rpc DeleteAPIConfig(DeleteAPIConfigRequest) returns (DeleteAPIConfigResponse);
+  // 分页查询 API 列表
+  rpc ListAPIConfigs(ListAPIConfigsRequest) returns (ListAPIConfigsResponse);
+  // 查询单个 API 详情
+  rpc GetAPIConfig(GetAPIConfigRequest) returns (GetAPIConfigResponse);
+  // 测试 API 连接（含 WebSocket/HTTP 健康检查）
+  rpc TestAPIConnection(TestAPIConnectionRequest) returns (TestAPIConnectionResponse);
+  // 停止 API 测试连接
+  rpc StopAPITestConfig(StopAPITestConfigRequest) returns (StopAPITestConfigResponse);
 }
 
 // ==================== APITestService Messages ====================
@@ -55,4 +71,81 @@ message APITestStatusResponse {
   bool success = 1;
   string message = 2;
   string data = 3;  // JSON 序列化的 API 测试状态
+}
+
+// ==================== API 配置 CRUD Messages ====================
+
+message CreateAPIConfigRequest {
+  string data = 1;  // JSON 序列化的创建参数
+}
+
+message CreateAPIConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdateAPIConfigRequest {
+  int32 api_id = 1;
+  string data = 2;  // JSON 序列化的更新参数
+}
+
+message UpdateAPIConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeleteAPIConfigRequest {
+  int32 api_id = 1;
+}
+
+message DeleteAPIConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListAPIConfigsRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string status = 4;
+  string algorithm_type = 5;
+}
+
+message ListAPIConfigsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetAPIConfigRequest {
+  int32 api_id = 1;
+}
+
+message GetAPIConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message TestAPIConnectionRequest {
+  int32 api_id = 1;
+}
+
+message TestAPIConnectionResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopAPITestConfigRequest {
+  int32 api_id = 1;
+}
+
+message StopAPITestConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
 }

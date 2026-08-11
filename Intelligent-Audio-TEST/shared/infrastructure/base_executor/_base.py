@@ -7,9 +7,10 @@ BaseExecutor — 执行器基类（共享内核 / Shared Kernel）
 
 迁移说明：
 - 原直接调用 `from task_service.evaluation.evaluation_service import evaluation_service`
-  改为通过 gRPC 调用 task_service 的 ExecutionService.EvaluateCase。
+  改为通过 gRPC 调用 evaluation_service 的 EvaluationService.EvaluateCase
+  （`submit_evaluate_case` 位于 shared.clients.grpc_clients）。
   `_evaluate_result` 不再直接调用 evaluation_service，而是委托给
-  `_submit_evaluation_grpc`（位于 shared.clients.grpc_clients）。
+  `submit_evaluate_case`。
 
 重构说明（拆分）：
 - 原 base_executor.py 拆分为多个 mixin 模块，按职责分组：

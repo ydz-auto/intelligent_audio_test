@@ -1,0 +1,320 @@
+syntax = "proto3";
+package audio_service;
+option py_generic_services = true;
+
+// ===== 音频服务 =====
+service AudioService {
+  // 播放音频
+  rpc PlayAudio(PlayAudioRequest) returns (PlayAudioResponse);
+  // 停止播放
+  rpc StopAudio(StopAudioRequest) returns (StopAudioResponse);
+  // 获取播放状态
+  rpc GetPlayStatus(GetPlayStatusRequest) returns (GetPlayStatusResponse);
+  // 获取音频文件信息
+  rpc GetAudioInfo(GetAudioInfoRequest) returns (AudioInfoResponse);
+  // 声压级测量
+  rpc MeasureSPL(MeasureSPLRequest) returns (SPLResponse);
+  // 开始SPL测量
+  rpc StartSPL(StartSPLRequest) returns (StartSPLResponse);
+  // 停止SPL测量
+  rpc StopSPL(StopSPLRequest) returns (StopSPLResponse);
+  // 扫描所有物理输出设备
+  rpc GetPhysicalDevices(GetPhysicalDevicesRequest) returns (GetPhysicalDevicesResponse);
+  // 根据唯一标识获取设备索引
+  rpc GetDeviceIndex(GetDeviceIndexRequest) returns (GetDeviceIndexResponse);
+  // 按模式停止音频播放
+  rpc StopAudioByPattern(StopAudioByPatternRequest) returns (StopAudioByPatternResponse);
+}
+
+// ===== 播放编排服务 =====
+service PlaybackService {
+  // 开始播放编排
+  rpc StartPlayback(StartPlaybackRequest) returns (StartPlaybackResponse);
+  // 停止播放编排
+  rpc StopPlayback(StopPlaybackRequest) returns (StopPlaybackResponse);
+}
+
+// ===== 音频配置 CRUD 服务 =====
+service AudioConfigService {
+  rpc UpdateAudioMetadata(UpdateAudioMetadataRequest) returns (AudioConfigResponse);
+  rpc BatchUpdateAnnotations(BatchUpdateAnnotationsRequest) returns (AudioConfigResponse);
+  rpc BatchActionAudios(BatchActionAudiosRequest) returns (AudioConfigResponse);
+  rpc DeleteAudio(DeleteAudioRequest) returns (AudioConfigResponse);
+  rpc UpdateAudioAlgorithms(UpdateAudioAlgorithmsRequest) returns (AudioConfigResponse);
+  rpc BatchUpdateAudioAlgorithms(BatchUpdateAudioAlgorithmsRequest) returns (AudioConfigResponse);
+  rpc GetAllAudioTags(GetAllAudioTagsRequest) returns (AudioConfigResponse);
+  rpc ListAudios(ListAudiosRequest) returns (AudioConfigResponse);
+  rpc GetAudio(GetAudioRequest) returns (AudioConfigResponse);
+  rpc GetAudiosByIds(GetAudiosByIdsRequest) returns (AudioConfigResponse);
+  rpc GetAudioByMD5(GetAudioByMD5Request) returns (AudioConfigResponse);
+  rpc GetAllAudioIds(GetAllAudioIdsRequest) returns (AudioConfigResponse);
+  rpc StreamAudio(StreamAudioRequest) returns (AudioConfigResponse);
+  rpc StreamAudioByPath(StreamAudioByPathRequest) returns (AudioConfigResponse);
+  rpc GetAudioAlgorithms(GetAudioAlgorithmsRequest) returns (AudioConfigResponse);
+  rpc GetAudioFolderTree(GetAudioFolderTreeRequest) returns (AudioConfigResponse);
+  rpc PresignUpload(PresignUploadRequest) returns (AudioConfigResponse);
+  rpc PresignPart(PresignPartRequest) returns (AudioConfigResponse);
+  rpc CompleteDirectUpload(CompleteDirectUploadRequest) returns (AudioConfigResponse);
+  rpc InitUploadTask(InitUploadTaskRequest) returns (AudioConfigResponse);
+  rpc RegisterUploadFile(RegisterUploadFileRequest) returns (AudioConfigResponse);
+  rpc UploadChunk(UploadChunkRequest) returns (AudioConfigResponse);
+  rpc MergeChunks(MergeChunksRequest) returns (AudioConfigResponse);
+  rpc GetUploadProgress(GetUploadProgressRequest) returns (AudioConfigResponse);
+  rpc UrlImport(UrlImportRequest) returns (AudioConfigResponse);
+  rpc ConvertAudio(ConvertAudioRequest) returns (AudioConfigResponse);
+  rpc PreviewAudio(PreviewAudioRequest) returns (AudioConfigResponse);
+  rpc StopPreviewAudio(StopPreviewAudioRequest) returns (AudioConfigResponse);
+}
+
+// ==================== AudioService Messages ====================
+
+message PlayAudioRequest {
+  string task_id = 1;
+  string audio_file_paths = 2;  // JSON 序列化的音频文件路径列表
+  string play_config = 3;      // JSON 序列化的播放配置
+}
+
+message PlayAudioResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的播放结果
+}
+
+message StopAudioRequest {
+  string task_id = 1;
+}
+
+message StopAudioResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetPlayStatusRequest {
+  string task_id = 1;
+}
+
+message GetPlayStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的播放状态
+}
+
+message GetAudioInfoRequest {
+  string task_id = 1;
+  string audio_file_path = 2;
+}
+
+message AudioInfoResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的音频文件信息
+}
+
+message MeasureSPLRequest {
+  string task_id = 1;
+  string measure_config = 2;  // JSON 序列化的测量配置
+}
+
+message SPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的声压级测量结果
+}
+
+message StartSPLRequest {
+  string task_id = 1;
+  string spl_config = 2;  // JSON 序列化的 SPL 配置
+}
+
+message StartSPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopSPLRequest {
+  string task_id = 1;
+}
+
+message StopSPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetPhysicalDevicesRequest {
+}
+
+message GetPhysicalDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的设备列表
+}
+
+message GetDeviceIndexRequest {
+  string unique_id = 1;
+}
+
+message GetDeviceIndexResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {"device_index": int}
+}
+
+message StopAudioByPatternRequest {
+  string task_id_pattern = 1;
+  string player_type_pattern = 2;
+}
+
+message StopAudioByPatternResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== PlaybackService Messages ====================
+
+message StartPlaybackRequest {
+  string task_id = 1;
+  string playback_config = 2;  // JSON 序列化的播放编排配置
+}
+
+message StartPlaybackResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopPlaybackRequest {
+  string task_id = 1;
+}
+
+message StopPlaybackResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== AudioConfigService Messages ====================
+
+message AudioConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+}
+
+message UpdateAudioMetadataRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 更新字段
+}
+
+message BatchUpdateAnnotationsRequest {
+  string data = 1;  // JSON: 批量标注更新参数
+}
+
+message BatchActionAudiosRequest {
+  string data = 1;  // JSON: 批量操作参数
+}
+
+message DeleteAudioRequest {
+  int32 audio_id = 1;
+}
+
+message UpdateAudioAlgorithmsRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 算法关联参数
+}
+
+message BatchUpdateAudioAlgorithmsRequest {
+  string data = 1;  // JSON: 批量算法关联参数
+}
+
+message GetAllAudioTagsRequest {
+}
+
+message ListAudiosRequest {
+  string data = 1;  // JSON: 查询参数
+}
+
+message GetAudioRequest {
+  int32 audio_id = 1;
+}
+
+message GetAudiosByIdsRequest {
+  string data = 1;  // JSON: {"ids": [int]}
+}
+
+message GetAudioByMD5Request {
+  string data = 1;  // JSON: {"md5_list": [str]}
+}
+
+message GetAllAudioIdsRequest {
+  string data = 1;  // JSON: 查询参数
+}
+
+message StreamAudioRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 额外参数（task_type 等）
+}
+
+message StreamAudioByPathRequest {
+  string data = 1;  // JSON: {"path": str}
+}
+
+message GetAudioAlgorithmsRequest {
+  int32 audio_id = 1;
+}
+
+message GetAudioFolderTreeRequest {
+  string data = 1;  // JSON: 查询参数
+}
+
+message PresignUploadRequest {
+  string data = 1;  // JSON: 预签名上传参数
+}
+
+message PresignPartRequest {
+  string data = 1;  // JSON: {"upload_id": str, "part_number": int, "oss_key": str, "category": str}
+}
+
+message CompleteDirectUploadRequest {
+  string data = 1;  // JSON: 直传完成参数
+}
+
+message InitUploadTaskRequest {
+}
+
+message RegisterUploadFileRequest {
+  string data = 1;  // JSON: 注册文件参数
+}
+
+message UploadChunkRequest {
+  string data = 1;  // JSON: 分片信息 + base64 编码的分片内容
+}
+
+message MergeChunksRequest {
+  string data = 1;  // JSON: 合并参数
+}
+
+message GetUploadProgressRequest {
+  string data = 1;  // JSON: {"task_id": str}
+}
+
+message UrlImportRequest {
+  string data = 1;  // JSON: URL 导入参数
+}
+
+message ConvertAudioRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 转换参数
+}
+
+message PreviewAudioRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 预览参数
+}
+
+message StopPreviewAudioRequest {
+  int32 audio_id = 1;
+}

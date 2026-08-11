@@ -1,0 +1,47 @@
+syntax = "proto3";
+package e2e_test_service;
+option py_generic_services = true;
+
+// ===== E2E 执行服务 =====
+service ExecutionService {
+  // 启动 E2E 任务（执行单个 E2E 用例）
+  rpc StartE2ETask(StartE2ETaskRequest) returns (StartE2ETaskResponse);
+  // 停止 E2E 任务
+  rpc StopE2ETask(StopE2ETaskRequest) returns (StopE2ETaskResponse);
+  // 获取 E2E 任务状态
+  rpc GetE2ETaskStatus(GetE2ETaskStatusRequest) returns (GetE2ETaskStatusResponse);
+}
+
+// ==================== ExecutionService Messages ====================
+
+message StartE2ETaskRequest {
+  string task_id = 1;
+  string tc_rel_id = 2;  // 任务用例关联ID
+  string e2e_config = 3;  // JSON 序列化的 E2E 配置（预留）
+}
+
+message StartE2ETaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的执行结果
+}
+
+message StopE2ETaskRequest {
+  string task_id = 1;
+}
+
+message StopE2ETaskResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetE2ETaskStatusRequest {
+  string task_id = 1;
+}
+
+message GetE2ETaskStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的任务状态
+}

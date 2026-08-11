@@ -73,6 +73,12 @@ class BaseConfig:
     # --- gRPC 服务发现 ---
     E2E_TEST_SERVICE_HOST: str = _get_env('E2E_TEST_SERVICE_HOST', 'localhost')
     E2E_TEST_SERVICE_GRPC_PORT: int = _get_int('E2E_TEST_SERVICE_GRPC_PORT', 50051)
+    # --- audio_service gRPC（P2.5 从 e2e_test_service 拆出）---
+    AUDIO_SERVICE_HOST: str = _get_env('AUDIO_SERVICE_HOST', 'localhost')
+    AUDIO_SERVICE_GRPC_PORT: int = _get_int('AUDIO_SERVICE_GRPC_PORT', 50052)
+    # --- device_service gRPC（P2.5 从 e2e_test_service 拆出）---
+    DEVICE_SERVICE_HOST: str = _get_env('DEVICE_SERVICE_HOST', 'localhost')
+    DEVICE_SERVICE_GRPC_PORT: int = _get_int('DEVICE_SERVICE_GRPC_PORT', 50053)
     TASK_SERVICE_HOST: str = _get_env('TASK_SERVICE_HOST', 'localhost')
     TASK_SERVICE_GRPC_PORT: int = _get_int('TASK_SERVICE_GRPC_PORT', 50061)
     API_TEST_SERVICE_HOST: str = _get_env('API_TEST_SERVICE_HOST', 'localhost')
@@ -82,6 +88,22 @@ class BaseConfig:
     # --- api_adapter_service gRPC ---
     ADAPTER_SERVICE_HOST: str = _get_env('ADAPTER_SERVICE_HOST', 'localhost')
     ADAPTER_SERVICE_GRPC_PORT: int = _get_int('ADAPTER_SERVICE_GRPC_PORT', 50081)
+
+    # --- evaluation_service gRPC ---
+    EVALUATION_SERVICE_HOST: str = _get_env('EVALUATION_SERVICE_HOST', 'localhost')
+    EVALUATION_SERVICE_GRPC_PORT: int = _get_int('EVALUATION_SERVICE_GRPC_PORT', 50091)
+
+    # --- algorithm_service gRPC（端口 50067 预留，proto 待接入）---
+    ALGORITHM_SERVICE_HOST: str = _get_env('ALGORITHM_SERVICE_HOST', 'localhost')
+    ALGORITHM_SERVICE_GRPC_PORT: int = _get_int('ALGORITHM_SERVICE_GRPC_PORT', 50067)
+
+    # --- report_service gRPC ---
+    REPORT_SERVICE_HOST: str = _get_env('REPORT_SERVICE_HOST', 'localhost')
+    REPORT_SERVICE_GRPC_PORT: int = _get_int('REPORT_SERVICE_GRPC_PORT', 50068)
+
+    # --- auth_service gRPC ---
+    AUTH_SERVICE_HOST: str = _get_env('AUTH_SERVICE_HOST', 'localhost')
+    AUTH_SERVICE_GRPC_PORT: int = _get_int('AUTH_SERVICE_GRPC_PORT', 50069)
 
     # --- 工具 ---
     FFMPEG_PATH: str = _get_env('FFMPEG_PATH', 'ffmpeg')

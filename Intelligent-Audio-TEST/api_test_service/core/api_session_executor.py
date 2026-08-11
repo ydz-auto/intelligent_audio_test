@@ -3,12 +3,25 @@ import time
 import json
 import uuid
 import requests as http_requests
-from datetime import datetime, timezone, timedelta
+from datetime import timezone, timedelta
 
-from shared.models.models import TaskCase, Audio
-from shared.models.database import db
+from shared.utils.dto_utils import dto_to_dict
+from api_test_service.infrastructure.acl import (
+    TaskDataAclRepositoryImpl,
+    AudioConfigAclRepositoryImpl,
+    AlgorithmQueryAclRepositoryImpl,
+    AdapterAclRepositoryImpl,
+    EvaluationAclRepositoryImpl,
+)
 from api_test_service.core.session_context import SessionContext
 from api_test_service.clients.api_driver import APIDriver
+
+# 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
+_task_data_acl = TaskDataAclRepositoryImpl()
+_audio_acl = AudioConfigAclRepositoryImpl()
+_algo_acl = AlgorithmQueryAclRepositoryImpl()
+_adapter_acl = AdapterAclRepositoryImpl()
+_evaluation_acl = EvaluationAclRepositoryImpl()
 
 
 class APISessionExecutor:
@@ -153,26 +166,20 @@ class APISessionExecutor:
                            algorithm_type, aggregated, api_id):
         """提交多轮会话评估
 
-        迁移后通过 gRPC 调用 task_service 的 ExecutionService.EvaluateCase。
+        通过 ACL 仓储调用 evaluation_service 的 EvaluationService.EvaluateCase。
         """
-        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
-
         full_case_params = {
             'algorithm_params': case_algorithm_params or {},
             'reference_params': case_config.get('reference_params', {}),
             'algorithm_type': algorithm_type
         }
-        eval_params = CaseParameterExtractor.get_evaluation_params(
-            case_config=full_case_params,
-            algorithm_result=aggregated.get('algorithm_result', {}),
-            test_type='api'
-        )
+        all_params = dto_to_dict(_algo_acl.extract_case_all_params(full_case_params)) or {}
+        eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
         eval_params['algorithm_type'] = algorithm_type
         eval_params['test_type'] = 'api'
 
-        # 通过 gRPC 调用 task_service 的 EvaluateCase
-        from shared.clients.grpc_clients import submit_evaluate_case
-        submit_evaluate_case(
+        # 通过 ACL 仓储调用 evaluation_service 的 EvaluateCase
+        _evaluation_acl.submit_evaluate_case(
             task_id=task_id,
             result_id=result_id,
             test_case_id=test_case_id,
@@ -185,21 +192,32 @@ class APISessionExecutor:
                   task_id=task_id, api_id=api_id)
 
     def _update_tc_rel_running(self, tc_rel_id, utc_plus_8, task_id):
-        """更新 TaskCase 状态为 running"""
-        local_db_session = db.session()
+        """更新 TaskCase 状态为 running
+
+        通过 ACL 仓储查询 TaskCase，若状态为 pending/queued 则更新为 running。
+        """
         try:
-            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
-            if tc_rel and tc_rel.execution_status in ['pending', 'queued']:
-                tc_rel.execution_status = 'running'
-                if not tc_rel.started_at:
-                    tc_rel.started_at = datetime.now(utc_plus_8)
-                local_db_session.commit()
-                self._executor.execution_engine._emit_progress(task_id, force=True)
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            tc_rel = next((tc for tc in tcs if tc.get('id') == tc_rel_id), None)
+            if not tc_rel:
+                self._log(level='WARNING', content=f"找不到 TaskCase: {tc_rel_id}", task_id=task_id)
+                return
+            if tc_rel.get('execution_status') not in ['pending', 'queued']:
+                return
+
+            test_case_id = tc_rel.get('test_case_id')
+            if not test_case_id:
+                self._log(level='WARNING', content=f"TaskCase {tc_rel_id} 无 test_case_id", task_id=task_id)
+                return
+
+            _task_data_acl.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                execution_status='running',
+            )
+            self._executor.execution_engine._emit_progress(task_id, force=True)
         except Exception as e:
             self._log(level='WARNING', content=f"更新 TaskCase 状态失败: {e}", task_id=task_id)
-            local_db_session.rollback()
-        finally:
-            local_db_session.close()
 
     def _build_round_context(self, session, round_number, round_config, total_rounds,
                              case_algorithm_params, algorithm_type, audio=None, case_name=''):
@@ -251,14 +269,12 @@ class APISessionExecutor:
         return ''
 
     def _query_audio_path(self, audio_id):
-        """查询音频文件路径"""
-        local_db_session = db.session()
+        """查询音频文件路径（通过 ACL 仓储调用 audio_service.AudioConfigService.GetAudio）"""
         try:
-            audio_obj = local_db_session.get(Audio, audio_id)
-            if audio_obj:
-                return audio_obj.file_path
-        finally:
-            local_db_session.close()
+            audio_data = dto_to_dict(_audio_acl.get_audio(audio_id)) or {}
+            return audio_data.get('file_path', '')
+        except Exception as e:
+            self._log(level='WARNING', content=f"查询 Audio {audio_id} 失败: {e}")
         return ''
 
     def _get_vendor_api_url(self, api_config):
@@ -316,8 +332,7 @@ class APISessionExecutor:
     def _send_via_adapter(self, task_id, algorithm_type, session, round_number, total_rounds,
                           rendered_headers, rendered_body, api_specific_config, meta,
                           api_config, timeout, input_text, input_type, start_time):
-        """通过 gRPC adapter 发送请求"""
-        from shared.clients.grpc_clients import get_adapter_service_stub
+        """通过 ACL 仓储调用 adapter 发送请求"""
         from shared.proto import adapter_service_pb2 as adapter_pb
 
         vendor = api_specific_config.get('vendor', meta.get('vendor', ''))
@@ -365,13 +380,8 @@ class APISessionExecutor:
 
         self._log('DEBUG', f"Sending round {round_number} to adapter via gRPC", task_id=task_id)
 
-        stub = get_adapter_service_stub()
-        response = stub.SendRound(req)
-
-        if not response.success:
-            raise RuntimeError(f"adapter gRPC SendRound failed: {response.message}")
-
-        task_result = json.loads(response.data) if response.data else {}
+        round_dto = _adapter_acl.send_round(req)
+        task_result = dto_to_dict(round_dto) or {}
 
         latency = time.time() - start_time
         output_text = task_result.get('output_content', task_result.get('output', ''))

@@ -60,16 +60,22 @@ async def lifespan(app: FastAPI):
                       grpc_port=Config.GRPC_PORT)
 
     # 启动 gRPC server
-    from api_test_service.grpc.server import start_grpc_server
+    from api_test_service.interfaces.grpc.server import start_grpc_server
     try:
         _grpc_server = start_grpc_server(port=Config.GRPC_PORT)
         logger.info("gRPC server started on port %s", Config.GRPC_PORT)
     except Exception as e:
         logger.warning("gRPC server failed to start: %s", e)
 
+    # 启动软删除硬清理守护线程（只清理本服务 owned 表 apis）
+    from api_test_service.infrastructure.persistence.soft_delete_cleaner import get_cleaner as get_soft_delete_cleaner
+    _soft_delete_cleaner = get_soft_delete_cleaner()
+    _soft_delete_cleaner.start()
+
     logger.info("api_test_service FastAPI app started on port %s", Config.PORT)
     yield
     logger.info("api_test_service shutting down")
+    _soft_delete_cleaner.stop()
     if _grpc_server:
         _grpc_server.stop(0)
 

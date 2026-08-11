@@ -1,9 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-测试结果大数据存储模块
+测试结果大数据存储模块（共享基础设施工具）
 
 将 result_data 中的重型字段（adjusted_reference_params, raw_results, alignment_info）
 拆分写入文件，轻量部分存入数据库，读取时自动合并。
+
+定位说明：
+    本模块为纯 OSS 文件读写工具，不直连任何 PO / 数据库表 / 业务逻辑，
+    仅供 task_service / report_service / api_gateway / evaluation_service /
+    device_service / api_test_service / e2e_test_service 等多个服务共享调用。
+    虽与 test_results 表语义相关，但因其无 DB 操作、无领域实体绑定，
+    作为跨服务共享基础设施工具保留在 shared/ 更合理，不迁入 task_service。
 """
 
 import json

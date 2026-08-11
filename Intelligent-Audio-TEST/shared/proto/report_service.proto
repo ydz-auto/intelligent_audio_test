@@ -1,0 +1,121 @@
+syntax = "proto3";
+
+package report;
+
+// ===== 报告配置服务（CRUD + 查询）=====
+service ReportConfigService {
+  // 创建报告
+  rpc CreateReport(CreateReportRequest) returns (ReportConfigResponse);
+  // 更新报告
+  rpc UpdateReport(UpdateReportRequest) returns (ReportConfigResponse);
+  // 删除报告（逻辑删除）
+  rpc DeleteReport(DeleteReportRequest) returns (ReportConfigResponse);
+  // 批量操作报告
+  rpc BatchActionReports(BatchActionReportsRequest) returns (ReportConfigResponse);
+  // 查询报告列表
+  rpc ListReports(ListReportsRequest) returns (ReportConfigResponse);
+  // 查询单个报告详情
+  rpc GetReportDetail(GetReportDetailRequest) returns (ReportConfigResponse);
+  // 按任务查询报告
+  rpc GetReportByTask(GetReportByTaskRequest) returns (ReportConfigResponse);
+  // 生成报告
+  rpc GenerateReport(GenerateReportRequest) returns (ReportConfigResponse);
+  // 更新报告状态
+  rpc UpdateReportStatus(UpdateReportStatusRequest) returns (ReportConfigResponse);
+  // 生成任务报告
+  rpc GenerateTaskReport(GenerateTaskReportRequest) returns (ReportConfigResponse);
+  // 生成对比报告
+  rpc GenerateCompareReport(GenerateCompareReportRequest) returns (ReportConfigResponse);
+  // 生成二次对比报告
+  rpc GenerateSecondaryCompareReport(GenerateSecondaryCompareReportRequest) returns (ReportConfigResponse);
+  // 查询报告用例列表
+  rpc GetReportCases(GetReportCasesRequest) returns (ReportConfigResponse);
+  // 搜索报告用例
+  rpc SearchReportCases(SearchReportCasesRequest) returns (ReportConfigResponse);
+  // 导出报告
+  rpc ExportReports(ExportReportsRequest) returns (ReportConfigResponse);
+  // 查询用例平均值
+  rpc GetCaseAverages(GetCaseAveragesRequest) returns (ReportConfigResponse);
+  // 下载用例日志
+  rpc DownloadCaseLogs(DownloadCaseLogsRequest) returns (ReportConfigResponse);
+  // 构建参考参数（供 api_gateway task_query_service 调用）
+  rpc BuildReferenceParams(BuildReferenceParamsRequest) returns (ReportConfigResponse);
+}
+
+message CreateReportRequest {
+  string data = 1;  // JSON：报告字段
+}
+message UpdateReportRequest {
+  int32 report_id = 1;
+  string data = 2;
+}
+message DeleteReportRequest {
+  int32 report_id = 1;
+  bool hard_delete = 2;
+}
+message BatchActionReportsRequest {
+  string data = 1;  // JSON：批量操作参数
+}
+message ListReportsRequest {
+  string report_type = 1;     // 可选，按类型过滤
+  string status = 2;          // 可选，按状态过滤
+  int32 task_id = 3;          // 可选，按任务过滤
+  string algorithm_type = 4;  // 可选，按算法类型过滤
+  int32 page = 5;
+  int32 per_page = 6;
+  string search = 7;
+  string start_date = 8;
+  string end_date = 9;
+}
+message GetReportDetailRequest {
+  int32 report_id = 1;
+}
+message GetReportByTaskRequest {
+  int32 task_id = 1;
+}
+message GenerateReportRequest {
+  int32 task_id = 1;
+  string report_type = 2;
+  string data = 3;  // JSON：额外参数
+}
+message UpdateReportStatusRequest {
+  int32 report_id = 1;
+  string status = 2;
+}
+message ReportConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+}
+message GenerateTaskReportRequest {
+  int32 task_id = 1;
+  string name = 2;
+  string description = 3;
+}
+message GenerateCompareReportRequest {
+  string data = 1;  // JSON: {task_ids: [int], name: str, description: str}
+}
+message GenerateSecondaryCompareReportRequest {
+  string data = 1;  // JSON: {report_ids: [int], description: str}
+}
+message GetReportCasesRequest {
+  int32 report_id = 1;
+  string data = 2;  // JSON: 查询参数（keyword/category/tags/page/per_page 等）
+}
+message SearchReportCasesRequest {
+  int32 report_id = 1;
+  string data = 2;  // JSON: 搜索参数（keyword/category/tags/include_untagged 等）
+}
+message ExportReportsRequest {
+  string data = 1;  // JSON: {ids: [int], format: str}
+}
+message GetCaseAveragesRequest {
+  string data = 1;  // JSON: {task_id, category, tags, categories, include_untagged}
+}
+message DownloadCaseLogsRequest {
+  int32 report_id = 1;
+  string case_id = 2;
+}
+message BuildReferenceParamsRequest {
+  string data = 1;  // JSON: {case_info: dict, case_results: list, test_type: str}
+}

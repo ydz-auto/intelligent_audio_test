@@ -404,3 +404,527 @@ message GetE2ETaskStatusResponse {
   string message = 2;
   string data = 3;  // JSON 序列化的任务状态
 }
+
+// ===== 设备管理 CRUD 服务 =====
+service DeviceConfigService {
+  rpc CreateDevice(CreateDeviceRequest) returns (CreateDeviceResponse);
+  rpc UpdateDevice(UpdateDeviceRequest) returns (UpdateDeviceResponse);
+  rpc DeleteDevice(DeleteDeviceRequest) returns (DeleteDeviceResponse);
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  rpc GetDevice(GetDeviceRequest) returns (GetDeviceResponse);
+  rpc GetDeviceStatuses(GetDeviceStatusesRequest) returns (GetDeviceStatusesResponse);
+  rpc ScanPhysicalDevices(ScanPhysicalDevicesRequest) returns (ScanPhysicalDevicesResponse);
+  rpc TestDevice(TestDeviceRequest) returns (TestDeviceResponse);
+  rpc StopDeviceTest(StopDeviceTestRequest) returns (StopDeviceTestResponse);
+  rpc GetDriverKeywords(GetDriverKeywordsRequest) returns (GetDriverKeywordsResponse);
+  rpc HealthCheckDevices(HealthCheckDevicesRequest) returns (HealthCheckDevicesResponse);
+  rpc GetAvailableSerials(GetAvailableSerialsRequest) returns (GetAvailableSerialsResponse);
+}
+
+// ===== 播放设备 CRUD 服务 =====
+service PlaybackConfigService {
+  rpc CreatePlaybackDevice(CreatePlaybackDeviceRequest) returns (CreatePlaybackDeviceResponse);
+  rpc UpdatePlaybackDevice(UpdatePlaybackDeviceRequest) returns (UpdatePlaybackDeviceResponse);
+  rpc DeletePlaybackDevice(DeletePlaybackDeviceRequest) returns (DeletePlaybackDeviceResponse);
+  rpc ListPlaybackDevices(ListPlaybackDevicesRequest) returns (ListPlaybackDevicesResponse);
+  rpc GetPlaybackDevice(GetPlaybackDeviceRequest) returns (GetPlaybackDeviceResponse);
+  rpc ScanPlaybackDevices(ScanPlaybackDevicesRequest) returns (ScanPlaybackDevicesResponse);
+  rpc CheckPlaybackStatus(CheckPlaybackStatusRequest) returns (CheckPlaybackStatusResponse);
+  rpc AssociateSPL(AssociateSPLRequest) returns (AssociateSPLResponse);
+  rpc TestPlaybackDevice(TestPlaybackDeviceRequest) returns (TestPlaybackDeviceResponse);
+  rpc StopPlaybackTest(StopPlaybackTestRequest) returns (StopPlaybackTestResponse);
+}
+
+// ===== SPL 映射 CRUD 服务 =====
+service SPLConfigService {
+  rpc CreateSPLMapping(CreateSPLMappingRequest) returns (CreateSPLMappingResponse);
+  rpc UpdateSPLMapping(UpdateSPLMappingRequest) returns (UpdateSPLMappingResponse);
+  rpc DeleteSPLMapping(DeleteSPLMappingRequest) returns (DeleteSPLMappingResponse);
+  rpc ListSPLMappings(ListSPLMappingsRequest) returns (ListSPLMappingsResponse);
+  rpc GetSPLMapping(GetSPLMappingRequest) returns (GetSPLMappingResponse);
+  rpc GetSPLHistory(GetSPLHistoryRequest) returns (GetSPLHistoryResponse);
+  rpc GetSPLCalibrationData(GetSPLCalibrationDataRequest) returns (GetSPLCalibrationDataResponse);
+  rpc GetSPLStats(GetSPLStatsRequest) returns (GetSPLStatsResponse);
+  rpc GetSPLByDevice(GetSPLByDeviceRequest) returns (GetSPLByDeviceResponse);
+  rpc CalibrateSPL(CalibrateSPLRequest) returns (CalibrateSPLResponse);
+  rpc PlayTestTone(PlayTestToneRequest) returns (PlayTestToneResponse);
+  rpc StopTestTone(StopTestToneRequest) returns (StopTestToneResponse);
+}
+
+// ==================== DeviceConfigService Messages ====================
+
+message CreateDeviceRequest {
+  string data = 1;  // JSON 序列化的设备创建参数
+}
+message CreateDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdateDeviceRequest {
+  int32 device_id = 1;
+  string data = 2;  // JSON 序列化的更新字段
+}
+message UpdateDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeleteDeviceRequest {
+  int32 device_id = 1;
+}
+message DeleteDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListDevicesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string status = 4;
+  string device_type = 5;
+  string algorithm_type = 6;
+}
+message ListDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的分页列表
+}
+
+message GetDeviceRequest {
+  int32 device_id = 1;
+}
+message GetDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetDeviceStatusesRequest {
+  string data = 1;  // JSON: {"ids": [int]}
+}
+message GetDeviceStatusesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ScanPhysicalDevicesRequest {
+}
+message ScanPhysicalDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message TestDeviceRequest {
+  int32 device_id = 1;
+}
+message TestDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopDeviceTestRequest {
+  int32 device_id = 1;
+}
+message StopDeviceTestResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetDriverKeywordsRequest {
+}
+message GetDriverKeywordsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message HealthCheckDevicesRequest {
+  string data = 1;  // JSON: {"device_ids": [int]}
+}
+message HealthCheckDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetAvailableSerialsRequest {
+}
+message GetAvailableSerialsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== PlaybackConfigService Messages ====================
+
+message CreatePlaybackDeviceRequest {
+  string data = 1;
+}
+message CreatePlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdatePlaybackDeviceRequest {
+  int32 device_id = 1;
+  string data = 2;
+}
+message UpdatePlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeletePlaybackDeviceRequest {
+  int32 device_id = 1;
+}
+message DeletePlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListPlaybackDevicesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string device_type = 4;
+}
+message ListPlaybackDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetPlaybackDeviceRequest {
+  int32 device_id = 1;
+}
+message GetPlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ScanPlaybackDevicesRequest {
+}
+message ScanPlaybackDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message CheckPlaybackStatusRequest {
+}
+message CheckPlaybackStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message AssociateSPLRequest {
+  int32 device_id = 1;
+  string data = 2;  // JSON: {"spl_mapping_id": int}
+}
+message AssociateSPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message TestPlaybackDeviceRequest {
+  int32 device_id = 1;
+  string data = 2;  // JSON: 测试参数
+}
+message TestPlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopPlaybackTestRequest {
+  int32 device_id = 1;
+}
+message StopPlaybackTestResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== SPLConfigService Messages ====================
+
+message CreateSPLMappingRequest {
+  string data = 1;
+}
+message CreateSPLMappingResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdateSPLMappingRequest {
+  int32 mapping_id = 1;
+  string data = 2;
+}
+message UpdateSPLMappingResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeleteSPLMappingRequest {
+  int32 mapping_id = 1;
+}
+message DeleteSPLMappingResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListSPLMappingsRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string calibration_status = 4;
+  int32 device_id = 5;
+}
+message ListSPLMappingsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLMappingRequest {
+  int32 mapping_id = 1;
+}
+message GetSPLMappingResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLHistoryRequest {
+  int32 mapping_id = 1;
+}
+message GetSPLHistoryResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLCalibrationDataRequest {
+  int32 mapping_id = 1;
+}
+message GetSPLCalibrationDataResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLStatsRequest {
+}
+message GetSPLStatsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLByDeviceRequest {
+  int32 device_id = 1;
+}
+message GetSPLByDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message CalibrateSPLRequest {
+  int32 mapping_id = 1;
+}
+message CalibrateSPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message PlayTestToneRequest {
+  string data = 1;  // JSON: 测试音参数（可选 mapping_id）
+}
+message PlayTestToneResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopTestToneRequest {
+  string data = 1;  // JSON: {"unique_id": str?}
+}
+message StopTestToneResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ===== 音频配置 CRUD 服务 =====
+service AudioConfigService {
+  rpc UpdateAudioMetadata(UpdateAudioMetadataRequest) returns (AudioConfigResponse);
+  rpc BatchUpdateAnnotations(BatchUpdateAnnotationsRequest) returns (AudioConfigResponse);
+  rpc BatchActionAudios(BatchActionAudiosRequest) returns (AudioConfigResponse);
+  rpc DeleteAudio(DeleteAudioRequest) returns (AudioConfigResponse);
+  rpc UpdateAudioAlgorithms(UpdateAudioAlgorithmsRequest) returns (AudioConfigResponse);
+  rpc BatchUpdateAudioAlgorithms(BatchUpdateAudioAlgorithmsRequest) returns (AudioConfigResponse);
+  rpc GetAllAudioTags(GetAllAudioTagsRequest) returns (AudioConfigResponse);
+  rpc ListAudios(ListAudiosRequest) returns (AudioConfigResponse);
+  rpc GetAudio(GetAudioRequest) returns (AudioConfigResponse);
+  rpc GetAudiosByIds(GetAudiosByIdsRequest) returns (AudioConfigResponse);
+  rpc GetAudioByMD5(GetAudioByMD5Request) returns (AudioConfigResponse);
+  rpc GetAllAudioIds(GetAllAudioIdsRequest) returns (AudioConfigResponse);
+  rpc StreamAudio(StreamAudioRequest) returns (AudioConfigResponse);
+  rpc StreamAudioByPath(StreamAudioByPathRequest) returns (AudioConfigResponse);
+  rpc GetAudioAlgorithms(GetAudioAlgorithmsRequest) returns (AudioConfigResponse);
+  rpc GetAudioFolderTree(GetAudioFolderTreeRequest) returns (AudioConfigResponse);
+  rpc PresignUpload(PresignUploadRequest) returns (AudioConfigResponse);
+  rpc PresignPart(PresignPartRequest) returns (AudioConfigResponse);
+  rpc CompleteDirectUpload(CompleteDirectUploadRequest) returns (AudioConfigResponse);
+  rpc InitUploadTask(InitUploadTaskRequest) returns (AudioConfigResponse);
+  rpc RegisterUploadFile(RegisterUploadFileRequest) returns (AudioConfigResponse);
+  rpc UploadChunk(UploadChunkRequest) returns (AudioConfigResponse);
+  rpc MergeChunks(MergeChunksRequest) returns (AudioConfigResponse);
+  rpc GetUploadProgress(GetUploadProgressRequest) returns (AudioConfigResponse);
+  rpc UrlImport(UrlImportRequest) returns (AudioConfigResponse);
+  rpc ConvertAudio(ConvertAudioRequest) returns (AudioConfigResponse);
+  rpc PreviewAudio(PreviewAudioRequest) returns (AudioConfigResponse);
+  rpc StopPreviewAudio(StopPreviewAudioRequest) returns (AudioConfigResponse);
+}
+
+// ==================== AudioConfigService Messages ====================
+
+message AudioConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+}
+
+message UpdateAudioMetadataRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 更新字段
+}
+
+message BatchUpdateAnnotationsRequest {
+  string data = 1;  // JSON: 批量标注更新参数
+}
+
+message BatchActionAudiosRequest {
+  string data = 1;  // JSON: 批量操作参数
+}
+
+message DeleteAudioRequest {
+  int32 audio_id = 1;
+}
+
+message UpdateAudioAlgorithmsRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 算法关联参数
+}
+
+message BatchUpdateAudioAlgorithmsRequest {
+  string data = 1;  // JSON: 批量算法关联参数
+}
+
+message GetAllAudioTagsRequest {
+}
+
+message ListAudiosRequest {
+  string data = 1;  // JSON: 查询参数
+}
+
+message GetAudioRequest {
+  int32 audio_id = 1;
+}
+
+message GetAudiosByIdsRequest {
+  string data = 1;  // JSON: {"ids": [int]}
+}
+
+message GetAudioByMD5Request {
+  string data = 1;  // JSON: {"md5_list": [str]}
+}
+
+message GetAllAudioIdsRequest {
+  string data = 1;  // JSON: 查询参数
+}
+
+message StreamAudioRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 额外参数（task_type 等）
+}
+
+message StreamAudioByPathRequest {
+  string data = 1;  // JSON: {"path": str}
+}
+
+message GetAudioAlgorithmsRequest {
+  int32 audio_id = 1;
+}
+
+message GetAudioFolderTreeRequest {
+  string data = 1;  // JSON: 查询参数
+}
+
+message PresignUploadRequest {
+  string data = 1;  // JSON: 预签名上传参数
+}
+
+message PresignPartRequest {
+  string data = 1;  // JSON: {"upload_id": str, "part_number": int, "oss_key": str, "category": str}
+}
+
+message CompleteDirectUploadRequest {
+  string data = 1;  // JSON: 直传完成参数
+}
+
+message InitUploadTaskRequest {
+}
+
+message RegisterUploadFileRequest {
+  string data = 1;  // JSON: 注册文件参数
+}
+
+message UploadChunkRequest {
+  string data = 1;  // JSON: 分片信息 + base64 编码的分片内容
+}
+
+message MergeChunksRequest {
+  string data = 1;  // JSON: 合并参数
+}
+
+message GetUploadProgressRequest {
+  string data = 1;  // JSON: {"task_id": str}
+}
+
+message UrlImportRequest {
+  string data = 1;  // JSON: URL 导入参数
+}
+
+message ConvertAudioRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 转换参数
+}
+
+message PreviewAudioRequest {
+  int32 audio_id = 1;
+  string data = 2;  // JSON: 预览参数
+}
+
+message StopPreviewAudioRequest {
+  int32 audio_id = 1;
+}

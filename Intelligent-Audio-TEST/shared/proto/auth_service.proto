@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package auth;
+
+// ===== 认证服务（用户管理 + 权限查询 + 认证校验）=====
+service AuthService {
+  // 按 ID 获取用户（含角色名、权限列表）
+  rpc GetUser(GetUserRequest) returns (AuthResponse);
+  // 按用户名获取用户
+  rpc GetUserByUsername(GetUserByUsernameRequest) returns (AuthResponse);
+  // 按 OAuth 提供商 + 外部 ID 获取用户
+  rpc GetUserByOAuth(GetUserByOAuthRequest) returns (AuthResponse);
+  // 创建用户（OAuth 或本地注册），返回新用户 ID
+  rpc CreateUser(CreateUserRequest) returns (AuthResponse);
+  // 更新最后登录时间/IP
+  rpc UpdateLastLogin(UpdateLastLoginRequest) returns (AuthResponse);
+  // 获取用户权限码列表
+  rpc GetUserPermissions(GetUserPermissionsRequest) returns (AuthResponse);
+  // 列出所有角色
+  rpc ListRoles(ListRolesRequest) returns (AuthResponse);
+  // 分页列出用户
+  rpc ListUsers(ListUsersRequest) returns (AuthResponse);
+  // 更新用户状态
+  rpc UpdateUserStatus(UpdateUserStatusRequest) returns (AuthResponse);
+  // 授予权限
+  rpc GrantPermission(GrantPermissionRequest) returns (AuthResponse);
+  // 撤销权限
+  rpc RevokePermission(RevokePermissionRequest) returns (AuthResponse);
+  // 软删除用户
+  rpc DeleteUser(DeleteUserRequest) returns (AuthResponse);
+}
+
+message GetUserRequest {
+  int32 user_id = 1;
+}
+message GetUserByUsernameRequest {
+  string username = 1;
+}
+message GetUserByOAuthRequest {
+  string provider = 1;
+  string subject = 2;
+}
+message CreateUserRequest {
+  string username = 1;
+  string email = 2;
+  string oauth_provider = 3;
+  string oauth_subject = 4;
+  int32 role_id = 5;
+  string role_name = 6;  // 角色名（如 'guest'），为空时用 role_id
+}
+message UpdateLastLoginRequest {
+  int32 user_id = 1;
+  string ip = 2;
+}
+message GetUserPermissionsRequest {
+  int32 user_id = 1;
+}
+message ListRolesRequest {}
+message ListUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+  string status = 3;
+}
+message UpdateUserStatusRequest {
+  int32 user_id = 1;
+  string status = 2;
+}
+message GrantPermissionRequest {
+  int32 user_id = 1;
+  string permission = 2;
+}
+message RevokePermissionRequest {
+  int32 user_id = 1;
+  string permission = 2;
+}
+message DeleteUserRequest {
+  int32 user_id = 1;
+}
+message AuthResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+}

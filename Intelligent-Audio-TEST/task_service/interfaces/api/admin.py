@@ -12,8 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from typing import List, Optional
 
-from task_service.application.commands.handlers import task_command_handler
-from task_service.application.queries.handlers import task_query_handler
+from task_service.application.handlers import task_command_handler, task_query_handler
 from task_service.application.commands.task_commands import (
     CreateTaskCommand,
     StartTaskCommand,

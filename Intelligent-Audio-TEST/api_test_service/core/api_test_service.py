@@ -4,8 +4,17 @@ API Test Service - 服务接口层
 
 迁移后由 stub 改为真正驱动 APIExecutor。
 """
+import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
+
+from shared.utils.dto_utils import dto_to_dict
+from api_test_service.infrastructure.acl import TaskDataAclRepositoryImpl
+
+_logger = logging.getLogger(__name__)
+
+# 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
+_task_data_acl = TaskDataAclRepositoryImpl()
 
 
 class _APIEngineAdapter:
@@ -91,9 +100,6 @@ class APITestService:
         Returns:
             dict: 启动结果
         """
-        from shared.models.database import db
-        from shared.models.models import TaskCase
-
         if not self._initialized:
             return {'success': False, 'task_id': task_id, 'message': '服务未初始化'}
 
@@ -115,18 +121,18 @@ class APITestService:
                 self._mark_task_idle(task_id)
 
         try:
-            # 查询待执行的 TaskCase ID（如果调用方未提供 case_ids，则从数据库按 pending 状态读取）
+            # 查询待执行的 TaskCase ID（如果调用方未提供 case_ids，
+            # 则通过 gRPC 从 task_service 按 pending/queued 状态读取）
             target_case_ids = list(case_ids) if case_ids else []
             if not target_case_ids:
-                local_db_session = db.session()
                 try:
-                    pending = local_db_session.query(TaskCase).filter(
-                        TaskCase.task_id == task_id,
-                        TaskCase.execution_status.in_(['pending', 'queued'])
-                    ).all()
-                    target_case_ids = [tc.id for tc in pending]
-                finally:
-                    local_db_session.close()
+                    tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+                    target_case_ids = [
+                        tc.get('id') for tc in tcs
+                        if tc.get('execution_status') in ['pending', 'queued']
+                    ]
+                except Exception as e:
+                    self._log(task_id, 'WARNING', f"查询待执行 TaskCase 失败: {e}")
 
             if not target_case_ids:
                 self._mark_task_idle(task_id)
@@ -183,8 +189,8 @@ class APITestService:
             from shared.utils.log_handler import log_and_emit
             log_and_emit(level=level, module='APITestService', content=content,
                          source='backend', task_id=task_id)
-        except Exception:
-            pass
+        except Exception as _e:
+            _logger.debug("log_and_emit failed: %s", _e)
 
 
 api_test_service = APITestService()

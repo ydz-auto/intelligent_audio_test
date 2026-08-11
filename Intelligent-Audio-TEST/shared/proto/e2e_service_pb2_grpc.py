@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from . import e2e_service_pb2 as e2e__service__pb2
+import e2e_service_pb2 as e2e__service__pb2
 
 GRPC_GENERATED_VERSION = '1.83.0'
 GRPC_VERSION = grpc.__version__
@@ -1482,6 +1482,2800 @@ class ExecutionService:
             '/e2e_service.ExecutionService/GetE2ETaskStatus',
             e2e__service__pb2.GetE2ETaskStatusRequest.SerializeToString,
             e2e__service__pb2.GetE2ETaskStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class DeviceConfigServiceStub:
+    """===== 设备管理 CRUD 服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateDevice = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/CreateDevice',
+                request_serializer=e2e__service__pb2.CreateDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.CreateDeviceResponse.FromString,
+                _registered_method=True)
+        self.UpdateDevice = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/UpdateDevice',
+                request_serializer=e2e__service__pb2.UpdateDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.UpdateDeviceResponse.FromString,
+                _registered_method=True)
+        self.DeleteDevice = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/DeleteDevice',
+                request_serializer=e2e__service__pb2.DeleteDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.DeleteDeviceResponse.FromString,
+                _registered_method=True)
+        self.ListDevices = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/ListDevices',
+                request_serializer=e2e__service__pb2.ListDevicesRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.ListDevicesResponse.FromString,
+                _registered_method=True)
+        self.GetDevice = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/GetDevice',
+                request_serializer=e2e__service__pb2.GetDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetDeviceResponse.FromString,
+                _registered_method=True)
+        self.GetDeviceStatuses = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/GetDeviceStatuses',
+                request_serializer=e2e__service__pb2.GetDeviceStatusesRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetDeviceStatusesResponse.FromString,
+                _registered_method=True)
+        self.ScanPhysicalDevices = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/ScanPhysicalDevices',
+                request_serializer=e2e__service__pb2.ScanPhysicalDevicesRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.ScanPhysicalDevicesResponse.FromString,
+                _registered_method=True)
+        self.TestDevice = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/TestDevice',
+                request_serializer=e2e__service__pb2.TestDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.TestDeviceResponse.FromString,
+                _registered_method=True)
+        self.StopDeviceTest = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/StopDeviceTest',
+                request_serializer=e2e__service__pb2.StopDeviceTestRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.StopDeviceTestResponse.FromString,
+                _registered_method=True)
+        self.GetDriverKeywords = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/GetDriverKeywords',
+                request_serializer=e2e__service__pb2.GetDriverKeywordsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetDriverKeywordsResponse.FromString,
+                _registered_method=True)
+        self.HealthCheckDevices = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/HealthCheckDevices',
+                request_serializer=e2e__service__pb2.HealthCheckDevicesRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.HealthCheckDevicesResponse.FromString,
+                _registered_method=True)
+        self.GetAvailableSerials = channel.unary_unary(
+                '/e2e_service.DeviceConfigService/GetAvailableSerials',
+                request_serializer=e2e__service__pb2.GetAvailableSerialsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetAvailableSerialsResponse.FromString,
+                _registered_method=True)
+
+
+class DeviceConfigServiceServicer:
+    """===== 设备管理 CRUD 服务 =====
+    """
+
+    def CreateDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListDevices(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDeviceStatuses(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ScanPhysicalDevices(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TestDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopDeviceTest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDriverKeywords(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def HealthCheckDevices(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAvailableSerials(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_DeviceConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateDevice,
+                    request_deserializer=e2e__service__pb2.CreateDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.CreateDeviceResponse.SerializeToString,
+            ),
+            'UpdateDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateDevice,
+                    request_deserializer=e2e__service__pb2.UpdateDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.UpdateDeviceResponse.SerializeToString,
+            ),
+            'DeleteDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteDevice,
+                    request_deserializer=e2e__service__pb2.DeleteDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.DeleteDeviceResponse.SerializeToString,
+            ),
+            'ListDevices': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListDevices,
+                    request_deserializer=e2e__service__pb2.ListDevicesRequest.FromString,
+                    response_serializer=e2e__service__pb2.ListDevicesResponse.SerializeToString,
+            ),
+            'GetDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDevice,
+                    request_deserializer=e2e__service__pb2.GetDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetDeviceResponse.SerializeToString,
+            ),
+            'GetDeviceStatuses': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDeviceStatuses,
+                    request_deserializer=e2e__service__pb2.GetDeviceStatusesRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetDeviceStatusesResponse.SerializeToString,
+            ),
+            'ScanPhysicalDevices': grpc.unary_unary_rpc_method_handler(
+                    servicer.ScanPhysicalDevices,
+                    request_deserializer=e2e__service__pb2.ScanPhysicalDevicesRequest.FromString,
+                    response_serializer=e2e__service__pb2.ScanPhysicalDevicesResponse.SerializeToString,
+            ),
+            'TestDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.TestDevice,
+                    request_deserializer=e2e__service__pb2.TestDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.TestDeviceResponse.SerializeToString,
+            ),
+            'StopDeviceTest': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopDeviceTest,
+                    request_deserializer=e2e__service__pb2.StopDeviceTestRequest.FromString,
+                    response_serializer=e2e__service__pb2.StopDeviceTestResponse.SerializeToString,
+            ),
+            'GetDriverKeywords': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDriverKeywords,
+                    request_deserializer=e2e__service__pb2.GetDriverKeywordsRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetDriverKeywordsResponse.SerializeToString,
+            ),
+            'HealthCheckDevices': grpc.unary_unary_rpc_method_handler(
+                    servicer.HealthCheckDevices,
+                    request_deserializer=e2e__service__pb2.HealthCheckDevicesRequest.FromString,
+                    response_serializer=e2e__service__pb2.HealthCheckDevicesResponse.SerializeToString,
+            ),
+            'GetAvailableSerials': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAvailableSerials,
+                    request_deserializer=e2e__service__pb2.GetAvailableSerialsRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetAvailableSerialsResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'e2e_service.DeviceConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('e2e_service.DeviceConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class DeviceConfigService:
+    """===== 设备管理 CRUD 服务 =====
+    """
+
+    @staticmethod
+    def CreateDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/CreateDevice',
+            e2e__service__pb2.CreateDeviceRequest.SerializeToString,
+            e2e__service__pb2.CreateDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/UpdateDevice',
+            e2e__service__pb2.UpdateDeviceRequest.SerializeToString,
+            e2e__service__pb2.UpdateDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/DeleteDevice',
+            e2e__service__pb2.DeleteDeviceRequest.SerializeToString,
+            e2e__service__pb2.DeleteDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListDevices(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/ListDevices',
+            e2e__service__pb2.ListDevicesRequest.SerializeToString,
+            e2e__service__pb2.ListDevicesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/GetDevice',
+            e2e__service__pb2.GetDeviceRequest.SerializeToString,
+            e2e__service__pb2.GetDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDeviceStatuses(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/GetDeviceStatuses',
+            e2e__service__pb2.GetDeviceStatusesRequest.SerializeToString,
+            e2e__service__pb2.GetDeviceStatusesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ScanPhysicalDevices(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/ScanPhysicalDevices',
+            e2e__service__pb2.ScanPhysicalDevicesRequest.SerializeToString,
+            e2e__service__pb2.ScanPhysicalDevicesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TestDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/TestDevice',
+            e2e__service__pb2.TestDeviceRequest.SerializeToString,
+            e2e__service__pb2.TestDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopDeviceTest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/StopDeviceTest',
+            e2e__service__pb2.StopDeviceTestRequest.SerializeToString,
+            e2e__service__pb2.StopDeviceTestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDriverKeywords(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/GetDriverKeywords',
+            e2e__service__pb2.GetDriverKeywordsRequest.SerializeToString,
+            e2e__service__pb2.GetDriverKeywordsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def HealthCheckDevices(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/HealthCheckDevices',
+            e2e__service__pb2.HealthCheckDevicesRequest.SerializeToString,
+            e2e__service__pb2.HealthCheckDevicesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAvailableSerials(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.DeviceConfigService/GetAvailableSerials',
+            e2e__service__pb2.GetAvailableSerialsRequest.SerializeToString,
+            e2e__service__pb2.GetAvailableSerialsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class PlaybackConfigServiceStub:
+    """===== 播放设备 CRUD 服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreatePlaybackDevice = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/CreatePlaybackDevice',
+                request_serializer=e2e__service__pb2.CreatePlaybackDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.CreatePlaybackDeviceResponse.FromString,
+                _registered_method=True)
+        self.UpdatePlaybackDevice = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/UpdatePlaybackDevice',
+                request_serializer=e2e__service__pb2.UpdatePlaybackDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.UpdatePlaybackDeviceResponse.FromString,
+                _registered_method=True)
+        self.DeletePlaybackDevice = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/DeletePlaybackDevice',
+                request_serializer=e2e__service__pb2.DeletePlaybackDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.DeletePlaybackDeviceResponse.FromString,
+                _registered_method=True)
+        self.ListPlaybackDevices = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/ListPlaybackDevices',
+                request_serializer=e2e__service__pb2.ListPlaybackDevicesRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.ListPlaybackDevicesResponse.FromString,
+                _registered_method=True)
+        self.GetPlaybackDevice = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/GetPlaybackDevice',
+                request_serializer=e2e__service__pb2.GetPlaybackDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetPlaybackDeviceResponse.FromString,
+                _registered_method=True)
+        self.ScanPlaybackDevices = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/ScanPlaybackDevices',
+                request_serializer=e2e__service__pb2.ScanPlaybackDevicesRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.ScanPlaybackDevicesResponse.FromString,
+                _registered_method=True)
+        self.CheckPlaybackStatus = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/CheckPlaybackStatus',
+                request_serializer=e2e__service__pb2.CheckPlaybackStatusRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.CheckPlaybackStatusResponse.FromString,
+                _registered_method=True)
+        self.AssociateSPL = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/AssociateSPL',
+                request_serializer=e2e__service__pb2.AssociateSPLRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AssociateSPLResponse.FromString,
+                _registered_method=True)
+        self.TestPlaybackDevice = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/TestPlaybackDevice',
+                request_serializer=e2e__service__pb2.TestPlaybackDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.TestPlaybackDeviceResponse.FromString,
+                _registered_method=True)
+        self.StopPlaybackTest = channel.unary_unary(
+                '/e2e_service.PlaybackConfigService/StopPlaybackTest',
+                request_serializer=e2e__service__pb2.StopPlaybackTestRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.StopPlaybackTestResponse.FromString,
+                _registered_method=True)
+
+
+class PlaybackConfigServiceServicer:
+    """===== 播放设备 CRUD 服务 =====
+    """
+
+    def CreatePlaybackDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdatePlaybackDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeletePlaybackDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListPlaybackDevices(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetPlaybackDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ScanPlaybackDevices(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CheckPlaybackStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AssociateSPL(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def TestPlaybackDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopPlaybackTest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_PlaybackConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreatePlaybackDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreatePlaybackDevice,
+                    request_deserializer=e2e__service__pb2.CreatePlaybackDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.CreatePlaybackDeviceResponse.SerializeToString,
+            ),
+            'UpdatePlaybackDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdatePlaybackDevice,
+                    request_deserializer=e2e__service__pb2.UpdatePlaybackDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.UpdatePlaybackDeviceResponse.SerializeToString,
+            ),
+            'DeletePlaybackDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeletePlaybackDevice,
+                    request_deserializer=e2e__service__pb2.DeletePlaybackDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.DeletePlaybackDeviceResponse.SerializeToString,
+            ),
+            'ListPlaybackDevices': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListPlaybackDevices,
+                    request_deserializer=e2e__service__pb2.ListPlaybackDevicesRequest.FromString,
+                    response_serializer=e2e__service__pb2.ListPlaybackDevicesResponse.SerializeToString,
+            ),
+            'GetPlaybackDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPlaybackDevice,
+                    request_deserializer=e2e__service__pb2.GetPlaybackDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetPlaybackDeviceResponse.SerializeToString,
+            ),
+            'ScanPlaybackDevices': grpc.unary_unary_rpc_method_handler(
+                    servicer.ScanPlaybackDevices,
+                    request_deserializer=e2e__service__pb2.ScanPlaybackDevicesRequest.FromString,
+                    response_serializer=e2e__service__pb2.ScanPlaybackDevicesResponse.SerializeToString,
+            ),
+            'CheckPlaybackStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckPlaybackStatus,
+                    request_deserializer=e2e__service__pb2.CheckPlaybackStatusRequest.FromString,
+                    response_serializer=e2e__service__pb2.CheckPlaybackStatusResponse.SerializeToString,
+            ),
+            'AssociateSPL': grpc.unary_unary_rpc_method_handler(
+                    servicer.AssociateSPL,
+                    request_deserializer=e2e__service__pb2.AssociateSPLRequest.FromString,
+                    response_serializer=e2e__service__pb2.AssociateSPLResponse.SerializeToString,
+            ),
+            'TestPlaybackDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.TestPlaybackDevice,
+                    request_deserializer=e2e__service__pb2.TestPlaybackDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.TestPlaybackDeviceResponse.SerializeToString,
+            ),
+            'StopPlaybackTest': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopPlaybackTest,
+                    request_deserializer=e2e__service__pb2.StopPlaybackTestRequest.FromString,
+                    response_serializer=e2e__service__pb2.StopPlaybackTestResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'e2e_service.PlaybackConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('e2e_service.PlaybackConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class PlaybackConfigService:
+    """===== 播放设备 CRUD 服务 =====
+    """
+
+    @staticmethod
+    def CreatePlaybackDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/CreatePlaybackDevice',
+            e2e__service__pb2.CreatePlaybackDeviceRequest.SerializeToString,
+            e2e__service__pb2.CreatePlaybackDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdatePlaybackDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/UpdatePlaybackDevice',
+            e2e__service__pb2.UpdatePlaybackDeviceRequest.SerializeToString,
+            e2e__service__pb2.UpdatePlaybackDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeletePlaybackDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/DeletePlaybackDevice',
+            e2e__service__pb2.DeletePlaybackDeviceRequest.SerializeToString,
+            e2e__service__pb2.DeletePlaybackDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListPlaybackDevices(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/ListPlaybackDevices',
+            e2e__service__pb2.ListPlaybackDevicesRequest.SerializeToString,
+            e2e__service__pb2.ListPlaybackDevicesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPlaybackDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/GetPlaybackDevice',
+            e2e__service__pb2.GetPlaybackDeviceRequest.SerializeToString,
+            e2e__service__pb2.GetPlaybackDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ScanPlaybackDevices(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/ScanPlaybackDevices',
+            e2e__service__pb2.ScanPlaybackDevicesRequest.SerializeToString,
+            e2e__service__pb2.ScanPlaybackDevicesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CheckPlaybackStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/CheckPlaybackStatus',
+            e2e__service__pb2.CheckPlaybackStatusRequest.SerializeToString,
+            e2e__service__pb2.CheckPlaybackStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AssociateSPL(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/AssociateSPL',
+            e2e__service__pb2.AssociateSPLRequest.SerializeToString,
+            e2e__service__pb2.AssociateSPLResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def TestPlaybackDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/TestPlaybackDevice',
+            e2e__service__pb2.TestPlaybackDeviceRequest.SerializeToString,
+            e2e__service__pb2.TestPlaybackDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopPlaybackTest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.PlaybackConfigService/StopPlaybackTest',
+            e2e__service__pb2.StopPlaybackTestRequest.SerializeToString,
+            e2e__service__pb2.StopPlaybackTestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class SPLConfigServiceStub:
+    """===== SPL 映射 CRUD 服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.CreateSPLMapping = channel.unary_unary(
+                '/e2e_service.SPLConfigService/CreateSPLMapping',
+                request_serializer=e2e__service__pb2.CreateSPLMappingRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.CreateSPLMappingResponse.FromString,
+                _registered_method=True)
+        self.UpdateSPLMapping = channel.unary_unary(
+                '/e2e_service.SPLConfigService/UpdateSPLMapping',
+                request_serializer=e2e__service__pb2.UpdateSPLMappingRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.UpdateSPLMappingResponse.FromString,
+                _registered_method=True)
+        self.DeleteSPLMapping = channel.unary_unary(
+                '/e2e_service.SPLConfigService/DeleteSPLMapping',
+                request_serializer=e2e__service__pb2.DeleteSPLMappingRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.DeleteSPLMappingResponse.FromString,
+                _registered_method=True)
+        self.ListSPLMappings = channel.unary_unary(
+                '/e2e_service.SPLConfigService/ListSPLMappings',
+                request_serializer=e2e__service__pb2.ListSPLMappingsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.ListSPLMappingsResponse.FromString,
+                _registered_method=True)
+        self.GetSPLMapping = channel.unary_unary(
+                '/e2e_service.SPLConfigService/GetSPLMapping',
+                request_serializer=e2e__service__pb2.GetSPLMappingRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetSPLMappingResponse.FromString,
+                _registered_method=True)
+        self.GetSPLHistory = channel.unary_unary(
+                '/e2e_service.SPLConfigService/GetSPLHistory',
+                request_serializer=e2e__service__pb2.GetSPLHistoryRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetSPLHistoryResponse.FromString,
+                _registered_method=True)
+        self.GetSPLCalibrationData = channel.unary_unary(
+                '/e2e_service.SPLConfigService/GetSPLCalibrationData',
+                request_serializer=e2e__service__pb2.GetSPLCalibrationDataRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetSPLCalibrationDataResponse.FromString,
+                _registered_method=True)
+        self.GetSPLStats = channel.unary_unary(
+                '/e2e_service.SPLConfigService/GetSPLStats',
+                request_serializer=e2e__service__pb2.GetSPLStatsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetSPLStatsResponse.FromString,
+                _registered_method=True)
+        self.GetSPLByDevice = channel.unary_unary(
+                '/e2e_service.SPLConfigService/GetSPLByDevice',
+                request_serializer=e2e__service__pb2.GetSPLByDeviceRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.GetSPLByDeviceResponse.FromString,
+                _registered_method=True)
+        self.CalibrateSPL = channel.unary_unary(
+                '/e2e_service.SPLConfigService/CalibrateSPL',
+                request_serializer=e2e__service__pb2.CalibrateSPLRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.CalibrateSPLResponse.FromString,
+                _registered_method=True)
+        self.PlayTestTone = channel.unary_unary(
+                '/e2e_service.SPLConfigService/PlayTestTone',
+                request_serializer=e2e__service__pb2.PlayTestToneRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.PlayTestToneResponse.FromString,
+                _registered_method=True)
+        self.StopTestTone = channel.unary_unary(
+                '/e2e_service.SPLConfigService/StopTestTone',
+                request_serializer=e2e__service__pb2.StopTestToneRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.StopTestToneResponse.FromString,
+                _registered_method=True)
+
+
+class SPLConfigServiceServicer:
+    """===== SPL 映射 CRUD 服务 =====
+    """
+
+    def CreateSPLMapping(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateSPLMapping(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteSPLMapping(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListSPLMappings(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSPLMapping(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSPLHistory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSPLCalibrationData(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSPLStats(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetSPLByDevice(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CalibrateSPL(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PlayTestTone(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopTestTone(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_SPLConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'CreateSPLMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateSPLMapping,
+                    request_deserializer=e2e__service__pb2.CreateSPLMappingRequest.FromString,
+                    response_serializer=e2e__service__pb2.CreateSPLMappingResponse.SerializeToString,
+            ),
+            'UpdateSPLMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateSPLMapping,
+                    request_deserializer=e2e__service__pb2.UpdateSPLMappingRequest.FromString,
+                    response_serializer=e2e__service__pb2.UpdateSPLMappingResponse.SerializeToString,
+            ),
+            'DeleteSPLMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteSPLMapping,
+                    request_deserializer=e2e__service__pb2.DeleteSPLMappingRequest.FromString,
+                    response_serializer=e2e__service__pb2.DeleteSPLMappingResponse.SerializeToString,
+            ),
+            'ListSPLMappings': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListSPLMappings,
+                    request_deserializer=e2e__service__pb2.ListSPLMappingsRequest.FromString,
+                    response_serializer=e2e__service__pb2.ListSPLMappingsResponse.SerializeToString,
+            ),
+            'GetSPLMapping': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSPLMapping,
+                    request_deserializer=e2e__service__pb2.GetSPLMappingRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetSPLMappingResponse.SerializeToString,
+            ),
+            'GetSPLHistory': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSPLHistory,
+                    request_deserializer=e2e__service__pb2.GetSPLHistoryRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetSPLHistoryResponse.SerializeToString,
+            ),
+            'GetSPLCalibrationData': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSPLCalibrationData,
+                    request_deserializer=e2e__service__pb2.GetSPLCalibrationDataRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetSPLCalibrationDataResponse.SerializeToString,
+            ),
+            'GetSPLStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSPLStats,
+                    request_deserializer=e2e__service__pb2.GetSPLStatsRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetSPLStatsResponse.SerializeToString,
+            ),
+            'GetSPLByDevice': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetSPLByDevice,
+                    request_deserializer=e2e__service__pb2.GetSPLByDeviceRequest.FromString,
+                    response_serializer=e2e__service__pb2.GetSPLByDeviceResponse.SerializeToString,
+            ),
+            'CalibrateSPL': grpc.unary_unary_rpc_method_handler(
+                    servicer.CalibrateSPL,
+                    request_deserializer=e2e__service__pb2.CalibrateSPLRequest.FromString,
+                    response_serializer=e2e__service__pb2.CalibrateSPLResponse.SerializeToString,
+            ),
+            'PlayTestTone': grpc.unary_unary_rpc_method_handler(
+                    servicer.PlayTestTone,
+                    request_deserializer=e2e__service__pb2.PlayTestToneRequest.FromString,
+                    response_serializer=e2e__service__pb2.PlayTestToneResponse.SerializeToString,
+            ),
+            'StopTestTone': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopTestTone,
+                    request_deserializer=e2e__service__pb2.StopTestToneRequest.FromString,
+                    response_serializer=e2e__service__pb2.StopTestToneResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'e2e_service.SPLConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('e2e_service.SPLConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class SPLConfigService:
+    """===== SPL 映射 CRUD 服务 =====
+    """
+
+    @staticmethod
+    def CreateSPLMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/CreateSPLMapping',
+            e2e__service__pb2.CreateSPLMappingRequest.SerializeToString,
+            e2e__service__pb2.CreateSPLMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateSPLMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/UpdateSPLMapping',
+            e2e__service__pb2.UpdateSPLMappingRequest.SerializeToString,
+            e2e__service__pb2.UpdateSPLMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteSPLMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/DeleteSPLMapping',
+            e2e__service__pb2.DeleteSPLMappingRequest.SerializeToString,
+            e2e__service__pb2.DeleteSPLMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListSPLMappings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/ListSPLMappings',
+            e2e__service__pb2.ListSPLMappingsRequest.SerializeToString,
+            e2e__service__pb2.ListSPLMappingsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSPLMapping(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/GetSPLMapping',
+            e2e__service__pb2.GetSPLMappingRequest.SerializeToString,
+            e2e__service__pb2.GetSPLMappingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSPLHistory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/GetSPLHistory',
+            e2e__service__pb2.GetSPLHistoryRequest.SerializeToString,
+            e2e__service__pb2.GetSPLHistoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSPLCalibrationData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/GetSPLCalibrationData',
+            e2e__service__pb2.GetSPLCalibrationDataRequest.SerializeToString,
+            e2e__service__pb2.GetSPLCalibrationDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSPLStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/GetSPLStats',
+            e2e__service__pb2.GetSPLStatsRequest.SerializeToString,
+            e2e__service__pb2.GetSPLStatsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetSPLByDevice(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/GetSPLByDevice',
+            e2e__service__pb2.GetSPLByDeviceRequest.SerializeToString,
+            e2e__service__pb2.GetSPLByDeviceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CalibrateSPL(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/CalibrateSPL',
+            e2e__service__pb2.CalibrateSPLRequest.SerializeToString,
+            e2e__service__pb2.CalibrateSPLResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PlayTestTone(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/PlayTestTone',
+            e2e__service__pb2.PlayTestToneRequest.SerializeToString,
+            e2e__service__pb2.PlayTestToneResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopTestTone(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.SPLConfigService/StopTestTone',
+            e2e__service__pb2.StopTestToneRequest.SerializeToString,
+            e2e__service__pb2.StopTestToneResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+
+class AudioConfigServiceStub:
+    """===== 音频配置 CRUD 服务 =====
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.UpdateAudioMetadata = channel.unary_unary(
+                '/e2e_service.AudioConfigService/UpdateAudioMetadata',
+                request_serializer=e2e__service__pb2.UpdateAudioMetadataRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.BatchUpdateAnnotations = channel.unary_unary(
+                '/e2e_service.AudioConfigService/BatchUpdateAnnotations',
+                request_serializer=e2e__service__pb2.BatchUpdateAnnotationsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.BatchActionAudios = channel.unary_unary(
+                '/e2e_service.AudioConfigService/BatchActionAudios',
+                request_serializer=e2e__service__pb2.BatchActionAudiosRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.DeleteAudio = channel.unary_unary(
+                '/e2e_service.AudioConfigService/DeleteAudio',
+                request_serializer=e2e__service__pb2.DeleteAudioRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.UpdateAudioAlgorithms = channel.unary_unary(
+                '/e2e_service.AudioConfigService/UpdateAudioAlgorithms',
+                request_serializer=e2e__service__pb2.UpdateAudioAlgorithmsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.BatchUpdateAudioAlgorithms = channel.unary_unary(
+                '/e2e_service.AudioConfigService/BatchUpdateAudioAlgorithms',
+                request_serializer=e2e__service__pb2.BatchUpdateAudioAlgorithmsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAllAudioTags = channel.unary_unary(
+                '/e2e_service.AudioConfigService/GetAllAudioTags',
+                request_serializer=e2e__service__pb2.GetAllAudioTagsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.ListAudios = channel.unary_unary(
+                '/e2e_service.AudioConfigService/ListAudios',
+                request_serializer=e2e__service__pb2.ListAudiosRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAudio = channel.unary_unary(
+                '/e2e_service.AudioConfigService/GetAudio',
+                request_serializer=e2e__service__pb2.GetAudioRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAudiosByIds = channel.unary_unary(
+                '/e2e_service.AudioConfigService/GetAudiosByIds',
+                request_serializer=e2e__service__pb2.GetAudiosByIdsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAudioByMD5 = channel.unary_unary(
+                '/e2e_service.AudioConfigService/GetAudioByMD5',
+                request_serializer=e2e__service__pb2.GetAudioByMD5Request.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAllAudioIds = channel.unary_unary(
+                '/e2e_service.AudioConfigService/GetAllAudioIds',
+                request_serializer=e2e__service__pb2.GetAllAudioIdsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.StreamAudio = channel.unary_unary(
+                '/e2e_service.AudioConfigService/StreamAudio',
+                request_serializer=e2e__service__pb2.StreamAudioRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.StreamAudioByPath = channel.unary_unary(
+                '/e2e_service.AudioConfigService/StreamAudioByPath',
+                request_serializer=e2e__service__pb2.StreamAudioByPathRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAudioAlgorithms = channel.unary_unary(
+                '/e2e_service.AudioConfigService/GetAudioAlgorithms',
+                request_serializer=e2e__service__pb2.GetAudioAlgorithmsRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.GetAudioFolderTree = channel.unary_unary(
+                '/e2e_service.AudioConfigService/GetAudioFolderTree',
+                request_serializer=e2e__service__pb2.GetAudioFolderTreeRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.PresignUpload = channel.unary_unary(
+                '/e2e_service.AudioConfigService/PresignUpload',
+                request_serializer=e2e__service__pb2.PresignUploadRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.PresignPart = channel.unary_unary(
+                '/e2e_service.AudioConfigService/PresignPart',
+                request_serializer=e2e__service__pb2.PresignPartRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.CompleteDirectUpload = channel.unary_unary(
+                '/e2e_service.AudioConfigService/CompleteDirectUpload',
+                request_serializer=e2e__service__pb2.CompleteDirectUploadRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.InitUploadTask = channel.unary_unary(
+                '/e2e_service.AudioConfigService/InitUploadTask',
+                request_serializer=e2e__service__pb2.InitUploadTaskRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.RegisterUploadFile = channel.unary_unary(
+                '/e2e_service.AudioConfigService/RegisterUploadFile',
+                request_serializer=e2e__service__pb2.RegisterUploadFileRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.UploadChunk = channel.unary_unary(
+                '/e2e_service.AudioConfigService/UploadChunk',
+                request_serializer=e2e__service__pb2.UploadChunkRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.MergeChunks = channel.unary_unary(
+                '/e2e_service.AudioConfigService/MergeChunks',
+                request_serializer=e2e__service__pb2.MergeChunksRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.GetUploadProgress = channel.unary_unary(
+                '/e2e_service.AudioConfigService/GetUploadProgress',
+                request_serializer=e2e__service__pb2.GetUploadProgressRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.UrlImport = channel.unary_unary(
+                '/e2e_service.AudioConfigService/UrlImport',
+                request_serializer=e2e__service__pb2.UrlImportRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.ConvertAudio = channel.unary_unary(
+                '/e2e_service.AudioConfigService/ConvertAudio',
+                request_serializer=e2e__service__pb2.ConvertAudioRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.PreviewAudio = channel.unary_unary(
+                '/e2e_service.AudioConfigService/PreviewAudio',
+                request_serializer=e2e__service__pb2.PreviewAudioRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+        self.StopPreviewAudio = channel.unary_unary(
+                '/e2e_service.AudioConfigService/StopPreviewAudio',
+                request_serializer=e2e__service__pb2.StopPreviewAudioRequest.SerializeToString,
+                response_deserializer=e2e__service__pb2.AudioConfigResponse.FromString,
+                _registered_method=True)
+
+
+class AudioConfigServiceServicer:
+    """===== 音频配置 CRUD 服务 =====
+    """
+
+    def UpdateAudioMetadata(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchUpdateAnnotations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchActionAudios(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteAudio(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateAudioAlgorithms(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def BatchUpdateAudioAlgorithms(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAllAudioTags(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAudios(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAudio(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAudiosByIds(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAudioByMD5(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAllAudioIds(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamAudio(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamAudioByPath(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAudioAlgorithms(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAudioFolderTree(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PresignUpload(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PresignPart(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CompleteDirectUpload(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def InitUploadTask(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RegisterUploadFile(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UploadChunk(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def MergeChunks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetUploadProgress(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UrlImport(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ConvertAudio(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PreviewAudio(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopPreviewAudio(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_AudioConfigServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'UpdateAudioMetadata': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAudioMetadata,
+                    request_deserializer=e2e__service__pb2.UpdateAudioMetadataRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'BatchUpdateAnnotations': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchUpdateAnnotations,
+                    request_deserializer=e2e__service__pb2.BatchUpdateAnnotationsRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'BatchActionAudios': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchActionAudios,
+                    request_deserializer=e2e__service__pb2.BatchActionAudiosRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'DeleteAudio': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteAudio,
+                    request_deserializer=e2e__service__pb2.DeleteAudioRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'UpdateAudioAlgorithms': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateAudioAlgorithms,
+                    request_deserializer=e2e__service__pb2.UpdateAudioAlgorithmsRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'BatchUpdateAudioAlgorithms': grpc.unary_unary_rpc_method_handler(
+                    servicer.BatchUpdateAudioAlgorithms,
+                    request_deserializer=e2e__service__pb2.BatchUpdateAudioAlgorithmsRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetAllAudioTags': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAllAudioTags,
+                    request_deserializer=e2e__service__pb2.GetAllAudioTagsRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'ListAudios': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAudios,
+                    request_deserializer=e2e__service__pb2.ListAudiosRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetAudio': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAudio,
+                    request_deserializer=e2e__service__pb2.GetAudioRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetAudiosByIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAudiosByIds,
+                    request_deserializer=e2e__service__pb2.GetAudiosByIdsRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetAudioByMD5': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAudioByMD5,
+                    request_deserializer=e2e__service__pb2.GetAudioByMD5Request.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetAllAudioIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAllAudioIds,
+                    request_deserializer=e2e__service__pb2.GetAllAudioIdsRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'StreamAudio': grpc.unary_unary_rpc_method_handler(
+                    servicer.StreamAudio,
+                    request_deserializer=e2e__service__pb2.StreamAudioRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'StreamAudioByPath': grpc.unary_unary_rpc_method_handler(
+                    servicer.StreamAudioByPath,
+                    request_deserializer=e2e__service__pb2.StreamAudioByPathRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetAudioAlgorithms': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAudioAlgorithms,
+                    request_deserializer=e2e__service__pb2.GetAudioAlgorithmsRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetAudioFolderTree': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAudioFolderTree,
+                    request_deserializer=e2e__service__pb2.GetAudioFolderTreeRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'PresignUpload': grpc.unary_unary_rpc_method_handler(
+                    servicer.PresignUpload,
+                    request_deserializer=e2e__service__pb2.PresignUploadRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'PresignPart': grpc.unary_unary_rpc_method_handler(
+                    servicer.PresignPart,
+                    request_deserializer=e2e__service__pb2.PresignPartRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'CompleteDirectUpload': grpc.unary_unary_rpc_method_handler(
+                    servicer.CompleteDirectUpload,
+                    request_deserializer=e2e__service__pb2.CompleteDirectUploadRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'InitUploadTask': grpc.unary_unary_rpc_method_handler(
+                    servicer.InitUploadTask,
+                    request_deserializer=e2e__service__pb2.InitUploadTaskRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'RegisterUploadFile': grpc.unary_unary_rpc_method_handler(
+                    servicer.RegisterUploadFile,
+                    request_deserializer=e2e__service__pb2.RegisterUploadFileRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'UploadChunk': grpc.unary_unary_rpc_method_handler(
+                    servicer.UploadChunk,
+                    request_deserializer=e2e__service__pb2.UploadChunkRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'MergeChunks': grpc.unary_unary_rpc_method_handler(
+                    servicer.MergeChunks,
+                    request_deserializer=e2e__service__pb2.MergeChunksRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'GetUploadProgress': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetUploadProgress,
+                    request_deserializer=e2e__service__pb2.GetUploadProgressRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'UrlImport': grpc.unary_unary_rpc_method_handler(
+                    servicer.UrlImport,
+                    request_deserializer=e2e__service__pb2.UrlImportRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'ConvertAudio': grpc.unary_unary_rpc_method_handler(
+                    servicer.ConvertAudio,
+                    request_deserializer=e2e__service__pb2.ConvertAudioRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'PreviewAudio': grpc.unary_unary_rpc_method_handler(
+                    servicer.PreviewAudio,
+                    request_deserializer=e2e__service__pb2.PreviewAudioRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+            'StopPreviewAudio': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopPreviewAudio,
+                    request_deserializer=e2e__service__pb2.StopPreviewAudioRequest.FromString,
+                    response_serializer=e2e__service__pb2.AudioConfigResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'e2e_service.AudioConfigService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('e2e_service.AudioConfigService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class AudioConfigService:
+    """===== 音频配置 CRUD 服务 =====
+    """
+
+    @staticmethod
+    def UpdateAudioMetadata(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/UpdateAudioMetadata',
+            e2e__service__pb2.UpdateAudioMetadataRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchUpdateAnnotations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/BatchUpdateAnnotations',
+            e2e__service__pb2.BatchUpdateAnnotationsRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchActionAudios(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/BatchActionAudios',
+            e2e__service__pb2.BatchActionAudiosRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteAudio(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/DeleteAudio',
+            e2e__service__pb2.DeleteAudioRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateAudioAlgorithms(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/UpdateAudioAlgorithms',
+            e2e__service__pb2.UpdateAudioAlgorithmsRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BatchUpdateAudioAlgorithms(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/BatchUpdateAudioAlgorithms',
+            e2e__service__pb2.BatchUpdateAudioAlgorithmsRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAllAudioTags(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/GetAllAudioTags',
+            e2e__service__pb2.GetAllAudioTagsRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAudios(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/ListAudios',
+            e2e__service__pb2.ListAudiosRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAudio(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/GetAudio',
+            e2e__service__pb2.GetAudioRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAudiosByIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/GetAudiosByIds',
+            e2e__service__pb2.GetAudiosByIdsRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAudioByMD5(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/GetAudioByMD5',
+            e2e__service__pb2.GetAudioByMD5Request.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAllAudioIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/GetAllAudioIds',
+            e2e__service__pb2.GetAllAudioIdsRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamAudio(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/StreamAudio',
+            e2e__service__pb2.StreamAudioRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StreamAudioByPath(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/StreamAudioByPath',
+            e2e__service__pb2.StreamAudioByPathRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAudioAlgorithms(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/GetAudioAlgorithms',
+            e2e__service__pb2.GetAudioAlgorithmsRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAudioFolderTree(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/GetAudioFolderTree',
+            e2e__service__pb2.GetAudioFolderTreeRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PresignUpload(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/PresignUpload',
+            e2e__service__pb2.PresignUploadRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PresignPart(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/PresignPart',
+            e2e__service__pb2.PresignPartRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CompleteDirectUpload(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/CompleteDirectUpload',
+            e2e__service__pb2.CompleteDirectUploadRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InitUploadTask(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/InitUploadTask',
+            e2e__service__pb2.InitUploadTaskRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RegisterUploadFile(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/RegisterUploadFile',
+            e2e__service__pb2.RegisterUploadFileRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UploadChunk(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/UploadChunk',
+            e2e__service__pb2.UploadChunkRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def MergeChunks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/MergeChunks',
+            e2e__service__pb2.MergeChunksRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetUploadProgress(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/GetUploadProgress',
+            e2e__service__pb2.GetUploadProgressRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UrlImport(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/UrlImport',
+            e2e__service__pb2.UrlImportRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ConvertAudio(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/ConvertAudio',
+            e2e__service__pb2.ConvertAudioRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PreviewAudio(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/PreviewAudio',
+            e2e__service__pb2.PreviewAudioRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopPreviewAudio(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/e2e_service.AudioConfigService/StopPreviewAudio',
+            e2e__service__pb2.StopPreviewAudioRequest.SerializeToString,
+            e2e__service__pb2.AudioConfigResponse.FromString,
             options,
             channel_credentials,
             insecure,

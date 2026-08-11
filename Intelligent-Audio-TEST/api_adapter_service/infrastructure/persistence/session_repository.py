@@ -8,10 +8,13 @@
 from typing import Optional
 
 from api_adapter_service.domain.entities import AdapterSession
+from api_adapter_service.domain.repositories.session_repository_abc import (
+    SessionRepositoryABC,
+)
 from api_adapter_service.services.session_store import session_store
 
 
-class SessionRepository:
+class SessionRepository(SessionRepositoryABC):
     """会话仓储。
 
     将领域聚合根 AdapterSession 与已有的 SessionStore（dict 形式）

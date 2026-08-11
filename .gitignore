@@ -80,6 +80,26 @@ coverage/
 .codegraph/
 CLAUDE.md
 .qoder/
+AGENTS.md
+.agent_context/
+.multica/
+.traecli/
+
+# Agent temp / scratch files
+_del.py
+_int18_reply.md
+reply.md
+defects_desc.md
+dto_desc.md
+trigger_int10.md
+find_trae.ps1
+find_trae_cmd.ps1
+restart_trae.ps1
+Intelligent-Audio-TEST/.coverage
+Intelligent-Audio-TEST/_test_imports.py
+Intelligent-Audio-TEST/_int18_reply.md
+Intelligent-Audio-TEST/reply.md
+Intelligent-Audio-TEST/log.txt
 
 # Runtime data - eval_server
 eval_server/app/database/tasks/

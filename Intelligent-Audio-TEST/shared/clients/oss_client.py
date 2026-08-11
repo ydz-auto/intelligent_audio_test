@@ -9,6 +9,7 @@ OSS 客户端封装 - S3 兼容（开发环境 MinIO / 生产环境 AWS S3）
 """
 import os
 import io
+import logging
 import threading
 from typing import Optional, BinaryIO
 
@@ -17,6 +18,8 @@ from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
 
 from shared.infrastructure.config import BaseConfig
+
+logger = logging.getLogger(__name__)
 
 
 class OSSClient:
@@ -98,6 +101,9 @@ class OSSClient:
             'raw_chunks': BaseConfig.OSS_BUCKET_RAW_CHUNKS,
         }
 
+        # 首次连接时自动创建所需 bucket（若不存在）
+        self._ensure_buckets_exist()
+
     def _bucket(self, category: str) -> str:
         """返回 category 对应的 bucket 名（单桶模式返回统一桶名）"""
         if self._single_bucket:
@@ -106,6 +112,34 @@ class OSSClient:
         if not bucket:
             raise ValueError(f"Unknown OSS category: {category}")
         return bucket
+
+    def _ensure_buckets_exist(self):
+        """首次连接时自动创建所需 bucket（若不存在）。
+
+        单桶模式：检查/创建统一桶名；
+        多桶模式：遍历所有已配置的 bucket 名称。
+        """
+        if self._single_bucket:
+            bucket_names = [self._single_bucket]
+        else:
+            bucket_names = [b for b in self._buckets.values() if b]
+        for name in bucket_names:
+            if not name:
+                continue
+            try:
+                self._client.head_bucket(Bucket=name)
+            except ClientError as e:
+                err_code = e.response.get('Error', {}).get('Code', '')
+                if err_code in ('404', 'NoSuchBucket'):
+                    try:
+                        self._client.create_bucket(Bucket=name)
+                        logger.info(f"OSS bucket 已自动创建: {name}")
+                    except ClientError as ce:
+                        logger.warning(f"创建 OSS bucket 失败: {name} - {ce}")
+                else:
+                    logger.warning(f"检查 OSS bucket 存在性失败: {name} (code={err_code})")
+            except Exception as e:
+                logger.warning(f"检查 OSS bucket 存在性失败: {name} - {e}")
 
     def _full_key(self, category: str, key: str) -> str:
         """生成实际存储的 OSS key。

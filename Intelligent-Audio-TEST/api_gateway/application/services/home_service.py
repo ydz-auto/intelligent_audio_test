@@ -1,11 +1,20 @@
 """首页统计服务"""
+import json
+
+import redis as redis_lib
+
 from api_gateway.infrastructure.request_adapter import request
-from sqlalchemy import func, desc
-from shared.models.database import db
-from shared.models.models import TestCase, Task, Device, TestCaseGroup, StatsCache
+from api_gateway.infrastructure.grpc_proxies import task_config_service, device_config_service
 from api_gateway.schemas.home import HomeStatsDetails, HomeStatsRefreshRequest
-from shared.utils.response import success_response, error_response
-from shared.utils.report.stats_cache import refresh_stats_cache
+from api_gateway.utils.response import success_response, error_response
+from api_gateway.application.services.stats_cache import refresh_stats_cache, _CACHE_KEY
+from shared.infrastructure.config import BaseConfig
+from shared.clients.grpc_clients import list_testcase_groups, get_testcase_stats
+
+
+def _get_redis():
+    """获取 Redis 客户端"""
+    return redis_lib.from_url(BaseConfig.REDIS_URL)
 
 
 class HomeService:
@@ -14,22 +23,18 @@ class HomeService:
     @staticmethod
     def get_stats_details():
         try:
-            cache_entry = db.session.query(StatsCache).filter(
-                StatsCache.cache_key == 'home_stats'
-            ).first()
+            r = _get_redis()
+            raw = r.get(_CACHE_KEY)
 
-            if cache_entry and cache_entry.cache_value:
-                stats_data = HomeStatsDetails(**cache_entry.cache_value)
+            if raw:
+                stats_data = HomeStatsDetails(**json.loads(raw))
                 return success_response(data=stats_data)
 
             refresh_stats_cache()
 
-            cache_entry = db.session.query(StatsCache).filter(
-                StatsCache.cache_key == 'home_stats'
-            ).first()
-
-            if cache_entry:
-                stats_data = HomeStatsDetails(**cache_entry.cache_value)
+            raw = r.get(_CACHE_KEY)
+            if raw:
+                stats_data = HomeStatsDetails(**json.loads(raw))
                 return success_response(data=stats_data)
 
             return success_response(data=HomeStatsDetails())
@@ -47,64 +52,118 @@ class HomeService:
             return error_response(message=f"刷新统计缓存失败: {str(e)}")
 
     @staticmethod
+    def _fetch_top_groups_via_grpc(limit=5):
+        """通过 gRPC 拉取 TestCaseGroup+TestCase 聚合统计（top N 分组）
+
+        组合 list_testcase_groups（分组元数据）与 get_testcase_stats(group_by='group_id')
+        （每分组的用例数），在客户端做 join + 排序 + 截断，替代直连 PO 的
+        outerjoin + group_by + count + limit 聚合查询。
+
+        返回 [{id, name, case_count}, ...]，按 case_count 降序取前 limit 条。
+        gRPC 失败时返回空列表。
+        """
+        try:
+            groups_resp = list_testcase_groups() or {}
+            group_items = groups_resp.get('items', []) if isinstance(groups_resp, dict) else []
+            group_map = {g.get('id'): g for g in group_items if g.get('id') is not None}
+
+            stats_resp = get_testcase_stats(group_by='group_id') or {}
+            stat_items = stats_resp.get('items', []) if isinstance(stats_resp, dict) else []
+        except Exception:
+            return []
+
+        merged = []
+        for item in stat_items:
+            key = item.get('key')
+            count = int(item.get('count', 0) or 0)
+            # 匹配分组元数据（key 为 group_id 字符串）
+            group = group_map.get(key) or group_map.get(str(key))
+            if group is None:
+                continue
+            try:
+                gid = int(group.get('id'))
+            except (TypeError, ValueError):
+                gid = group.get('id')
+            merged.append({
+                'id': gid,
+                'name': group.get('name') or '',
+                'case_count': count,
+            })
+
+        merged.sort(key=lambda x: x.get('case_count', 0), reverse=True)
+        return merged[:limit]
+
+    @staticmethod
     def get_stats_summary():
         try:
-            recent_tasks = db.session.query(Task).filter(
-                Task.deleted == False
-            ).order_by(
-                desc(Task.created_at)
-            ).limit(5).all()
+            # 通过 gRPC 获取最近任务（替代直连 task_service PO）
+            result = task_config_service.list_tasks(page=1, per_page=5)
+            recent_tasks_data = []
+            if result.get('success'):
+                for task in (result.get('data') or {}).get('items', []):
+                    recent_tasks_data.append(
+                        {
+                            'id': task.get('id'),
+                            'name': task.get('name'),
+                            'type': task.get('type'),
+                            'status': task.get('status'),
+                            'algorithm_type': task.get('algorithm_type'),
+                            'total_cases': task.get('total_cases'),
+                            'completed_cases': task.get('completed_cases'),
+                            'created_at': task.get('created_at'),
+                        }
+                    )
 
-            top_groups = db.session.query(
-                TestCaseGroup,
-                func.count(TestCase.id).label('case_count')
-            ).outerjoin(TestCase, db.and_(
-                TestCase.deleted == False,
-                TestCase.group_id == TestCaseGroup.id
-            )).group_by(TestCaseGroup.id).order_by(
-                desc('case_count')
-            ).limit(5).all()
+            # 通过 gRPC 获取 TestCaseGroup+TestCase 聚合统计（替代直连 PO 的 join 聚合）
+            top_groups_data = HomeService._fetch_top_groups_via_grpc(limit=5)
 
             from api_gateway.schemas.home import RecentTaskItem, TopGroupItem, DeviceStatus, HomeStatsSummary
-            recent_tasks_data = []
-            for task in recent_tasks:
-                recent_tasks_data.append(
+            recent_task_items = []
+            for task in recent_tasks_data:
+                recent_task_items.append(
                     RecentTaskItem(
-                        id=task.id,
-                        name=task.name,
-                        type=task.type,
-                        status=task.status,
-                        algorithm_type=task.algorithm_type,
-                        total_cases=task.total_cases,
-                        completed_cases=task.completed_cases,
-                        created_at=task.created_at.isoformat() if task.created_at else None
+                        id=task['id'],
+                        name=task['name'],
+                        type=task['type'],
+                        status=task['status'],
+                        algorithm_type=task['algorithm_type'],
+                        total_cases=task['total_cases'],
+                        completed_cases=task['completed_cases'],
+                        created_at=task['created_at'],
                     )
                 )
 
-            top_groups_data = []
-            for group, case_count in top_groups:
-                top_groups_data.append(
-                    TopGroupItem(
-                        id=group.id,
-                        name=group.name,
-                        case_count=case_count
-                    )
+            top_group_items = [
+                TopGroupItem(
+                    id=g.get('id'),
+                    name=g.get('name', ''),
+                    case_count=g.get('case_count', 0)
                 )
+                for g in top_groups_data
+            ]
+
+            # 通过 gRPC 获取设备状态（替代直连 device_service PO）
+            online_count = 0
+            offline_count = 0
+            try:
+                dev_result = device_config_service.get_all(page=1, per_page=10000)
+                if dev_result.get('success'):
+                    for dev in (dev_result.get('data') or {}).get('items', []):
+                        if dev.get('status') == 'online':
+                            online_count += 1
+                        else:
+                            offline_count += 1
+            except Exception:
+                pass
 
             device_status = DeviceStatus(
-                online=db.session.query(func.count(Device.id)).filter(
-                    Device.status == 'online',
-                    Device.deleted == False
-                ).scalar() or 0,
-                offline=db.session.query(func.count(Device.id)).filter(
-                    Device.status == 'offline',
-                    Device.deleted == False
-                ).scalar() or 0
+                online=online_count,
+                offline=offline_count
             )
 
             summary = HomeStatsSummary(
-                recentTasks=recent_tasks_data,
-                topGroups=top_groups_data,
+                recentTasks=recent_task_items,
+                topGroups=top_group_items,
                 deviceStatus=device_status
             )
 

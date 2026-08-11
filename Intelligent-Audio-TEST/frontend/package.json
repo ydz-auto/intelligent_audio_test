@@ -5,14 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "type-check": "vue-tsc --noEmit",
     "electron:dev": "electron --loader tsx electron-main.ts"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^7.1.0",
-    "axios": "^1.7.2",
     "chart.js": "^4.5.1",
     "chartjs-plugin-zoom": "^2.2.0",
     "electron-is-dev": "^3.0.1",
@@ -28,13 +27,13 @@
     "@types/spark-md5": "^3.0.5",
     "@vitejs/plugin-vue": "^5.0.5",
     "@vue/test-utils": "^2.4.6",
-    "electron": "^31.0.1",
+    "electron": "^31.7.4",
     "jsdom": "^27.4.0",
     "less": "^4.5.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^5.3.1",
-    "vitest": "^4.0.16",
+    "vitest": "^4.1.0",
     "vue-tsc": "^3.2.2"
   }
 }

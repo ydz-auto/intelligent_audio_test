@@ -73,6 +73,11 @@ export function useCaseForm(props: any, emit: any) {
     emitFormData();
   }
 
+  function handleGlobalNoiseUpdate(noise: any) {
+    localFormData.value.config.background_noise = noise;
+    emitFormData();
+  }
+
   // ---- 音频选择请求 ----
   function handleAudioSelectRequest(audioType: 'dry' | 'noise', callback: (audios: { id: string; name?: string }[]) => void) {
     // 转发到父级处理（打开音频选择弹窗），携带 callback
@@ -476,6 +481,8 @@ export function useCaseForm(props: any, emit: any) {
     handleAlgorithmParamsUpdate,
     handleAudioSelectRequest,
     handleOverallDimensionsUpdate,
+    handleGlobalNoiseUpdate,
+    playbackDevices,
     availableDimensions,
     roundConfigRef,
     // defineExpose 用到的

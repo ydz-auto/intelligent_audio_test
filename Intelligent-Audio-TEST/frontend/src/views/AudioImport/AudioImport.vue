@@ -94,63 +94,12 @@
     </div>
 
     <!-- 转换模态框 -->
-    <div class="modal-overlay" v-if="showConvertModal">
-      <div class="modal-container">
-        <div class="modal-header">
-          <h3>音频格式转换</h3>
-          <div class="modal-close" @click="showConvertModal = false">
-            <i class="fas fa-times"></i>
-          </div>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>目标格式</label>
-            <select v-model="convertAudioInfo.targetFormat" class="form-control">
-              <option value="wav">WAV</option>
-              <option value="mp3">MP3</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>采样率</label>
-            <select v-model="convertAudioInfo.targetSampleRate" class="form-control">
-              <option value="16000">16000 Hz</option>
-              <option value="44100">44100 Hz</option>
-              <option value="48000">48000 Hz</option>
-            </select>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" @click="showConvertModal = false">取消</button>
-          <button class="btn btn-primary" @click="() => convertAudio()">开始转换</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 删除结果模态框 -->
-    <div class="modal-overlay" v-if="showDeleteResultModal">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>删除结果</h3>
-          <div class="modal-close" @click="closeDeleteResultModal">
-            <i class="fas fa-times"></i>
-          </div>
-        </div>
-        <div class="modal-body">
-          <div class="delete-result-content">
-            <div class="result-icon" :class="deleteResult.success ? 'success' : 'error'">
-              <i class="fas" :class="deleteResult.success ? 'fa-check-circle' : 'fa-times-circle'"></i>
-            </div>
-            <div class="result-message">
-              <h4>{{ deleteResult.message }}</h4>
-              <p v-if="deleteResult.count > 0">共删除了 <strong>{{ deleteResult.count }}</strong> 个音频文件</p>
-            </div>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary" @click="closeDeleteResultModal">确定</button>
-        </div>
-      </div>
-    </div>
+    <ConvertModal
+      :visible="showConvertModal"
+      :info="convertAudioInfo"
+      @close="showConvertModal = false"
+      @confirm="() => convertAudio()"
+    />
 
     
     <!-- 音频播放器模态窗 -->
@@ -215,15 +164,13 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
     if (showConvertModal.value) {
       showConvertModal.value = false;
     }
-    if (showDeleteResultModal.value) {
-      closeDeleteResultModal();
-    }
   }
 };
 import AudioListComponent from '../../components/common/audio/AudioListComponent.vue';
 import UploadProgressCard from '../../components/common/misc/UploadProgressCard.vue';
 import AudioPlayerModal from '../../components/common/audio/AudioPlayerModal.vue';
 import BatchAnnotationModal from '../../components/common/modal/BatchAnnotationModal.vue';
+import ConvertModal from './ConvertModal.vue';
 import { useAudioImport } from './audioImport';
 import { useUploadState } from '../../composables/upload/useUploadState';
 import { formatAudioData } from '../../utils/audioUtils';
@@ -328,9 +275,6 @@ const {
   retryFailedFiles: retryFailedFiles,
   dismissTask: dismissTask,
   toggleFolder: toggleFolder,
-  showDeleteResultModal,
-  deleteResult,
-  closeDeleteResultModal: closeDeleteResultModal,
   pauseUploadTask: pauseUploadTask,
   showAudioPlayerModal: showAudioPlayerModal,
   audioTitle: audioTitle,

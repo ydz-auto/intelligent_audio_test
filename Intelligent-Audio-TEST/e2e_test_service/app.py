@@ -25,7 +25,7 @@ from fastapi import FastAPI
 
 from shared.models.database import init_db
 from shared.utils.service_registry import RedisServiceRegistry
-from e2e_test_service.core.e2e_service import e2e_service
+from e2e_test_service.application.services.e2e_service import e2e_service
 from e2e_test_service.config.config import Config
 
 logging.basicConfig(
@@ -62,7 +62,7 @@ async def lifespan(app: FastAPI):
                      capabilities={'labs': [lab_name]})
     logger.info("e2e_test_service 已注册到 Redis (lab=%s)", lab_name)
 
-    from e2e_test_service.grpc.server import start_grpc_server
+    from e2e_test_service.interfaces.grpc.server import start_grpc_server
     try:
         _grpc_server = start_grpc_server(port=Config.GRPC_PORT)
         logger.info("gRPC server started on port %s", Config.GRPC_PORT)

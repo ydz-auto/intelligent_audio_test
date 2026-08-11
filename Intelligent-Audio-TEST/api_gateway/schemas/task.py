@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from pydantic import Field, field_validator, model_validator
 
-from shared.schemas.base import APIModel
+from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 

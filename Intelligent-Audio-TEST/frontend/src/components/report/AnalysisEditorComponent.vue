@@ -29,7 +29,7 @@
           :contenteditable="isEditing"
           :spellcheck="false"
           @input="handleContentChange"
-          v-html="content"
+          v-html="sanitizedContent"
         ></div>
         <div class="editor-placeholder" v-if="!content && !isEditing">
           <i class="fas fa-comment-dots"></i>
@@ -101,6 +101,8 @@
 </template>
 
 <script>
+import { sanitizeForVHtml } from '../../utils/sanitize'
+
 export default {
   name: 'AnalysisEditorComponent',
   props: {
@@ -136,6 +138,9 @@ export default {
         'draft': '草稿', 'saved': '已保存', 'published': '已发布', 'updating': '更新中'
       };
       return statusMap[this.status] || this.status;
+    },
+    sanitizedContent() {
+      return sanitizeForVHtml(this.content);
     }
   },
   methods: {

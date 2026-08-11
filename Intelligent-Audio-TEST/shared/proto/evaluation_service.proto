@@ -1,0 +1,177 @@
+syntax = "proto3";
+package evaluation_service;
+option py_generic_services = true;
+
+// ===== 评估执行服务 =====
+// 从 task_service.ExecutionService 迁移的评估相关 RPC。
+// api_test_service / e2e_test_service 执行完原始结果采集后，
+// 通过本服务提交评估（打分 + 多轮聚合）。
+service EvaluationService {
+  // 评估单个用例结果（供 e2e_test_service / api_test_service 跨服务调用）
+  rpc EvaluateCase(EvaluateCaseRequest) returns (EvaluateCaseResponse);
+  // 重新评估（任务级批量重新评估）
+  rpc Reevaluate(ReevaluateRequest) returns (ReevaluateResponse);
+  // 多轮用例重新评估
+  rpc ReevaluateMultiRound(ReevaluateMultiRoundRequest) returns (ReevaluateMultiRoundResponse);
+  // 单轮用例重新评估
+  rpc ReevaluateSingle(ReevaluateSingleRequest) returns (ReevaluateSingleResponse);
+}
+
+// ==================== EvaluationService Messages ====================
+
+message EvaluateCaseRequest {
+  string task_id = 1;
+  string result_id = 2;
+  string test_case_id = 3;
+  string algorithm_result = 4;  // JSON 序列化的算法结果
+  string eval_params = 5;  // JSON 序列化的评估参数 (algorithm_type, test_type, round_number 等)
+}
+
+message EvaluateCaseResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的评估结果
+}
+
+message ReevaluateRequest {
+  string task_id = 1;
+  bool reextract_device_output = 2;
+  string reevaluate_type = 3;  // all / failed / passed
+}
+
+message ReevaluateResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的重新评估结果
+}
+
+message ReevaluateMultiRoundRequest {
+  string task_id = 1;
+  string result_json = 2;       // JSON 序列化的结果对象
+  string test_case_id = 3;
+  string algorithm_result = 4;  // JSON 序列化的算法结果
+  string test_type = 5;
+  string algorithm_type = 6;
+}
+
+message ReevaluateMultiRoundResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ReevaluateSingleRequest {
+  string task_id = 1;
+  string result_id = 2;
+  string test_case_id = 3;
+  string algorithm_result = 4;    // JSON 序列化的算法结果
+  string reference_params = 5;    // JSON 序列化的参考参数
+  string test_type = 6;
+  string algorithm_type = 7;
+}
+
+message ReevaluateSingleResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ===== 评估维度配置 CRUD 服务 =====
+// 从 task_service.EvaluationConfigService 迁移，Dimension CRUD 归属 evaluation_service。
+service EvaluationConfigService {
+  // ---- 分类 CRUD ----
+  rpc CreateCategory(CreateCategoryRequest) returns (EvaluationConfigResponse);
+  rpc UpdateCategory(UpdateCategoryRequest) returns (EvaluationConfigResponse);
+  rpc DeleteCategory(DeleteCategoryRequest) returns (EvaluationConfigResponse);
+  rpc ListCategories(ListCategoriesRequest) returns (EvaluationConfigResponse);
+
+  // ---- 维度 CRUD ----
+  rpc CreateDimension(CreateDimensionRequest) returns (EvaluationConfigResponse);
+  rpc UpdateDimension(UpdateDimensionRequest) returns (EvaluationConfigResponse);
+  rpc DeleteDimension(DeleteDimensionRequest) returns (EvaluationConfigResponse);
+  rpc BatchActionDimension(BatchActionDimensionRequest) returns (EvaluationConfigResponse);
+  rpc CalculateScore(CalculateScoreRequest) returns (EvaluationConfigResponse);
+
+  // ---- 读操作 ----
+  rpc ListDimensions(ListDimensionsRequest) returns (EvaluationConfigResponse);
+  rpc GetDimensionOptions(GetDimensionOptionsRequest) returns (EvaluationConfigResponse);
+  rpc GetDimensionByIds(GetDimensionByIdsRequest) returns (EvaluationConfigResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (EvaluationConfigResponse);
+}
+
+// ---- 分类 ----
+message CreateCategoryRequest {
+  string data = 1;  // JSON: {name, description, icon}
+}
+message UpdateCategoryRequest {
+  int32 cat_id = 1;
+  string data = 2;  // JSON: {name, description, icon}
+}
+message DeleteCategoryRequest {
+  int32 cat_id = 1;
+}
+message ListCategoriesRequest {}
+
+// ---- 维度 ----
+message CreateDimensionRequest {
+  string data = 1;  // JSON: 完整创建请求体
+}
+message UpdateDimensionRequest {
+  int32 dim_id = 1;
+  string data = 2;  // JSON: 完整更新请求体
+}
+message DeleteDimensionRequest {
+  int32 dim_id = 1;
+}
+message BatchActionDimensionRequest {
+  string data = 1;  // JSON: {ids, action}
+}
+message CalculateScoreRequest {
+  int32 dim_id = 1;
+  string data = 2;  // JSON: {value}
+}
+
+// ---- 读操作 ----
+message ListDimensionsRequest {
+  int32 category_id = 1;
+  int32 page = 2;
+  int32 per_page = 3;
+  string search = 4;
+}
+message GetDimensionOptionsRequest {
+  string algorithm_type = 1;
+}
+message GetDimensionByIdsRequest {
+  string dim_ids = 1;  // JSON: list[int]，Dimension.id 列表
+}
+message HealthCheckRequest {
+  int32 dim_id = 1;
+}
+message EvaluationConfigResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ===== 评估数据查询服务 =====
+// 供 task_service 跨服务查询/删除 TestResultDimension（evaluation_service 自有 PO）。
+service EvaluationDataService {
+  // 按 result_id 列表批量查询维度评估结果（含 dimension_name，用于 read model join 场景）
+  rpc GetDimensionResultsByResultIds(GetDimensionResultsByResultIdsRequest) returns (EvaluationDataResponse);
+  // 按 result_id 列表批量删除维度评估记录（用于 task_service 清理用例结果时联动）
+  rpc DeleteDimensionResultsByResultIds(DeleteDimensionResultsByResultIdsRequest) returns (EvaluationDataResponse);
+}
+
+message GetDimensionResultsByResultIdsRequest {
+  string result_ids = 1;  // JSON: list[int]，TestResult.id 列表
+}
+
+message DeleteDimensionResultsByResultIdsRequest {
+  string result_ids = 1;  // JSON: list[int]，TestResult.id 列表
+}
+
+message EvaluationDataResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的结果
+}

@@ -1,7 +1,7 @@
 from typing import Generic, List, Optional, TypeVar
 from pydantic import Field
 
-from shared.schemas.base import APIModel
+from api_gateway.schemas.base import APIModel
 
 T = TypeVar("T")
 

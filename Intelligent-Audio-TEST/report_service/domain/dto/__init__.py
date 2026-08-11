@@ -1,0 +1,41 @@
+# -*- coding: utf-8 -*-
+"""report_service domain DTO 包。"""
+from report_service.domain.dto.report_acl_dto import (
+    AlgoNormalizedParamsDTO,
+    AlgoReferenceParamsDTO,
+    ApiConfigDTO,
+    AudioDTO,
+    DeviceDTO,
+    DimensionDTO,
+    DimensionParamDTO,
+    DimensionResultDTO,
+    PlaybackDeviceDTO,
+    TagCategoryDTO,
+    TaskApiDTO,
+    TaskCaseDTO,
+    TaskDTO,
+    TaskDeviceDTO,
+    TaskMergeRelationDTO,
+    TestCaseDTO,
+    TestResultDTO,
+)
+
+__all__ = [
+    'AlgoNormalizedParamsDTO',
+    'AlgoReferenceParamsDTO',
+    'ApiConfigDTO',
+    'AudioDTO',
+    'DeviceDTO',
+    'DimensionDTO',
+    'DimensionParamDTO',
+    'DimensionResultDTO',
+    'PlaybackDeviceDTO',
+    'TagCategoryDTO',
+    'TaskApiDTO',
+    'TaskCaseDTO',
+    'TaskDTO',
+    'TaskDeviceDTO',
+    'TaskMergeRelationDTO',
+    'TestCaseDTO',
+    'TestResultDTO',
+]

@@ -1,7 +1,7 @@
 from typing import Any, List, Optional
 from pydantic import Field
 
-from shared.schemas.base import APIModel
+from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 

@@ -3,7 +3,7 @@
 
 - 自动加载 .env 注入子进程环境变量
 - 启动基础设施：redis / postgres / minio
-- 启动 5 个 FastAPI 后端服务（uvicorn）
+- 启动 11 个后端微服务（FastAPI + gRPC-only）
 - 实时转发每个子进程的 stdout/stderr
 - 端口就绪探测，Ctrl+C 优雅停止全部
 
@@ -35,15 +35,25 @@ except ImportError:
 # 子进程环境（继承当前进程 + .env）
 CHILD_ENV = os.environ.copy()
 
-# 5 个 FastAPI 后端微服务配置
+# 11 个后端微服务配置
 # .env 里 PORT/GRPC_PORT 是全局变量，多个服务共用会互相覆盖，
 # 这里按 services 配置在子进程环境里强制指定各自的端口
+# - HTTP 服务用 uvicorn 启动 {dir}.app:app
+# - gRPC-only 服务（audio_service / device_service）用 python -m {dir}.interfaces.grpc.server 启动
+# - report_service HTTP 端口改为 5006，避免与 api_adapter_service 的 5008 冲突
 services = [
-    {'name': 'api_gateway',        'port': 5000, 'grpc_port': None,   'dir': 'api_gateway'},
-    {'name': 'task_service',        'port': 5001, 'grpc_port': 50061, 'dir': 'task_service'},
-    {'name': 'e2e_test_service',    'port': 5002, 'grpc_port': 50051, 'dir': 'e2e_test_service'},
-    {'name': 'api_test_service',    'port': 5003, 'grpc_port': 50071, 'dir': 'api_test_service'},
-    {'name': 'api_adapter_service', 'port': 5008, 'grpc_port': 50081, 'dir': 'api_adapter_service'},
+    {'name': 'api_gateway',        'port': 5000, 'grpc_port': None,   'dir': 'api_gateway',         'http': True},
+    {'name': 'task_service',        'port': 5001, 'grpc_port': 50061, 'dir': 'task_service',        'http': True},
+    {'name': 'e2e_test_service',    'port': 5002, 'grpc_port': 50051, 'dir': 'e2e_test_service',    'http': True},
+    {'name': 'api_test_service',    'port': 5003, 'grpc_port': 50071, 'dir': 'api_test_service',    'http': True},
+    {'name': 'evaluation_service',  'port': 5004, 'grpc_port': 50091, 'dir': 'evaluation_service',  'http': True},
+    {'name': 'algorithm_service',   'port': 5007, 'grpc_port': 50067, 'dir': 'algorithm_service',   'http': True},
+    {'name': 'report_service',      'port': 5006, 'grpc_port': 50068, 'dir': 'report_service',      'http': True},
+    {'name': 'auth_service',        'port': 5009, 'grpc_port': 50069, 'dir': 'auth_service',        'http': True},
+    {'name': 'api_adapter_service', 'port': 5008, 'grpc_port': 50081, 'dir': 'api_adapter_service', 'http': True},
+    # gRPC-only 服务：无 app.py，仅启动 gRPC server
+    {'name': 'audio_service',       'port': None, 'grpc_port': 50052, 'dir': 'audio_service',      'http': False},
+    {'name': 'device_service',      'port': None, 'grpc_port': 50053, 'dir': 'device_service',      'http': False},
 ]
 
 # 前端 Vite dev server
@@ -153,7 +163,8 @@ def cleanup_occupied_ports():
     """启动前检查并清理被占用的服务端口（HTTP + gRPC + 前端，不含 infra）。"""
     ports_to_check = {FRONTEND_PORT}
     for svc in services:
-        ports_to_check.add(svc['port'])
+        if svc.get('port'):
+            ports_to_check.add(svc['port'])
         if svc.get('grpc_port'):
             ports_to_check.add(svc['grpc_port'])
 
@@ -180,25 +191,46 @@ def cleanup_occupied_ports():
 
 
 def start_service(svc):
-    """启动一个 FastAPI 服务（uvicorn）。"""
+    """启动一个微服务。
+
+    - HTTP 服务（http=True）：用 uvicorn 启动 {dir}.app:app
+    - gRPC-only 服务（http=False）：用 python -m {dir}.interfaces.grpc.server 启动
+    """
     name = svc['name']
     port = svc['port']
-    print(f"[START] {name} on port {port}...", flush=True)
+    grpc_port = svc.get('grpc_port')
 
     env = dict(CHILD_ENV)
-    env['PYTHONPATH'] = BASE_DIR + os.pathsep + env.get('PYTHONPATH', '')
-    env['PORT'] = str(port)
-    if svc.get('grpc_port'):
-        env['GRPC_PORT'] = str(svc['grpc_port'])
+    # shared/proto 目录：*_pb2_grpc.py 使用裸导入 `import xxx_pb2`，
+    # 需将 proto 目录加入 sys.path 才能解析。
+    proto_dir = os.path.join(BASE_DIR, 'shared', 'proto')
+    env['PYTHONPATH'] = (
+        BASE_DIR + os.pathsep + proto_dir + os.pathsep + env.get('PYTHONPATH', '')
+    )
 
-    # 用 uvicorn 启动，app 模块路径 = {dir}.app:app
+    if svc.get('http', True):
+        print(f"[START] {name} (HTTP) on port {port}...", flush=True)
+        env['PORT'] = str(port)
+        if grpc_port:
+            env['GRPC_PORT'] = str(grpc_port)
+        cmd = [
+            sys.executable, '-m', 'uvicorn',
+            f"{svc['dir']}.app:app",
+            '--host', '0.0.0.0',
+            '--port', str(port),
+            '--workers', '1',
+            '--log-level', 'info',
+        ]
+    else:
+        print(f"[START] {name} (gRPC-only) on port {grpc_port}...", flush=True)
+        if grpc_port:
+            env['GRPC_PORT'] = str(grpc_port)
+        cmd = [
+            sys.executable, '-m', f"{svc['dir']}.interfaces.grpc.server",
+        ]
+
     proc = subprocess.Popen(
-        [sys.executable, '-m', 'uvicorn',
-         f"{svc['dir']}.app:app",
-         '--host', '0.0.0.0',
-         '--port', str(port),
-         '--workers', '1',
-         '--log-level', 'info'],
+        cmd,
         cwd=BASE_DIR,
         env=env,
         stdout=subprocess.PIPE,
@@ -209,7 +241,10 @@ def start_service(svc):
     t.start()
     processes.append({'name': name, 'proc': proc, 'thread': t})
     # 等待端口就绪再启动下一个，避免资源争抢
-    _wait_port('localhost', port, name)
+    if port:
+        _wait_port('localhost', port, name)
+    elif grpc_port:
+        _wait_port('localhost', grpc_port, name)
 
 
 def start_redis():
@@ -382,14 +417,20 @@ def start_all():
     for svc in services:
         start_service(svc)
     start_frontend()
-    print(f"\n[OK] Started {len(processes)} processes (3 infra + 5 backend + 1 frontend).", flush=True)
-    print("[INFO] Frontend:          http://localhost:5173", flush=True)
+    print(f"\n[OK] Started {len(processes)} processes (3 infra + 11 backend + 1 frontend).", flush=True)
+    print("[INFO] Frontend:            http://localhost:5173", flush=True)
     print("[INFO] API Gateway:        http://localhost:5000", flush=True)
-    print("[INFO] Task Service:      http://localhost:5001", flush=True)
-    print("[INFO] E2E Test Service:  http://localhost:5002", flush=True)
-    print("[INFO] API Test Service:  http://localhost:5003", flush=True)
-    print("[INFO] Adapter Service:   http://localhost:5008", flush=True)
-    print("[INFO] MinIO Console:     http://localhost:9001", flush=True)
+    print("[INFO] Task Service:       http://localhost:5001", flush=True)
+    print("[INFO] E2E Test Service:   http://localhost:5002", flush=True)
+    print("[INFO] API Test Service:   http://localhost:5003", flush=True)
+    print("[INFO] Evaluation Service: http://localhost:5004", flush=True)
+    print("[INFO] Report Service:     http://localhost:5006", flush=True)
+    print("[INFO] Algorithm Service:  http://localhost:5007", flush=True)
+    print("[INFO] Adapter Service:    http://localhost:5008", flush=True)
+    print("[INFO] Auth Service:       http://localhost:5009", flush=True)
+    print("[INFO] Audio Service:      gRPC :50052", flush=True)
+    print("[INFO] Device Service:     gRPC :50053", flush=True)
+    print("[INFO] MinIO Console:      http://localhost:9001", flush=True)
     print("[INFO] Ctrl+C to stop all.", flush=True)
 
 

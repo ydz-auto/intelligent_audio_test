@@ -1,6 +1,50 @@
 from datetime import datetime, timezone, timedelta
-from shared.models.models import TaskCase, TestCase, Audio
-from shared.models.database import db
+from shared.models.database import get_db_session
+# TODO(gRPC): _time_estimate 属于 event_manager 实时进度估算模块，
+# 在任务执行过程中高频调用以推算预计完成时间。
+# 已迁移到 gRPC 的查询：
+#   - TaskCase count → get_task_cases_by_ids（gRPC GetTaskCaseByIds）
+#   - TaskAPI count → get_task_apis（gRPC GetTaskApis）
+#   - TaskDevice count → get_task_devices（gRPC GetTaskDevices）
+#   - 音频时长 → _fetch_audio_durations_via_grpc（gRPC GetAudiosByIds）
+# 仍保留 PO 直连的查询（gRPC 不支持）：
+#   - Task 历史过滤 + 排序 + limit(3)（type/status/total_cases>0/actual_duration>0 过滤，
+#     completed_at desc 排序）— ListTasks 无 actual_duration>0 过滤且无法排序
+#   - TaskCase.duration 读取（历史任务的每条用例执行时长）— 需逐条获取 duration 字段
+#   - TestCase.config 读取（获取 audios[].audio_id）— 需按 id 批量查 config 字段
+# 待设计专用时间预估 RPC（历史任务聚合 + 用例时长聚合 + 配置聚合）后再改造。
+
+
+def _fetch_audio_durations_via_grpc(audio_ids):
+    """通过 gRPC GetAudiosByIds 批量获取音频时长
+
+    Args:
+        audio_ids: set/list of audio_id
+
+    Returns:
+        {audio_id: duration} 映射，gRPC 不可用时返回空 dict
+    """
+    if not audio_ids:
+        return {}
+    try:
+        from shared.clients.grpc_clients import get_audio_config_service_stub
+        from shared.proto import audio_service_pb2 as e2e_pb
+        from shared.utils.grpc_json import loads as _loads
+        stub = get_audio_config_service_stub()
+        req = e2e_pb.GetAudiosByIdsRequest(
+            audio_ids=','.join(str(aid) for aid in audio_ids)
+        )
+        resp = stub.GetAudiosByIds(req)
+        result = {}
+        if resp.success and resp.data:
+            data = _loads(resp.data, {}) or {}
+            for item in data.get('items', []):
+                aid = item.get('id')
+                if aid:
+                    result[aid] = item.get('duration') or 0.0
+        return result
+    except Exception:
+        return {}
 
 
 class TimeEstimateMixin:
@@ -24,13 +68,22 @@ class TimeEstimateMixin:
         estimated_total_seconds = 0
 
         try:
-            local_db_session = db.session()
-            actual_total_cases = local_db_session.query(TaskCase).filter_by(task_id=task.id).count()
+            local_db_session = get_db_session()
+            # 优先通过 gRPC 缓存获取进度数据（含 actual_total_cases 和 test_cases 列表）
+            from shared.utils.task_data_cache import get_task_progress_via_grpc
+            grpc_progress = get_task_progress_via_grpc(task.id)
+            if grpc_progress and 'actual_total_cases' in grpc_progress:
+                actual_total_cases = grpc_progress.get('actual_total_cases', grpc_progress.get('total_cases', 0))
+            else:
+                # 通过 gRPC 查询 TaskCase 数量（替代直连 PO）
+                from shared.clients.grpc_clients import get_task_cases_by_ids
+                tc_resp = get_task_cases_by_ids(task.id)
+                actual_total_cases = len(tc_resp.get('items', [])) if tc_resp else 0
             self._log(level='DEBUG', content=f"任务 {task.id}: 总用例数={actual_total_cases}", task_id=str(task.id))
 
             if task.type == 'api':
                 # API测试任务：优先基于历史用例执行时间
-                from shared.models.models import Task as TaskModel
+                from task_service.infrastructure.persistence.models import Task as TaskModel
                 # 查询最近完成的API测试任务
                 recent_api_tasks = local_db_session.query(TaskModel).filter(
                     TaskModel.type == 'api',
@@ -73,23 +126,32 @@ class TimeEstimateMixin:
                     avg_result_retrieval_time = 1.0  # 获取结果 ~1秒/API
                     avg_task_cleanup_time = 1.0  # 清理任务 ~1秒/API
 
-                    from shared.models.models import TaskAPI
-                    api_count = local_db_session.query(TaskAPI).filter_by(task_id=task.id).count()
+                    from shared.clients.grpc_clients import get_task_apis
+                    api_resp = get_task_apis(task.id)
+                    api_count = len(api_resp.get('items', [])) if api_resp else 0
                     if api_count == 0:
                         api_count = 1
 
                     # 计算实际音频总时长
                     estimated_api_processing = 0.0
                     task_case_records = local_db_session.query(TaskCase).filter_by(task_id=task.id).all()
+                    # 收集所有 audio_id，通过 gRPC 批量获取音频时长
+                    _audio_ids = set()
                     for tc in task_case_records:
                         test_case = local_db_session.query(TestCase).filter_by(id=tc.test_case_id).first()
                         if test_case and test_case.config and 'audios' in test_case.config:
                             for audio_cfg in test_case.config.get('audios', []):
                                 audio_id = audio_cfg.get('audio_id')
                                 if audio_id:
-                                    audio = local_db_session.query(Audio).filter_by(id=audio_id).first()
-                                    if audio and audio.duration:
-                                        estimated_api_processing += audio.duration
+                                    _audio_ids.add(audio_id)
+                    _audio_durations = _fetch_audio_durations_via_grpc(_audio_ids)
+                    for tc in task_case_records:
+                        test_case = local_db_session.query(TestCase).filter_by(id=tc.test_case_id).first()
+                        if test_case and test_case.config and 'audios' in test_case.config:
+                            for audio_cfg in test_case.config.get('audios', []):
+                                audio_id = audio_cfg.get('audio_id')
+                                if audio_id and audio_id in _audio_durations:
+                                    estimated_api_processing += _audio_durations[audio_id]
                     if estimated_api_processing == 0.0:
                         estimated_api_processing = 3.0 * actual_total_cases
 
@@ -114,7 +176,7 @@ class TimeEstimateMixin:
                     self._log(level='DEBUG', content=f"任务 {task.id}: 基于公式计算，API数={api_count}，总预估={estimated_total_seconds}秒", task_id=str(task.id))
             else:
                 # E2E测试任务：优先基于历史用例执行时间
-                from shared.models.models import Task as TaskModel
+                from task_service.infrastructure.persistence.models import Task as TaskModel
                 # 查询最近完成的E2E测试任务
                 recent_e2e_tasks = local_db_session.query(TaskModel).filter(
                     TaskModel.type == 'e2e',
@@ -152,24 +214,32 @@ class TimeEstimateMixin:
                     avg_device_postprocess_time = 10.0  # 设备后处理 ~1秒/设备
                     avg_system_overhead = 1.0  # 系统开销 ~1秒/用例
 
-                    # 计算设备数量
-                    from shared.models.models import TaskDevice
-                    device_count = local_db_session.query(TaskDevice).filter_by(task_id=task.id).count()
+                    # 计算设备数量 — 通过 gRPC 查询（替代直连 PO）
+                    from shared.clients.grpc_clients import get_task_devices
+                    dev_resp = get_task_devices(task.id)
+                    device_count = len(dev_resp.get('items', [])) if dev_resp else 0
                     if device_count == 0:
                         device_count = 1
 
                     # 计算实际音频总时长
                     estimated_total_audio = 0.0
                     task_case_records = local_db_session.query(TaskCase).filter_by(task_id=task.id).all()
+                    _audio_ids = set()
                     for tc in task_case_records:
                         test_case = local_db_session.query(TestCase).filter_by(id=tc.test_case_id).first()
                         if test_case and test_case.config and 'audios' in test_case.config:
                             for audio_cfg in test_case.config.get('audios', []):
                                 audio_id = audio_cfg.get('audio_id')
                                 if audio_id:
-                                    audio = local_db_session.query(Audio).filter_by(id=audio_id).first()
-                                    if audio and audio.duration:
-                                        estimated_total_audio += audio.duration
+                                    _audio_ids.add(audio_id)
+                    _audio_durations = _fetch_audio_durations_via_grpc(_audio_ids)
+                    for tc in task_case_records:
+                        test_case = local_db_session.query(TestCase).filter_by(id=tc.test_case_id).first()
+                        if test_case and test_case.config and 'audios' in test_case.config:
+                            for audio_cfg in test_case.config.get('audios', []):
+                                audio_id = audio_cfg.get('audio_id')
+                                if audio_id and audio_id in _audio_durations:
+                                    estimated_total_audio += _audio_durations[audio_id]
                     if estimated_total_audio == 0.0:
                         estimated_total_audio = 5.0 * actual_total_cases
 

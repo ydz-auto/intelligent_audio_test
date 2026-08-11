@@ -28,6 +28,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { sanitizeForVHtml } from '../../../utils/sanitize'
 
 const visible = ref(false)
 const message = ref('')
@@ -47,7 +48,7 @@ const iconClass = computed(() => {
 })
 
 const formattedMessage = computed(() => {
-  return message.value.replace(/\n/g, '<br>')
+  return sanitizeForVHtml(message.value.replace(/\n/g, '<br>'))
 })
 
 function show(msg, msgType = 'error', msgDetails = '') {

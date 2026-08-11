@@ -64,14 +64,10 @@ async def lifespan(app: FastAPI):
     # 启动 Redis PubSub 订阅线程：转发 task_service / e2e_test_service 等子服务发来的日志和进度
     _start_redis_subscriber(sio, ws_manager)
 
-    # 启动软删除硬清理守护线程（60天后物理删除逻辑删除记录）
-    from shared.utils.soft_delete_cleaner import start_soft_delete_cleaner, stop_soft_delete_cleaner
-    start_soft_delete_cleaner()
-
+    # 软删除硬清理已下沉至各微服务（各自只清理 owned 表），api_gateway 不再负责
     logger.info("API Gateway (FastAPI + DDD) started on port %s", Config.PORT)
     yield
     logger.info("API Gateway shutting down")
-    stop_soft_delete_cleaner()
 
 
 def _start_redis_subscriber(sio, ws_manager):
@@ -154,10 +150,12 @@ def create_app(config_name='default') -> FastAPI:
     )
 
     # 注册 request_adapter 中间件（将 FastAPI 请求注入 ContextVar）
-    from api_gateway.middleware import RequestAdapterMiddleware
+    from api_gateway.middleware import RequestAdapterMiddleware, AuthMiddleware
     app.add_middleware(RequestAdapterMiddleware)
+    app.add_middleware(AuthMiddleware, auth_mode=Config.AUTH_MODE)
 
     # 注册 API 路由
+    from api_gateway.routes.auth_bp import router as auth_router
     from api_gateway.routes.testcase_bp import router as testcase_router
     from api_gateway.routes.group_bp import router as group_router
     from api_gateway.routes.device_bp import router as device_router
@@ -175,6 +173,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.home_bp import router as home_router
     from api_gateway.routes.sse_bp import router as sse_router
 
+    app.include_router(auth_router, prefix='/api/v1/auth', tags=['auth'])
     app.include_router(testcase_router, prefix='/api/v1/testcases', tags=['testcases'])
     app.include_router(group_router, prefix='/api/v1/groups', tags=['groups'])
     app.include_router(device_router, prefix='/api/v1/test-devices', tags=['devices'])

@@ -15,10 +15,10 @@ from shared.clients.grpc_clients import get_e2e_execution_service_stub, get_api_
 def _stop_task_audio_via_grpc(task_id):
     """通过 gRPC AudioService 停止任务音频（原 audio_service.stop_task_audio）"""
     import json as _json
-    from shared.proto import e2e_service_pb2
+    from shared.proto import audio_service_pb2
     try:
         stub = get_audio_service_stub()
-        stub.StopAudio(e2e_service_pb2.StopAudioRequest(task_id=str(task_id)))
+        stub.StopAudio(audio_service_pb2.StopAudioRequest(task_id=str(task_id)))
     except Exception:
         pass
 
@@ -26,10 +26,10 @@ def _stop_task_audio_via_grpc(task_id):
 def _cleanup_devices_via_grpc(task_id):
     """通过 gRPC DeviceService 清理任务设备（原 device_driver_factory.cleanup_devices）"""
     import json as _json
-    from shared.proto import e2e_service_pb2
+    from shared.proto import device_service_pb2
     try:
         stub = get_device_service_stub()
-        stub.DestroyDriver(e2e_service_pb2.DestroyDriverRequest(
+        stub.DestroyDriver(device_service_pb2.DestroyDriverRequest(
             task_id=str(task_id),
             driver_id='',
         ))
@@ -40,10 +40,10 @@ def _cleanup_devices_via_grpc(task_id):
 def _unregister_task_events_via_grpc(task_id):
     """通过 gRPC DeviceService 注销任务事件（原 unregister_task_events）"""
     import json as _json
-    from shared.proto import e2e_service_pb2
+    from shared.proto import device_service_pb2
     try:
         stub = get_device_service_stub()
-        stub.UnregisterTaskEvents(e2e_service_pb2.UnregisterTaskEventsRequest(
+        stub.UnregisterTaskEvents(device_service_pb2.UnregisterTaskEventsRequest(
             task_id=str(task_id)
         ))
     except Exception:
@@ -56,10 +56,10 @@ def _get_task_events_via_grpc(task_id):
     返回 None 表示未注册事件（用于 resume 时判断是否需要重新注册）
     """
     import json as _json
-    from shared.proto import e2e_service_pb2
+    from shared.proto import device_service_pb2
     try:
         stub = get_device_service_stub()
-        resp = stub.GetTaskEvents(e2e_service_pb2.GetTaskEventsRequest(
+        resp = stub.GetTaskEvents(device_service_pb2.GetTaskEventsRequest(
             task_id=str(task_id), max_events=1
         ))
         if not resp.success or not resp.data:
@@ -76,14 +76,14 @@ def _register_task_events_via_grpc(task_id, stop_event, pause_event):
     stop_event_set/pause_event_set 同步其本地 Event 状态，实现跨进程事件通知。
     """
     import json as _json
-    from shared.proto import e2e_service_pb2
+    from shared.proto import device_service_pb2
     try:
         stub = get_device_service_stub()
         callback_config = {
             'stop_event_set': stop_event.is_set() if stop_event else False,
             'pause_event_set': pause_event.is_set() if pause_event else True,
         }
-        stub.RegisterTaskEvents(e2e_service_pb2.RegisterTaskEventsRequest(
+        stub.RegisterTaskEvents(device_service_pb2.RegisterTaskEventsRequest(
             task_id=str(task_id),
             callback_config=_json.dumps(callback_config)
         ))
@@ -98,10 +98,10 @@ def _execute_e2e_case_via_grpc(task_id, tc_rel_id):
     gRPC 调用，E2E 业务逻辑已下沉到 e2e_test_service 进程。
     """
     import json as _json
-    from shared.proto import e2e_service_pb2
+    from shared.proto import e2e_test_service_pb2
     try:
         stub = get_e2e_execution_service_stub()
-        resp = stub.StartE2ETask(e2e_service_pb2.StartE2ETaskRequest(
+        resp = stub.StartE2ETask(e2e_test_service_pb2.StartE2ETaskRequest(
             task_id=str(task_id),
             tc_rel_id=str(tc_rel_id),
             e2e_config='',

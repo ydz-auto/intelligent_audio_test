@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
-from shared.models.models import Task, TaskCase, TestCase, API
-from shared.models.database import db
+from task_service.infrastructure.persistence.models import Task, TaskCase, TestCase
+from shared.models.database import get_db_session
 
 
 class TaskRunnerMixin:
@@ -16,11 +16,11 @@ class TaskRunnerMixin:
             pause_event: 暂停事件，用于通知任务暂停/恢复
         """
         try:
-            from shared.models.models import Log, TaskCase
+            from task_service.infrastructure.persistence.models import Log, TaskCase
             from shared.models.database import remove_db_session
 
             # 使用本地会话获取任务对象（初始设置，765-797）
-            local_db_session = db.session()
+            local_db_session = get_db_session()
             try:
                 # 获取任务对象
                 task = local_db_session.get(Task, task_id)
@@ -86,7 +86,7 @@ class TaskRunnerMixin:
             True 表示初始化成功，False 表示任务不存在或初始化失败
         """
         # 使用本地会话确保独立可靠的会话
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             # 重新获取任务对象，确保它在有效会话中
             task = local_db_session.get(Task, task_id)
@@ -101,15 +101,32 @@ class TaskRunnerMixin:
             # API任务初始化
             if task.type == 'api':
                 try:
-                    from shared.models.models import TaskAPI
+                    from task_service.infrastructure.persistence.models import TaskAPI
                     # 获取API配置
                     task_api = local_db_session.query(TaskAPI).filter_by(task_id=task.id).first()
-                    api_config = local_db_session.get(API, task_api.api_id) if task_api else None
+                    api_config = None
+                    if task_api:
+                        # P3 改造：通过 gRPC 调用 api_test_service 获取 API 配置，替代直连 PO
+                        try:
+                            from shared.clients.grpc_clients import get_api_test_service_stub
+                            from shared.proto import api_test_service_pb2 as api_pb
+                            from shared.utils.grpc_json import loads as _loads
+                            stub = get_api_test_service_stub()
+                            resp = stub.GetAPIConfig(api_pb.GetAPIConfigRequest(api_id=task_api.api_id))
+                            if resp.success and resp.data:
+                                api_config = _loads(resp.data, {})
+                        except Exception as grpc_e:
+                            self._log(
+                                level='WARNING',
+                                content=f"通过 gRPC 获取 API 配置失败 (api_id={task_api.api_id}): {str(grpc_e)}",
+                                task_id=task_id
+                            )
 
                     # 获取可用的API端点
+                    # 注意：gRPC 返回的 dict 中端点字段名为 'endpoints'（对应 _api_to_dict）
                     available_endpoints = []
-                    if api_config and api_config.api_endpoints:
-                        available_endpoints = [ep for ep in api_config.api_endpoints if ep.get('status') == 'online']
+                    if api_config and api_config.get('endpoints'):
+                        available_endpoints = [ep for ep in api_config.get('endpoints') if ep.get('status') == 'online']
                         available_endpoints.sort(key=lambda x: x.get('priority', 0), reverse=True)
 
                     # 确定最大工作线程数
@@ -117,7 +134,7 @@ class TaskRunnerMixin:
                         # 计算所有可用端点的最大进程数之和
                         max_workers = sum(ep.get('max_process', 5) for ep in available_endpoints)
                     elif api_config:
-                        max_workers = api_config.default_max_process
+                        max_workers = api_config.get('default_max_process', 5)
                     else:
                         max_workers = 5
 
@@ -131,7 +148,7 @@ class TaskRunnerMixin:
                         level='INFO',
                         content=f"API任务 {task_id} 初始化成功，执行下沉到 api_test_service",
                         task_id=task_id,
-                        api_id=api_config.id if api_config else None
+                        api_id=api_config.get('id') if api_config else None
                     )
                 except Exception as e:
                     self._log(
@@ -154,7 +171,7 @@ class TaskRunnerMixin:
         """主循环：处理测试用例（862-1170）"""
         while not stop_event.is_set():
             # 使用本地会话确保独立可靠的会话
-            local_db_session = db.session()
+            local_db_session = get_db_session()
             try:
                 # 重新获取任务对象，确保它在有效会话中
                 task = local_db_session.get(Task, task_id)
@@ -356,7 +373,7 @@ class TaskRunnerMixin:
                 task_id=task_id
             )
 
-            from shared.models.models import Device, TaskDevice
+            from task_service.infrastructure.persistence.models import TaskDevice
             task_device_relations = local_db_session.query(TaskDevice).filter_by(task_id=task_id).all()
             device_ids = [rel.device_id for rel in task_device_relations]
 
@@ -374,28 +391,48 @@ class TaskRunnerMixin:
                     task_id=task_id
                 )
             else:
-                devices = local_db_session.query(Device).filter(Device.id.in_(device_ids)).all()
+                # P3 改造：通过 gRPC 调用 e2e_test_service 的 DeviceConfigService.GetDeviceStatuses
+                # 批量获取设备状态，替代直连 Device PO
+                devices = []
+                try:
+                    import json as _json
+                    from shared.clients.grpc_clients import get_device_config_service_stub
+                    from shared.proto import device_service_pb2 as e2e_pb
+                    from shared.utils.grpc_json import loads as _loads
+                    stub = get_device_config_service_stub()
+                    resp = stub.GetDeviceStatuses(e2e_pb.GetDeviceStatusesRequest(
+                        data=_json.dumps({'ids': device_ids}),
+                    ))
+                    if resp.success and resp.data:
+                        payload = _loads(resp.data, {})
+                        devices = payload.get('items', []) if isinstance(payload, dict) else []
+                except Exception as grpc_e:
+                    self._log(
+                        level='ERROR',
+                        content=f"通过 gRPC 获取设备状态失败: {str(grpc_e)}",
+                        task_id=task_id
+                    )
                 self._log(
                     level='DEBUG',
                     content=f"查询到设备数量={len(devices)}",
                     task_id=task_id
                 )
                 for device in devices:
-                    device_status = device.status
+                    device_status = device.get('status')
                     self._log(
                         level='DEBUG',
-                        content=f"检查设备状态: 设备ID={device.id}, 设备名称={device.name}, 状态={device_status}",
+                        content=f"检查设备状态: 设备ID={device.get('id')}, 设备名称={device.get('name')}, 状态={device_status}",
                         task_id=task_id,
-                        device_id=device.id
+                        device_id=device.get('id')
                     )
                     if device_status != 'online':
                         device_check_passed = False
-                        error_message = f"被测设备 {device.name} 离线，无法执行测试"
+                        error_message = f"被测设备 {device.get('name')} 离线，无法执行测试"
                         self._log(
                             level='ERROR',
                             content=error_message,
                             task_id=task_id,
-                            device_id=device.id
+                            device_id=device.get('id')
                         )
                         break
             # else:
@@ -412,7 +449,6 @@ class TaskRunnerMixin:
                     content=f"开始检查播放设备状态",
                     task_id=task_id
                 )
-                from shared.models.models import PlaybackDevice
                 case = local_db_session.get(TestCase, tc_rel.test_case_id)
                 if case:
                     playback_devices = set()
@@ -444,17 +480,35 @@ class TaskRunnerMixin:
 
                     # 检查播放设备状态
                     for device_id in playback_devices:
-                        playback_dev = local_db_session.get(PlaybackDevice, device_id)
+                        # P3 改造：通过 gRPC 调用 e2e_test_service 的
+                        # PlaybackConfigService.GetPlaybackDevice 获取播放设备，替代直连 PO
+                        playback_dev = None
+                        try:
+                            from shared.clients.grpc_clients import get_playback_config_service_stub
+                            from shared.proto import device_service_pb2 as e2e_pb
+                            from shared.utils.grpc_json import loads as _loads
+                            stub = get_playback_config_service_stub()
+                            resp = stub.GetPlaybackDevice(e2e_pb.GetPlaybackDeviceRequest(
+                                device_id=int(device_id),
+                            ))
+                            if resp.success and resp.data:
+                                playback_dev = _loads(resp.data, {})
+                        except Exception as grpc_e:
+                            self._log(
+                                level='ERROR',
+                                content=f"通过 gRPC 获取播放设备失败 (id={device_id}): {str(grpc_e)}",
+                                task_id=task_id
+                            )
                         if playback_dev:
-                            pb_dev_status = playback_dev.status
+                            pb_dev_status = playback_dev.get('status')
                             self._log(
                                 level='DEBUG',
-                                content=f"检查播放设备: 设备ID={device_id}, 设备名称={playback_dev.name}, 状态={pb_dev_status}",
+                                content=f"检查播放设备: 设备ID={device_id}, 设备名称={playback_dev.get('name')}, 状态={pb_dev_status}",
                                 task_id=task_id
                             )
                             if pb_dev_status != 'online':
                                 device_check_passed = False
-                                error_message = f"播放设备 {playback_dev.name} 离线，无法执行测试"
+                                error_message = f"播放设备 {playback_dev.get('name')} 离线，无法执行测试"
                                 self._log(
                                     level='ERROR',
                                     content=error_message,
@@ -485,7 +539,7 @@ class TaskRunnerMixin:
         Returns:
             task 对象（可能为 None）
         """
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             task = local_db_session.get(Task, task_id)
             if task:
@@ -558,14 +612,14 @@ class TaskRunnerMixin:
         last_counts = None
 
         # 需要获取 all_cases 数量，用于后续日志输出
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             all_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id).count()
         finally:
             local_db_session.close()
 
         while True:
-            local_db_session = db.session()
+            local_db_session = get_db_session()
             try:
                 local_db_session.expire_all()
 
@@ -775,7 +829,7 @@ class TaskRunnerMixin:
         # 检查任务状态，如果是暂停状态则保持暂停，不改变状态
         if task.status != 'paused':
             # 使用本地会话确保独立可靠的会话
-            local_db_session = db.session()
+            local_db_session = get_db_session()
             try:
                 # 重新获取任务对象，确保它在有效会话中
                 task = local_db_session.get(Task, task_id)
@@ -854,7 +908,7 @@ class TaskRunnerMixin:
         error_trace = traceback.format_exc()
 
         # 使用本地会话确保独立可靠的会话
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             # 重新获取任务对象，确保它在有效会话中
             task = local_db_session.get(Task, task_id)
@@ -953,7 +1007,7 @@ class TaskRunnerMixin:
         """清理任务资源（1622-1690）"""
         # 重新检查任务状态，决定是否清理资源
         should_cleanup = True
-        local_db_session = db.session()
+        local_db_session = get_db_session()
         try:
             task = local_db_session.get(Task, task_id)
             # 只有当任务明确处于 'paused' 状态时，才保留资源（以便恢复）
@@ -976,9 +1030,9 @@ class TaskRunnerMixin:
                         self.running_e2e = False
                     else:
                         # 释放占用的 API ID
-                        local_db_session = db.session()
+                        local_db_session = get_db_session()
                         try:
-                            from shared.models.models import TaskAPI
+                            from task_service.infrastructure.persistence.models import TaskAPI
                             task_apis = local_db_session.query(TaskAPI).filter_by(task_id=task_id).all()
                             for api_rel in task_apis:
                                 if api_rel.api_id in self.running_apis:
@@ -996,7 +1050,7 @@ class TaskRunnerMixin:
             self.last_progress_update.pop(task_id, None)
             # 清理多轮进度缓存（key 为 tc_rel_id，需查询当前任务的用例 ID）
             try:
-                cleanup_session = db.session()
+                cleanup_session = get_db_session()
                 try:
                     tc_rel_ids = [
                         tc_id for (tc_id,) in

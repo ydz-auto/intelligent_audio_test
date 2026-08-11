@@ -1,7 +1,6 @@
 export {
   useTestCaseStore,
-  useTestCaseGroupStore,
-  useModalStore
+  useTestCaseGroupStore
 } from '../store'
 
 export { useApiTest } from './apiTest/useApiTest'

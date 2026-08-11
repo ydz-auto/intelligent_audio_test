@@ -9,11 +9,14 @@ Socket.IO 服务端 —— 兼容前端 socket.io-client
 对外暴露 sio_app（ASGI 子应用，挂到 FastAPI）和 ws_manager（兼容旧 API）。
 """
 import asyncio
+import logging
 import threading
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone, timedelta
 
 import socketio
+
+_logger = logging.getLogger(__name__)
 
 
 class _SocketIOCompatManager:
@@ -128,14 +131,14 @@ class _SocketIOCompatManager:
             for sid in matched_sids:
                 try:
                     await self._sio.emit('task_log', log_payload, to=sid, namespace='/ws/logs')
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _logger.debug("emit task_log to sid=%s failed: %s", sid, _e)
         else:
             # 没有客户端设过 filter → 广播给 '/ws/logs' 命名空间所有连接
             try:
                 await self._sio.emit('task_log', log_payload, namespace='/ws/logs')
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("broadcast task_log failed: %s", _e)
 
         # 2) 订阅了 task_id 的连接也推一份
         task_id = log_data.get('task_id')
@@ -144,8 +147,8 @@ class _SocketIOCompatManager:
             for sid in task_sids:
                 try:
                     await self._sio.emit('task_log', log_payload, to=sid, namespace='/ws/logs')
-                except Exception:
-                    pass
+                except Exception as _e:
+                    _logger.debug("emit task_log to subscribed sid=%s failed: %s", sid, _e)
 
     def broadcast_log_sync(self, log_data: dict):
         """同步版本（从 log_handler 后台线程调用，桥接到 async）"""
@@ -154,8 +157,8 @@ class _SocketIOCompatManager:
             try:
                 asyncio.run_coroutine_threadsafe(self.broadcast_log(log_data), loop)
                 return
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("broadcast_log_sync via main loop failed: %s", _e)
         # 回退：尝试获取当前线程的事件循环
         try:
             loop = asyncio.get_event_loop()
@@ -166,8 +169,8 @@ class _SocketIOCompatManager:
         except RuntimeError:
             try:
                 asyncio.run(self.broadcast_log(log_data))
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("broadcast_log_sync fallback failed: %s", _e)
 
     async def emit(self, event: str, data: dict):
         """向前端推送事件（默认命名空间 '/'）。如 data 含 task_id，发给订阅该 task 的连接"""
@@ -181,8 +184,8 @@ class _SocketIOCompatManager:
                     await self._sio.emit(event, data, to=sid, namespace='/')
             else:
                 await self._sio.emit(event, data, namespace='/')
-        except Exception:
-            pass
+        except Exception as _e:
+            _logger.debug("emit event=%s failed: %s", event, _e)
 
     def emit_sync(self, event: str, data: dict):
         """同步版本的事件推送（从后台线程调用，桥接到 async）"""
@@ -191,8 +194,8 @@ class _SocketIOCompatManager:
             try:
                 asyncio.run_coroutine_threadsafe(self.emit(event, data), loop)
                 return
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("emit_sync event=%s via main loop failed: %s", event, _e)
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -202,8 +205,8 @@ class _SocketIOCompatManager:
         except RuntimeError:
             try:
                 asyncio.run(self.emit(event, data))
-            except Exception:
-                pass
+            except Exception as _e:
+                _logger.debug("emit_sync event=%s fallback failed: %s", event, _e)
 
 
 # ── 创建全局 Socket.IO server + ASGI app ──────────────────────────

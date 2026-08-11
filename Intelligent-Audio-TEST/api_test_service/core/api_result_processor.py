@@ -1,12 +1,22 @@
 """API 结果处理：TestResult 创建/保存、评估提交、用例结果日志"""
 import json
+import logging
 from datetime import datetime, timezone, timedelta
 
-from sqlalchemy import text
-from shared.models.models import TaskCase, TestResult, utc8now
-from shared.models.database import db, _engine_ref
+from shared.utils.dto_utils import dto_to_dict
 from shared.utils.result_data_store import write_result_data_file, split_result_data
-from shared.algorithm.field_mapper import get_field_mapper
+from api_test_service.infrastructure.acl import (
+    TaskDataAclRepositoryImpl,
+    AlgorithmQueryAclRepositoryImpl,
+    EvaluationAclRepositoryImpl,
+)
+
+logger = logging.getLogger(__name__)
+
+# 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
+_task_data_acl = TaskDataAclRepositoryImpl()
+_algo_acl = AlgorithmQueryAclRepositoryImpl()
+_evaluation_acl = EvaluationAclRepositoryImpl()
 
 
 class APIResultProcessor:
@@ -46,18 +56,7 @@ class APIResultProcessor:
         lightweight_data, _ = split_result_data(response_data)
 
         algo_result = algorithm_result
-        insert_sql = text("""
-            INSERT INTO test_results (task_id, test_case_id, device_id, api_id, algorithm_type,
-                                     execution_status, response_time, algorithm_result,
-                                     execution_steps, result_data, result_data_path, error_message, created_at)
-            VALUES (:task_id, :test_case_id, :device_id, :api_id, :algorithm_type,
-                    :execution_status, :response_time, :algorithm_result,
-                    :execution_steps, :result_data, :result_data_path, :error_message, :created_at)
-            RETURNING id
-        """)
-
-        params = {
-            'task_id': task_id,
+        result_data = {
             'test_case_id': test_case_id,
             'device_id': None,
             'api_id': api_config_id,
@@ -69,36 +68,34 @@ class APIResultProcessor:
             'result_data': json.dumps(lightweight_data, ensure_ascii=False),
             'result_data_path': result_data_path or None,
             'error_message': error_msg,
-            'created_at': utc8now()
         }
 
         result_id = None
         try:
-            with _engine_ref[0].connect() as conn:
-                result = conn.execute(insert_sql, params)
-                result_id = result.scalar()
-                conn.commit()
-                self._log(level='DEBUG', category='database',
-                          content=f"SQL插入成功，result_id={result_id}",
-                          task_id=task_id, test_case_id=test_case_id)
-        except Exception as sql_error:
+            result_id = _task_data_acl.submit_result(task_id, result_data)
+            self._log(level='DEBUG', category='database',
+                      content=f"gRPC写入TestResult成功，result_id={result_id}",
+                      task_id=task_id, test_case_id=test_case_id)
+        except Exception as grpc_error:
             import traceback
             self._log(level='ERROR', category='database',
-                      content=f"SQL插入失败: {str(sql_error)}\n{traceback.format_exc()}",
+                      content=f"gRPC写入TestResult失败: {str(grpc_error)}\n{traceback.format_exc()}",
                       task_id=task_id, test_case_id=test_case_id)
 
         # 同步更新 TaskCase 状态
-        update_session = db.session()
         try:
-            tc_rel = update_session.query(TaskCase).filter_by(task_id=task_id, test_case_id=test_case_id).first()
-            if tc_rel and tc_rel.execution_status not in ['stopped']:
-                tc_rel.execution_status = 'completed' if success else 'failed'
-                update_session.commit()
-                if self._executor.execution_engine:
-                    self._executor.execution_engine._emit_progress(task_id, force=True)
-                    self._executor.execution_engine.notify_case_completed(task_id)
-        finally:
-            update_session.close()
+            _task_data_acl.update_task_case_status(
+                task_id=task_id,
+                case_id=test_case_id,
+                execution_status='completed' if success else 'failed',
+            )
+            if self._executor.execution_engine:
+                self._executor.execution_engine._emit_progress(task_id, force=True)
+                self._executor.execution_engine.notify_case_completed(task_id)
+        except Exception as e:
+            self._log(level='WARNING', category='database',
+                      content=f"更新 TaskCase 状态失败: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
 
         return result_id
 
@@ -124,16 +121,11 @@ class APIResultProcessor:
             'reference_params': reference_params
         }
 
-        from shared.algorithm.case_parameter_extractor import CaseParameterExtractor
-        eval_params = CaseParameterExtractor.get_evaluation_params(
-            case_config=full_case_params,
-            algorithm_result=algorithm_result,
-            test_type=test_type
-        )
+        all_params = dto_to_dict(_algo_acl.extract_case_all_params(full_case_params)) or {}
+        eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
 
-        # 通过 gRPC 调用 task_service 的 EvaluateCase
-        from shared.clients.grpc_clients import submit_evaluate_case
-        submit_evaluate_case(
+        # 通过 ACL 仓储调用 evaluation_service 的 EvaluateCase
+        _evaluation_acl.submit_evaluate_case(
             task_id=task_id,
             result_id=result_id,
             test_case_id=test_case_id,
@@ -169,23 +161,13 @@ class APIResultProcessor:
         lightweight_data, _ = split_result_data(response_data)
 
         algo_result = aggregated.get('algorithm_result', {})
-        insert_sql = text("""
-            INSERT INTO test_results (task_id, test_case_id, device_id, api_id, algorithm_type,
-                                     execution_status, response_time, algorithm_result,
-                                     execution_steps, result_data, result_data_path, error_message, created_at)
-            VALUES (:task_id, :test_case_id, :device_id, :api_id, :algorithm_type,
-                    :execution_status, :response_time, :algorithm_result,
-                    :execution_steps, :result_data, :result_data_path, :error_message, :created_at)
-            RETURNING id
-        """)
 
         error_msg = None
         if not success:
             failed_rounds = [r for r in algo_result.get('rounds', []) if not r.get('success')]
             error_msg = f"{len(failed_rounds)} 轮失败"
 
-        params = {
-            'task_id': task_id,
+        result_data = {
             'test_case_id': test_case_id,
             'device_id': None,
             'api_id': api_config_id,
@@ -197,39 +179,53 @@ class APIResultProcessor:
             'result_data': json.dumps(lightweight_data, ensure_ascii=False),
             'result_data_path': result_data_path or None,
             'error_message': error_msg,
-            'created_at': utc8now()
         }
 
         try:
-            with _engine_ref[0].connect() as conn:
-                result = conn.execute(insert_sql, params)
-                result_id = result.scalar()
-                conn.commit()
-                self._log(level='INFO',
-                          content=f"多轮会话测试结果已保存: result_id={result_id}, "
-                                  f"rounds={aggregated.get('round_count')}, success={success}",
-                          task_id=task_id, test_case_id=test_case_id, api_id=api_config_id)
-                return result_id
+            result_id = _task_data_acl.submit_result(task_id, result_data)
+            self._log(level='INFO',
+                      content=f"多轮会话测试结果已保存: result_id={result_id}, "
+                              f"rounds={aggregated.get('round_count')}, success={success}",
+                      task_id=task_id, test_case_id=test_case_id, api_id=api_config_id)
+            return result_id
         except Exception as e:
             self._log(level='ERROR', content=f"保存多轮会话测试结果失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
             return None
 
     def update_task_case_failure(self, task_id, tc_rel_id, error_msg, utc_plus_8=None):
-        """更新 TaskCase 为失败状态"""
+        """更新 TaskCase 为失败状态
+
+        通过 ACL 仓储调用 task_service.TaskDataService：
+        1. get_task_case_by_ids 查询 TaskCase（按 tc_rel_id 即主键匹配）
+        2. 若未停止，则 update_task_case_status 更新为失败
+        """
         if utc_plus_8 is None:
             utc_plus_8 = timezone(timedelta(hours=8))
-        local_db_session = db.session()
         try:
-            tc_rel = local_db_session.get(TaskCase, tc_rel_id)
-            if tc_rel and tc_rel.execution_status not in ['stopped']:
-                tc_rel.execution_status = 'failed'
-                tc_rel.evaluation_status = 'completed'
-                tc_rel.status = 'failed'
-                tc_rel.completed_at = datetime.now(utc_plus_8)
-                tc_rel.error_message = error_msg
-                local_db_session.commit()
-        except Exception:
-            local_db_session.rollback()
-        finally:
-            local_db_session.close()
+            tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
+            tc_rel = next((tc for tc in tcs if tc.get('id') == tc_rel_id), None)
+            if not tc_rel:
+                self._log(level='WARNING', content=f"找不到 TaskCase: {tc_rel_id}",
+                          task_id=task_id)
+                return
+            if tc_rel.get('execution_status') in ['stopped']:
+                return
+
+            test_case_id = tc_rel.get('test_case_id')
+            if not test_case_id:
+                self._log(level='WARNING', content=f"TaskCase {tc_rel_id} 无 test_case_id",
+                          task_id=task_id)
+                return
+
+            _task_data_acl.update_task_case_status(
+                task_id=task_id,
+                case_id=str(test_case_id),
+                status='failed',
+                execution_status='failed',
+                evaluation_status='completed',
+                error_message=error_msg,
+            )
+        except Exception as e:
+            self._log(level='WARNING', content=f"更新 TaskCase 失败状态失败: {e}",
+                      task_id=task_id)

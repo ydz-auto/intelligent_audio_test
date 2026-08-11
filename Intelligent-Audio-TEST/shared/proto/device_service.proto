@@ -1,0 +1,569 @@
+syntax = "proto3";
+package device_service;
+option py_generic_services = true;
+
+// ===== 设备驱动服务 =====
+service DeviceService {
+  // 创建设备驱动（连接设备）
+  rpc CreateDriver(CreateDriverRequest) returns (CreateDriverResponse);
+  // 销毁设备驱动
+  rpc DestroyDriver(DestroyDriverRequest) returns (DestroyDriverResponse);
+  // 注册任务事件回调
+  rpc RegisterTaskEvents(RegisterTaskEventsRequest) returns (RegisterTaskEventsResponse);
+  // 注销任务事件回调
+  rpc UnregisterTaskEvents(UnregisterTaskEventsRequest) returns (UnregisterTaskEventsResponse);
+  // 获取任务事件
+  rpc GetTaskEvents(GetTaskEventsRequest) returns (GetTaskEventsResponse);
+  // 扫描设备
+  rpc DriverScan(DriverScanRequest) returns (DriverScanResponse);
+  // 解锁设备
+  rpc DriverUnlock(DriverUnlockRequest) returns (DriverUnlockResponse);
+  // 获取 mock 模式
+  rpc GetMockMode(GetMockModeRequest) returns (GetMockModeResponse);
+  // 设置 mock 模式
+  rpc SetMockMode(SetMockModeRequest) returns (SetMockModeResponse);
+  // 按关键词获取驱动名
+  rpc GetDriverNameByKeywords(GetDriverNameByKeywordsRequest) returns (GetDriverNameByKeywordsResponse);
+  // 获取已注册关键词
+  rpc GetRegisteredKeywords(GetRegisteredKeywordsRequest) returns (GetRegisteredKeywordsResponse);
+}
+
+// ===== 设备结果采集服务 =====
+service DeviceResultService {
+  // 采集设备结果
+  rpc CollectResult(CollectResultRequest) returns (CollectResultResponse);
+  // 重新提取设备结果
+  rpc ReextractResult(ReextractResultRequest) returns (ReextractResultResponse);
+}
+
+// ===== 环境设备服务 =====
+service EnvDeviceService {
+  // 控制环境设备（导轨旋转等）
+  rpc ControlEnvDevice(ControlEnvDeviceRequest) returns (ControlEnvDeviceResponse);
+}
+
+// ===== 设备管理 CRUD 服务 =====
+service DeviceConfigService {
+  rpc CreateDevice(CreateDeviceRequest) returns (CreateDeviceResponse);
+  rpc UpdateDevice(UpdateDeviceRequest) returns (UpdateDeviceResponse);
+  rpc DeleteDevice(DeleteDeviceRequest) returns (DeleteDeviceResponse);
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  rpc GetDevice(GetDeviceRequest) returns (GetDeviceResponse);
+  rpc GetDeviceStatuses(GetDeviceStatusesRequest) returns (GetDeviceStatusesResponse);
+  rpc ScanPhysicalDevices(ScanPhysicalDevicesRequest) returns (ScanPhysicalDevicesResponse);
+  rpc TestDevice(TestDeviceRequest) returns (TestDeviceResponse);
+  rpc StopDeviceTest(StopDeviceTestRequest) returns (StopDeviceTestResponse);
+  rpc GetDriverKeywords(GetDriverKeywordsRequest) returns (GetDriverKeywordsResponse);
+  rpc HealthCheckDevices(HealthCheckDevicesRequest) returns (HealthCheckDevicesResponse);
+  rpc GetAvailableSerials(GetAvailableSerialsRequest) returns (GetAvailableSerialsResponse);
+}
+
+// ===== 播放设备 CRUD 服务 =====
+service PlaybackConfigService {
+  rpc CreatePlaybackDevice(CreatePlaybackDeviceRequest) returns (CreatePlaybackDeviceResponse);
+  rpc UpdatePlaybackDevice(UpdatePlaybackDeviceRequest) returns (UpdatePlaybackDeviceResponse);
+  rpc DeletePlaybackDevice(DeletePlaybackDeviceRequest) returns (DeletePlaybackDeviceResponse);
+  rpc ListPlaybackDevices(ListPlaybackDevicesRequest) returns (ListPlaybackDevicesResponse);
+  rpc GetPlaybackDevice(GetPlaybackDeviceRequest) returns (GetPlaybackDeviceResponse);
+  rpc ScanPlaybackDevices(ScanPlaybackDevicesRequest) returns (ScanPlaybackDevicesResponse);
+  rpc CheckPlaybackStatus(CheckPlaybackStatusRequest) returns (CheckPlaybackStatusResponse);
+  rpc AssociateSPL(AssociateSPLRequest) returns (AssociateSPLResponse);
+  rpc TestPlaybackDevice(TestPlaybackDeviceRequest) returns (TestPlaybackDeviceResponse);
+  rpc StopPlaybackTest(StopPlaybackTestRequest) returns (StopPlaybackTestResponse);
+}
+
+// ===== SPL 映射 CRUD 服务 =====
+service SPLConfigService {
+  rpc CreateSPLMapping(CreateSPLMappingRequest) returns (CreateSPLMappingResponse);
+  rpc UpdateSPLMapping(UpdateSPLMappingRequest) returns (UpdateSPLMappingResponse);
+  rpc DeleteSPLMapping(DeleteSPLMappingRequest) returns (DeleteSPLMappingResponse);
+  rpc ListSPLMappings(ListSPLMappingsRequest) returns (ListSPLMappingsResponse);
+  rpc GetSPLMapping(GetSPLMappingRequest) returns (GetSPLMappingResponse);
+  rpc GetSPLHistory(GetSPLHistoryRequest) returns (GetSPLHistoryResponse);
+  rpc GetSPLCalibrationData(GetSPLCalibrationDataRequest) returns (GetSPLCalibrationDataResponse);
+  rpc GetSPLStats(GetSPLStatsRequest) returns (GetSPLStatsResponse);
+  rpc GetSPLByDevice(GetSPLByDeviceRequest) returns (GetSPLByDeviceResponse);
+  rpc CalibrateSPL(CalibrateSPLRequest) returns (CalibrateSPLResponse);
+  rpc PlayTestTone(PlayTestToneRequest) returns (PlayTestToneResponse);
+  rpc StopTestTone(StopTestToneRequest) returns (StopTestToneResponse);
+}
+
+// ==================== DeviceService Messages ====================
+
+message CreateDriverRequest {
+  string task_id = 1;
+  string device_config = 2;  // JSON 序列化的设备配置
+}
+
+message CreateDriverResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的驱动信息
+}
+
+message DestroyDriverRequest {
+  string task_id = 1;
+  string driver_id = 2;
+}
+
+message DestroyDriverResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message RegisterTaskEventsRequest {
+  string task_id = 1;
+  string callback_config = 2;  // JSON 序列化的回调配置
+}
+
+message RegisterTaskEventsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UnregisterTaskEventsRequest {
+  string task_id = 1;
+}
+
+message UnregisterTaskEventsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetTaskEventsRequest {
+  string task_id = 1;
+  int32 max_events = 2;
+}
+
+message GetTaskEventsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的事件列表
+}
+
+message DriverScanRequest {
+  string system = 1;
+  string keywords = 2;
+}
+
+message DriverScanResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的设备列表
+}
+
+message DriverUnlockRequest {
+  string system = 1;
+  string keywords = 2;
+  string serial_or_ip = 3;
+}
+
+message DriverUnlockResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetMockModeRequest {
+  string system = 1;
+}
+
+message GetMockModeResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {"mock_mode": bool}
+}
+
+message SetMockModeRequest {
+  string system = 1;
+  bool mock_mode = 2;
+}
+
+message SetMockModeResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetDriverNameByKeywordsRequest {
+  string system = 1;
+  string keywords = 2;
+}
+
+message GetDriverNameByKeywordsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {"driver_name": str}
+}
+
+message GetRegisteredKeywordsRequest {
+}
+
+message GetRegisteredKeywordsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的关键词列表
+}
+
+// ==================== DeviceResultService Messages ====================
+
+message CollectResultRequest {
+  string task_id = 1;
+  string collect_config = 2;  // JSON 序列化的采集配置
+}
+
+message CollectResultResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的采集结果
+}
+
+message ReextractResultRequest {
+  string task_id = 1;
+  string reextract_config = 2;  // JSON 序列化的重新提取配置
+}
+
+message ReextractResultResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的重新提取结果
+}
+
+// ==================== EnvDeviceService Messages ====================
+
+message ControlEnvDeviceRequest {
+  string task_id = 1;
+  string device_action = 2;  // JSON 序列化的设备动作（导轨旋转等）
+}
+
+message ControlEnvDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的控制结果
+}
+
+// ==================== DeviceConfigService Messages ====================
+
+message CreateDeviceRequest {
+  string data = 1;  // JSON 序列化的设备创建参数
+}
+message CreateDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdateDeviceRequest {
+  int32 device_id = 1;
+  string data = 2;  // JSON 序列化的更新字段
+}
+message UpdateDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeleteDeviceRequest {
+  int32 device_id = 1;
+}
+message DeleteDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListDevicesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string status = 4;
+  string device_type = 5;
+  string algorithm_type = 6;
+}
+message ListDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON 序列化的分页列表
+}
+
+message GetDeviceRequest {
+  int32 device_id = 1;
+}
+message GetDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetDeviceStatusesRequest {
+  string data = 1;  // JSON: {"ids": [int]}
+}
+message GetDeviceStatusesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ScanPhysicalDevicesRequest {
+}
+message ScanPhysicalDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message TestDeviceRequest {
+  int32 device_id = 1;
+}
+message TestDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopDeviceTestRequest {
+  int32 device_id = 1;
+}
+message StopDeviceTestResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetDriverKeywordsRequest {
+}
+message GetDriverKeywordsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message HealthCheckDevicesRequest {
+  string data = 1;  // JSON: {"device_ids": [int]}
+}
+message HealthCheckDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetAvailableSerialsRequest {
+}
+message GetAvailableSerialsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== PlaybackConfigService Messages ====================
+
+message CreatePlaybackDeviceRequest {
+  string data = 1;
+}
+message CreatePlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdatePlaybackDeviceRequest {
+  int32 device_id = 1;
+  string data = 2;
+}
+message UpdatePlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeletePlaybackDeviceRequest {
+  int32 device_id = 1;
+}
+message DeletePlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListPlaybackDevicesRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string device_type = 4;
+}
+message ListPlaybackDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetPlaybackDeviceRequest {
+  int32 device_id = 1;
+}
+message GetPlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ScanPlaybackDevicesRequest {
+}
+message ScanPlaybackDevicesResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message CheckPlaybackStatusRequest {
+}
+message CheckPlaybackStatusResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message AssociateSPLRequest {
+  int32 device_id = 1;
+  string data = 2;  // JSON: {"spl_mapping_id": int}
+}
+message AssociateSPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message TestPlaybackDeviceRequest {
+  int32 device_id = 1;
+  string data = 2;  // JSON: 测试参数
+}
+message TestPlaybackDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopPlaybackTestRequest {
+  int32 device_id = 1;
+}
+message StopPlaybackTestResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+// ==================== SPLConfigService Messages ====================
+
+message CreateSPLMappingRequest {
+  string data = 1;
+}
+message CreateSPLMappingResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message UpdateSPLMappingRequest {
+  int32 mapping_id = 1;
+  string data = 2;
+}
+message UpdateSPLMappingResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message DeleteSPLMappingRequest {
+  int32 mapping_id = 1;
+}
+message DeleteSPLMappingResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message ListSPLMappingsRequest {
+  int32 page = 1;
+  int32 per_page = 2;
+  string keyword = 3;
+  string calibration_status = 4;
+  int32 device_id = 5;
+}
+message ListSPLMappingsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLMappingRequest {
+  int32 mapping_id = 1;
+}
+message GetSPLMappingResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLHistoryRequest {
+  int32 mapping_id = 1;
+}
+message GetSPLHistoryResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLCalibrationDataRequest {
+  int32 mapping_id = 1;
+}
+message GetSPLCalibrationDataResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLStatsRequest {
+}
+message GetSPLStatsResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message GetSPLByDeviceRequest {
+  int32 device_id = 1;
+}
+message GetSPLByDeviceResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message CalibrateSPLRequest {
+  int32 mapping_id = 1;
+}
+message CalibrateSPLResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message PlayTestToneRequest {
+  string data = 1;  // JSON: 测试音参数（可选 mapping_id）
+}
+message PlayTestToneResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}
+
+message StopTestToneRequest {
+  string data = 1;  // JSON: {"unique_id": str?}
+}
+message StopTestToneResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;
+}

@@ -86,3 +86,186 @@ class MergeTasksCommand(Command):
     merged_task_type: str = 'api'
     description: str = ''
     created_by: Optional[int] = None
+
+
+# ==================== task 域 CRUD/批量/合并命令（gRPC servicer 用） ====================
+# 以下命令接收原始 data dict，委托 task_crud_service 旧服务作为过渡，
+# 返回 dict: {success, message, data, code?}（与旧 service 返回格式一致）。
+
+
+@dataclass(frozen=True)
+class CreateTaskConfigCommand(Command):
+    """创建任务配置命令（dict 参数版）。
+
+    与 CreateTaskCommand 区别：接收网关透传的原始 data dict，
+    供 gRPC TaskConfigServiceServicer 使用。委托 task_crud_service.create。
+    """
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class UpdateTaskCommand(Command):
+    """更新任务配置命令（名称/描述）。委托 task_crud_service.update。"""
+    task_id: int
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DeleteTaskCommand(Command):
+    """软删除任务命令。委托 task_crud_service.delete。"""
+    task_id: int
+
+
+@dataclass(frozen=True)
+class UpdateTaskCasesCommand(Command):
+    """动态添加/移除任务用例命令。委托 task_crud_service.update_cases。"""
+    task_id: int
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BatchActionTaskCommand(Command):
+    """任务批量操作命令（delete/export）。委托 task_crud_service.batch_action。"""
+    data: Dict[str, Any] = field(default_factory=dict)
+    query_args: Optional[Dict[str, Any]] = None
+
+
+@dataclass(frozen=True)
+class MergeTasksConfigCommand(Command):
+    """合并任务命令（dict 参数版）。
+
+    与 MergeTasksCommand 区别：接收原始 data dict（含 task_ids），
+    供 gRPC TaskConfigServiceServicer 使用。委托 task_crud_service.merge。
+    """
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+# ==================== task 域生命周期命令（gRPC servicer 用） ====================
+# 委托 task_lifecycle_service 旧服务作为过渡，保留完整生命周期逻辑（状态校验等）。
+
+
+@dataclass(frozen=True)
+class StartTaskLifecycleCommand(Command):
+    """启动任务生命周期命令。委托 task_lifecycle_service.start。"""
+    task_id: int
+
+
+@dataclass(frozen=True)
+class RetryTaskCommand(Command):
+    """重试失败用例命令。委托 task_lifecycle_service.retry。"""
+    task_id: int
+
+
+@dataclass(frozen=True)
+class ControlTaskCommand(Command):
+    """任务运行时控制命令（暂停/恢复/停止/跳过/单用例重试）。
+    委托 task_lifecycle_service.control。
+    """
+    task_id: int
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class StopTaskLifecycleCommand(Command):
+    """停止任务生命周期命令。委托 task_lifecycle_service.stop。"""
+    task_id: int
+
+
+@dataclass(frozen=True)
+class RextractTaskCommand(Command):
+    """重新提取设备输出命令。委托 task_lifecycle_service.reextract。"""
+    task_id: int
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+# ==================== testcase 域命令（gRPC servicer 用） ====================
+
+
+@dataclass(frozen=True)
+class CreateTestCaseCommand(Command):
+    """创建测试用例命令。委托 testcase_crud_service.create。"""
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class UpdateTestCaseCommand(Command):
+    """更新测试用例命令。委托 testcase_crud_service.update。"""
+    tc_id: str
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DeleteTestCaseCommand(Command):
+    """软删除测试用例命令。委托 testcase_crud_service.delete。"""
+    tc_id: str
+
+
+@dataclass(frozen=True)
+class CopyTestCaseCommand(Command):
+    """复制测试用例命令。委托 testcase_crud_service.copy。"""
+    tc_id: str
+
+
+@dataclass(frozen=True)
+class BatchActionTestCaseCommand(Command):
+    """测试用例批量操作命令。委托 testcase_crud_service.batch_action。
+
+    TODO: batch_service 包含 14 种子操作（delete/move/copy/参数更新等），
+    后续可拆分为独立 Command；当前作为过渡统一入口。
+    """
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class UpdateTestCaseRefParamsCommand(Command):
+    """更新用例参考参数命令。委托 testcase_crud_service.update_ref_params。"""
+    tc_id: str
+    round_number: int
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+# ==================== tag 域命令（gRPC servicer 用） ====================
+
+
+@dataclass(frozen=True)
+class CreateTagCategoryCommand(Command):
+    """创建标签分类命令。委托 tag_crud_service.create_category。"""
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class UpdateTagCategoryCommand(Command):
+    """更新标签分类命令。委托 tag_crud_service.update_category。"""
+    category_id: int
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DeleteTagCategoryCommand(Command):
+    """删除标签分类命令。委托 tag_crud_service.delete_category。"""
+    category_id: int
+
+
+@dataclass(frozen=True)
+class CreateTagCommand(Command):
+    """创建标签命令。委托 tag_crud_service.create_tag。"""
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class UpdateTagCommand(Command):
+    """更新标签命令。委托 tag_crud_service.update_tag。"""
+    tag_id: int
+    data: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class DeleteTagCommand(Command):
+    """删除标签命令。委托 tag_crud_service.delete_tag。"""
+    tag_id: int
+
+
+@dataclass(frozen=True)
+class BatchUpdateTagCategoryCommand(Command):
+    """批量更新标签分类命令。委托 tag_crud_service.batch_update_category。"""
+    data: Dict[str, Any] = field(default_factory=dict)
