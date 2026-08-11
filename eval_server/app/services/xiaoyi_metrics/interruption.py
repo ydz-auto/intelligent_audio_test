@@ -255,6 +255,19 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         'n_no_model_speech': 0,
         'per_event': [],
         'message': '',
+        # ── 大模型评估（可选）：由 calculate_interruption_metrics 在
+        # enable_llm_eval=True 且配置 API key 时填充，未启用时保持这些默认值 ──
+        'llm_eval': {'enabled': False, 'message': '未启用 LLM 评估'},
+        'llm_recovery_avg_coherence': None,
+        'llm_recovery_avg_relevance': None,
+        'llm_recovery_avg_adaptability': None,
+        'llm_return_behavior_summary': {},
+        'llm_return_avg_coherence': None,
+        'llm_return_avg_relevance': None,
+        'llm_return_avg_adaptability': None,
+        'llm_recovery_per_round': [],
+        'llm_return_per_round': [],
+        'llm_return_scores_per_round': [],
     }
 
     if not user_chunks:

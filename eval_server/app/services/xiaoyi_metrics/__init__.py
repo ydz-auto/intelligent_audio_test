@@ -196,4 +196,38 @@ def calculate_interruption_metrics(task_params):
         f"avg_stop={result['avg_stop_latency_s']}s avg_recovery={result['avg_recovery_latency_s']}s "
         f"message={result['message']}"
     )
+
+    # ── 可选：大模型评估（打断后回复打分 / 回到原话题行为判断 / 回到原话题回复打分）──
+    # 触发条件：enable_llm_eval=True 且 task_params 携带 rounds 文本结构
+    # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，不影响时序指标
+    enable_llm = bool(task_params.get('enable_llm_eval'))
+    rounds = task_params.get('rounds')
+    if enable_llm and rounds:
+        try:
+            from .interruption_llm import evaluate_interruption_llm
+            llm_result = evaluate_interruption_llm(rounds, task_params)
+            result['llm_eval'] = llm_result
+            # 顶层平铺关键聚合值，便于维度参数直接按 field_path 取值
+            for k in (
+                'llm_recovery_avg_coherence', 'llm_recovery_avg_relevance',
+                'llm_recovery_avg_adaptability', 'llm_return_behavior_summary',
+                'llm_return_avg_coherence', 'llm_return_avg_relevance',
+                'llm_return_avg_adaptability', 'llm_recovery_per_round',
+                'llm_return_per_round', 'llm_return_scores_per_round',
+            ):
+                result[k] = llm_result.get(k)
+            logger.info(
+                f"[interruption_metrics] LLM 评估完成 model={llm_result.get('model')} "
+                f"n_rounds={len(llm_result.get('llm_recovery_per_round') or [])} "
+                f"n_return={len(llm_result.get('llm_return_per_round') or [])} "
+                f"behavior={llm_result.get('llm_return_behavior_summary')}"
+            )
+        except Exception as e:
+            logger.warning(f"[interruption_metrics] LLM 评估失败，跳过: {e}")
+            result['llm_eval'] = {'enabled': False, 'message': f'LLM 评估失败: {e}'}
+    else:
+        reason = '未启用(enable_llm_eval=False)' if not enable_llm else '无 rounds 文本数据'
+        result['llm_eval'] = {'enabled': False, 'message': reason}
+        logger.info(f"[interruption_metrics] LLM 评估跳过：{reason}")
+
     return result

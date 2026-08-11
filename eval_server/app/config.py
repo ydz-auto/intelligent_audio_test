@@ -58,12 +58,13 @@ class Config:
     }
     DEFAULT_MAX_CONCURRENCY = 2
 
-    # LLM Judge configuration
+    # LLM Judge 配置（OpenAI 兼容代理 https://az.gptplus5.com/v1）
+    # 所有字段均可在 eval_server/.env 覆盖
     LLM_JUDGE = {
-        'api_base_url': 'https://az.gptplus5.com/v1',
+        'api_base_url': os.environ.get('LLM_JUDGE_API_BASE', 'https://az.gptplus5.com/v1'),
         'api_key': os.environ.get('LLM_JUDGE_API_KEY', ''),
-        'default_model': 'deepseek-r1',
-        'timeout': 120,
+        'default_model': os.environ.get('LLM_JUDGE_DEFAULT_MODEL', 'gpt-4o-mini'),
+        'timeout': int(os.environ.get('LLM_JUDGE_TIMEOUT', '120')),
         'prompt_template': (
             '你是一个严格的语言逻辑专家，你需要结合上下文并逐字逐词分析【当前用户提问】、【当前助手回答】与【历史对话】三者之间的逻辑是否正确，你需要遵照【评价规则】进行打分，并给出打分的理由。\n\n'
             '【评价规则】包含五个大类，每个大类里包含若干小类，你需要认真阅读理解各个小类，打出最合适的分数。\n\n'
