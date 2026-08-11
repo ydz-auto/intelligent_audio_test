@@ -130,3 +130,8 @@ Intelligent-Audio-TEST/query_logs.py
 
 # Log file (binary log)
 Intelligent-Audio-TEST/log
+
+# prod_capture 真实配置(含 DB 密码,勿入库;模板见 capture_config.env.example)
+prod_capture/capture_config.env
+prod_capture/run_*/
+prod_capture/capture_*.zip
