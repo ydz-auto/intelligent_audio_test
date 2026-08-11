@@ -81,6 +81,23 @@ DIMENSIONS = [
              None, None, None, False,
              False, '0.3', '相邻词时间戳间隙小于该值则合并为同一段(秒)', 11),
 
+            # ─── 输入参数: 大模型评估（可选）───
+            ('rounds', '多轮文本', '多轮对话文本结构(用于大模型评估)', 'json', 'input',
+             None, None, None, False,
+             False, None,
+             '多轮文本结构 [{query, answer, is_return_to_topic}]，'
+             '与 user_asr/model_asr 解耦；enable_llm_eval=True 时才使用', 12),
+            ('enable_llm_eval', '启用LLM评估', '是否启用大模型评估', 'boolean', 'input',
+             None, None, None, False,
+             False, 'false', '为 true 时对每轮打断后回复与回到原话题行为做 LLM 评估'
+             '(需配置 LLM_JUDGE_API_KEY)', 13),
+            ('llm_model', 'LLM模型', 'LLM 模型名称(覆盖默认)', 'text', 'input',
+             None, None, None, False,
+             False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认', 14),
+            ('original_topic', '原始话题', '原始话题文本', 'text', 'input',
+             None, None, None, False,
+             False, None, '原始话题文本，供回到原话题行为判断/打分使用', 15),
+
             # ─── 输出参数: 打断成功率（主分）───
             ('interruption_success_rate', '打断成功率', '打断成功率', 'number', 'output',
              'interruption_success_rate', 'value', 'main', True,
@@ -124,12 +141,49 @@ DIMENSIONS = [
             ('interruption_message', '打断指标说明', '打断指标说明', 'text', 'output',
              'message', None, 'aux', False,
              False, None, '打断指标错误/成功说明', 99),
+
+            # ─── 输出参数: 大模型评估（可选，enable_llm_eval=True 时才有值）───
+            ('llm_recovery_avg_coherence', '回复连贯性均分', '打断后回复连贯性均分', 'number', 'output',
+             'llm_recovery_avg_coherence', None, 'aux', False,
+             False, None, '每轮打断后回复连贯性打分均值(1-5)', 100),
+            ('llm_recovery_avg_relevance', '回复相关性均分', '打断后回复相关性均分', 'number', 'output',
+             'llm_recovery_avg_relevance', None, 'aux', False,
+             False, None, '每轮打断后回复相关性打分均值(1-5)', 101),
+            ('llm_recovery_avg_adaptability', '回复适应性均分', '打断后回复适应性均分', 'number', 'output',
+             'llm_recovery_avg_adaptability', None, 'aux', False,
+             False, None, '每轮打断后回复适应性打分均值(1-5)', 102),
+            ('llm_return_behavior_summary', '回原话题行为分布', '回到原话题行为分类计数', 'json', 'output',
+             'llm_return_behavior_summary', None, 'aux', False,
+             False, None, '回到原话题后模型回复行为计数{回应/恢复/询问/无关恢复/沉默}', 103),
+            ('llm_return_avg_coherence', '回原话题连贯性均分', '回到原话题回复连贯性均分', 'number', 'output',
+             'llm_return_avg_coherence', None, 'aux', False,
+             False, None, '回到原话题后回复连贯性打分均值(1-5)', 104),
+            ('llm_return_avg_relevance', '回原话题相关性均分', '回到原话题回复相关性均分', 'number', 'output',
+             'llm_return_avg_relevance', None, 'aux', False,
+             False, None, '回到原话题后回复相关性打分均值(1-5)', 105),
+            ('llm_return_avg_adaptability', '回原话题适应性均分', '回到原话题回复适应性均分', 'number', 'output',
+             'llm_return_avg_adaptability', None, 'aux', False,
+             False, None, '回到原话题后回复适应性打分均值(1-5)', 106),
+            ('llm_recovery_per_round', '回复逐轮打分', '打断后回复逐轮打分', 'json', 'output',
+             'llm_recovery_per_round', None, 'aux', False,
+             False, None, '每轮打断后回复的打分明细列表', 110),
+            ('llm_return_per_round', '回原话题逐轮行为', '回到原话题逐轮行为', 'json', 'output',
+             'llm_return_per_round', None, 'aux', False,
+             False, None, '回到原话题轮的行为判断明细列表', 111),
+            ('llm_return_scores_per_round', '回原话题逐轮打分', '回到原话题逐轮打分', 'json', 'output',
+             'llm_return_scores_per_round', None, 'aux', False,
+             False, None, '回到原话题轮的回复打分明细列表', 112),
+            ('llm_eval', 'LLM评估块', 'LLM评估完整结果', 'json', 'output',
+             'llm_eval', None, 'aux', False,
+             False, None, 'LLM 评估完整结果(含 enabled/message/model 及明细)', 113),
         ],
         # user_asr / model_asr 由调用方（主服务/用例）直接提供，来源待主服务侧确认
         # 这里给出默认映射：reference 用例输出 → 入参，可按主服务实际来源调整
+        # rounds（多轮文本结构，含 is_return_to_topic 打标）同样来自用例 reference 输出
         'param_mappings': [
             ('reference', 'output', 'user_asr', 'user_asr', 'none'),
             ('reference', 'output', 'model_asr', 'model_asr', 'none'),
+            ('reference', 'output', 'rounds', 'rounds', 'none'),
         ],
     },
 ]
@@ -162,6 +216,10 @@ def seed_interruption_dimensions():
                     'user_asr': '{{user_asr}}',
                     'model_asr': '{{model_asr}}',
                     'seg_merge_gap_s': '{{seg_merge_gap_s}}',
+                    'rounds': '{{rounds}}',
+                    'enable_llm_eval': '{{enable_llm_eval}}',
+                    'llm_model': '{{llm_model}}',
+                    'original_topic': '{{original_topic}}',
                 },
                 'timeout': 30000
             }, ensure_ascii=False)
