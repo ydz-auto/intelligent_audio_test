@@ -34,7 +34,6 @@ class PlaybackController:
             module=module,
             content=content,
             category=category,
-            source='backend',
             task_id=task_id,
             api_id=api_id,
             test_case_id=test_case_id,
@@ -381,8 +380,7 @@ class PlaybackController:
             PlaybackController._log(
                 level='INFO',
                 category='DeviceTest',
-                source=f'Device:{device.name}',
-                content=f"已启动音频驱动播放: {audio_name}, 设备索引: {device_index}, 通道: {device.channel_index},增益: {round(gain, 4)}",
+                content=f"已启动音频驱动播放: {audio_name}, Device:{device.name},设备索引: {device_index}, 通道: {device.channel_index},增益: {round(gain, 4)}",
                 playback_device_id=device_id
             )
 

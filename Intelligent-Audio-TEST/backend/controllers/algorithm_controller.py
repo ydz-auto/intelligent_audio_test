@@ -7,6 +7,7 @@
 
 from typing import List, Dict, Any
 from flask import request
+from sqlalchemy.exc import IntegrityError
 from ..models.algorithm_models import (
     AlgorithmDefinition, AlgorithmDeviceParam, AlgorithmApiParam,
     ParamMapping, AlgorithmDimensionRelation, CaseAlgorithmParam, EvaluationDimensionParam,
@@ -433,9 +434,9 @@ def _update_mappings(algo_type: str, mappings: Dict):
                         mapping.source = mapping_data.get('source', 'case')
             else:
                 source_value = mapping_data.get('source', 'case') if source_type == 'evaluation' else source_type
+                source_value = source_value if source_value in ('device', 'api', 'case', 'reference') else 'api'
                 mapping = ParamMapping(
                     algorithm_type=algo_type,
-                    source_type=source_value if source_value in ('device', 'api', 'case', 'reference') else 'api',
                     source=source_value,
                     source_param=mapping_data.get('source_param'),
                     source_direction=mapping_data.get('source_direction', 'output'),
@@ -679,17 +680,46 @@ def create_mapping():
     except Exception as e:
         return error_response(f"请求数据验证失败: {str(e)}", 400)
 
-    mapping = ParamMapping(
+    # 检查是否已存在（含软删除）的相同映射，避免违反唯一约束
+    existing = ParamMapping.query.filter_by(
         algorithm_type=req.algorithm_type,
         source=req.source_type,
         source_param=req.source_param,
-        source_direction=req.source_direction or 'output',
-        dimension_id=req.dimension_id,
-        target_param=req.target_param,
-        transform_type=req.transform_type or 'none'
-    )
-    db.session.add(mapping)
-    db.session.commit()
+        dimension_id=req.dimension_id
+    ).first()
+
+    if existing:
+        if existing.deleted:
+            # 恢复软删除的记录
+            existing.source_direction = req.source_direction or 'output'
+            existing.target_param = req.target_param
+            existing.transform_type = req.transform_type or 'none'
+            existing.deleted = False
+            db.session.commit()
+            mapping = existing
+        else:
+            return error_response(
+                f"映射已存在: algorithm_type={req.algorithm_type}, "
+                f"source={req.source_type}, source_param={req.source_param}, "
+                f"dimension_id={req.dimension_id}",
+                409
+            )
+    else:
+        mapping = ParamMapping(
+            algorithm_type=req.algorithm_type,
+            source=req.source_type,
+            source_param=req.source_param,
+            source_direction=req.source_direction or 'output',
+            dimension_id=req.dimension_id,
+            target_param=req.target_param,
+            transform_type=req.transform_type or 'none'
+        )
+        db.session.add(mapping)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return error_response('映射已存在（唯一约束冲突）', 409)
 
     return success_response({
         'id': mapping.id,
