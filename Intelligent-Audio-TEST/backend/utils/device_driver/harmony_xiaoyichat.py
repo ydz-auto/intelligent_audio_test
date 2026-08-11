@@ -35,7 +35,9 @@ class Xiaoyilivechat(HarmonyDriver):
         'chatgpt': {
             'cache_dirs': ['/data/local/tmp'],
             'user_suffix': 'cap_client_out.pcm',
-            'ai_suffix': 'cap_client_in.pcm',
+            # 实测设备上 AI 回复文件名为 *_client_in..pcm(双点,无 cap_ 前缀)；
+            # 另有 *_dump_process_client_play_audio_*.pcm 为 TTS dump,不取
+            'ai_suffix': 'client_in..pcm',
         },
     }
     # 清理时一并清的公共目录
@@ -182,6 +184,7 @@ class Xiaoyilivechat(HarmonyDriver):
 
         # 轮询：发现新文件 + 等待首帧写入（size 从 0 变非0）
         first_frame_ms = None
+        self._record_device_path = None  # _start_recorder 发现的真实录屏文件设备路径(VID_*.mp4),供 get_results/_pull_record_file 直接 recv
         deadline = int(time.time() * 1000) + 30000  # 30 秒超时
         while int(time.time() * 1000) < deadline:
             current_paths = self._list_device_mp4_set(device_sn)
@@ -191,6 +194,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 size = self._get_device_file_size(device_sn, new_path)
                 if size > 0:
                     first_frame_ms = int(time.time() * 1000)
+                    self._record_device_path = new_path  # 记下真实路径,绕开 mediatool 按 CustomizedFileName 查询
                     break
             time.sleep(0.1)
 
@@ -212,25 +216,33 @@ class Xiaoyilivechat(HarmonyDriver):
         record_file_name = getattr(self, '_record_file_name', None)
         if not record_file_name:
             return None
+        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result',
+                                 str(task_id) if task_id else 'default_task_id',
+                                 str(test_case_id) if test_case_id else 'default_id', device_sn)
+        os.makedirs(local_dir, exist_ok=True)
+        local_path = os.path.join(local_dir, record_file_name)
+        # 优先用 _start_recorder 发现的真实 VID 路径直接 recv(稳定,绕开 mediatool 按 CustomizedFileName 查询)
+        device_path = getattr(self, '_record_device_path', None) or ''
+        if not device_path:
+            try:
+                query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
+                lines = query.stdout.strip().split('\n')
+                device_path = lines[1].strip() if len(lines) > 1 else ''
+                if 'uri' in query.stdout and len(lines) > 2:
+                    subprocess.run(
+                        ['hdc', '-t', device_sn, 'shell', 'mediatool', 'recv', lines[2].strip(), '/data/local/tmp'],
+                        check=False, capture_output=True, text=True, timeout=120
+                    )
+                    device_path = f'/data/local/tmp/{record_file_name}'
+            except Exception as e:
+                self._log(level='WARNING', content=f"teardown兜底 mediatool 查询异常: {e}",
+                          task_id=task_id, test_case_id=test_case_id)
+                device_path = ''
         try:
-            query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
-            lines = query.stdout.strip().split('\n')
-            device_path = lines[1].strip() if len(lines) > 1 else ''
-            if 'uri' in query.stdout and len(lines) > 2:
-                subprocess.run(
-                    ['hdc', '-t', device_sn, 'shell', 'mediatool', 'recv', lines[2].strip(), '/data/local/tmp'],
-                    check=False, capture_output=True, text=True, timeout=120
-                )
-                device_path = f'/data/local/tmp/{record_file_name}'
-            local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result',
-                                     str(task_id) if task_id else 'default_task_id',
-                                     str(test_case_id) if test_case_id else 'default_id', device_sn)
-            os.makedirs(local_dir, exist_ok=True)
-            local_path = os.path.join(local_dir, record_file_name)
             recv_result = subprocess.run(['hdc', '-t', device_sn, 'file', 'recv', device_path, local_path],
                                          check=False, capture_output=True, text=True, timeout=120)
             if not os.path.exists(local_path):
-                self._log(level='WARNING', content=f"teardown兜底拉取录屏失败: {recv_result.stderr}",
+                self._log(level='WARNING', content=f"teardown兜底拉取录屏失败: device_path={device_path!r} err={recv_result.stderr}",
                           task_id=task_id, test_case_id=test_case_id)
                 return None
             self._mp4_to_wav(local_path, task_id=task_id, test_case_id=test_case_id)
@@ -590,15 +602,20 @@ class Xiaoyilivechat(HarmonyDriver):
         user_wav, ai_wav = self._pull_pcm_wav(device_sn, app=pcm_app,
                                               task_id=task_id, test_case_id=test_case_id)
         try:
-            query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
-            lines = query.stdout.strip().split('\n')
-            device_path = lines[1].strip() if len(lines) > 1 else ''
-            if 'uri' in query.stdout and len(lines) > 2:
-                subprocess.run(
-                    ['hdc', '-t', device_sn, 'shell', 'mediatool', 'recv', lines[2].strip(), '/data/local/tmp'],
-                    check=False, capture_output=True, text=True, timeout=120
-                )
-                device_path = f'/data/local/tmp/{record_file_name}'
+            # 优先用 _start_recorder 发现的真实 VID 路径直接 recv(绕开 mediatool 按 CustomizedFileName
+            # 查询——后者对部分文件名报 "displayName format is not correct" 而查不到,case 模式尤其常见)
+            device_path = getattr(self, '_record_device_path', None) or ''
+            query = None
+            if not device_path:
+                query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
+                lines = query.stdout.strip().split('\n')
+                device_path = lines[1].strip() if len(lines) > 1 else ''
+                if 'uri' in query.stdout and len(lines) > 2:
+                    subprocess.run(
+                        ['hdc', '-t', device_sn, 'shell', 'mediatool', 'recv', lines[2].strip(), '/data/local/tmp'],
+                        check=False, capture_output=True, text=True, timeout=120
+                    )
+                    device_path = f'/data/local/tmp/{record_file_name}'
             local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result',
                                      str(task_id) if task_id else 'default_task_id',
                                      str(test_case_id) if test_case_id else 'default_id', device_sn)
