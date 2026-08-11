@@ -146,6 +146,23 @@ class AudioServiceServicer(e2e_grpc.AudioServiceServicer):
         except Exception as e:
             return e2e_pb.StopAudioByPatternResponse(success=False, message=str(e), data="")
 
+    def PrepareAudios(self, request, context=None):
+        """预下载并按设备目标采样率重采样音频。
+
+        请求 data JSON: {"audio_ids": [int], "playback_device_ids": [int|str]}
+        返回 data JSON: {audio_id: {target_rate: local_path, "original": local_path}}
+        """
+        try:
+            data = _loads(request.data, {})
+            audio_ids = data.get('audio_ids', [])
+            playback_device_ids = data.get('playback_device_ids', [])
+            result = self.audio_service.prepare_audios(audio_ids, playback_device_ids)
+            return e2e_pb.PrepareAudiosResponse(
+                success=True, message="ok", data=_dumps(result),
+            )
+        except Exception as e:
+            return e2e_pb.PrepareAudiosResponse(success=False, message=str(e), data="")
+
     def MeasureSPL(self, request, context=None):
         """声压级测量"""
         try:

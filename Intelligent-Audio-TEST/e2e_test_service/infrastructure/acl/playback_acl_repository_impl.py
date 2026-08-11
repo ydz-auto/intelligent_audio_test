@@ -42,7 +42,12 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
     def play_round(self, round_config: Dict, task_id: str, case_config: Dict,
                    test_case_id: str, round_number: int,
                    audio_local_paths: Optional[Dict] = None) -> Optional[PlaybackResultDTO]:
-        """播放本轮音频"""
+        """播放本轮音频
+
+        Args:
+            audio_local_paths: 嵌套映射 {audio_id: {target_rate: local_path, "original": local_path}}，
+                由 PrepareAudios RPC 预下载+重采样生成，按设备 target_rate 取本地文件。
+        """
         from shared.clients.grpc_clients import get_playback_service_stub
         from shared.proto import audio_service_pb2 as audio_pb
         try:

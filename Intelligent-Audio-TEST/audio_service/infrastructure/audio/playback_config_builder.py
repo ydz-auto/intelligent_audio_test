@@ -64,6 +64,34 @@ def _resolve_audio_file_path(audio_info, audio_obj=None):
     return None
 
 
+def _resolve_preloaded_path(audio_local_paths, audio_id, target_rate):
+    """从预下载嵌套映射解析本地路径。
+
+    映射结构: {audio_id: {target_rate: local_path, "original": local_path}}
+    gRPC JSON 往返后 key 为字符串，故同时兼容 int/str 形式的 audio_id 与 target_rate。
+
+    Returns:
+        本地文件路径字符串，未命中返回 None。
+    """
+    if not audio_local_paths or audio_id is None:
+        return None
+    # 外层：audio_id 可能是 int 或 str
+    paths = audio_local_paths.get(audio_id)
+    if paths is None:
+        paths = audio_local_paths.get(str(audio_id))
+    if not paths:
+        return None
+    # 内层：target_rate 精确匹配（兼容 int/str）
+    if target_rate is not None:
+        hit = paths.get(target_rate)
+        if hit is None:
+            hit = paths.get(str(target_rate))
+        if hit:
+            return hit
+    # 原始文件兜底（缓存 miss 时回退原文件，播放侧运行时重采样）
+    return paths.get('original') or paths.get(None) or paths.get('null')
+
+
 def find_device_obj(device_id, devices):
     """在设备列表中按 device_id 或 id 查找设备对象。
 
@@ -178,8 +206,8 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_
     playback_device_id 指向 PlaybackDevice 表主键，直接从 DB 加载 ORM 对象。
 
     Args:
-        audio_local_paths: 准备阶段预下载的 audio_id→本地路径 映射，
-            有映射时直接用本地文件路径，不再走 OSS。
+        audio_local_paths: 准备阶段预下载的 {audio_id: {target_rate: local_path}} 嵌套映射，
+            有映射时按设备 target_rate 取本地文件，不再走 OSS。
 
     Returns:
         (configs, playback_devices_map)
@@ -192,14 +220,6 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_
 
     for audio_config, audio_obj in dry_audios_info:
         audio_id = audio_config.get('audio_id')
-        # 优先使用预下载的本地路径
-        if audio_local_paths and audio_id and audio_id in audio_local_paths:
-            file_path = audio_local_paths[audio_id]
-        else:
-            file_path = getattr(audio_obj, 'file_path', None) or audio_config.get('file_path')
-        if not file_path:
-            continue
-
         playback_dev_id = audio_config.get('playback_device_id')
         if not playback_dev_id:
             continue
@@ -208,7 +228,7 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_
         dev_obj = _get_playback_device_via_grpc(playback_dev_id)
         if not dev_obj:
             _log('WARNING',
-                 f'主讲人音频 (audio_id={audio_config.get("audio_id")}) '
+                 f'主讲人音频 (audio_id={audio_id}) '
                  f'播放设备 (id={playback_dev_id}) 未找到，跳过',
                  task_id=task_id)
             continue
@@ -229,9 +249,17 @@ def build_dry_configs(dry_audios_info, audio_service, task_id=None, audio_local_
         device_index = audio_service.get_device_index(dev_unique_id) if dev_unique_id else None
         if device_index is None:
             _log('WARNING',
-                 f'主讲人音频 (audio_id={audio_config.get("audio_id")}) '
+                 f'主讲人音频 (audio_id={audio_id}) '
                  f'无法获取设备索引 (unique_id={dev_unique_id})，跳过',
                  task_id=task_id)
+            continue
+
+        # 优先使用预下载的本地路径（嵌套映射，按设备 target_rate 查询）
+        target_rate = audio_service.get_device_sample_rate(dev_unique_id) if dev_unique_id else None
+        file_path = _resolve_preloaded_path(audio_local_paths, audio_id, target_rate)
+        if not file_path:
+            file_path = getattr(audio_obj, 'file_path', None) or audio_config.get('file_path')
+        if not file_path:
             continue
 
         gain = resolve_spl_gain(spl_mapping_id, audio_config.get('spl', 65.0))
@@ -270,14 +298,11 @@ def build_noise_play_configs(noise_audio_info, noise_devices, audio_service,
         return []
 
     n_config, n_audio = noise_audio_info
-    # 优先使用预下载的本地路径
     noise_audio_id = n_config.get('audio_id') if n_config else None
-    if audio_local_paths and noise_audio_id and noise_audio_id in audio_local_paths:
-        file_path = audio_local_paths[noise_audio_id]
-    else:
-        file_path = (
-            n_audio.file_path if hasattr(n_audio, 'file_path') else n_audio.get('file_path')
-        )
+    # 不同噪声设备可能采样率不同，按设备 target_rate 取本地文件
+    fallback_file_path = (
+        n_audio.file_path if hasattr(n_audio, 'file_path') else n_audio.get('file_path')
+    )
     noise_spl = n_config.get('spl', 60) if n_config else 60
 
     configs = []
@@ -298,6 +323,10 @@ def build_noise_play_configs(noise_audio_info, noise_devices, audio_service,
         device_index = audio_service.get_device_index(dev_unique_id) if dev_unique_id else None
         if device_index is None:
             continue
+
+        # 优先使用预下载的本地路径（嵌套映射，按设备 target_rate 查询）
+        target_rate = audio_service.get_device_sample_rate(dev_unique_id) if dev_unique_id else None
+        file_path = _resolve_preloaded_path(audio_local_paths, noise_audio_id, target_rate) or fallback_file_path
 
         configs.append({
             'file': file_path,
@@ -389,11 +418,11 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
         spl_mapping_id = getattr(dev_obj, 'current_spl_mapping_id', None)
         gain = resolve_spl_gain(spl_mapping_id, spl) if spl_mapping_id and spl else 1.0
 
-        # 优先使用预下载的本地路径
+        # 优先使用预下载的本地路径（嵌套映射，按设备 target_rate 查询）
         interferer_audio_id = audio_info.get('id') or audio_info.get('audio_id')
-        if audio_local_paths and interferer_audio_id and interferer_audio_id in audio_local_paths:
-            file_path = audio_local_paths[interferer_audio_id]
-        else:
+        target_rate = audio_service.get_device_sample_rate(device_unique_id) if device_unique_id else None
+        file_path = _resolve_preloaded_path(audio_local_paths, interferer_audio_id, target_rate)
+        if not file_path:
             file_path = _resolve_audio_file_path(audio_info)
             if not file_path and audio_info.get('id'):
                 try:

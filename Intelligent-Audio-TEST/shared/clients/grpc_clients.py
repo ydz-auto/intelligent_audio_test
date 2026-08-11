@@ -127,8 +127,8 @@ def get_device_service_stub():
 @lru_cache(maxsize=1)
 def get_device_result_service_stub():
     """DeviceResultService stub：采集/重新提取设备结果"""
-    from shared.proto import e2e_service_pb2_grpc
-    return e2e_service_pb2_grpc.DeviceResultServiceStub(_get_device_channel())
+    from shared.proto import device_service_pb2_grpc
+    return device_service_pb2_grpc.DeviceResultServiceStub(_get_device_channel())
 
 
 @lru_cache(maxsize=1)
@@ -1112,6 +1112,41 @@ def get_audio_by_id(audio_id):
         log_not_emit('ERROR', 'grpc_clients',
                      f'get_audio_by_id failed: {e}', category='algorithm')
         return None
+
+
+def audio_prepare_audios(audio_ids, playback_device_ids):
+    """通过 gRPC 预下载并按设备目标采样率重采样音频（audio_service.PrepareAudios）
+
+    Args:
+        audio_ids: 音频 ID 列表 [int, ...]
+        playback_device_ids: 播放设备 ID 列表 [int|str, ...]
+
+    Returns:
+        嵌套映射 {audio_id: {target_rate: local_path, "original": local_path}} 或空 dict
+    """
+    from shared.utils.log_handler import log_not_emit
+    if not audio_ids:
+        return {}
+    try:
+        from shared.proto import audio_service_pb2 as e2e_pb
+        from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+        stub = get_audio_service_stub()
+        req = e2e_pb.PrepareAudiosRequest(
+            data=_dumps({
+                'audio_ids': list(audio_ids),
+                'playback_device_ids': list(playback_device_ids or []),
+            }),
+        )
+        resp = stub.PrepareAudios(req)
+        if not resp.success:
+            log_not_emit('WARNING', 'grpc_clients',
+                         f'PrepareAudios failed: {resp.message}', category='algorithm')
+            return {}
+        return _loads(resp.data, {}) or {}
+    except Exception as e:
+        log_not_emit('ERROR', 'grpc_clients',
+                     f'audio_prepare_audios failed: {e}', category='algorithm')
+        return {}
 
 
 # ==================== algorithm query 便捷封装（迁移自 shared/algorithm）====================

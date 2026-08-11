@@ -21,7 +21,7 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
     def __init__(self, execution_engine):
         super().__init__(execution_engine)
         self._playback_timestamps = {}
-        self._audio_local_paths = {}  # audio_id -> 本地文件路径（准备阶段预下载）
+        self._audio_local_paths = {}  # {audio_id: {target_rate: local_path, "original": local_path}}（准备阶段预下载+重采样）
         # 委托组件
         self._device_manager = E2EDeviceManager(self)
         self._collector = E2ECollector(self)

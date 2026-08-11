@@ -85,6 +85,11 @@ class AudioServiceStub:
                 request_serializer=audio__service__pb2.StopAudioByPatternRequest.SerializeToString,
                 response_deserializer=audio__service__pb2.StopAudioByPatternResponse.FromString,
                 _registered_method=True)
+        self.PrepareAudios = channel.unary_unary(
+                '/audio_service.AudioService/PrepareAudios',
+                request_serializer=audio__service__pb2.PrepareAudiosRequest.SerializeToString,
+                response_deserializer=audio__service__pb2.PrepareAudiosResponse.FromString,
+                _registered_method=True)
 
 
 class AudioServiceServicer:
@@ -161,6 +166,13 @@ class AudioServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def PrepareAudios(self, request, context):
+        """预下载并按设备目标采样率重采样音频
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_AudioServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -213,6 +225,11 @@ def add_AudioServiceServicer_to_server(servicer, server):
                     servicer.StopAudioByPattern,
                     request_deserializer=audio__service__pb2.StopAudioByPatternRequest.FromString,
                     response_serializer=audio__service__pb2.StopAudioByPatternResponse.SerializeToString,
+            ),
+            'PrepareAudios': grpc.unary_unary_rpc_method_handler(
+                    servicer.PrepareAudios,
+                    request_deserializer=audio__service__pb2.PrepareAudiosRequest.FromString,
+                    response_serializer=audio__service__pb2.PrepareAudiosResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -486,6 +503,33 @@ class AudioService:
             '/audio_service.AudioService/StopAudioByPattern',
             audio__service__pb2.StopAudioByPatternRequest.SerializeToString,
             audio__service__pb2.StopAudioByPatternResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PrepareAudios(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/audio_service.AudioService/PrepareAudios',
+            audio__service__pb2.PrepareAudiosRequest.SerializeToString,
+            audio__service__pb2.PrepareAudiosResponse.FromString,
             options,
             channel_credentials,
             insecure,

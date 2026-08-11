@@ -70,8 +70,9 @@ class PlaybackOrchestrator:
             case_config: 用例全局配置（用于 fallback 噪声配置）
             test_case_id: 测试用例关联ID
             round_number: 本轮轮次号（从1开始），用于日志区分不同轮次
-            audio_local_paths: 准备阶段预下载的 audio_id→本地路径 映射，
-                有映射时直接用本地文件，不再查 OSS。
+            audio_local_paths: 准备阶段预下载+重采样的嵌套映射
+                {audio_id: {target_rate: local_path, "original": local_path}}，
+                有映射时按设备 target_rate 取本地文件，不再查 OSS。
 
         Returns:
             dict: {'audio_timelines': [...], 'playback_result': ...}

@@ -4,7 +4,6 @@ import time
 from e2e_test_service.infrastructure.acl import (
     DeviceAclRepositoryImpl,
     PlaybackAclRepositoryImpl,
-    AudioAclRepositoryImpl,
 )
 
 
@@ -64,22 +63,28 @@ class PreparationMixin:
         return device_info_list, result_id
 
     def _prepare_audio_files(self, task_id, rounds, test_case_id, case_config=None):
-        """遍历所有 rounds，收集 audio_id 并从 OSS 预下载到本地，建立 audio_id→local_path 映射。
+        """遍历所有 rounds，批量预下载并按设备采样率重采样，建立嵌套映射。
+
+        通过 audio_service.PrepareAudios RPC 完成预下载+重采样，返回:
+        {audio_id: {target_rate: local_path, "original": local_path}}
 
         覆盖范围：干声 audios[].audio_id、轮次噪声 background_noise.audio_id、
         全局噪声 case_config.background_noise.audio_id、
         干扰人 interferers[].audios[].audio_id、声纹 algorithmParams.voiceprint_audio_id。
+        播放设备 ID 收集范围：干声 audios[].playback_device_id、
+        噪声 background_noise.device_ids[]、干扰人 interferers[].device.id。
         """
-        from shared.infrastructure.storage import storage
-
-        audio_repo = AudioAclRepositoryImpl()
         audio_ids = set()
+        playback_device_ids = set()
 
         # 全局背景噪声（用例级，当轮次内未配置时回退使用）
         if case_config:
             global_bg = case_config.get('background_noise') or {}
             if global_bg.get('audio_id'):
                 audio_ids.add(global_bg['audio_id'])
+            for did in global_bg.get('device_ids', []) or []:
+                if did:
+                    playback_device_ids.add(did)
 
         for round_config in (rounds or []):
             if not isinstance(round_config, dict):
@@ -89,12 +94,26 @@ class PreparationMixin:
                 aid = audio_cfg.get('audio_id')
                 if aid:
                     audio_ids.add(aid)
+                pid = audio_cfg.get('playback_device_id')
+                if pid:
+                    playback_device_ids.add(pid)
             # 轮次噪声
             bg = round_config.get('background_noise') or {}
             if bg.get('audio_id'):
                 audio_ids.add(bg['audio_id'])
+            for did in bg.get('device_ids', []) or []:
+                if did:
+                    playback_device_ids.add(did)
             # 干扰人
             for interferer in round_config.get('interferers', []) or []:
+                # 嵌套结构：interferer.device.id
+                dev_cfg = interferer.get('device')
+                if dev_cfg and dev_cfg.get('id'):
+                    playback_device_ids.add(dev_cfg['id'])
+                # 扁平结构：interferer.playback_device_id
+                _did = interferer.get('playback_device_id')
+                if _did:
+                    playback_device_ids.add(_did)
                 for ia in interferer.get('audios', []) or []:
                     aid = ia.get('audio_id')
                     if aid:
@@ -111,36 +130,29 @@ class PreparationMixin:
 
         self._log(
             level='INFO',
-            content=f'开始预下载音频: {len(audio_ids)} 个 (audio_ids={list(audio_ids)})',
+            content=f'开始预下载音频: {len(audio_ids)} 个, 播放设备 {len(playback_device_ids)} 个 '
+                    f'(audio_ids={list(audio_ids)})',
             task_id=task_id, test_case_id=test_case_id,
         )
 
-        success_count = 0
-        for audio_id in audio_ids:
-            if audio_id in self._audio_local_paths:
-                continue
-            try:
-                audio_obj = audio_repo.get_audio_by_id(audio_id)
-                if not audio_obj or not audio_obj.file_path:
-                    self._log(
-                        level='WARNING',
-                        content=f'预下载: audio_id={audio_id} 不存在或无 file_path，跳过',
-                        task_id=task_id, test_case_id=test_case_id,
-                    )
-                    continue
-                local_path = storage.load_file(audio_obj.file_path)
-                self._audio_local_paths[audio_id] = local_path
-                success_count += 1
-            except Exception as e:
-                self._log(
-                    level='ERROR',
-                    content=f'预下载音频失败 audio_id={audio_id}: {e}',
-                    task_id=task_id, test_case_id=test_case_id,
-                )
+        from shared.clients.grpc_clients import audio_prepare_audios
+        result = audio_prepare_audios(list(audio_ids), list(playback_device_ids))
 
+        if not result:
+            self._log(
+                level='WARNING',
+                content='音频预下载返回空结果，播放时将回退到 OSS 原始文件',
+                task_id=task_id, test_case_id=test_case_id,
+            )
+            return
+
+        # 存储嵌套映射 {audio_id: {target_rate: local_path, "original": local_path}}
+        self._audio_local_paths.update(result)
+
+        prepared_count = len(result)
         self._log(
             level='INFO',
-            content=f'音频预下载完成: {success_count}/{len(audio_ids)} 成功',
+            content=f'音频预下载完成: {prepared_count}/{len(audio_ids)} 成功',
             task_id=task_id, test_case_id=test_case_id,
         )
 

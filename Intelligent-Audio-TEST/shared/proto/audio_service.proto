@@ -24,6 +24,8 @@ service AudioService {
   rpc GetDeviceIndex(GetDeviceIndexRequest) returns (GetDeviceIndexResponse);
   // 按模式停止音频播放
   rpc StopAudioByPattern(StopAudioByPatternRequest) returns (StopAudioByPatternResponse);
+  // 预下载并按设备目标采样率重采样音频
+  rpc PrepareAudios(PrepareAudiosRequest) returns (PrepareAudiosResponse);
 }
 
 // ===== 播放编排服务 =====
@@ -171,6 +173,17 @@ message StopAudioByPatternResponse {
   bool success = 1;
   string message = 2;
   string data = 3;
+}
+
+message PrepareAudiosRequest {
+  string task_id = 1;
+  string data = 2;  // JSON: {"audio_ids": [int], "playback_device_ids": [int|str]}
+}
+
+message PrepareAudiosResponse {
+  bool success = 1;
+  string message = 2;
+  string data = 3;  // JSON: {audio_id: {target_rate: local_path, "original": local_path}}
 }
 
 // ==================== PlaybackService Messages ====================
