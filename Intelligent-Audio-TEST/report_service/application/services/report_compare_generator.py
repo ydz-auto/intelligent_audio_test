@@ -44,10 +44,10 @@ _generating_secondary_lock = threading.Lock()
 
 
 def _emit_secondary_compare_event(event_name, data):
-    """通过 SSE 推送二次对比报告生成事件（替代 socketio.emit）"""
+    """通过 Redis PubSub 推送二次对比报告生成事件，由 api_gateway SSE 端点转发给前端"""
     try:
-        from api_gateway.routes.sse_bp import event_cache
-        event_cache.add_event(event_name, data)
+        from shared.utils.redis_pubsub import RedisPubSub
+        RedisPubSub().publish('sse_events', {'event': event_name, 'data': data})
     except Exception as _e:
         import logging as _log
         _log.getLogger(__name__).warning(f"SSE event emit failed: {_e}")

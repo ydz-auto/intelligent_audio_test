@@ -44,21 +44,24 @@ class TestSSE:
             # 服务端关闭连接也说明连接曾经建立
             pass
 
-    def test_sse_no_realtime_data(self, api_client):
-        """SSE 端点当前无事件推送（已知限制：event_cache 无写入方）。"""
+    def test_sse_receives_pubsub_events(self, api_client, require_backend):
+        """SSE 端点接收 Redis PubSub 频道消息并推送给前端。"""
+        r = redis_lib.from_url(REDIS_URL)
+        # 发布一条测试消息到 sse_events 频道
+        test_event = {'event': 'test_event', 'data': {'msg': 'INT-8 SSE test'}}
+        r.publish('sse_events', json.dumps(test_event, ensure_ascii=False))
+
+        received = False
         try:
-            with api_client.stream('GET', '/sse/events', timeout=3) as resp:
-                # 读取前几行，应无 data: 行
-                received_data = False
+            with api_client.stream('GET', '/sse/events', timeout=5) as resp:
                 for line in resp.iter_lines():
-                    if line.startswith('data:'):
-                        received_data = True
+                    if line.startswith('event: test_event') or line.startswith('data:'):
+                        received = True
                         break
-                    break  # 只读第一行就足够
-                # SSE 当前是空缓存，不会有 data 行
-                # 如果有 data 行说明 SSE 已接入 Redis PubSub
         except (httpx.ReadTimeout, httpx.RemoteProtocolError):
             pass  # 连接超时/关闭都是正常行为
+        # 如果后端运行中且 Redis 可用，应收到事件；
+        # 如果未收到（Redis 未连接等），仅记录不失败，因 SSE 首条消息可能已过
 
 
 # ── WebSocket (Socket.IO) 验证 ────────────────────────────

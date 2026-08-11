@@ -73,9 +73,7 @@ async def lifespan(app: FastAPI):
 def _start_redis_subscriber(sio, ws_manager):
     """启动后台线程订阅 Redis task_logs / task_progress 频道，转发给前端 Socket.IO"""
     import threading
-    import json
-    import time
-    import redis as redis_lib
+    from shared.utils.redis_pubsub import RedisPubSub
     from shared.infrastructure.config import BaseConfig
 
     def _handle_message(channel, data):
@@ -88,10 +86,6 @@ def _start_redis_subscriber(sio, ws_manager):
         if channel == 'task_logs':
             log_payload = data.get('log_payload', {})
             task_id = data.get('task_id')
-            asyncio.run_coroutine_threadsafe(
-                sio.emit('task_log', log_payload, namespace='/ws/logs'),
-                loop
-            )
             if task_id:
                 asyncio.run_coroutine_threadsafe(
                     sio.emit('task_log', {'taskId': str(task_id), 'log': log_payload}, namespace='/ws/logs'),
@@ -107,29 +101,8 @@ def _start_redis_subscriber(sio, ws_manager):
             )
 
     def _subscriber_loop():
-        """订阅循环，带自动重连：Redis 断开后等待重试而非退出线程"""
         print(f"[RedisSubscriber] starting, subscribing to task_logs + task_progress on {BaseConfig.REDIS_URL}", flush=True)
-        while True:
-            try:
-                r = redis_lib.from_url(BaseConfig.REDIS_URL)
-                pubsub = r.pubsub()
-                pubsub.subscribe(['task_logs', 'task_progress'])
-                print("[RedisSubscriber] connected, listening...", flush=True)
-                for message in pubsub.listen():
-                    if message['type'] != 'message':
-                        continue
-                    try:
-                        channel = message['channel']
-                        if isinstance(channel, bytes):
-                            channel = channel.decode('utf-8')
-                        data = json.loads(message['data'])
-                        _handle_message(channel, data)
-                    except Exception as e:
-                        print(f"[RedisSubscriber] message error: {e}", flush=True)
-            except Exception as e:
-                # Redis 连接断开（重启/网络抖动），等待后重连
-                print(f"[RedisSubscriber] connection lost: {e}, retrying in 3s...", flush=True)
-                time.sleep(3)
+        RedisPubSub().subscribe(['task_logs', 'task_progress'], _handle_message)
 
     t = threading.Thread(target=_subscriber_loop, daemon=True)
     t.start()
@@ -151,8 +124,10 @@ def create_app(config_name='default') -> FastAPI:
 
     # 注册 request_adapter 中间件（将 FastAPI 请求注入 ContextVar）
     from api_gateway.middleware import RequestAdapterMiddleware, AuthMiddleware
+    from shared.utils.naming_middleware import NamingAliasMiddleware
     app.add_middleware(RequestAdapterMiddleware)
     app.add_middleware(AuthMiddleware, auth_mode=Config.AUTH_MODE)
+    app.add_middleware(NamingAliasMiddleware)
 
     # 注册 API 路由
     from api_gateway.routes.auth_bp import router as auth_router
@@ -166,7 +141,7 @@ def create_app(config_name='default') -> FastAPI:
     from api_gateway.routes.execution_bp import router as execution_router
     from api_gateway.routes.audio_bp import router as audio_router
     from api_gateway.routes.evaluation_bp import router as evaluation_router
-    from api_gateway.routes.log_bp import router as log_router, ws_router as log_ws_router
+    from api_gateway.routes.log_bp import router as log_router
     from api_gateway.routes.spl_bp import router as spl_router
     from api_gateway.routes.algorithm_bp import router as algorithm_router
     from api_gateway.routes.tag_bp import router as tag_router
@@ -190,7 +165,6 @@ def create_app(config_name='default') -> FastAPI:
     app.include_router(tag_router, prefix='/api/v1/tags', tags=['tags'])
     app.include_router(home_router, prefix='/api/v1/home', tags=['home'])
     app.include_router(sse_router, prefix='/api/v1/sse', tags=['sse'])
-    app.include_router(log_ws_router, tags=['websocket'])
 
     # 挂载 Socket.IO ASGI 子应用（前端 socket.io-client 连 /socket.io/）
     from api_gateway.websocket.socketio_server import sio_app

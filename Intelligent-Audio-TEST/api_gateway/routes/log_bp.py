@@ -84,4 +84,4 @@ def delete_archive(filename: str, _: None = require_permission('log:manage')):
         return to_response(result)
     return result
 
-from api_gateway.websocket.connection_manager import ws_router
+

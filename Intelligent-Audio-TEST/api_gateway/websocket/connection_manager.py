@@ -5,12 +5,11 @@ WebSocket 连接管理器 —— FastAPI 原生 WebSocket 实现
 管理 sid → WebSocket 映射、task_id → [sid] 房间、sid → filter。
 """
 import asyncio
-import json
 import threading
 from typing import Dict, List, Set, Optional, Any
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import WebSocket
 
 
 class ConnectionManager:
@@ -203,41 +202,3 @@ class ConnectionManager:
                 asyncio.run(self.emit(event, data))
             except Exception:
                 pass
-
-
-# 全局实例
-ws_manager = ConnectionManager()
-
-
-# WebSocket 路由
-ws_router = APIRouter()
-
-
-@ws_router.websocket("/ws/logs")
-async def websocket_logs(websocket: WebSocket):
-    """日志 WebSocket 端点 —— 替代 Flask-SocketIO 的 /ws/logs namespace"""
-    sid = websocket.query_params.get('sid') or __import__('uuid').uuid4().hex
-    await ws_manager.connect(sid, websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            try:
-                msg = json.loads(data)
-            except json.JSONDecodeError:
-                continue
-
-            event = msg.get('event')
-            payload = msg.get('data', {})
-
-            if event == 'set_filter':
-                ws_manager.set_filter(sid, payload)
-            elif event == 'subscribe_task':
-                task_id = str(payload.get('task_id', ''))
-                if task_id:
-                    ws_manager.subscribe_task(sid, task_id)
-            elif event == 'unsubscribe_task':
-                ws_manager.unsubscribe_task(sid)
-    except WebSocketDisconnect:
-        ws_manager.disconnect(sid)
-    except Exception:
-        ws_manager.disconnect(sid)

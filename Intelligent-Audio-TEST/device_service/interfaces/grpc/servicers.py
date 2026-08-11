@@ -233,8 +233,12 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
         try:
             system = request.system
             keywords = request.keywords or None
-            driver = self.factory.get_driver(system, keywords=keywords) if system else None
-            result = driver.scan() if driver else []
+            if system:
+                driver = self.factory.get_driver(system, keywords=keywords)
+                result = driver.scan() if driver else []
+            else:
+                # system 为空时扫描所有已注册驱动
+                result = self.factory.scan_devices()
             return e2e_pb.DriverScanResponse(success=True, message="ok", data=_dumps(result))
         except Exception as e:
             return e2e_pb.DriverScanResponse(success=False, message=str(e), data="")

@@ -34,15 +34,25 @@ class RedisPubSub:
         self.publish('device_status', {'device_id': device_id, **status_data})
 
     def subscribe(self, channels, callback):
-        pubsub = self.redis_client.pubsub()
-        pubsub.subscribe(channels)
-        for message in pubsub.listen():
-            if message['type'] == 'message':
-                channel = message['channel']
-                if isinstance(channel, bytes):
-                    channel = channel.decode('utf-8')
-                data = json.loads(message['data'])
-                callback(channel, data)
+        """订阅 Redis 频道，监听消息并回调。带自动重连。
+
+        阻塞方法，应在后台线程中调用。Redis 断开后等待 3 秒重连。
+        """
+        import time
+        while True:
+            try:
+                pubsub = self.redis_client.pubsub()
+                pubsub.subscribe(channels)
+                for message in pubsub.listen():
+                    if message['type'] == 'message':
+                        channel = message['channel']
+                        if isinstance(channel, bytes):
+                            channel = channel.decode('utf-8')
+                        data = json.loads(message['data'])
+                        callback(channel, data)
+            except Exception as e:
+                print(f"[RedisPubSub] connection lost: {e}, retrying in 3s...", flush=True)
+                time.sleep(3)
 
 
 class RedisStore:

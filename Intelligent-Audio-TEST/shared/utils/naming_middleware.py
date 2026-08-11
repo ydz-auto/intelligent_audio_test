@@ -3,6 +3,7 @@ from urllib.parse import parse_qsl, urlencode
 import re
 
 from pydantic.alias_generators import to_camel, to_snake
+from starlette.middleware.base import BaseHTTPMiddleware
 
 
 _SNAKE_LIKE_KEY_RE = re.compile(r"^[a-z0-9]+(?:_[a-z0-9]+)*$")
@@ -41,12 +42,17 @@ def add_case_aliases_to_query_string(query_string: str) -> str:
     return urlencode(out, doseq=True)
 
 
-class NamingAliasMiddleware:
-    def __init__(self, app):
-        self.app = app
+class NamingAliasMiddleware(BaseHTTPMiddleware):
+    """为查询参数添加驼峰/蛇形别名，使前端 camelCase 与后端 snake_case 兼容。
 
-    def __call__(self, environ, start_response):
-        query_string = environ.get("QUERY_STRING", "")
-        if query_string:
-            environ["QUERY_STRING"] = add_case_aliases_to_query_string(query_string)
-        return self.app(environ, start_response)
+    请求体由 Pydantic APIModel 的 alias_generator 处理；
+    本中间件补齐原生查询参数（非 Pydantic 解析的 query params）的命名转换。
+    """
+
+    async def dispatch(self, request, call_next):
+        qs = request.url.query
+        if qs:
+            new_qs = add_case_aliases_to_query_string(qs)
+            if new_qs != qs:
+                request.scope['query_string'] = new_qs.encode('utf-8')
+        return await call_next(request)
