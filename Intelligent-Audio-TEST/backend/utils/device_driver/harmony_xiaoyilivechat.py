@@ -235,29 +235,36 @@ class XiaoyilivechatV2(HarmonyDriver):
                   task_id=task_id, test_case_id=test_case_id)
 
         # 进入 post_process 时音频已播完, 等待"说话可打断"出现判定小艺有无回复
-        replied = self._wait_for_condition(
-            lambda: driver.find_component(By.text('说话可打断')),
-            timeout=self.WAIT_REPLY_TIMEOUT, interval=1,
-            operation_name="post_process_等待说话可打断",
-            task_id=task_id, test_case_id=test_case_id
-        )
-
-        if replied:
-            # 有回复: 等"正在听…"重新出现(小艺说完, 回到聆听态)
-            self._log(level='DEBUG', content="小艺开始回复, 等待回复结束", task_id=task_id, test_case_id=test_case_id)
-            self._wait_for_condition(
-                lambda: driver.find_component(By.text('正在听…')),
-                timeout=self.REPLY_DONE_TIMEOUT, interval=1,
-                operation_name="post_process_等待回复结束",
+        # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
+        if kwargs.get('is_interruption'):
+            self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
+                      task_id=task_id, test_case_id=test_case_id)
+            self._no_reply = False
+            replied = True
+        else:
+            replied = self._wait_for_condition(
+                lambda: driver.find_component(By.text('说话可打断')),
+                timeout=self.WAIT_REPLY_TIMEOUT, interval=1,
+                operation_name="post_process_等待说话可打断",
                 task_id=task_id, test_case_id=test_case_id
             )
-            self._no_reply = False
-        else:
-            # 没回复: 一直停在"正在听…"
-            self._log(level='INFO', content="小艺未回复(等待'说话可打断'超时)", task_id=task_id, test_case_id=test_case_id)
-            self._no_reply = True
-            self.question_text = "模型未识别"
-            self.answer_text = "模型回复为空"
+
+            if replied:
+                # 有回复: 等"正在听…"重新出现(小艺说完, 回到聆听态)
+                self._log(level='DEBUG', content="小艺开始回复, 等待回复结束", task_id=task_id, test_case_id=test_case_id)
+                self._wait_for_condition(
+                    lambda: driver.find_component(By.text('正在听…')),
+                    timeout=self.REPLY_DONE_TIMEOUT, interval=1,
+                    operation_name="post_process_等待回复结束",
+                    task_id=task_id, test_case_id=test_case_id
+                )
+                self._no_reply = False
+            else:
+                # 没回复: 一直停在"正在听…"
+                self._log(level='INFO', content="小艺未回复(等待'说话可打断'超时)", task_id=task_id, test_case_id=test_case_id)
+                self._no_reply = True
+                self.question_text = "模型未识别"
+                self.answer_text = "模型回复为空"
 
         # 停止录屏
         if not self._stop_recorder(device_sn):

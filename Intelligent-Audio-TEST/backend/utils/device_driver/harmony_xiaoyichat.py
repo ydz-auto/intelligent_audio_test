@@ -482,27 +482,33 @@ class Xiaoyilivechat(HarmonyDriver):
                           f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
                   task_id=task_id, test_case_id=test_case_id)
 
-        replied=self._wait_for_condition(
-            lambda:driver.find_component(By.text("说话可打断"))  is None,
-            timeout=60,interval=1,
-            operation_name='等待回复开始',
-        )
-
-        if not replied:
-            self._log(level='INFO',content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
-            self.question_text='小艺识别为空'
-            self.answer_text='小艺回复为空'
+        # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
+        if kwargs.get('is_interruption'):
+            self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
+                      task_id=task_id, test_case_id=test_case_id)
+            replied = True
         else:
-            self._log(level='INFO',content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
-            # 等待小艺回复结束（带超时和停止检查）
-            self._wait_for_condition(
-                lambda: driver.find_component(By.text('说话可打断')),
-                timeout=60, interval=1, operation_name="post_process_说话可打断"
+            replied=self._wait_for_condition(
+                lambda:driver.find_component(By.text("说话可打断"))  is None,
+                timeout=60,interval=1,
+                operation_name='等待回复开始',
             )
-            self._wait_for_condition(
-                lambda: driver.find_component(By.text('正在听…')),
-                timeout=60, interval=1, operation_name="post_process_正在听"
-            )
+
+            if not replied:
+                self._log(level='INFO',content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
+                self.question_text='小艺识别为空'
+                self.answer_text='小艺回复为空'
+            else:
+                self._log(level='INFO',content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
+                # 等待小艺回复结束（带超时和停止检查）
+                self._wait_for_condition(
+                    lambda: driver.find_component(By.text('说话可打断')),
+                    timeout=60, interval=1, operation_name="post_process_说话可打断"
+                )
+                self._wait_for_condition(
+                    lambda: driver.find_component(By.text('正在听…')),
+                    timeout=60, interval=1, operation_name="post_process_正在听"
+                )
         record_mode = getattr(self, '_record_mode', 'round')
         round_number = getattr(self, '_round_number', 0)
         total_rounds = getattr(self, '_total_rounds', 1)

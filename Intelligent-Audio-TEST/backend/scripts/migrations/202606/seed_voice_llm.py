@@ -234,6 +234,12 @@ def seed_voice_llm():
             ('voice_llm', 'input_lastword', '输入末尾词时间戳', 'json',
              'input_lastword', 'json', 'input_lastword', 'first',
              '输入末尾词时间戳'),
+            # 打断评估（interruption_metrics 维度）参考参数
+            # is_return_to_topic: 每轮标注"是否回到原话题"，从音频标注 segments[].is_return_to_topic 派生
+            # 经 source='reference' 映射按轮传给 eval（_build_rounds_list 读取）
+            ('voice_llm', 'is_return_to_topic', '是否回到原话题', 'boolean',
+             'is_return_to_topic', 'boolean', 'segments[].is_return_to_topic', 'first',
+             '标注该轮是否回到原话题（用户打断后模型是否拉回原话题），在音频标注编辑器按轮标记，供 interruption_metrics 评估'),
         ]
 
         ref_inserted = 0

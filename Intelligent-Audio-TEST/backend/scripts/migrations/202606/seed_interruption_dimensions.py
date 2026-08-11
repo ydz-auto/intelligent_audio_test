@@ -180,10 +180,14 @@ DIMENSIONS = [
         # user_asr / model_asr 由调用方（主服务/用例）直接提供，来源待主服务侧确认
         # 这里给出默认映射：reference 用例输出 → 入参，可按主服务实际来源调整
         # rounds（多轮文本结构，含 is_return_to_topic 打标）同样来自用例 reference 输出
+        # is_return_to_topic 走 reference_params 体系（seed_voice_llm 注册，从 segments[].is_return_to_topic 派生），
+        # 经 source='reference' 映射：_build_rounds_list 按轮读入 rounds_list[i].is_return_to_topic
+        # original_topic（用例级纯文本，无标注来源）不走 reference，由 evaluate_case 从 config 注入 kwargs → payload
         'param_mappings': [
             ('reference', 'output', 'user_asr', 'user_asr', 'none'),
             ('reference', 'output', 'model_asr', 'model_asr', 'none'),
             ('reference', 'output', 'rounds', 'rounds', 'none'),
+            ('reference', 'output', 'is_return_to_topic', 'is_return_to_topic', 'none'),
         ],
     },
 ]

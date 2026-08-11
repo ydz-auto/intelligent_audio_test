@@ -286,6 +286,12 @@ class EvaluationService(EvaluationLoggerMixin):
         ref_texts = case_data['ref_texts']
         dimensions_config = case_data['dimensions_config']
 
+        # 用例级"原始话题"文本（case 级纯文本，无标注来源，不走 reference_params）
+        # 经 kwargs → flat_eval_fields → task_data → EndpointWorker context → payload 传给 interruption_metrics
+        _case_cfg = test_case.config or {}
+        if isinstance(_case_cfg, dict) and _case_cfg.get('original_topic') is not None:
+            kwargs['original_topic'] = _case_cfg.get('original_topic')
+
         # 提取维度ID
         dimension_ids = self._extract_dimension_ids(dimensions_config)
 
