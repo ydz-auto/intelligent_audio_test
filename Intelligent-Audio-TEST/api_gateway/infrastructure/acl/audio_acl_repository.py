@@ -10,7 +10,9 @@ import logging
 from typing import List, Optional
 
 from api_gateway.domain.dto import (
-    AudioDTO, AudioInfoDTO, PhysicalDeviceDTO, PlayStatusDTO, SplMeasureResultDTO,
+    AudioCommandResultDTO, AudioDTO, AudioInfoDTO, DeviceIndexDTO,
+    PhysicalDeviceDTO, PlayStatusDTO, SplCommandResultDTO, SplGainDTO,
+    SplMeasureResultDTO,
 )
 from api_gateway.domain.repositories.acl.audio_acl_repository import (
     AudioAclRepository,
@@ -37,7 +39,7 @@ def _envelope_data(envelope):
 
 
 class AudioAclRepositoryImpl(AudioAclRepository):
-    """audio_service 只读数据 + audio_config_service 实体查询 ACL 实现。"""
+    """audio_service 只读数据 + 运行时命令 + audio_config_service 实体查询 ACL 实现。"""
 
     def get_audio_info(self, task_id, audio_file_path) -> Optional[AudioInfoDTO]:
         from api_gateway.infrastructure.grpc_proxies import audio_service
@@ -64,6 +66,71 @@ class AudioAclRepositoryImpl(AudioAclRepository):
         from api_gateway.infrastructure.grpc_proxies import spl_service
         data = spl_service.measure_spl(task_id=task_id, **kwargs)
         return _attach(dict_to_dto(data, SplMeasureResultDTO), data)
+
+    # ---- 运行时命令 ----
+
+    def play_audio(self, task_id=None, file_path=None, device_index=0,
+                   channel_index=0, gain=0.0, player_type='dry',
+                   **kwargs) -> AudioCommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import audio_service
+        future = audio_service.play_audio(
+            task_id=task_id, file_path=file_path, device_index=device_index,
+            channel_index=channel_index, gain=gain, player_type=player_type,
+            **kwargs,
+        )
+        success = getattr(future, '_success', None)
+        if success is None and isinstance(future, bool):
+            success = future
+        return AudioCommandResultDTO(
+            success=success,
+            result_data={'success': success} if success is not None else None,
+        )
+
+    def stop_task_audio(self, task_id) -> None:
+        from api_gateway.infrastructure.grpc_proxies import audio_service
+        audio_service.stop_task_audio(task_id)
+        return None
+
+    def get_device_index(self, unique_id) -> Optional[DeviceIndexDTO]:
+        from api_gateway.infrastructure.grpc_proxies import audio_service
+        data = audio_service.get_device_index(unique_id)
+        dto = DeviceIndexDTO(device_index=data)
+        return _attach(dto, {'device_index': data} if data is not None else None)
+
+    def stop_task_audio_by_pattern(self, task_id_pattern,
+                                   player_type_pattern=None) -> AudioCommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import audio_service
+        success = audio_service.stop_task_audio_by_pattern(
+            task_id_pattern, player_type_pattern=player_type_pattern,
+        )
+        return AudioCommandResultDTO(
+            success=success if isinstance(success, bool) else None,
+            result_data={'success': success},
+        )
+
+    def start_spl(self, task_id=None, **kwargs) -> SplCommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import spl_service
+        success = spl_service.start_spl(task_id=task_id, **kwargs)
+        return SplCommandResultDTO(
+            success=success if isinstance(success, bool) else None,
+            result_data={'success': success},
+        )
+
+    def stop_spl(self, task_id=None, **kwargs) -> SplCommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import spl_service
+        success = spl_service.stop_spl(task_id=task_id, **kwargs)
+        return SplCommandResultDTO(
+            success=success if isinstance(success, bool) else None,
+            result_data={'success': success},
+        )
+
+    def spl_to_gain(self, mapping_id, target_spl, app=None) -> SplGainDTO:
+        from api_gateway.infrastructure.grpc_proxies import spl_service
+        gain = spl_service.spl_to_gain(mapping_id, target_spl, app=app)
+        dto = SplGainDTO(gain=gain)
+        return _attach(dto, {'gain': gain} if gain is not None else None)
+
+    # ---- audio_config_service 实体查询 ----
 
     def get_audio(self, audio_id) -> Optional[AudioDTO]:
         from api_gateway.infrastructure.grpc_proxies import audio_config_service

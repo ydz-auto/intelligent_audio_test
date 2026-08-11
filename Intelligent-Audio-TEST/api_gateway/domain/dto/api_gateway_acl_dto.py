@@ -224,3 +224,57 @@ class DimensionDTO:
     status: Optional[bool] = None
     category_id: Optional[int] = None
     result_data: Any = None
+
+
+# ==================== runtime / 执行类 DTO ====================
+
+
+@dataclass
+class ExecutionResultDTO:
+    """任务执行结果 DTO（execution_engine.start_task / control_task / remove_from_queue）"""
+    success: Optional[bool] = None
+    message: Optional[str] = None
+    result_data: Any = None
+
+
+@dataclass
+class ReevaluationResultDTO:
+    """重新评估结果 DTO（_ReevaluationExecutorProxy.submit / _reevaluate_multi_round / _reevaluate_single）"""
+    success: Optional[bool] = None
+    message: Optional[str] = None
+    result_data: Any = None
+
+
+@dataclass
+class DeviceIndexDTO:
+    """物理设备索引 DTO（audio_service.get_device_index）"""
+    device_index: Optional[int] = None
+    result_data: Any = None
+
+
+@dataclass
+class AudioCommandResultDTO:
+    """音频命令结果 DTO（audio_service.play_audio / stop_task_audio_by_pattern）"""
+    success: Optional[bool] = None
+    result_data: Any = None
+
+
+@dataclass
+class SplGainDTO:
+    """SPL 转增益结果 DTO（spl_service.spl_to_gain）"""
+    gain: Optional[float] = None
+    result_data: Any = None
+
+
+@dataclass
+class SplCommandResultDTO:
+    """SPL 命令结果 DTO（spl_service.start_spl / stop_spl）"""
+    success: Optional[bool] = None
+    result_data: Any = None
+
+
+@dataclass
+class PlaybackCommandResultDTO:
+    """播放命令结果 DTO（playback_orchestrator.play_voiceprint）"""
+    success: Optional[bool] = None
+    result_data: Any = None
