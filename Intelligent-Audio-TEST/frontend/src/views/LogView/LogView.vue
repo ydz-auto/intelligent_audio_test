@@ -327,7 +327,6 @@ const {
   markLog,
   batchMarkLogs,
   copyLog,
-  deleteLog,
   sortLogs,
   removeLevel,
   toggleLevel,

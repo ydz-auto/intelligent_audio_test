@@ -27,10 +27,6 @@ export const reportsApi = {
     return request<void>('POST', '/reports/batch-delete', { reportIds: ids });
   },
 
-  async getProgress(id: string | number): Promise<any> {
-    return request<any>('GET', `/reports/${id}/progress`);
-  },
-
   async compare(taskIds: (string | number)[], name: string | null = null): Promise<{ id?: string | number; reportId?: string | number }> {
     return request<{ id?: string | number; reportId?: string | number }>('POST', '/reports/compare', { taskIds: taskIds, name });
   },
@@ -45,10 +41,6 @@ export const reportsApi = {
 
   async generateTaskReport(taskId: string | number, name: string | null = null) {
     return request('POST', '/reports/generate-task', { taskId: taskId, name });
-  },
-
-  async getTrendData(params: Record<string, any> = {}, options: RequestOptions = {}) {
-    return request('GET', '/reports/trend', null, { ...options, params });
   },
 
   async getCaseAveragesByFilters(

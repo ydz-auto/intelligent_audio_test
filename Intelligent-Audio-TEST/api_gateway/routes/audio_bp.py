@@ -37,7 +37,7 @@ def get_all_tags(_: None = require_permission('audio:read')):
 
 
 @router.get('/{audio_id}')
-def get_one(audio_id: str, _: None = require_permission('audio:read')):
+def get_one(audio_id: int, _: None = require_permission('audio:read')):
     return to_response(AudioQueryService.get_one(audio_id))
 
 
@@ -54,12 +54,12 @@ def record(_: None = require_permission('audio:upload')):
 
 
 @router.post('/{audio_id}/convert')
-def convert(audio_id: str, _: None = require_permission('audio:convert')):
+def convert(audio_id: int, _: None = require_permission('audio:convert')):
     return to_response(AudioConvertService.convert(audio_id))
 
 
 @router.put('/{audio_id}/metadata')
-def update_metadata(audio_id: str, _: None = require_permission('audio:update')):
+def update_metadata(audio_id: int, _: None = require_permission('audio:update')):
     return to_response(AudioCommandService.update_metadata(audio_id))
 
 
@@ -74,17 +74,17 @@ def batch_action(_: None = require_permission('audio:update')):
 
 
 @router.get('/{audio_id}/stream')
-def stream(audio_id: str, _: None = require_permission('audio:read')):
+def stream(audio_id: int, _: None = require_permission('audio:read')):
     return to_response(AudioQueryService.stream(audio_id))
 
 
 @router.post('/{audio_id}/preview')
-def preview(audio_id: str, _: None = require_permission('audio:read')):
+def preview(audio_id: int, _: None = require_permission('audio:read')):
     return to_response(AudioPreviewService.preview(audio_id))
 
 
 @router.post('/{audio_id}/stop-preview')
-def stop_preview(audio_id: str, _: None = require_permission('audio:read')):
+def stop_preview(audio_id: int, _: None = require_permission('audio:read')):
     return to_response(AudioPreviewService.stop_preview(audio_id))
 
 
@@ -94,7 +94,7 @@ def stream_by_path(_: None = require_permission('audio:read')):
 
 
 @router.delete('/{audio_id}')
-def delete(audio_id: str, _: None = require_permission('audio:delete')):
+def delete(audio_id: int, _: None = require_permission('audio:delete')):
     return to_response(AudioCommandService.delete(audio_id))
 
 

@@ -4,15 +4,6 @@
 import { request } from './http';
 
 export const statsApi = {
-  async getStats() {
-    return request<{
-      testCases: number;
-      tasks: number;
-      devices: number;
-      audioFiles: number;
-    }>('GET', '/home/stats');
-  },
-
   async getStatsDetails() {
     return request<{
       testCases: {

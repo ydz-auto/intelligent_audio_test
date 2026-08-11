@@ -18,6 +18,16 @@ def get_statuses(_: None = require_permission('device:read')):
     return to_response(DeviceQueryService.get_statuses())
 
 
+@router.get('/driver-keywords')
+def get_driver_keywords(_: None = require_permission('device:read')):
+    return to_response(DeviceQueryService.get_driver_keywords())
+
+
+@router.get('/serials')
+def get_available_serials(_: None = require_permission('device:read')):
+    return to_response(DeviceQueryService.get_available_serials())
+
+
 @router.get('/{device_id}')
 def get_one(device_id: int, _: None = require_permission('device:read')):
     return to_response(DeviceQueryService.get_one(device_id))
@@ -56,13 +66,3 @@ def test(device_id: int, _: None = require_permission('device:control')):
 @router.post('/{device_id}/stop-test')
 def stop_test(device_id: int, _: None = require_permission('device:control')):
     return to_response(DeviceQueryService.stop_test(device_id))
-
-
-@router.get('/driver-keywords')
-def get_driver_keywords(_: None = require_permission('device:read')):
-    return to_response(DeviceQueryService.get_driver_keywords())
-
-
-@router.get('/serials')
-def get_available_serials(_: None = require_permission('device:read')):
-    return to_response(DeviceQueryService.get_available_serials())

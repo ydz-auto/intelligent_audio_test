@@ -14,6 +14,16 @@ def get_all(_: None = require_permission('testcase:read')):
     return to_response(TestCaseQueryService.get_all())
 
 
+@router.get('/stats')
+def get_stats(_: None = require_permission('testcase:read')):
+    return to_response(TestCaseQueryService.get_stats())
+
+
+@router.get('/tags')
+def get_tags(_: None = require_permission('testcase:read')):
+    return to_response(TestCaseQueryService.get_tags())
+
+
 @router.get('/{tc_id}')
 def get_one(tc_id: str):
     return to_response(TestCaseQueryService.get_one(tc_id))
@@ -57,16 +67,6 @@ def stop_preview_hyphen(tc_id: str, _: None = require_permission('testcase:previ
 @router.post('/batch')
 def batch_action(_: None = require_permission('testcase:read')):
     return to_response(TestCaseCommandService.batch_action())
-
-
-@router.get('/stats')
-def get_stats(_: None = require_permission('testcase:read')):
-    return to_response(TestCaseQueryService.get_stats())
-
-
-@router.get('/tags')
-def get_tags(_: None = require_permission('testcase:read')):
-    return to_response(TestCaseQueryService.get_tags())
 
 
 @router.post('/export')

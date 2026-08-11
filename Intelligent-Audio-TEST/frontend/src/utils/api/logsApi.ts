@@ -29,14 +29,6 @@ export const logsApi = {
     return request('POST', '/logs/clear', params);
   },
 
-  async delete(id: string | number) {
-    return request('DELETE', `/logs/${id}`);
-  },
-
-  async batchDelete(ids: (string | number)[]) {
-    return request('POST', '/logs/batch-delete', { logIds: ids });
-  },
-
   async refresh(lastId: string | number) {
     return request('POST', '/logs/refresh', { lastId: lastId });
   }

@@ -24,10 +24,6 @@ export const playbackApi = {
     return request('DELETE', `/playback-devices/${id}`);
   },
 
-  async getStatuses() {
-    return request('GET', '/playback-devices/status');
-  },
-
   async scan() {
     return request('POST', '/playback-devices/scan');
   },

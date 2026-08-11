@@ -28,16 +28,8 @@ export const audiosApi = {
     return request('GET', '/audios/tags', null, options);
   },
 
-  async upload(uploadData: any, options: RequestOptions = {}) {
-    return request('POST', '/audios/upload', uploadData, { isMultipart: true, ...options });
-  },
-
   async urlImport(importData: any) {
     return request('POST', '/audios/url-import', importData);
-  },
-
-  async record(recordData: any) {
-    return request('POST', '/audios/record', recordData);
   },
 
   async convert(id: string | number, convertData: any) {
@@ -70,31 +62,6 @@ export const audiosApi = {
 
   async batchAction(action: string, ids: (string | number)[], extraParams: any = {}, options: RequestOptions = {}) {
     return request('POST', '/audios/batch-action', { action, audioIds: ids, ...extraParams }, options);
-  },
-
-  async getStats() {
-    return request('GET', '/audios/stats');
-  },
-
-  async createUploadTask(taskData: any) {
-    return request('POST', '/audios/upload-tasks', taskData);
-  },
-
-  async uploadTaskChunk(taskId: string, fileId: string, chunkIndex: number, chunk: Blob) {
-    const formData = new FormData();
-    formData.append('chunk', chunk);
-    formData.append('task_id', taskId);
-    formData.append('file_id', fileId);
-    formData.append('chunk_index', chunkIndex.toString());
-    return request('POST', `/audios/upload-tasks/${taskId}/chunks`, formData, { isMultipart: true });
-  },
-
-  async mergeTaskChunks(taskId: string, fileId: string, mergeData: any) {
-    return request('POST', `/audios/upload-tasks/${taskId}/files/${fileId}/merge`, mergeData);
-  },
-
-  async checkChunkStatus(taskId: string, fileId: string) {
-    return request('GET', `/audios/upload-tasks/${taskId}/files/${fileId}/chunks`);
   },
 
   async initUpload(options: RequestOptions = {}) {

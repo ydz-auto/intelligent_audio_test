@@ -480,27 +480,6 @@ export function useLogView(refs?: LogViewRefs) {
     }
   };
 
-  const deleteLog = (logId: number | string) => {
-    modalManager.open(MODAL_TYPES.DELETE_CONFIRM, {
-      title: '确认删除',
-      message: '确定要删除这条日志吗？',
-      confirmText: '确定删除',
-      cancelText: '取消',
-      onConfirm: async () => {
-        try {
-          await logsApi.delete(logId);
-          const index = logs.value.findIndex(l => l.id === logId);
-          if (index !== -1) {
-            logs.value.splice(index, 1);
-            totalLogs.value--;
-          }
-        } catch (error) {
-          console.error('Failed to delete log:', error);
-        }
-      }
-    });
-  };
-
   const openMonitorConfig = () => {
     console.log('Open monitor config');
   };
@@ -672,7 +651,6 @@ export function useLogView(refs?: LogViewRefs) {
     markLog,
     batchMarkLogs,
     copyLog,
-    deleteLog,
     openMonitorConfig,
     sortLogs,
     algorithmOptions,
