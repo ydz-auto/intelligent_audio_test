@@ -57,6 +57,23 @@ def _format_input_asr(r):
     )
 
 
+def _short(val, maxlen=80):
+    """控制台打印用：路径/长文本截断显示，None 显示为 <空>"""
+    if val is None or val == '':
+        return '<空>'
+    s = str(val)
+    return s if len(s) <= maxlen else s[:maxlen] + '...'
+
+
+def _len_of(val):
+    """控制台打印用：list/dict/str 取条数/长度，None 显示为 0"""
+    if val is None or val == '':
+        return 0
+    if isinstance(val, (list, tuple, dict, str)):
+        return len(val)
+    return 1
+
+
 def calculate_xiaoyi_metrics(task_params):
     """
     统一入口：调一次 ASR，三个维度共享结果
@@ -71,6 +88,8 @@ def calculate_xiaoyi_metrics(task_params):
             - offset_ms (int): 时延补偿，默认 40
             - query (str): 参考参数 JSON 中的 query 文本（与 pause 同源）
             - question (str): get_results() 返回的设备识别用户提问文本
+            - user_wav (str|None): 用户打断语音 wav 路径（打断指标用；两路 wav 齐全才算）
+            - ai_wav (str|None): 模型恢复语音 wav 路径（打断指标用；两路 wav 齐全才算）
 
     Returns:
         dict: {
@@ -78,12 +97,41 @@ def calculate_xiaoyi_metrics(task_params):
             'false_takeover': {...},   误接管率结果
             'takeover_latency': {...}, 接管时延结果
             'input_asr': {...},        输入识别准确率结果
+            'interruption': {...},     打断指标结果（无双路 wav 时为空结构）
         }
     """
     import json as _json
     from app.utils.asr_adapator import call_modelscope_asr, parse_result
 
     logger.info(f"[xiaoyi_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
+
+    # ── 控制台打印收到的关键数据（带中文说明），便于确认 user_wav/ai_wav 等是否送达 ──
+    _rounds = task_params.get('rounds') or []
+    _round0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
+    _user_wav = task_params.get('user_wav') or _round0.get('user_wav')
+    _ai_wav = task_params.get('ai_wav') or _round0.get('ai_wav')
+    _pause_val = task_params.get('pause') or _round0.get('pause')
+    _input_val = task_params.get('input') or task_params.get('input_lastword') or _round0.get('input') or _round0.get('input_lastword')
+    _first_frame = task_params.get('first_frame_ms') or _round0.get('first_frame_ms')
+    _start_ms = task_params.get('start_ms') or _round0.get('start_ms')
+    _end_ms = task_params.get('end_ms') or _round0.get('end_ms')
+    _offset_ms = task_params.get('offset_ms') or _round0.get('offset_ms')
+    _query = task_params.get('query') or _round0.get('query')
+    _question = task_params.get('question') or _round0.get('question')
+    print(
+        "\n==================== xiaoyi_metrics 收到数据 ====================\n"
+        f"  录音文件(record_file)        : {_short(task_params.get('record_file') or task_params.get('wav_path'))}\n"
+        f"  用户打断音频(user_wav)       : {_short(_user_wav)}\n"
+        f"  模型恢复音频(ai_wav)         : {_short(_ai_wav)}\n"
+        f"  录屏首帧时刻(first_frame_ms) : {_first_frame}\n"
+        f"  音频开始(start_ms) / 结束(end_ms): {_start_ms} / {_end_ms}\n"
+        f"  停顿区间(pause)             : {_len_of(_pause_val)} 条\n"
+        f"  输入末词(input_lastword)     : {_len_of(_input_val)} 个\n"
+        f"  用例问题(query) / 模型识别(question): {(_query or '')!r} / {(_question or '')!r}\n"
+        f"  时延补偿(offset_ms)          : {_offset_ms}\n"
+        f"  双路音频是否齐全             : {'是 → 将计算打断指标' if (_user_wav and _ai_wav) else '否 → 跳过打断指标'}\n"
+        "================================================================"
+    )
 
     wav_path = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path')
     if not wav_path:
@@ -139,7 +187,53 @@ def calculate_xiaoyi_metrics(task_params):
     )
     logger.info(f"[input_asr] {_format_input_asr(results['input_asr'])}")
 
+    # 4. 打断指标：两路 wav（user_wav 用户打断 + ai_wav 模型恢复）各 ASR 一次，共享打断计算
+    #    字段可能放顶层 task_params 或 rounds[0]（取决于 body_template），多级回退取值
+    user_wav = task_params.get('user_wav') or round0.get('user_wav')
+    ai_wav = task_params.get('ai_wav') or round0.get('ai_wav')
+    if user_wav and ai_wav:
+        try:
+            user_asr = parse_result(call_modelscope_asr(user_wav))   # {text, chunks}
+            model_asr = parse_result(call_modelscope_asr(ai_wav))
+            results['interruption'] = compute_interruption_metrics(user_asr, model_asr)
+            logger.info(
+                f"[interruption] 双路 ASR 完成 user_chunks={len(user_asr.get('chunks', []))} "
+                f"model_chunks={len(model_asr.get('chunks', []))} "
+                f"success_rate={results['interruption'].get('interruption_success_rate')} "
+                f"n_events={results['interruption'].get('n_events')} "
+                f"avg_stop={results['interruption'].get('avg_stop_latency_s')}s "
+                f"avg_recovery={results['interruption'].get('avg_recovery_latency_s')}s "
+                f"msg={results['interruption'].get('message')}"
+            )
+        except Exception as e:
+            # 打断失败不阻断 xiaoyi 主指标，记录空结构
+            logger.warning(f"[interruption] 打断指标计算失败，跳过: {e}")
+            results['interruption'] = _empty_interruption(f"打断计算失败: {e}")
+    else:
+        logger.info("[interruption] 无双路音频(user_wav/ai_wav)，跳过打断指标")
+        results['interruption'] = _empty_interruption('无双路音频，跳过打断')
+
     return results
+
+
+def _empty_interruption(message):
+    """无双路音频或计算失败时返回的空打断结构（与 compute_interruption_metrics 输出键一致）"""
+    return {
+        'interruption_success_rate': 0.0,
+        'stop_rate': 0.0,
+        'resume_rate': 0.0,
+        'avg_stop_latency_s': None,
+        'avg_recovery_latency_s': None,
+        'avg_overlap_s': None,
+        'avg_silence_gap_s': None,
+        'n_events': 0,
+        'n_user_segments': 0,
+        'n_recovery_only': 0,
+        'n_no_model_speech': 0,
+        'per_event': [],
+        'message': message,
+        'llm_eval': {'enabled': False, 'message': '未启用 LLM 评估'},
+    }
 
 
 def calculate_interruption_metrics(task_params):
