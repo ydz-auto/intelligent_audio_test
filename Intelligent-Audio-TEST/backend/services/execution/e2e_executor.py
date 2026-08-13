@@ -146,10 +146,6 @@ class E2EExecutor(BaseExecutor):
         # 首轮自定义参数一并透传给 initialize（pcm_app、record_mode 等驱动级参数）
         from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
         first_round_params = _normalize_algorithm_params(data.get('case_algorithm_params') or {})
-        if isinstance(first_round_params, dict):
-            self._log(level='DEBUG',
-                      content=f"[透传] initialize extra custom params: {first_round_params}",
-                      task_id=task_id, test_case_id=test_case_id)
 
         for info in device_info_list:
             if info.get("driver"):
@@ -159,7 +155,7 @@ class E2EExecutor(BaseExecutor):
 
         self._device_manager.initialize_devices(
             device_info_list, task_id, test_case_id=test_case_id,
-            algorithm_type=algorithm_type, case_algorithm_params=first_round_params
+            algorithm_type=algorithm_type, round_algo_params=first_round_params
         )
 
         # 预创建 TestResult
