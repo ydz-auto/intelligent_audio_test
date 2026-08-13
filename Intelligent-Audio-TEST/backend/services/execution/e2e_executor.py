@@ -279,8 +279,7 @@ class E2EExecutor(BaseExecutor):
         round_end_ms = playback_ts.get('current_round_end_ms')
         post_extra_params = {**self.current_extra_params, 'round_number': round_idx,
                              'record_mode': case_config.get('record_mode', 'round'),
-                             'total_rounds': len(rounds),
-                             'is_interruption': bool(round_config.get('is_interruption', False))}
+                             'total_rounds': len(rounds)}
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms
             post_extra_params['playback_end_time_ms'] = round_end_ms

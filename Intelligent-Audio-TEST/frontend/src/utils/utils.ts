@@ -184,10 +184,17 @@ export function normalizeTestCaseConfig(config: Record<string, any>) {
       ? rawDimensions
       : (rawDimensions?.dimensions ?? []);
 
-    return {
+    const result: Record<string, any> = {
       rounds: normalizedRounds,
       dimensions: normalizedDimensions || [],
     };
+    // 透传顶层非结构化字段（record_mode / voiceprint_config / background_noise 等）
+    for (const [k, v] of Object.entries(rawConfig)) {
+      if (!(k in result) && k !== 'rounds' && k !== 'dimensions' && k !== 'audios' && k !== 'backgroundNoise' && k !== 'background_noise') {
+        result[k] = v;
+      }
+    }
+    return result;
   }
 
   // ---- legacy flat format fallback (audios + backgroundNoise) ----

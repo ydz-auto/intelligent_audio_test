@@ -427,6 +427,10 @@ class Xiaoyilivechat(HarmonyDriver):
 
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
+        # 打印 kwargs 参数用于调试
+        self._log(level='DEBUG',
+                  content=f"pre_process kwargs: {kwargs}",
+                  task_id=task_id, test_case_id=test_case_id)
         # 录屏模式: round=每轮一段（默认）; case=整用例一段
         record_mode = kwargs.get('record_mode', 'round')
         total_rounds = kwargs.get('total_rounds', 1)
@@ -472,6 +476,10 @@ class Xiaoyilivechat(HarmonyDriver):
 
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
+                # 打印 kwargs 参数用于调试
+        self._log(level='DEBUG',
+                  content=f"post_process kwargs: {kwargs}",
+                  task_id=task_id, test_case_id=test_case_id)
         # 打印接收到的播放时间戳（验证链路）
         ts = self._extract_playback_timestamps(kwargs)
         self._log(level='INFO',
@@ -514,7 +522,7 @@ class Xiaoyilivechat(HarmonyDriver):
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
 
-        if record_mode == 'case':
+        if not record_mode == 'case':
             # case 模式：中间轮不停录屏、不挂断（保持通话与录屏连续）；
             # 仅末轮停止录屏，以便 get_results 拉取完整文件；全程不在此挂断，交给 teardown 兜底
             if is_last:

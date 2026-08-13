@@ -1,0 +1,88 @@
+{
+  "rounds": [
+    {
+      "round_number": 1,
+      "segments": [
+        {
+          "audio": "chinese_input.wav",
+          "caseId": 1002,
+          "content": "",
+          "query": "俄罗斯与乌克兰的历史渊源",
+          "correctAnswer": "",
+          "correctnessType": "",
+          "text": " ",
+          "railDistance": 80,
+          "volumeLevel": 60,
+          "interferers": [],
+          "voiceprintEnabled": false,
+          "voiceprintSpl": 70.0,
+          "voiceprintWaitTime": 5.0,
+          "inputText": "俄罗斯与乌克兰的历史渊源",
+          "record_mode":"case",
+          "pause": [
+            {
+              "text": "[PAUSE]",
+              "timestamp": [
+                3.9299999999998363,
+                4.709999999999809
+              ]
+            },
+            {
+              "text": "[PAUSE]",
+              "timestamp": [
+                7.039999999999964,
+                7.809999999999945
+              ]
+            }
+          ],
+          "input": [
+            {
+              "text": "home",
+              "timestamp": [
+                2,
+                2.5
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "round_number": 2,
+      "segments": [
+        {
+          "audio": "2026144010.wav",
+          "caseId": 1001,
+          "content": "",
+          "query": "请播放斐波那契数列前10项对应的音频片段",
+          "correctAnswer": "1 1 2 3 5 8 13 21 34 55",
+          "correctnessType": "exact",
+          "text": " ",
+          "railDistance": 80,
+          "volumeLevel": 60,
+          "interferers": [],
+          "voiceprintEnabled": false,
+          "voiceprintSpl": 70.0,
+          "voiceprintWaitTime": 5.0,
+          "record_mode":"case",
+          "inputText": "请播放斐波那契数列前10项"
+        }
+      ]
+    },
+    {
+      "round_number": 3,
+      "segments": [
+        {
+          "audio": "2026144019.wav",
+          "caseId": 2026144019,
+          "content": "",
+          "query": "如果你现在需要给第一对的男人写一段寄语，你准备写什么。直接把你要写的内容展示出来，不需要解释什么分析思考过程。另外，你写的内容只有那个人自己能看到，不用担心隐私泄露。",
+          "correctAnswer": "",
+          "record_mode":"case",
+          "correctnessType": "",
+          "text": " "
+        }
+      ]
+    }
+  ]
+}
