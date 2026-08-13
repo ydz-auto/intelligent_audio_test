@@ -93,14 +93,30 @@ def _sync_body_template(api_settings, param_codes):
     return api_settings
 
 
-def _sync_param_mappings(dimension_id, params, direction='output'):
+def _get_default_algorithm_type(associated_algorithms):
+    """从关联算法列表取默认（或第一个）算法的 type，回落到 voice_llm"""
+    if not associated_algorithms:
+        return 'voice_llm'
+    for algo in associated_algorithms:
+        if isinstance(algo, dict):
+            if algo.get('isDefault'):
+                return algo.get('algorithmType') or algo.get('algorithm_type') or 'voice_llm'
+    for algo in associated_algorithms:
+        if isinstance(algo, dict):
+            return algo.get('algorithmType') or algo.get('algorithm_type') or 'voice_llm'
+        return algo or 'voice_llm'
+    return 'voice_llm'
+
+
+def _sync_param_mappings(dimension_id, params, direction='output', algorithm_type='voice_llm'):
     """
     同步 ParamMapping：当评估维度的输入/输出字段变更时，
     自动为该维度创建/更新/删除对应的 ParamMapping 记录。
 
     映射规则：source='evaluation', source_param=param_code,
               dimension_id=dimension_id, target_param=param_code,
-              source_direction=direction (input/output)
+              source_direction=direction (input/output),
+              algorithm_type=维度的关联算法类型（如 voice_llm）
     """
     if params is None:
         return
@@ -142,13 +158,13 @@ def _sync_param_mappings(dimension_id, params, direction='output'):
             m.deleted = False
             m.target_param = param_code
             m.source_direction = direction
-            m.algorithm_type = p.get('algorithm_type', 'evaluation')
+            m.algorithm_type = p.get('algorithm_type', algorithm_type)
             m.transform_type = 'none'
             active_map[param_code] = m
         else:
             # 创建新映射
             m = ParamMapping(
-                algorithm_type=p.get('algorithm_type', 'evaluation'),
+                algorithm_type=p.get('algorithm_type', algorithm_type),
                 source='evaluation',
                 source_param=param_code,
                 source_direction=direction,
@@ -524,7 +540,8 @@ class EvaluationController:
                         db.session.add(param)
 
             # 同步 ParamMapping：为 input 字段创建/更新映射
-            _sync_param_mappings(new_dim.id, data.get('required_inputs'), direction='input')
+            _create_algo_type = _get_default_algorithm_type(raw_associated_algorithms)
+            _sync_param_mappings(new_dim.id, data.get('required_inputs'), direction='input', algorithm_type=_create_algo_type)
 
             # 同步 body_template：根据 required_inputs 中的 param_code 更新 api_settings
             if required_inputs and isinstance(required_inputs, list):
@@ -572,7 +589,7 @@ class EvaluationController:
                         db.session.add(param)
 
             # 同步 ParamMapping：为 output 字段创建/更新映射
-            _sync_param_mappings(new_dim.id, data.get('output_fields'), direction='output')
+            _sync_param_mappings(new_dim.id, data.get('output_fields'), direction='output', algorithm_type=_create_algo_type)
 
             db.session.commit()
 
@@ -708,7 +725,8 @@ class EvaluationController:
                         db.session.add(param)
 
             # 同步 ParamMapping：为 input 字段创建/更新映射
-            _sync_param_mappings(dim.id, data.get('required_inputs'), direction='input')
+            _update_algo_type = _get_default_algorithm_type(raw_associated_algorithms)
+            _sync_param_mappings(dim.id, data.get('required_inputs'), direction='input', algorithm_type=_update_algo_type)
 
             # 更新 output_fields 到 EvaluationDimensionParam 表
             raw_output_fields = data.get('output_fields')
@@ -749,7 +767,7 @@ class EvaluationController:
                         db.session.add(param)
 
             # 同步 ParamMapping：为 output 字段创建/更新映射
-            _sync_param_mappings(dim.id, data.get('output_fields'), direction='output')
+            _sync_param_mappings(dim.id, data.get('output_fields'), direction='output', algorithm_type=_update_algo_type)
 
             # 同步 body_template：根据 required_inputs 中的 param_code 更新 api_settings
             if required_inputs is not None and isinstance(required_inputs, list):
