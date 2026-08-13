@@ -21,30 +21,36 @@ class ChatGptVoiceChat(Xiaoyilivechat):
     差异点（本类覆盖）：
       1. 目标 App 为 com.openai.chatgpt（鸿蒙 Android 兼容层运行，Compose UI）
       2. 语音通话入口为聊天首页输入栏右侧的蓝色按钮（无稳定 text/key，用坐标点击）
-      3. 回复检测与问答文本提取基于语音界面实时转写文本（左侧=AI / 右侧=用户）
+      3. 回复完成检测基于 cap_client 的 client_in 尾部 RMS 能量（AI 说话=高能量/静默≈0），
+         不依赖 Compose 转写文本（语音态透传性不稳定且无气泡）；问答文本走 user_wav/ai_wav 的 ASR
       4. cap_client 音频采集已在设备后台运行，驱动无需启停，仅按需清理/拉取 PCM
 
     TODO（需真实播放音频流程联调确认）：
       - hypium 能否透传 Compose 的 android.widget.TextView（回复检测/文本提取依赖此）
-      - 回复结束判定阈值（转写文本稳定秒数）
-      - 退出语音模式的方式（当前用 press_home 兜底，可改回退键/关闭按钮）
+      - 回复结束判定（当前用 client_in 尾部 RMS 能量，已实现；转写文本稳定秒数方案已弃用）
+      - 退出语音：返回键被 App 吞掉、idle 态无结束按钮，case 模式不依赖退出；round 模式
+        退语音需在“通话进行中”探到结束按钮坐标（需真实通话联调）
     """
 
     # ChatGPT 包名（鸿蒙 Android 兼容层）
     APP_PACKAGE = 'com.openai.chatgpt'
 
-    # 聊天首页底部输入栏按钮坐标（屏幕 1280x2832）
-    #   [+]     : (126, 2650)
-    #   输入框   : EditText, 中部
-    #   麦克风   : (979, 2650)
-    #   蓝色语音 : (1147, 2650)  <- 语音通话入口
-    HOME_BTN_VOICE = (1147, 2650)      # 蓝色语音按钮（语音通话入口）
+    # 聊天首页底部输入栏按钮坐标（屏幕 1280x2832；实测 2026-08-13 ChatGPT 改版后输入栏上移至 y≈1607，
+    # 旧版 y=2650 已失效）。四件套结构不变：[+] / EditText / 麦克风 / 蓝色语音(最右)。
+    #   [+]     : (126, 1607)
+    #   输入框   : EditText, bounds≈(210,1523,916,1691), center (563,1607)
+    #   麦克风   : (1000, 1607)
+    #   蓝色语音 : (1154, 1607)  <- 语音通话入口（最右侧按钮）
+    # pre_process 用 EditText.getBounds() 动态取中心 y、x 固定 1147；1147∈右侧按钮 x[1098,1210]，故
+    # (1147, edit_center_y) 仍命中蓝色语音按钮（实测 (1154,1607) 可进入语音全屏）。
+    HOME_BTN_VOICE = (1147, 1607)      # 蓝色语音按钮（语音通话入口，fallback；实际靠 EditText 取 y）
     HOME_BTN_TOPRIGHT = (1154, 261)    # 右上角（临时聊天/新对话面板）
-    HOME_BTN_MIC = (979, 2650)         # 麦克风（语音输入，非通话）
+    HOME_BTN_MIC = (1000, 1607)        # 麦克风（语音输入，非通话）
 
-    # 语音界面：中央 orb（点击可显现/隐藏实时转写气泡,不挂断通话,实测 PCM 持续增长）
-    VOICE_ORB_REGION = (203, 1015, 1078, 1890)  # 中央 orb 大致区域
-    VOICE_ORB_TAP = (640, 1452)                 # orb 中心(=区域中心),点此显现转写气泡
+    # 语音全屏 orb：实测改版后 orb 移至屏幕下方，385×385，center≈(640,2247)，clickable。
+    # ⚠️ 驱动不再点击 orb：通话进行中点 orb 会触发相机/视频界面（运行期“每轮结束开相机”bug 的来源），
+    # 且语音态本无转写气泡（hierarchy 只有时钟/电量/通话计时），该路径本就不可靠，故移除点击。
+    VOICE_ORB_CENTER = (640, 2247)
 
     def __init__(self):
         super().__init__()
@@ -66,9 +72,15 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             return False
 
     def _back(self, device_sn):
-        """发送返回键（退出语音模式兜底）。"""
+        """发送返回键（keyevent 4）。
+
+        正确语法为 `hdc shell uinput -K -d 4 -u 4`（键盘按下即抬起）；
+        旧实现 `uinput keyevent 4` 是错误语法，会报 "too few arguments" 实际不执行，
+        导致 _exit_voice 的返回键从未真正发送过。
+        （注：即便语法修正，ChatGPT 语音全屏仍会吞掉返回键不退语音，见 _exit_voice。）
+        """
         try:
-            subprocess.run(['hdc', '-t', device_sn, 'shell', 'uinput', 'keyevent', '4'],
+            subprocess.run(['hdc', '-t', device_sn, 'shell', 'uinput', '-K', '-d', '4', '-u', '4'],
                             check=False, capture_output=True, text=True, timeout=10)
         except Exception:
             pass
@@ -112,27 +124,17 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         return result
 
     def _extract_qa(self, driver, task_id=None, test_case_id=None):
-        """从转写文本中提取本轮用户输入与 AI 回复。
+        """从转写气泡中提取本轮用户输入与 AI 回复。
 
-        依据气泡 x 起点区分：x0 偏大(右)→用户；x0 偏小(左)→AI。取各自最后一条作本轮问答。
+        气泡只在【聊天首页】可见；语音全屏态无气泡（实测 hierarchy 只有时钟/电量/通话计时）。
+        故本方法仅在已退回聊天首页（round 模式 _exit_voice 成功后）能读到文本；case 模式
+        全程在语音态、或 _exit_voice 未退回首页时返回 None/None，问答文本交由 user_wav/ai_wav 的 ASR。
 
-        关键：语音全屏态下气泡默认不可见,点中央 orb(VOICE_ORB_TAP)可显现实时转写气泡
-        (实测不挂断通话,client_in PCM 持续增长)。聊天首页气泡本就可见,无需点 orb。
-        为避免 orb 是 toggle 反复点隐,仅当【语音全屏 且 当前无气泡】时才点 orb。
+        ⚠️ 不再点击中央 orb 显现气泡：旧 orb 坐标已随 ChatGPT 改版失效（orb 实际移至屏幕下方
+        且 clickable），且通话进行中点 orb 会触发相机/视频界面（运行期“每轮结束开相机”bug），
+        转写气泡路径本就不可靠，故移除该点击。
         """
         items = self._get_transcript(driver)
-        if not items:
-            # 无气泡：若在语音全屏(无 EditText),点 orb 显现转写;聊天首页本应有气泡,空则放弃
-            try:
-                edit = driver.find_component(By.type('android.widget.EditText'))
-            except Exception:
-                edit = None
-            if edit is None:
-                self._log(level='DEBUG', content="语音态无气泡,点 orb 显现转写",
-                          task_id=task_id, test_case_id=test_case_id)
-                self._tap_xy(driver, *self.VOICE_ORB_TAP)
-                driver.wait(2)
-                items = self._get_transcript(driver)
         if not items:
             self.question_text = None
             self.answer_text = None
@@ -322,27 +324,33 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         return True
 
     def _exit_voice(self, device_sn, driver, task_id=None, test_case_id=None):
-        """退出语音全屏，落回 ChatGPT 聊天首页。
+        """退出语音全屏（best-effort）。
 
-        必须用【返回键】(keyevent 4)退出语音全屏——落点是 ChatGPT 聊天首页,转写气泡在此页
-        才可见,_extract_qa 才能读到。press_home 会回桌面丢气泡页。
-        实测 Compose 聊天首页渲染需时间,单次返回键+短等待常误判"未回首页"→改重试(最多3次,
-        每次3s),任一次见到 EditText 即成功。全部失败才 press_home 兜底(回桌面,此路气泡不可读)。
+        实测结论（2026-08-13，设备 5SM0125613000197）：
+          1. 返回键(keyevent 4) 被 ChatGPT 语音态吞掉，不退语音（已修正 _back 的 uinput
+             语法，确认非语法问题，是 App 行为）。
+          2. idle 语音态无“结束通话”按钮节点暴露（clickable 全 false、无 accessibility 描述）；
+             结束按钮很可能只在通话进行中才出现，本驱动无法在 post_process 的 idle 态点中。
+        故退出策略：先试返回键若干次（顺带可关闭弹层），仍退不出则 press_home 回桌面
+        （气泡页丢失，本轮 _extract_qa 读不到文本，问答文本交由 ASR）。
+
+        注：case 模式（新默认）全程不调用本方法，仅在 teardown force-stop；round 模式才会走到
+        这里，而 round+ChatGPT 多轮重入语音本就不可靠，建议用 case 模式。
         """
         for attempt in (1, 2, 3):
             self._back(device_sn)
-            time.sleep(3)
+            time.sleep(2)
             try:
-                edit = driver.find_component(By.type('android.widget.EditText'))
-                if edit:
+                if driver.find_component(By.type('android.widget.EditText')):
                     self._log(level='DEBUG',
-                              content=f"返回键已退出语音,落回聊天首页(EditText 存在,第{attempt}次)",
+                              content=f"返回键已退出语音,落回聊天首页(第{attempt}次)",
                               task_id=task_id, test_case_id=test_case_id)
                     return
             except Exception as e:
                 self._log(level='DEBUG', content=f"退出语音校验异常(第{attempt}次): {e}",
                           task_id=task_id, test_case_id=test_case_id)
-        self._log(level='WARNING', content="返回键3次未回聊天首页,press_home 兜底退出(气泡不可读)",
+        self._log(level='INFO',
+                  content="返回键未退出 ChatGPT 语音(被App吞掉),press_home 回桌面(气泡不可读,文本交ASR)",
                   task_id=task_id, test_case_id=test_case_id)
         try:
             driver.press_home()

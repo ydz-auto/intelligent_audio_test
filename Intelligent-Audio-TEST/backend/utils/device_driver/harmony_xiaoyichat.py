@@ -393,6 +393,9 @@ class Xiaoyilivechat(HarmonyDriver):
         self._record_pulled = False
         # pcm 抓取目标 app（当前驱动默认只抓小艺；可通过 kwargs.pcm_app 切换 doubao/chatgpt）
         self._pcm_app = kwargs.get('pcm_app', 'xiaoyi')
+        self._log(level='DEBUG',
+                  content=f"[透传验证] initialize kwargs keys={list(kwargs.keys())} pcm_app={self._pcm_app!r}",
+                  task_id=task_id, test_case_id=test_case_id)
         # 用例开始前清理设备上目标 app 的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
         self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         # 点开小艺聊天窗口
@@ -438,6 +441,10 @@ class Xiaoyilivechat(HarmonyDriver):
         self._record_mode = record_mode
         self._total_rounds = total_rounds
         self._round_number = round_number
+        self._log(level='DEBUG',
+                  content=f"[透传验证] pre_process kwargs keys={list(kwargs.keys())} "
+                          f"record_mode={record_mode!r} round_number={round_number} total_rounds={total_rounds}",
+                  task_id=task_id, test_case_id=test_case_id)
         is_first = not getattr(self, '_recording', False)
 
         # case 模式非首轮：通话与录屏已在进行，无需重复启动
@@ -476,9 +483,10 @@ class Xiaoyilivechat(HarmonyDriver):
 
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
-                # 打印 kwargs 参数用于调试
         self._log(level='DEBUG',
-                  content=f"post_process kwargs: {kwargs}",
+                  content=f"[透传验证] post_process kwargs keys={list(kwargs.keys())} "
+                          f"is_interruption={kwargs.get('is_interruption')!r} "
+                          f"record_mode={kwargs.get('record_mode')!r}",
                   task_id=task_id, test_case_id=test_case_id)
         # 打印接收到的播放时间戳（验证链路）
         ts = self._extract_playback_timestamps(kwargs)
@@ -574,6 +582,10 @@ class Xiaoyilivechat(HarmonyDriver):
         return True
 
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> list:
+        self._log(level='DEBUG',
+                  content=f"[透传验证] get_results kwargs keys={list(kwargs.keys())} "
+                          f"playback_start_ms={kwargs.get('playback_start_time_ms')}",
+                  task_id=task_id, test_case_id=test_case_id)
         # 打印接收到的播放时间戳（验证链路）
         ts = self._extract_playback_timestamps(kwargs)
         self._log(level='INFO',

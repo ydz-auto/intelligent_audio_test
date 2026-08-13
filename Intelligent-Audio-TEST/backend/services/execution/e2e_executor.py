@@ -144,13 +144,24 @@ class E2EExecutor(BaseExecutor):
         self.current_extra_params = self._execute_extra_params(algorithm_type, case_field_values, include_format_strings=True)
         device_driver_factory.register_task_devices(task_id, device_info_list)
 
+        # 首轮自定义参数一并透传给 initialize（pcm_app、record_mode 等驱动级参数）
+        from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
+        first_round_params = _normalize_algorithm_params(data.get('case_algorithm_params') or {})
+        if isinstance(first_round_params, dict):
+            self._log(level='DEBUG',
+                      content=f"[透传] initialize extra custom params: {first_round_params}",
+                      task_id=task_id, test_case_id=test_case_id)
+
         for info in device_info_list:
             if info.get("driver"):
                 info["driver"].set_task_id(task_id)
                 info["driver"].set_test_case_id(test_case_id)
                 info["driver"].set_device_id(info["device_id"])
 
-        self._device_manager.initialize_devices(device_info_list, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
+        self._device_manager.initialize_devices(
+            device_info_list, task_id, test_case_id=test_case_id,
+            algorithm_type=algorithm_type, case_algorithm_params=first_round_params
+        )
 
         # 声纹注册
         self._register_voiceprint(task_id, tc_rel_id, rounds, test_case_id)
@@ -247,11 +258,23 @@ class E2EExecutor(BaseExecutor):
         round_algo_params = _normalize_algorithm_params(round_config.get('algorithm_params', []))
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
+
+        # 每轮自定义参数并入驱动 kwargs（record_mode 等字段优先取自定义参数，其次取 case_config）
+        custom_params = round_algo_params if isinstance(round_algo_params, dict) else {}
+        pre_extra_params = {
+            **self.current_extra_params,
+            **custom_params,
+            'round_number': round_idx,
+            'record_mode': custom_params.get('record_mode') or case_config.get('record_mode', 'case'),
+            'total_rounds': len(rounds),
+        }
+        self._log(level='DEBUG',
+                  content=f"[透传] pre_process extra_params keys={list(pre_extra_params.keys())} "
+                          f"record_mode={pre_extra_params.get('record_mode')!r} custom={custom_params}",
+                  task_id=task_id, test_case_id=test_case_id)
         self._device_manager.pre_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
-            extra_params={**self.current_extra_params, 'round_number': round_idx,
-                          'record_mode': case_config.get('record_mode', 'round'),
-                          'total_rounds': len(rounds)},
+            extra_params=pre_extra_params,
         )
 
         play_result = playback_orchestrator.play_round(
@@ -277,9 +300,18 @@ class E2EExecutor(BaseExecutor):
         playback_ts = self._playback_timestamps.get(task_id, {})
         round_start_ms = playback_ts.get('current_round_start_ms')
         round_end_ms = playback_ts.get('current_round_end_ms')
-        post_extra_params = {**self.current_extra_params, 'round_number': round_idx,
-                             'record_mode': case_config.get('record_mode', 'round'),
-                             'total_rounds': len(rounds)}
+        post_extra_params = {
+            **self.current_extra_params,
+            **custom_params,
+            'round_number': round_idx,
+            'record_mode': custom_params.get('record_mode') or case_config.get('record_mode', 'case'),
+            'total_rounds': len(rounds),
+            'is_interruption': bool(round_config.get('is_interruption', False))}
+        self._log(level='DEBUG',
+                  content=f"[透传] post_process extra_params keys={list(post_extra_params.keys())} "
+                          f"record_mode={post_extra_params.get('record_mode')!r} "
+                          f"is_interruption={post_extra_params.get('is_interruption')!r} custom={custom_params}",
+                  task_id=task_id, test_case_id=test_case_id)
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms
             post_extra_params['playback_end_time_ms'] = round_end_ms
