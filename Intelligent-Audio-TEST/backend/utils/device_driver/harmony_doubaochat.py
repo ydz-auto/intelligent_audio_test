@@ -13,17 +13,20 @@ from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 
 
 class DoubaoChat(Xiaoyilivechat):
-    """豆包(HarmonyOS)设备驱动 — 复用 Xiaoyilivechat 全部基础设施
-    (_hdc_shell / _clear_pcm / PCM_APP_CONFIG / _mp4_to_wav / _pcm_to_wav /
-    _start_recorder / _stop_recorder / _pull_record_file / get_results 等)，
-    仅 initialize 用 hdc aa start 命令拉起豆包 app(替代小艺的 UI 点击)。
+    """豆包(HarmonyOS)设备驱动 — 复用 Xiaoyilivechat 基础设施
+    (_hdc_shell / _clear_pcm / PCM_APP_CONFIG / _pcm_to_wav / _pull_pcm_wav /
+    get_results 等),仅 initialize 用 hdc aa start 命令拉起豆包 app(替代小艺的 UI 点击)。
 
-    录屏模式与 ChatGPT/小艺通话一致(record_mode 格式):
-      - round=每轮一段(默认): 每轮独立启停录屏 + 挂断 + 提取本轮气泡
-      - case=整用例一段: 一次连续通话 / 一个录屏 / 一个连续 PCM,中间轮不停录屏
-        不挂断,末轮停录屏 + 挂断 + 提取气泡;teardown 兜底拉取完整录屏
+    【无录屏】_record_enabled=False:豆包录屏有严重时序 bug(结束时才录/不停止),
+    故移除录屏;get_results 据此跳过录屏拉取,把 ai_wav 塞进 wav_path 复用
+    wav_path→record_file 映射喂评估(评估音频源=AI 回复 PCM 的 wav)。
 
-    回复完成检测基于 cap_client 的 Fast_client_out PCM 尾部 RMS 能量(双阶段+历史兜底),
+    record_mode 仍区分通话形态(与是否录屏无关):
+      - round=每轮独立通话: 挂断 + 提取本轮气泡
+      - case=整用例一次连续通话: 中间轮不挂断/不提取,末轮不挂断交给 teardown.stop_app,
+        保持多轮 AI 上下文连续;文本以 ai_wav/user_wav 的 ASR 为准
+
+    回复完成检测基于 cap_client 的 client_in.. PCM 尾部 RMS 能量(双阶段+历史兜底),
     不依赖控件文本(说话或点击打断/正在听…),后者在语音态透传性不稳定。
     """
 
@@ -31,18 +34,20 @@ class DoubaoChat(Xiaoyilivechat):
     DOUBAO_ABILITY = 'MainAbility'
 
     # 覆盖父类 PCM_APP_CONFIG['doubao'] 的后缀配置
+    # 实测设备(nova.hm cache) AI 回复文件为 *_client_in..pcm(双点,无 cap_ 前缀),
+    # 与 ChatGPT 一致;Fast_client_out.pcm 在现版本已不存在。
     PCM_APP_CONFIG = {
         **Xiaoyilivechat.PCM_APP_CONFIG,
         'doubao': {
             'cache_dirs': ['/data/app/el2/100/base/com.larus.nova.hm/cache'],
-            'user_suffix': 'cap_client_out.pcm',      # 101209_48000_2_1_cap_client_out.pcm
-            'ai_suffix': 'Fast_client_out.pcm',       # 101208_48000_2_1_Fast_client_out.pcm
+            'user_suffix': 'cap_client_out.pcm',      # 100154_48000_2_1_cap_client_out.pcm
+            'ai_suffix': 'client_in..pcm',            # 100155_48000_2_1_client_in..pcm
         },
     }
 
     # RMS 检测参数
     PCM_CACHE_DIR = '/data/app/el2/100/base/com.larus.nova.hm/cache'
-    AI_PCM_SUFFIX = 'Fast_client_out.pcm'   # 模型回复音频流（Fast通道输出端）
+    AI_PCM_SUFFIX = 'client_in..pcm'   # 模型回复音频采集流(与用户输入 cap_client_out 对应)
     RMS_THRESHOLD = 300                       # RMS 阈值，低于此值视为静音
     RMS_SILENCE_SECONDS = 8                   # 连续静默秒数（实测回复中停顿≤6s，8s 不误触发）
     RMS_START_TIMEOUT = 60                    # 等 AI 开始说话的超时
@@ -54,6 +59,10 @@ class DoubaoChat(Xiaoyilivechat):
     # 1s PCM 字节数 = 48000 * 2ch * 2bytes
     RMS_TAIL_BYTES = RMS_SAMPLE_RATE * RMS_CHANNELS * RMS_SAMPLE_WIDTH
 
+    # 不启用录屏:豆包录屏有严重时序 bug(结束时才录/不停止),改用 ai_wav 喂评估。
+    # get_results 据此跳过录屏拉取,把 ai_wav 塞进 wav_path 复用 wav_path→record_file 映射。
+    _record_enabled = False
+
     def __init__(self):
         super().__init__()
         # 覆盖小艺的 app_name，指向豆包
@@ -62,10 +71,10 @@ class DoubaoChat(Xiaoyilivechat):
         self._pcm_app = 'doubao'
 
     # ------------------------------------------------------------------
-    # AI 回复完成检测（基于 Fast_client_out 尾部 RMS 能量，双阶段+历史兜底）
+    # AI 回复完成检测（基于 client_in.. 尾部 RMS 能量，双阶段+历史兜底）
     # ------------------------------------------------------------------
     def _find_ai_pcm_remote(self, device_sn, task_id=None, test_case_id=None):
-        """在 PCM_CACHE_DIR 找 AI 回复 PCM(Fast_client_out)。
+        """在 PCM_CACHE_DIR 找 AI 回复 PCM(client_in..pcm)。
         多个匹配取最后一个(最新流)。无匹配返回 None。"""
         r = self._hdc_shell(device_sn, 'find', self.PCM_CACHE_DIR,
                             '-name', f'*{self.AI_PCM_SUFFIX}', '-type', 'f')
@@ -77,7 +86,7 @@ class DoubaoChat(Xiaoyilivechat):
 
     def _read_tail_rms(self, device_sn, remote, tail_bytes=None,
                        task_id=None, test_case_id=None):
-        """读 Fast_client_out 最后 tail_bytes 字节(经 base64 文本传输,二进制安全)算左声道 RMS。
+        """读 client_in..pcm 最后 tail_bytes 字节(经 base64 文本传输,二进制安全)算左声道 RMS。
         默认 1s = 48000*2ch*2bytes = 192000 字节。
         返回 (rms, size);文件不存在/不足尾部/读取失败返回 (None, size 或 None)。"""
         if tail_bytes is None:
@@ -139,7 +148,7 @@ class DoubaoChat(Xiaoyilivechat):
 
     def _wait_ai_reply_end_via_pcm(self, device_sn, task_id=None, test_case_id=None,
                                    interval=1.0):
-        """等 AI 回复完成: 基于 Fast_client_out 尾部 RMS 能量判定(双阶段+历史兜底)。
+        """等 AI 回复完成: 基于 client_in.. 尾部 RMS 能量判定(双阶段+历史兜底)。
 
         阶段A: 等尾部 1s RMS>阈值(AI 开始说话), start_timeout 内。
                ——必须先看到说话,避免在用户提问期(AI 通道静默)误判"说完"。
@@ -176,7 +185,7 @@ class DoubaoChat(Xiaoyilivechat):
                           task_id=task_id, test_case_id=test_case_id)
                 return True
             self._log(level='INFO',
-                      content=f"豆包未回复({self.RMS_START_TIMEOUT}s 内 Fast_client_out 尾部无语音能量)",
+                      content=f"豆包未回复({self.RMS_START_TIMEOUT}s 内 client_in.. 尾部无语音能量)",
                       task_id=task_id, test_case_id=test_case_id)
             return False
 
@@ -258,13 +267,11 @@ class DoubaoChat(Xiaoyilivechat):
         # 启动后再次关闭弹窗
         self.close_popups(device_sn)
 
-        # 重置跨用例残留的录屏状态（驱动单例复用）
-        self._recording = False
+        # 重置跨用例残留状态（驱动单例复用）
+        self._in_voice = False          # 语音通话态(case 模式首轮重入判断用)
         self._record_mode = 'round'
         self._total_rounds = 1
         self._round_number = 0
-        self._record_file_name = None
-        self._record_pulled = False
         self._pcm_app = kwargs.get('pcm_app', 'doubao')
         self.question_text = None
         self.answer_text = None
@@ -293,11 +300,10 @@ class DoubaoChat(Xiaoyilivechat):
         return True
 
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """预处理：进入语音通话 + 开启录屏。
+        """预处理：进入语音通话（无录屏）。
 
-        录屏模式: round=每轮一段(默认); case=整用例一段。
-        首轮：点击通话入口进入语音通话，再开启录屏。
-        case 模式非首轮：通话与录屏进行中，跳过重复启动。
+        record_mode: round=每轮独立通话; case=整用例一次连续通话。
+        首轮：点击通话入口进入语音通话。case 模式非首轮：通话进行中,跳过重复进入。
         """
         driver = self._get_driver(device_sn)
         record_mode = kwargs.get('record_mode', 'round')
@@ -306,12 +312,12 @@ class DoubaoChat(Xiaoyilivechat):
         self._record_mode = record_mode
         self._total_rounds = total_rounds
         self._round_number = round_number
-        is_first = not getattr(self, '_recording', False)
+        is_first = not getattr(self, '_in_voice', False)
 
-        # case 模式非首轮：通话与录屏已在进行，无需重复启动
+        # case 模式非首轮：通话已在进行，无需重复进入
         if record_mode == 'case' and not is_first:
             self._log(level='DEBUG',
-                      content=f"case模式非首轮,跳过启动(语音/录屏进行中): r{round_number}/{total_rounds}",
+                      content=f"case模式非首轮,跳过启动(语音进行中): r{round_number}/{total_rounds}",
                       task_id=task_id, test_case_id=test_case_id)
             return True
 
@@ -343,35 +349,22 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
             return False
 
-        # 开启录屏
-        if record_mode == 'case':
-            # 整用例一个文件，不带轮次后缀
-            self._record_file_name = f"{test_case_id}.mp4"
-        else:
-            # 每轮一个文件，文件名含轮次号避免多轮冲突
-            self._record_file_name = f"{test_case_id}_r{round_number}.mp4"
-        if not self._start_recorder(device_sn, file_name=self._record_file_name):
-            self._log(level='ERROR', content=f"启动录屏失败,服务未运行: {self._record_file_name}",
-                      task_id=task_id, test_case_id=test_case_id)
-            return False
-        self._recording = True
-        self._log(level='INFO', content=f"启动录屏成功: {self._record_file_name}",
-                  task_id=task_id, test_case_id=test_case_id)
+        self._in_voice = True
         time.sleep(2)
         return True
 
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """后处理：等 AI 回复结束 → 按模式收尾 → (round 模式) 提取问答文本。
 
-        回复完成检测基于 Fast_client_out PCM 尾部 RMS 能量(双阶段+历史兜底),
+        回复完成检测基于 client_in.. PCM 尾部 RMS 能量(双阶段+历史兜底),
         不依赖控件文本(说话或点击打断/正在听…),后者在语音态透传性不稳定。
 
         核心是【不挂断逻辑】——case 模式全程不挂断,保持一次连续通话:
-        - case 模式(多轮连续通话): 中间轮仅等回复完成即返回(不停录屏/不挂断/不提取)；
-          末轮停录屏供 get_results 拉取,但仍【不挂断】——通话挂断交给 teardown.stop_app,
-          以保证多轮间 AI 上下文连续(挂断会重置对话上下文)。case 模式不做气泡文本提取
-          (全程在通话页无聊天列表),本轮文本以 ai_wav/user_wav 的 ASR 为准。
-        - round 模式(每轮独立): 停录屏 + 挂断 + 提取本轮气泡(每轮独立,可挂断)。
+        - case 模式(多轮连续通话): 中间轮仅等回复完成即返回(不挂断/不提取)；
+          末轮也不挂断——通话挂断交给 teardown.stop_app,以保证多轮间 AI 上下文连续
+          (挂断会重置对话上下文)。case 模式不做气泡文本提取(全程在通话页无聊天列表),
+          本轮文本以 ai_wav/user_wav 的 ASR 为准。
+        - round 模式(每轮独立): 挂断 + 提取本轮气泡(每轮独立,可挂断)。
         """
         driver = self._get_driver(device_sn)
         ts = self._extract_playback_timestamps(kwargs)
@@ -383,7 +376,7 @@ class DoubaoChat(Xiaoyilivechat):
                           f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
                   task_id=task_id, test_case_id=test_case_id)
 
-        # 等 AI 回复完成：Fast_client_out 尾部 RMS 双阶段判定
+        # 等 AI 回复完成：client_in.. 尾部 RMS 双阶段判定
         # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
         if kwargs.get('is_interruption'):
             self._log(level='INFO',
@@ -402,34 +395,22 @@ class DoubaoChat(Xiaoyilivechat):
         is_last = (total_rounds and round_number == total_rounds - 1)
 
         if record_mode == 'case':
-            # case 模式：一次连续语音通话 / 一个录屏 / 一个连续 PCM,【全程不挂断】。
-            # 中间轮：不停录屏、不挂断、不提取,直接返回(通话与录屏继续进行)。
+            # case 模式：一次连续语音通话 / 一个连续 PCM,【全程不挂断】。
+            # 中间轮：不挂断、不提取,直接返回(通话继续进行)。
             if not is_last:
                 self._log(level='DEBUG',
-                          content=f"case模式中间轮,不挂断保持语音/录屏进行中: r{round_number}/{total_rounds}",
+                          content=f"case模式中间轮,不挂断保持语音进行中: r{round_number}/{total_rounds}",
                           task_id=task_id, test_case_id=test_case_id)
                 return True
-            # 末轮：停录屏供 get_results 拉取,但仍【不挂断】——通话交给 teardown.stop_app 兜底结束,
-            # 避免挂断重置 AI 上下文。case 模式全程在通话页,无聊天列表,不做气泡文本提取。
-            if not self._stop_recorder(device_sn):
-                self._log(level='WARNING', content="末轮停止录屏失败,服务仍在运行",
-                          task_id=task_id, test_case_id=test_case_id)
-            else:
-                self._log(level='INFO', content="末轮停止录屏成功", task_id=task_id, test_case_id=test_case_id)
-            self._recording = False
-            time.sleep(5)
+            # 末轮：仍【不挂断】——通话交给 teardown.stop_app 兜底结束,避免挂断重置 AI 上下文。
+            # case 模式全程在通话页,无聊天列表,不做气泡文本提取。
             self._log(level='INFO',
                       content="case模式末轮不挂断,通话交给 teardown 结束(保持上下文连续)",
                       task_id=task_id, test_case_id=test_case_id)
             return True
 
-        # round 模式：每轮独立——停录屏 + 挂断 + 提取气泡。
-        if not self._stop_recorder(device_sn):
-            self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
-        else:
-            self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
-        self._recording = False
-        time.sleep(5)
+        # round 模式：每轮独立——挂断 + 提取气泡。
+        self._in_voice = False
         try:
             driver.touch((1084, 2440))
             self._log(level='DEBUG', content="已挂断通话", task_id=task_id, test_case_id=test_case_id)
@@ -465,42 +446,19 @@ class DoubaoChat(Xiaoyilivechat):
         return True
 
     def teardown(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """用例结束清理（与 initialize 对称）
+        """用例结束清理（与 initialize 对称，无录屏）
 
         做以下清理：
-        1. 确保录屏已停止（兜底，防止 post_process 异常残留）
-        2. case 模式兜底：末轮未拉取时补拉一次完整录屏
-        3. 确保通话已挂断（兜底）
-        4. 退出豆包聊天界面，回桌面
-        5. 停止豆包 APP（彻底释放）
+        1. 确保通话已挂断（兜底）
+        2. 退出豆包聊天界面，回桌面
+        3. 停止豆包 APP（彻底释放，同时结束语音通话）
         """
-        # 1. 兜底停止录屏（仅在仍在录屏时执行，避免 toggle 把已停止的录屏又打开）
-        if getattr(self, '_recording', False):
-            try:
-                if not self._stop_recorder(device_sn):
-                    self._log(level='WARNING', content="teardown: 兜底停止录屏失败,服务仍在运行",
-                              task_id=task_id, test_case_id=test_case_id)
-                else:
-                    self._log(level='DEBUG', content="teardown: 兜底停止录屏成功",
-                              task_id=task_id, test_case_id=test_case_id)
-                self._recording = False
-            except Exception as e:
-                self._log(level='WARNING', content=f"teardown: 停止录屏失败: {e}",
-                          task_id=task_id, test_case_id=test_case_id)
-
-        # 2. case 模式兜底：末轮 post_process 异常未拉取时，补拉一次完整录屏，避免整段录屏丢失
-        if getattr(self, '_record_mode', 'round') == 'case' and not getattr(self, '_record_pulled', False):
-            pulled = self._pull_record_file(device_sn, task_id=task_id, test_case_id=test_case_id)
-            if pulled:
-                self._log(level='INFO', content=f"teardown: 兜底拉取录屏成功: {pulled}",
-                          task_id=task_id, test_case_id=test_case_id)
-                self._record_pulled = True
-
+        self._in_voice = False
         driver = self._get_driver(device_sn)
         if not driver:
             return True
 
-        # 3. 兜底挂断通话
+        # 1. 兜底挂断通话
         try:
             driver.touch((1084, 2440))
             self._log(level='DEBUG', content="teardown: 兜底挂断通话",
@@ -510,7 +468,7 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='DEBUG', content=f"teardown: 无残留通话或挂断失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        # 4. 回桌面（退出豆包聊天界面）
+        # 2. 回桌面（退出豆包聊天界面）
         try:
             driver.press_home()
             time.sleep(1)
@@ -518,7 +476,7 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        # 5. 停止豆包 APP（彻底释放）
+        # 3. 停止豆包 APP（彻底释放，同时结束语音通话）
         try:
             driver.stop_app(self.DOUBAO_BUNDLE)
             self._log(level='DEBUG', content="teardown: 已停止豆包 APP",

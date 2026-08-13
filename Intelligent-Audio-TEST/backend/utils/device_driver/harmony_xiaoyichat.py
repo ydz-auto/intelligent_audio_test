@@ -21,6 +21,11 @@ class Xiaoyilivechat(HarmonyDriver):
         super().__init__()
         # 仅覆盖与父类不同的属性
         self.app_icon_key = 'AppIcon_Image_com.huawei.hmos.vassistant.launcherVoiceAbilityentry0_undefined_0'
+
+    # 是否启用录屏(小艺=True 保留录屏 wav 作为评估音频源)。
+    # Doubao/ChatGPT 在各自子类置 False:无录屏,get_results 跳过录屏拉取,
+    # 改把 ai_wav 塞进 wav_path 复用 wav_path→record_file 映射喂评估。
+    _record_enabled = True
     # 各 app 的 pcm 缓存目录、用户输入后缀、AI 回复后缀
     # 当前驱动仅抓取小艺(xiaoyi)数据；通过 app 参数可切换到 doubao/chatgpt
     PCM_APP_CONFIG = {
@@ -33,7 +38,7 @@ class Xiaoyilivechat(HarmonyDriver):
         'doubao': {
             'cache_dirs': ['/data/app/el2/100/base/com.larus.nova.hm/cache'],
             'user_suffix': 'cap_client_out.pcm',
-            'ai_suffix': 'client_in.pcm',
+            'ai_suffix': 'client_in..pcm',
         },
         'chatgpt': {
             'cache_dirs': ['/data/local/tmp'],
@@ -316,12 +321,12 @@ class Xiaoyilivechat(HarmonyDriver):
 
     def _pull_pcm(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None):
         # 获取小艺对话pcm,文件位置:/data/app/el2/100/base/com.huawei.hmos.aibase/cache/。用户输入名称格式100184_16000_1_1_cap_client_process_out.pcm。 AI助手回复名称格式100184_16000_2_1_cap_client_ec_out.pcm
-        # 获取豆包对话PCM，文件位置:/data/app/el2/100/base/com.larus.nova.hm/cache/, 用户输入名称格式100186_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100184_48000_2_1_client_in.pcm
+        # 获取豆包对话PCM，文件位置:/data/app/el2/100/base/com.larus.nova.hm/cache/, 用户输入名称格式100186_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100184_48000_2_1_client_in..pcm
         # 获取chagpt对话PCM，文件位置：/data/local/tmp/。用户输入名称格式100174_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100175_48000_2_1_cap_client_in.pcm
         #
         # 按 app 参数选择对应 app 的缓存目录与文件后缀:
         # - 小艺(xiaoyi):   .../com.huawei.hmos.aibase/cache  用户 cap_client_process_out.pcm / AI cap_client_ec_out.pcm
-        # - 豆包(doubao):   .../com.larus.nova.hm/cache      用户 cap_client_out.pcm        / AI client_in.pcm
+        # - 豆包(doubao):   .../com.larus.nova.hm/cache      用户 cap_client_out.pcm        / AI client_in..pcm
         # - chatgpt:        /data/local/tmp                  用户 cap_client_out.pcm        / AI cap_client_in.pcm
         # 返回: {'user': local_path_or_None, 'ai': local_path_or_None, 'user_remote':..., 'ai_remote':...}
         result = {'user': None, 'ai': None, 'user_remote': None, 'ai_remote': None}
@@ -598,6 +603,31 @@ class Xiaoyilivechat(HarmonyDriver):
                           f"(start_ms={ts['start_ms']} end_ms={ts['end_ms']} "
                           f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
                   task_id=task_id, test_case_id=test_case_id)
+        # 无录屏驱动(Doubao/ChatGPT):跳过录屏拉取,只拉 pcm/wav,
+        # 把 ai_wav 塞进 wav_path 复用 wav_path→record_file 映射喂评估。
+        if not getattr(self, '_record_enabled', True):
+            user_wav, ai_wav = self._pull_pcm_wav(
+                device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
+                task_id=task_id, test_case_id=test_case_id)
+            question_text = getattr(self, 'question_text', None)
+            answer_text = getattr(self, 'answer_text', None)
+            self._log(level='INFO',
+                      content=f"[get_results] 无录屏模式: user_wav={user_wav} ai_wav={ai_wav} "
+                              f"question={question_text!r} answer={answer_text!r}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return [{
+                'success': True,
+                'message': 'Success (no recording, ai_wav as record_file)',
+                'record_path': '',
+                'wav_path': ai_wav or '',
+                'start_ms': ts['start_ms'],
+                'end_ms': ts['end_ms'],
+                'first_frame_ms': None,
+                'question': question_text or '',
+                'answer': answer_text or '',
+                'user_wav': user_wav or '',
+                'ai_wav': ai_wav or ''
+            }]
         record_file_name = getattr(self, '_record_file_name', 'record.mp4')
         question_text = getattr(self, 'question_text', None)
         answer_text = getattr(self, 'answer_text', None)

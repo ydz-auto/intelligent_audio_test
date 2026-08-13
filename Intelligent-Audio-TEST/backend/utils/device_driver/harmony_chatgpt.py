@@ -11,12 +11,15 @@ class ChatGptVoiceChat(Xiaoyilivechat):
     """ChatGPT 语音通话专用驱动。
 
     仿照 harmony_xiaoyichat.Xiaoyilivechat 实现，功能要求与小艺通话一致：
-      - 录屏(screenrecorder) + 抓取 cap_client PCM(用户输入/AI回复) + 转 wav
+      - 抓取 cap_client PCM(用户输入/AI回复) + 转 wav
       - initialize/pre_process/post_process/get_results/teardown 生命周期
-      - 多轮 round/case 录屏模式、首帧时延、问答文本提取、结果格式
+      - 多轮 round/case 通话形态、问答文本提取、结果格式
 
-    继承 Xiaoyilivechat 可直接复用：mp4→wav / pcm→wav / hdc 封装 / 录屏启停 /
-    PCM 清理与拉取 / PCM_APP_CONFIG['chatgpt'] / get_results 结果拼装。
+    【无录屏】_record_enabled=False:移除录屏;get_results 据此跳过录屏拉取,把 ai_wav
+    塞进 wav_path 复用 wav_path→record_file 映射喂评估(评估音频源=AI 回复 PCM 的 wav)。
+
+    继承 Xiaoyilivechat 可直接复用：pcm→wav / hdc 封装 / PCM 清理与拉取 /
+    PCM_APP_CONFIG['chatgpt'] / get_results 结果拼装。
 
     差异点（本类覆盖）：
       1. 目标 App 为 com.openai.chatgpt（鸿蒙 Android 兼容层运行，Compose UI）
@@ -34,6 +37,8 @@ class ChatGptVoiceChat(Xiaoyilivechat):
 
     # ChatGPT 包名（鸿蒙 Android 兼容层）
     APP_PACKAGE = 'com.openai.chatgpt'
+    # 无录屏:评估改用 ai_wav 作为 record_file(见父类 get_results 的 _record_enabled 分支)
+    _record_enabled = False
 
     # 聊天首页底部输入栏按钮坐标（屏幕 1280x2832；实测 2026-08-13 ChatGPT 改版后输入栏上移至 y≈1607，
     # 旧版 y=2650 已失效）。四件套结构不变：[+] / EditText / 麦克风 / 蓝色语音(最右)。
@@ -418,12 +423,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self.close_popups(device_sn)
 
         # 重置跨用例残留状态（驱动单例复用）
-        self._recording = False
+        self._in_voice = False          # 语音通话态(case 模式首轮重入判断用)
         self._record_mode = 'round'
         self._total_rounds = 1
         self._round_number = 0
-        self._record_file_name = None
-        self._record_pulled = False
         self._pcm_app = kwargs.get('pcm_app', 'chatgpt')
         self.question_text = None
         self.answer_text = None
@@ -433,11 +436,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         return True
 
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """预处理：进入语音通话 + 开启录屏。
+        """预处理：进入语音通话（无录屏）。
 
-        录屏模式: round=每轮一段(默认); case=整用例一段。
-        首轮：点击聊天首页蓝色语音按钮进入语音通话，再开启录屏。
-        case 模式非首轮：通话与录屏进行中，跳过重复启动。
+        record_mode: round=每轮独立通话; case=整用例一次连续通话。
+        首轮：点击聊天首页蓝色语音按钮进入语音通话。case 模式非首轮：通话进行中,跳过重复进入。
         """
         driver = self._get_driver(device_sn)
         record_mode = kwargs.get('record_mode', 'round')
@@ -446,12 +448,12 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self._record_mode = record_mode
         self._total_rounds = total_rounds
         self._round_number = round_number
-        is_first = not getattr(self, '_recording', False)
+        is_first = not getattr(self, '_in_voice', False)
 
-        # case 模式非首轮：通话与录屏已在进行，无需重复启动
+        # case 模式非首轮：通话已在进行，无需重复进入
         if record_mode == 'case' and not is_first:
             self._log(level='DEBUG',
-                      content=f"case模式非首轮,跳过启动(语音/录屏进行中): r{round_number}/{total_rounds}",
+                      content=f"case模式非首轮,跳过启动(语音进行中): r{round_number}/{total_rounds}",
                       task_id=task_id, test_case_id=test_case_id)
             return True
 
@@ -478,19 +480,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self._log(level='INFO',
                   content="已点击蓝色语音按钮,进入语音通话" if entered else "进入语音通话校验未通过(继续)",
                   task_id=task_id, test_case_id=test_case_id)
-
-        # 开启录屏
-        if record_mode == 'case':
-            self._record_file_name = f"{test_case_id}.mp4"
-        else:
-            self._record_file_name = f"{test_case_id}_r{round_number}.mp4"
-        if not self._start_recorder(device_sn, file_name=self._record_file_name):
-            self._log(level='ERROR', content=f"启动录屏失败,服务未运行: {self._record_file_name}",
-                      task_id=task_id, test_case_id=test_case_id)
-            return False
-        self._recording = True
-        self._log(level='INFO', content=f"启动录屏成功: {self._record_file_name}",
-                  task_id=task_id, test_case_id=test_case_id)
+        self._in_voice = True
         time.sleep(2)
         return True
 
@@ -500,9 +490,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         回复完成判定基于 cap_client 的 client_in 尾部 RMS 能量(AI 说话=高能量/静默≈0),
         不依赖 Compose 转写文本(语音态透传性不稳定,实测漏判)。
 
-        - case 模式(多轮连续通话)：中间轮仅等回复完成即返回(不停录屏/不退语音/不提取,
-          保持一次连续通话/一个录屏/一个连续 PCM)；末轮停录屏+退语音回聊天首页+提取气泡。
-        - round 模式(每轮独立)：停录屏+退语音回聊天首页+提取本轮气泡。
+        - case 模式(多轮连续通话)：中间轮仅等回复完成即返回(不退语音/不提取,
+          保持一次连续通话/一个连续 PCM)；末轮也不退语音——teardown 的 aa force-stop 即退出,
+          满足"整体测完才退出语音"。
+        - round 模式(每轮独立)：退语音回聊天首页(返回键 best-effort)+提取本轮气泡。
         """
         driver = self._get_driver(device_sn)
         ts = self._extract_playback_timestamps(kwargs)
@@ -536,32 +527,20 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         is_last = (total_rounds and round_number == total_rounds - 1)
 
         if record_mode == 'case':
-            # case 模式：一次连续语音通话 / 一个录屏 / 一个连续 PCM,对话间不退出语音。
-            # 中间轮：不停录屏、不退出语音；点 orb 显现转写即可提取本轮气泡(不挂断通话)。
-            # 末轮：停录屏 + 提取气泡；不主动退语音——teardown 的 aa force-stop 即退出,
-            #       满足"整体测完才退出语音"。返回键对 ChatGPT 语音态不生效,故不依赖。
+            # case 模式：一次连续语音通话 / 一个连续 PCM,对话间不退出语音。
+            # 中间轮：不退出语音；点 orb 显现转写即可提取本轮气泡(不挂断通话)。
+            # 末轮：不主动退语音——teardown 的 aa force-stop 即退出,满足"整体测完才退出语音"。
+            #       返回键对 ChatGPT 语音态不生效,故不依赖。
             if not is_last:
                 self._log(level='DEBUG',
-                          content=f"case模式中间轮,保持语音/录屏进行中: r{round_number}/{total_rounds}",
+                          content=f"case模式中间轮,保持语音进行中: r{round_number}/{total_rounds}",
                           task_id=task_id, test_case_id=test_case_id)
-            else:
-                if not self._stop_recorder(device_sn):
-                    self._log(level='WARNING', content="末轮停止录屏失败,服务仍在运行",
-                              task_id=task_id, test_case_id=test_case_id)
-                else:
-                    self._log(level='INFO', content="末轮停止录屏成功", task_id=task_id, test_case_id=test_case_id)
-                self._recording = False
-                time.sleep(5)
+            # 末轮无录屏需停,直接进入气泡提取
         else:
-            # round 模式：每轮独立——停录屏 + 退出语音回聊天首页(返回键 best-effort) + 提取气泡。
+            # round 模式：每轮独立——退出语音回聊天首页(返回键 best-effort) + 提取气泡。
             # 注:返回键对 ChatGPT 语音态常不生效(press_home 兜底回桌面),round 模式多轮重入语音
             #    依赖成功退回聊天首页;失败则下轮 pre_process 难以点中蓝按钮。case 模式无此问题。
-            if not self._stop_recorder(device_sn):
-                self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
-            else:
-                self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
-            self._recording = False
-            time.sleep(2)
+            self._in_voice = False
             self._exit_voice(device_sn, driver, task_id=task_id, test_case_id=test_case_id)
             driver.wait(3)
 
@@ -575,32 +554,11 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         return True
 
     def teardown(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
-        """用例结束清理：兜底停录屏→退出语音→回桌面→停止 ChatGPT。"""
-        # 1. 兜底停止录屏
-        if getattr(self, '_recording', False):
-            try:
-                if not self._stop_recorder(device_sn):
-                    self._log(level='WARNING', content="teardown: 兜底停止录屏失败,服务仍在运行",
-                              task_id=task_id, test_case_id=test_case_id)
-                else:
-                    self._log(level='DEBUG', content="teardown: 兜底停止录屏成功",
-                              task_id=task_id, test_case_id=test_case_id)
-                self._recording = False
-            except Exception as e:
-                self._log(level='WARNING', content=f"teardown: 停止录屏失败: {e}",
-                          task_id=task_id, test_case_id=test_case_id)
-
-        # case 模式兜底：末轮 post_process 异常未拉取时，补拉一次完整录屏
-        if getattr(self, '_record_mode', 'round') == 'case' and not getattr(self, '_record_pulled', False):
-            pulled = self._pull_record_file(device_sn, task_id=task_id, test_case_id=test_case_id)
-            if pulled:
-                self._log(level='INFO', content=f"teardown: 兜底拉取录屏成功: {pulled}",
-                          task_id=task_id, test_case_id=test_case_id)
-                self._record_pulled = True
-
+        """用例结束清理：退出语音→回桌面→停止 ChatGPT（无录屏）。"""
+        self._in_voice = False
         driver = self._get_driver(device_sn)
         if driver:
-            # 2. 兜底退出语音模式
+            # 1. 兜底退出语音模式
             try:
                 driver.press_home()
                 time.sleep(1)
@@ -610,7 +568,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                 self._log(level='DEBUG', content=f"teardown: 退出语音失败: {e}",
                           task_id=task_id, test_case_id=test_case_id)
 
-        # 3. 停止 ChatGPT APP（彻底释放）
+        # 2. 停止 ChatGPT APP（彻底释放，同时结束语音通话）
         try:
             subprocess.run(['hdc', '-t', device_sn, 'shell', 'aa', 'force-stop', self.app_name],
                            check=False, capture_output=True, text=True, timeout=10)
