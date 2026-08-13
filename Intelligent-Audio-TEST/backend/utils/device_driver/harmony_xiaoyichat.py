@@ -17,7 +17,10 @@ from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 class Xiaoyilivechat(HarmonyDriver):
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
-
+    def __init__(self):
+        super().__init__()
+        # 仅覆盖与父类不同的属性
+        self.app_icon_key = 'AppIcon_Image_com.huawei.hmos.vassistant.launcherVoiceAbilityentry0_undefined_0'
     # 各 app 的 pcm 缓存目录、用户输入后缀、AI 回复后缀
     # 当前驱动仅抓取小艺(xiaoyi)数据；通过 app 参数可切换到 doubao/chatgpt
     PCM_APP_CONFIG = {

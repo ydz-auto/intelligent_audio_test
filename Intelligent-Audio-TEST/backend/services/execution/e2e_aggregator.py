@@ -323,9 +323,6 @@ class E2EAggregator:
                 local_db_session.commit()
                 return False
 
-            extra_params = self._executor._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
-            kwargs.update(extra_params)
-
             if is_multi_round:
                 # 多轮场景：algo_result 和 TestResult 已在循环后更新，整体评估已提交
                 # 此处仅更新 TaskCase 状态

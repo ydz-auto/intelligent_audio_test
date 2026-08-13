@@ -141,7 +141,6 @@ class E2EExecutor(BaseExecutor):
             raise RuntimeError(error_msg)
 
         device_info_list = device_result['data']['device_info_list']
-        self.current_extra_params = self._execute_extra_params(algorithm_type, case_field_values, include_format_strings=True)
         device_driver_factory.register_task_devices(task_id, device_info_list)
 
         # 首轮自定义参数一并透传给 initialize（pcm_app、record_mode 等驱动级参数）
@@ -162,9 +161,6 @@ class E2EExecutor(BaseExecutor):
             device_info_list, task_id, test_case_id=test_case_id,
             algorithm_type=algorithm_type, case_algorithm_params=first_round_params
         )
-
-        # 声纹注册
-        self._register_voiceprint(task_id, tc_rel_id, rounds, test_case_id)
 
         # 预创建 TestResult
         first_device_id = device_info_list[0].get('device_id') if device_info_list else None
@@ -188,20 +184,14 @@ class E2EExecutor(BaseExecutor):
 
         return device_info_list, result_id
 
-    def _register_voiceprint(self, task_id, tc_rel_id, rounds, test_case_id):
-        """从首轮 algorithmParams 提取声纹配置并执行注册"""
-        from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
-
-        first_round_algo_params = {}
-        if rounds and isinstance(rounds[0], dict):
-            first_round_algo_params = _normalize_algorithm_params(rounds[0].get('algorithm_params', []))
-
+    def _register_voiceprint(self, task_id, tc_rel_id, round_algo_params, test_case_id):
+        """从本轮 algorithm_params 提取声纹配置并执行注册"""
         voiceprint_config = {
-            'enabled': first_round_algo_params.get('voiceprint_enabled', False),
-            'audio_id': first_round_algo_params.get('voiceprint_audio_id'),
-            'playback_device_id': first_round_algo_params.get('voiceprint_playback_device_id'),
-            'spl': first_round_algo_params.get('voiceprint_spl', 70.0),
-            'wait_time': first_round_algo_params.get('voiceprint_wait_time', 5.0),
+            'enabled': round_algo_params.get('voiceprint_enabled', False),
+            'audio_id': round_algo_params.get('voiceprint_audio_id'),
+            'playback_device_id': round_algo_params.get('voiceprint_playback_device_id'),
+            'spl': round_algo_params.get('voiceprint_spl', 70.0),
+            'wait_time': round_algo_params.get('voiceprint_wait_time', 5.0),
         }
         if voiceprint_config.get('enabled'):
             if not playback_orchestrator.play_voiceprint(voiceprint_config, task_id):
@@ -253,28 +243,17 @@ class E2EExecutor(BaseExecutor):
                               algorithm_type, test_case_id, rounds,
                               device_info_list, result_id, case_reference_params,
                               round_idx, round_config, round_number, rounds_data):
-        """执行单轮：环境设置 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
+        """执行单轮：环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
         from backend.utils.algorithm.case_parameter_extractor import _normalize_algorithm_params
         round_algo_params = _normalize_algorithm_params(round_config.get('algorithm_params', []))
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
-
-        # 每轮自定义参数并入驱动 kwargs（record_mode 等字段优先取自定义参数，其次取 case_config）
-        custom_params = round_algo_params if isinstance(round_algo_params, dict) else {}
-        pre_extra_params = {
-            **self.current_extra_params,
-            **custom_params,
-            'round_number': round_idx,
-            'record_mode': custom_params.get('record_mode') or case_config.get('record_mode', 'case'),
-            'total_rounds': len(rounds),
-        }
-        self._log(level='DEBUG',
-                  content=f"[透传] pre_process extra_params keys={list(pre_extra_params.keys())} "
-                          f"record_mode={pre_extra_params.get('record_mode')!r} custom={custom_params}",
-                  task_id=task_id, test_case_id=test_case_id)
+        self._register_voiceprint(task_id, tc_rel_id, round_algo_params, test_case_id)
         self._device_manager.pre_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
-            extra_params=pre_extra_params,
+            extra_params={'round_number': round_idx,
+                          'total_rounds': len(rounds),
+                          **round_algo_params},
         )
 
         play_result = playback_orchestrator.play_round(
@@ -300,18 +279,9 @@ class E2EExecutor(BaseExecutor):
         playback_ts = self._playback_timestamps.get(task_id, {})
         round_start_ms = playback_ts.get('current_round_start_ms')
         round_end_ms = playback_ts.get('current_round_end_ms')
-        post_extra_params = {
-            **self.current_extra_params,
-            **custom_params,
-            'round_number': round_idx,
-            'record_mode': custom_params.get('record_mode') or case_config.get('record_mode', 'case'),
-            'total_rounds': len(rounds),
-            'is_interruption': bool(round_config.get('is_interruption', False))}
-        self._log(level='DEBUG',
-                  content=f"[透传] post_process extra_params keys={list(post_extra_params.keys())} "
-                          f"record_mode={post_extra_params.get('record_mode')!r} "
-                          f"is_interruption={post_extra_params.get('is_interruption')!r} custom={custom_params}",
-                  task_id=task_id, test_case_id=test_case_id)
+        post_extra_params = {'round_number': round_idx,
+                             'total_rounds': len(rounds),
+                             **round_algo_params}
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms
             post_extra_params['playback_end_time_ms'] = round_end_ms
@@ -336,7 +306,8 @@ class E2EExecutor(BaseExecutor):
         collect_result = self._collector.collect_results(
             task_id, test_case_id, device_info_list,
             algorithm_type=algorithm_type,
-            case_reference_params=case_reference_params
+            case_reference_params=case_reference_params,
+            round_algo_params=round_algo_params,
         )
         if isinstance(collect_result, tuple):
             round_results, adjusted_case_ref_params = collect_result
@@ -362,7 +333,8 @@ class E2EExecutor(BaseExecutor):
                 task_id, tc_rel_id, data, case_config, case_name,
                 algorithm_type, test_case_id, rounds,
                 result_id, case_reference_params,
-                round_idx, primary, tagged_results, rounds_data
+                round_idx, primary, tagged_results, rounds_data,
+                round_algo_params
             )
 
         self._device_manager.teardown_env_devices_for_round(env_states, task_id)
@@ -377,13 +349,15 @@ class E2EExecutor(BaseExecutor):
     def _build_and_submit_round_data(self, task_id, tc_rel_id, data, case_config, case_name,
                                      algorithm_type, test_case_id, rounds,
                                      result_id, case_reference_params,
-                                     round_idx, primary, tagged_results, rounds_data):
+                                     round_idx, primary, tagged_results, rounds_data,
+                                     round_algo_params=None):
         """构建本轮 round_data，增量更新 TestResult，提交单轮评估，返回 round_data
 
         Args:
             rounds_data: 已执行轮次的 round_data 列表（累积），用于构建含全部轮次的 algo_result
+            round_algo_params: 本轮算法参数（已扁平化为 dict）
         """
-        ref_fields = self._build_ref_fields(self.current_extra_params)
+        ref_fields = self._build_ref_fields(round_algo_params or {})
 
         self._aggregator.log_case_result(
             task_id, case_name, primary, ref_fields,

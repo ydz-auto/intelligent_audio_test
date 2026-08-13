@@ -59,75 +59,6 @@ class BaseExecutor:
             **kwargs
         )
     
-    def _execute_extra_params(self, algorithm_type, passed_kwargs=None, include_format_strings=True):
-        """从配置动态获取算法特定参数"""
-        if passed_kwargs is None:
-            passed_kwargs = {}
-        
-        if isinstance(passed_kwargs, dict):
-            if 'algorithm_type' in passed_kwargs:
-                case_field_values = passed_kwargs
-                passed_kwargs = {}
-            else:
-                case_field_values = getattr(self, 'current_case_field_values', {})
-        else:
-            case_field_values = getattr(self, 'current_case_field_values', {})
-            
-        field_mapper = get_field_mapper()
-        extra_config = field_mapper._get_algorithm_extra_config(algorithm_type)
-        
-        result_params = {}
-        
-        if extra_config.get('needs_extra_params'):
-            case_fields = extra_config.get('case_fields', {})
-            format_strings = extra_config.get('format_strings', {})
-            db_model_name = extra_config.get('db_model')
-            db_id_field = extra_config.get('db_id_field')
-            
-            db_model = None
-            if db_model_name:
-                import importlib
-                model_module = importlib.import_module('backend.models.models')
-                db_model = getattr(model_module, db_model_name, None)
-            
-            if format_strings:
-                db_lang_fields = extra_config.get('db_lang_fields', {})
-                default_lang = extra_config.get('default_lang', {})
-            else:
-                db_lang_fields = {}
-                default_lang = {}
-            
-            for param_name, case_field in case_fields.items():
-                param_value = case_field_values.get(param_name)
-                
-                format_str = format_strings.get(param_name)
-                if format_str and param_value and db_model:
-                    local_db_session = db.session()
-                    try:
-                        db_record = local_db_session.query(db_model).get(param_value)
-                        if db_record:
-                            format_kwargs = {}
-                            for key, field in db_lang_fields.items():
-                                format_kwargs[key] = getattr(db_record, field, default_lang.get(key))
-                            result_params[param_name] = format_str.format(**format_kwargs)
-                            if db_id_field:
-                                result_params[db_id_field] = param_value
-                    finally:
-                        local_db_session.close()
-                elif format_str and param_value:
-                    result_params[param_name] = format_str.format(value=param_value)
-                elif param_value is not None:
-                    result_params[param_name] = param_value
-            
-            if include_format_strings and format_strings:
-                for param_name, format_str in format_strings.items():
-                    if param_name not in result_params:
-                        format_kwargs = {k: default_lang.get(k, '') for k in db_lang_fields.keys()}
-                        format_value = format_str.format(**format_kwargs)
-                        result_params[param_name] = format_value
-        
-        return result_params
-    
     def _get_result_mapper(self):
         """获取结果映射器"""
         from backend.services.device.device_result_collector import get_device_result_collector
@@ -586,7 +517,13 @@ class BaseExecutor:
             # 兼容旧数据：如果独立列为空，从 config.rounds[].algorithm_params 读取
             from backend.utils.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
             algorithm_params_col = getattr(case, 'algorithm_params', None)
-            
+
+            self._log(
+                level='DEBUG',
+                content=f"[_validate_and_get_data] case.algorithm_params_col={algorithm_params_col}",
+                task_id=task_id, test_case_id=tc_rel.test_case_id
+            )
+
             # 把按轮分组的 algorithm_params 注入到每个 round_config 里（兼容下游读取）
             # 下游 executor 仍用 round_config.get('algorithm_params') 读取
             case_config = case_config.copy() if case_config else {}
@@ -596,6 +533,11 @@ class BaseExecutor:
                     rn = round_item.get('round_number', 1)
                     # 优先从独立列按轮取
                     round_params = _get_round_algo_params(algorithm_params_col, rn)
+                    self._log(
+                        level='DEBUG',
+                        content=f"[_validate_and_get_data] round_number={rn}, matched round_params={round_params}",
+                        task_id=task_id, test_case_id=tc_rel.test_case_id
+                    )
                     if round_params:
                         round_item['algorithm_params'] = round_params
                     # 兼容旧数据：如果独立列没有，round 里已有的 algorithm_params 保持不变

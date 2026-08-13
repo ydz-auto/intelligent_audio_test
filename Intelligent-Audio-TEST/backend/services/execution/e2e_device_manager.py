@@ -77,15 +77,10 @@ class E2EDeviceManager:
 
     def initialize_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
         """并行初始化所有设备"""
-        algorithm_type = kwargs.get('algorithm_type', 'translation')
-        extra_params = self._executor._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
-        # 透传首轮自定义参数（如 pcm_app/record_mode），自定义参数优先级高于算法字段
-        case_algorithm_params = kwargs.get('case_algorithm_params') or {}
-        if isinstance(case_algorithm_params, dict) and case_algorithm_params:
-            extra_params = {**extra_params, **case_algorithm_params}
-            self._log(level='DEBUG',
-                      content=f"[透传] initialize 合并自定义参数: {case_algorithm_params}",
-                      task_id=task_id, test_case_id=test_case_id)
+        extra_params = {}
+        round_algo_params = kwargs.pop('round_algo_params', None)
+        if round_algo_params:
+            extra_params.update(round_algo_params)
 
         pool = self._executor.execution_engine.device_control_pool
         results = []
