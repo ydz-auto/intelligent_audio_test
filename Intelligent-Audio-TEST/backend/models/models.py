@@ -12,7 +12,7 @@
 """
 from datetime import datetime, timezone, timedelta
 from enum import Enum
-from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, Boolean, Float, JSON, Index, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, Boolean, Float, JSON, Index, text
 from sqlalchemy.orm import relationship
 from .database import db
 
@@ -202,7 +202,8 @@ class PlaybackDevice(db.Model):
     """
     __tablename__ = 'playback_devices'
     __table_args__ = (
-        db.UniqueConstraint('device_unique_id', 'channel_index', name='uq_device_channel'),
+        Index('uq_device_channel', 'device_unique_id', 'channel_index',
+              unique=True, postgresql_where=text('is_deleted = 0')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
     name = Column(String(100), nullable=False, comment='播放设备名称')
@@ -311,7 +312,8 @@ class AudioAlgorithmRelation(db.Model):
     __table_args__ = (
         Index('idx_audio_algorithm_audio', 'audio_id'),
         Index('idx_audio_algorithm_type', 'algorithm_type'),
-        UniqueConstraint('audio_id', 'algorithm_type', name='uq_audio_algorithm'),
+        Index('uq_audio_algorithm', 'audio_id', 'algorithm_type',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
     audio_id = Column(BigInteger, ForeignKey('audios.id', ondelete='CASCADE'), nullable=False, comment='关联音频ID')

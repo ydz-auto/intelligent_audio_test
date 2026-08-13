@@ -14,7 +14,7 @@
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, Float, ForeignKey, UniqueConstraint, DateTime, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Boolean, Float, ForeignKey, Index, DateTime, JSON, text
 from sqlalchemy.orm import relationship
 from .database import db
 
@@ -25,7 +25,7 @@ class AlgorithmGroup(db.Model):
     __tablename__ = 'algorithm_groups'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False, unique=True, comment='分组名称')
+    name = Column(String(100), nullable=False, comment='分组名称')
     description = Column(Text, comment='分组描述')
     icon = Column(String(200), comment='图标URL')
     display_order = Column(Integer, default=0, comment='排序权重')
@@ -34,6 +34,11 @@ class AlgorithmGroup(db.Model):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
     algorithms = relationship('AlgorithmDefinition', back_populates='group', lazy='dynamic')
+
+    __table_args__ = (
+        Index('uq_algorithm_group_name', 'name',
+              unique=True, postgresql_where=text('deleted = false')),
+    )
 
     def to_dict(self):
         return {
@@ -112,7 +117,8 @@ class AlgorithmDeviceParam(db.Model):
     algorithm = relationship('AlgorithmDefinition', back_populates='device_params')
 
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'param_code', 'direction', name='uq_algorithm_device_param_direction'),
+        Index('uq_algorithm_device_param_direction', 'algorithm_type', 'param_code', 'direction',
+              unique=True, postgresql_where=text('deleted = false')),
     )
 
     def to_dict(self):
@@ -167,7 +173,8 @@ class AlgorithmApiParam(db.Model):
     algorithm = relationship('AlgorithmDefinition', back_populates='api_params')
 
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'param_code', 'direction', name='uq_algorithm_api_param_direction'),
+        Index('uq_algorithm_api_param_direction', 'algorithm_type', 'param_code', 'direction',
+              unique=True, postgresql_where=text('deleted = false')),
     )
 
     def to_dict(self):
@@ -217,7 +224,8 @@ class AlgorithmReferenceParam(db.Model):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, comment='更新时间')
 
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'code', name='uq_algorithm_reference_param_code'),
+        Index('uq_algorithm_reference_param_code', 'algorithm_type', 'code',
+              unique=True, postgresql_where=text('deleted = false')),
     )
 
     def to_dict(self):
@@ -264,7 +272,8 @@ class EvaluationDimensionParam(db.Model):
     dimension = relationship('Dimension')
 
     __table_args__ = (
-        UniqueConstraint('dimension_id', 'param_code', 'param_direction', name='uq_dimension_param_code_direction'),
+        Index('uq_dimension_param_code_direction', 'dimension_id', 'param_code', 'param_direction',
+              unique=True, postgresql_where=text('deleted = false')),
     )
 
     def to_dict(self):
@@ -318,7 +327,8 @@ class ParamMapping(db.Model):
     dimension = relationship('Dimension')
 
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'source', 'source_param', 'dimension_id', name='uq_algorithm_source_to_dimension'),
+        Index('uq_algorithm_source_to_dimension', 'algorithm_type', 'source', 'source_param', 'dimension_id',
+              unique=True, postgresql_where=text('deleted = false')),
     )
 
     def to_dict(self):
@@ -353,7 +363,8 @@ class AlgorithmDimensionRelation(db.Model):
     dimension = relationship('Dimension')
 
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'dimension_id', name='uq_algorithm_dimension'),
+        Index('uq_algorithm_dimension', 'algorithm_type', 'dimension_id',
+              unique=True, postgresql_where=text('deleted = false')),
     )
 
     def to_dict(self):
@@ -397,7 +408,8 @@ class CaseAlgorithmParam(db.Model):
     algorithm = relationship('AlgorithmDefinition')
 
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'param_code', name='uq_case_algorithm_param_code'),
+        Index('uq_case_algorithm_param_code', 'algorithm_type', 'param_code',
+              unique=True, postgresql_where=text('deleted = false')),
     )
 
     def to_dict(self):
