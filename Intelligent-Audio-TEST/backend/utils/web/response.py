@@ -38,7 +38,8 @@ def _normalize_payload_data(value):
         pass
 
     if isinstance(value, BaseModel):
-        return value.model_dump(by_alias=True, exclude_none=True)
+        dumped = value.model_dump(by_alias=True, exclude_none=True)
+        return _normalize_payload_data(dumped)
     if isinstance(value, list):
         return [_normalize_payload_data(v) for v in value]
     if isinstance(value, dict):

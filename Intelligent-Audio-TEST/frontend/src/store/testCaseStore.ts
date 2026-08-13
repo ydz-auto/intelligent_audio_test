@@ -451,18 +451,22 @@ export const useTestCaseStore = defineStore('testCase', () => {
   };
 
   const upsertTestCaseLocal = (testCase: TestCase) => {
-    const index = testCases.value.findIndex(tc => tc.id === testCase.id);
+    // getOne 返回 snake_case 键，列表 API 经 snakeToCamelObject 转为 camelCase 键
+    // 此处统一归一化为 camelCase，避免合并后新旧键共存（algorithmParams vs algorithm_params）
+    const normalized = snakeToCamelObject(testCase) as TestCase;
+    const index = testCases.value.findIndex(tc => tc.id === normalized.id);
     if (index !== -1) {
-      testCases.value[index] = { 
-        ...testCases.value[index], 
-        ...testCase,
-        deleted: testCase.deleted || false
+      testCases.value[index] = {
+        ...testCases.value[index],
+        ...normalized,
+        type: normalized.type || testCases.value[index].type || 'api',
+        deleted: (normalized as any).deleted || false
       };
     } else {
       testCases.value.push({
-        ...testCase,
-        type: testCase.type || 'api',
-        deleted: testCase.deleted || false
+        ...normalized,
+        type: normalized.type || 'api',
+        deleted: (normalized as any).deleted || false
       });
     }
     organizeTestCasesByGroup();
