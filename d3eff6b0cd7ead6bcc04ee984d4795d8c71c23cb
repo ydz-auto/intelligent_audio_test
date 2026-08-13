@@ -1,0 +1,32 @@
+Intelligent-Audio-TEST/.gitignore
+  s_f51d988f3daa37::t_a08faa587681df 2-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "d3eff6b0cd7ead6bcc04ee984d4795d8c71c23cb",
+  "prompts": {},
+  "sessions": {
+    "s_f51d988f3daa37": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a7d2da77414668c4c23875a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a7d2da77414668c4c23875a",
+        "runtime_client": "trae-tob-git-ai",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "tool_use_id": "6a7d64d97414668c4c238af2",
+        "dedupe_key": "6a7d2da77414668c4c23875a:6a7d64d97414668c4c238af2:afterEdit:b839b6a2",
+        "operation_id": "6a7d64d97414668c4c238af2",
+        "source_scene": "agent",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "external_session_id": "6a7d2da77414668c4c23875a"
+      }
+    }
+  }
+}
