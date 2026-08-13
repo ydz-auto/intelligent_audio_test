@@ -535,12 +535,7 @@ function handleCaseSave() {
     saveData.group = newGroupName;
     saveData.createNewGroup = true;
   }
-  if (caseFormRef.value) {
-    const formAlgParams = (caseFormRef.value as any).algorithmParams;
-    if (formAlgParams && Object.keys(formAlgParams).length > 0) {
-      saveData.algorithmParams = formAlgParams;
-    }
-  }
+  // algorithm_params 按轮分组数据已在 caseFormData.value.algorithm_params 中，无需从 caseFormRef 单独提取覆盖
   emit('save', {
     mode: 'case',
     isEdit: isEditMode.value,

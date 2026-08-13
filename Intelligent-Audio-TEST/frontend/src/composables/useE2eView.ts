@@ -407,10 +407,18 @@ export function useE2eView() {
       config: normalized as TestCaseFormData['config'],
       algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
       test_type: testCaseType as 'api' | 'e2e',
-      // 新设计：algorithm_params 独立列（后端返回驼峰 algorithmParams）
-      algorithm_params: Array.isArray((testCase as any).algorithmParams || (testCase as any).algorithm_params)
-        ? ((testCase as any).algorithmParams || (testCase as any).algorithm_params)
-        : [],
+      // 新设计：algorithm_params 独立列（后端返回驼峰 algorithmParams，此处归一化为 snake_case）
+      algorithm_params: (() => {
+        const raw = (testCase as any).algorithmParams || (testCase as any).algorithm_params;
+        if (!Array.isArray(raw)) return [];
+        return raw.map((e: any) => ({
+          round_number: e.round_number ?? e.roundNumber,
+          params: (e.params || []).map((p: any) => ({
+            field_code: p.field_code ?? p.fieldCode,
+            field_value: p.field_value ?? p.fieldValue,
+          })),
+        }));
+      })(),
     } as TestCaseFormData
     
     try {
