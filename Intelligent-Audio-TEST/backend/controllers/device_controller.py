@@ -1,4 +1,4 @@
-﻿from flask import request, current_app
+from flask import request, current_app
 from backend.models.models import Device, DeviceTag, TaskDevice
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
@@ -379,7 +379,7 @@ class DeviceController:
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
         
-        validated_dict = req.model_dump(by_alias=True, exclude_none=True)
+        validated_dict = req.model_dump(by_alias=False, exclude_none=True)
         
         try:
             for key, value in validated_dict.items():
