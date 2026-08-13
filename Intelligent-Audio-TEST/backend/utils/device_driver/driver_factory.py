@@ -15,6 +15,7 @@ try:
     from .harmony_xiaoyichat import Xiaoyilivechat
     from .harmony_xiaoyilivechat import XiaoyilivechatV2
     from .harmony_chatgpt import ChatGptVoiceChat
+    from .harmony_doubaochat import DoubaoChat
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
     _HYPium_AVAILABLE = True
 except ImportError:
@@ -25,6 +26,7 @@ except ImportError:
     Xiaoyilivechat = None
     XiaoyilivechatV2 = None
     ChatGptVoiceChat = None
+    DoubaoChat = None
     HarmonyHardenXiaoyi_Input_MethodDriver = None
     _HYPium_AVAILABLE = False
 
@@ -135,6 +137,13 @@ class DeviceDriverFactory:
                 ['chatgpt', 'chatgptvoice', 'ChatGPT语音'],
                 'HarmonyOS',
                 'ChatGPT语音通话专用驱动'
+            )
+
+            self.register_specialized_driver(
+                DoubaoChat(),
+                ['doubao', '豆包', 'doubaochat', '豆包通话'],
+                'HarmonyOS',
+                '豆包HarmonyOS语音通话专用驱动'
             )
 
             self.register_specialized_driver(
