@@ -1,4 +1,6 @@
 .env
+start_postgres.py
+stop_postgres.py
 *.pyc
 __pycache__/
 *.py[cod]
