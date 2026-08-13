@@ -1,0 +1,14 @@
+Intelligent-Audio-TEST/backend/models/algorithm_models.py
+  h_f411275616c284 17,38-41,120-121,176-177,227-228,275-276,330-331,366-367,411-412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "4dcf9b9292593910c4f726b4fd1a2f712e5593bf",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
