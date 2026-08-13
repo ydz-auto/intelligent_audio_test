@@ -280,8 +280,6 @@ class TaskService:
 
 
 def calculate_in_process(task_type, task_params):
-    """模块级函数，供 ProcessPoolExecutor 调用（可被 pickle 序列化到子进程）"""
-    # 子进程不继承父进程的 logging handler，需重新初始化，否则日志丢失
-    from ..app import setup_logging
-    setup_logging()
+    """模块级函数，供 ThreadPoolExecutor 调用。
+    线程池中运行，直接调用即可，无需子进程日志初始化。"""
     return TaskService.calculate(task_type, task_params)

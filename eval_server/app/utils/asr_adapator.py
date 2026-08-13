@@ -12,6 +12,7 @@ ASR 推理部署在独立的 ASR 主机上（asr_server.py），本机只负责�
     ASR_TIMEOUT       请求超时秒数（默认 120）
 """
 import os
+import json
 import logging
 import time
 from pathlib import Path
@@ -69,7 +70,42 @@ def call_modelscope_asr(wav_path, language=None):
     result = resp.json()
     logger.info(f"远程 ASR 完成 ({elapsed:.2f}s): {result.get('text', '')[:80]}")
 
+    # 落盘：将 ASR 结果保存到 WAV 同目录下的同名 .json 文件
+    json_path = os.path.splitext(wav_path)[0] + '.json'
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    logger.info(f"ASR 结果已保存: {json_path}")
+
     # 包装成 [result]，让 parse_result(raw) 能继续工作（raw[0] 取出 result）
+    return [result]
+
+
+def call_modelscope_asr_word(wav_path, language=None):
+    """
+    调用远程 ASR 服务的 /asr_word 端点（Paraformer 词级时间戳）。
+
+    用于 false_takeover 等需要词级粒度的指标。
+
+    Returns:
+        [result] 形式，result = {"text": "...", "chunks": [{"text": "字", "timestamp": [start_s, end_s]}, ...]}
+    """
+    url = f"{ASR_SERVER_URL}/asr_word"
+    logger.info(f"调用远程 ASR(词级): {url}  wav={wav_path}")
+
+    with open(wav_path, "rb") as f:
+        files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
+        t0 = time.time()
+        resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
+        elapsed = time.time() - t0
+
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"远程 ASR(词级) 返回错误 {resp.status_code}: {resp.text}"
+        )
+
+    result = resp.json()
+    logger.info(f"远程 ASR(词级) 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 字): {result.get('text', '')[:80]}")
+
     return [result]
 
 

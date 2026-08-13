@@ -75,6 +75,20 @@ ASR_SENSEVOICE_MODEL = os.environ.get("ASR_SENSEVOICE_MODEL", "iic/SenseVoiceSma
 ASR_SV_LANGUAGE = os.environ.get("ASR_SV_LANGUAGE", "auto")   # auto|zh|en|ja|ko|...
 ASR_SV_USE_ITN = os.environ.get("ASR_SV_USE_ITN", "true").lower() == "true"
 
+# Paraformer 模型（词级时间戳，false_takeover 用）
+ASR_PARAFORMER_MODEL = os.environ.get(
+    "ASR_PARAFORMER_MODEL",
+    "iic/speech_paraformer-large-vad-punc_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
+)
+ASR_PARAFORMER_VAD_MODEL = os.environ.get(
+    "ASR_PARAFORMER_VAD_MODEL",
+    "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
+)
+ASR_PARAFORMER_PUNC_MODEL = os.environ.get(
+    "ASR_PARAFORMER_PUNC_MODEL",
+    "iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch"
+)
+
 # ─── Silero VAD 参数 ───
 ASR_SILERO_MIN_SILENCE_MS = int(os.environ.get("ASR_SILERO_MIN_SILENCE_MS", "200"))
 ASR_SILERO_THRESHOLD = float(os.environ.get("ASR_SILERO_THRESHOLD", "0.5"))
@@ -90,6 +104,7 @@ logger = logging.getLogger("asr_server")
 # ─────────── 模型懒加载 ───────────
 _silero_model = None    # Silero VAD
 _sv_model = None        # SenseVoice
+_paraformer_model = None  # Paraformer（词级时间戳）
 
 
 def _load_silero_vad():
@@ -107,9 +122,31 @@ def _load_sensevoice():
     if _sv_model is None:
         from funasr import AutoModel
         logger.info(f"加载 SenseVoice 模型: {ASR_SENSEVOICE_MODEL}")
-        _sv_model = AutoModel(model=ASR_SENSEVOICE_MODEL)
+        _sv_model = AutoModel(
+            model=ASR_SENSEVOICE_MODEL,
+            trust_remote_code=False,
+            disable_update=True,
+        )
         logger.info("SenseVoice 模型加载完成")
     return _sv_model
+
+
+def _load_paraformer():
+    """加载 Paraformer-large-vad-punc（词级时间戳，false_takeover 用）"""
+    global _paraformer_model
+    if _paraformer_model is None:
+        from funasr import AutoModel
+        logger.info(f"加载 Paraformer 模型: {ASR_PARAFORMER_MODEL}")
+        kwargs = dict(model=ASR_PARAFORMER_MODEL, model_revision="v2.0.4")
+        if ASR_PARAFORMER_VAD_MODEL:
+            kwargs["vad_model"] = ASR_PARAFORMER_VAD_MODEL
+            kwargs["vad_revision"] = "v2.0.4"
+        if ASR_PARAFORMER_PUNC_MODEL:
+            kwargs["punc_model"] = ASR_PARAFORMER_PUNC_MODEL
+            kwargs["punc_revision"] = "v2.0.4"
+        _paraformer_model = AutoModel(**kwargs)
+        logger.info("Paraformer 模型加载完成")
+    return _paraformer_model
 
 
 # ─────────── 音频加载 ───────────
@@ -198,6 +235,34 @@ def call_modelscope_asr(wav_path):
     return _transcribe(wav_path)
 
 
+def call_modelscope_asr_word(wav_path):
+    """Paraformer 词级转写：返回 {text, chunks}（chunks 为单字级时间戳）"""
+    model = _load_paraformer()
+    res = model.generate(input=wav_path, batch_size_s=300)
+    if not res:
+        raise RuntimeError(f"Paraformer ASR 返回空结果: {wav_path}")
+
+    item = res[0]
+    text = item.get("text", "")
+    timestamp = item.get("timestamp") or []
+
+    chunks = []
+    text_chars = list(text)
+    n = min(len(text_chars), len(timestamp))
+    for i in range(n):
+        char = text_chars[i]
+        if char.strip() == "":
+            continue
+        start_ms, end_ms = timestamp[i][0], timestamp[i][1]
+        chunks.append({
+            "text": char,
+            "timestamp": [round(start_ms / 1000.0, 3), round(end_ms / 1000.0, 3)],
+        })
+
+    logger.info(f"Paraformer 转写完成: {len(chunks)} 字 -> {text[:80]}")
+    return {"text": text, "chunks": chunks}
+
+
 def parse_result(raw_res):
     """兼容旧调用：raw_res 为 [result] 或 result，透传 {text, chunks}"""
     item = raw_res[0] if isinstance(raw_res, list) else raw_res
@@ -216,15 +281,16 @@ def health():
     """健康检查。"""
     return {
         "status": "ok",
-        "engine": "sensevoice+silero",
+        "engine": "sensevoice+silero + paraformer",
         "vad_loaded": _silero_model is not None,
         "asr_loaded": _sv_model is not None,
+        "paraformer_loaded": _paraformer_model is not None,
     }
 
 
 @app.post("/asr")
 async def asr(file: UploadFile = File(...)):
-    """接收上传的 wav 文件，返回 {text, chunks}。"""
+    """接收上传的 wav 文件，返回 {text, chunks}（段级，SenseVoice+Silero）。"""
     if not file.filename.lower().endswith(".wav"):
         raise HTTPException(400, "只支持 wav 文件")
 
@@ -251,6 +317,35 @@ async def asr(file: UploadFile = File(...)):
             pass
 
 
+@app.post("/asr_word")
+async def asr_word(file: UploadFile = File(...)):
+    """接收上传的 wav 文件，返回 {text, chunks}（词级，Paraformer）。"""
+    if not file.filename.lower().endswith(".wav"):
+        raise HTTPException(400, "只支持 wav 文件")
+
+    suffix = os.path.splitext(file.filename)[1]
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        t0 = time.time()
+        logger.info(f"收到 ASR(词级) 请求: {file.filename} ({len(content)} bytes)")
+        result = call_modelscope_asr_word(tmp_path)
+        elapsed = time.time() - t0
+        logger.info(f"ASR(词级) 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 字): {result.get('text', '')[:80]}")
+        return JSONResponse(result)
+    except Exception as e:
+        logger.exception(f"ASR(词级) 失败: {e}")
+        raise HTTPException(500, f"ASR 失败: {e}")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
 @app.post("/asr_file")
 def asr_file(wav_path: str):
     """本机调用：传 wav 文件绝对路径，返回 ASR 结果。"""
@@ -267,22 +362,28 @@ def asr_file(wav_path: str):
 def root():
     return {
         "service": "ASR Service",
-        "engine": "sensevoice+silero",
+        "engine": "sensevoice+silero + paraformer",
         "sensevoice_model": ASR_SENSEVOICE_MODEL,
+        "paraformer_model": ASR_PARAFORMER_MODEL,
         "endpoints": {
             "health": "GET /health",
-            "asr": "POST /asr (上传 wav 文件)",
+            "asr": "POST /asr (段级, SenseVoice+Silero)",
+            "asr_word": "POST /asr_word (词级, Paraformer)",
             "asr_file": "POST /asr_file?wav_path=<本地路径>",
         },
     }
 
 
+
+
 # ─────────── 启动 ───────────
 if __name__ == "__main__":
-    logger.info(f"启动 ASR 服务: http://{HOST}:{PORT}  engine=sensevoice+silero")
+    logger.info(f"启动 ASR 服务: http://{HOST}:{PORT}  engine=sensevoice+silero + paraformer")
     logger.info(f"模型: Silero VAD + SenseVoice={ASR_SENSEVOICE_MODEL}")
-    logger.info("预加载模型，首次会从 ModelScope 下载 SenseVoice（~900MB）...")
+    logger.info(f"模型: Paraformer={ASR_PARAFORMER_MODEL}")
+    logger.info("预加载模型，首次会从 ModelScope 下载（SenseVoice ~900MB, Paraformer ~3GB）...")
     _load_silero_vad()
     _load_sensevoice()
+    _load_paraformer()
 
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")

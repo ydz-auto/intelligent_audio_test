@@ -1,88 +1,119 @@
 # -*- coding: utf-8 -*-
 """
 tor.py
-TOR（Take-Off Rate）计算：判断模型是否在打断后"接话"
+TOR（Take-Off Rate）计算：用户结束说话后模型是否正确开始回复
 
-参考: Full-Duplex-Bench/v1_v1.5/evaluation/eval_pause_handling.py
+方案（与 takeover_latency 对齐，使用双路 ASR）：
+    分别对 user_wav 和 ai_wav 调用 ASR 服务，获取字词级时间戳。
+    两路 wav 共享同一时间轴（0 点为录音起点）。
 
-输入: ASR chunks + pause 区间（由 xiaoyi_metrics/__init__.py 统一调 ASR 后传入）
+    1. 取 user_wav 最后一词的结束时间 user_last_end
+    2. 在 ai_wav 中找 user_last_end 之后的模型回复 chunks
+    3. 判定：命中词时长 ≥ 1 秒 或 词数 > 3 → tor=1（模型正确回复）
+       否则 → tor=0（模型未正确回复）
+
+    注意：tor=1 表示模型正常回复，不是抢话。
+
+输入: user_chunks + ai_chunks（由 xiaoyi_metrics/__init__.py 统一调 ASR 后传入）
 """
 import logging
 
 logger = logging.getLogger(__name__)
 
 # ─────────── 阈值 ───────────
-TURN_DURATION_THRESHOLD = 1  # 秒
+TURN_DURATION_THRESHOLD = 1   # 秒
 TURN_NUM_WORDS_THRESHOLD = 3
 
 
-def compute_tor(chunks):
-    """根据 chunks 时间戳计算 TOR（0=没接话，1=接话）"""
-    if len(chunks) == 0:
-        return 0
-    last_end = chunks[-1]["timestamp"][-1]
-    first_start = chunks[0]["timestamp"][0]
-    if last_end is None:
-        last_end = chunks[-1]["timestamp"][0]
-    duration = last_end - first_start
-    if duration < TURN_DURATION_THRESHOLD:
-        if len(chunks) <= TURN_NUM_WORDS_THRESHOLD:
-            return 0
-        else:
-            return 1
-    else:
-        return 1
-
-
-# ─────────── 基于 pause 区间的 TOR ───────────
-def _intervals_overlap(a, b):
-    """判断两个 [start, end] 区间是否相交（边界相等不算）"""
-    return a[0] < b[1] and b[0] < a[1]
-
-
-def compute_tor_during_pauses(chunks, pause_intervals):
-    """计算每个 pause 区间内模型是否错误接管（开口）
+def compute_tor(user_chunks, ai_chunks,
+                duration_threshold=TURN_DURATION_THRESHOLD,
+                num_words_threshold=TURN_NUM_WORDS_THRESHOLD):
+    """计算用户结束说话后模型是否正确开始回复
 
     Args:
-        chunks (list): ASR chunks，每项含 {"text", "timestamp": [start, end]}
-        pause_intervals (list): pause 区间列表，每项 {"text", "timestamp": [start, end]}
+        user_chunks (list): user_wav ASR chunks，每项含 {"text", "timestamp": [start, end]}
+        ai_chunks (list): ai_wav ASR chunks
+        duration_threshold (float): 时长阈值，默认 1 秒
+        num_words_threshold (int): 词数阈值，默认 3（严格大于）
 
     Returns:
         dict: {
-            'per_pause': [0|1, ...],   每个 pause 区间的接管标记
-            'takeover_count': int,     错误接管的 pause 数
-            'total_pauses': int,       pause 区间总数
-            'tor': float,              错误接管率 = takeover_count / total_pauses
+            'tor': int,                  0 或 1（1=模型正确回复，0=未正确回复）
+            'n_words': int,              命中词总数
+            'duration': float,           命中词总跨度（max_end - min_start）
+            'hit_words': list,           命中词列表
+            'user_last_word_end_s': float,  user 最后一词结束时间（秒）
+            'message': str,
         }
     """
-    total = len(pause_intervals)
-    if total == 0:
-        return {'per_pause': [], 'takeover_count': 0, 'total_pauses': 0, 'tor': 0.0}
-
-    per_pause = []
-    takeover_count = 0
-    for p in pause_intervals:
-        p_iv = p.get('timestamp', [0, 0])
-        if p_iv[0] is None or p_iv[1] is None:
-            per_pause.append(0)
-            continue
-        # 检查是否有 chunk 与该 pause 区间重叠
-        takeover = 0
-        for c in chunks:
-            c_iv = c.get('timestamp', [0, 0])
-            if c_iv[0] is None or c_iv[1] is None:
-                continue
-            if _intervals_overlap(c_iv, p_iv):
-                takeover = 1
-                break
-        per_pause.append(takeover)
-        if takeover:
-            takeover_count += 1
-
-    tor = takeover_count / total if total > 0 else 0.0
-    return {
-        'per_pause': per_pause,
-        'takeover_count': takeover_count,
-        'total_pauses': total,
-        'tor': tor,
+    result = {
+        'tor': 0,
+        'n_words': 0,
+        'duration': 0.0,
+        'hit_words': [],
+        'user_last_word_end_s': None,
+        'message': '',
     }
+
+    if not user_chunks:
+        result['message'] = 'user_chunks 为空，无法计算 TOR'
+        logger.warning(result['message'])
+        return result
+
+    if not ai_chunks:
+        result['message'] = 'ai_chunks 为空，无法计算 TOR'
+        logger.warning(result['message'])
+        return result
+
+    # 1. 取 user 最后一词结束时间
+    user_last_chunk = user_chunks[-1]
+    user_last_end_s = user_last_chunk['timestamp'][-1]
+    if user_last_end_s is None:
+        user_last_end_s = 0.0
+    result['user_last_word_end_s'] = user_last_end_s
+
+    logger.info(
+        f"[TOR] user_chunks: {len(user_chunks)} chunks, "
+        f"最后一词='{user_last_chunk.get('text', '')}', "
+        f"end={user_last_end_s:.3f}s"
+    )
+
+    # 2. 过滤：只保留 user 最后一词结束之后的 AI chunks（跳过开场白等）
+    hit_words = [
+        {'text': c.get('text', ''), 'timestamp': c['timestamp']}
+        for c in ai_chunks
+        if c.get('timestamp') is not None
+        and c['timestamp'][0] is not None
+        and c['timestamp'][0] >= user_last_end_s
+    ]
+
+    # 3. 统一计算命中词的 duration 和 n_words
+    n_words = len(hit_words)
+    if n_words == 0:
+        duration = 0.0
+    else:
+        starts = [w['timestamp'][0] for w in hit_words if w['timestamp'][0] is not None]
+        ends = [w['timestamp'][1] for w in hit_words if w['timestamp'][1] is not None]
+        duration = (max(ends) - min(starts)) if starts and ends else 0.0
+
+    result['n_words'] = n_words
+    result['duration'] = round(duration, 3)
+    result['hit_words'] = hit_words
+
+    logger.info(
+        f"[TOR] ai_chunks: {len(ai_chunks)} total, "
+        f"hit_words={n_words}, duration={duration:.3f}s"
+    )
+
+    # 4. 判定：时长 ≥ 1s 或 词数 > 3 → tor=1（模型正确回复）
+    took_over = (duration >= duration_threshold) or (n_words > num_words_threshold)
+    result['tor'] = 1 if took_over else 0
+    result['message'] = 'OK'
+
+    logger.info(
+        f"[TOR] tor={result['tor']} "
+        f"(n_words={n_words}, duration={duration:.3f}s, "
+        f"user_last_end={user_last_end_s:.3f}s)"
+    )
+
+    return result

@@ -5,7 +5,10 @@ xiaoyi_false_takeover.py
 
 判定规则（参考 Full-Duplex-Bench/v1_v1.5/evaluation/eval_pause_handling.py）：
     将所有 pause 区间内命中的模型词拼到一起，统一计算：
-        duration = 所有命中词的最后一个 end - 第一个 start
+        每个命中词的时间戳裁剪到 pause 区间内（只算重叠部分）：
+            clip_start = max(word_start, pause_start)
+            clip_end   = min(word_end,   pause_end)
+        duration = 所有裁剪后命中词的最后一个 end - 第一个 start
         n_words  = 所有命中词数
     若 duration ≥ 1 秒 或 n_words > 3 → TOR=1（抢话）
     否则                                → TOR=0（未抢话）
@@ -63,11 +66,16 @@ def compute_false_takeover(chunks, pause_intervals,
 
     for p in pause_intervals:
         p_iv = p.get('timestamp') or [p.get('start'), p.get('end')]
-        hit_words = [
-            {'text': c.get('text', ''), 'timestamp': c['timestamp']}
-            for c in chunks
-            if c.get('timestamp') is not None and _intervals_overlap(c['timestamp'], p_iv)
-        ]
+        hit_words = []
+        for c in chunks:
+            if c.get('timestamp') is not None and _intervals_overlap(c['timestamp'], p_iv):
+                # 裁剪到 pause 区间内，只算重叠部分的时长
+                clip_start = max(c['timestamp'][0], p_iv[0])
+                clip_end = min(c['timestamp'][1], p_iv[1])
+                hit_words.append({
+                    'text': c.get('text', ''),
+                    'timestamp': [clip_start, clip_end],
+                })
         details.append({
             'pause_interval': p_iv,
             'hit_n_words': len(hit_words),

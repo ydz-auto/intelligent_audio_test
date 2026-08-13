@@ -4,20 +4,81 @@ xiaoyi_metrics 包
 小艺评估指标统一入口：调一次 ASR，三个维度共享结果
 
 维度:
-    - tor (接话率)          : TOR.compute_tor_during_pauses
+    - tor (正确回复率)       : tor.compute_tor
     - false_takeover (误接管率) : false_takeover.compute_false_takeover
     - takeover_latency (接管时延) : takeover_latency.compute_takeover_latency_from_raw
 """
+import os
 import logging
 from datetime import datetime, timezone, timedelta
 
-from .tor import compute_tor_during_pauses
+from .tor import compute_tor
 from .false_takeover import compute_false_takeover
 from .takeover_latency import compute_takeover_latency_from_raw
 from .input_asr import compute_input_asr_match
 from .interruption import compute_interruption_metrics
 
 logger = logging.getLogger(__name__)
+
+
+def _get_asr_chunks(wav_path):
+    """调用远程 ASR 服务获取字词时间戳（user_wav / ai_wav 共用）
+
+    Args:
+        wav_path: 本地 wav 文件路径
+
+    Returns:
+        list: chunks 列表 [{text, timestamp:[start_s, end_s]}, ...]
+        None: ASR 失败或 chunks 为空
+    """
+    if not wav_path or not os.path.isfile(wav_path):
+        logger.error(f"wav 文件不存在: {wav_path}")
+        return None
+
+    from app.utils.asr_adapator import call_modelscope_asr, parse_result
+
+    try:
+        raw = call_modelscope_asr(wav_path)
+        asr_result = parse_result(raw)
+        chunks = asr_result.get('chunks', [])
+        if not chunks:
+            logger.warning(f"ASR chunks 为空: {wav_path}")
+            return None
+        return chunks
+    except Exception as e:
+        logger.error(f"ASR 调用失败 {wav_path}: {e}")
+        return None
+
+
+def _get_asr_word_chunks(wav_path):
+    """调用远程 ASR 服务的 /asr_word 端点（Paraformer 词级时间戳）
+
+    用于 false_takeover 等需要词级粒度的指标。
+
+    Args:
+        wav_path: 本地 wav 文件路径
+
+    Returns:
+        list: chunks 列表 [{text, timestamp:[start_s, end_s]}, ...]
+        None: ASR 失败或 chunks 为空
+    """
+    if not wav_path or not os.path.isfile(wav_path):
+        logger.error(f"wav 文件不存在: {wav_path}")
+        return None
+
+    from app.utils.asr_adapator import call_modelscope_asr_word, parse_result
+
+    try:
+        raw = call_modelscope_asr_word(wav_path)
+        asr_result = parse_result(raw)
+        chunks = asr_result.get('chunks', [])
+        if not chunks:
+            logger.warning(f"ASR(词级) chunks 为空: {wav_path}")
+            return None
+        return chunks
+    except Exception as e:
+        logger.error(f"ASR(词级) 调用失败 {wav_path}: {e}")
+        return None
 
 _CST = timezone(timedelta(hours=8))
 
@@ -30,15 +91,11 @@ def _ms_to_utc(ms):
 
 
 def _format_takeover_latency(r):
-    """格式化 takeover_latency 结果用于日志打印：时间戳加 UTC，时延/补偿用秒"""
+    """格式化 takeover_latency 结果用于日志打印"""
     return (
-        f"{{takeover_latency_ms={r.get('takeover_latency_ms')}({(r.get('takeover_latency_ms') or 0) / 1000:.3f}s) "
-        f"first_frame_ms={r.get('first_frame_ms')}({_ms_to_utc(r.get('first_frame_ms'))}) "
-        f"first_word_begin_ms={r.get('first_word_begin_ms')} "
-        f"model_first_word_ms={r.get('model_first_word_ms')}({_ms_to_utc(r.get('model_first_word_ms'))}) "
-        f"end_ms={r.get('end_ms')}({_ms_to_utc(r.get('end_ms'))}) "
-        f"offset_ms={r.get('offset_ms')}({(r.get('offset_ms') or 0) / 1000:.3f}s) "
-        f"audio_end_with_offset_ms={r.get('audio_end_with_offset_ms')}({_ms_to_utc(r.get('audio_end_with_offset_ms'))}) "
+        f"{{takeover_latency_ms={r.get('takeover_latency_ms')} "
+        f"user_last_word_end_ms={r.get('user_last_word_end_ms')} "
+        f"ai_first_word_start_ms={r.get('ai_first_word_start_ms')} "
         f"message={r.get('message')}}}"
     )
 
@@ -134,14 +191,15 @@ def calculate_xiaoyi_metrics(task_params):
     )
 
     wav_path = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path')
-    if not wav_path:
-        raise ValueError("xiaoyi_metrics: 缺少 record_file")
-
-    # 1. 调一次 ASR，三个维度共享（不写文件，通过返回值传递）
-    raw = call_modelscope_asr(wav_path)
-    asr_hyp = parse_result(raw)
-    chunks = asr_hyp.get("chunks", [])
-    logger.info(f"ASR 完成，chunks={len(chunks)}，开始计算三个维度")
+    if wav_path:
+        # 1. 调一次 ASR，三个维度共享（不写文件，通过返回值传递）
+        raw = call_modelscope_asr(wav_path)
+        asr_hyp = parse_result(raw)
+        chunks = asr_hyp.get("chunks", [])
+        logger.info(f"ASR 完成，chunks={len(chunks)}，开始计算三个维度")
+    else:
+        asr_hyp = {'text': '', 'chunks': []}
+        logger.info("record_file 为空，跳过主录音 ASR，takeover_latency 将无法计算")
 
     # 2. pause 数据
     pause_intervals = task_params.get('pause', [])
@@ -151,15 +209,7 @@ def calculate_xiaoyi_metrics(task_params):
     # 3. 三个维度共享 asr_hyp
     results = {}
 
-    # tor
-    results['tor'] = compute_tor_during_pauses(chunks, pause_intervals)
-    logger.info(f"[tor] {results['tor']}")
-
-    # false_takeover
-    results['false_takeover'] = compute_false_takeover(chunks, pause_intervals)
-    logger.info(f"[false_takeover] {results['false_takeover']}")
-
-    # takeover_latency: start_ms / input_lastword 可能在 rounds[0] 中
+    # tor / takeover_latency 共用：user_wav + ai_wav 双路 ASR，各调一次
     rounds = task_params.get('rounds', [])
     round0 = rounds[0] if rounds else {}
     input_words = (
@@ -169,15 +219,32 @@ def calculate_xiaoyi_metrics(task_params):
         or round0.get('input_lastword')
         or []
     )
+    user_wav = task_params.get('user_wav') or round0.get('user_wav')
+    ai_wav = task_params.get('ai_wav') or round0.get('ai_wav')
     start_ms = task_params.get('start_ms') or round0.get('start_ms')
     offset_ms = task_params.get('offset_ms') or round0.get('offset_ms') or 40
 
+    user_chunks = _get_asr_chunks(user_wav) if user_wav else None
+    ai_chunks = _get_asr_chunks(ai_wav) if ai_wav else None
+
+    # tor: 用户结束说话后模型是否正确开始回复
+    results['tor'] = compute_tor(user_chunks=user_chunks or [], ai_chunks=ai_chunks or [])
+    logger.info(f"[tor] {results['tor']}")
+
+    # false_takeover: 用 ai_wav + Paraformer 词级 ASR，时间戳裁剪到 pause 区间
+    ai_word_chunks = _get_asr_word_chunks(ai_wav) if ai_wav else []
+    results['false_takeover'] = compute_false_takeover(ai_word_chunks or [], pause_intervals)
+    logger.info(f"[false_takeover] {results['false_takeover']}")
+
+    # takeover_latency: 优先使用双路 ASR chunks，回退到旧逻辑
     results['takeover_latency'] = compute_takeover_latency_from_raw(
         first_frame_ms=task_params.get('first_frame_ms'),
         asr_hyp=asr_hyp,
         start_ms=start_ms,
         input_words=input_words,
         offset_ms=offset_ms,
+        user_chunks=user_chunks,
+        ai_chunks=ai_chunks,
     )
     logger.info(f"[takeover_latency] {_format_takeover_latency(results['takeover_latency'])}")
 

@@ -17,7 +17,7 @@ import json
 import os
 import threading
 import logging
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from flask import Blueprint, request, url_for
 from werkzeug.utils import secure_filename
 from ..models.task import TaskModel
@@ -32,7 +32,7 @@ from ..utils.responses import (
 from datetime import datetime
 from ..config import config  # 配置信息
 from ..services.wer_calculator import calculate_wer, calculate_ser, calculate_cpwer, calculate_tcpwer, calculate_stm_wer  # WER/SER 计算函数
-from ..services.task_service import calculate_in_process  # 进程池计算包装函数
+from ..services.task_service import calculate_in_process  # 线程池计算包装函数
 from ..utils.concurrency import ConcurrencyManager  # 并发管理器
 
 logger = logging.getLogger('api')
@@ -101,19 +101,21 @@ class LocalConcurrencyManager:
 # 文本文件扩展名（读取内容为字符串）
 TEXT_FILE_EXTENSIONS = {'.txt', '.stm', '.rttm', '.json', '.csv', '.srt', '.vtt', '.xml', '.tsv'}
 
-# 进程池（避免 GIL 争抢，CPU 密集型计算在子进程执行）
+# 线程池（任务以 I/O 密集型为主：ASR HTTP 调用、LLM API 调用、文本比较）
+# 使用 ThreadPoolExecutor 替代 ProcessPoolExecutor，避免子进程崩溃导致 BrokenProcessPool
 _calc_pool = None
+_pool_lock = threading.Lock()
 _pool_logger = logging.getLogger('api')
 
 
 def _get_calc_pool():
-    """懒加载进程池，避免子进程导入时递归创建"""
+    """懒加载线程池"""
     global _calc_pool
-    if _calc_pool is None:
-        import multiprocessing as mp
-        max_workers = min(config.LOCAL_MAX_CONCURRENCY, mp.cpu_count() or 4)
-        _calc_pool = ProcessPoolExecutor(max_workers=max_workers)
-        _pool_logger.info(f"进程池已创建，max_workers={max_workers}")
+    with _pool_lock:
+        if _calc_pool is None:
+            max_workers = config.LOCAL_MAX_CONCURRENCY
+            _calc_pool = ThreadPoolExecutor(max_workers=max_workers)
+            _pool_logger.info(f"线程池已创建，max_workers={max_workers}")
     return _calc_pool
 
 
@@ -148,9 +150,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             missing = [f for f in required_fields if not task_params.get(f)]
             if missing:
                 return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
-    elif task_type == 'xiaoyi_metrics':
-        if not task_params.get('record_file'):
-            return error_response("Missing required field for xiaoyi_metrics: record_file", code=CODE_VALIDATION_ERROR)
+    # xiaoyi_metrics: record_file 可为空，无录音时跳过 ASR 相关指标
     elif task_type == 'interruption_metrics':
         if not task_params.get('user_asr') and not task_params.get('user_chunks'):
             return error_response("Missing required field for interruption_metrics: user_asr (用户提问/打断 ASR)", code=CODE_VALIDATION_ERROR)
@@ -210,24 +210,14 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             try:
                 pool = _get_calc_pool()
                 future = pool.submit(calculate_in_process, task_type, task_params)
-                result = future.result()  # 阻塞等待子进程完成，但释放 GIL，不阻塞 HTTP 处理线程
+                result = future.result()  # 阻塞等待线程完成，但释放 GIL，不阻塞 HTTP 处理线程
                 if task_type == 'xiaoyi_metrics' and isinstance(result, dict):
                     tl = result.get('takeover_latency')
                     if tl:
-                        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
-                        _cst = _tz(_td(hours=8))
-                        def _ms2utc(ms):
-                            if ms is None:
-                                return 'N/A'
-                            return _dt.fromtimestamp(ms / 1000, tz=_cst).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
                         logger.info(
-                            f"[takeover_latency] takeover_latency_ms={tl.get('takeover_latency_ms')}({(tl.get('takeover_latency_ms') or 0) / 1000:.3f}s) "
-                            f"first_frame_ms={tl.get('first_frame_ms')}({_ms2utc(tl.get('first_frame_ms'))}) "
-                            f"first_word_begin_ms={tl.get('first_word_begin_ms')} "
-                            f"model_first_word_ms={tl.get('model_first_word_ms')}({_ms2utc(tl.get('model_first_word_ms'))}) "
-                            f"end_ms={tl.get('end_ms')}({_ms2utc(tl.get('end_ms'))}) "
-                            f"offset_ms={tl.get('offset_ms')}({(tl.get('offset_ms') or 0) / 1000:.3f}s) "
-                            f"audio_end_with_offset_ms={tl.get('audio_end_with_offset_ms')}({_ms2utc(tl.get('audio_end_with_offset_ms'))}) "
+                            f"[takeover_latency] takeover_latency_ms={tl.get('takeover_latency_ms')} "
+                            f"user_last_word_end_ms={tl.get('user_last_word_end_ms')} "
+                            f"ai_first_word_start_ms={tl.get('ai_first_word_start_ms')} "
                             f"message={tl.get('message')}"
                         )
                 TaskModel.update_task_status(
@@ -244,10 +234,14 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                     completed_at=datetime.now().isoformat(),
                     error_msg=str(e)
                 )
+
+        def _run_with_decrement(*args, **kwargs):
+            try:
+                process_local_task(*args, **kwargs)
             finally:
                 LocalConcurrencyManager.decrement()
 
-        thread = threading.Thread(target=process_local_task, args=(eval_task_id, task_type, task_params))
+        thread = threading.Thread(target=_run_with_decrement, args=(eval_task_id, task_type, task_params))
         thread.daemon = True
         thread.start()
 

@@ -12,12 +12,18 @@ as image_url content (OpenAI multimodal format).
 import json
 import re
 import os
+import time
 import base64
+import logging
 import httpx
 import requests
 from typing import Optional
 
 LLM_DEFAULT_TIMEOUT = 120
+LLM_MAX_RETRIES = 3
+LLM_RETRY_BASE_DELAY = 2  # 秒，指数退避起始值
+
+logger = logging.getLogger(__name__)
 
 # 音频文件扩展名集合
 _AUDIO_EXTS = {'.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac', '.pcm', '.opus', '.amr', '.wma'}
@@ -268,15 +274,56 @@ def _call_llm_api(model, prompt, max_tokens, temperature, audio_paths=None):
         'response_format': {'type': 'json_object'},
     }
 
-    with httpx.Client(trust_env=False, timeout=timeout) as client:
-        response = client.post(
-            f'{api_base.rstrip("/")}/chat/completions',
-            headers=headers,
-            json=payload,
-        )
+    url = f'{api_base.rstrip("/")}/chat/completions'
+    max_retries = llm_config.get('max_retries', LLM_MAX_RETRIES)
 
-    response.raise_for_status()
-    data = response.json()
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            with httpx.Client(trust_env=False, timeout=timeout) as client:
+                response = client.post(url, headers=headers, json=payload)
+
+            response.raise_for_status()
+            data = response.json()
+            break  # 成功则退出重试循环
+        except httpx.HTTPStatusError as e:
+            last_exc = e
+            status_code = e.response.status_code
+            # 仅对 429 和 5xx 重试
+            if status_code != 429 and not (500 <= status_code < 600):
+                raise
+            if attempt >= max_retries:
+                logger.error(f'LLM API 返回 {status_code}，已达最大重试次数 {max_retries}')
+                raise
+
+            # 优先使用 Retry-After 头
+            retry_after = e.response.headers.get('Retry-After')
+            if retry_after:
+                try:
+                    delay = float(retry_after)
+                except ValueError:
+                    delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+            else:
+                delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+
+            logger.warning(
+                f'LLM API 返回 {status_code}，{delay:.1f}s 后重试 '
+                f'(attempt {attempt + 1}/{max_retries})'
+            )
+            time.sleep(delay)
+        except httpx.RequestError as e:
+            last_exc = e
+            if attempt >= max_retries:
+                logger.error(f'LLM API 请求失败，已达最大重试次数 {max_retries}')
+                raise
+            delay = LLM_RETRY_BASE_DELAY * (2 ** attempt)
+            logger.warning(
+                f'LLM API 请求异常: {e}，{delay:.1f}s 后重试 '
+                f'(attempt {attempt + 1}/{max_retries})'
+            )
+            time.sleep(delay)
+    else:
+        raise last_exc
 
     return {
         'content': data['choices'][0]['message']['content'],
