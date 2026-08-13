@@ -1,0 +1,50 @@
+Intelligent-Audio-TEST/backend/services/execution/e2e_device_manager.py
+  s_f51d988f3daa37::t_b62a2da1366103 80-83
+Intelligent-Audio-TEST/backend/services/execution/e2e_executor.py
+  s_f51d988f3daa37::t_212c50db25c29d 235
+  s_f51d988f3daa37::t_d3cd3aff0e7e64 271-273
+  s_f51d988f3daa37::t_23e36c5f996266 298-299
+  s_f51d988f3daa37::t_e0c0a3900c14d2 341-342,347,349
+  s_f51d988f3daa37::t_5305e8ddd20150 176-177,179-183
+  s_f51d988f3daa37::t_5fb3c50b97b559 243-245
+  s_f51d988f3daa37::t_1dbc7c8202bf36 240
+  s_f51d988f3daa37::t_5e9049f346fa97 325-326
+Intelligent-Audio-TEST/backend/services/execution/e2e_collector.py
+  s_f51d988f3daa37::t_63dc7ccad4a29c 19-22
+Intelligent-Audio-TEST/backend/services/execution/base_executor.py
+  s_f51d988f3daa37::t_e3fcb14d572529 520-526,536-540
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "c9c0b6ca95eca17dec7eceba36d911d90c6322e6",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_f51d988f3daa37": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a7d2da77414668c4c23875a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a7d2da77414668c4c23875a:6a7d60317414668c4c238a8b:afterEdit:3845e323",
+        "tool_id": "icube:streaming",
+        "tool_type": "builtin",
+        "external_session_id": "6a7d2da77414668c4c23875a",
+        "client_type": "ide",
+        "tool_use_id": "6a7d60317414668c4c238a8b",
+        "runtime_client": "trae-tob-git-ai",
+        "edit_kind": "file_edit",
+        "session_id": "6a7d2da77414668c4c23875a",
+        "source_scene": "agent",
+        "operation_id": "6a7d60317414668c4c238a8b"
+      }
+    }
+  }
+}
