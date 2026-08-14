@@ -1,0 +1,20 @@
+Intelligent-Audio-TEST/backend/services/execution/reevaluation_executor.py
+  h_f411275616c284 426-430,481-485,561,563-567
+Intelligent-Audio-TEST/backend/controllers/audio_controller.py
+  h_f411275616c284 125,128-136,1271
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_service.py
+  h_f411275616c284 172-173,176-177,236-241,255-262,268-269
+Intelligent-Audio-TEST/backend/utils/common/result_data_store.py
+  h_f411275616c284 22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "8c60eb30466d30cf8650a142fa1f992cb77dc494",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
