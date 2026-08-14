@@ -1,0 +1,39 @@
+Intelligent-Audio-TEST/frontend/src/components/algorithm/AlgorithmConfigModal.vue
+  s_618063247beb94::t_d74a5b23a994de 1021,1200
+  s_618063247beb94::t_a3f2e6b20e0458 935-952
+  s_618063247beb94::t_dbe1ab202b2877 953-955
+Intelligent-Audio-TEST/frontend/src/components/algorithm/MappingEditor.vue
+  s_618063247beb94::t_3bfe290a65ce67 262-269
+  s_618063247beb94::t_e380f9c76e083c 211-212,214-218,220-223
+  s_618063247beb94::t_acca775ebe4e53 79,86
+  s_618063247beb94::t_4311b0adbe8d2f 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "7d766e85e75ac5f2faac81b69aa3f0c7971183d9",
+  "prompts": {},
+  "sessions": {
+    "s_618063247beb94": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a7c1069ea2e91b7c89a3c61",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "operation_id": "6a7d8a5d7414668c4c239ed0",
+        "session_id": "6a7c1069ea2e91b7c89a3c61",
+        "source_scene": "agent",
+        "edit_kind": "file_edit",
+        "tool_type": "builtin",
+        "client_type": "ide",
+        "tool_use_id": "6a7d8a5d7414668c4c239ed0",
+        "dedupe_key": "6a7c1069ea2e91b7c89a3c61:6a7d8a5d7414668c4c239ed0:afterEdit:a06b7584",
+        "runtime_client": "trae-tob-git-ai",
+        "external_session_id": "6a7c1069ea2e91b7c89a3c61",
+        "tool_id": "icube:applyChatSnapshotPatch"
+      }
+    }
+  }
+}
