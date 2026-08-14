@@ -187,6 +187,7 @@ class AlgorithmRepository(AlgorithmAclRepository):
         """更新参数属性（gRPC 自动提交）。
 
         param 为 dict（来自先前 gRPC 查询），取 param['id'] 定位记录。
+        仅用于设备参数和 API 参数（UpdateParam RPC）。
         """
         param_id = param.get("id") if isinstance(param, dict) else getattr(param, "id", None)
         if param_id is None:
@@ -197,12 +198,56 @@ class AlgorithmRepository(AlgorithmAclRepository):
         ))
         _raise_on_failure(resp)
 
+    def update_case_param_attrs(self, param, fields: Dict[str, Any]) -> None:
+        """更新用例专属参数属性（gRPC 自动提交）。
+
+        使用 UpdateCaseParam RPC，目标表为 CaseAlgorithmParamPO。
+        """
+        param_id = param.get("id") if isinstance(param, dict) else getattr(param, "id", None)
+        if param_id is None:
+            raise RuntimeError("update_case_param_attrs: param 缺少 id 字段")
+        resp = _get_stub().UpdateCaseParam(_pb.UpdateCaseParamRequest(
+            param_id=int(param_id),
+            data=json.dumps(fields or {}, ensure_ascii=False, default=str),
+        ))
+        _raise_on_failure(resp)
+
+    def update_reference_param_attrs(self, param, fields: Dict[str, Any]) -> None:
+        """更新参考参数属性（gRPC 自动提交）。
+
+        使用 UpdateReferenceParam RPC，目标表为 AlgorithmReferenceParamPO。
+        """
+        param_id = param.get("id") if isinstance(param, dict) else getattr(param, "id", None)
+        if param_id is None:
+            raise RuntimeError("update_reference_param_attrs: param 缺少 id 字段")
+        resp = _get_stub().UpdateReferenceParam(_pb.UpdateReferenceParamRequest(
+            param_id=int(param_id),
+            data=json.dumps(fields or {}, ensure_ascii=False, default=str),
+        ))
+        _raise_on_failure(resp)
+
     def soft_delete_param(self, param) -> None:
-        """软删除参数（gRPC 自动提交）。"""
+        """软删除设备/API 参数（gRPC 自动提交）。"""
         param_id = param.get("id") if isinstance(param, dict) else getattr(param, "id", None)
         if param_id is None:
             raise RuntimeError("soft_delete_param: param 缺少 id 字段")
         resp = _get_stub().DeleteParam(_pb.DeleteParamRequest(param_id=int(param_id)))
+        _raise_on_failure(resp)
+
+    def soft_delete_case_param(self, param) -> None:
+        """软删除用例专属参数（gRPC 自动提交）。"""
+        param_id = param.get("id") if isinstance(param, dict) else getattr(param, "id", None)
+        if param_id is None:
+            raise RuntimeError("soft_delete_case_param: param 缺少 id 字段")
+        resp = _get_stub().DeleteCaseParam(_pb.DeleteCaseParamRequest(param_id=int(param_id)))
+        _raise_on_failure(resp)
+
+    def soft_delete_reference_param(self, param) -> None:
+        """软删除参考参数（gRPC 自动提交）。"""
+        param_id = param.get("id") if isinstance(param, dict) else getattr(param, "id", None)
+        if param_id is None:
+            raise RuntimeError("soft_delete_reference_param: param 缺少 id 字段")
+        resp = _get_stub().DeleteReferenceParam(_pb.DeleteReferenceParamRequest(param_id=int(param_id)))
         _raise_on_failure(resp)
 
     # ========== 用例专属参数 CRUD ==========
@@ -264,17 +309,6 @@ class AlgorithmRepository(AlgorithmAclRepository):
         ))
         items = _items(resp, dto_cls=CaseParamDTO)
         return [it for it in items if not it.hidden]
-
-    def revive_case_param(self, param, data: dict) -> None:
-        """恢复软删除的用例专属参数并更新字段（gRPC 自动提交）。"""
-        param_id = param.get("id") if isinstance(param, dict) else getattr(param, "id", None)
-        if param_id is None:
-            raise RuntimeError("revive_case_param: param 缺少 id 字段")
-        resp = _get_stub().ReviveCaseParam(_pb.ReviveCaseParamRequest(
-            param_id=int(param_id),
-            data=json.dumps(data or {}, ensure_ascii=False, default=str),
-        ))
-        _raise_on_failure(resp)
 
     # ========== 参考参数 CRUD ==========
 
@@ -718,3 +752,68 @@ class AlgorithmRepository(AlgorithmAclRepository):
             _get_stub().FlushTransaction(_pb.FlushTransactionRequest())
         except Exception as e:  # noqa: BLE001
             _logger.debug("FlushTransaction no-op 失败（可忽略）: %s", e)
+
+    # ========== 算法查询服务封装（AlgorithmQueryService）==========
+
+    def algo_load_reference_params_file(self, filepath: str = ''):
+        """从 OSS 加载参考参数文件内容。
+
+        封装 shared.clients.grpc_clients.algo_load_reference_params_file，
+        通过 algorithm_service AlgorithmQueryService.LoadReferenceParamsFile RPC。
+        """
+        from shared.clients.grpc_clients import algo_load_reference_params_file
+        return algo_load_reference_params_file(filepath)
+
+    def algo_get_full_field_mapping(self, algorithm_type: str):
+        """获取算法完整字段映射。
+
+        封装 shared.clients.grpc_clients.algo_get_full_field_mapping，
+        通过 algorithm_service AlgorithmQueryService.GetFullFieldMapping RPC。
+        """
+        from shared.clients.grpc_clients import algo_get_full_field_mapping
+        return algo_get_full_field_mapping(algorithm_type)
+
+    def algo_get_output_fields(self, algorithm_type: str, test_type: str = None):
+        """获取算法结果输出字段。
+
+        封装 shared.clients.grpc_clients.algo_get_output_fields，
+        通过 algorithm_service AlgorithmQueryService.GetOutputFields RPC。
+        """
+        from shared.clients.grpc_clients import algo_get_output_fields
+        return algo_get_output_fields(algorithm_type, test_type)
+
+    def algo_generate_reference_params(self, test_case_config=None, round_data=None):
+        """生成参考参数。
+
+        封装 shared.clients.grpc_clients.algo_generate_reference_params，
+        通过 algorithm_service AlgorithmQueryService.GenerateReferenceParams RPC。
+        """
+        from shared.clients.grpc_clients import algo_generate_reference_params
+        return algo_generate_reference_params(test_case_config, round_data)
+
+    def algo_get_all_reference_params(self, reference_params_col=None):
+        """获取所有参考参数。
+
+        封装 shared.clients.grpc_clients.algo_get_all_reference_params，
+        通过 algorithm_service AlgorithmQueryService.GetAllReferenceParams RPC。
+        """
+        from shared.clients.grpc_clients import algo_get_all_reference_params
+        return algo_get_all_reference_params(reference_params_col)
+
+    def algo_extract_case_all_params(self, case_config=None):
+        """提取用例全部算法参数。
+
+        封装 shared.clients.grpc_clients.algo_extract_case_all_params，
+        通过 algorithm_service AlgorithmQueryService.ExtractCaseAllParams RPC。
+        """
+        from shared.clients.grpc_clients import algo_extract_case_all_params
+        return algo_extract_case_all_params(case_config)
+
+    def algo_reload_config(self):
+        """重新加载算法配置缓存（热更新）。
+
+        封装 shared.clients.grpc_clients.algo_reload_config，
+        通过 algorithm_service AlgorithmQueryService.ReloadConfig RPC。
+        """
+        from shared.clients.grpc_clients import algo_reload_config
+        return algo_reload_config()

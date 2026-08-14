@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.result_data_store import write_result_data_file, split_result_data
+from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus, EvaluationStatus
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
     AlgorithmQueryAclRepositoryImpl,
@@ -61,7 +62,7 @@ class APIResultProcessor:
             'device_id': None,
             'api_id': api_config_id,
             'algorithm_type': algorithm_type,
-            'execution_status': 'completed' if success else 'failed',
+            'execution_status': ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
             'response_time': response_time,
             'algorithm_result': json.dumps(algo_result, ensure_ascii=False) if algo_result else None,
             'execution_steps': '[]',
@@ -87,7 +88,7 @@ class APIResultProcessor:
             _task_data_acl.update_task_case_status(
                 task_id=task_id,
                 case_id=test_case_id,
-                execution_status='completed' if success else 'failed',
+                execution_status=ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
             )
             if self._executor.execution_engine:
                 self._executor.execution_engine._emit_progress(task_id, force=True)
@@ -172,7 +173,7 @@ class APIResultProcessor:
             'device_id': None,
             'api_id': api_config_id,
             'algorithm_type': algorithm_type,
-            'execution_status': 'completed' if success else 'failed',
+            'execution_status': ExecutionStatus.COMPLETED if success else ExecutionStatus.FAILED,
             'response_time': response_time,
             'algorithm_result': json.dumps(algo_result, ensure_ascii=False) if algo_result else None,
             'execution_steps': json.dumps(algo_result.get('rounds', []), ensure_ascii=False),
@@ -209,7 +210,7 @@ class APIResultProcessor:
                 self._log(level='WARNING', content=f"找不到 TaskCase: {tc_rel_id}",
                           task_id=task_id)
                 return
-            if tc_rel.get('execution_status') in ['stopped']:
+            if tc_rel.get('execution_status') in [ExecutionStatus.STOPPED]:
                 return
 
             test_case_id = tc_rel.get('test_case_id')
@@ -221,9 +222,9 @@ class APIResultProcessor:
             _task_data_acl.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
-                status='failed',
-                execution_status='failed',
-                evaluation_status='completed',
+                status=TaskCaseStatus.FAILED,
+                execution_status=ExecutionStatus.FAILED,
+                evaluation_status=EvaluationStatus.COMPLETED,
                 error_message=error_msg,
             )
         except Exception as e:

@@ -105,10 +105,7 @@ class RecordAudioHandler:
     def audio_service(self):
         if self._audio_service is None:
             from e2e_test_service.infrastructure.acl import AudioAclRepositoryImpl
-            repo = AudioAclRepositoryImpl()
-            class _AudioServiceProxy:
-                play_audio = staticmethod(lambda **kw: repo.play_audio(**kw))
-            self._audio_service = _AudioServiceProxy()
+            self._audio_service = AudioAclRepositoryImpl()
         return self._audio_service
 
     @property

@@ -72,8 +72,10 @@ class PayloadBuilder(EvaluationLoggerMixin):
 
         special_fields = set()
         if algorithm_type:
-            from shared.clients.grpc_clients import algo_get_output_fields
-            output_fields = algo_get_output_fields(algorithm_type)
+            from evaluation_service.infrastructure.acl.algorithm_acl_repository import (
+                algorithm_acl_repository,
+            )
+            output_fields = algorithm_acl_repository.get_output_fields(algorithm_type)
             for field in output_fields:
                 source_param = field.get('source_param', '')
                 if source_param:

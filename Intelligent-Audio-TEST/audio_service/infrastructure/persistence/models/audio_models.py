@@ -12,7 +12,7 @@ P5 改造：从 shared/models/models/audio_models.py 真正下沉到本服务。
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
-    Index, UniqueConstraint, ForeignKey,
+    Index, ForeignKey, text,
 )
 from sqlalchemy.orm import relationship
 
@@ -105,7 +105,8 @@ class AudioAlgorithmRelation(Base):
     __table_args__ = (
         Index('idx_audio_algorithm_audio', 'audio_id'),
         Index('idx_audio_algorithm_type', 'algorithm_type'),
-        UniqueConstraint('audio_id', 'algorithm_type', name='uq_audio_algorithm'),
+        Index('uq_audio_algorithm', 'audio_id', 'algorithm_type',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(BigInteger, primary_key=True, autoincrement=True, comment='主键ID')
     audio_id = Column(BigInteger, ForeignKey('audios.id'), nullable=False, comment='关联音频ID')

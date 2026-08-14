@@ -1,5 +1,8 @@
 from datetime import datetime, timezone, timedelta
+import logging
 from shared.utils.event_manager._common import get_socketio
+
+logger = logging.getLogger(__name__)
 
 
 class AlertMixin:
@@ -16,4 +19,4 @@ class AlertMixin:
             if _socketio:
                 _socketio.emit_sync('error_alert', alert_data)
         except Exception:
-            pass
+            logger.warning("发送告警事件失败，task_id=%s, level=%s", task_id, level, exc_info=True)

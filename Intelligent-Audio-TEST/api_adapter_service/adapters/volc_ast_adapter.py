@@ -343,7 +343,7 @@ class VolcAstAdapter(BaseAdapter):
                 try:
                     await conn.close()
                 except Exception:
-                    pass
+                    logger.debug("关闭火山AST WebSocket连接失败", exc_info=True)
 
         # 6. 计算时延统计(保留到 raw_response)
         latency_stats = {}

@@ -98,8 +98,8 @@ class _SocketIOCompatManager:
         if self._main_loop is None:
             try:
                 self._main_loop = asyncio.get_running_loop()
-            except RuntimeError:
-                pass
+            except RuntimeError as e:
+                _logger.debug("on_connect 获取运行中事件循环失败: %s", e)
 
     def on_disconnect(self, sid: str, namespace: str):
         with self._lock:

@@ -8,6 +8,10 @@
 - playback_orchestrator → gRPC PlaybackService（audio_service:50052）
 - get_device_result_reextractor → gRPC DeviceResultService（device_service:50053）
 - EvaluationConfig → gRPC EvaluationConfigService（evaluation_service）
+- report_config_service → gRPC ReportConfigService（report_service）
+- auth_config_service → gRPC AuthService（auth_service）
+- algorithm_query_service → gRPC AlgorithmQueryService / AlgorithmDefinitionService（algorithm_service）
+- task_data_service → gRPC TaskDataService（task_service：聚合统计/分组/日志便捷封装）
 """
 from .execution_proxies import execution_engine
 from .evaluation_proxies import _ReevaluationExecutorProxy, evaluation_config_service
@@ -32,7 +36,11 @@ from .task_config_proxies import (
     testcase_config_service,
     tag_config_service,
     algorithm_config_service,
+    task_data_service,
 )
+from .report_proxies import report_config_service
+from .auth_proxies import auth_config_service
+from .algorithm_proxies import algorithm_query_service
 
 __all__ = [
     'execution_engine',
@@ -54,4 +62,8 @@ __all__ = [
     'testcase_config_service',
     'tag_config_service',
     'algorithm_config_service',
+    'task_data_service',
+    'report_config_service',
+    'auth_config_service',
+    'algorithm_query_service',
 ]

@@ -15,8 +15,8 @@ class EvaluationServiceServicer(eval_grpc.EvaluationServiceServicer):
     def EvaluateCase(self, request, context=None):
         """评估单个用例结果"""
         try:
-            task_id = request.task_id
-            result_id = request.result_id
+            task_id = int(request.task_id) if request.task_id else 0
+            result_id = int(request.result_id) if request.result_id else 0
             test_case_id = request.test_case_id
             algorithm_result = _loads(request.algorithm_result, {})
             eval_params = _loads(request.eval_params, {})

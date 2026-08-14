@@ -149,25 +149,7 @@ class EvaluationRepository(EvaluationRepositoryABC):
         session = get_db_session()
         query = session.query(Dimension).filter_by(deleted=False)
         if algorithm_type:
-            associated_dim_ids: List[int] = []
-            try:
-                from shared.clients.grpc_clients import (
-                    get_algorithm_definition_service_stub,
-                )
-                from shared.proto import algorithm_service_pb2 as _algo_pb
-                stub = get_algorithm_definition_service_stub()
-                req = _algo_pb.GetAlgorithmDimensionsRequest(
-                    algorithm_type=algorithm_type
-                )
-                resp = stub.GetAlgorithmDimensions(req)
-                if resp.success:
-                    from shared.utils.grpc_json import loads as _grpc_loads
-                    data = _grpc_loads(resp.data, {}) or {}
-                    associated_dim_ids = [
-                        int(d) for d in data.get('dimension_ids', [])
-                    ]
-            except Exception:
-                pass
+            associated_dim_ids = self._algo.get_algorithm_dimensions(algorithm_type)
             if associated_dim_ids:
                 query = query.filter(Dimension.id.in_(associated_dim_ids))
             else:
@@ -196,17 +178,7 @@ class EvaluationRepository(EvaluationRepositoryABC):
         注意：gRPC 的 SyncDimensionRelations 是"先清空再插入"模式，
         单条创建改为直接调用 CreateDimensionRelation。
         """
-        try:
-            from shared.clients.grpc_clients import get_algorithm_definition_service_stub
-            from shared.proto import algorithm_service_pb2 as _algo_pb
-            from shared.utils.grpc_json import dumps as _dumps
-            stub = get_algorithm_definition_service_stub()
-            resp = stub.CreateDimensionRelation(_algo_pb.CreateDimensionRelationRequest(
-                data=_dumps(data),
-            ))
-            return resp.success
-        except Exception:
-            return False
+        return self._algo.create_dimension_relation(data)
 
     def sync_relations(self, dim_id: int, relations: List[Dict[str, Any]]) -> bool:
         """同步算法-维度关联（先清空旧关联再插入新关联，gRPC）。"""

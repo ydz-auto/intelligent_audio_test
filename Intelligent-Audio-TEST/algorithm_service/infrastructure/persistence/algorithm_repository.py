@@ -724,12 +724,13 @@ class DimensionRelationQueryRepository(IDimensionRelationQueryRepository):
             raise
 
     def sync_by_dimension(self, dimension_id: int, data: list) -> bool:
-        """按 dimension_id 同步算法-维度关联（先清空再插入）。"""
+        """按 dimension_id 同步算法-维度关联（软删旧的活跃记录再插入新的）。"""
         session = get_db_session()
         try:
             session.query(AlgorithmDimensionRelationPO).filter_by(
-                dimension_id=dimension_id
-            ).delete()
+                dimension_id=dimension_id,
+                deleted=False,
+            ).update({'deleted': True})
             for item in data:
                 rel = AlgorithmDimensionRelationPO(
                     algorithm_type=item.get("algorithm_type"),
@@ -780,12 +781,12 @@ class ParamMappingQueryRepository(IParamMappingQueryRepository):
         )
         session = get_db_session()
         try:
-            all_mappings = session.query(ParamMappingPO).filter_by(
+            active_mappings = session.query(ParamMappingPO).filter_by(
                 dimension_id=dimension_id,
                 source="evaluation",
+                deleted=False,
             ).all()
-            active_map = {m.source_param: m for m in all_mappings if not m.deleted}
-            soft_deleted_map = {m.source_param: m for m in all_mappings if m.deleted}
+            active_map = {m.source_param: m for m in active_mappings}
 
             submitted_codes = set()
 
@@ -799,14 +800,6 @@ class ParamMappingQueryRepository(IParamMappingQueryRepository):
                     m = active_map[param_code]
                     m.target_param = param_code
                     m.source_direction = direction
-                elif param_code in soft_deleted_map:
-                    m = soft_deleted_map.pop(param_code)
-                    m.deleted = False
-                    m.target_param = param_code
-                    m.source_direction = direction
-                    m.algorithm_type = p.get("algorithm_type", algorithm_type)
-                    m.transform_type = "none"
-                    active_map[param_code] = m
                 else:
                     new_mapping = ParamMappingPO(
                         algorithm_type=p.get("algorithm_type", algorithm_type),

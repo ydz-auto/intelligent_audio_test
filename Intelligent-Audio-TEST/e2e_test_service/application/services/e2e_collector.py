@@ -21,7 +21,10 @@ class E2ECollector:
         """采集设备原始结果，计算播放偏移，返回 all_results（可能含 adjusted_reference_params）"""
         # 通过 gRPC DeviceResultService.CollectResult 采集设备原始结果
         algorithm_type = kwargs.get('algorithm_type', 'translation')
-        extra_params = self._executor._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
+        extra_params = {}
+        round_algo_params = kwargs.pop('round_algo_params', None)
+        if round_algo_params:
+            extra_params.update(round_algo_params)
 
         playback_timestamps = self._executor._playback_timestamps.get(task_id)
         if playback_timestamps:

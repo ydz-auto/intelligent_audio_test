@@ -15,6 +15,7 @@ from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
     Index,
 )
+from shared.utils.status_constants import EvaluationStatus
 
 
 class TestResultDimension(Base):
@@ -34,7 +35,7 @@ class TestResultDimension(Base):
     dimension_value = Column(Float, comment='维度计算出的原始值 (如 BLEU 分数)')
     score = Column(Float, comment='维度最终得分')
     status = Column(String(20), nullable=True, comment='维度评估结果状态 (passed/failed)')
-    evaluation_status = Column(String(20), default='pending', nullable=False, comment='评估过程状态 (pending/running/completed/stopped)')
+    evaluation_status = Column(String(20), default=EvaluationStatus.PENDING, nullable=False, comment='评估过程状态 (pending/running/completed/stopped)')
     error_message = Column(Text, comment='评估过程中的错误信息')
     api_raw_response = Column(JSON, comment='评测API的原始响应数据')
     api_request_body = Column(JSON, comment='评测API的原始请求体数据')

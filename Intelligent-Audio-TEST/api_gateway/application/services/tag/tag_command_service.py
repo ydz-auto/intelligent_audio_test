@@ -7,7 +7,9 @@ import logging
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
-from api_gateway.infrastructure.grpc_proxies import tag_config_service
+from api_gateway.infrastructure.acl import TagConfigAclRepositoryImpl
+
+_tag_acl = TagConfigAclRepositoryImpl()
 
 from api_gateway.schemas.testcase import (
     TagCategoryItem,
@@ -33,7 +35,7 @@ class TagCategoryCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
-        result = tag_config_service.create_category(data_dict)
+        result = _tag_acl.create_category(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -55,7 +57,7 @@ class TagCategoryCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
-        result = tag_config_service.update_category(category_id, data_dict)
+        result = _tag_acl.update_category(category_id, data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -71,7 +73,7 @@ class TagCategoryCommandService:
 
     @staticmethod
     def delete(category_id):
-        result = tag_config_service.delete_category(category_id)
+        result = _tag_acl.delete_category(category_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -94,7 +96,7 @@ class TagCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
-        result = tag_config_service.create_tag(data_dict)
+        result = _tag_acl.create_tag(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -116,7 +118,7 @@ class TagCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
-        result = tag_config_service.update_tag(tag_id, data_dict)
+        result = _tag_acl.update_tag(tag_id, data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -132,7 +134,7 @@ class TagCommandService:
 
     @staticmethod
     def delete(tag_id):
-        result = tag_config_service.delete_tag(tag_id)
+        result = _tag_acl.delete_tag(tag_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -148,7 +150,7 @@ class TagCommandService:
         tag_ids = body.get('tag_ids', [])
         category_id = body.get('category_id')
 
-        result = tag_config_service.batch_update_category({
+        result = _tag_acl.batch_update_category({
             'tag_ids': tag_ids,
             'category_id': category_id,
         })

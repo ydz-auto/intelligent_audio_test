@@ -16,3 +16,11 @@ class DeviceACLRepository(ABC):
     def check_audio_in_devices(self, audio_id: int) -> int:
         """检查音频是否被设备作为提示词引用"""
         ...
+
+    @abstractmethod
+    def get_spl_mapping(self, mapping_id) -> dict:
+        """通过 gRPC 从 device_service 获取 SPLMapping 数据。
+
+        gRPC 不可用时返回 None。
+        """
+        ...

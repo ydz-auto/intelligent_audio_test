@@ -3,6 +3,7 @@
 import logging
 
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus
 from shared.models.database import get_db_session
 from shared.infrastructure.base_executor import BaseExecutor
 from api_test_service.infrastructure.acl import (
@@ -10,6 +11,7 @@ from api_test_service.infrastructure.acl import (
     TestCaseConfigAclRepositoryImpl,
     AudioConfigAclRepositoryImpl,
     AlgorithmQueryAclRepositoryImpl,
+    DeviceResultAclRepositoryImpl,
 )
 from api_test_service.infrastructure.persistence.models import API
 from api_test_service.core.api_concurrency_manager import APIConcurrencyManager
@@ -33,6 +35,18 @@ class APIExecutor(BaseExecutor):
         self._task_runner = APITaskRunner(self)
         self._result_processor = APIResultProcessor(self)
         self._session_executor = APISessionExecutor(self)
+
+    def _get_result_mapper(self):
+        """返回 DeviceResult ACL 仓储，供 ResultsMixin 使用"""
+        return DeviceResultAclRepositoryImpl()
+
+    def _get_algorithm_acl(self):
+        """返回 algorithm_service ACL 仓储，供 DbMixin 使用"""
+        return _algo_acl
+
+    def _get_task_data_acl(self):
+        """返回 task_service ACL 仓储，供 DbMixin 使用"""
+        return _task_data_acl
 
     # ── 并发控制委托 ──
     @property
@@ -90,7 +104,7 @@ class APIExecutor(BaseExecutor):
             try:
                 self._thread_ctx.current_test_case_id = None
             except Exception:
-                pass
+                logger.debug("清理 current_test_case_id 失败", exc_info=True)
 
     def _claim_tc_rel_running(self, task_id, tc_rel_id):
         """抢占 TaskCase 状态为 running，避免重复执行
@@ -106,7 +120,7 @@ class APIExecutor(BaseExecutor):
                           content=f"测试用例 {tc_rel_id} 不存在，跳过",
                           task_id=task_id)
                 return False
-            if tc_rel.get('execution_status') not in ['pending', 'queued']:
+            if tc_rel.get('execution_status') not in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]:
                 self._log(level='DEBUG',
                           content=f"测试用例 {tc_rel_id} 已在执行或已完成，跳过",
                           task_id=task_id)
@@ -120,7 +134,7 @@ class APIExecutor(BaseExecutor):
             _task_data_acl.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
-                execution_status='running',
+                execution_status=ExecutionStatus.RUNNING,
             )
             self.execution_engine._emit_progress(task_id, force=True)
             return True
@@ -136,8 +150,8 @@ class APIExecutor(BaseExecutor):
         """
         try:
             tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
-            completed = sum(1 for tc in tcs if tc.get('status') == 'completed')
-            failed = sum(1 for tc in tcs if tc.get('status') == 'failed')
+            completed = sum(1 for tc in tcs if tc.get('status') == TaskCaseStatus.COMPLETED)
+            failed = sum(1 for tc in tcs if tc.get('status') == TaskCaseStatus.FAILED)
             self._log(level='DEBUG',
                       content=f"任务 {task_id} 统计: completed={completed}, failed={failed}",
                       task_id=task_id)
@@ -182,11 +196,11 @@ class APIExecutor(BaseExecutor):
                 self._log(level='ERROR', content=f"找不到 TaskCase: {tc_rel_id}", task_id=task_id)
                 return False
 
-            if tc_rel.get('execution_status') in ['pending', 'queued']:
+            if tc_rel.get('execution_status') in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]:
                 _task_data_acl.update_task_case_status(
                     task_id=task_id,
                     case_id=str(tc_rel.get('test_case_id', test_case_id)),
-                    execution_status='running',
+                    execution_status=ExecutionStatus.RUNNING,
                 )
                 self.execution_engine._emit_progress(task_id, force=True)
         except Exception as e:
@@ -216,19 +230,19 @@ class APIExecutor(BaseExecutor):
                 # 通过 ACL 仓储更新 TaskCase 为失败状态
                 try:
                     tc_status = tc_rel.get('execution_status') if tc_rel else None
-                    if tc_status and tc_status not in ['stopped']:
+                    if tc_status and tc_status not in [ExecutionStatus.STOPPED]:
                         _task_data_acl.update_task_case_status(
                             task_id=task_id,
                             case_id=str(tc_rel.get('test_case_id', test_case_id)),
-                            execution_status='failed',
+                            execution_status=ExecutionStatus.FAILED,
                         )
                     eval_status = tc_rel.get('evaluation_status') if tc_rel else None
-                    if eval_status and eval_status in ['queued', 'pending']:
+                    if eval_status and eval_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING]:
                         _task_data_acl.update_task_case_status(
                             task_id=task_id,
                             case_id=str(tc_rel.get('test_case_id', test_case_id)),
-                            status='failed',
-                            evaluation_status='completed',
+                            status=TaskCaseStatus.FAILED,
+                            evaluation_status=EvaluationStatus.COMPLETED,
                         )
                 except Exception as ue:
                     self._log(level='WARNING', content=f"更新 TaskCase 失败状态失败: {ue}", task_id=task_id)
@@ -624,8 +638,8 @@ class APIExecutor(BaseExecutor):
             _task_data_acl.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
-                status='failed',
-                execution_status='failed',
+                status=TaskCaseStatus.FAILED,
+                execution_status=ExecutionStatus.FAILED,
                 error_message=error_msg,
             )
         except Exception as e:

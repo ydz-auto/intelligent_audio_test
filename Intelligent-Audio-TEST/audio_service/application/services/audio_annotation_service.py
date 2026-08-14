@@ -19,33 +19,28 @@ logger = logging.getLogger(__name__)
 def _collect_case_param_fields(algorithm_type):
     """查用例参数字段列表
 
-    通过 gRPC 调用 algorithm_service 获取跨域参数，避免 application 层直接 import PO。
+    通过 ACL 仓储调用 algorithm_service 获取跨域参数，避免 application 层直接 import PO。
     """
-    from shared.clients.grpc_clients import get_algorithm_definition_service_stub
-    from shared.proto import algorithm_service_pb2 as _algo_pb
-    from shared.utils.grpc_json import loads as _grpc_loads
+    from audio_service.infrastructure.acl.algorithm_acl_repository import (
+        AlgorithmACLRepositoryImpl,
+    )
 
     case_param_fields = set()
     if not algorithm_type:
         return case_param_fields
 
-    def _grpc_list_params(req_type):
-        """调用 algorithm_service gRPC 获取参数列表（返回 dict 列表）。"""
-        try:
-            stub = get_algorithm_definition_service_stub()
-            if req_type == 'ref':
-                resp = stub.ListReferenceParams(_algo_pb.ListReferenceParamsRequest(algorithm_type=algorithm_type))
-            else:
-                resp = stub.ListCaseParams(_algo_pb.ListCaseParamsRequest(algorithm_type=algorithm_type))
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return data.get('parameters', []) or []
-        except Exception:
-            pass
-        return []
+    # 通过 ACL 仓储查询参考参数和用例参数
+    _algo_acl = AlgorithmACLRepositoryImpl()
+
+    def _list_params(req_type):
+        """通过 ACL 仓储获取参数列表（返回 dict 列表）。"""
+        if req_type == 'ref':
+            return _algo_acl.list_reference_params(algorithm_type)
+        else:
+            return _algo_acl.list_case_params(algorithm_type)
 
     ref_field_paths = set()
-    ref_params = _grpc_list_params('ref')
+    ref_params = _list_params('ref')
     for rp in ref_params:
         fp = rp.get('field_path') or rp.get('code')
         if fp:
@@ -55,7 +50,7 @@ def _collect_case_param_fields(algorithm_type):
             else:
                 ref_field_paths.add(fp)
 
-    case_params = _grpc_list_params('case')
+    case_params = _list_params('case')
     for p in case_params:
         fp = p.get('field_path') or p.get('param_code')
         if fp and '[]' in fp:

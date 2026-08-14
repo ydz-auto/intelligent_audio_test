@@ -3,21 +3,17 @@ from typing import Optional
 
 
 def _get_spl_mapping_via_grpc(mapping_id):
-    """通过 gRPC 从 device_service 获取 SPLMapping 数据。
+    """通过 ACL 仓储从 device_service 获取 SPLMapping 数据。
 
     SPLMapping 归属 device_service，audio_service 不再直连 PO。
     gRPC 不可用时返回 None（回退到默认增益 1.0）。
     """
     try:
-        from shared.clients.grpc_clients import get_spl_config_service_stub
-        from shared.proto import device_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-
-        stub = get_spl_config_service_stub()
-        resp = stub.GetSPLMapping(_e2e_pb.GetSPLMappingRequest(mapping_id=int(mapping_id)))
-        if resp.success:
-            return _grpc_loads(resp.data, {}) or {}
-        return None
+        from audio_service.infrastructure.acl.device_acl_repository import (
+            DeviceACLRepositoryImpl,
+        )
+        _device_acl = DeviceACLRepositoryImpl()
+        return _device_acl.get_spl_mapping(mapping_id)
     except Exception:
         return None
 

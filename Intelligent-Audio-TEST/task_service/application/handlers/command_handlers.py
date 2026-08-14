@@ -231,8 +231,8 @@ class TaskCommandHandler:
         改为通过 gRPC 调用 evaluation_service.EvaluationService.Reevaluate。
         """
         try:
-            from shared.clients.grpc_clients import submit_reevaluate
-            result = submit_reevaluate(
+            from task_service.infrastructure.acl.evaluation_acl_repository import evaluation_acl_repository
+            result = evaluation_acl_repository.submit_reevaluate(
                 task_id=cmd.task_id,
                 reextract_device_output=cmd.reextract_device_output,
                 reevaluate_type=cmd.reevaluate_type,

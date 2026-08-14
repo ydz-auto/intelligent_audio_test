@@ -473,35 +473,8 @@ class DeviceRepository(DeviceRepositoryInterface):
 
     def check_device_in_tasks(self, device_id: int) -> bool:
         """检查设备是否被任务引用"""
-        from shared.clients.grpc_clients import get_task_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
-        try:
-            stub = get_task_config_service_stub()
-            # 查询所有任务，检查是否有任务引用了此设备
-            page = 1
-            per_page = 100
-            while True:
-                resp = stub.ListTasks(task_pb.ListTasksRequest(
-                    page=page,
-                    per_page=per_page,
-                ))
-                if not resp.success:
-                    return False
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    return False
-                items = data.get('items', []) or []
-                for task_item in items:
-                    for dev in task_item.get('devices', []) or []:
-                        if dev.get('id') == device_id:
-                            return True
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    return False
-                page += 1
-        except Exception:
-            return False
+        from device_service.infrastructure.acl.task_acl_repository import task_acl_repository
+        return task_acl_repository.check_device_in_tasks(device_id)
 
     def delete_device_tags(self, device_id: int) -> int:
         """删除设备标签关联"""
@@ -554,32 +527,13 @@ class PlaybackRepository(PlaybackRepositoryInterface):
         session.commit()
         return _playback_po_to_entity(new_device)
 
-    def restore_playback_device(self, device_id: int, data: dict) -> Optional[PlaybackDeviceAggregate]:
-        """恢复已删除的播放设备，返回 PlaybackDeviceAggregate。
-
-        P5+DOMAIN: 改为通过 device_id 查询 PO 并应用变更，不再接收外部 PO。
-        """
-        session = get_db_session()
-        device = session.get(PlaybackDevice, device_id)
-        if not device:
-            return None
-        device.is_deleted = 0
-        device.name = data['name']
-        device.model = data['model']
-        device.device_type = data['device_type']
-        device.sample_rate = data['sample_rate']
-        device.description = data.get('description')
-        device.status = data.get('status', 'online')
-        device.updated_at = _now()
-        session.commit()
-        return _playback_po_to_entity(device)
-
     def find_playback_by_unique_and_channel(self, device_unique_id: str, channel_index: int) -> Optional[PlaybackDeviceAggregate]:
-        """按唯一标识和通道索引查找播放设备，返回 PlaybackDeviceAggregate。"""
+        """按唯一标识和通道索引查找未删除的播放设备，返回 PlaybackDeviceAggregate。"""
         session = get_db_session()
         po = session.query(PlaybackDevice).filter_by(
             device_unique_id=device_unique_id,
             channel_index=channel_index,
+            is_deleted=0,
         ).first()
         if po is None:
             return None
@@ -646,40 +600,8 @@ class PlaybackRepository(PlaybackRepositoryInterface):
 
     def check_playback_in_testcases(self, device_id: int) -> int:
         """检查播放设备是否被测试用例引用"""
-        import json as _json
-        from shared.clients.grpc_clients import get_testcase_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
-        try:
-            stub = get_testcase_config_service_stub()
-            count = 0
-            page = 1
-            per_page = 100
-            while True:
-                resp = stub.ListTestCases(task_pb.ListTestCasesRequest(
-                    page=page,
-                    per_page=per_page,
-                ))
-                if not resp.success:
-                    return 0
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    return 0
-                items = data.get('items', []) or []
-                for tc in items:
-                    config = tc.get('config')
-                    if not config:
-                        continue
-                    config_str = _json.dumps(config, ensure_ascii=False) if not isinstance(config, str) else config
-                    if f'"playback_device_id": "{device_id}"' in config_str or \
-                       f'"playback_device_id":{device_id}' in config_str:
-                        count += 1
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    return count
-                page += 1
-        except Exception:
-            return 0
+        from device_service.infrastructure.acl.testcase_acl_repository import testcase_acl_repository
+        return testcase_acl_repository.check_playback_in_testcases(device_id)
 
     def update_playback_device_spl_ref(self, device_id: int, spl_mapping_id) -> bool:
         """更新播放设备的 current_spl_mapping_id 引用"""
@@ -1019,22 +941,8 @@ class SPLRepository(SPLRepositoryInterface):
         通过 gRPC 调用 algorithm_service.ListCaseParams，替代直连
         CaseAlgorithmParam PO；gRPC 不可用时回退直连。
         """
-        try:
-            from shared.clients.grpc_clients import (
-                get_algorithm_definition_service_stub,
-            )
-            from shared.proto import algorithm_service_pb2 as _algo_pb
-            from shared.utils.grpc_json import loads as _grpc_loads
-            stub = get_algorithm_definition_service_stub()
-            req = _algo_pb.ListCaseParamsRequest(algorithm_type=algorithm_type or '')
-            resp = stub.ListCaseParams(req)
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return data.get('parameters', []) or []
-        except Exception:
-            pass
-        # gRPC 不可用时返回空列表（不再跨服务直连 PO）
-        return []
+        from device_service.infrastructure.acl.algorithm_definition_acl_repository import algorithm_definition_acl_repository
+        return algorithm_definition_acl_repository.list_case_params(algorithm_type)
 
     def list_algorithm_reference_params(self, algorithm_type: str):
         """查询指定算法类型的引用参数列表（返回 dict 列表）。
@@ -1042,22 +950,8 @@ class SPLRepository(SPLRepositoryInterface):
         通过 gRPC 调用 algorithm_service.ListReferenceParams，替代直连
         AlgorithmReferenceParam PO；gRPC 不可用时返回空列表。
         """
-        try:
-            from shared.clients.grpc_clients import (
-                get_algorithm_definition_service_stub,
-            )
-            from shared.proto import algorithm_service_pb2 as _algo_pb
-            from shared.utils.grpc_json import loads as _grpc_loads
-            stub = get_algorithm_definition_service_stub()
-            req = _algo_pb.ListReferenceParamsRequest(algorithm_type=algorithm_type or '')
-            resp = stub.ListReferenceParams(req)
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return data.get('parameters', []) or []
-        except Exception:
-            pass
-        # gRPC 不可用时返回空列表（不再跨服务直连 PO）
-        return []
+        from device_service.infrastructure.acl.algorithm_definition_acl_repository import algorithm_definition_acl_repository
+        return algorithm_definition_acl_repository.list_reference_params(algorithm_type)
 
     def commit(self):
         """提交事务"""

@@ -88,10 +88,6 @@ class AlgorithmAclRepository(ABC):
     def list_case_params_for_schema(self, algorithm_type: str) -> List[CaseParamDTO]:
         ...
 
-    @abstractmethod
-    def revive_case_param(self, param, data: dict) -> None:
-        ...
-
     # ========== 参考参数 CRUD ==========
 
     @abstractmethod

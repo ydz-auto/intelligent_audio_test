@@ -112,8 +112,13 @@ class PlaybackOrchestrator:
             )
 
             # 5. 构建干扰人 audio_to_play 配置（从 algorithmParams 读取）
-            from shared.clients.grpc_clients import algo_normalize_algorithm_params
-            round_algo_params = algo_normalize_algorithm_params(round_config.get('algorithm_params', []))
+            from audio_service.infrastructure.acl.algorithm_acl_repository import (
+                AlgorithmACLRepositoryImpl,
+            )
+            _algo_acl = AlgorithmACLRepositoryImpl()
+            round_algo_params = _algo_acl.normalize_algorithm_params(
+                round_config.get('algorithm_params', [])
+            )
             interferers = round_algo_params.get('interferers', [])
             interferer_configs = build_interferer_configs(
                 task_id, interferers, self.audio_service,

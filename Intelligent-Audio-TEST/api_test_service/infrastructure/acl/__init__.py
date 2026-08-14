@@ -14,6 +14,9 @@ from api_test_service.infrastructure.acl.algorithm_acl_repository import (
 from api_test_service.infrastructure.acl.audio_acl_repository import (
     AudioConfigAclRepositoryImpl,
 )
+from api_test_service.infrastructure.acl.device_result_acl_repository_impl import (
+    DeviceResultAclRepositoryImpl,
+)
 from api_test_service.infrastructure.acl.evaluation_acl_repository import (
     EvaluationAclRepositoryImpl,
 )
@@ -28,6 +31,7 @@ __all__ = [
     'AdapterAclRepositoryImpl',
     'AlgorithmQueryAclRepositoryImpl',
     'AudioConfigAclRepositoryImpl',
+    'DeviceResultAclRepositoryImpl',
     'EvaluationAclRepositoryImpl',
     'TaskDataAclRepositoryImpl',
     'TestCaseConfigAclRepositoryImpl',

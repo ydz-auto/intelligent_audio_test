@@ -11,6 +11,8 @@ import sys
 import logging
 from contextlib import asynccontextmanager
 
+logger = logging.getLogger(__name__)
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_dir = os.path.dirname(current_dir)
 sys.path.insert(0, project_dir)
@@ -19,7 +21,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(project_dir, '.env'))
 except ImportError:
-    pass
+    logger.debug("python-dotenv 未安装，跳过 .env 加载", exc_info=True)
 
 from fastapi import FastAPI
 
@@ -32,7 +34,6 @@ logging.basicConfig(
     level=logging.INFO,
     format='[%(asctime)s] %(levelname)s %(name)s: %(message)s'
 )
-logger = logging.getLogger(__name__)
 
 # 将 DatabaseLogHandler 挂到 root logger，使标准 logging.getLogger() 调用也走分流逻辑
 from shared.utils.log_handler import get_db_handler

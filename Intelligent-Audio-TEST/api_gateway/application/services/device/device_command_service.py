@@ -3,7 +3,7 @@ import logging
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import device_config_service
+from api_gateway.infrastructure.acl import DeviceAclRepositoryImpl
 from api_gateway.schemas.common import IdData
 from api_gateway.schemas.device import (
     DeviceCreateSchema,
@@ -11,6 +11,8 @@ from api_gateway.schemas.device import (
 )
 
 logger = logging.getLogger(__name__)
+
+_device_acl = DeviceAclRepositoryImpl()
 
 
 class DeviceCommandService:
@@ -31,7 +33,7 @@ class DeviceCommandService:
 
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
 
-        result = device_config_service.create(data_dict)
+        result = _device_acl.create(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -50,9 +52,9 @@ class DeviceCommandService:
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
-        validated_dict = req.model_dump(by_alias=True, exclude_none=True)
+        validated_dict = req.model_dump(by_alias=False, exclude_none=True)
 
-        result = device_config_service.update(device_id, validated_dict)
+        result = _device_acl.update(device_id, validated_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -65,7 +67,7 @@ class DeviceCommandService:
     # 删除设备
     @staticmethod
     def delete(device_id):
-        result = device_config_service.delete(device_id)
+        result = _device_acl.delete(device_id)
 
         if not result.get('success'):
             code = result.get('code', 400)

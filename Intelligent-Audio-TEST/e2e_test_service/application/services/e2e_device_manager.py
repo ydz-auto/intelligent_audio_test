@@ -8,6 +8,7 @@ import threading
 from e2e_test_service.infrastructure.acl import (
     AudioAclRepositoryImpl,
     DeviceAclRepositoryImpl,
+    EnvDeviceAclRepositoryImpl,
     TaskDataAclRepositoryImpl,
 )
 
@@ -80,8 +81,10 @@ class E2EDeviceManager:
 
     def initialize_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
         """并行初始化所有设备（通过 gRPC DeviceService.CreateDriver action=initialize）"""
-        algorithm_type = kwargs.get('algorithm_type', 'translation')
-        extra_params = self._executor._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
+        extra_params = {}
+        round_algo_params = kwargs.pop('round_algo_params', None)
+        if round_algo_params:
+            extra_params.update(round_algo_params)
 
         pool = self._executor.execution_engine.device_control_pool
         results = []
@@ -209,9 +212,6 @@ class E2EDeviceManager:
 
     def setup_env_devices_for_round(self, round_algo_params, task_id):
         """设置本轮环境设备（导轨等），返回状态列表供 teardown 恢复。"""
-        # 跨服务调用：通过 gRPC EnvDeviceService 控制环境设备
-        from shared.clients.grpc_clients import get_env_device_service_stub
-
         _ENV_DEVICE_PARAM_MAP = {
             'rail_distance': ('rail', lambda v: {'distance_cm': float(v)}),
         }
@@ -222,8 +222,8 @@ class E2EDeviceManager:
             if value is None:
                 continue
             try:
-                # 通过 gRPC 控制环境设备
-                dev = _EnvDeviceProxy(get_env_device_service_stub(), device_type)
+                # 通过 ACL 仓储控制环境设备
+                dev = EnvDeviceAclRepositoryImpl(device_type)
                 if dev.is_available():
                     state = dev.setup(build_settings(value))
                     env_states.append((dev, state))
@@ -239,57 +239,3 @@ class E2EDeviceManager:
                 dev.teardown(state)
             except Exception as e:
                 self._log(level='WARNING', content=f"环境设备 {dev.device_type} 恢复失败: {e}", task_id=task_id)
-
-
-class _EnvDeviceProxy:
-    """环境设备代理：封装对 gRPC EnvDeviceService 的调用（原 EnvDeviceFactory.create 返回的对象）"""
-
-    def __init__(self, stub, device_type):
-        self._stub = stub
-        self.device_type = device_type
-
-    def is_available(self):
-        # 简单探测：通过 ControlEnvDevice 发一个空动作检查可用性
-        import json as _json
-        from shared.proto import device_service_pb2
-        try:
-            resp = self._stub.ControlEnvDevice(device_service_pb2.ControlEnvDeviceRequest(
-                task_id='',
-                device_action=_json.dumps({'device_type': self.device_type, 'action': 'is_available'})
-            ))
-            return resp.success
-        except Exception:
-            return False
-
-    def setup(self, settings):
-        import json as _json
-        from shared.proto import device_service_pb2
-        try:
-            resp = self._stub.ControlEnvDevice(device_service_pb2.ControlEnvDeviceRequest(
-                task_id='',
-                device_action=_json.dumps({
-                    'device_type': self.device_type,
-                    'action': 'setup',
-                    'settings': settings,
-                })
-            ))
-            if resp.success and resp.data:
-                return _json.loads(resp.data)
-            return {}
-        except Exception:
-            return {}
-
-    def teardown(self, state):
-        import json as _json
-        from shared.proto import device_service_pb2
-        try:
-            self._stub.ControlEnvDevice(device_service_pb2.ControlEnvDeviceRequest(
-                task_id='',
-                device_action=_json.dumps({
-                    'device_type': self.device_type,
-                    'action': 'teardown',
-                    'state': state,
-                })
-            ))
-        except Exception:
-            pass

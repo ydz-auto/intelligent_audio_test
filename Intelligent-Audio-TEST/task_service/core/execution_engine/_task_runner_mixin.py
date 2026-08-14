@@ -2,6 +2,12 @@ import time
 from datetime import datetime
 from task_service.infrastructure.persistence.models import Task, TaskCase, TestCase
 from shared.models.database import get_db_session
+from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class TaskRunnerMixin:
@@ -40,7 +46,7 @@ class TaskRunnerMixin:
                 )
 
                 # 更新任务状态为运行中，并记录开始时间
-                task.status = 'running'
+                task.status = TaskStatus.RUNNING
                 task.started_at = datetime.now(self.utc_plus_8)
                 local_db_session.commit()
                 # 发送进度更新，传递task对象以便触发强制更新逻辑
@@ -77,7 +83,7 @@ class TaskRunnerMixin:
                 from shared.models.database import remove_db_session
                 remove_db_session()
             except Exception:
-                pass
+                logger.debug("任务执行结束清理 DB session 失败 task_id=%s", task_id, exc_info=True)
 
     def _init_task_execution(self, task_id):
         """API任务初始化（799-860）
@@ -157,7 +163,7 @@ class TaskRunnerMixin:
                         task_id=task_id
                     )
                     # API任务初始化失败，将任务标记为失败
-                    task.status = 'failed'
+                    task.status = TaskStatus.FAILED
                     task.completed_at = datetime.now(self.utc_plus_8)
                     task.error_message = f"API任务初始化失败: {str(e)}"
                     local_db_session.commit()
@@ -186,7 +192,7 @@ class TaskRunnerMixin:
                 # 获取下一个待执行的测试用例
                 tc_rel = local_db_session.query(TaskCase).filter_by(
                     task_id=task_id,
-                    execution_status='pending'
+                    execution_status=ExecutionStatus.PENDING
                 ).order_by(TaskCase.created_at.asc()).first()
 
                 if not tc_rel:
@@ -195,13 +201,13 @@ class TaskRunnerMixin:
                         # 检查是否有正在执行或评估的用例
                         in_progress_count = local_db_session.query(TaskCase).filter(
                             TaskCase.task_id == task_id,
-                            TaskCase.execution_status.in_(['queued', 'running'])
+                            TaskCase.execution_status.in_([ExecutionStatus.QUEUED, ExecutionStatus.RUNNING])
                         ).count()
 
                         # 检查是否有正在评估的用例（评估可能在执行完成后才开始）
                         evaluating_count = local_db_session.query(TaskCase).filter(
                             TaskCase.task_id == task_id,
-                            TaskCase.evaluation_status.in_(['running', 'calculating', 'queued', 'pending'])
+                            TaskCase.evaluation_status.in_([EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING, EvaluationStatus.QUEUED, EvaluationStatus.PENDING])
                         ).count()
 
                         if in_progress_count > 0 or evaluating_count > 0:
@@ -250,8 +256,8 @@ class TaskRunnerMixin:
 
                 # 设备检查失败处理
                 if not device_check_passed:
-                    tc_rel.status = 'failed'
-                    tc_rel.execution_status = 'failed'  # 更新execution_status为failed，避免死循环
+                    tc_rel.execution_status = ExecutionStatus.FAILED  # 更新execution_status为failed，避免死循环
+                    tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
                     tc_rel.completed_at = datetime.now(self.utc_plus_8)
                     tc_rel.duration = 0
                     tc_rel.error_message = error_message
@@ -260,10 +266,10 @@ class TaskRunnerMixin:
                     # 更新任务统计信息
                     success_count = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task_id,
-                        TaskCase.status == 'completed'
+                        TaskCase.status == TaskCaseStatus.COMPLETED
                     ).count()
                     task.completed_cases = success_count
-                    task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='failed').count()
+                    task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
                     local_db_session.commit()
 
                     # 发送告警和进度更新
@@ -288,11 +294,11 @@ class TaskRunnerMixin:
                         claimed = local_db_session.query(TaskCase).filter(
                             TaskCase.id == tc_rel_id,
                             TaskCase.task_id == task_id,
-                            TaskCase.execution_status == 'pending'
+                            TaskCase.execution_status == ExecutionStatus.PENDING
                         ).update(
                             {
-                                TaskCase.execution_status: 'queued',
-                                TaskCase.status: 'running'
+                                TaskCase.execution_status: ExecutionStatus.QUEUED,
+                                TaskCase.status: derive_task_case_status(ExecutionStatus.QUEUED, EvaluationStatus.PENDING)
                             },
                             synchronize_session=False
                         )
@@ -312,15 +318,32 @@ class TaskRunnerMixin:
                             content=f"API任务执行异常: {str(e)}",
                             task_id=task_id
                         )
-                        tc_rel.status = 'failed'
-                        tc_rel.execution_status = 'failed'
+                        tc_rel.execution_status = ExecutionStatus.FAILED
+                        tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
                         tc_rel.error_message = f"API任务执行异常: {str(e)}"
                         local_db_session.commit()
                         continue
                 else:
-                    # E2E任务直接执行
+                    # E2E任务：先原子占用用例，避免重复执行
+                    tc_rel_id = tc_rel.id
+                    claimed = local_db_session.query(TaskCase).filter(
+                        TaskCase.id == tc_rel_id,
+                        TaskCase.task_id == task_id,
+                        TaskCase.execution_status == ExecutionStatus.PENDING
+                    ).update(
+                        {
+                            TaskCase.execution_status: ExecutionStatus.QUEUED,
+                            TaskCase.status: derive_task_case_status(ExecutionStatus.QUEUED, EvaluationStatus.PENDING)
+                        },
+                        synchronize_session=False
+                    )
+                    if claimed != 1:
+                        local_db_session.rollback()
+                        continue
+                    local_db_session.commit()
+
                     # 注意：这里会阻塞直到E2E用例执行完成
-                    success = self._execute_e2e_case(task_id, tc_rel.id)
+                    success = self._execute_e2e_case(task_id, tc_rel_id)
 
                     # 重新获取tc_rel对象，因为execute_e2e_case方法内部可能已经更新了它
                     tc_rel = local_db_session.get(TaskCase, tc_rel.id)
@@ -328,20 +351,20 @@ class TaskRunnerMixin:
                     # 更新任务统计信息
                     success_count = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task_id,
-                        TaskCase.status == 'completed'
+                        TaskCase.status == TaskCaseStatus.COMPLETED
                     ).count()
                     task.completed_cases = success_count
-                    task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='failed').count()
+                    task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
 
                     # 发送告警（如果执行失败）
                     if not success:
                         # E2E执行失败时，若用例仍停留在pending（gRPC内部未自行更新状态），
                         # 必须将状态置为failed，避免while循环反复取到同一个用例造成死循环
-                        if tc_rel.execution_status not in ('completed', 'failed'):
-                            tc_rel.execution_status = 'failed'
-                            tc_rel.status = 'failed'
+                        if tc_rel.execution_status not in (ExecutionStatus.COMPLETED, ExecutionStatus.FAILED):
+                            tc_rel.execution_status = ExecutionStatus.FAILED
                             # 评估状态也置为completed，避免后续任务级状态判定误认为"评估中"
-                            tc_rel.evaluation_status = 'completed'
+                            tc_rel.evaluation_status = EvaluationStatus.COMPLETED
+                            tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status)
                             tc_rel.completed_at = datetime.now(self.utc_plus_8)
                             tc_rel.error_message = tc_rel.error_message or 'E2E用例执行失败（gRPC返回失败或异常）'
                         self._emit_alert(task_id, f"用例执行失败: {tc_rel.test_case_id}")
@@ -426,6 +449,38 @@ class TaskRunnerMixin:
                         device_id=device.get('id')
                     )
                     if device_status != 'online':
+                        # 数据库标记离线，尝试通过 gRPC health_check 重新检测物理设备
+                        try:
+                            import json as _json2
+                            from shared.clients.grpc_clients import get_device_config_service_stub as _get_dev_stub
+                            from shared.proto import device_service_pb2 as _dev_pb
+                            from shared.utils.grpc_json import loads as _loads2
+                            _hc_stub = _get_dev_stub()
+                            _hc_resp = _hc_stub.HealthCheckDevices(_dev_pb.HealthCheckDevicesRequest(
+                                data=_json2.dumps({'device_ids': [device.get('id')]}),
+                            ))
+                            if _hc_resp.success and _hc_resp.data:
+                                _hc_result = _loads2(_hc_resp.data, [])
+                                if isinstance(_hc_result, list):
+                                    _hc_item = next(
+                                        (d for d in _hc_result if d.get('id') == device.get('id')),
+                                        None
+                                    )
+                                    if _hc_item and _hc_item.get('status') == 'online':
+                                        self._log(
+                                            level='INFO',
+                                            content=f"被测设备 {device.get('name')} 重新检测为在线",
+                                            task_id=task_id,
+                                            device_id=device.get('id')
+                                        )
+                                        continue
+                        except Exception as _hc_e:
+                            self._log(
+                                level='WARNING',
+                                content=f"被测设备 {device.get('name')} 健康检查失败: {_hc_e}",
+                                task_id=task_id,
+                                device_id=device.get('id')
+                            )
                         device_check_passed = False
                         error_message = f"被测设备 {device.get('name')} 离线，无法执行测试"
                         self._log(
@@ -507,14 +562,44 @@ class TaskRunnerMixin:
                                 task_id=task_id
                             )
                             if pb_dev_status != 'online':
-                                device_check_passed = False
-                                error_message = f"播放设备 {playback_dev.get('name')} 离线，无法执行测试"
-                                self._log(
-                                    level='ERROR',
-                                    content=error_message,
-                                    task_id=task_id
-                                )
-                                break
+                                # 数据库标记离线，但物理设备可能已重新连接，
+                                # 尝试通过 gRPC 重新检测物理设备是否可用
+                                try:
+                                    from shared.clients.grpc_clients import get_playback_config_service_stub as _get_stub
+                                    from shared.proto import device_service_pb2 as _pb
+                                    _stub = _get_stub()
+                                    _scan_resp = _stub.ScanPlaybackDevices(_pb.ScanPlaybackDevicesRequest())
+                                    if _scan_resp.success:
+                                        import json as _json
+                                        _scanned = _json.loads(_scan_resp.data) if _scan_resp.data else []
+                                        _unique_id = playback_dev.get('device_unique_id', '')
+                                        _ch_idx = playback_dev.get('channel_index', 0)
+                                        _phys_found = any(
+                                            d.get('unique_id') == _unique_id and d.get('channel_index') == _ch_idx
+                                            for d in _scanned
+                                        )
+                                        if _phys_found:
+                                            # 物理设备在线，更新数据库状态
+                                            _update_resp = _stub.UpdatePlaybackDevice(_pb.UpdatePlaybackDeviceRequest(
+                                                device_id=int(device_id),
+                                                data=_json.dumps({'status': 'online'}),
+                                            ))
+                                            self._log(
+                                                level='INFO',
+                                                content=f"播放设备 {playback_dev.get('name')} 物理设备已重新连接，状态更新为 online",
+                                                task_id=task_id
+                                            )
+                                        else:
+                                            device_check_passed = False
+                                            error_message = f"播放设备 {playback_dev.get('name')} 离线且物理设备未检测到，无法执行测试"
+                                            self._log(level='ERROR', content=error_message, task_id=task_id)
+                                            break
+                                except Exception as _recheck_e:
+                                    self._log(
+                                        level='WARNING',
+                                        content=f"播放设备 {playback_dev.get('name')} 数据库状态为 {pb_dev_status}，物理设备重新检测失败: {_recheck_e}，跳过检查继续执行",
+                                        task_id=task_id
+                                    )
                         else:
                             device_check_passed = False
                             error_message = f"找不到播放设备，ID: {device_id}"
@@ -548,39 +633,39 @@ class TaskRunnerMixin:
                 # 获取已处理的测试用例（状态为completed/failed/skipped）
                 all_processed_cases = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
-                    TaskCase.status.in_(['completed', 'failed', 'skipped'])
+                    TaskCase.status.in_([TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED, TaskCaseStatus.SKIPPED])
                 ).count()
                 # 获取运行中的测试用例 (只包括执行中、排队中，不包括评估中/待评估)
                 running_cases = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
-                    TaskCase.execution_status.in_(['running', 'queued'])
+                    TaskCase.execution_status.in_([ExecutionStatus.RUNNING, ExecutionStatus.QUEUED])
                 ).count()
-                failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='failed').count()
-                completed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='completed').count()
+                failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
+                completed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.COMPLETED).count()
 
                 # 如果所有测试用例都已处理完成，提前更新任务状态
                 if all_processed_cases == all_cases and running_cases == 0:
                     # 检查是否还有用例在评估中
                     evaluating_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task_id,
-                        TaskCase.evaluation_status.in_(['running', 'calculating', 'queued', 'pending'])
+                        TaskCase.evaluation_status.in_([EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING, EvaluationStatus.QUEUED, EvaluationStatus.PENDING])
                     ).count()
 
                     if evaluating_cases > 0:
                         # 还有用例在评估中，设为 evaluating 过渡态
-                        task.status = 'evaluating'
+                        task.status = TaskStatus.EVALUATING
                     elif all_cases > 0:
                         if failed_cases > 0:
-                            task.status = 'failed'
+                            task.status = TaskStatus.FAILED
                         else:
-                            task.status = 'completed'
+                            task.status = TaskStatus.COMPLETED
                     else:
-                        task.status = 'completed'
+                        task.status = TaskStatus.COMPLETED
 
                     # 提前更新任务状态和统计信息，后续等待循环会继续监控评估完成
                     # 最终状态由评估服务的 _post_evaluate_updates 统一确认
 
-                    if task.status in ['completed', 'failed']:
+                    if task.status in [TaskStatus.COMPLETED, TaskStatus.FAILED]:
                         # 更新任务完成时间和实际执行时长
                         task.completed_at = datetime.now(self.utc_plus_8)
                         if task.started_at:
@@ -651,27 +736,27 @@ class TaskRunnerMixin:
                 failed_cases = 0
 
                 for exec_status, eval_status, final_status, count in status_counts:
-                    if exec_status in ['running', 'queued']:
+                    if exec_status in [ExecutionStatus.RUNNING, ExecutionStatus.QUEUED]:
                         running_cases += count
-                    if exec_status == 'queued':
+                    if exec_status == ExecutionStatus.QUEUED:
                         queued_cases += count
-                    if exec_status == 'running':
+                    if exec_status == ExecutionStatus.RUNNING:
                         execution_running_cases += count
-                    if exec_status == 'completed':
+                    if exec_status == ExecutionStatus.COMPLETED:
                         execution_success_cases += count
-                    if exec_status == 'failed':
+                    if exec_status == ExecutionStatus.FAILED:
                         execution_failed_cases += count
-                    if eval_status in ['running', 'queued']:
+                    if eval_status in [EvaluationStatus.RUNNING, EvaluationStatus.QUEUED]:
                         evaluation_running_cases += count
-                    if eval_status == 'completed':
+                    if eval_status == EvaluationStatus.COMPLETED:
                         evaluation_success_cases += count
-                    if eval_status == 'failed':
+                    if eval_status == EvaluationStatus.FAILED:
                         evaluation_failed_cases += count
-                    if final_status in ['completed', 'failed', 'skipped']:
+                    if final_status in [TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED, TaskCaseStatus.SKIPPED]:
                         all_processed_cases += count
-                    if final_status == 'completed':
+                    if final_status == TaskCaseStatus.COMPLETED:
                         passed_cases += count
-                    if final_status == 'failed':
+                    if final_status == TaskCaseStatus.FAILED:
                         failed_cases += count
 
                 current_counts = (
@@ -694,15 +779,15 @@ class TaskRunnerMixin:
                 )
 
                 # 检查任务是否已停止
-                if task_status == 'stopped':
+                if task_status == TaskStatus.STOPPED:
                     # 任务已停止，将所有未完成的测试用例标记为失败
                     uncompleted_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task_id,
-                        TaskCase.execution_status.in_(['running', 'queued'])
+                        TaskCase.execution_status.in_([ExecutionStatus.RUNNING, ExecutionStatus.QUEUED])
                     ).all()
                     for tc in uncompleted_cases:
-                        tc.status = 'failed'
-                        tc.execution_status = 'failed'
+                        tc.execution_status = ExecutionStatus.FAILED
+                        tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status or EvaluationStatus.PENDING)
                         tc.completed_at = datetime.now(self.utc_plus_8)
                         tc.duration = 0
                         tc.error_message = '任务被停止，用例执行中断'
@@ -720,7 +805,7 @@ class TaskRunnerMixin:
                     # 检查是否还有用例在评估中
                     evaluating_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task_id,
-                        TaskCase.evaluation_status.in_(['running', 'calculating', 'queued', 'pending'])
+                        TaskCase.evaluation_status.in_([EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING, EvaluationStatus.QUEUED, EvaluationStatus.PENDING])
                     ).count()
 
                     if evaluating_cases > 0:
@@ -760,35 +845,20 @@ class TaskRunnerMixin:
                     all_task_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id).all()
                     updated = False
                     for tc in all_task_cases:
-                        if tc.status not in ['completed', 'failed', 'skipped']:
-                            # 如果用例状态不是completed或failed，根据执行状态和评估状态推断
-                            if tc.execution_status == 'completed':
-                                # 执行完成，检查评估状态
-                                if tc.evaluation_status == 'completed':
-                                    tc.status = 'completed'
-                                    tc.completed_at = datetime.now(self.utc_plus_8)
-                                elif tc.evaluation_status == 'failed':
-                                    # 评估失败，标记为失败
-                                    tc.status = 'failed'
-                                    tc.completed_at = datetime.now(self.utc_plus_8)
-                                elif tc.evaluation_status in ['running', 'queued', 'pending']:
-                                    # 如果还在评估中或待评估，保持running状态，不标记为失败
-                                    tc.status = 'running'
-                                    continue
-                                else:
-                                    # 其他评估状态（如unknown等），标记为失败
-                                    tc.status = 'failed'
-                                    tc.completed_at = datetime.now(self.utc_plus_8)
-                            else:
-                                # 执行未完成，标记为失败
-                                tc.status = 'failed'
-                                tc.completed_at = datetime.now(self.utc_plus_8)
+                        if tc.status not in [TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED, TaskCaseStatus.SKIPPED]:
+                            # 如果用例状态不是completed或failed，根据执行状态和评估状态推导
+                            new_status = derive_task_case_status(tc.execution_status or ExecutionStatus.PENDING, tc.evaluation_status or EvaluationStatus.PENDING)
+                            tc.status = new_status
+                            if new_status not in (TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED):
+                                # 还在执行中或评估中，不标记完成时间
+                                continue
+                            tc.completed_at = datetime.now(self.utc_plus_8)
                             updated = True
                     if updated:
                         local_db_session.commit()
                         self._log(
                             level='DEBUG',
-                            content=f"修复用例状态 |任务ID：{task_id} 更新了 {sum(1 for tc in all_task_cases if tc.status not in ['completed', 'failed'])} 个用例的状态",
+                            content=f"修复用例状态 |任务ID：{task_id} 更新了 {sum(1 for tc in all_task_cases if tc.status not in [TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED])} 个用例的状态",
                             task_id=task_id
                         )
 
@@ -822,12 +892,12 @@ class TaskRunnerMixin:
                 try:
                     local_db_session.close()
                 except Exception:
-                    pass
+                    logger.debug("等待用例完成时关闭 DB session 失败 task_id=%s", task_id, exc_info=True)
 
     def _finalize_task_status(self, task_id, task, stop_event):
         """最终状态更新（1446-1520）"""
         # 检查任务状态，如果是暂停状态则保持暂停，不改变状态
-        if task.status != 'paused':
+        if task.status != TaskStatus.PAUSED:
             # 使用本地会话确保独立可靠的会话
             local_db_session = get_db_session()
             try:
@@ -839,20 +909,20 @@ class TaskRunnerMixin:
 
                 # 根据停止事件和执行结果更新任务状态
                 if stop_event.is_set():
-                    task.status = 'stopped'
+                    task.status = TaskStatus.STOPPED
                 else:
                     # 检查是否所有测试用例都失败
                     all_cases = local_db_session.query(TaskCase).filter_by(task_id=task.id).count()
-                    failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task.id, status='failed').count()
+                    failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task.id, status=TaskCaseStatus.FAILED).count()
                     all_processed_cases = local_db_session.query(TaskCase).filter(
                         TaskCase.task_id == task.id,
-                        TaskCase.status.in_(['completed', 'failed', 'skipped'])
+                        TaskCase.status.in_([TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED, TaskCaseStatus.SKIPPED])
                     ).count()
 
                     # 成功完成的用例数量
                     successfully_completed_cases = local_db_session.query(TaskCase).filter_by(
                         task_id=task.id,
-                        status='completed'
+                        status=TaskCaseStatus.COMPLETED
                     ).count()
 
                     # 动态更新任务的total_cases字段，确保进度计算准确
@@ -861,20 +931,20 @@ class TaskRunnerMixin:
                     # 确保所有测试用例都已处理完成
                     if all_processed_cases == all_cases:
                         if failed_cases > 0:
-                            task.status = 'failed'
+                            task.status = TaskStatus.FAILED
                         else:
-                            task.status = 'completed'
+                            task.status = TaskStatus.COMPLETED
                     else:
                         # 如果还有测试用例未完成，标记为失败
-                        task.status = 'failed'
+                        task.status = TaskStatus.FAILED
                         # 将所有未处理的测试用例标记为失败，避免任务被重新执行
                         unprocessed_cases = local_db_session.query(TaskCase).filter(
                             TaskCase.task_id == task.id,
-                            TaskCase.status.notin_(['completed', 'failed', 'skipped'])
+                            TaskCase.status.notin_([TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED, TaskCaseStatus.SKIPPED])
                         ).all()
                         for tc in unprocessed_cases:
-                            tc.status = 'failed'
-                            tc.execution_status = 'failed'
+                            tc.execution_status = ExecutionStatus.FAILED
+                            tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status or EvaluationStatus.PENDING)
                             tc.completed_at = datetime.now(self.utc_plus_8)
                             tc.duration = 0
                             tc.error_message = "任务执行失败，未处理的用例被标记为失败"
@@ -891,10 +961,10 @@ class TaskRunnerMixin:
                 # 更新任务的已完成用例数和失败用例数
                 success_count = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
-                    TaskCase.status == 'completed'
+                    TaskCase.status == TaskCaseStatus.COMPLETED
                 ).count()
                 task.completed_cases = success_count
-                task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='failed').count()
+                task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
 
                 local_db_session.commit()
                 # 在关闭会话前发送任务完成进度更新
@@ -922,10 +992,10 @@ class TaskRunnerMixin:
                 return
 
             # 更新所有正在执行的测试用例状态为 failed
-            running_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, execution_status='running').all()
+            running_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, execution_status=ExecutionStatus.RUNNING).all()
             for tc_rel in running_cases:
-                tc_rel.status = 'failed'
-                tc_rel.execution_status = 'failed'
+                tc_rel.execution_status = ExecutionStatus.FAILED
+                tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
                 tc_rel.completed_at = datetime.now(self.utc_plus_8)
                 if tc_rel.started_at:
                     # 确保两个datetime对象都具有相同的时区信息
@@ -945,7 +1015,7 @@ class TaskRunnerMixin:
                 tc_rel.error_message = f"任务执行异常: {str(e)}"
 
             # 更新任务状态为失败
-            task.status = 'failed'
+            task.status = TaskStatus.FAILED
             task.completed_at = datetime.now(self.utc_plus_8)
             if task.started_at:
                 # 确保两个datetime对象都具有相同的时区信息
@@ -964,9 +1034,9 @@ class TaskRunnerMixin:
             # 更新任务统计信息
             task.completed_cases = local_db_session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
-                TaskCase.status == 'completed'
+                TaskCase.status == TaskCaseStatus.COMPLETED
             ).count()
-            task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='failed').count()
+            task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
 
             local_db_session.commit()
 
@@ -1012,7 +1082,7 @@ class TaskRunnerMixin:
             task = local_db_session.get(Task, task_id)
             # 只有当任务明确处于 'paused' 状态时，才保留资源（以便恢复）
             # 如果任务被停止 ('stopped')、完成 ('completed') 或失败 ('failed')，必须清理
-            if task and task.status == 'paused' and not stop_event.is_set():
+            if task and task.status == TaskStatus.PAUSED and not stop_event.is_set():
                 should_cleanup = False
         except Exception as e:
             self._log(level='WARNING', content=f"获取任务状态失败，默认清理资源: {str(e)}", task_id=task_id)
@@ -1061,7 +1131,7 @@ class TaskRunnerMixin:
                 finally:
                     cleanup_session.close()
             except Exception:
-                pass
+                logger.debug("清理多轮进度缓存失败 task_id=%s", task_id, exc_info=True)
 
             # 检查队列并启动下一个任务
             self._check_queue()

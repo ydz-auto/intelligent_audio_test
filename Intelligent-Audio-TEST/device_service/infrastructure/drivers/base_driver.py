@@ -346,7 +346,7 @@ class BaseDeviceDriver:
                 if condition_fn():
                     return True
             except Exception:
-                pass
+                logger.debug("等待条件时调用 condition_fn 失败 operation_name=%s", operation_name, exc_info=True)
             time.sleep(interval)
         self._log(
             level='WARNING',

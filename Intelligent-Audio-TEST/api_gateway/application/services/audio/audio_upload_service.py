@@ -11,8 +11,11 @@ from api_gateway.schemas.audio import (
     RegisterUploadFileRequest,
     URLImportRequest,
 )
+from api_gateway.infrastructure.acl import AudioAclRepositoryImpl
 
 logger = logging.getLogger(__name__)
+
+_audio_acl = AudioAclRepositoryImpl()
 
 
 class AudioUploadService:
@@ -21,8 +24,7 @@ class AudioUploadService:
     @staticmethod
     def presign_upload():
         """生成 S3 Multipart Upload 初始化信息和第一批分片预签名 URL"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         try:
             data = request.get_json() or {}
             try:
@@ -30,7 +32,7 @@ class AudioUploadService:
             except ValidationError as e:
                 return error_response(f"参数验证失败: {e}")
 
-            result = audio_config_service.presign_upload(data)
+            result = _audio_acl.presign_upload(data)
             if result.get('success'):
                 return success_response(result.get('data'), result.get('message', '预签名 URL 生成成功'))
             return error_response(result.get('message', '预签名失败'), code=result.get('code', 400))
@@ -41,8 +43,7 @@ class AudioUploadService:
     @staticmethod
     def presign_part():
         """请求更多分片的预签名 URL（大文件场景）"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         try:
             data = request.get_json() or {}
             try:
@@ -59,7 +60,7 @@ class AudioUploadService:
             data['oss_key'] = oss_key
             data['category'] = category
 
-            result = audio_config_service.presign_part(data)
+            result = _audio_acl.presign_part(data)
             if result.get('success'):
                 return success_response(result.get('data'), result.get('message', '预签名分片成功'))
             return error_response(result.get('message', '预签名失败'), code=result.get('code', 400))
@@ -70,8 +71,7 @@ class AudioUploadService:
     @staticmethod
     def complete_direct_upload():
         """WAV 文件直传 OSS 完成后，合并分片 + 登记 DB"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         try:
             data = request.get_json() or {}
             try:
@@ -79,7 +79,7 @@ class AudioUploadService:
             except ValidationError as e:
                 return error_response(f"参数验证失败: {e}")
 
-            result = audio_config_service.complete_direct_upload(data)
+            result = _audio_acl.complete_direct_upload(data)
             if result.get('success'):
                 return success_response(result.get('data'), result.get('message', '直传完成'))
             return error_response(result.get('message', '直传失败'), code=result.get('code', 400))
@@ -90,8 +90,7 @@ class AudioUploadService:
     @staticmethod
     def init_upload_task():
         """初始化上传任务"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         try:
             data = request.get_json() or {}
             try:
@@ -99,7 +98,7 @@ class AudioUploadService:
             except ValidationError as e:
                 return error_response(f"参数验证失败: {e}")
 
-            result = audio_config_service.init_upload_task(data)
+            result = _audio_acl.init_upload_task(data)
             if result.get('success'):
                 return success_response(result.get('data'), result.get('message', '任务初始化成功'))
             return error_response(result.get('message', '初始化失败'), code=result.get('code', 400))
@@ -109,8 +108,7 @@ class AudioUploadService:
     @staticmethod
     def register_upload_file():
         """注册上传文件"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         try:
             data = request.get_json() or {}
             try:
@@ -118,7 +116,7 @@ class AudioUploadService:
             except ValidationError as e:
                 return error_response(f"参数验证失败: {e}")
 
-            result = audio_config_service.register_upload_file(data)
+            result = _audio_acl.register_upload_file(data)
             if result.get('success'):
                 return success_response(result.get('data'), result.get('message', '注册成功'))
             return error_response(result.get('message', '注册失败'), code=result.get('code', 400))
@@ -128,8 +126,7 @@ class AudioUploadService:
     @staticmethod
     def upload_chunk():
         """上传分片"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         try:
             file_id = request.form.get('file_id')
             chunk_index = request.form.get('chunk_index', type=int)
@@ -157,7 +154,7 @@ class AudioUploadService:
                 'chunk_data': chunk_b64,
             }
 
-            result = audio_config_service.upload_chunk(data)
+            result = _audio_acl.upload_chunk(data)
             if result.get('success'):
                 return success_response(result.get('data'), result.get('message', '分片上传成功'))
             return error_response(result.get('message', '分片上传失败'), code=result.get('code', 400))
@@ -167,8 +164,7 @@ class AudioUploadService:
     @staticmethod
     def merge_chunks():
         """合并分片"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         try:
             data = request.get_json() or {}
             try:
@@ -176,7 +172,7 @@ class AudioUploadService:
             except ValidationError as e:
                 return error_response(f"参数验证失败: {e}")
 
-            result = audio_config_service.merge_chunks(data)
+            result = _audio_acl.merge_chunks(data)
             if result.get('success'):
                 return success_response(result.get('data'), result.get('message', '合并完成'))
             return error_response(result.get('message', '合并分片失败'), code=result.get('code', 400))
@@ -187,14 +183,13 @@ class AudioUploadService:
     @staticmethod
     def get_upload_progress():
         """获取上传任务进度"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         try:
             task_id = request.args.get('task_id')
             if not task_id:
                 return error_response("缺少任务ID")
 
-            result = audio_config_service.get_upload_progress({'task_id': task_id})
+            result = _audio_acl.get_upload_progress({'task_id': task_id})
             if result.get('success'):
                 return success_response(result.get('data'))
             return error_response(result.get('message', '查询失败'), code=result.get('code', 400))
@@ -204,8 +199,7 @@ class AudioUploadService:
     @staticmethod
     def url_import():
         """URL 远程导入"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         data = request.get_json()
         if not data:
             return error_response("请求体不能为空")
@@ -215,7 +209,7 @@ class AudioUploadService:
         except ValidationError as e:
             return error_response(f"参数验证失败: {e}")
 
-        result = audio_config_service.url_import(data)
+        result = _audio_acl.url_import(data)
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'URL 导入成功'), http_code=201)
         return error_response(result.get('message', '导入失败'), code=result.get('code', 400))

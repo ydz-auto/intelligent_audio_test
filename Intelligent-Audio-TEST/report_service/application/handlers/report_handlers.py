@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 from typing import List, Optional
+import logging
 
 from report_service.domain.entities import ReportAggregate, ReportStatus
 from report_service.infrastructure.persistence.report_repository import report_repository
@@ -28,6 +29,8 @@ from report_service.application.queries.report_queries import (
     GetTrendDataQuery,
     ListReportsQuery,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ReportCommandHandler:
@@ -678,7 +681,7 @@ class ReportQueryHandler:
             if isinstance(reference_params, list):
                 return _grpc_algo_get_reference_params_for_report(reference_params)
         except Exception:
-            pass
+            logger.debug("gRPC 展开参考参数失败", exc_info=True)
         return reference_params
 
     def _query_export_data(self, report_ids: list) -> list:
@@ -844,7 +847,7 @@ class ReportQueryHandler:
             if relations:
                 task_ids_to_search = [it.get('source_task_id') for it in relations]
         except Exception:
-            pass
+            logger.debug("gRPC 查询任务合并关系失败 task_id=%s", task_id, exc_info=True)
 
         # 通过 gRPC 查询 TestResult（按 task_id 批量查询后客户端过滤 test_case_id）
         all_test_results = _grpc_get_test_results_by_task_ids(task_ids_to_search)
@@ -955,7 +958,7 @@ class ReportQueryHandler:
                 from report_service.infrastructure.clients.grpc_clients import _grpc_get_task_merge_relations
                 merge_relations = _grpc_get_task_merge_relations(task_id)
             except Exception:
-                pass
+                logger.debug("gRPC 查询合并任务关系失败 task_id=%s", task_id, exc_info=True)
             if merge_relations:
                 source_task_ids = [it.get('source_task_id') for it in merge_relations]
                 task_id_filter = source_task_ids

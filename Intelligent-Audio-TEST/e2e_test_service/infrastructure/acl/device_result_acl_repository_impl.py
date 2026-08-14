@@ -126,3 +126,26 @@ class DeviceResultAclRepositoryImpl(DeviceResultAclRepository):
         except Exception as e:
             logger.error("reextract_result 失败: %s", e)
             return None
+
+    def build_case_result_log(self, algorithm_type: str, res: Dict, ref_fields=None, **kwargs) -> str:
+        """构建用例结果日志"""
+        from shared.clients.grpc_clients import get_device_result_service_stub
+        from shared.proto import device_service_pb2 as device_pb
+        try:
+            stub = get_device_result_service_stub()
+            collect_config = json.dumps({
+                'action': 'build_case_result_log',
+                'algorithm_type': algorithm_type,
+                'res': res,
+                'ref_fields': ref_fields,
+                'kwargs': kwargs,
+            }, default=str)
+            resp = stub.CollectResult(device_pb.CollectResultRequest(
+                task_id='', collect_config=collect_config,
+            ))
+            if not resp.success or not resp.data:
+                return ''
+            return resp.data
+        except Exception as e:
+            logger.error("build_case_result_log 失败: %s", e)
+            return ''

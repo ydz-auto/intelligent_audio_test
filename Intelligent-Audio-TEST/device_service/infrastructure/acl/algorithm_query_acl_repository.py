@@ -49,10 +49,12 @@ class AlgorithmQueryACLRepository:
         """
         if not algorithm_type:
             return {'original': {}, 'mapped': {}}
-        data = algo_get_field_mappings(algorithm_type) or {}
-        if not isinstance(data, dict):
+        data = algo_get_field_mappings(algorithm_type)
+        # algo_get_field_mappings 返回 FieldMapperWrapper，取原始 dict
+        raw = data._data if hasattr(data, '_data') else data
+        if not isinstance(raw, dict):
             return {'original': {}, 'mapped': {}}
-        return data
+        return raw
 
     def get_device_output_fields(self, algorithm_type: str) -> Dict[str, Any]:
         """获取设备输出字段（原始，未映射）
@@ -233,10 +235,9 @@ class AlgorithmQueryACLRepository:
                 continue
             code = param.get('code', '')
             param_type = param.get('param_type', '')
-            source = param.get('source', '')
             param_model = param.get('model', '')
 
-            if source in ['case_table', 'case_field'] or param_type in ['direction', 'language', 'voice', 'model']:
+            if param_type in ['direction', 'language', 'voice', 'model']:
                 config['needs_extra_params'] = True
                 config['case_fields'][code] = code
 
@@ -266,7 +267,7 @@ class AlgorithmQueryACLRepository:
                     continue
                 src = mapping.get('source', '')
                 source_param = mapping.get('source_param', '')
-                if src in ['case_table', 'case_field']:
+                if src == 'case':
                     config['needs_extra_params'] = True
                     config['case_fields'][source_param] = source_param
 

@@ -53,7 +53,7 @@ class DeviceCommandService:
             try:
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.debug("创建设备后刷新统计缓存失败", exc_info=True)
 
             # 创建设备后立即检查设备是否在线
             try:
@@ -118,7 +118,7 @@ class DeviceCommandService:
             try:
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.debug("删除设备后刷新统计缓存失败 device_id=%s", device_id, exc_info=True)
 
             return {
                 'success': True,
@@ -277,7 +277,7 @@ class DeviceCommandService:
                                 is_online = True
                                 break
             except Exception as scan_error:
-                pass
+                logger.debug("健康检查扫描设备时发生异常 device_id=%s error=%s", device_data.get('id'), scan_error, exc_info=True)
 
             new_status = 'online' if is_online else 'offline'
             self.repo.update_device_status(

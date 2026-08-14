@@ -6,18 +6,18 @@ from api_gateway.schemas.common import PaginatedData
 
 
 class PlaybackDeviceItem(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    model: Optional[str] = Field(None, alias='model', validation_alias='model')
-    device_type: Optional[str] = Field(None, alias='deviceType', validation_alias='deviceType')
-    sample_rate: Optional[int] = Field(None, alias='sampleRate', validation_alias='sampleRate')
-    channel_index: Optional[int] = Field(None, alias='channelIndex', validation_alias='channelIndex')
-    device_unique_id: Optional[str] = Field(None, alias='deviceUniqueId', validation_alias='deviceUniqueId')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    status: Optional[str] = Field(None, alias='status', validation_alias='status')
-    current_spl_mapping_id: Optional[int] = Field(None, alias='currentSplMappingId', validation_alias='currentSplMappingId')
-    created_at: Optional[str] = Field(None, alias='createdAt', validation_alias='createdAt')
-    updated_at: Optional[str] = Field(None, alias='updatedAt', validation_alias='updatedAt')
+    id: int = Field(...)
+    name: str = Field(...)
+    model: Optional[str] = Field(None)
+    device_type: Optional[str] = Field(None)
+    sample_rate: Optional[int] = Field(None)
+    channel_index: Optional[int] = Field(None)
+    device_unique_id: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    status: Optional[str] = Field(None)
+    current_spl_mapping_id: Optional[int] = Field(None)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
 
 
 class PlaybackDeviceListData(PaginatedData[PlaybackDeviceItem]):
@@ -25,60 +25,59 @@ class PlaybackDeviceListData(PaginatedData[PlaybackDeviceItem]):
 
 
 class PlaybackScanItem(APIModel):
-    name: Optional[str] = Field(None, alias='name', validation_alias='name')
-    model: Optional[str] = Field(None, alias='model', validation_alias='model')
-    device_unique_id: Optional[str] = Field(None, alias='deviceUniqueId', validation_alias='deviceUniqueId')
-    channel_index: Optional[int] = Field(None, alias='channelIndex', validation_alias='channelIndex')
-    sample_rate: Optional[int] = Field(None, alias='sampleRate', validation_alias='sampleRate')
-    type: Optional[str] = Field(None, alias='type', validation_alias='type')
-    status: Optional[str] = Field(None, alias='status', validation_alias='status')
+    name: Optional[str] = Field(None)
+    model: Optional[str] = Field(None)
+    device_unique_id: Optional[str] = Field(None)
+    channel_index: Optional[int] = Field(None)
+    sample_rate: Optional[int] = Field(None)
+    type: Optional[str] = Field(None)
+    status: Optional[str] = Field(None)
 
 
 class PlaybackTestData(APIModel):
-    device: Any = Field(..., alias='device', validation_alias='device')
-    audio: Any = Field(..., alias='audio', validation_alias='audio')
-    status: str = Field(..., alias='status', validation_alias='status')
-    device_index: Optional[int] = Field(None, alias='deviceIndex', validation_alias='deviceIndex')
-    channel_index: Optional[int] = Field(None, alias='channelIndex', validation_alias='channelIndex')
-    gain: Optional[float] = Field(None, alias='gain', validation_alias='gain')
+    device: Any = Field(...)
+    audio: Any = Field(...)
+    status: str = Field(...)
+    device_index: Optional[int] = Field(None)
+    channel_index: Optional[int] = Field(None)
+    gain: Optional[float] = Field(None)
 
 
 class PlaybackStatusItem(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    unique_id: str = Field(..., alias='uniqueId', validation_alias='uniqueId')
-    status: str = Field(..., alias='status', validation_alias='status')
-    device_index: Optional[int] = Field(None, alias='deviceIndex', validation_alias='deviceIndex')
+    id: int = Field(...)
+    name: str = Field(...)
+    unique_id: str = Field(...)
+    status: str = Field(...)
+    device_index: Optional[int] = Field(None)
 
 
 class PlaybackCreateSchema(APIModel):
-    name: str = Field(..., alias='name', validation_alias='name')
-    model: str = Field(..., alias='model', validation_alias='model')
-    device_type: str = Field(..., alias='deviceType', validation_alias='deviceType')
-    sample_rate: int = Field(..., alias='sampleRate', validation_alias='sampleRate')
-    device_unique_id: str = Field(..., alias='deviceUniqueId', validation_alias='deviceUniqueId')
-    channel_index: Optional[int] = Field(0, alias='channelIndex', validation_alias='channelIndex')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    status: Optional[str] = Field('online', alias='status', validation_alias='status')
+    name: str = Field(...)
+    model: str = Field(...)
+    device_type: str = Field(...)
+    sample_rate: int = Field(...)
+    device_unique_id: str = Field(...)
+    channel_index: Optional[int] = Field(0)
+    description: Optional[str] = Field(None)
+    status: Optional[str] = Field('online')
 
 
 class PlaybackUpdateSchema(APIModel):
-    name: Optional[str] = Field(None, alias='name', validation_alias='name')
-    model: Optional[str] = Field(None, alias='model', validation_alias='model')
-    device_type: Optional[str] = Field(None, alias='deviceType', validation_alias='deviceType')
-    sample_rate: Optional[int] = Field(None, alias='sampleRate', validation_alias='sampleRate')
-    channel_index: Optional[int] = Field(None, alias='channelIndex', validation_alias='channelIndex')
-    device_unique_id: Optional[str] = Field(None, alias='deviceUniqueId', validation_alias='deviceUniqueId')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    status: Optional[str] = Field(None, alias='status', validation_alias='status')
-    current_spl_mapping_id: Optional[int] = Field(None, alias='currentSplMappingId', validation_alias='currentSplMappingId')
+    name: Optional[str] = Field(None)
+    model: Optional[str] = Field(None)
+    device_type: Optional[str] = Field(None)
+    sample_rate: Optional[int] = Field(None)
+    channel_index: Optional[int] = Field(None)
+    device_unique_id: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    status: Optional[str] = Field(None)
+    current_spl_mapping_id: Optional[int] = Field(None)
 
 
 class PlaybackTestSchema(APIModel):
-    audio_id: Optional[int] = Field(None, alias='audioId', validation_alias='audioId')
-    spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
+    audio_id: Optional[int] = Field(None)
+    spl: Optional[float] = Field(None)
 
 
 class PlaybackAssociateSplSchema(APIModel):
-    spl_mapping_id: int = Field(..., alias='splMappingId', validation_alias='splMappingId')
-
+    spl_mapping_id: int = Field(...)

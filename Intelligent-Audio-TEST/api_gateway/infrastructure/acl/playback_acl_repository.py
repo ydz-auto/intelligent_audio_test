@@ -26,7 +26,7 @@ def _attach(dto, payload):
         try:
             dto.result_data = payload
         except Exception:
-            pass
+            logger.debug("设置 DTO result_data 失败，dto=%r", dto, exc_info=True)
     return dto
 
 

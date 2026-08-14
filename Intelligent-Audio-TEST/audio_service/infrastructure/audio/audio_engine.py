@@ -215,7 +215,7 @@ class AudioService:
         if device_index is None:
             return None
         try:
-            dev_info = self.pa.get_device_info_by_index(device_index)
+            dev_info = self.driver.pa.get_device_info_by_index(device_index)
             return int(dev_info.get('defaultSampleRate', 44100))
         except Exception as e:
             log_and_emit('WARNING', 'audio_engine',

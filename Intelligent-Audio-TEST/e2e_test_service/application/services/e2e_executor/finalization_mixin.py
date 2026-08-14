@@ -2,6 +2,7 @@ import json
 import copy
 
 from shared.utils.result_data_store import write_result_data_file
+from shared.utils.status_constants import ExecutionStatus
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import DeviceAclRepositoryImpl
 from shared.utils.dto_utils import dto_to_dict
@@ -41,7 +42,7 @@ class FinalizationMixin:
 
         self._aggregator.update_test_result(
             result_id=result_id, algo_result=final_algo_result,
-            execution_status='completed' if execution_success else 'failed',
+            execution_status=ExecutionStatus.COMPLETED if execution_success else ExecutionStatus.FAILED,
             response_time=avg_response_time,
             error_message=None if execution_success else "多轮测试存在失败轮次",
             task_id=task_id,

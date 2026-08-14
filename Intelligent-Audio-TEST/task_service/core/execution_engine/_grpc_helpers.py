@@ -1,11 +1,9 @@
 # gRPC 调用封装：把对 e2e_test_service 的直接 import 调用替换为 gRPC stub 调用
+# 注意：stub 获取函数采用方法内延迟 import，避免模块顶层 import 导致循环依赖。
 
-# 跨服务调用：通过 gRPC AudioService 调用音频引擎
-from shared.clients.grpc_clients import get_audio_service_stub
-# 跨服务调用：通过 gRPC DeviceService 调用设备驱动工厂
-from shared.clients.grpc_clients import get_device_service_stub
-# 跨服务调用：通过 gRPC 调用 E2E/API 测试执行（e2e_test_service / api_test_service）
-from shared.clients.grpc_clients import get_e2e_execution_service_stub, get_api_test_service_stub
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 # ──────────────────────────────────────────────────────────────────
@@ -16,17 +14,21 @@ def _stop_task_audio_via_grpc(task_id):
     """通过 gRPC AudioService 停止任务音频（原 audio_service.stop_task_audio）"""
     import json as _json
     from shared.proto import audio_service_pb2
+    # 延迟 import 避免循环依赖
+    from shared.clients.grpc_clients import get_audio_service_stub
     try:
         stub = get_audio_service_stub()
         stub.StopAudio(audio_service_pb2.StopAudioRequest(task_id=str(task_id)))
     except Exception:
-        pass
+        logger.debug("gRPC 停止任务音频失败 task_id=%s", task_id, exc_info=True)
 
 
 def _cleanup_devices_via_grpc(task_id):
     """通过 gRPC DeviceService 清理任务设备（原 device_driver_factory.cleanup_devices）"""
     import json as _json
     from shared.proto import device_service_pb2
+    # 延迟 import 避免 circular dependency
+    from shared.clients.grpc_clients import get_device_service_stub
     try:
         stub = get_device_service_stub()
         stub.DestroyDriver(device_service_pb2.DestroyDriverRequest(
@@ -34,20 +36,22 @@ def _cleanup_devices_via_grpc(task_id):
             driver_id='',
         ))
     except Exception:
-        pass
+        logger.debug("gRPC 清理任务设备失败 task_id=%s", task_id, exc_info=True)
 
 
 def _unregister_task_events_via_grpc(task_id):
     """通过 gRPC DeviceService 注销任务事件（原 unregister_task_events）"""
     import json as _json
     from shared.proto import device_service_pb2
+    # 延迟 import 避免 circular dependency
+    from shared.clients.grpc_clients import get_device_service_stub
     try:
         stub = get_device_service_stub()
         stub.UnregisterTaskEvents(device_service_pb2.UnregisterTaskEventsRequest(
             task_id=str(task_id)
         ))
     except Exception:
-        pass
+        logger.debug("gRPC 注销任务事件失败 task_id=%s", task_id, exc_info=True)
 
 
 def _get_task_events_via_grpc(task_id):
@@ -57,6 +61,8 @@ def _get_task_events_via_grpc(task_id):
     """
     import json as _json
     from shared.proto import device_service_pb2
+    # 延迟 import 避免 circular dependency
+    from shared.clients.grpc_clients import get_device_service_stub
     try:
         stub = get_device_service_stub()
         resp = stub.GetTaskEvents(device_service_pb2.GetTaskEventsRequest(
@@ -77,6 +83,8 @@ def _register_task_events_via_grpc(task_id, stop_event, pause_event):
     """
     import json as _json
     from shared.proto import device_service_pb2
+    # 延迟 import 避免 circular dependency
+    from shared.clients.grpc_clients import get_device_service_stub
     try:
         stub = get_device_service_stub()
         callback_config = {
@@ -88,7 +96,7 @@ def _register_task_events_via_grpc(task_id, stop_event, pause_event):
             callback_config=_json.dumps(callback_config)
         ))
     except Exception:
-        pass
+        logger.debug("gRPC 注册任务事件失败 task_id=%s", task_id, exc_info=True)
 
 
 def _execute_e2e_case_via_grpc(task_id, tc_rel_id):
@@ -99,6 +107,8 @@ def _execute_e2e_case_via_grpc(task_id, tc_rel_id):
     """
     import json as _json
     from shared.proto import e2e_test_service_pb2
+    # 延迟 import 避免 circular dependency
+    from shared.clients.grpc_clients import get_e2e_execution_service_stub
     try:
         stub = get_e2e_execution_service_stub()
         resp = stub.StartE2ETask(e2e_test_service_pb2.StartE2ETaskRequest(

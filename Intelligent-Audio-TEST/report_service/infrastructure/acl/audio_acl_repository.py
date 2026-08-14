@@ -20,7 +20,7 @@ def _attach(dto, payload):
         try:
             dto.result_data = payload
         except Exception:
-            pass
+            logger.debug("附加 result_data 到 DTO 失败", exc_info=True)
     return dto
 
 
@@ -71,7 +71,7 @@ class AudioConfigAclRepositoryImpl(AudioConfigAclRepository):
                     try:
                         result_map[int(aid)] = _attach(dict_to_dto(a, AudioDTO), a)
                     except Exception:
-                        pass
+                        logger.debug("Audio id 转换失败: %r", aid, exc_info=True)
             return result_map
         except Exception as e:
             logger.warning("get_audios_by_ids gRPC failed: %s", e)

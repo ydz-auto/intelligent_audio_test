@@ -7,6 +7,7 @@
 - 校验逻辑（_validate_api_data 等）一并下沉
 """
 import time
+import logging
 import requests
 import websocket
 from urllib.parse import urlparse
@@ -15,6 +16,8 @@ from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from api_test_service.infrastructure.persistence.api_test_repository import api_test_repository
+
+logger = logging.getLogger(__name__)
 
 
 class APICrudService:
@@ -29,17 +32,17 @@ class APICrudService:
         if meta is not None and not isinstance(meta, dict):
             return "元数据 (meta) 必须是一个 JSON 对象"
 
-        if 'default_max_process' in data:
+        if data.get('default_max_process') is not None:
             val = data['default_max_process']
             if not isinstance(val, int) or val < 1 or val > 100:
                 return "默认最大并发数 (default_max_process) 必须在 1-100 之间"
 
-        if 'default_max_timeout' in data:
+        if data.get('default_max_timeout') is not None:
             val = data['default_max_timeout']
             if not isinstance(val, int) or val < 1 or val > 3000:
                 return "默认最大超时时间 (default_max_timeout) 必须在 1-3000 之间"
 
-        if 'default_max_audio_duration' in data:
+        if data.get('default_max_audio_duration') is not None:
             val = data['default_max_audio_duration']
             if not isinstance(val, int) or val < 1 or val > 36000:
                 return "默认最大音频时长 (default_max_audio_duration) 必须在 1-36000 之间"
@@ -125,9 +128,10 @@ class APICrudService:
 
     @staticmethod
     def _api_to_dict(api):
-        """将 API ORM 对象序列化为 dict（保持与原 ApiItem 一致的结构）"""
+        """将 API 对象序列化为 dict（兼容 APIAggregate 和 ORM PO 两种类型）"""
         endpoints = []
-        for i, ep in enumerate(api.api_endpoints or []):
+        raw_eps = getattr(api, 'api_endpoints', None) or []
+        for i, ep in enumerate(raw_eps):
             endpoints.append({
                 'id': f"{api.id}_{i}",
                 'endpoint': ep.get('endpoint', ''),
@@ -141,22 +145,24 @@ class APICrudService:
                 'description': ep.get('description', ''),
             })
 
+        created_at = getattr(api, 'created_at', None)
+        updated_at = getattr(api, 'updated_at', None)
         return {
             'id': api.id,
             'name': api.name,
-            'vendor': api.vendor,
-            'api_url': api.api_url,
-            'description': api.description,
+            'vendor': getattr(api, 'vendor', None),
+            'api_url': getattr(api, 'api_url', None) or getattr(api, 'url', None),
+            'description': getattr(api, 'description', None),
             'status': api.status,
-            'meta': api.meta if isinstance(api.meta, dict) else {},
-            'algorithm_type': api.algorithm_type,
-            'default_max_process': api.default_max_process,
-            'default_max_timeout': api.default_max_timeout,
-            'default_max_audio_duration': api.default_max_audio_duration,
-            'health_score': api.health_score,
+            'meta': getattr(api, 'meta', None) if isinstance(getattr(api, 'meta', None), dict) else {},
+            'algorithm_type': getattr(api, 'algorithm_type', None),
+            'default_max_process': getattr(api, 'default_max_process', None),
+            'default_max_timeout': getattr(api, 'default_max_timeout', None),
+            'default_max_audio_duration': getattr(api, 'default_max_audio_duration', None),
+            'health_score': getattr(api, 'health_score', None),
             'endpoints': endpoints,
-            'created_at': api.created_at.isoformat() if api.created_at else None,
-            'updated_at': api.updated_at.isoformat() if api.updated_at else None,
+            'created_at': created_at.isoformat() if created_at and hasattr(created_at, 'isoformat') else (created_at if isinstance(created_at, str) else None),
+            'updated_at': updated_at.isoformat() if updated_at and hasattr(updated_at, 'isoformat') else (updated_at if isinstance(updated_at, str) else None),
         }
 
     @staticmethod
@@ -239,7 +245,7 @@ class APICrudService:
             try:
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.debug("创建API配置后刷新统计缓存失败", exc_info=True)
 
             return {
                 'success': True,
@@ -322,7 +328,7 @@ class APICrudService:
             return {
                 'success': True,
                 'message': 'API配置更新成功',
-                'data': None,
+                'data': cls._api_to_dict(updated_api),
                 'code': 200,
             }
         except Exception as e:
@@ -362,7 +368,7 @@ class APICrudService:
             try:
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.debug("删除API配置后刷新统计缓存失败: api_id=%s", api_id, exc_info=True)
 
             return {
                 'success': True,

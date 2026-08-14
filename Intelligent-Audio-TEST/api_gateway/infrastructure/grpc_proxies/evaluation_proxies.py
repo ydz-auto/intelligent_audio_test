@@ -89,6 +89,11 @@ class _EvaluationConfigProxy:
     使用 evaluation_service_pb2 消息类型。
     """
 
+    @property
+    def stub(self):
+        """获取 EvaluationConfigService stub（供需要直接调 RPC 的场景使用）"""
+        return get_evaluation_config_service_stub()
+
     def _resp(self, resp):
         return {
             'success': resp.success,

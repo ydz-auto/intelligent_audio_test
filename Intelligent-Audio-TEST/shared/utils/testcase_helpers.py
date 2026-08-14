@@ -4,7 +4,11 @@
 为消除 api_gateway 对 task_service 的跨服务 Python 直导，现迁至 shared/utils，
 供所有服务（api_gateway/task_service 等）共享引用。
 """
+import logging
+
 from shared.utils.log_handler import log_not_emit
+
+logger = logging.getLogger(__name__)
 
 # 预览停止标志：跨服务共享（原 TestCaseController 模块级全局变量）
 preview_stop_flags = {}
@@ -264,7 +268,7 @@ def validate_multi_round_audio_dimensions(config: dict):
                 elif isinstance(raw_items, dict):
                     dim_map = raw_items
         except Exception:
-            pass
+            logger.debug("查询评估维度列表失败，回退到 ID 占位", exc_info=True)
         dim_names = [dim_map.get(str(ad[0]), {}).get('name', f"ID:{ad[0]}") for ad in audio_dims]
         param_codes = [ad[1] for ad in audio_dims]
         return (f"整体评估维度不支持需要传递音频文件的维度。"

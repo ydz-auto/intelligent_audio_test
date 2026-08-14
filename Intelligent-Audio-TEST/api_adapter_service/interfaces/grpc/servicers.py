@@ -157,7 +157,7 @@ class AdapterServiceServicer(adapter_grpc.AdapterServiceServicer):
             try:
                 task_manager.update_task_status(task_id, 'failed', str(e))
             except Exception:
-                pass
+                logger.warning("更新任务状态为failed失败: task_id=%s", task_id, exc_info=True)
             return adapter_pb.SendRoundResponse(
                 success=False, message=f'Task processing failed: {str(e)}', data='',
             )

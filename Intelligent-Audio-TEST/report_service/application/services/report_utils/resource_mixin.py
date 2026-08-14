@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import logging
 from shared.utils.result_data_store import load_full_result_data
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_device,
@@ -6,6 +7,8 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_devices_by_ids,
     _grpc_get_apis_by_ids,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ResourceMixin:
@@ -308,8 +311,8 @@ class ResourceMixin:
                             result_type = full_data.get('result_type')
                             if result_type == 'default':
                                 result_type = None
-                except:
-                    pass
+                except Exception:
+                    logger.debug("提取结果类型失败 result_id=%s", getattr(result, 'id', None), exc_info=True)
 
                 if getattr(result, "api_id", None):
                     api = _grpc_get_api(result.api_id)

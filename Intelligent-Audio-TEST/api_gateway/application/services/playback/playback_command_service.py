@@ -3,7 +3,7 @@ import logging
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import playback_config_service
+from api_gateway.infrastructure.acl import PlaybackConfigAclRepositoryImpl
 from api_gateway.schemas.common import IdData, StatusData
 from api_gateway.schemas.playback import (
     PlaybackCreateSchema,
@@ -13,6 +13,8 @@ from api_gateway.schemas.playback import (
 )
 
 logger = logging.getLogger(__name__)
+
+_playback_acl = PlaybackConfigAclRepositoryImpl()
 
 
 class PlaybackCommandService:
@@ -53,7 +55,7 @@ class PlaybackCommandService:
 
         data_dict = validated_data.model_dump(by_alias=False, exclude_none=True)
 
-        result = playback_config_service.create(data_dict)
+        result = _playback_acl.create(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -76,9 +78,9 @@ class PlaybackCommandService:
         except Exception as e:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
-        validated_dict = validated_data.model_dump(by_alias=True, exclude_none=True)
+        validated_dict = validated_data.model_dump(by_alias=False, exclude_none=True)
 
-        result = playback_config_service.update(device_id, validated_dict)
+        result = _playback_acl.update(device_id, validated_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -91,7 +93,7 @@ class PlaybackCommandService:
     # 删除播放设备
     @staticmethod
     def delete(device_id):
-        result = playback_config_service.delete(device_id)
+        result = _playback_acl.delete(device_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -115,7 +117,7 @@ class PlaybackCommandService:
 
         spl_mapping_id = validated_data.spl_mapping_id
 
-        result = playback_config_service.associate_spl(device_id, spl_mapping_id)
+        result = _playback_acl.associate_spl(device_id, spl_mapping_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -136,7 +138,7 @@ class PlaybackCommandService:
 
         test_params = validated_data.model_dump(by_alias=False, exclude_none=True)
 
-        result = playback_config_service.test(device_id, test_params)
+        result = _playback_acl.test(device_id, test_params)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -151,7 +153,7 @@ class PlaybackCommandService:
     # 停止测试
     @staticmethod
     def stop_test(device_id):
-        result = playback_config_service.stop_test(device_id)
+        result = _playback_acl.stop_test(device_id)
 
         if not result.get('success'):
             code = result.get('code', 400)

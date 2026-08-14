@@ -1,7 +1,7 @@
 from typing import Dict, Any
 
 DEVICE_DRIVER_CONFIG = {
-    'mock_mode': True
+    'mock_mode': False
 }
 
 DEVICE_CONFIGS = {

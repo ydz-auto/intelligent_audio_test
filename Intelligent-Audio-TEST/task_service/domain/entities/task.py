@@ -51,7 +51,7 @@ class TaskSnapshot:
     id: int
     name: str
     type: str
-    status: str = 'pending'
+    status: str = TaskStatus.PENDING.value
     config: Optional[Dict[str, Any]] = None
     algorithm_type: Optional[str] = None
     algorithm_params: Optional[Dict[str, Any]] = None
@@ -62,6 +62,8 @@ class TaskSnapshot:
     started_at: Optional[Any] = None
     completed_at: Optional[Any] = None
     actual_duration: Optional[int] = None
+    reevaluated_at: Optional[Any] = None
+    reevaluation_count: int = 0
 
 
 @dataclass
@@ -87,6 +89,8 @@ class TaskAggregate:
     started_at: Optional[Any] = None
     completed_at: Optional[Any] = None
     actual_duration: Optional[int] = None
+    reevaluated_at: Optional[Any] = None
+    reevaluation_count: int = 0
     cases: List[TaskCaseEntity] = field(default_factory=list)
 
     # ---- 进度与状态查询 ----
@@ -104,7 +108,7 @@ class TaskAggregate:
     def is_terminal(self) -> bool:
         return TaskStatus.is_terminal(self.status)
 
-    # ---- 状态流转 ----
+    # ---- 状态流转守卫 ----
     def can_start(self) -> bool:
         """是否允许启动（仅 pending/stopped/failed/skipped 可启动）。"""
         return self.status in (
@@ -127,6 +131,15 @@ class TaskAggregate:
             TaskStatus.QUEUED.value,
         )
 
+    def can_reevaluate(self) -> bool:
+        """是否允许重新评估（仅终态可重新评估）。"""
+        return self.status in (
+            TaskStatus.COMPLETED.value,
+            TaskStatus.FAILED.value,
+            TaskStatus.STOPPED.value,
+        )
+
+    # ---- 状态流转 ----
     def mark_started(self, started_at) -> None:
         """标记任务为运行中。"""
         self.status = TaskStatus.RUNNING.value
@@ -156,6 +169,24 @@ class TaskAggregate:
     def mark_resumed(self) -> None:
         if self.can_resume():
             self.status = TaskStatus.RUNNING.value
+
+    def mark_evaluating(self) -> None:
+        """标记任务为评估中。"""
+        self.status = TaskStatus.EVALUATING.value
+
+    def mark_reevaluate_queued(self) -> None:
+        """标记任务为重新评估排队中。"""
+        if self.can_reevaluate():
+            self.status = TaskStatus.REEVALUATE_QUEUED.value
+
+    def mark_reevaluating(self) -> None:
+        """标记任务为重新评估中。"""
+        self.status = TaskStatus.REEVALUATING.value
+
+    def mark_reevaluated(self, completed_at) -> None:
+        """标记重新评估完成，更新计数和时间戳。"""
+        self.reevaluation_count += 1
+        self.reevaluated_at = completed_at
 
     def soft_delete(self) -> None:
         """软删除。"""

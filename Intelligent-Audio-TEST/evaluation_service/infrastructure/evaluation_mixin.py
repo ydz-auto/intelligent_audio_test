@@ -10,10 +10,12 @@ from evaluation_service.domain.services.endpoint_helpers import (  # noqa: F401
     get_endpoint_url,
     get_endpoint_field,
 )
+from shared.utils.status_constants import ExecutionStatus
 
 
 def update_task_case_status_in_db(local_db_session, task_id, test_case_id, status,
-                                  evaluation_status=None, exclude_stopped=True):
+                                  evaluation_status=None, execution_status=ExecutionStatus.COMPLETED,
+                                  exclude_stopped=True):
     """
     统一更新 TaskCase 状态（P1.4 改造：通过 gRPC 调 task_service.UpdateTaskCaseStatus）
 
@@ -21,8 +23,9 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
         local_db_session: 数据库会话（P1.4 后不再使用，保留参数向后兼容）
         task_id: 任务ID
         test_case_id: 用例ID
-        status: 新状态 (completed/failed)
+        status: 新状态（仅作向后兼容参数，实际由 derive_task_case_status 推导）
         evaluation_status: 评估状态，默认与 status 一致
+        execution_status: 执行状态，默认 'completed'（评估服务调用时执行已完成）
         exclude_stopped: 是否排除已停止的任务（gRPC 接口暂未支持，服务端处理）
 
     Returns:
@@ -34,14 +37,17 @@ def update_task_case_status_in_db(local_db_session, task_id, test_case_id, statu
         失败时通过日志告警，不影响本地 TestResultDimension 的写入。
     """
     from evaluation_service.infrastructure.acl import task_acl_repository
+    from shared.utils.status_utils import derive_task_case_status
 
     if evaluation_status is None:
         evaluation_status = status
 
+    derived_status = derive_task_case_status(execution_status, evaluation_status)
+
     success = task_acl_repository.update_task_case_status(
         task_id=task_id,
         case_id=str(test_case_id),
-        status=status,
+        status=derived_status,
         evaluation_status=evaluation_status,
     )
     return 1 if success else 0

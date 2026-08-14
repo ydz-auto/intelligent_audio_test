@@ -21,6 +21,19 @@ from shared.models.common_enums import TaskStatus
 from typing import Optional, Dict, Any, List
 from shared.utils.grpc_json import loads as _loads
 
+# 通过 api_gateway 的 grpc_proxies 单例访问各服务 stub，避免直接
+# import shared.clients.grpc_clients
+from api_gateway.infrastructure.grpc_proxies import (
+    testcase_config_service,
+    task_config_service,
+    report_config_service,
+    task_data_service,
+    audio_config_service,
+    device_config_service,
+    api_config_service,
+    evaluation_config_service,
+)
+
 
 class TestCaseReadModel:
     """测试用例读模型 —— 优化列表查询"""
@@ -36,10 +49,9 @@ class TestCaseReadModel:
         获取，gRPC 无对应接口，暂置为 0 并加 TODO。
         """
         try:
-            from shared.clients.grpc_clients import get_testcase_config_service_stub
             from shared.proto import task_service_pb2 as task_pb
 
-            stub = get_testcase_config_service_stub()
+            stub = testcase_config_service.stub
             req = task_pb.ListTestCasesRequest(
                 page=page,
                 per_page=page_size,
@@ -85,10 +97,9 @@ class TaskReadModel:
         获取任务列表，进度由 total_cases/completed_cases 计算。
         """
         try:
-            from shared.clients.grpc_clients import get_task_config_service_stub
             from shared.proto import task_service_pb2 as task_pb
 
-            stub = get_task_config_service_stub()
+            stub = task_config_service.stub
             req = task_pb.ListTasksRequest(
                 page=page,
                 per_page=page_size,
@@ -137,10 +148,9 @@ class ReportReadModel:
         获取报告列表，task_name 通过 gRPC 调用 task_service.TaskDataService.GetTaskById 获取。
         """
         try:
-            from shared.clients.grpc_clients import get_report_config_service_stub
             from shared.proto import report_service_pb2 as report_pb
 
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             req = report_pb.ListReportsRequest(
                 page=page,
                 per_page=page_size,
@@ -159,10 +169,9 @@ class ReportReadModel:
             r_task_id = r.get('task_id')
             if r_task_id:
                 try:
-                    from shared.clients.grpc_clients import get_task_data_service_stub
                     from shared.proto import task_service_pb2 as task_pb
 
-                    stub = get_task_data_service_stub()
+                    stub = task_data_service.stub
                     req = task_pb.GetTaskByIdRequest(task_id=int(r_task_id))
                     resp = stub.GetTaskById(req)
                     if resp.success:
@@ -191,10 +200,9 @@ class HomeStatsReadModel:
     def _count_cases() -> int:
         """用例总数（未删除）"""
         try:
-            from shared.clients.grpc_clients import get_testcase_config_service_stub
             from shared.proto import task_service_pb2 as task_pb
 
-            stub = get_testcase_config_service_stub()
+            stub = testcase_config_service.stub
             # ListTestCases 不带参数取 total
             resp = stub.ListTestCases(task_pb.ListTestCasesRequest(
                 page=1, per_page=1, include_deleted=False))
@@ -209,10 +217,9 @@ class HomeStatsReadModel:
     def _count_tasks() -> int:
         """任务总数（未删除）"""
         try:
-            from shared.clients.grpc_clients import get_task_config_service_stub
             from shared.proto import task_service_pb2 as task_pb
 
-            stub = get_task_config_service_stub()
+            stub = task_config_service.stub
             resp = stub.ListTasks(task_pb.ListTasksRequest(page=1, per_page=1))
             if not resp.success:
                 return 0
@@ -225,10 +232,9 @@ class HomeStatsReadModel:
     def _count_audios() -> int:
         """音频总数"""
         try:
-            from shared.clients.grpc_clients import get_audio_config_service_stub
             from shared.proto import audio_service_pb2 as e2e_pb
 
-            stub = get_audio_config_service_stub()
+            stub = audio_config_service.stub
             # ListAudios 接收 JSON 查询参数，per_page=1 取 total
             import json as _json
             req = e2e_pb.ListAudiosRequest(data=_json.dumps({
@@ -246,10 +252,9 @@ class HomeStatsReadModel:
     def _count_devices() -> int:
         """设备总数（未删除）"""
         try:
-            from shared.clients.grpc_clients import get_device_config_service_stub
             from shared.proto import device_service_pb2 as e2e_pb
 
-            stub = get_device_config_service_stub()
+            stub = device_config_service.stub
             resp = stub.ListDevices(e2e_pb.ListDevicesRequest(
                 page=1, per_page=1))
             if not resp.success:
@@ -263,10 +268,9 @@ class HomeStatsReadModel:
     def _count_apis() -> int:
         """API 总数（未删除）"""
         try:
-            from shared.clients.grpc_clients import get_api_test_service_stub
             from shared.proto import api_test_service_pb2 as api_pb
 
-            stub = get_api_test_service_stub()
+            stub = api_config_service.stub
             resp = stub.ListAPIConfigs(api_pb.ListAPIConfigsRequest(
                 page=1, per_page=1))
             if not resp.success:
@@ -290,10 +294,9 @@ class HomeStatsReadModel:
     def _count_dimensions() -> int:
         """评估维度总数（启用 + 未删除）"""
         try:
-            from shared.clients.grpc_clients import get_evaluation_config_service_stub
             from shared.proto import evaluation_service_pb2 as eval_pb
 
-            stub = get_evaluation_config_service_stub()
+            stub = evaluation_config_service.stub
             # ListDimensions 不带过滤，per_page=1 取 total
             resp = stub.ListDimensions(eval_pb.ListDimensionsRequest(
                 page=1, per_page=1))
@@ -308,10 +311,9 @@ class HomeStatsReadModel:
     def _count_running_tasks() -> int:
         """运行中任务数（pending/running）"""
         try:
-            from shared.clients.grpc_clients import get_task_config_service_stub
             from shared.proto import task_service_pb2 as task_pb
 
-            stub = get_task_config_service_stub()
+            stub = task_config_service.stub
             # 逐状态查询累加（gRPC ListTasks 单次只支持单 status 过滤）
             running = 0
             for st in (TaskStatus.PENDING.value, TaskStatus.RUNNING.value):
@@ -328,10 +330,9 @@ class HomeStatsReadModel:
     def _count_completed_tasks() -> int:
         """已完成任务数"""
         try:
-            from shared.clients.grpc_clients import get_task_config_service_stub
             from shared.proto import task_service_pb2 as task_pb
 
-            stub = get_task_config_service_stub()
+            stub = task_config_service.stub
             resp = stub.ListTasks(task_pb.ListTasksRequest(
                 page=1, per_page=1, status=TaskStatus.COMPLETED.value))
             if not resp.success:
@@ -345,10 +346,9 @@ class HomeStatsReadModel:
     def _count_failed_tasks() -> int:
         """失败任务数"""
         try:
-            from shared.clients.grpc_clients import get_task_config_service_stub
             from shared.proto import task_service_pb2 as task_pb
 
-            stub = get_task_config_service_stub()
+            stub = task_config_service.stub
             resp = stub.ListTasks(task_pb.ListTasksRequest(
                 page=1, per_page=1, status=TaskStatus.FAILED.value))
             if not resp.success:
@@ -362,10 +362,9 @@ class HomeStatsReadModel:
     def _count_reports() -> int:
         """报告总数"""
         try:
-            from shared.clients.grpc_clients import get_report_config_service_stub
             from shared.proto import report_service_pb2 as report_pb
 
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.ListReports(report_pb.ListReportsRequest(
                 page=1, per_page=1))
             if not resp.success:

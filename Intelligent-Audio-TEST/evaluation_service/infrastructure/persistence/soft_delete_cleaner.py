@@ -11,6 +11,10 @@
      test_result_dimensions 无 deleted_at，通过查找孤儿记录
     （test_result_id NOT IN test_results）清理。
 
+保护策略：硬删除 categories 前检查是否仍被活跃 dimensions 引用。
+          若被引用则跳过，并刷新 deleted_at 为当前时间，重置 60 天保留期，
+          给引用方窗口自然清理。
+
 启动方式：在 evaluation_service 的 lifespan 中调用 start()，关闭时调用 stop()。
 """
 import logging
@@ -30,6 +34,7 @@ class EvaluationServiceCleaner(SoftDeleteCleanerBase):
         counts = {}
         bd = self.batch_delete
         cei = self.collect_expired_ids
+        rda = self.refresh_deleted_at
 
         # ================================================================
         # 1. dimensions（子维度先删，再删主维度）
@@ -48,9 +53,19 @@ class EvaluationServiceCleaner(SoftDeleteCleanerBase):
         # ================================================================
         cat_ids = cei(session, 'categories', threshold_dt)
         if cat_ids:
-            bd(session, "DELETE FROM categories WHERE id IN :ids", cat_ids)
-            counts['categories'] = len(cat_ids)
-            logger.info(f"[软删除清理:evaluation_service] 硬删除 categories: {len(cat_ids)} 条")
+            # 跳过仍被活跃 dimensions 引用的分类
+            referenced = self.filter_referenced_ids(
+                session, 'dimensions', 'category_id', cat_ids)
+            if referenced:
+                rda(session, 'categories', list(referenced))
+                logger.info(
+                    f"[软删除清理:evaluation_service] 跳过 {len(referenced)} 条 "
+                    f"仍被活跃 dimensions 引用的 categories，已刷新 deleted_at")
+                cat_ids = [i for i in cat_ids if i not in referenced]
+            if cat_ids:
+                bd(session, "DELETE FROM categories WHERE id IN :ids", cat_ids)
+                counts['categories'] = len(cat_ids)
+                logger.info(f"[软删除清理:evaluation_service] 硬删除 categories: {len(cat_ids)} 条")
 
         # ================================================================
         # 3. test_result_dimensions 孤儿清理

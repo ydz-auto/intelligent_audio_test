@@ -13,6 +13,11 @@ class _ApiConfigProxy:
     网关侧不再 import API 模型和 get_db_session()，统一走 gRPC。
     """
 
+    @property
+    def stub(self):
+        """获取 APITestService stub（供需要直接调 RPC 的场景使用）"""
+        return get_api_test_service_stub()
+
     def create(self, data):
         """创建 API 配置
 

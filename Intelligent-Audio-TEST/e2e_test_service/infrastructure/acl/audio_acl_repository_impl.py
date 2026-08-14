@@ -168,3 +168,31 @@ class AudioAclRepositoryImpl(AudioAclRepository):
         except Exception as e:
             logger.error("measure_spl 失败: %s", e)
             return 1.0
+
+    def prepare_audios(self, audio_ids: List[int], playback_device_ids: List[Any]) -> Dict[str, Any]:
+        """预下载并按设备目标采样率重采样音频（通过 gRPC AudioService.PrepareAudios）
+
+        Returns:
+            嵌套映射 {audio_id: {target_rate: local_path, "original": local_path}} 或空 dict
+        """
+        from shared.clients.grpc_clients import get_audio_service_stub
+        from shared.proto import audio_service_pb2 as audio_pb
+        from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+        if not audio_ids:
+            return {}
+        try:
+            stub = get_audio_service_stub()
+            req = audio_pb.PrepareAudiosRequest(
+                data=_dumps({
+                    'audio_ids': list(audio_ids),
+                    'playback_device_ids': list(playback_device_ids or []),
+                }),
+            )
+            resp = stub.PrepareAudios(req)
+            if not resp.success:
+                logger.warning("prepare_audios failed: %s", resp.message)
+                return {}
+            return _loads(resp.data, {}) or {}
+        except Exception as e:
+            logger.error("prepare_audios 失败: %s", e)
+            return {}

@@ -7,102 +7,92 @@
 
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator, AliasChoices
+from pydantic import Field, ConfigDict
 
 from api_gateway.schemas.base import APIModel
 
 
-class AlgorithmReferenceParam(BaseModel):
+class AlgorithmReferenceParam(APIModel):
     """参考参数"""
-    id: Optional[int] = Field(None, validation_alias='id')
-    code: str = Field(validation_alias='code', alias='code')
-    name: str = Field(validation_alias='name', alias='name')
-    type: str = Field(default='text', validation_alias='type')
-    help_text: Optional[str] = Field('', validation_alias='helpText')
-
-    model_config = {'populate_by_name': True}
+    id: Optional[int] = Field(None)
+    code: str = Field()
+    name: str = Field()
+    type: str = Field(default='text')
+    help_text: Optional[str] = Field('')
 
 
-class AlgorithmDefinitionCreate(BaseModel):
+class AlgorithmDefinitionCreate(APIModel):
     """创建算法定义请求"""
-    type: str = Field(..., min_length=1, max_length=50, description='算法类型代码', validation_alias='type')
-    name: str = Field(..., min_length=1, max_length=100, description='算法显示名称', validation_alias='name')
-    category: Optional[str] = Field(None, max_length=50, description='分类', validation_alias='category')
-    description: Optional[str] = Field(None, validation_alias='description')
-    status: str = Field(default='online', description='状态', validation_alias='status')
-    icon: Optional[str] = Field(None, max_length=200, description='图标URL', validation_alias='icon')
-    display_order: int = Field(default=0, ge=0, description='排序权重', validation_alias='displayOrder')
-    group_id: Optional[int] = Field(None, description='分组ID', validation_alias='groupId')
-    device_params: Optional[List[Dict[str, Any]]] = Field(None, description='设备参数', validation_alias='deviceParams')
-    api_params: Optional[List[Dict[str, Any]]] = Field(None, description='API参数', validation_alias='apiParams')
-    case_params: Optional[List[Dict[str, Any]]] = Field(None, description='用例专属参数', validation_alias='caseParams')
-    mappings: Optional[Dict[str, List[Dict[str, Any]]]] = Field(None, description='参数映射', validation_alias='mappings')
-    associated_dimensions: Optional[List[Dict[str, Any]]] = Field(None, description='关联评估维度', validation_alias='associatedDimensions')
-    reference_params: Optional[List[Dict[str, Any]]] = Field(None, description='参考参数', validation_alias='referenceParams')
-
-    model_config = {'populate_by_name': True}
+    type: str = Field(..., min_length=1, max_length=50, description='算法类型代码')
+    name: str = Field(..., min_length=1, max_length=100, description='算法显示名称')
+    category: Optional[str] = Field(None, max_length=50, description='分类')
+    description: Optional[str] = Field(None)
+    status: str = Field(default='online', description='状态')
+    icon: Optional[str] = Field(None, max_length=200, description='图标URL')
+    display_order: int = Field(default=0, ge=0, description='排序权重')
+    group_id: Optional[int] = Field(None, description='分组ID')
+    device_params: Optional[List[Dict[str, Any]]] = Field(None, description='设备参数')
+    api_params: Optional[List[Dict[str, Any]]] = Field(None, description='API参数')
+    case_params: Optional[List[Dict[str, Any]]] = Field(None, description='用例专属参数')
+    mappings: Optional[Dict[str, List[Dict[str, Any]]]] = Field(None, description='参数映射')
+    associated_dimensions: Optional[List[Dict[str, Any]]] = Field(None, description='关联评估维度')
+    reference_params: Optional[List[Dict[str, Any]]] = Field(None, description='参考参数')
 
 
-class AlgorithmDefinitionUpdate(BaseModel):
+class AlgorithmDefinitionUpdate(APIModel):
     """更新算法定义请求"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100, validation_alias='name')
-    category: Optional[str] = Field(None, max_length=50, validation_alias='category')
-    description: Optional[str] = Field(None, validation_alias='description')
-    status: Optional[str] = Field(None, validation_alias='status')
-    icon: Optional[str] = Field(None, max_length=200, validation_alias='icon')
-    display_order: Optional[int] = Field(None, ge=0, validation_alias='displayOrder')
-    group_id: Optional[int] = Field(None, validation_alias='groupId')
-    device_params: Optional[List[Dict[str, Any]]] = Field(None, validation_alias='deviceParams')
-    api_params: Optional[List[Dict[str, Any]]] = Field(None, validation_alias='apiParams')
-    case_params: Optional[List[Dict[str, Any]]] = Field(None, validation_alias='caseParams')
-    mappings: Optional[Dict[str, List[Dict[str, Any]]]] = Field(None, validation_alias='mappings')
-    associated_dimensions: Optional[List[Dict[str, Any]]] = Field(None, validation_alias='associatedDimensions')
-
-    model_config = {'populate_by_name': True}
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    category: Optional[str] = Field(None, max_length=50)
+    description: Optional[str] = Field(None)
+    status: Optional[str] = Field(None)
+    icon: Optional[str] = Field(None, max_length=200)
+    display_order: Optional[int] = Field(None, ge=0)
+    group_id: Optional[int] = Field(None)
+    device_params: Optional[List[Dict[str, Any]]] = Field(None)
+    api_params: Optional[List[Dict[str, Any]]] = Field(None)
+    case_params: Optional[List[Dict[str, Any]]] = Field(None)
+    mappings: Optional[Dict[str, List[Dict[str, Any]]]] = Field(None)
+    associated_dimensions: Optional[List[Dict[str, Any]]] = Field(None)
 
 
-class AlgorithmParamCreate(BaseModel):
+class AlgorithmParamCreate(APIModel):
     """创建算法参数请求"""
-    algorithm_type: str = Field(..., description='关联算法类型', validation_alias='algorithmType')
-    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码', validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称', validation_alias='paramName')
+    algorithm_type: str = Field(..., description='关联算法类型')
+    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码')
+    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
-    param_type: str = Field(..., description='参数类型', validation_alias='paramType')
-    required: bool = Field(default=False, validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue', alias='defaultValue')
-    options_source: Optional[str] = Field(None, description='选项来源', validation_alias='optionsSource')
-    options_field: Optional[str] = Field(None, validation_alias='optionsField', alias='optionsField')
-    options_label_field: Optional[str] = Field(None, validation_alias='optionsLabelField', alias='optionsLabelField')
-    validation_rules: Optional[str] = Field(None, validation_alias='validationRules', alias='validationRules')
-    help_text: Optional[str] = Field(None, validation_alias='helpText', alias='helpText')
+    param_type: str = Field(..., description='参数类型')
+    required: bool = Field(default=False)
+    default_value: Optional[str] = Field(None)
+    options_source: Optional[str] = Field(None, description='选项来源')
+    options_field: Optional[str] = Field(None)
+    options_label_field: Optional[str] = Field(None)
+    validation_rules: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
     component: Optional[str] = Field(None, description='前端组件')
-    ui_order: int = Field(default=0, ge=0, validation_alias='uiOrder', alias='uiOrder')
-    ui_group: str = Field(default='basic', max_length=50, validation_alias='uiGroup', alias='uiGroup')
+    ui_order: int = Field(default=0, ge=0)
+    ui_group: str = Field(default='basic', max_length=50)
     hidden: bool = Field(default=False)
 
-    model_config = {'populate_by_name': True}
 
-
-class AlgorithmParamUpdate(BaseModel):
+class AlgorithmParamUpdate(APIModel):
     """更新算法参数请求"""
-    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称', validation_alias='paramName')
+    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
-    param_type: Optional[str] = Field(None, validation_alias='paramType')
-    required: Optional[bool] = Field(None, validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    options_source: Optional[str] = Field(None, validation_alias='optionsSource')
-    options_field: Optional[str] = Field(None, validation_alias='optionsField')
-    options_label_field: Optional[str] = Field(None, validation_alias='optionsLabelField')
-    validation_rules: Optional[str] = Field(None, validation_alias='validationRules')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
-    ui_group: Optional[str] = Field(None, validation_alias='uiGroup')
-    hidden: Optional[bool] = Field(None, validation_alias='hidden')
-
-    model_config = {'populate_by_name': True}
+    param_type: Optional[str] = Field(None)
+    required: Optional[bool] = Field(None)
+    default_value: Optional[str] = Field(None)
+    options_source: Optional[str] = Field(None)
+    options_field: Optional[str] = Field(None)
+    options_label_field: Optional[str] = Field(None)
+    validation_rules: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: Optional[int] = Field(None)
+    ui_group: Optional[str] = Field(None)
+    hidden: Optional[bool] = Field(None)
 
 
-class ParamMappingCreate(BaseModel):
+class ParamMappingCreate(APIModel):
     """创建参数映射请求"""
     algorithm_type: str = Field(..., description='关联算法类型')
     component_type: str = Field(..., description='组件类型')
@@ -113,10 +103,8 @@ class ParamMappingCreate(BaseModel):
     target_key: str = Field(..., min_length=1, max_length=50, description='目标参数')
     transform_type: str = Field(default='none', description='转换类型')
 
-    model_config = {'populate_by_name': True}
 
-
-class ParamMappingUpdate(BaseModel):
+class ParamMappingUpdate(APIModel):
     """更新参数映射请求"""
     component_type: Optional[str] = None
     direction: Optional[str] = None
@@ -126,10 +114,8 @@ class ParamMappingUpdate(BaseModel):
     target_key: Optional[str] = None
     transform_type: Optional[str] = None
 
-    model_config = {'populate_by_name': True}
 
-
-class AlgorithmDimensionRelationCreate(BaseModel):
+class AlgorithmDimensionRelationCreate(APIModel):
     """创建算法维度关联请求"""
     algorithm_type: str = Field(..., description='关联算法类型')
     dimension_id: int = Field(..., description='维度ID')
@@ -137,10 +123,8 @@ class AlgorithmDimensionRelationCreate(BaseModel):
     weight: float = Field(default=1.0, ge=0)
 
 
-class AlgorithmDetailResponse(BaseModel):
+class AlgorithmDetailResponse(APIModel):
     """算法详情响应"""
-    model_config = {'populate_by_name': True}
-
     id: int
     type: str
     name: str
@@ -151,71 +135,69 @@ class AlgorithmDetailResponse(BaseModel):
     status: str
     icon: Optional[str] = None
     display_order: int
-    device_params: Optional[List[Dict[str, Any]]] = Field(None, alias='deviceParams', validation_alias='deviceParams')
-    api_params: Optional[List[Dict[str, Any]]] = Field(None, alias='apiParams', validation_alias='apiParams')
-    case_params: Optional[List[Dict[str, Any]]] = Field(None, alias='caseParams', validation_alias='caseParams')
-    params: Optional[List[Dict[str, Any]]] = Field(None, alias='params', validation_alias='params')
-    mappings: Optional[Dict[str, List[Dict[str, Any]]]] = Field(None, alias='mappings', validation_alias='mappings')
-    associated_dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='associatedDimensions', validation_alias='associatedDimensions')
-    dimension_relations: Optional[List[Dict[str, Any]]] = Field(None, alias='dimensionRelations', validation_alias='dimensionRelations')
-    reference_params: Optional[List[Dict[str, Any]]] = Field(None, alias='referenceParams', validation_alias='referenceParams')
+    device_params: Optional[List[Dict[str, Any]]] = Field(None)
+    api_params: Optional[List[Dict[str, Any]]] = Field(None)
+    case_params: Optional[List[Dict[str, Any]]] = Field(None)
+    params: Optional[List[Dict[str, Any]]] = Field(None)
+    mappings: Optional[Dict[str, List[Dict[str, Any]]]] = Field(None)
+    associated_dimensions: Optional[List[Dict[str, Any]]] = Field(None)
+    dimension_relations: Optional[List[Dict[str, Any]]] = Field(None)
+    reference_params: Optional[List[Dict[str, Any]]] = Field(None)
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
 
-class AlgorithmListResponse(BaseModel):
+class AlgorithmListResponse(APIModel):
     """算法列表响应"""
     data: List[AlgorithmDetailResponse]
     total: int
 
 
-class AlgorithmFormSchemaResponse(BaseModel):
+class AlgorithmFormSchemaResponse(APIModel):
     """算法表单 Schema 响应（用于前端动态表单）"""
-    algorithm_type: str = Field(validation_alias='algorithmType', alias='algorithmType')
-    algorithm_name: str = Field(validation_alias='algorithmName', alias='algorithmName')
-    category: Optional[str] = Field(None, validation_alias='category', alias='category')
-    description: Optional[str] = Field(None, validation_alias='description', alias='description')
-    groups: List[Dict[str, Any]] = Field(validation_alias='groups', alias='groups')
-    fields: List[Dict[str, Any]] = Field(validation_alias='fields', alias='fields')
+    algorithm_type: str = Field()
+    algorithm_name: str = Field()
+    category: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    groups: List[Dict[str, Any]] = Field()
+    fields: List[Dict[str, Any]] = Field()
 
 
-class AlgorithmParamsResponse(BaseModel):
+class AlgorithmParamsResponse(APIModel):
     """算法参数列表响应"""
     parameters: List[Dict[str, Any]]
 
 
-class AlgorithmOptionsResponse(BaseModel):
+class AlgorithmOptionsResponse(APIModel):
     """算法选项列表响应（下拉框用）"""
     algorithms: List[Dict[str, Any]]
 
 
-class AlgorithmAssociateDimensionsRequest(BaseModel):
+class AlgorithmAssociateDimensionsRequest(APIModel):
     """关联评估维度请求"""
-    dimension_ids: List[int] = Field(..., description='维度ID列表', validation_alias='dimensionIds')
-    is_default: bool = Field(default=False, description='是否默认', validation_alias='isDefault')
-    weight: float = Field(default=1.0, ge=0, description='权重', validation_alias='weight')
-
-    model_config = {'populate_by_name': True}
+    dimension_ids: List[int] = Field(..., description='维度ID列表')
+    is_default: bool = Field(default=False, description='是否默认')
+    weight: float = Field(default=1.0, ge=0, description='权重')
 
 
-class ReloadConfigResponse(BaseModel):
+class ReloadConfigResponse(APIModel):
     """重新加载配置响应"""
-    success: bool = Field(validation_alias='success', alias='success')
-    message: str = Field(validation_alias='message', alias='message')
-    reload_time: Optional[datetime] = Field(None, validation_alias='reloadTime', alias='reloadTime')
+    success: bool = Field()
+    message: str = Field()
+    reload_time: Optional[datetime] = Field(None)
 
 
-class AlgorithmImportRequest(BaseModel):
+class AlgorithmImportRequest(APIModel):
     """导入算法配置请求"""
-    algorithms: List[Dict[str, Any]] = Field(validation_alias='algorithms', alias='algorithms')
+    algorithms: List[Dict[str, Any]] = Field()
 
 
-class BulkDeleteRequest(BaseModel):
+class BulkDeleteRequest(APIModel):
     """批量删除请求"""
-    algorithm_types: List[str] = Field(..., description='要删除的算法类型列表', validation_alias='algorithmTypes')
+    algorithm_types: List[str] = Field(..., description='要删除的算法类型列表')
 
 
-class AlgorithmDeleteResponse(BaseModel):
+class AlgorithmDeleteResponse(APIModel):
     """删除算法响应"""
     deleted_types: List[str]
     message: str
@@ -223,24 +205,20 @@ class AlgorithmDeleteResponse(BaseModel):
 
 # ========== 算法分组 ==========
 
-class AlgorithmGroupCreate(BaseModel):
+class AlgorithmGroupCreate(APIModel):
     """创建算法分组请求"""
-    name: str = Field(..., min_length=1, max_length=100, description='分组名称', validation_alias='name')
-    description: Optional[str] = Field(None, validation_alias='description')
-    icon: Optional[str] = Field(None, max_length=200, description='图标URL', validation_alias='icon')
-    display_order: int = Field(default=0, ge=0, description='排序权重', validation_alias='displayOrder')
-
-    model_config = {'populate_by_name': True}
+    name: str = Field(..., min_length=1, max_length=100, description='分组名称')
+    description: Optional[str] = Field(None)
+    icon: Optional[str] = Field(None, max_length=200, description='图标URL')
+    display_order: int = Field(default=0, ge=0, description='排序权重')
 
 
-class AlgorithmGroupUpdate(BaseModel):
+class AlgorithmGroupUpdate(APIModel):
     """更新算法分组请求"""
-    name: Optional[str] = Field(None, min_length=1, max_length=100, validation_alias='name')
-    description: Optional[str] = Field(None, validation_alias='description')
-    icon: Optional[str] = Field(None, max_length=200, validation_alias='icon')
-    display_order: Optional[int] = Field(None, ge=0, validation_alias='displayOrder')
-
-    model_config = {'populate_by_name': True}
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    description: Optional[str] = Field(None)
+    icon: Optional[str] = Field(None, max_length=200)
+    display_order: Optional[int] = Field(None, ge=0)
 
 
 class AlgorithmGroupItem(APIModel):
@@ -255,7 +233,7 @@ class AlgorithmGroupItem(APIModel):
     updated_at: Optional[str]
 
 
-class AlgorithmGroupListResponse(BaseModel):
+class AlgorithmGroupListResponse(APIModel):
     """算法分组列表响应"""
     data: List[AlgorithmGroupItem]
     total: int
@@ -263,49 +241,47 @@ class AlgorithmGroupListResponse(BaseModel):
 
 # ========== 设备参数 ==========
 
-class AlgorithmDeviceParamCreate(BaseModel):
+class AlgorithmDeviceParamCreate(APIModel):
     """创建设备参数请求"""
-    algorithm_type: str = Field(..., description='关联算法类型', validation_alias='algorithmType')
-    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码', validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称', validation_alias='paramName')
+    algorithm_type: str = Field(..., description='关联算法类型')
+    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码')
+    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
-    param_type: str = Field(..., description='参数类型：text, audio_stream, audio_file, text_file, rttm, stm, json', validation_alias='paramType')
-    direction: str = Field(default='input', description='方向：input, output', validation_alias='direction')
-    required: bool = Field(default=False, description='是否必填', validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    options_source: Optional[str] = Field(None, description='选项来源：NULL=静态, translation_directions=翻译方向表, languages=语言表', validation_alias='optionsSource')
-    options_field: Optional[str] = Field(None, description='选项值字段', validation_alias='optionsField')
-    options_label_field: Optional[str] = Field(None, description='选项显示字段', validation_alias='optionsLabelField')
-    validation_rules: Optional[str] = Field(None, validation_alias='validationRules')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: int = Field(default=0, ge=0, description='界面排序', validation_alias='uiOrder')
-    hidden: bool = Field(default=False, description='是否隐藏', validation_alias='hidden')
-
-    model_config = {'populate_by_name': True}
+    param_type: str = Field(..., description='参数类型：text, audio_stream, audio_file, text_file, rttm, stm, json')
+    direction: str = Field(default='input', description='方向：input, output')
+    required: bool = Field(default=False, description='是否必填')
+    default_value: Optional[str] = Field(None)
+    options_source: Optional[str] = Field(None, description='选项来源：NULL=静态, translation_directions=翻译方向表, languages=语言表')
+    options_field: Optional[str] = Field(None, description='选项值字段')
+    options_label_field: Optional[str] = Field(None, description='选项显示字段')
+    validation_rules: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: int = Field(default=0, ge=0, description='界面排序')
+    hidden: bool = Field(default=False, description='是否隐藏')
 
 
-class AlgorithmDeviceParamUpdate(BaseModel):
+class AlgorithmDeviceParamUpdate(APIModel):
     """更新设备参数请求"""
-    param_code: Optional[str] = Field(None, max_length=50, validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, max_length=100, validation_alias='paramName')
-    label: Optional[str] = Field(None, max_length=100, validation_alias='label')
-    param_type: Optional[str] = Field(None, validation_alias='paramType')
-    direction: Optional[str] = Field(None, validation_alias='direction')
-    required: Optional[bool] = Field(None, validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    options_source: Optional[str] = Field(None, validation_alias='optionsSource')
-    options_field: Optional[str] = Field(None, validation_alias='optionsField')
-    options_label_field: Optional[str] = Field(None, validation_alias='optionsLabelField')
-    validation_rules: Optional[str] = Field(None, validation_alias='validationRules')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
-    hidden: Optional[bool] = Field(None, validation_alias='hidden')
-
-    model_config = {'populate_by_name': True}
+    param_code: Optional[str] = Field(None, max_length=50)
+    param_name: Optional[str] = Field(None, max_length=100)
+    label: Optional[str] = Field(None, max_length=100)
+    param_type: Optional[str] = Field(None)
+    direction: Optional[str] = Field(None)
+    required: Optional[bool] = Field(None)
+    default_value: Optional[str] = Field(None)
+    options_source: Optional[str] = Field(None)
+    options_field: Optional[str] = Field(None)
+    options_label_field: Optional[str] = Field(None)
+    validation_rules: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: Optional[int] = Field(None)
+    hidden: Optional[bool] = Field(None)
 
 
-class AlgorithmDeviceParamItem(BaseModel):
+class AlgorithmDeviceParamItem(APIModel):
     """设备参数项"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     algorithm_type: str
     param_code: str
@@ -323,11 +299,8 @@ class AlgorithmDeviceParamItem(BaseModel):
     ui_order: int
     hidden: bool
 
-    class Config:
-        from_attributes = True
 
-
-class AlgorithmDeviceParamListResponse(BaseModel):
+class AlgorithmDeviceParamListResponse(APIModel):
     """设备参数列表响应"""
     data: List[AlgorithmDeviceParamItem]
     total: int
@@ -335,49 +308,47 @@ class AlgorithmDeviceParamListResponse(BaseModel):
 
 # ========== API 参数 ==========
 
-class AlgorithmApiParamCreate(BaseModel):
+class AlgorithmApiParamCreate(APIModel):
     """创建API参数请求"""
-    algorithm_type: str = Field(..., description='关联算法类型', validation_alias='algorithmType')
-    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码', validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称', validation_alias='paramName')
+    algorithm_type: str = Field(..., description='关联算法类型')
+    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码')
+    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
-    param_type: str = Field(..., description='参数类型：text, audio_stream, audio_file, text_file, rttm, stm, json', validation_alias='paramType')
-    direction: str = Field(default='input', description='方向：input, output', validation_alias='direction')
-    required: bool = Field(default=False, description='是否必填', validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    options_source: Optional[str] = Field(None, description='选项来源', validation_alias='optionsSource')
-    options_field: Optional[str] = Field(None, description='选项值字段', validation_alias='optionsField')
-    options_label_field: Optional[str] = Field(None, description='选项显示字段', validation_alias='optionsLabelField')
-    validation_rules: Optional[str] = Field(None, validation_alias='validationRules')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: int = Field(default=0, ge=0, description='界面排序', validation_alias='uiOrder')
-    hidden: bool = Field(default=False, description='是否隐藏', validation_alias='hidden')
-
-    model_config = {'populate_by_name': True}
+    param_type: str = Field(..., description='参数类型：text, audio_stream, audio_file, text_file, rttm, stm, json')
+    direction: str = Field(default='input', description='方向：input, output')
+    required: bool = Field(default=False, description='是否必填')
+    default_value: Optional[str] = Field(None)
+    options_source: Optional[str] = Field(None, description='选项来源')
+    options_field: Optional[str] = Field(None, description='选项值字段')
+    options_label_field: Optional[str] = Field(None, description='选项显示字段')
+    validation_rules: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: int = Field(default=0, ge=0, description='界面排序')
+    hidden: bool = Field(default=False, description='是否隐藏')
 
 
-class AlgorithmApiParamUpdate(BaseModel):
+class AlgorithmApiParamUpdate(APIModel):
     """更新API参数请求"""
-    param_code: Optional[str] = Field(None, max_length=50, validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, max_length=100, validation_alias='paramName')
-    label: Optional[str] = Field(None, max_length=100, validation_alias='label')
-    param_type: Optional[str] = Field(None, validation_alias='paramType')
-    direction: Optional[str] = Field(None, validation_alias='direction')
-    required: Optional[bool] = Field(None, validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    options_source: Optional[str] = Field(None, validation_alias='optionsSource')
-    options_field: Optional[str] = Field(None, validation_alias='optionsField')
-    options_label_field: Optional[str] = Field(None, validation_alias='optionsLabelField')
-    validation_rules: Optional[str] = Field(None, validation_alias='validationRules')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
-    hidden: Optional[bool] = Field(None, validation_alias='hidden')
-
-    model_config = {'populate_by_name': True}
+    param_code: Optional[str] = Field(None, max_length=50)
+    param_name: Optional[str] = Field(None, max_length=100)
+    label: Optional[str] = Field(None, max_length=100)
+    param_type: Optional[str] = Field(None)
+    direction: Optional[str] = Field(None)
+    required: Optional[bool] = Field(None)
+    default_value: Optional[str] = Field(None)
+    options_source: Optional[str] = Field(None)
+    options_field: Optional[str] = Field(None)
+    options_label_field: Optional[str] = Field(None)
+    validation_rules: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: Optional[int] = Field(None)
+    hidden: Optional[bool] = Field(None)
 
 
-class AlgorithmApiParamItem(BaseModel):
+class AlgorithmApiParamItem(APIModel):
     """API参数项"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     algorithm_type: str
     param_code: str
@@ -395,11 +366,8 @@ class AlgorithmApiParamItem(BaseModel):
     ui_order: int
     hidden: bool
 
-    class Config:
-        from_attributes = True
 
-
-class AlgorithmApiParamListResponse(BaseModel):
+class AlgorithmApiParamListResponse(APIModel):
     """API参数列表响应"""
     data: List[AlgorithmApiParamItem]
     total: int
@@ -407,84 +375,78 @@ class AlgorithmApiParamListResponse(BaseModel):
 
 # ========== 用例专属参数 ==========
 
-class CaseAlgorithmParamCreate(BaseModel):
+class CaseAlgorithmParamCreate(APIModel):
     """创建用例专属参数请求"""
-    algorithm_type: str = Field(..., description='关联算法类型', validation_alias='algorithmType')
-    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码', validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称', validation_alias='paramName')
+    algorithm_type: str = Field(..., description='关联算法类型')
+    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码')
+    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
-    param_type: str = Field(default='text', description='参数类型：text, number, textarea, slider, switch, audio_select, device_select, json', validation_alias='paramType')
-    required: bool = Field(default=False, description='是否必填', validation_alias='required')
-    default_value: Optional[str] = Field(None, description='默认值（JSON格式）', validation_alias='defaultValue')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: int = Field(default=0, ge=0, description='界面排序', validation_alias='uiOrder')
-    hidden: bool = Field(default=False, description='是否隐藏', validation_alias='hidden')
+    param_type: str = Field(default='text', description='参数类型：text, number, textarea, slider, switch, audio_select, device_select, json')
+    required: bool = Field(default=False, description='是否必填')
+    default_value: Optional[str] = Field(None, description='默认值（JSON格式）')
+    help_text: Optional[str] = Field(None)
+    ui_order: int = Field(default=0, ge=0, description='界面排序')
+    hidden: bool = Field(default=False, description='是否隐藏')
     scope: str = Field(default='common', max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
-    min_value: Optional[float] = Field(None, description='最小值 (slider/number)', validation_alias='minValue')
-    max_value: Optional[float] = Field(None, description='最大值 (slider/number)', validation_alias='maxValue')
-    step: Optional[float] = Field(None, description='步长 (slider/number)', validation_alias='step')
-    unit: Optional[str] = Field(None, max_length=20, description='单位显示 (如 cm, dB, s)', validation_alias='unit')
-
-    model_config = {'populate_by_name': True}
+    min_value: Optional[float] = Field(None, description='最小值 (slider/number)')
+    max_value: Optional[float] = Field(None, description='最大值 (slider/number)')
+    step: Optional[float] = Field(None, description='步长 (slider/number)')
+    unit: Optional[str] = Field(None, max_length=20, description='单位显示 (如 cm, dB, s)')
 
 
-class CaseAlgorithmParamUpdate(BaseModel):
+class CaseAlgorithmParamUpdate(APIModel):
     """更新用例专属参数请求"""
-    param_name: Optional[str] = Field(None, max_length=100, validation_alias='paramName')
-    label: Optional[str] = Field(None, max_length=100, validation_alias='label')
-    param_type: Optional[str] = Field(None, validation_alias='paramType')
-    required: Optional[bool] = Field(None, validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
-    hidden: Optional[bool] = Field(None, validation_alias='hidden')
+    param_name: Optional[str] = Field(None, max_length=100)
+    label: Optional[str] = Field(None, max_length=100)
+    param_type: Optional[str] = Field(None)
+    required: Optional[bool] = Field(None)
+    default_value: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: Optional[int] = Field(None)
+    hidden: Optional[bool] = Field(None)
     scope: Optional[str] = Field(None, max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
-    min_value: Optional[float] = Field(None, description='最小值 (slider/number)', validation_alias='minValue')
-    max_value: Optional[float] = Field(None, description='最大值 (slider/number)', validation_alias='maxValue')
-    step: Optional[float] = Field(None, description='步长 (slider/number)', validation_alias='step')
-    unit: Optional[str] = Field(None, max_length=20, description='单位显示 (如 cm, dB, s)', validation_alias='unit')
-
-    model_config = {'populate_by_name': True}
+    min_value: Optional[float] = Field(None, description='最小值 (slider/number)')
+    max_value: Optional[float] = Field(None, description='最大值 (slider/number)')
+    step: Optional[float] = Field(None, description='步长 (slider/number)')
+    unit: Optional[str] = Field(None, max_length=20, description='单位显示 (如 cm, dB, s)')
 
 
 # ========== 评估维度参数 ==========
 
-class EvaluationDimensionParamCreate(BaseModel):
+class EvaluationDimensionParamCreate(APIModel):
     """创建评估维度参数请求"""
-    dimension_id: int = Field(..., description='关联评估维度ID', validation_alias='dimensionId')
-    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码', validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称', validation_alias='paramName')
+    dimension_id: int = Field(..., description='关联评估维度ID')
+    param_code: str = Field(..., min_length=1, max_length=50, description='参数代码')
+    param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
-    field_type: str = Field(default='text', description='字段类型：text, audio, number, boolean, json', validation_alias='fieldType')
-    param_direction: str = Field(default='input', description='参数方向：input, output', validation_alias='paramDirection')
-    field_path: Optional[str] = Field(None, description='结果提取路径（output专用）', validation_alias='fieldPath')
-    agg_role: Optional[str] = Field(None, description='聚合角色（output专用）：numerator/denominator/value', validation_alias='aggRole')
-    required: bool = Field(default=True, description='是否必填', validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: int = Field(default=0, ge=0, description='界面排序', validation_alias='uiOrder')
-
-    model_config = {'populate_by_name': True}
+    field_type: str = Field(default='text', description='字段类型：text, audio, number, boolean, json')
+    param_direction: str = Field(default='input', description='参数方向：input, output')
+    field_path: Optional[str] = Field(None, description='结果提取路径（output专用）')
+    agg_role: Optional[str] = Field(None, description='聚合角色（output专用）：numerator/denominator/value')
+    required: bool = Field(default=True, description='是否必填')
+    default_value: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: int = Field(default=0, ge=0, description='界面排序')
 
 
-class EvaluationDimensionParamUpdate(BaseModel):
+class EvaluationDimensionParamUpdate(APIModel):
     """更新评估维度参数请求"""
-    param_name: Optional[str] = Field(None, max_length=100, validation_alias='paramName')
-    label: Optional[str] = Field(None, max_length=100, validation_alias='label')
-    field_type: Optional[str] = Field(None, validation_alias='fieldType')
-    param_direction: Optional[str] = Field(None, validation_alias='paramDirection')
-    field_path: Optional[str] = Field(None, validation_alias='fieldPath')
-    agg_role: Optional[str] = Field(None, validation_alias='aggRole')
-    required: Optional[bool] = Field(None, validation_alias='required')
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
-
-    model_config = {'populate_by_name': True}
+    param_name: Optional[str] = Field(None, max_length=100)
+    label: Optional[str] = Field(None, max_length=100)
+    field_type: Optional[str] = Field(None)
+    param_direction: Optional[str] = Field(None)
+    field_path: Optional[str] = Field(None)
+    agg_role: Optional[str] = Field(None)
+    required: Optional[bool] = Field(None)
+    default_value: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: Optional[int] = Field(None)
 
 
-class EvaluationDimensionParamItem(BaseModel):
+class EvaluationDimensionParamItem(APIModel):
     """评估维度参数项"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     dimension_id: int
     dimension_name: Optional[str]
@@ -500,11 +462,8 @@ class EvaluationDimensionParamItem(BaseModel):
     help_text: Optional[str]
     ui_order: int
 
-    class Config:
-        from_attributes = True
 
-
-class EvaluationDimensionParamListResponse(BaseModel):
+class EvaluationDimensionParamListResponse(APIModel):
     """评估维度参数列表响应"""
     data: List[EvaluationDimensionParamItem]
     total: int
@@ -512,31 +471,31 @@ class EvaluationDimensionParamListResponse(BaseModel):
 
 # ========== 参数映射 ==========
 
-class ParamMappingCreate(BaseModel):
+class ParamMappingCreate(APIModel):
     """创建参数映射请求"""
-    algorithm_type: str = Field(..., description='关联算法类型', validation_alias='algorithmType')
-    source_type: str = Field(..., description='源类型：device, api', validation_alias='sourceType')
-    source_param: str = Field(..., min_length=1, max_length=50, description='源参数代码', validation_alias='sourceParam')
-    source_direction: str = Field(default='output', description='源参数方向：input, output', validation_alias='sourceDirection')
-    dimension_id: int = Field(..., description='目标评估维度ID', validation_alias='dimensionId')
-    target_param: str = Field(..., min_length=1, max_length=50, description='目标评估维度参数代码', validation_alias='targetParam')
-    transform_type: str = Field(default='none', description='转换类型：none, uppercase, lowercase, json_parse, base64', validation_alias='transformType')
+    algorithm_type: str = Field(..., description='关联算法类型')
+    source_type: str = Field(..., description='源类型：device, api')
+    source_param: str = Field(..., min_length=1, max_length=50, description='源参数代码')
+    source_direction: str = Field(default='output', description='源参数方向：input, output')
+    dimension_id: int = Field(..., description='目标评估维度ID')
+    target_param: str = Field(..., min_length=1, max_length=50, description='目标评估维度参数代码')
+    transform_type: str = Field(default='none', description='转换类型：none, uppercase, lowercase, json_parse, base64')
 
 
-class ParamMappingUpdate(BaseModel):
+class ParamMappingUpdate(APIModel):
     """更新参数映射请求"""
-    source_type: Optional[str] = Field(None, validation_alias='sourceType')
-    source_param: Optional[str] = Field(None, validation_alias='sourceParam')
-    source_direction: Optional[str] = Field(None, validation_alias='sourceDirection')
-    dimension_id: Optional[int] = Field(None, validation_alias='dimensionId')
-    target_param: Optional[str] = Field(None, validation_alias='targetParam')
-    transform_type: Optional[str] = Field(None, validation_alias='transformType')
-
-    model_config = {'populate_by_name': True}
+    source_type: Optional[str] = Field(None)
+    source_param: Optional[str] = Field(None)
+    source_direction: Optional[str] = Field(None)
+    dimension_id: Optional[int] = Field(None)
+    target_param: Optional[str] = Field(None)
+    transform_type: Optional[str] = Field(None)
 
 
-class ParamMappingItem(BaseModel):
+class ParamMappingItem(APIModel):
     """参数映射项"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     algorithm_type: str
     source_type: str
@@ -547,11 +506,8 @@ class ParamMappingItem(BaseModel):
     target_param: str
     transform_type: str
 
-    class Config:
-        from_attributes = True
 
-
-class ParamMappingListResponse(BaseModel):
+class ParamMappingListResponse(APIModel):
     """参数映射列表响应"""
     data: List[ParamMappingItem]
     total: int
@@ -559,217 +515,187 @@ class ParamMappingListResponse(BaseModel):
 
 # ========== 算法维度关联 ==========
 
-class AlgorithmDimensionRelationCreate(BaseModel):
+class AlgorithmDimensionRelationCreate(APIModel):
     """创建算法维度关联请求"""
-    algorithm_type: str = Field(..., description='关联算法类型', validation_alias='algorithmType')
-    dimension_id: int = Field(..., description='关联评估维度ID', validation_alias='dimensionId')
-    is_default: bool = Field(default=False, description='是否默认评估维度', validation_alias='isDefault')
-    weight: float = Field(default=1.0, ge=0, description='权重', validation_alias='weight')
-
-    model_config = {'populate_by_name': True}
+    algorithm_type: str = Field(..., description='关联算法类型')
+    dimension_id: int = Field(..., description='关联评估维度ID')
+    is_default: bool = Field(default=False, description='是否默认评估维度')
+    weight: float = Field(default=1.0, ge=0, description='权重')
 
 
-class AlgorithmDimensionRelationUpdate(BaseModel):
+class AlgorithmDimensionRelationUpdate(APIModel):
     """更新算法维度关联请求"""
-    is_default: Optional[bool] = Field(None, validation_alias='isDefault')
-    weight: Optional[float] = Field(None, ge=0, validation_alias='weight')
-
-    model_config = {'populate_by_name': True}
+    is_default: Optional[bool] = Field(None)
+    weight: Optional[float] = Field(None, ge=0)
 
 
-class AlgorithmDimensionRelationItem(BaseModel):
+class AlgorithmDimensionRelationItem(APIModel):
     """算法维度关联项"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     algorithm_type: str
     dimension_id: int
     is_default: bool
     weight: float
 
-    class Config:
-        from_attributes = True
 
-
-class AlgorithmDimensionRelationListResponse(BaseModel):
+class AlgorithmDimensionRelationListResponse(APIModel):
     """算法维度关联列表响应"""
     data: List[AlgorithmDimensionRelationItem]
     total: int
 
 
-class ParamCreateRequest(BaseModel):
+class ParamCreateRequest(APIModel):
     """创建参数请求"""
-    algorithm_type: str = Field(..., validation_alias='algorithmType')
-    param_code: str = Field(..., validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, validation_alias='paramName')
+    algorithm_type: str = Field(...)
+    param_code: str = Field(...)
+    param_name: Optional[str] = Field(None)
     label: Optional[str] = Field(None)
-    param_type: str = Field(default='text', validation_alias='paramType')
+    param_type: str = Field(default='text')
     direction: str = Field(default='input')
     required: bool = Field(default=False)
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    validation_rules: Optional[str] = Field(None, validation_alias='validationRules')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: int = Field(default=0, validation_alias='uiOrder')
+    default_value: Optional[str] = Field(None)
+    validation_rules: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: int = Field(default=0)
     hidden: bool = Field(default=False)
-    param_type_source: Optional[str] = Field(default='device', validation_alias='paramTypeSource')
-
-    model_config = {'populate_by_name': True}
+    param_type_source: Optional[str] = Field(default='device')
 
 
-class ParamUpdateRequest(BaseModel):
+class ParamUpdateRequest(APIModel):
     """更新参数请求"""
-    param_code: Optional[str] = Field(None, validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, validation_alias='paramName')
+    param_code: Optional[str] = Field(None)
+    param_name: Optional[str] = Field(None)
     label: Optional[str] = Field(None)
-    param_type: Optional[str] = Field(None, validation_alias='paramType')
+    param_type: Optional[str] = Field(None)
     direction: Optional[str] = Field(None)
     required: Optional[bool] = Field(None)
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    validation_rules: Optional[str] = Field(None, validation_alias='validationRules')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
+    default_value: Optional[str] = Field(None)
+    validation_rules: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: Optional[int] = Field(None)
     hidden: Optional[bool] = Field(None)
 
-    model_config = {'populate_by_name': True}
 
-
-class MappingCreateRequest(BaseModel):
+class MappingCreateRequest(APIModel):
     """创建参数映射请求"""
-    algorithm_type: str = Field(..., validation_alias='algorithmType')
-    source_type: str = Field(..., validation_alias='sourceType')
-    source_param: str = Field(..., validation_alias='sourceParam')
-    source_direction: str = Field(default='output', validation_alias='sourceDirection')
-    dimension_id: Optional[int] = Field(None, validation_alias='dimensionId')
-    target_param: str = Field(..., validation_alias='targetParam')
-    transform_type: str = Field(default='none', validation_alias='transformType')
-
-    model_config = {'populate_by_name': True}
+    algorithm_type: str = Field(...)
+    source_type: str = Field(...)
+    source_param: str = Field(...)
+    source_direction: str = Field(default='output')
+    dimension_id: Optional[int] = Field(None)
+    target_param: str = Field(...)
+    transform_type: str = Field(default='none')
 
 
-class MappingUpdateRequest(BaseModel):
+class MappingUpdateRequest(APIModel):
     """更新参数映射请求"""
-    source_type: Optional[str] = Field(None, validation_alias='sourceType')
-    source_param: Optional[str] = Field(None, validation_alias='sourceParam')
-    source_direction: Optional[str] = Field(None, validation_alias='sourceDirection')
-    dimension_id: Optional[int] = Field(None, validation_alias='dimensionId')
-    target_param: Optional[str] = Field(None, validation_alias='targetParam')
-    transform_type: Optional[str] = Field(None, validation_alias='transformType')
-
-    model_config = {'populate_by_name': True}
+    source_type: Optional[str] = Field(None)
+    source_param: Optional[str] = Field(None)
+    source_direction: Optional[str] = Field(None)
+    dimension_id: Optional[int] = Field(None)
+    target_param: Optional[str] = Field(None)
+    transform_type: Optional[str] = Field(None)
 
 
-class CaseParamCreateRequest(BaseModel):
+class CaseParamCreateRequest(APIModel):
     """创建用例专属参数请求"""
-    algorithm_type: str = Field(..., validation_alias='algorithmType')
-    param_code: str = Field(..., validation_alias='paramCode')
-    param_name: Optional[str] = Field(None, validation_alias='paramName')
+    algorithm_type: str = Field(...)
+    param_code: str = Field(...)
+    param_name: Optional[str] = Field(None)
     label: Optional[str] = Field(None)
-    param_type: str = Field(default='text', validation_alias='paramType')
+    param_type: str = Field(default='text')
     required: bool = Field(default=False)
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    options_source: Optional[str] = Field(None, validation_alias='optionsSource')
-    options_field: Optional[str] = Field(None, validation_alias='optionsField')
-    options_label_field: Optional[str] = Field(None, validation_alias='optionsLabelField')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: int = Field(default=0, validation_alias='uiOrder')
+    default_value: Optional[str] = Field(None)
+    options_source: Optional[str] = Field(None)
+    options_field: Optional[str] = Field(None)
+    options_label_field: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: int = Field(default=0)
     hidden: bool = Field(default=False)
     scope: str = Field(default='common', max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
 
-    model_config = {'populate_by_name': True}
 
-
-class CaseParamUpdateRequest(BaseModel):
+class CaseParamUpdateRequest(APIModel):
     """更新用例专属参数请求"""
-    param_name: Optional[str] = Field(None, validation_alias='paramName')
+    param_name: Optional[str] = Field(None)
     label: Optional[str] = Field(None)
-    param_type: Optional[str] = Field(None, validation_alias='paramType')
+    param_type: Optional[str] = Field(None)
     required: Optional[bool] = Field(None)
-    default_value: Optional[str] = Field(None, validation_alias='defaultValue')
-    options_source: Optional[str] = Field(None, validation_alias='optionsSource')
-    options_field: Optional[str] = Field(None, validation_alias='optionsField')
-    options_label_field: Optional[str] = Field(None, validation_alias='optionsLabelField')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-    ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
+    default_value: Optional[str] = Field(None)
+    options_source: Optional[str] = Field(None)
+    options_field: Optional[str] = Field(None)
+    options_label_field: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
+    ui_order: Optional[int] = Field(None)
     hidden: Optional[bool] = Field(None)
     scope: Optional[str] = Field(None, max_length=10, pattern=r'^(common|api|e2e)$', description='参数适用范围 (common/api/e2e)')
 
-    model_config = {'populate_by_name': True}
 
-
-class ReferenceParamCreateRequest(BaseModel):
+class ReferenceParamCreateRequest(APIModel):
     """创建参考参数请求"""
-    algorithm_type: str = Field(..., validation_alias='algorithmType')
+    algorithm_type: str = Field(...)
     code: str = Field(...)
     name: Optional[str] = Field(None)
     type: str = Field(default='text')
-    annotation_code: Optional[str] = Field(None, validation_alias='annotationCode')
-    annotation_format: Optional[str] = Field(None, validation_alias='annotationFormat')
-    field_path: Optional[str] = Field(None, validation_alias='fieldPath')
-    merge_mode: Optional[str] = Field(None, validation_alias='mergeMode')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-
-    model_config = {'populate_by_name': True}
+    annotation_code: Optional[str] = Field(None)
+    annotation_format: Optional[str] = Field(None)
+    field_path: Optional[str] = Field(None)
+    merge_mode: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
 
 
-class ReferenceParamUpdateRequest(BaseModel):
+class ReferenceParamUpdateRequest(APIModel):
     """更新参考参数请求"""
-    algorithm_type: Optional[str] = Field(None, validation_alias='algorithmType')
+    algorithm_type: Optional[str] = Field(None)
     code: Optional[str] = Field(None)
     name: Optional[str] = Field(None)
     type: Optional[str] = Field(None)
-    annotation_code: Optional[str] = Field(None, validation_alias='annotationCode')
-    annotation_format: Optional[str] = Field(None, validation_alias='annotationFormat')
-    field_path: Optional[str] = Field(None, validation_alias='fieldPath')
-    merge_mode: Optional[str] = Field(None, validation_alias='mergeMode')
-    help_text: Optional[str] = Field(None, validation_alias='helpText')
-
-    model_config = {'populate_by_name': True}
+    annotation_code: Optional[str] = Field(None)
+    annotation_format: Optional[str] = Field(None)
+    field_path: Optional[str] = Field(None)
+    merge_mode: Optional[str] = Field(None)
+    help_text: Optional[str] = Field(None)
 
 
-class AssociateDimensionsRequest(BaseModel):
+class AssociateDimensionsRequest(APIModel):
     """关联评估维度请求"""
     dimensions: List[Dict[str, Any]] = Field(default=[])
 
-    model_config = {'populate_by_name': True}
 
-
-class DimensionRelationCreateRequest(BaseModel):
+class DimensionRelationCreateRequest(APIModel):
     """创建维度关联请求"""
-    algorithm_type: str = Field(..., validation_alias='algorithmType')
-    dimension_id: int = Field(..., validation_alias='dimensionId')
-    is_default: bool = Field(default=False, validation_alias='isDefault')
+    algorithm_type: str = Field(...)
+    dimension_id: int = Field(...)
+    is_default: bool = Field(default=False)
     weight: float = Field(default=1.0)
 
-    model_config = {'populate_by_name': True}
 
-
-class DimensionRelationUpdateRequest(BaseModel):
+class DimensionRelationUpdateRequest(APIModel):
     """更新维度关联请求"""
-    algorithm_type: Optional[str] = Field(None, validation_alias='algorithmType')
+    algorithm_type: Optional[str] = Field(None)
     weight: Optional[float] = Field(None, ge=0)
-    is_default: Optional[bool] = Field(None, validation_alias='isDefault')
-    dimension_id: Optional[int] = Field(None, validation_alias='dimensionId')
-
-    model_config = {'populate_by_name': True}
+    is_default: Optional[bool] = Field(None)
+    dimension_id: Optional[int] = Field(None)
 
 
-class ExtractParamsRequest(BaseModel):
+class ExtractParamsRequest(APIModel):
     """提取用例算法参数请求"""
-    case_config: Dict[str, Any] = Field(default={}, validation_alias='caseConfig')
-
-    model_config = {'populate_by_name': True}
+    case_config: Dict[str, Any] = Field(default={})
 
 
 class AlgorithmListQuery(APIModel):
-    status: Optional[str] = Field(None, alias='status', validation_alias='status')
-    group_id: Optional[int] = Field(None, alias='groupId', validation_alias='groupId')
+    status: Optional[str] = Field(None)
+    group_id: Optional[int] = Field(None)
 
 
 class AlgorithmParamListQuery(APIModel):
-    algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
-    param_type: str = Field('device', alias='paramType', validation_alias='paramType')
+    algorithm_type: Optional[str] = Field(None)
+    param_type: str = Field('device')
 
 
 class AlgorithmMappingListQuery(APIModel):
-    algorithm_type: Optional[str] = Field(None, alias='algorithmType', validation_alias='algorithmType')
-    source_type: Optional[str] = Field(None, alias='sourceType', validation_alias='sourceType')
-    dimension_id: Optional[int] = Field(None, alias='dimensionId', validation_alias='dimensionId')
-
+    algorithm_type: Optional[str] = Field(None)
+    source_type: Optional[str] = Field(None)
+    dimension_id: Optional[int] = Field(None)

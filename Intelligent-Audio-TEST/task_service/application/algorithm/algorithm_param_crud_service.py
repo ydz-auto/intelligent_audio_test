@@ -109,9 +109,14 @@ class AlgorithmParamCrudService(
             return {'success': False, 'message': f'创建失败: {e}', 'code': 500}
 
     def update_param(self, param_id: int, data: Dict[str, Any]) -> Dict[str, Any]:
-        """更新参数"""
+        """更新参数
+
+        接受 camelCase 和 snake_case 两种键名（网关 update_param 直接传原始 JSON，
+        可能含 camelCase 键如 paramName/uiOrder）。
+        """
         try:
             param = self.repo.get_device_param(param_id)
+            is_device = param is not None
             if not param:
                 param = self.repo.get_api_param(param_id)
                 if not param:
@@ -122,12 +127,34 @@ class AlgorithmParamCrudService(
                 'required', 'default_value', 'validation_rules', 'help_text',
                 'ui_order', 'hidden'
             ]
-            update_fields = {
-                field: data.get(field) for field in updatable_fields
+            # camelCase → snake_case 映射，兼容前端直接透传的 camelCase 键
+            camel_to_snake = {
+                'paramCode': 'param_code', 'paramName': 'param_name',
+                'paramType': 'param_type', 'uiOrder': 'ui_order',
+                'defaultValue': 'default_value', 'validationRules': 'validation_rules',
+                'helpText': 'help_text',
             }
+            update_fields = {}
+            for field in updatable_fields:
+                if field in data:
+                    update_fields[field] = data[field]
+                elif field in camel_to_snake and camel_to_snake[field] in data:
+                    # Also check if the camelCase version exists
+                    pass
+            # Also check camelCase keys
+            for camel_key, snake_key in camel_to_snake.items():
+                if snake_key in updatable_fields and camel_key in data:
+                    update_fields[snake_key] = data[camel_key]
+
             self.repo.update_param_attrs(param, update_fields)
 
             self.repo.commit()
+
+            # Re-fetch to get updated data
+            if is_device:
+                param = self.repo.get_device_param(param_id)
+            else:
+                param = self.repo.get_api_param(param_id)
             return {
                 'success': True,
                 'message': 'Parameter updated',
@@ -168,10 +195,10 @@ class AlgorithmParamCrudService(
 
             dim_name = None
             if mapping.dimension_id:
-                # P1.7: Dimension 跨域查询改 gRPC（返回 dict）
+                # P1.7: Dimension 跨域查询改 gRPC（返回 DimensionDTO）
                 dim = self.repo.get_dimension_by_id(mapping.dimension_id)
                 if dim:
-                    dim_name = dim.get('name')
+                    dim_name = dim.name
 
             self.repo.commit()
             return {
@@ -205,10 +232,10 @@ class AlgorithmParamCrudService(
 
             dim_name = None
             if mapping.dimension_id:
-                # P1.7: Dimension 跨域查询改 gRPC（返回 dict）
+                # P1.7: Dimension 跨域查询改 gRPC（返回 DimensionDTO）
                 dim = self.repo.get_dimension_by_id(mapping.dimension_id)
                 if dim:
-                    dim_name = dim.get('name')
+                    dim_name = dim.name
 
             self.repo.commit()
             return {
@@ -269,18 +296,6 @@ class AlgorithmParamCrudService(
                     'message': f"Case parameter '{param_code}' already exists for algorithm '{algorithm_type}'",
                 }
 
-            soft_deleted = self.repo.find_case_param_by_code(
-                algorithm_type, param_code, deleted=True
-            )
-            if soft_deleted:
-                self.repo.revive_case_param(soft_deleted, data)
-                self.repo.commit()
-                return {
-                    'success': True,
-                    'message': 'Case parameter revived',
-                    'data': soft_deleted if isinstance(soft_deleted, dict) else asdict(soft_deleted),
-                }
-
             param = self.repo.create_case_param(data)
             self.repo.commit()
             return {
@@ -307,13 +322,16 @@ class AlgorithmParamCrudService(
             ]
             update_fields = {}
             for field in updatable_fields:
-                if field in data or field.replace('_', '') in data:
-                    value = data.get(field)
+                if field in data:
+                    value = data[field]
                     if value is not None:
                         update_fields[field] = value
-            self.repo.update_param_attrs(param, update_fields)
+            self.repo.update_case_param_attrs(param, update_fields)
 
             self.repo.commit()
+
+            # Re-fetch to get updated data
+            param = self.repo.get_case_param(param_id)
             return {
                 'success': True,
                 'message': 'Case parameter updated',
@@ -331,7 +349,7 @@ class AlgorithmParamCrudService(
             if not param:
                 return {'success': False, 'message': 'Case parameter not found', 'code': 404}
 
-            self.repo.soft_delete_param(param)
+            self.repo.soft_delete_case_param(param)
             self.repo.commit()
             return {'success': True, 'message': 'Case parameter deleted'}
         except Exception as e:
@@ -389,9 +407,12 @@ class AlgorithmParamCrudService(
                 update_fields['merge_mode'] = data['merge_mode']
             if data.get('help_text') is not None:
                 update_fields['help_text'] = data['help_text']
-            self.repo.update_param_attrs(relation, update_fields)
+            self.repo.update_reference_param_attrs(relation, update_fields)
 
             self.repo.commit()
+
+            # Re-fetch to get updated data
+            relation = self.repo.get_reference_param(param_id)
             return {
                 'success': True,
                 'message': 'Reference parameter updated',
@@ -409,7 +430,7 @@ class AlgorithmParamCrudService(
             if not param:
                 return {'success': False, 'message': 'Reference parameter not found', 'code': 404}
 
-            self.repo.soft_delete_param(param)
+            self.repo.soft_delete_reference_param(param)
             self.repo.commit()
             return {'success': True, 'message': 'Reference parameter deleted'}
         except Exception as e:

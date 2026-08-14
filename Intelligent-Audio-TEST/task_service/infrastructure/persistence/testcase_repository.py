@@ -872,21 +872,8 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         if not audio_id:
             return None
 
-        import logging
-        from shared.clients.grpc_clients import get_audio_config_service_stub
-        from shared.proto import audio_service_pb2 as e2e_pb
-        from shared.utils.grpc_json import loads as _loads
-
-        try:
-            stub = get_audio_config_service_stub()
-            resp = stub.GetAudio(e2e_pb.GetAudioRequest(audio_id=audio_id))
-            if resp.success and resp.data:
-                return _loads(resp.data, {})
-        except Exception as e:
-            logging.getLogger(__name__).warning(
-                "GetAudio gRPC 异常 (audio_id=%s): %s", audio_id, e
-            )
-        return None
+        from task_service.infrastructure.acl.audio_acl_repository import audio_acl_repository
+        return audio_acl_repository.get_audio_by_id(audio_id)
 
     def list_audios_by_ids(self, audio_ids: set) -> Dict[Any, dict]:
         """按 ID 集合批量查询音频，返回 {id: audio_dict} 映射。
@@ -898,35 +885,8 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         if not audio_ids:
             return {}
 
-        import json as _json
-        import logging
-        from shared.clients.grpc_clients import get_audio_config_service_stub
-        from shared.proto import audio_service_pb2 as e2e_pb
-        from shared.utils.grpc_json import loads as _loads
-
-        try:
-            stub = get_audio_config_service_stub()
-            resp = stub.GetAudiosByIds(e2e_pb.GetAudiosByIdsRequest(
-                data=_json.dumps({'ids': list(audio_ids)}),
-            ))
-            if not resp.success:
-                logging.getLogger(__name__).warning(
-                    "GetAudiosByIds gRPC 失败: %s", resp.message
-                )
-                return {}
-            payload = _loads(resp.data, {}) if resp.data else {}
-        except Exception as e:
-            logging.getLogger(__name__).warning(
-                "GetAudiosByIds gRPC 异常: %s", e
-            )
-            return {}
-
-        items = payload.get('items', []) if isinstance(payload, dict) else payload if isinstance(payload, list) else []
-        result = {}
-        for item in items:
-            if isinstance(item, dict) and item.get('id') is not None:
-                result[item['id']] = item
-        return result
+        from task_service.infrastructure.acl.audio_acl_repository import audio_acl_repository
+        return audio_acl_repository.list_audios_by_ids(audio_ids)
 
     def list_dimensions_by_ids(self, dim_ids):
         """按 ID 列表批量查询评价维度基础信息。
@@ -944,31 +904,8 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         if not dim_ids:
             return []
 
-        import json as _json
-        import logging
-        from shared.clients.grpc_clients import get_evaluation_config_service_stub
-        from shared.proto import evaluation_service_pb2 as eval_pb
-
-        try:
-            stub = get_evaluation_config_service_stub()
-            resp = stub.GetDimensionByIds(eval_pb.GetDimensionByIdsRequest(
-                dim_ids=_json.dumps(list(dim_ids)),
-            ))
-            if not resp.success:
-                logging.getLogger(__name__).warning(
-                    "GetDimensionByIds gRPC 失败: %s", resp.message
-                )
-                return []
-            payload = _json.loads(resp.data) if resp.data else {}
-        except Exception as e:
-            logging.getLogger(__name__).warning(
-                "GetDimensionByIds gRPC 异常: %s", e
-            )
-            return {}
-
-        if not isinstance(payload, dict):
-            return []
-        return payload.get('items', [])
+        from task_service.infrastructure.acl.evaluation_config_acl_repository import evaluation_config_acl_repository
+        return evaluation_config_acl_repository.list_dimensions_by_ids(dim_ids)
 
     # ========== 事务控制 ==========
 

@@ -1,10 +1,13 @@
 import time
 
-# 跨服务调用：通过 ACL 仓储访问 device_service / audio_service / playback_service
+# 跨服务调用：通过 ACL 仓储访问 device_service / audio_service / playback_service / algorithm_service
 from e2e_test_service.infrastructure.acl import (
+    AlgorithmAclRepositoryImpl,
+    AudioAclRepositoryImpl,
     DeviceAclRepositoryImpl,
     PlaybackAclRepositoryImpl,
 )
+from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus
 
 
 class PreparationMixin:
@@ -18,13 +21,15 @@ class PreparationMixin:
         if not device_result['success']:
             error_msg = f"设备信息获取失败: {device_result.get('error')}"
             self._log(level='ERROR', content=error_msg, task_id=task_id, test_case_id=test_case_id)
-            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status='failed', status='failed', error_message=error_msg)
+            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
             raise RuntimeError(error_msg)
 
         device_info_list = device_result['data']['device_info_list']
-        self.current_extra_params = self._execute_extra_params(algorithm_type, case_field_values, include_format_strings=True)
         # 通过 ACL 仓储注册任务设备
         DeviceAclRepositoryImpl().register_task_devices(task_id, device_info_list)
+
+        # 首轮自定义参数一并透传给 initialize（pcm_app、record_mode 等驱动级参数）
+        first_round_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(data.get('case_algorithm_params') or {})
 
         for info in device_info_list:
             if info.get("driver"):
@@ -32,13 +37,13 @@ class PreparationMixin:
                 info["driver"].set_test_case_id(test_case_id)
                 info["driver"].set_device_id(info["device_id"])
 
-        self._device_manager.initialize_devices(device_info_list, task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
+        self._device_manager.initialize_devices(
+            device_info_list, task_id, test_case_id=test_case_id,
+            algorithm_type=algorithm_type, round_algo_params=first_round_params
+        )
 
         # 音频预下载：遍历所有 rounds，把 audio_id 对应的 OSS 文件提前下载到本地
         self._prepare_audio_files(task_id, rounds, test_case_id, case_config)
-
-        # 声纹注册
-        self._register_voiceprint(task_id, tc_rel_id, rounds, test_case_id)
 
         # 预创建 TestResult
         first_device_id = device_info_list[0].get('device_id') if device_info_list else None
@@ -50,7 +55,7 @@ class PreparationMixin:
             algorithm_type=algorithm_type,
             device_id=first_device_id,
             api_id=None,
-            execution_status='running',
+            execution_status=ExecutionStatus.RUNNING,
             response_time=0,
             error_message=None
         )
@@ -119,8 +124,7 @@ class PreparationMixin:
                     if aid:
                         audio_ids.add(aid)
             # 声纹
-            from shared.clients.grpc_clients import algo_normalize_algorithm_params
-            algo_params = algo_normalize_algorithm_params(round_config.get('algorithm_params', []))
+            algo_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(round_config.get('algorithm_params', []))
             vp_audio_id = algo_params.get('voiceprint_audio_id')
             if vp_audio_id:
                 audio_ids.add(vp_audio_id)
@@ -135,8 +139,7 @@ class PreparationMixin:
             task_id=task_id, test_case_id=test_case_id,
         )
 
-        from shared.clients.grpc_clients import audio_prepare_audios
-        result = audio_prepare_audios(list(audio_ids), list(playback_device_ids))
+        result = AudioAclRepositoryImpl().prepare_audios(list(audio_ids), list(playback_device_ids))
 
         if not result:
             self._log(
@@ -156,24 +159,18 @@ class PreparationMixin:
             task_id=task_id, test_case_id=test_case_id,
         )
 
-    def _register_voiceprint(self, task_id, tc_rel_id, rounds, test_case_id):
-        """从首轮 algorithmParams 提取声纹配置并执行注册"""
-        from shared.clients.grpc_clients import algo_normalize_algorithm_params
-
-        first_round_algo_params = {}
-        if rounds and isinstance(rounds[0], dict):
-            first_round_algo_params = algo_normalize_algorithm_params(rounds[0].get('algorithm_params', []))
-
+    def _register_voiceprint(self, task_id, tc_rel_id, round_algo_params, test_case_id):
+        """从本轮 algorithm_params 提取声纹配置并执行注册"""
         voiceprint_config = {
-            'enabled': first_round_algo_params.get('voiceprint_enabled', False),
-            'audio_id': first_round_algo_params.get('voiceprint_audio_id'),
-            'playback_device_id': first_round_algo_params.get('voiceprint_playback_device_id'),
-            'spl': first_round_algo_params.get('voiceprint_spl', 70.0),
-            'wait_time': first_round_algo_params.get('voiceprint_wait_time', 5.0),
+            'enabled': round_algo_params.get('voiceprint_enabled', False),
+            'audio_id': round_algo_params.get('voiceprint_audio_id'),
+            'playback_device_id': round_algo_params.get('voiceprint_playback_device_id'),
+            'spl': round_algo_params.get('voiceprint_spl', 70.0),
+            'wait_time': round_algo_params.get('voiceprint_wait_time', 5.0),
         }
         if voiceprint_config.get('enabled'):
             # 通过 ACL 仓储播放声纹
             if not PlaybackAclRepositoryImpl().play_voiceprint(voiceprint_config, task_id):
                 self._log(level='ERROR', content='声纹注册失败，中止测试', task_id=task_id, test_case_id=test_case_id)
-                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status='failed', status='failed', error_message='声纹注册失败')
+                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message='声纹注册失败')
                 raise RuntimeError('声纹注册失败')

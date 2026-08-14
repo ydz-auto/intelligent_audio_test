@@ -42,7 +42,6 @@ from algorithm_service.application.commands.algorithm_param_commands import (
     UpdateCaseParamCommand,
     DeleteCaseParamCommand,
     FindCaseParamByCodeCommand,
-    ReviveCaseParamCommand,
     CreateReferenceParamCommand,
     UpdateReferenceParamCommand,
     DeleteReferenceParamCommand,
@@ -163,12 +162,6 @@ class AlgorithmParamCommandHandler:
             cmd.param_code,
             cmd.include_deleted,
         )
-
-    def handle_revive_case_param(
-        self, cmd: ReviveCaseParamCommand
-    ) -> Dict[str, Any]:
-        """处理恢复软删除用例参数命令，返回更新后的 dict。"""
-        return self._case_repo.revive(cmd.param_id, cmd.data)
 
     # ========== 参考参数命令 ==========
 

@@ -1,11 +1,15 @@
 import time
 import json
 import os
+import logging
 import requests
 try:
     import websocket
 except ImportError:
     websocket = None
+
+logger = logging.getLogger(__name__)
+
 
 class APIClient:
     """
@@ -54,8 +58,8 @@ class APIClient:
 
             try:
                 response_data["json"] = resp.json()
-            except:
-                pass
+            except Exception:
+                logger.debug("解析HTTP响应JSON失败: endpoint=%s", endpoint, exc_info=True)
 
         except Exception as e:
             response_data["error"] = str(e)
@@ -131,8 +135,8 @@ class APIClient:
                             if session_end_path:
                                 if APIClient._extract_by_path(msg_json, session_end_path) is True:
                                     break
-                        except:
-                            pass
+                        except Exception:
+                            logger.debug("解析WebSocket消息JSON失败: endpoint=%s", endpoint, exc_info=True)
                     except websocket.WebSocketTimeoutException:
                         if all_responses:
                             break

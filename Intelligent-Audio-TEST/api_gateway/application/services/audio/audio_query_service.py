@@ -8,17 +8,19 @@ from api_gateway.schemas.audio import (
     AudioListStats,
     TagListData as AudioTagListData,
 )
+from api_gateway.infrastructure.acl import AudioAclRepositoryImpl
 
 logger = logging.getLogger(__name__)
+
+_audio_acl = AudioAclRepositoryImpl()
 
 
 class AudioQueryService:
     # 获取所有可用的音频标签
     @staticmethod
     def get_all_tags():
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
-        result = audio_config_service.get_all_tags()
+        
+        result = _audio_acl.get_all_tags()
         if result.get('success'):
             data = result.get('data') or {}
             items = data.get('items', [])
@@ -69,10 +71,9 @@ class AudioQueryService:
 
     @staticmethod
     def get_all():
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         params = AudioQueryService._parse_query_params()
-        result = audio_config_service.get_all(params)
+        result = _audio_acl.get_all(params)
         if result.get('success'):
             data = result.get('data') or {}
             items = data.get('items', [])
@@ -99,9 +100,8 @@ class AudioQueryService:
     # 获取单个音频文件详情
     @staticmethod
     def get_one(audio_id):
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
-        result = audio_config_service.get_one(audio_id)
+        
+        result = _audio_acl.get_one(audio_id)
         if result.get('success'):
             data = result.get('data')
             if data:
@@ -115,8 +115,7 @@ class AudioQueryService:
 
     @staticmethod
     def get_by_ids():
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         if not request.is_json:
             return error_response("请求必须是 JSON 格式")
 
@@ -129,7 +128,7 @@ class AudioQueryService:
         if not isinstance(audio_ids, list):
             return error_response("ids 必须是数组")
 
-        result = audio_config_service.get_by_ids({'ids': audio_ids})
+        result = _audio_acl.get_by_ids({'ids': audio_ids})
         if result.get('success'):
             data = result.get('data') or []
             audio_items = [AudioItem(**item) if isinstance(item, dict) else item for item in data]
@@ -139,8 +138,7 @@ class AudioQueryService:
     # 按 MD5 批量查询音频（用于批量更新标注时匹配）
     @staticmethod
     def get_by_md5():
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         if not request.is_json:
             return error_response("请求必须是 JSON 格式")
 
@@ -153,7 +151,7 @@ class AudioQueryService:
         if not isinstance(md5_list, list):
             return error_response("md5_list 必须是数组")
 
-        result = audio_config_service.get_by_md5({'md5_list': md5_list})
+        result = _audio_acl.get_by_md5({'md5_list': md5_list})
         if result.get('success'):
             return success_response(result.get('data') or {})
         return wrap_grpc_response(result, default_error_msg='查询失败')
@@ -192,10 +190,9 @@ class AudioQueryService:
 
     @staticmethod
     def get_all_ids():
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         params = AudioQueryService._parse_id_query_params()
-        result = audio_config_service.get_all_ids(params)
+        result = _audio_acl.get_all_ids(params)
         if result.get('success'):
             data = result.get('data') or {}
             ids = data.get('ids', [])
@@ -205,10 +202,9 @@ class AudioQueryService:
     # 音频流式播放 (支持 Range 请求)
     @staticmethod
     def stream(audio_id):
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         task_type = request.args.get('task_type', 'api')
-        result = audio_config_service.stream_audio(audio_id, {'task_type': task_type})
+        result = _audio_acl.stream_audio(audio_id, {'task_type': task_type})
         if result.get('success'):
             data = result.get('data') or {}
             url = data.get('url')
@@ -223,13 +219,12 @@ class AudioQueryService:
     @staticmethod
     def stream_by_path():
         """通过 OSS key 获取预签名 URL 播放音频"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         oss_key = request.args.get('path')
         if not oss_key:
             return error_response("未提供路径", 400)
 
-        result = audio_config_service.stream_audio_by_path({'path': oss_key})
+        result = _audio_acl.stream_audio_by_path({'path': oss_key})
         if result.get('success'):
             data = result.get('data') or {}
             url = data.get('url')
@@ -244,9 +239,8 @@ class AudioQueryService:
     # 获取音频关联的算法
     @staticmethod
     def get_audio_algorithms(audio_id):
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
-        result = audio_config_service.get_audio_algorithms(audio_id)
+        
+        result = _audio_acl.get_audio_algorithms(audio_id)
         if result.get('success'):
             return success_response(result.get('data'))
         return wrap_grpc_response(
@@ -258,8 +252,7 @@ class AudioQueryService:
     @staticmethod
     def get_folder_tree():
         """获取音频文件夹树结构（支持筛选、懒加载）"""
-        from api_gateway.infrastructure.grpc_proxies import audio_config_service
-
+        
         data = request.get_json() or {}
 
         keyword = data.get('keyword')
@@ -286,7 +279,7 @@ class AudioQueryService:
             'depth': depth,
         }
 
-        result = audio_config_service.get_folder_tree(params)
+        result = _audio_acl.get_folder_tree(params)
         if result.get('success'):
             return success_response(result.get('data'))
         return wrap_grpc_response(result, default_error_msg='查询失败')

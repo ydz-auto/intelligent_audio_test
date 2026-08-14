@@ -3,6 +3,27 @@ import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal'
 import { normalizeParamFields, normalizeCaseParamFields } from './algorithmParamHelpers'
 import type { AlgorithmRecord, AlgorithmGroup, Dimension } from './algorithmTypes'
 
+export function normalizeMappings(raw: any): { device: any[]; api: any[]; evaluation: any[] } {
+  const empty = { device: [], api: [], evaluation: [] }
+  if (!raw) return empty
+  const convert = (arr: any[]) => (arr || []).map((m: any) => ({
+    id: m.id,
+    source: m.source,
+    source_param: m.sourceParam ?? m.source_param ?? '',
+    param_name: m.paramName ?? m.param_name ?? m.sourceParam ?? m.source_param ?? '',
+    dimension_id: m.dimensionId ?? m.dimension_id ?? null,
+    dimension_name: m.dimensionName ?? m.dimension_name ?? '',
+    target_param: m.targetParam ?? m.target_param ?? '',
+    transform_type: m.transformType ?? m.transform_type ?? 'none',
+    source_direction: m.sourceDirection ?? m.source_direction ?? 'output'
+  }))
+  return {
+    device: convert(raw.device),
+    api: convert(raw.api),
+    evaluation: convert(raw.evaluation)
+  }
+}
+
 export function useAlgorithmCrudOps(
   props: any,
   emit: any,
@@ -178,7 +199,7 @@ export function useAlgorithmCrudOps(
           api_params: apiParams,
           case_params: caseParams,
           params: editData.params || [],
-          mappings: JSON.parse(JSON.stringify(editData.mappings || { device: [], api: [], evaluation: [] })),
+          mappings: normalizeMappings(editData.mappings),
           associated_dimensions: ((editData.associatedDimensions ?? editData.associated_dimensions) || []).map((d: any) => ({
             id: d.id,
             dimension_id: d.dimensionId ?? d.dimension_id,

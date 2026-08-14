@@ -11,9 +11,12 @@ OSS 不可用时自动降级到本地磁盘存储。
 """
 from __future__ import annotations
 
+import logging
 from typing import List, Optional
 
 from shared.infrastructure.storage import storage
+
+logger = logging.getLogger(__name__)
 
 
 class TaskOSSStorage:
@@ -134,9 +137,9 @@ class TaskOSSStorage:
                     try:
                         self._storage.delete(f'{category}/{key}')
                     except Exception:
-                        pass
+                        logger.debug("删除 OSS 对象失败: %s/%s", category, key, exc_info=True)
             except Exception:
-                pass
+                logger.debug("列出/删除 OSS 分类 %s 下对象失败", category, exc_info=True)
 
     def case_result_exists(self, task_id: int, case_id: str,
                             device_sn: str, filename: str) -> bool:

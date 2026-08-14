@@ -273,10 +273,10 @@ class AlgorithmParamQueryService:
                 dim = dimension_map.get(dim_id)
                 if dim:
                     dimensions_detail.append({
-                        'id': dim.get('id'),
-                        'name': dim.get('name'),
-                        'description': dim.get('description'),
-                        'type': dim.get('type'),
+                        'id': dim.id,
+                        'name': dim.name,
+                        'description': dim.description,
+                        'type': dim.type,
                         'weight': weights_map.get(dim_id, 1.0),
                         'is_default': is_default_map.get(dim_id, False)
                     })
@@ -333,14 +333,12 @@ class AlgorithmParamQueryService:
 
     def extract_params(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """提取用例算法参数（供执行引擎使用）"""
-        from shared.clients.grpc_clients import algo_extract_case_all_params
-
         case_config = data.get('case_config')
         if case_config is None:
             return {'success': False, 'message': 'case_config is required', 'code': 400}
 
         try:
-            result = algo_extract_case_all_params(case_config)
+            result = self.repo.algo_extract_case_all_params(case_config)
             return {'success': True, 'message': '', 'data': result}
         except Exception as e:
             logger.error(f"提取用例算法参数失败: {e}")
@@ -348,10 +346,8 @@ class AlgorithmParamQueryService:
 
     def reload_config(self) -> Dict[str, Any]:
         """重新加载配置（热更新）"""
-        from shared.clients.grpc_clients import algo_reload_config
-
         try:
-            reload_result = algo_reload_config()
+            reload_result = self.repo.algo_reload_config()
 
             return {
                 'success': True,

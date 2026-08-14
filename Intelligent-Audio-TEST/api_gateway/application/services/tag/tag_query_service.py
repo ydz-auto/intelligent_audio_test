@@ -4,7 +4,9 @@
 """
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
-from api_gateway.infrastructure.grpc_proxies import tag_config_service
+from api_gateway.infrastructure.acl import TagConfigAclRepositoryImpl
+
+_tag_acl = TagConfigAclRepositoryImpl()
 
 from api_gateway.schemas.testcase import (
     TagCategoryItem,
@@ -24,7 +26,7 @@ class TagCategoryQueryService:
         per_page = request.args.get('per_page', 20, type=int)
         keyword = request.args.get('keyword', type=str)
 
-        result = tag_config_service.list_categories(
+        result = _tag_acl.list_categories(
             page=page,
             per_page=per_page,
             keyword=keyword,
@@ -42,7 +44,7 @@ class TagCategoryQueryService:
 
     @staticmethod
     def get_one(category_id):
-        result = tag_config_service.get_category(category_id)
+        result = _tag_acl.get_category(category_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -64,7 +66,7 @@ class TagQueryService:
         category_id = request.args.get('category_id', type=int)
         keyword = request.args.get('keyword', type=str)
 
-        result = tag_config_service.list_tags(
+        result = _tag_acl.list_tags(
             page=page,
             per_page=per_page,
             category_id=category_id,
@@ -87,7 +89,7 @@ class TagQueryService:
         per_page = request.args.get('per_page', 100, type=int)
         keyword = request.args.get('keyword', type=str)
 
-        result = tag_config_service.list_tag_names(
+        result = _tag_acl.list_tag_names(
             page=page,
             per_page=per_page,
             keyword=keyword,
@@ -103,7 +105,7 @@ class TagQueryService:
 
     @staticmethod
     def get_one(tag_id):
-        result = tag_config_service.get_tag(tag_id)
+        result = _tag_acl.get_tag(tag_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -116,7 +118,7 @@ class TagQueryService:
 
     @staticmethod
     def get_tags_by_category():
-        result = tag_config_service.get_tags_by_category()
+        result = _tag_acl.get_tags_by_category()
 
         if not result.get('success'):
             return error_response(result.get('message', '查询失败'))

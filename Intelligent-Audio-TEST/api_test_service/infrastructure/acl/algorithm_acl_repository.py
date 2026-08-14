@@ -25,7 +25,7 @@ def _attach(dto, payload):
         try:
             dto.result_data = payload
         except Exception:
-            pass
+            logger.debug("附加 result_data 到 DTO 失败", exc_info=True)
     return dto
 
 
@@ -41,6 +41,16 @@ class AlgorithmQueryAclRepositoryImpl(AlgorithmQueryAclRepository):
             logger.warning("extract_case_all_params failed: %s", e)
             return ExtractedCaseParamsDTO()
 
+    def normalize_algorithm_params(self, algorithm_params=None):
+        """将按轮分组的 algorithm_params 扁平化为 {field_code: field_value} dict"""
+        from shared.clients.grpc_clients import algo_normalize_algorithm_params
+        return algo_normalize_algorithm_params(algorithm_params)
+
+    def get_round_algo_params(self, algorithm_params_col=None, round_number: int = 0):
+        """从 algorithm_params 列中取指定轮的 params"""
+        from shared.clients.grpc_clients import algo_get_round_algo_params
+        return algo_get_round_algo_params(algorithm_params_col, round_number)
+
     def load_reference_params_file(self, filepath) -> List:
         from shared.clients.grpc_clients import algo_load_reference_params_file
         try:
@@ -54,7 +64,8 @@ class AlgorithmQueryAclRepositoryImpl(AlgorithmQueryAclRepository):
         from shared.clients.grpc_clients import algo_get_field_mappings
         try:
             data = algo_get_field_mappings(algorithm_type)
-            return _attach(dict_to_dto(data, AlgoFieldMappingsDTO), data)
+            raw = data._data if hasattr(data, '_data') else data
+            return _attach(dict_to_dto(raw, AlgoFieldMappingsDTO), raw)
         except Exception as e:
             logger.warning("get_field_mappings failed: %s", e)
             return AlgoFieldMappingsDTO()

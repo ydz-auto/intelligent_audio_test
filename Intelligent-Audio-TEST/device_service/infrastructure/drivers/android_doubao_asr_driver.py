@@ -12,8 +12,11 @@
 
 import subprocess
 import time
+import logging
 from .android_driver import AndroidDriver
 from .utils import check_stop
+
+logger = logging.getLogger(__name__)
 
 
 class DouBaoAndroidAsrDriver(AndroidDriver):
@@ -292,7 +295,7 @@ class DouBaoAndroidAsrDriver(AndroidDriver):
                         if text and text.strip() and res_id == '' and left >= self.USER_MESSAGE_LEFT_THRESHOLD:
                             user_messages.append(text)
                     except Exception:
-                        pass
+                        logger.debug("提取豆包ASR识别结果元素文本失败", exc_info=True)
 
                 self._log(level='DEBUG', content=f"[轮询 {waited}s] 所有文本: {all_texts_info}")
                 self._log(level='DEBUG', content=f"[轮询 {waited}s] 符合条件的用户消息: {len(user_messages)}个")

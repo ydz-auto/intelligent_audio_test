@@ -1,9 +1,14 @@
 import time
 import subprocess
+import logging
 from .base_driver import BaseDeviceDriver
 from .device_config import get_device_config
 from .utils import check_stop, u2, log_and_emit
 import re
+
+logger = logging.getLogger(__name__)
+
+
 class AndroidDriver(BaseDeviceDriver):
     """安卓设备驱动实现"""
 
@@ -88,7 +93,7 @@ class AndroidDriver(BaseDeviceDriver):
                         "status": "online"
                     })
         except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
+            logger.warning("执行adb命令列出安卓设备失败", exc_info=True)
         return devices
 
     @check_stop("initialize")

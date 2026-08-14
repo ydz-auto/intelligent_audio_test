@@ -2,9 +2,11 @@ import logging
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
-from api_gateway.infrastructure.grpc_proxies import playback_config_service
+from api_gateway.infrastructure.acl import PlaybackConfigAclRepositoryImpl
 
 logger = logging.getLogger(__name__)
+
+_playback_acl = PlaybackConfigAclRepositoryImpl()
 
 
 class PlaybackQueryService:
@@ -38,7 +40,7 @@ class PlaybackQueryService:
         keyword = request.args.get('keyword')
         device_type = request.args.get('type')
 
-        result = playback_config_service.get_all(
+        result = _playback_acl.get_all(
             page=page,
             per_page=per_page,
             keyword=keyword,
@@ -53,7 +55,7 @@ class PlaybackQueryService:
     # 获取单个播放设备详情
     @staticmethod
     def get_one(device_id):
-        result = playback_config_service.get_one(device_id)
+        result = _playback_acl.get_one(device_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -66,7 +68,7 @@ class PlaybackQueryService:
     @staticmethod
     def scan():
         """扫描可用的物理播放通道，并过滤掉已注册的设备"""
-        result = playback_config_service.scan()
+        result = _playback_acl.scan()
 
         if not result.get('success'):
             return error_response(result.get('message', '扫描失败'))
@@ -77,7 +79,7 @@ class PlaybackQueryService:
     # 检查所有播放设备状态
     @staticmethod
     def check_status():
-        result = playback_config_service.check_status()
+        result = _playback_acl.check_status()
 
         if not result.get('success'):
             return error_response(result.get('message', '检查状态失败'))

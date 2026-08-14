@@ -4,7 +4,7 @@
 """
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
-from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
+from api_gateway.infrastructure.acl import EvaluationConfigAclRepositoryImpl
 
 from api_gateway.schemas.evaluation import (
     CategoryItem,
@@ -16,6 +16,9 @@ from api_gateway.schemas.evaluation import (
 )
 
 
+_evaluation_acl = EvaluationConfigAclRepositoryImpl()
+
+
 class EvaluationQueryService:
     """评估维度查询读侧 Service（CQRS Query Side）。"""
 
@@ -23,7 +26,7 @@ class EvaluationQueryService:
 
     @staticmethod
     def get_categories():
-        result = evaluation_config_service.list_categories()
+        result = _evaluation_acl.list_categories()
 
         if not result.get('success'):
             return error_response(result.get('message', '获取分类列表失败'))
@@ -41,7 +44,7 @@ class EvaluationQueryService:
     def get_dimension_options():
         algorithm_type = request.args.get('algorithm_type', '')
 
-        result = evaluation_config_service.get_dimension_options(algorithm_type=algorithm_type)
+        result = _evaluation_acl.get_dimension_options(algorithm_type=algorithm_type)
 
         if not result.get('success'):
             return error_response(result.get('message', '获取维度选项失败'))
@@ -56,7 +59,7 @@ class EvaluationQueryService:
         per_page = request.args.get('per_page', 10, type=int)
         search = request.args.get('search', '')
 
-        result = evaluation_config_service.list_dimensions(
+        result = _evaluation_acl.list_dimensions(
             category_id=category_id,
             page=page,
             per_page=per_page,
@@ -83,7 +86,7 @@ class EvaluationQueryService:
     # 维度 API 健康探测
     @staticmethod
     def health_check(dim_id):
-        result = evaluation_config_service.health_check(dim_id)
+        result = _evaluation_acl.health_check(dim_id)
 
         if not result.get('success'):
             code = result.get('code', 400)

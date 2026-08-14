@@ -108,7 +108,7 @@ class RedisServiceRegistry:
                     self._info['last_heartbeat'] = time.time()
                     self.redis_client.hset('service:instances', self._instance_id, json.dumps(self._info))
                 except Exception:
-                    pass
+                    logger.debug("心跳续期失败", exc_info=True)
                 time.sleep(self.ttl // 3)
         self._heartbeat_thread = threading.Thread(target=beat, daemon=True)
         self._heartbeat_thread.start()

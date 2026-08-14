@@ -51,6 +51,8 @@ class Task(Base):
     actual_duration = Column(Integer, comment='实际执行耗时 (秒)')
     deleted = Column(Boolean, nullable=False, default=False, comment='逻辑删除标志')
     deleted_at = Column(DateTime, nullable=True, comment='逻辑删除时间（60天后硬删除）')
+    reevaluated_at = Column(DateTime, nullable=True, comment='最后一次重新评估完成时间')
+    reevaluation_count = Column(Integer, nullable=False, default=0, comment='重新评估次数')
 
     # 跨上下文 relationship（Tag/TestCase 归属本服务，可保留）
     tags = relationship('Tag', secondary='task_tags',
@@ -86,8 +88,8 @@ class TaskCase(Base):
     id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
     task_id = Column(BigInteger, comment='关联测试任务ID')
     test_case_id = Column(String(50), comment='关联测试用例ID')
-    status = Column(String(50), default='pending', nullable=True, comment='该用例在任务中的最终结果 (pending/completed/failed/skipped)')
-    execution_status = Column(String(20), default='pending', nullable=False, comment='执行过程状态 (pending/running/completed/stopped/failed)')
+    status = Column(String(50), default='pending', nullable=True, comment='该用例在任务中的最终结果 (pending/running/completed/failed/skipped)')
+    execution_status = Column(String(20), default='pending', nullable=False, comment='执行过程状态 (pending/queued/running/completed/stopped/failed)')
     evaluation_status = Column(String(20), default='pending', nullable=False, comment='评估过程状态 (queued/pending/running/calculating/completed/stopped/failed)')
     started_at = Column(DateTime, comment='开始执行时间')
     completed_at = Column(DateTime, comment='执行结束时间')

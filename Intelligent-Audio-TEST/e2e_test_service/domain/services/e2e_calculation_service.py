@@ -68,6 +68,7 @@ class E2ECalculationService:
         all_round_results: List[Dict],
         case_config: Dict,
         algorithm_type: str,
+        field_mapper=None,
     ) -> Dict:
         """从多轮原始结果构建 algo_result 结构（rounds[] + aggregated）
 
@@ -75,15 +76,15 @@ class E2ECalculationService:
             all_round_results: 所有轮次的结果列表
             case_config: 用例配置，含 rounds 配置
             algorithm_type: 算法类型
+            field_mapper: 字段映射器（由 application 层通过 ACL 仓储注入）
 
         Returns:
             Dict: algorithm_result 数据结构
         """
-        # TODO: 重构为通过 port 接口注入
-        from shared.clients.grpc_clients import algo_get_field_mappings
-
-        field_mappings = algo_get_field_mappings(algorithm_type)
-        mapped_output_fields = (field_mappings.get('mapped', {}) or {}).get('device', {}).get('output', {})
+        if field_mapper is None:
+            from e2e_test_service.infrastructure.acl import AlgorithmAclRepositoryImpl
+            field_mapper = AlgorithmAclRepositoryImpl.get_field_mappings(algorithm_type)
+        mapped_output_fields = field_mapper.get_mapped_device_output_fields(algorithm_type)
 
         rounds_by_index: Dict[int, List[Dict]] = {}
         for r in all_round_results:
@@ -159,6 +160,7 @@ class E2ECalculationService:
         algorithm_type: str,
         audio_name: str,
         audio_path: str,
+        field_mapper=None,
     ) -> Dict:
         """从单轮 primary 结果构建 round_data（含字段映射）
 
@@ -169,15 +171,15 @@ class E2ECalculationService:
             algorithm_type: 算法类型
             audio_name: 音频名
             audio_path: 音频路径
+            field_mapper: 字段映射器（由 application 层通过 ACL 仓储注入）
 
         Returns:
             Dict: round_data 数据结构
         """
-        # TODO: 重构为通过 port 接口注入
-        from shared.clients.grpc_clients import algo_get_field_mappings
-
-        field_mappings = algo_get_field_mappings(algorithm_type)
-        mapped_output_fields = (field_mappings.get('mapped', {}) or {}).get('device', {}).get('output', {})
+        if field_mapper is None:
+            from e2e_test_service.infrastructure.acl import AlgorithmAclRepositoryImpl
+            field_mapper = AlgorithmAclRepositoryImpl.get_field_mappings(algorithm_type)
+        mapped_output_fields = field_mapper.get_mapped_device_output_fields(algorithm_type)
         round_output = E2ECalculationService._map_round_output(primary, mapped_output_fields)
 
         latency = primary.get('response_time') or primary.get('latency')

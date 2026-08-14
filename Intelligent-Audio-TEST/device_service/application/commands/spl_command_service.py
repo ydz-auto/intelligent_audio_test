@@ -33,66 +33,30 @@ class SPLCommandService:
 
     @staticmethod
     def _get_audio_service():
-        """获取 audio_service gRPC stub（AudioService）"""
-        from shared.clients.grpc_clients import get_audio_service_stub
-        return get_audio_service_stub()
+        """获取 audio_service ACL 仓储（封装 AudioService gRPC 调用）"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository
 
     @staticmethod
     def _get_device_index_via_grpc(unique_id):
-        """通过 gRPC 获取设备索引"""
-        from shared.proto import audio_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-        try:
-            stub = get_audio_service_stub()
-            resp = stub.GetDeviceIndex(_e2e_pb.GetDeviceIndexRequest(unique_id=unique_id))
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return data.get('device_index')
-        except Exception:
-            pass
-        return None
+        """通过 ACL 仓储获取设备索引"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository.get_device_index(unique_id)
 
     @staticmethod
     def _play_audio_via_grpc(task_id, file_path, device_index, channel_index, gain, loop=False, player_type='', offset=0):
-        """通过 gRPC 播放音频"""
-        import json as _json
-        from shared.proto import audio_service_pb2 as _e2e_pb
-        try:
-            stub = get_audio_service_stub()
-            play_config = _json.dumps({
-                'device_index': device_index,
-                'channel_index': channel_index,
-                'gain': gain,
-                'loop': loop,
-                'player_type': player_type,
-                'offset': offset,
-            })
-            resp = stub.PlayAudio(_e2e_pb.PlayAudioRequest(
-                task_id=task_id,
-                audio_file_paths=_json.dumps([file_path]),
-                play_config=play_config,
-            ))
-            return resp.success
-        except Exception:
-            return False
+        """通过 ACL 仓储播放音频"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository.play_audio(
+            task_id, file_path, device_index, channel_index, gain,
+            loop=loop, player_type=player_type, offset=offset,
+        )
 
     @staticmethod
     def _stop_audio_by_pattern_via_grpc(task_id_pattern, player_type_pattern):
-        """通过 gRPC 按模式停止音频"""
-        from shared.proto import e2e_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-        try:
-            stub = get_audio_service_stub()
-            resp = stub.StopAudioByPattern(_e2e_pb.StopAudioByPatternRequest(
-                task_id_pattern=task_id_pattern,
-                player_type_pattern=player_type_pattern,
-            ))
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return data.get('stopped_count', 0)
-        except Exception:
-            pass
-        return 0
+        """通过 ACL 仓储按模式停止音频"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository.stop_audio_by_pattern(task_id_pattern, player_type_pattern)
 
     # ========== 写操作 ==========
 
@@ -302,7 +266,7 @@ class SPLCommandService:
                              f'校准失败: {str(e)}', category='spl',
                              task_id=None, device_id=mapping.device_id)
             except Exception:
-                pass
+                logger.warning("记录 SPL 校准失败日志时发生异常 mapping_id=%s", mapping.id, exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
 
     def play_test_tone(self, data: dict = None) -> dict:

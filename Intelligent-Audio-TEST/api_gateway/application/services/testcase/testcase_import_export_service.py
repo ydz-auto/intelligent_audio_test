@@ -12,16 +12,16 @@ from datetime import datetime
 
 from fastapi.responses import FileResponse
 from api_gateway.infrastructure.request_adapter import request
-from api_gateway.infrastructure.grpc_proxies import (
-    testcase_config_service,
-    task_config_service,
-    tag_config_service,
-    audio_config_service,
-    playback_config_service,
-    evaluation_config_service,
+from api_gateway.infrastructure.acl import (
+    AudioAclRepositoryImpl,
+    EvaluationConfigAclRepositoryImpl,
+    PlaybackConfigAclRepositoryImpl,
+    TagConfigAclRepositoryImpl,
+    TaskConfigAclRepositoryImpl,
+    TestCaseConfigAclRepositoryImpl,
 )
 from shared.utils.query_utils import now_cst
-from shared.clients.grpc_clients import algo_get_reference_text
+from api_gateway.infrastructure.grpc_proxies import algorithm_query_service as _algo_query_svc
 
 from api_gateway.schemas.testcase import (
     TestCaseExportItem,
@@ -32,6 +32,13 @@ from api_gateway.schemas.testcase import (
 from shared.utils import testcase_helpers as common
 
 logger = logging.getLogger(__name__)
+
+_testcase_acl = TestCaseConfigAclRepositoryImpl()
+_task_acl = TaskConfigAclRepositoryImpl()
+_tag_acl = TagConfigAclRepositoryImpl()
+_audio_acl = AudioAclRepositoryImpl()
+_playback_acl = PlaybackConfigAclRepositoryImpl()
+_evaluation_acl = EvaluationConfigAclRepositoryImpl()
 
 
 class TestCaseImportExportService:
@@ -52,7 +59,7 @@ class TestCaseImportExportService:
         test_cases = []
         for tc_id in ids:
             try:
-                res = testcase_config_service.get_testcase_detail(tc_id)
+                res = _testcase_acl.get_testcase_detail(tc_id)
                 if res.get('success'):
                     tc = res.get('data')
                     if tc:
@@ -82,27 +89,27 @@ class TestCaseImportExportService:
                 audio_name = audio_item.get('audio_name') or "未知音频"
                 # 通过 gRPC 获取音频名称（替代直连 audio_service PO）
                 try:
-                    res = audio_config_service.get_one(audio_id)
+                    res = _audio_acl.get_one(audio_id)
                     if res.get('success'):
                         rec = res.get('data') or {}
                         if rec.get('name'):
                             audio_name = rec.get('name')
                 except Exception:
-                    pass
+                    logger.debug("导出时获取音频名称失败，audio_id=%s", audio_id, exc_info=True)
 
                 device_id = common.normalize_optional_int(audio_item.get('playback_device_id'))
                 device_name = "未知设备"
                 if device_id:
                     # 通过 gRPC 获取播放设备名称（替代直连 device_service PO）
                     try:
-                        res = playback_config_service.get_one(device_id)
+                        res = _playback_acl.get_one(device_id)
                         if res.get('success'):
                             rec = res.get('data') or {}
                             if rec.get('name'):
                                 device_name = rec.get('name')
                                 playback_device_names.add(device_name)
                     except Exception:
-                        pass
+                        logger.debug("导出时获取播放设备名称失败，device_id=%s", device_id, exc_info=True)
 
                 audios.append({
                     "audio_id": audio_id,
@@ -133,11 +140,11 @@ class TestCaseImportExportService:
                 dim_map = {}
                 if d_ids:
                     try:
-                        res = evaluation_config_service.get_dimension_by_ids(d_ids)
+                        res = _evaluation_acl.get_dimension_by_ids(d_ids)
                         if res.get('success'):
                             dim_map = res.get('data') or {}
                     except Exception:
-                        pass
+                        logger.debug("导出时获取评分维度名称失败，dim_ids=%s", d_ids, exc_info=True)
                 for d_id in d_ids:
                     dim = dim_map.get(str(d_id)) or {}
                     if dim.get('name'):
@@ -189,13 +196,13 @@ class TestCaseImportExportService:
             if noise_audio_id:
                 # 通过 gRPC 获取噪声音频名称（替代直连 audio_service PO）
                 try:
-                    res = audio_config_service.get_one(noise_audio_id)
+                    res = _audio_acl.get_one(noise_audio_id)
                     if res.get('success'):
                         rec = res.get('data') or {}
                         if rec.get('name'):
                             noise_name = rec.get('name')
                 except Exception:
-                    pass
+                    logger.debug("导出时获取噪声音频名称失败，noise_audio_id=%s", noise_audio_id, exc_info=True)
 
             # 获取标签（tc 为 gRPC 返回的 dict）
             tc_tags = tc.get('tags', []) or []
@@ -243,11 +250,11 @@ class TestCaseImportExportService:
             # 优先从独立列读取，兼容旧 config
             ref_col = item.get('reference_params')
             if ref_col:
-                asr_ref_text = algo_get_reference_text(ref_col, 'asr_reference_text')
-                tran_ref_text = algo_get_reference_text(ref_col, 'translation_reference_text')
+                asr_ref_text = _algo_query_svc.get_reference_text(ref_col, 'asr_reference_text')
+                tran_ref_text = _algo_query_svc.get_reference_text(ref_col, 'translation_reference_text')
             else:
-                asr_ref_text = algo_get_reference_text(config_data, 'asr_reference_text')
-                tran_ref_text = algo_get_reference_text(config_data, 'translation_reference_text')
+                asr_ref_text = _algo_query_svc.get_reference_text(config_data, 'asr_reference_text')
+                tran_ref_text = _algo_query_svc.get_reference_text(config_data, 'translation_reference_text')
             flat_item = {
                 "ID": item['id'],
                 "NAME": item['name'],
@@ -282,11 +289,11 @@ class TestCaseImportExportService:
             dim_map = {}
             if all_dim_ids:
                 try:
-                    res = evaluation_config_service.get_dimension_by_ids(all_dim_ids)
+                    res = _evaluation_acl.get_dimension_by_ids(all_dim_ids)
                     if res.get('success'):
                         dim_map = res.get('data') or {}
                 except Exception:
-                    pass
+                    logger.debug("导出时获取评分维度信息失败，dim_ids=%s", all_dim_ids, exc_info=True)
             for dim_id in all_dim_ids:
                 dim_obj = dim_map.get(str(dim_id)) or {}
                 dim_name = dim_obj.get('name') if dim_obj else str(dim_id)
@@ -342,11 +349,11 @@ class TestCaseImportExportService:
             # 优先从独立列读取，兼容旧 config
             ref_col = item.get('reference_params')
             if ref_col:
-                asr_ref_text = algo_get_reference_text(ref_col, 'asr_reference_text')
-                tran_ref_text = algo_get_reference_text(ref_col, 'translation_reference_text')
+                asr_ref_text = _algo_query_svc.get_reference_text(ref_col, 'asr_reference_text')
+                tran_ref_text = _algo_query_svc.get_reference_text(ref_col, 'translation_reference_text')
             else:
-                asr_ref_text = algo_get_reference_text(config_data, 'asr_reference_text')
-                tran_ref_text = algo_get_reference_text(config_data, 'translation_reference_text')
+                asr_ref_text = _algo_query_svc.get_reference_text(config_data, 'asr_reference_text')
+                tran_ref_text = _algo_query_svc.get_reference_text(config_data, 'translation_reference_text')
             flat_item = {
                 "ID": item['id'],
                 "NAME": item['name'],
@@ -381,11 +388,11 @@ class TestCaseImportExportService:
             dim_map = {}
             if all_dim_ids:
                 try:
-                    res = evaluation_config_service.get_dimension_by_ids(all_dim_ids)
+                    res = _evaluation_acl.get_dimension_by_ids(all_dim_ids)
                     if res.get('success'):
                         dim_map = res.get('data') or {}
                 except Exception:
-                    pass
+                    logger.debug("导出时获取评分维度信息失败，dim_ids=%s", all_dim_ids, exc_info=True)
             for dim_id in all_dim_ids:
                 dim_obj = dim_map.get(str(dim_id)) or {}
                 dim_name = dim_obj.get('name') if dim_obj else str(dim_id)
@@ -464,13 +471,13 @@ class TestCaseImportExportService:
                 # 通过 gRPC 获取标签（替代直连 task_service PO）
                 tag_by_name = {}
                 try:
-                    res = tag_config_service.list_tags(page=1, per_page=500, keyword='')
+                    res = _tag_acl.list_tags(page=1, per_page=500, keyword='')
                     if res.get('success'):
                         for t in (res.get('data') or {}).get('items', []):
                             if t.get('name'):
                                 tag_by_name[t.get('name')] = t
                 except Exception:
-                    pass
+                    logger.debug("导出 Excel 时获取标签列表失败", exc_info=True)
                 for name in sorted(tag_names):
                     tag_obj = tag_by_name.get(name) or {}
                     tags_rows.append({
@@ -501,18 +508,15 @@ class TestCaseImportExportService:
                 # 通过 gRPC 按 id/name 批量查询 TestCaseGroup（替代直连 PO）
                 group_by_id = {}
                 try:
-                    from shared.clients.grpc_clients import (
-                        get_testcase_groups_by_ids,
-                        get_testcase_groups_by_names,
-                    )
+                    from api_gateway.infrastructure.grpc_proxies import task_data_service
                     id_keys = [k for k in unique_groups.keys() if k]
                     if id_keys:
-                        resp = get_testcase_groups_by_ids(id_keys)
+                        resp = task_data_service.get_testcase_groups_by_ids(id_keys)
                         for g in resp.get('items', []):
                             group_by_id[g['id']] = g
                     missing_names = [v for k, v in unique_groups.items() if k not in group_by_id]
                     if missing_names:
-                        resp = get_testcase_groups_by_names(missing_names)
+                        resp = task_data_service.get_testcase_groups_by_names(missing_names)
                         for g in resp.get('items', []):
                             group_by_id[g['id']] = g
                 except Exception:
@@ -732,13 +736,13 @@ class TestCaseImportExportService:
                                     if audio_name:
                                         # 通过 gRPC 按名称查找音频（替代直连 audio_service PO）
                                         try:
-                                            res = audio_config_service.list_audios(page=1, per_page=1, keyword=audio_name)
+                                            res = _audio_acl.get_all({'page': 1, 'per_page': 1, 'keyword': audio_name})
                                             if res.get('success'):
                                                 items = (res.get('data') or {}).get('items', [])
                                                 if items and items[0].get('name') == audio_name:
                                                     audio_id = items[0].get('id')
                                         except Exception:
-                                            pass
+                                            logger.debug("导入时按名称查找音频ID失败，audio_name=%s", audio_name, exc_info=True)
 
                                 case_item['audios'].append({
                                     'audio_id': audio_id,
@@ -801,19 +805,15 @@ class TestCaseImportExportService:
                 group_name = case_data.get('group', '未分类')
 
                 try:
-                    from shared.clients.grpc_clients import (
-                        get_testcase_group_by_id,
-                        get_testcase_group_by_name,
-                        create_testcase_group,
-                    )
+                    from api_gateway.infrastructure.grpc_proxies import task_data_service
                     if group_id:
-                        group = get_testcase_group_by_id(group_id)
+                        group = task_data_service.get_testcase_group_by_id(group_id)
 
                     if not group:
-                        group = get_testcase_group_by_name(group_name)
+                        group = task_data_service.get_testcase_group_by_name(group_name)
 
                     if not group:
-                        new_group = create_testcase_group(
+                        new_group = task_data_service.create_testcase_group(
                             name=group_name,
                             group_id=group_id if group_id else None,
                         )
@@ -826,7 +826,7 @@ class TestCaseImportExportService:
                 existing_tc = None
                 if tc_id:
                     # 通过 gRPC 获取用例（替代直连 task_service PO）
-                    res = testcase_config_service.get_testcase_detail(tc_id)
+                    res = _testcase_acl.get_testcase_detail(tc_id)
                     if res.get('success'):
                         existing_tc = res.get('data')
                     if not existing_tc:
@@ -851,13 +851,13 @@ class TestCaseImportExportService:
                 if resolved_noise_id is None and noise_audio_name:
                     # 通过 gRPC 按名称查找音频（替代直连 audio_service PO）
                     try:
-                        res = audio_config_service.list_audios(page=1, per_page=1, keyword=noise_audio_name)
+                        res = _audio_acl.get_all({'page': 1, 'per_page': 1, 'keyword': noise_audio_name})
                         if res.get('success'):
                             items = (res.get('data') or {}).get('items', [])
                             if items and items[0].get('name') == noise_audio_name:
                                 resolved_noise_id = items[0].get('id')
                     except Exception:
-                        pass
+                        logger.debug("导入时按名称查找噪声音频ID失败，noise_audio_name=%s", noise_audio_name, exc_info=True)
 
                 if resolved_noise_id is not None or noise_spl:
                     bg_noise_cfg = {}
@@ -918,13 +918,13 @@ class TestCaseImportExportService:
 
                 if existing_tc:
                     # 更新（通过 gRPC）
-                    res = testcase_config_service.update(tc_id, tc_payload)
+                    res = _testcase_acl.update(tc_id, tc_payload)
                     if not res.get('success'):
                         raise Exception(f"更新用例失败: {res.get('message')}")
                     updated_count += 1
                 else:
                     # 创建（通过 gRPC）
-                    res = testcase_config_service.create(tc_payload)
+                    res = _testcase_acl.create(tc_payload)
                     if not res.get('success'):
                         raise Exception(f"创建用例失败: {res.get('message')}")
                     imported_count += 1

@@ -6,7 +6,9 @@
 """
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
-from api_gateway.infrastructure.grpc_proxies import api_config_service
+from api_gateway.infrastructure.acl import ApiConfigAclRepositoryImpl
+
+_api_acl = ApiConfigAclRepositoryImpl()
 
 
 class ApiQueryService:
@@ -22,7 +24,7 @@ class ApiQueryService:
         status = request.args.get('status')
         algorithm_type = request.args.get('algorithm_type')
 
-        result = api_config_service.get_all(
+        result = _api_acl.get_all(
             page=page,
             per_page=per_page,
             keyword=keyword,
@@ -38,7 +40,7 @@ class ApiQueryService:
     # 获取单个API配置详情
     @staticmethod
     def get_one(api_id):
-        result = api_config_service.get_one(api_id)
+        result = _api_acl.get_one(api_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -51,7 +53,7 @@ class ApiQueryService:
     # 测试API连接 (兼容 health_check)
     @staticmethod
     def test_connection(api_id):
-        result = api_config_service.test_connection(api_id)
+        result = _api_acl.test_connection(api_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -74,7 +76,7 @@ class ApiQueryService:
     # 停止测试 API
     @staticmethod
     def stop_test(api_id):
-        result = api_config_service.stop_test(api_id)
+        result = _api_acl.stop_test(api_id)
 
         if not result.get('success'):
             code = result.get('code', 400)

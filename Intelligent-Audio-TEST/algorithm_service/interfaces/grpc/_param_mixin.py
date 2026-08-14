@@ -11,8 +11,12 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
+import logging
+
 from shared.proto import algorithm_service_pb2 as _pb
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+
+logger = logging.getLogger(__name__)
 
 
 def _success(data: Any = None, message: str = "ok"):
@@ -50,6 +54,15 @@ class _ParamMethodsMixin:
     - 维度关联写操作
     - 事务控制
     """
+
+    @staticmethod
+    def _invalidate_cache():
+        """写操作后刷新缓存（L1 重载 + Redis pubsub 通知其他进程）"""
+        try:
+            from algorithm_service.infrastructure.persistence.config_cache import get_config_cache
+            get_config_cache().invalidate()
+        except Exception:
+            logger.exception("刷新缓存失败（_invalidate_cache）")
 
     # ---- 参数查询（device / api / case / reference）----
 
@@ -181,6 +194,7 @@ class _ParamMethodsMixin:
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateDimensionRelationCommand(data=data)
             result = self.param_command_handler.handle_create_dimension_relation(cmd)
+            self._invalidate_cache()
             return _success({"id": result.get("id"), "created": True})
         except Exception as e:
             return _failure(str(e))
@@ -197,6 +211,7 @@ class _ParamMethodsMixin:
                 data=data,
             )
             self.param_command_handler.handle_update_dimension_relation_attrs(cmd)
+            self._invalidate_cache()
             return _success({"id": request.relation_id, "updated": True})
         except Exception as e:
             return _failure(str(e))
@@ -209,6 +224,7 @@ class _ParamMethodsMixin:
             )
             cmd = DeleteDimensionRelationCommand(relation_id=request.relation_id)
             result = self.param_command_handler.handle_delete_dimension_relation(cmd)
+            self._invalidate_cache()
             return _success({"id": request.relation_id, "deleted": result})
         except Exception as e:
             return _failure(str(e))
@@ -248,6 +264,7 @@ class _ParamMethodsMixin:
             dimension_relation_query_repository.delete_by_dimension(
                 int(request.dimension_id)
             )
+            self._invalidate_cache()
             return _success({"dimension_id": int(request.dimension_id), "deleted": True})
         except Exception as e:
             return _failure(str(e))
@@ -274,6 +291,7 @@ class _ParamMethodsMixin:
             data = _loads(request.data, []) if not isinstance(request, dict) else request
             dimension_id = int(request.dimension_id)
             dimension_relation_query_repository.sync_by_dimension(dimension_id, data)
+            self._invalidate_cache()
             return _success({"dimension_id": dimension_id, "synced": True})
         except Exception as e:
             return _failure(str(e))
@@ -288,6 +306,7 @@ class _ParamMethodsMixin:
             )
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             result = dimension_param_repository.create(data)
+            self._invalidate_cache()
             return _success({"id": result.get("id"), "created": True})
         except Exception as e:
             return _failure(str(e))
@@ -301,6 +320,7 @@ class _ParamMethodsMixin:
             dimension_param_repository.delete_by_dimension_and_direction(
                 int(request.dimension_id), request.param_direction
             )
+            self._invalidate_cache()
             return _success({
                 "dimension_id": int(request.dimension_id),
                 "param_direction": request.param_direction,
@@ -365,6 +385,7 @@ class _ParamMethodsMixin:
             param_mapping_query_repository.sync_for_dimension(
                 dimension_id, params, direction, algorithm_type
             )
+            self._invalidate_cache()
             return _success({"dimension_id": dimension_id, "synced": True})
         except Exception as e:
             return _failure(str(e))
@@ -383,6 +404,7 @@ class _ParamMethodsMixin:
                 param_type_source=data.get("param_type_source") or "device",
             )
             result = self.param_command_handler.handle_create_param(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -400,6 +422,7 @@ class _ParamMethodsMixin:
                 param_type_source="",
             )
             result = self.param_command_handler.handle_update_param(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -415,6 +438,7 @@ class _ParamMethodsMixin:
                 param_type_source="",
             )
             result = self.param_command_handler.handle_delete_param(cmd)
+            self._invalidate_cache()
             return _success({"id": request.param_id, "deleted": result})
         except Exception as e:
             return _failure(str(e))
@@ -447,6 +471,7 @@ class _ParamMethodsMixin:
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateCaseParamCommand(data=data)
             result = self.param_command_handler.handle_create_case_param(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -463,6 +488,7 @@ class _ParamMethodsMixin:
                 data=data,
             )
             result = self.param_command_handler.handle_update_case_param(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -475,6 +501,7 @@ class _ParamMethodsMixin:
             )
             cmd = DeleteCaseParamCommand(param_id=request.param_id)
             result = self.param_command_handler.handle_delete_case_param(cmd)
+            self._invalidate_cache()
             return _success({"id": request.param_id, "deleted": result})
         except Exception as e:
             return _failure(str(e))
@@ -495,22 +522,6 @@ class _ParamMethodsMixin:
         except Exception as e:
             return _failure(str(e))
 
-    def ReviveCaseParam(self, request, context=None):
-        """恢复软删除的用例专属参数并更新字段。"""
-        try:
-            from algorithm_service.application.commands.algorithm_param_commands import (
-                ReviveCaseParamCommand,
-            )
-            data = _loads(request.data, {}) if not isinstance(request, dict) else request
-            cmd = ReviveCaseParamCommand(
-                param_id=request.param_id,
-                data=data,
-            )
-            result = self.param_command_handler.handle_revive_case_param(cmd)
-            return _success(result)
-        except Exception as e:
-            return _failure(str(e))
-
     # ---- 参考参数写操作 ----
 
     def CreateReferenceParam(self, request, context=None):
@@ -522,6 +533,7 @@ class _ParamMethodsMixin:
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateReferenceParamCommand(data=data)
             result = self.param_command_handler.handle_create_reference_param(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -538,6 +550,7 @@ class _ParamMethodsMixin:
                 data=data,
             )
             result = self.param_command_handler.handle_update_reference_param(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -550,6 +563,7 @@ class _ParamMethodsMixin:
             )
             cmd = DeleteReferenceParamCommand(param_id=request.param_id)
             result = self.param_command_handler.handle_delete_reference_param(cmd)
+            self._invalidate_cache()
             return _success({"id": request.param_id, "deleted": result})
         except Exception as e:
             return _failure(str(e))
@@ -580,6 +594,7 @@ class _ParamMethodsMixin:
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateMappingCommand(data=data)
             result = self.param_command_handler.handle_create_mapping(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -596,6 +611,7 @@ class _ParamMethodsMixin:
                 data=data,
             )
             result = self.param_command_handler.handle_update_mapping(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -608,6 +624,7 @@ class _ParamMethodsMixin:
             )
             cmd = DeleteMappingCommand(mapping_id=request.mapping_id)
             result = self.param_command_handler.handle_delete_mapping(cmd)
+            self._invalidate_cache()
             return _success({"id": request.mapping_id, "deleted": result})
         except Exception as e:
             return _failure(str(e))
@@ -640,6 +657,7 @@ class _ParamMethodsMixin:
                 description=data.get("description"),
             )
             new_id = self.command_handler.handle_create_definition(cmd)
+            self._invalidate_cache()
             return _success({"id": new_id, "name": cmd.name})
         except Exception as e:
             return _failure(str(e))
@@ -657,6 +675,7 @@ class _ParamMethodsMixin:
                 description=data.get("description"),
             )
             self.command_handler.handle_update_definition(cmd)
+            self._invalidate_cache()
             return _success({"id": cmd.id, "updated": True})
         except Exception as e:
             return _failure(str(e))
@@ -669,6 +688,7 @@ class _ParamMethodsMixin:
             )
             cmd = DeleteAlgorithmDefinitionCommand(id=int(request.algorithm_id))
             ok = self.command_handler.handle_delete_definition(cmd)
+            self._invalidate_cache()
             return _success({"id": cmd.id, "deleted": ok})
         except Exception as e:
             return _failure(str(e))
@@ -732,6 +752,7 @@ class _ParamMethodsMixin:
             data = _loads(request.data, {}) if not isinstance(request, dict) else request
             cmd = CreateImportDeviceParamCommand(data=data)
             result = self.param_command_handler.handle_create_import_device_param(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -761,6 +782,7 @@ class _ParamMethodsMixin:
                 algorithm_types = []
             cmd = BulkDeleteAlgorithmsCommand(algorithm_types=algorithm_types)
             result = self.param_command_handler.handle_bulk_delete_algorithms(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -804,6 +826,7 @@ class _ParamMethodsMixin:
                 algorithm_type=data.get("algorithm_type"),
             )
             new_id = self.command_handler.handle_create_group(cmd)
+            self._invalidate_cache()
             return _success({"id": new_id, "name": cmd.name})
         except Exception as e:
             return _failure(str(e))
@@ -822,6 +845,7 @@ class _ParamMethodsMixin:
                 description=data.get("description"),
             )
             self.command_handler.handle_update_group(cmd)
+            self._invalidate_cache()
             return _success({"id": cmd.id, "updated": True})
         except Exception as e:
             return _failure(str(e))
@@ -834,6 +858,7 @@ class _ParamMethodsMixin:
             )
             cmd = DeleteAlgorithmGroupCommand(id=int(request.group_id))
             ok = self.command_handler.handle_delete_group(cmd)
+            self._invalidate_cache()
             return _success({"id": cmd.id, "deleted": ok})
         except Exception as e:
             return _failure(str(e))
@@ -874,6 +899,7 @@ class _ParamMethodsMixin:
                 algorithm_type=request.algorithm_type
             )
             result = self.param_command_handler.handle_soft_delete_algorithm_dimension_relations(cmd)
+            self._invalidate_cache()
             return _success({"algorithm_type": request.algorithm_type, "deleted": result})
         except Exception as e:
             return _failure(str(e))
@@ -929,6 +955,7 @@ class _ParamMethodsMixin:
                 data=data,
             )
             result = self.param_command_handler.handle_update_dimension_relation_attrs(cmd)
+            self._invalidate_cache()
             return _success(result)
         except Exception as e:
             return _failure(str(e))
@@ -941,6 +968,7 @@ class _ParamMethodsMixin:
             )
             cmd = DeleteDimensionRelationCommand(relation_id=request.relation_id)
             result = self.param_command_handler.handle_delete_dimension_relation(cmd)
+            self._invalidate_cache()
             return _success({"id": request.relation_id, "deleted": result})
         except Exception as e:
             return _failure(str(e))

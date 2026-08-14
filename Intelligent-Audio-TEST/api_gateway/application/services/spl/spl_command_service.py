@@ -8,7 +8,7 @@
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import spl_config_service
+from api_gateway.infrastructure.acl import SplConfigAclRepositoryImpl
 from api_gateway.schemas.common import IdData
 from api_gateway.schemas.spl import (
     SPLMappingCreateRequest,
@@ -16,6 +16,9 @@ from api_gateway.schemas.spl import (
     PlayTestToneRequest,
     StopTestToneRequest,
 )
+
+
+_spl_acl = SplConfigAclRepositoryImpl()
 
 
 class SPLCommandService:
@@ -39,7 +42,7 @@ class SPLCommandService:
 
         data_dict = req_data.model_dump(by_alias=False, exclude_none=True)
 
-        result = spl_config_service.create(data_dict)
+        result = _spl_acl.create(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -60,7 +63,7 @@ class SPLCommandService:
 
         data_dict = req_data.model_dump(by_alias=False, exclude_none=True)
 
-        result = spl_config_service.update(mapping_id, data_dict)
+        result = _spl_acl.update(mapping_id, data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -73,7 +76,7 @@ class SPLCommandService:
     # 删除 SPL 映射记录
     @staticmethod
     def delete(mapping_id):
-        result = spl_config_service.delete(mapping_id)
+        result = _spl_acl.delete(mapping_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -86,7 +89,7 @@ class SPLCommandService:
     # 执行 SPL 校准流程
     @staticmethod
     def calibrate(mapping_id):
-        result = spl_config_service.calibrate(mapping_id)
+        result = _spl_acl.calibrate(mapping_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -106,7 +109,7 @@ class SPLCommandService:
 
         data_dict = req_data.model_dump(by_alias=False, exclude_none=True)
 
-        result = spl_config_service.play_test_tone(data_dict)
+        result = _spl_acl.play_test_tone(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -127,7 +130,7 @@ class SPLCommandService:
 
         data_dict = req_data.model_dump(by_alias=False, exclude_none=True)
 
-        result = spl_config_service.stop_test_tone(data_dict)
+        result = _spl_acl.stop_test_tone(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)

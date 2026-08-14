@@ -9,7 +9,7 @@ P5 改造：从 shared/models/models/device_models.py 真正下沉到本服务�
 from shared.models.database import Base, utc8now
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Text, DateTime, Boolean, Float, JSON,
-    UniqueConstraint,
+    Index, text,
 )
 
 
@@ -52,7 +52,8 @@ class PlaybackDevice(Base):
     """
     __tablename__ = 'playback_devices'
     __table_args__ = (
-        UniqueConstraint('device_unique_id', 'channel_index', name='uq_device_channel'),
+        Index('uq_device_channel', 'device_unique_id', 'channel_index',
+              unique=True, postgresql_where=text('is_deleted = 0')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True, comment='主键ID')
     name = Column(String(100), nullable=False, comment='播放设备名称')

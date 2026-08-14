@@ -3,6 +3,9 @@
 
 跨服务 gRPC 调用的具体实现，对应 domain/repositories/ 下的 ABC 接口。
 """
+from e2e_test_service.infrastructure.acl.algorithm_acl_repository_impl import (
+    AlgorithmAclRepositoryImpl,
+)
 from e2e_test_service.infrastructure.acl.audio_acl_repository_impl import (
     AudioAclRepositoryImpl,
 )
@@ -12,6 +15,9 @@ from e2e_test_service.infrastructure.acl.device_acl_repository_impl import (
 from e2e_test_service.infrastructure.acl.device_result_acl_repository_impl import (
     DeviceResultAclRepositoryImpl,
 )
+from e2e_test_service.infrastructure.acl.env_device_acl_repository_impl import (
+    EnvDeviceAclRepositoryImpl,
+)
 from e2e_test_service.infrastructure.acl.playback_acl_repository_impl import (
     PlaybackAclRepositoryImpl,
 )
@@ -20,9 +26,11 @@ from e2e_test_service.infrastructure.acl.task_data_acl_repository_impl import (
 )
 
 __all__ = [
+    'AlgorithmAclRepositoryImpl',
     'AudioAclRepositoryImpl',
     'DeviceAclRepositoryImpl',
     'DeviceResultAclRepositoryImpl',
+    'EnvDeviceAclRepositoryImpl',
     'PlaybackAclRepositoryImpl',
     'TaskDataAclRepositoryImpl',
 ]

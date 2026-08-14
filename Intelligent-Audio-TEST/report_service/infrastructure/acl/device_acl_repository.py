@@ -20,7 +20,7 @@ def _attach(dto, payload):
         try:
             dto.result_data = payload
         except Exception:
-            pass
+            logger.debug("附加 result_data 到 DTO 失败", exc_info=True)
     return dto
 
 
@@ -52,7 +52,7 @@ class DeviceConfigAclRepositoryImpl(DeviceConfigAclRepository):
                 try:
                     result[int(d.id)] = d
                 except Exception:
-                    pass
+                    logger.debug("Device id 转换失败: %r", d.id, exc_info=True)
         return result
 
 
@@ -84,5 +84,5 @@ class PlaybackConfigAclRepositoryImpl(PlaybackConfigAclRepository):
                 try:
                     result_map[int(d.id)] = d
                 except Exception:
-                    pass
+                    logger.debug("PlaybackDevice id 转换失败: %r", d.id, exc_info=True)
         return result_map

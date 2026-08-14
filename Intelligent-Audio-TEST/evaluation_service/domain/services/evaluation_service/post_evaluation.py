@@ -3,6 +3,7 @@
 P0 DDD 改造：移除模块级 infrastructure/acl import，改用方法内延迟导入。
 """
 from datetime import datetime, timezone, timedelta
+from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus
 
 
 class PostEvaluationMixin:
@@ -39,25 +40,25 @@ class PostEvaluationMixin:
         # 2. 更新 queued/pending 状态的 TaskCase 为 completed
         any_updated = False
         for tc in tc_rels:
-            if (tc.evaluation_status in ['queued', 'pending']
-                    and tc.execution_status in ['completed', 'failed']):
-                new_status = tc.execution_status if tc.status == 'pending' else tc.status
+            if (tc.evaluation_status in [EvaluationStatus.QUEUED, EvaluationStatus.PENDING]
+                    and tc.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]):
+                new_status = tc.execution_status if tc.status == TaskCaseStatus.PENDING else tc.status
                 ok = self._task_acl_repo.update_task_case_status(
                     task_id=task_id,
                     case_id=str(tc.test_case_id),
-                    status=new_status or tc.status or 'completed',
-                    evaluation_status='completed',
+                    status=new_status or tc.status or TaskCaseStatus.COMPLETED,
+                    evaluation_status=EvaluationStatus.COMPLETED,
                 )
                 if ok:
-                    tc.status = new_status or tc.status or 'completed'
-                    tc.evaluation_status = 'completed'
+                    tc.status = new_status or tc.status or TaskCaseStatus.COMPLETED
+                    tc.evaluation_status = EvaluationStatus.COMPLETED
                     any_updated = True
 
         # 3. 统计已处理/失败/完成的用例数
         total_cases = len(tc_rels)
-        processed_cases = sum(1 for tc in tc_rels if tc.status in ['completed', 'failed'])
-        failed_cases = sum(1 for tc in tc_rels if tc.status == 'failed')
-        completed_cases = sum(1 for tc in tc_rels if tc.status == 'completed')
+        processed_cases = sum(1 for tc in tc_rels if tc.status in [TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED])
+        failed_cases = sum(1 for tc in tc_rels if tc.status == TaskCaseStatus.FAILED)
+        completed_cases = sum(1 for tc in tc_rels if tc.status == TaskCaseStatus.COMPLETED)
 
         # 4. 读取 Task（P1.4: 通过 gRPC）
         task = self._task_acl_repo.get_task_by_id(task_id)
@@ -65,14 +66,14 @@ class PostEvaluationMixin:
             return None
 
         # 5. 当任务处于评估过渡态时，检查是否所有用例都已完成评估
-        if task.status == 'evaluating':
+        if task.status == TaskStatus.EVALUATING:
             pending_eval_count = sum(
                 1 for tc in tc_rels
-                if tc.evaluation_status in ['running', 'calculating', 'queued', 'pending']
+                if tc.evaluation_status in [EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING, EvaluationStatus.QUEUED, EvaluationStatus.PENDING]
             )
             if pending_eval_count == 0:
                 # 所有用例评估完成，通过 gRPC 更新任务最终状态
-                new_task_status = 'failed' if failed_cases > 0 else 'completed'
+                new_task_status = TaskStatus.FAILED if failed_cases > 0 else TaskStatus.COMPLETED
                 ok = self._task_acl_repo.update_task_status(task_id, new_task_status)
                 self._log(
                     level='INFO' if ok else 'ERROR',

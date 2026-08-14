@@ -25,7 +25,7 @@ def _attach(dto, payload):
         try:
             dto.result_data = payload
         except Exception:
-            pass
+            logger.debug("附加 result_data 到 DTO 失败", exc_info=True)
     return dto
 
 
@@ -104,3 +104,26 @@ class TaskDataAclRepositoryImpl(TaskDataAclRepository):
     def submit_result(self, task_id, result_data) -> Optional[int]:
         from shared.clients.grpc_clients import submit_result as _submit
         return _submit(task_id, result_data)
+
+    def _get_stub(self):
+        """获取 task_data_service gRPC stub"""
+        from shared.clients.grpc_clients import get_task_data_service_stub
+        return get_task_data_service_stub()
+
+    def _get_testcase_stub(self):
+        """获取 testcase_config_service gRPC stub"""
+        from shared.clients.grpc_clients import get_testcase_config_service_stub
+        return get_testcase_config_service_stub()
+
+    def notify_task_progress(self, task_id: str, force: bool = False):
+        """通知任务进度"""
+        from shared.clients.grpc_clients import notify_task_progress as _notify
+        return _notify(task_id, force=force)
+
+    def submit_evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **eval_params):
+        """提交评估（通过 gRPC 调用 evaluation_service.EvaluateCase）"""
+        from shared.clients.grpc_clients import submit_evaluate_case
+        return submit_evaluate_case(
+            task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+            algorithm_result=algorithm_result, eval_params=eval_params,
+        )

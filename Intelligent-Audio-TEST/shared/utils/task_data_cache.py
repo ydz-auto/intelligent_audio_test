@@ -16,8 +16,11 @@ gRPC 缓存装饰器层。消费方 event_manager 被 task_service 与 api_gatew
 服务使用，故保留在 shared/utils 作为跨服务共享基础设施。
 """
 import time
+import logging
 import threading
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 _cache: Dict[str, Any] = {}
 _cache_lock = threading.Lock()
@@ -65,7 +68,7 @@ def get_task_progress_via_grpc(task_id: int) -> Optional[dict]:
             _set_cached(cache_key, data)
             return data
     except Exception:
-        pass
+        logger.debug("get_task_progress_via_grpc 失败 task_id=%s", task_id, exc_info=True)
     return None
 
 
@@ -88,7 +91,7 @@ def get_task_detail_via_grpc(task_id: int) -> Optional[dict]:
             _set_cached(cache_key, data)
             return data
     except Exception:
-        pass
+        logger.debug("get_task_detail_via_grpc 失败 task_id=%s", task_id, exc_info=True)
     return None
 
 

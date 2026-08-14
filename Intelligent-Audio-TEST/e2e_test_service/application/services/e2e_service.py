@@ -6,6 +6,7 @@ E2E Test Service - 服务接口层
 """
 import threading
 from shared.utils.log_handler import log_and_emit
+from shared.utils.status_constants import TaskStatus
 
 
 class E2EService:
@@ -68,13 +69,13 @@ class E2EService:
             # 确保控制事件已创建
             self._engine_ctx._get_or_create_flags(task_id)
             with self._task_lock:
-                self._task_status[task_id] = {'status': 'running', 'tc_rel_id': tc_rel_id}
+                self._task_status[task_id] = {'status': TaskStatus.RUNNING, 'tc_rel_id': tc_rel_id}
 
             success = self.executor.execute_e2e_case(task_id, tc_rel_id)
 
             with self._task_lock:
                 self._task_status[task_id] = {
-                    'status': 'completed' if success else 'failed',
+                    'status': TaskStatus.COMPLETED if success else TaskStatus.FAILED,
                     'tc_rel_id': tc_rel_id,
                     'success': success,
                 }
@@ -97,7 +98,7 @@ class E2EService:
             )
             with self._task_lock:
                 self._task_status[task_id] = {
-                    'status': 'failed',
+                    'status': TaskStatus.FAILED,
                     'tc_rel_id': tc_rel_id,
                     'error': str(e),
                 }

@@ -1,10 +1,13 @@
 import os
 import time
 import json
+import logging
 import requests
 import traceback
 from shared.infrastructure.storage import storage
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin
+
+logger = logging.getLogger(__name__)
 
 
 class ApiRequestHandler(EvaluationLoggerMixin):
@@ -195,7 +198,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                     files[field_name] = (filename, file_bytes, 'application/octet-stream')
                     return True
         except Exception:
-            pass
+            logger.debug("提取文件字段 %s 失败", field_name, exc_info=True)
         # 回退
         if form_fields_fallback is not None and fallback_key is not None:
             form_fields_fallback[fallback_key] = fallback_value
@@ -219,6 +222,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
             path = value if value.startswith(('oss://', 'local://')) else storage.build_path('audios', value)
             return storage.load_file(path)
         except Exception:
+            logger.debug("解析相对路径 %r 失败", value, exc_info=True)
             return None
 
     def create_task_upload(self, url, form_fields, files, timeout=30, task_id=None):

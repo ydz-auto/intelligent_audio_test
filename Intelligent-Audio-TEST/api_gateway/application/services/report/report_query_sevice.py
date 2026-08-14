@@ -15,7 +15,7 @@ from api_gateway.schemas.report import (
     ReportExportRequest,
     GetCaseAveragesRequest,
 )
-from shared.clients.grpc_clients import get_report_config_service_stub
+from api_gateway.infrastructure.grpc_proxies import report_config_service
 from shared.proto import report_service_pb2 as report_pb
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
@@ -39,7 +39,7 @@ class ReportQueryService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.ListReports(report_pb.ListReportsRequest(
                 report_type=query.report_type or '',
                 status=query.status or '',
@@ -64,7 +64,7 @@ class ReportQueryService:
     @staticmethod
     def get_one(report_id):
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.GetReportDetail(report_pb.GetReportDetailRequest(
                 report_id=int(report_id)))
             if not resp.success:
@@ -88,7 +88,7 @@ class ReportQueryService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.GetReportCases(report_pb.GetReportCasesRequest(
                 report_id=int(report_id),
                 data=_dumps({
@@ -118,7 +118,7 @@ class ReportQueryService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.SearchReportCases(report_pb.SearchReportCasesRequest(
                 report_id=int(report_id),
                 data=_dumps({
@@ -160,7 +160,7 @@ class ReportQueryService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.ExportReports(report_pb.ExportReportsRequest(
                 data=_dumps({'ids': report_ids, 'format': format_type})))
             if not resp.success:
@@ -193,7 +193,7 @@ class ReportQueryService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.GetCaseAverages(report_pb.GetCaseAveragesRequest(
                 data=_dumps({
                     'task_id': req.task_id,
@@ -219,7 +219,7 @@ class ReportQueryService:
             return error_response('case_id 不能为空', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.DownloadCaseLogs(report_pb.DownloadCaseLogsRequest(
                 report_id=int(report_id),
                 case_id=str(case_id)))

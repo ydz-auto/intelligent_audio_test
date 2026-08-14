@@ -48,10 +48,8 @@ def _apply_reference_params_to_config(test_case) -> None:
     if not rounds:
         return
 
-    from shared.clients.grpc_clients import (
-        algo_generate_reference_params,
-        algo_get_all_reference_params,
-    )
+    from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
+    _algo_repo = AlgorithmRepository()
 
     case_id = getattr(test_case, 'id', '') or str(id(test_case))
 
@@ -69,11 +67,11 @@ def _apply_reference_params_to_config(test_case) -> None:
 
         round_number = round_item.get('round_number') or round_item.get('roundNumber') or 1
 
-        round_params = algo_generate_reference_params(test_case_config, round_item)
+        round_params = _algo_repo.algo_generate_reference_params(test_case_config, round_item)
         if not round_params:
             continue
 
-        round_params = algo_get_all_reference_params(round_params)
+        round_params = _algo_repo.algo_get_all_reference_params(round_params)
 
         oss_key = _build_ref_params_key(case_id, round_number)
 
@@ -155,7 +153,7 @@ class TestCaseBatchService:
                 from api_gateway.application.services.stats_cache import refresh_stats_cache
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.warning("批量操作后刷新统计缓存失败", exc_info=True)
 
             return {'success': True, 'message': message, 'data': None}
         except Exception as e:
@@ -207,7 +205,7 @@ class TestCaseBatchService:
                 try:
                     _apply_reference_params_to_config(new_tc)
                 except Exception:
-                    pass
+                    logger.warning("复制到目标分组时刷新参考文本失败 tc_id=%s", tc_id, exc_info=True)
                 copied_count += 1
         return f"已成功复制 {copied_count} 个用例到分组 '{target_group.name}'"
 
@@ -233,7 +231,7 @@ class TestCaseBatchService:
                 try:
                     _apply_reference_params_to_config(new_tc)
                 except Exception:
-                    pass
+                    logger.warning("批量复制时刷新参考文本失败 tc_id=%s", tc_id, exc_info=True)
                 copied_count += 1
         return f"已成功批量复制 {copied_count} 个用例"
 
@@ -273,7 +271,7 @@ class TestCaseBatchService:
             try:
                 _apply_reference_params_to_config(new_tc)
             except Exception:
-                pass
+                logger.warning("按分组复制时刷新参考文本失败 tc_id=%s", tc_id, exc_info=True)
             copied_count += 1
         return f"已成功复制分组 '{new_group_name}' 的 {copied_count} 个用例"
 

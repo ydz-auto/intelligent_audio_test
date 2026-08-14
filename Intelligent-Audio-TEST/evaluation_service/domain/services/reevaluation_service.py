@@ -12,6 +12,7 @@ P0-2 DDD 改造：从 application/handlers/reevaluation_executor.py 下沉的业
 """
 import json
 from typing import Any, Dict, List, Optional
+from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 
 
 class ReevaluationService:
@@ -50,7 +51,7 @@ class ReevaluationService:
         """
         cases = []
         for result in test_results:
-            if result.execution_status != 'completed':
+            if result.execution_status != ExecutionStatus.COMPLETED:
                 continue
 
             test_case_id = result.test_case_id
@@ -82,12 +83,12 @@ class ReevaluationService:
         """
         cases = []
         for result in test_results:
-            if result.execution_status != 'completed':
+            if result.execution_status != ExecutionStatus.COMPLETED:
                 continue
 
             test_case_id = result.test_case_id
             tc_rel = task_case_map.get(str(test_case_id))
-            if not tc_rel or tc_rel.evaluation_status != 'failed':
+            if not tc_rel or tc_rel.evaluation_status != EvaluationStatus.FAILED:
                 continue
 
             algo_result = ReevaluationService.deserialize_algorithm_result(

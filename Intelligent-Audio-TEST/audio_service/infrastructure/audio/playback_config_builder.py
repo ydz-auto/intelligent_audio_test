@@ -12,44 +12,34 @@
 
 from shared.utils.log_handler import log_not_emit
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def _get_playback_device_via_grpc(device_id):
-    """通过 gRPC 从 device_service 获取 PlaybackDevice 数据（返回 dict 或 None）。
+    """通过 ACL 仓储从 device_service 获取 PlaybackDevice 数据（返回 dict 或 None）。
 
     PlaybackDevice 归属 device_service，audio_service 不再直连 PO。
     """
     try:
-        from shared.clients.grpc_clients import get_playback_config_service_stub
-        from shared.proto import device_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-
-        stub = get_playback_config_service_stub()
-        resp = stub.GetPlaybackDevice(
-            _e2e_pb.GetPlaybackDeviceRequest(device_id=int(device_id))
+        from audio_service.infrastructure.acl.playback_acl_repository import (
+            PlaybackConfigACLRepositoryImpl,
         )
-        if resp.success:
-            return _grpc_loads(resp.data, {}) or {}
-        return None
+        _playback_acl = PlaybackConfigACLRepositoryImpl()
+        return _playback_acl.get_playback_device(device_id)
     except Exception:
         return None
 
 
 def _find_playback_device_by_unique_id(device_unique_id):
-    """通过 gRPC ListPlaybackDevices 按 device_unique_id 查找（返回 dict 或 None）。"""
+    """通过 ACL 仓储 ListPlaybackDevices 按 device_unique_id 查找（返回 dict 或 None）。"""
     try:
-        from shared.clients.grpc_clients import get_playback_config_service_stub
-        from shared.proto import device_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-
-        stub = get_playback_config_service_stub()
-        resp = stub.ListPlaybackDevices(_e2e_pb.ListPlaybackDevicesRequest())
-        if resp.success:
-            data = _grpc_loads(resp.data, {}) or {}
-            devices = data.get('devices', []) or data.get('items', []) or []
-            for dev in devices:
-                if dev.get('device_unique_id') == device_unique_id and not dev.get('is_deleted'):
-                    return dev
-        return None
+        from audio_service.infrastructure.acl.playback_acl_repository import (
+            PlaybackConfigACLRepositoryImpl,
+        )
+        _playback_acl = PlaybackConfigACLRepositoryImpl()
+        return _playback_acl.find_playback_device_by_unique_id(device_unique_id)
     except Exception:
         return None
 
@@ -430,7 +420,7 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
                     if audio_obj:
                         file_path = audio_obj.file_path
                 except Exception:
-                    pass
+                    logger.debug("通过仓储查询干扰人音频文件路径失败: audio_id=%s", audio_info.get('id'), exc_info=True)
 
         if not file_path:
             _log('WARNING',
@@ -546,8 +536,11 @@ def extract_overlap_rate(case_config):
     if not case_config:
         return 0
     try:
-        from shared.clients.grpc_clients import algo_normalize_algorithm_params
-        params = algo_normalize_algorithm_params(case_config.get('algorithm_params', {}))
+        from audio_service.infrastructure.acl.algorithm_acl_repository import (
+            AlgorithmACLRepositoryImpl,
+        )
+        _algo_acl = AlgorithmACLRepositoryImpl()
+        params = _algo_acl.normalize_algorithm_params(case_config.get('algorithm_params', {}))
         value = params.get('overlap_rate', 0)
         return max(0.0, min(1.0, float(value)))
     except Exception:
@@ -558,8 +551,11 @@ def extract_overlap_time(case_config):
     if not case_config:
         return 0
     try:
-        from shared.clients.grpc_clients import algo_normalize_algorithm_params
-        params = algo_normalize_algorithm_params(case_config.get('algorithm_params', {}))
+        from audio_service.infrastructure.acl.algorithm_acl_repository import (
+            AlgorithmACLRepositoryImpl,
+        )
+        _algo_acl = AlgorithmACLRepositoryImpl()
+        params = _algo_acl.normalize_algorithm_params(case_config.get('algorithm_params', {}))
         value = params.get('overlap_time', 0)
         return max(0.0, float(value))
     except Exception:

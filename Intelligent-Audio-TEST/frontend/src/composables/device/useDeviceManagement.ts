@@ -1,6 +1,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { devicesApi, playbackApi, apisApi } from '../../utils/api';
 import { useModalControl } from '../modal/useModal';
+import { useNotification } from '../modal/useNotification';
 import {
   MODAL_TYPES,
   type PlaybackDevice
@@ -53,6 +54,7 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
 
   // 初始化模态框管理器
   const modalManager = useModalControl();
+  const notification = useNotification();
 
   // 通知外部设备列表已变更
   const notifyDevicesChanged = async () => {
@@ -223,6 +225,8 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
       devices.value = Array.isArray(data) ? data : [];
     } catch (error) {
       console.error('获取设备列表失败:', error);
+      const errorMessage = error instanceof Error ? error.message : '获取设备列表失败';
+      notification.error('获取设备列表失败', errorMessage);
       devices.value = [];
     } finally {
       isLoading.value = false;

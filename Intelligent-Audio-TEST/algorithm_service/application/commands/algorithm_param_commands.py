@@ -15,7 +15,7 @@
 - 设备/API 参数：CreateParamCommand / UpdateParamCommand / DeleteParamCommand
                   / FindParamByCodeCommand
 - 用例参数：CreateCaseParamCommand / UpdateCaseParamCommand / DeleteCaseParamCommand
-            / FindCaseParamByCodeCommand / ReviveCaseParamCommand
+            / FindCaseParamByCodeCommand
 - 参考参数：CreateReferenceParamCommand / UpdateReferenceParamCommand
             / DeleteReferenceParamCommand / FindReferenceParamCommand
 - 参数映射：CreateMappingCommand / UpdateMappingCommand / DeleteMappingCommand
@@ -136,18 +136,6 @@ class FindCaseParamByCodeCommand:
     algorithm_type: str
     param_code: str
     include_deleted: bool = False
-
-
-@dataclass(frozen=True)
-class ReviveCaseParamCommand:
-    """恢复软删除的用例参数并更新字段命令。
-
-    - param_id: 参数ID
-    - data: 待更新字段集合
-    """
-
-    param_id: int
-    data: Dict[str, Any]
 
 
 # ========== 参考参数命令 ==========

@@ -250,7 +250,7 @@ class QwenAdapter(BaseAdapter):
                 try:
                     await ws.close()
                 except Exception:
-                    pass
+                    logger.debug("关闭Qwen WebSocket连接失败", exc_info=True)
 
         full_asr = ''.join(asr_text_list).strip()
         full_trans = full_transcript or ''.join(trans_text_list).strip()

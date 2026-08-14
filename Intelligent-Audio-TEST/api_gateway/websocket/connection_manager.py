@@ -5,11 +5,14 @@ WebSocket 连接管理器 —— FastAPI 原生 WebSocket 实现
 管理 sid → WebSocket 映射、task_id → [sid] 房间、sid → filter。
 """
 import asyncio
+import logging
 import threading
 from typing import Dict, List, Set, Optional, Any
 from datetime import datetime, timezone, timedelta
 
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -29,8 +32,8 @@ class ConnectionManager:
         if self._main_loop is None:
             try:
                 self._main_loop = asyncio.get_running_loop()
-            except RuntimeError:
-                pass
+            except RuntimeError as e:
+                logger.debug("connect 获取运行中事件循环失败: %s", e)
         with self._lock:
             self._connections[sid] = websocket
 
@@ -110,7 +113,7 @@ class ConnectionManager:
             try:
                 await ws.send_json(data)
             except Exception:
-                pass
+                logger.debug("向 sid=%s 发送数据失败", sid, exc_info=True)
 
     async def broadcast_log(self, log_data: dict):
         """广播日志到匹配的 WebSocket 连接（由 log_handler 调用）"""
@@ -148,7 +151,7 @@ class ConnectionManager:
                 asyncio.run_coroutine_threadsafe(self.broadcast_log(log_data), loop)
                 return
             except Exception:
-                pass
+                logger.debug("broadcast_log_sync 经主循环派发失败", exc_info=True)
         # 回退：尝试获取当前线程的事件循环
         try:
             loop = asyncio.get_event_loop()
@@ -161,7 +164,7 @@ class ConnectionManager:
             try:
                 asyncio.run(self.broadcast_log(log_data))
             except Exception:
-                pass
+                logger.debug("broadcast_log_sync 回退 asyncio.run 失败", exc_info=True)
 
     async def emit(self, event: str, data: dict):
         """
@@ -190,7 +193,7 @@ class ConnectionManager:
                 asyncio.run_coroutine_threadsafe(self.emit(event, data), loop)
                 return
             except Exception:
-                pass
+                logger.debug("emit_sync 经主循环派发失败", exc_info=True)
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
@@ -201,4 +204,4 @@ class ConnectionManager:
             try:
                 asyncio.run(self.emit(event, data))
             except Exception:
-                pass
+                logger.debug("emit_sync 回退 asyncio.run 失败", exc_info=True)

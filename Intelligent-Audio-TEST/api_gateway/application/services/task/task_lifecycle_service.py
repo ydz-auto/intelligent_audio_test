@@ -3,15 +3,18 @@ import logging
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import task_config_service
+from api_gateway.infrastructure.acl import TaskConfigAclRepositoryImpl
 from api_gateway.schemas.task import (
     TaskControlRequest,
     TaskMergeRequest,
     TaskStartData,
 )
 from api_gateway.schemas.common import TaskStatusData
+from shared.utils.status_constants import TaskStatus, ExecutionStatus
 
 logger = logging.getLogger(__name__)
+
+_task_acl = TaskConfigAclRepositoryImpl()
 
 
 class TaskLifecycleService:
@@ -24,7 +27,7 @@ class TaskLifecycleService:
     # 启动任务
     @staticmethod
     def start(task_id):
-        result = task_config_service.start(task_id)
+        result = _task_acl.start(task_id)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -37,7 +40,7 @@ class TaskLifecycleService:
             TaskStartData(
                 task_id=str(data.get('task_id', task_id)),
                 start_time=data.get('start_time', 0),
-                status=data.get('status', 'running'),
+                status=data.get('status', TaskStatus.RUNNING),
                 expected_total_time=data.get('expected_total_time'),
                 expected_complete_time=data.get('expected_complete_time'),
             ),
@@ -47,7 +50,7 @@ class TaskLifecycleService:
     # 重新执行失败或未完成的用例
     @staticmethod
     def retry(task_id):
-        result = task_config_service.retry(task_id)
+        result = _task_acl.retry(task_id)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -57,7 +60,7 @@ class TaskLifecycleService:
 
         data = result.get('data') or {}
         return success_response(
-            TaskStatusData(task_id=str(data.get('task_id', task_id)), status=data.get('status', 'running')),
+            TaskStatusData(task_id=str(data.get('task_id', task_id)), status=data.get('status', TaskStatus.RUNNING)),
             result.get('message', '重试任务已启动'),
         )
 
@@ -71,7 +74,7 @@ class TaskLifecycleService:
 
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
 
-        result = task_config_service.control(task_id, data_dict)
+        result = _task_acl.control(task_id, data_dict)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -88,7 +91,7 @@ class TaskLifecycleService:
     # 停止正在运行的任务
     @staticmethod
     def stop(task_id):
-        result = task_config_service.stop(task_id)
+        result = _task_acl.stop(task_id)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -105,7 +108,7 @@ class TaskLifecycleService:
 
         class TaskReextractInput(BaseModel):
             task_id: int = Field(..., validation_alias='task_id')
-            execution_status: str = Field('completed', validation_alias='executionStatus')
+            execution_status: str = Field(ExecutionStatus.COMPLETED, validation_alias='executionStatus')
             evaluation_status: str = Field(None, validation_alias='evaluationStatus')
 
         try:
@@ -118,7 +121,7 @@ class TaskLifecycleService:
             'evaluation_status': req.evaluation_status,
         }
 
-        result = task_config_service.reextract(task_id, data_dict)
+        result = _task_acl.reextract(task_id, data_dict)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -128,9 +131,9 @@ class TaskLifecycleService:
 
         data = result.get('data') or {}
         return success_response({
-            'task_id': data.get('task_id', task_id),
-            'reextracted_count': data.get('reextracted_count', 0),
-            'reextracted_cases': data.get('reextracted_cases', []),
+            'taskId': data.get('task_id', task_id),
+            'reextractedCount': data.get('reextracted_count', 0),
+            'reextractedCases': data.get('reextracted_cases', []),
             'message': result.get('message', '重新提取成功'),
         }, result.get('message', '重新提取成功'))
 
@@ -144,7 +147,7 @@ class TaskLifecycleService:
 
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
 
-        result = task_config_service.merge(data_dict)
+        result = _task_acl.merge(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -154,7 +157,7 @@ class TaskLifecycleService:
 
         data = result.get('data') or {}
         return success_response(
-            {"merged_task_id": data.get('merged_task_id'), "merged_task_name": data.get('merged_task_name', '')},
+            {"mergedTaskId": data.get('merged_task_id'), "mergedTaskName": data.get('merged_task_name', '')},
             result.get('message', '合并成功'),
             http_code=201,
         )

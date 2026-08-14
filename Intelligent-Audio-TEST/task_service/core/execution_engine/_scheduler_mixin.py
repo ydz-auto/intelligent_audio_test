@@ -2,6 +2,11 @@ import threading
 from task_service.infrastructure.persistence.models import Task
 from shared.models.database import get_db_session
 from shared.utils.config_manager import config_manager
+from shared.utils.status_constants import TaskStatus
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class SchedulerMixin:
@@ -56,7 +61,7 @@ class SchedulerMixin:
                     from shared.models.database import remove_db_session
                     remove_db_session()
                 except Exception:
-                    pass
+                    logger.debug("调度器循环结束清理 DB session 失败", exc_info=True)
 
             self.scheduler_event.wait(timeout=check_interval)
             self.scheduler_event.clear()
@@ -71,7 +76,7 @@ class SchedulerMixin:
         local_db_session = get_db_session()
         try:
             pending_tasks = local_db_session.query(Task).filter_by(
-                status='pending',
+                status=TaskStatus.PENDING,
                 deleted=False
             ).order_by(Task.created_at.asc()).all()
 

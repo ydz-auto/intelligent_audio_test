@@ -1,5 +1,6 @@
 import time
 from shared.utils.log_handler import log_and_emit
+from shared.utils.status_constants import TaskStatus
 
 
 class ProgressMixin:
@@ -22,7 +23,7 @@ class ProgressMixin:
             task_status = getattr(task, 'status', None)
 
         if task_id and not force:
-            if task_status in ['running', 'completed', 'failed', 'stopped', 'paused']:
+            if task_status in [TaskStatus.RUNNING, TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED, TaskStatus.PAUSED]:
                 force = True
             else:
                 current_time = time.time()

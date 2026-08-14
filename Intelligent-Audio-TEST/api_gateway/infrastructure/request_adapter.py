@@ -57,8 +57,11 @@ class _RequestProxy:
         # This is a sync fallback - may not work for async bodies
         return None  # Will be set by middleware if needed
 
-    def get_json(self):
-        """同步获取 JSON body（由中间件预解析）"""
+    def get_json(self, silent=False):
+        """同步获取 JSON body（由中间件预解析）。
+
+        Flask 兼容参数 silent: True 时解析失败返回 None 而非抛异常。
+        """
         req = get_current_request()
         if req is None:
             return None

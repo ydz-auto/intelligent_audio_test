@@ -168,10 +168,19 @@ export function useCaseForm(props: any, emit: any) {
         rounds: [{ roundNumber: 1, audios: [] }],
         dimensions: [],
       },
+      // 后端 success_response 会递归将 snake_case 键转为 camelCase，此处归一化回 snake_case 供下游组件统一使用
+      const rawAlgParams = (raw as any).algorithmParams || (raw as any).algorithm_params;
+      const normalizedAlgParams = Array.isArray(rawAlgParams)
+        ? rawAlgParams.map((e: any) => ({
+            round_number: e.round_number ?? e.roundNumber,
+            params: (e.params || []).map((p: any) => ({
+              field_code: p.field_code ?? p.fieldCode,
+              field_value: p.field_value ?? p.fieldValue,
+            })),
+          }))
+        : [];
       // 新设计：algorithm_params 作为 test_cases 独立列（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
-      algorithm_params: Array.isArray((raw as any).algorithmParams || (raw as any).algorithm_params)
-        ? ((raw as any).algorithmParams || (raw as any).algorithm_params)
-        : [],
+      algorithm_params: normalizedAlgParams,
     };
     // 从独立列读取第一个 round 的 params，用于 AlgorithmSelector 的 initial-params（单轮编辑器）
     const groupedAlgParams = localFormData.value.algorithm_params as any[];

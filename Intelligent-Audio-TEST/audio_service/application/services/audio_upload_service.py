@@ -17,7 +17,6 @@ from shared.utils.log_handler import log_and_emit
 from api_gateway.application.services.stats_cache import refresh_stats_cache
 from shared.infrastructure.storage import storage
 from shared.clients.oss_client import oss
-from shared.clients.grpc_clients import algo_normalize_algorithm_params_to_list
 from audio_service.domain.repositories.audio_repository_abc import AudioRepositoryInterface
 from audio_service.infrastructure.persistence.audio_repository import audio_repository
 from audio_service.application.services.audio_file_utils import (
@@ -127,14 +126,14 @@ def _create_audio_db_record(temp_file_path, filename, relative_path=""):
         try:
             storage.delete(f'audios/{oss_key}')
         except Exception:
-            pass
+            logger.debug("解析音频元数据失败后清理OSS文件失败: oss_key=%s", oss_key, exc_info=True)
         raise ValueError(f"无法识别的音频格式或文件已损坏: {str(e)}")
     finally:
         if meta_tmp_path and os.path.exists(meta_tmp_path):
             try:
                 os.remove(meta_tmp_path)
             except Exception:
-                pass
+                logger.debug("清理音频元数据临时文件失败: %s", meta_tmp_path, exc_info=True)
 
     return {
         'name': original_filename,
@@ -288,20 +287,20 @@ class AudioUploadService:
                 sample_rate = sr
                 bits_per_sample = bps
             except Exception:
-                pass
+                logger.debug("解析WAV头部信息失败: temp_file=%s", temp_file, exc_info=True)
 
             try:
                 import wave
                 with wave.open(temp_file, 'rb') as wf:
                     duration = wf.getnframes() / wf.getframerate() if wf.getframerate() else 0.0
             except Exception:
-                pass
+                logger.debug("解析音频时长失败: temp_file=%s", temp_file, exc_info=True)
 
             # 3. 创建 Audio 记录
             audio = self.repo.create_audio({
                 'name': filename,
                 'original_filename': filename,
-                'file_path': oss_key,
+                'file_path': f'oss://audios/{oss_key}',
                 'format': 'wav',
                 'size': actual_file_size,
                 'duration': duration,
@@ -341,7 +340,7 @@ class AudioUploadService:
                 try:
                     os.remove(temp_file)
                 except Exception:
-                    pass
+                    logger.debug("清理直传临时文件失败: %s", temp_file, exc_info=True)
 
     def init_upload_task(self, data: dict = None) -> dict:
         """初始化上传任务"""
@@ -625,7 +624,13 @@ class AudioUploadService:
             algorithm_params_dict = [{'field_code': k, 'field_value': v} for k, v in algorithm_params.items()]
 
         if tc_config and tc_config.get('algorithm_params') and not algorithm_params_dict:
-            algorithm_params_dict = algo_normalize_algorithm_params_to_list(tc_config.get('algorithm_params'))
+            # 通过 ACL 仓储规范化算法参数
+            from audio_service.infrastructure.acl.algorithm_acl_repository import (
+                AlgorithmACLRepositoryImpl,
+            )
+            algorithm_params_dict = AlgorithmACLRepositoryImpl().normalize_algorithm_params_to_list(
+                tc_config.get('algorithm_params')
+            )
 
         dimensions_data = data.get('dimensions')
         if tc_config and tc_config.get('dimensions') and not dimensions_data:
@@ -832,12 +837,12 @@ class AudioUploadService:
                 try:
                     os.remove(wav_file_path)
                 except Exception:
-                    pass
+                    logger.debug("清理WAV转换临时文件失败: %s", wav_file_path, exc_info=True)
             if oss_key:
                 try:
                     storage.delete(f'audios/{oss_key}')
                 except Exception:
-                    pass
+                    logger.debug("音频转换失败后清理OSS文件失败: oss_key=%s", oss_key, exc_info=True)
             sample_rate = 44100
             bits_per_sample = 16
 
@@ -870,7 +875,7 @@ class AudioUploadService:
                 try:
                     os.remove(meta_tmp_path)
                 except Exception:
-                    pass
+                    logger.debug("清理音频元数据临时文件失败: %s", meta_tmp_path, exc_info=True)
 
         return {
             'final_path': final_path,
@@ -1075,7 +1080,7 @@ class AudioUploadService:
                 try:
                     refresh_stats_cache()
                 except Exception:
-                    pass
+                    logger.debug("URL导入后刷新统计缓存失败: audio_id=%s", new_audio.id, exc_info=True)
 
             return {
                 'success': True, 'message': 'URL 导入成功',

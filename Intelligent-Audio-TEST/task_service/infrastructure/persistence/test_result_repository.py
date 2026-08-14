@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from shared.models.database import get_db_session
+from shared.utils.status_constants import ExecutionStatus
 from task_service.infrastructure.persistence.models.result_models import TestResult
 
 from task_service.domain.repositories.test_result_repository import TestResultRepositoryABC
@@ -102,7 +103,7 @@ class TestResultRepository(TestResultRepositoryABC):
                 device_id=data.get('device_id'),
                 api_id=data.get('api_id'),
                 algorithm_type=data.get('algorithm_type'),
-                execution_status=data.get('execution_status', 'pending'),
+                execution_status=data.get('execution_status', ExecutionStatus.PENDING),
                 response_time=data.get('response_time'),
                 algorithm_result=data.get('algorithm_result'),
                 execution_steps=data.get('execution_steps'),

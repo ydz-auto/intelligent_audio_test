@@ -6,6 +6,7 @@ from shared.models.database import get_db_session
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin
 # P1.4: TestResult 改为通过 gRPC 调 task_service
 from evaluation_service.infrastructure.acl import task_acl_repository
+from shared.utils.status_constants import EvaluationStatus
 
 
 class RoundAggregator(EvaluationLoggerMixin):
@@ -45,7 +46,7 @@ class RoundAggregator(EvaluationLoggerMixin):
         try:
             pending_count = local_db_session.query(TestResultDimension).filter(
                 TestResultDimension.test_result_id == result_id,
-                TestResultDimension.evaluation_status == 'pending',
+                TestResultDimension.evaluation_status == EvaluationStatus.PENDING,
             ).count()
             return pending_count == 0
         finally:
@@ -96,7 +97,7 @@ class RoundAggregator(EvaluationLoggerMixin):
             for dim_name, results in dim_groups.items():
                 completed = [
                     r for r in results
-                    if r['evaluation_status'] == 'completed' and r['score'] is not None
+                    if r['evaluation_status'] == EvaluationStatus.COMPLETED and r['score'] is not None
                 ]
                 if completed:
                     avg_score = sum(r['score'] for r in completed) / len(completed)
@@ -115,7 +116,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                         # 仅在整体评估未产生分数时用算术平均兜底
                         if existing_overall.score is None:
                             existing_overall.score = round(avg_score, 4)
-                            existing_overall.evaluation_status = 'completed'
+                            existing_overall.evaluation_status = EvaluationStatus.COMPLETED
                     else:
                         # 没有整体评估记录，创建一条聚合记录
                         overall_dim = TestResultDimension(
@@ -125,7 +126,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                             round_number=None,
                             score=round(avg_score, 4),
                             status=None,
-                            evaluation_status='completed',
+                            evaluation_status=EvaluationStatus.COMPLETED,
                             error_message=None,
                         )
                         local_db_session.add(overall_dim)
@@ -137,7 +138,7 @@ class RoundAggregator(EvaluationLoggerMixin):
             ))
             aggregated['completed_rounds'] = len(set(
                 r.round_number for r in dim_results
-                if r.round_number is not None and r.evaluation_status == 'completed'
+                if r.round_number is not None and r.evaluation_status == EvaluationStatus.COMPLETED
             ))
 
             self._update_algorithm_result_aggregated(local_db_session, result_id, aggregated)

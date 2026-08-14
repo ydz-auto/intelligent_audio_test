@@ -105,6 +105,57 @@ class SoftDeleteCleanerBase:
         session.execute(text(sql_template).bindparams(
             bindparam('ids', expanding=True)), {"ids": ids})
 
+    @staticmethod
+    def filter_referenced_ids(session, table_name: str, column_name: str,
+                              ids: list, exclude_deleted: bool = True) -> list:
+        """过滤出仍被活跃记录引用的 id，供子类跳过硬删除。
+
+        检查指定表的指定列中是否仍存在待删 id 的引用行。
+        默认只检查未删除（deleted=FALSE 或无 deleted 列）的活跃行，
+        如果发现引用则返回这些 id，子类应跳过这些 id 的硬删除。
+
+        Args:
+            session: 数据库会话
+            table_name: 引用方表名，必须在白名单中
+            column_name: 引用方表中指向被引用表的列名
+            ids: 被引用方待删 id 列表
+            exclude_deleted: 是否排除已软删除的引用行，默认 True
+        Returns:
+            仍被引用的 id 子集；ids 为空时返回空列表
+        """
+        if not ids:
+            return []
+        if table_name not in _ALLOWED_TABLES:
+            raise ValueError(f"非法表名: {table_name}，不在白名单中")
+        where_deleted = " AND deleted = FALSE" if exclude_deleted else ""
+        rows = session.execute(text(
+            f"SELECT DISTINCT {column_name} FROM {table_name} "
+            f"WHERE {column_name} IN :ids{where_deleted}"
+        ).bindparams(bindparam('ids', expanding=True)), {"ids": ids}).all()
+        return {r[0] for r in rows}
+
+    @staticmethod
+    def refresh_deleted_at(session, table_name: str, ids: list) -> None:
+        """刷新待删记录的 deleted_at 为当前时间，重置 60 天保留期。
+
+        供子类在跳过硬删除时调用：被引用记录的 deleted_at 重置为 now，
+        下次扫描时不再满足过期条件，避免反复无用的 JOIN 查询和跳过日志。
+        给引用方 60 天窗口自然清理，解除引用后下次扫描即可硬删除。
+
+        Args:
+            session: 数据库会话
+            table_name: 被引用方表名，必须在白名单中
+            ids: 需刷新的记录 id 列表
+        """
+        if not ids:
+            return
+        if table_name not in _ALLOWED_TABLES:
+            raise ValueError(f"非法表名: {table_name}，不在白名单中")
+        session.execute(text(
+            f"UPDATE {table_name} SET deleted_at = :now "
+            f"WHERE id IN :ids"
+        ).bindparams(bindparam('ids', expanding=True)), {"ids": ids, "now": now_cst()})
+
     # ------------------------------------------------------------------
     # 单次清理执行（带 Redis 分布式锁）
     # ------------------------------------------------------------------
@@ -141,18 +192,18 @@ class SoftDeleteCleanerBase:
                 if session is not None:
                     session.rollback()
             except Exception:
-                pass
+                logger.debug("软删除清理 rollback 失败", exc_info=True)
             return {}
         finally:
             try:
                 remove_db_session()
             except Exception:
-                pass
+                logger.debug("软删除清理 remove_db_session 失败", exc_info=True)
             try:
                 if store is not None:
                     store.redis_client.delete(lock_key)
             except Exception:
-                pass
+                logger.debug("软删除清理 释放 Redis 锁失败 key=%s", lock_key, exc_info=True)
 
     # ------------------------------------------------------------------
     # 守护线程
@@ -190,9 +241,21 @@ class SoftDeleteCleanerBase:
         logger.info(f"[软删除清理:{self.service_name}] 守护线程已停止")
 
 
-# 允许清理的表名白名单（防止 SQL 注入）
+# 允许操作的表名白名单（防止 SQL 注入）
+# 包含主表（硬删除目标）和关联表（引用检查目标）
 _ALLOWED_TABLES = frozenset({
+    # 主表（硬删除目标）
     'test_cases', 'test_case_groups', 'audios', 'devices', 'apis',
     'test_tasks', 'test_reports', 'spl_mappings', 'dimensions',
     'categories', 'tags', 'tag_categories',
+    # 关联表（用于引用检查；无 deleted 列，直接物理删除）
+    'test_case_tags', 'task_tags', 'task_case_relations',
+    'task_device_relations', 'task_api_relations',
+    'audio_tags', 'device_tags', 'audio_algorithm_relations',
+    'audio_annotations',
+    # 子表（硬删除目标或引用检查）
+    'test_results', 'logs',
+    'report_summaries', 'report_summary_meta', 'report_raw_data',
+    'report_cases', 'report_metric_stats', 'report_comparison_matrix',
+    'test_result_dimensions',
 })

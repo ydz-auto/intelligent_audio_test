@@ -222,7 +222,7 @@ class AudioCommandHandler:
                     try:
                         storage.delete(audio.file_path)
                     except Exception:
-                        pass
+                        logger.debug("批量删除音频时删除存储文件失败: audio_id=%s, file_path=%s", audio.id, audio.file_path, exc_info=True)
                     self.repo.delete_audio_annotations(audio.id)
                     self.repo.delete_audio_tags(audio.id)
 
@@ -246,7 +246,7 @@ class AudioCommandHandler:
                             local_path = storage.load_file(audio.file_path)
                             zf.write(local_path, audio.original_filename)
                         except Exception:
-                            pass
+                            logger.debug("导出音频到压缩包失败: audio_id=%s, file_path=%s", audio.id, audio.file_path, exc_info=True)
                 memory_file.seek(0)
                 import base64
                 zip_b64 = base64.b64encode(memory_file.getvalue()).decode('ascii')
@@ -293,7 +293,7 @@ class AudioCommandHandler:
             try:
                 storage.delete(audio.file_path)
             except Exception:
-                pass
+                logger.debug("删除音频时删除存储文件失败: audio_id=%s, file_path=%s", cmd.audio_id, audio.file_path, exc_info=True)
 
             self.repo.delete_audio_annotations(cmd.audio_id)
             self.repo.delete_audio_tags(cmd.audio_id)
@@ -304,7 +304,7 @@ class AudioCommandHandler:
                 from api_gateway.application.services.stats_cache import refresh_stats_cache
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.debug("删除音频后刷新统计缓存失败: audio_id=%s", cmd.audio_id, exc_info=True)
 
             return _ok(message='音频文件已删除')
         except Exception as e:

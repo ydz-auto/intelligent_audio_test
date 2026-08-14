@@ -80,6 +80,8 @@ class AlgorithmGroupCrudService:
 
             self.repo.commit()
 
+            # Re-fetch to get updated data (gRPC update doesn't modify the local DTO)
+            group = self.repo.get_group(group_id)
             algo_count = self.repo.count_algorithms_in_group_for_group(group)
             return {
                 'success': True,

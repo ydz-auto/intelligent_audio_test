@@ -278,3 +278,21 @@ class PlaybackCommandResultDTO:
     """播放命令结果 DTO（playback_orchestrator.play_voiceprint）"""
     success: Optional[bool] = None
     result_data: Any = None
+
+
+@dataclass
+class CommandResultDTO:
+    """通用命令结果 DTO，封装 gRPC 信封 {success, message, data, code}。
+
+    供所有 ACL 仓储方法返回，应用服务通过属性访问替代 dict.get()。
+    兼容 dict-like .get() 调用以简化迁移。
+    """
+    success: bool = False
+    message: Optional[str] = None
+    data: Any = None
+    code: Optional[int] = None
+
+    def get(self, key, default=None):
+        """Dict-like access for backward compatibility with .get() calls."""
+        val = getattr(self, key, None)
+        return val if val is not None else default

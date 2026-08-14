@@ -2,7 +2,7 @@ import logging
 
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response, wrap_grpc_response
-from api_gateway.infrastructure.grpc_proxies import device_config_service
+from api_gateway.infrastructure.acl import DeviceAclRepositoryImpl
 from api_gateway.schemas.device import (
     DeviceListQuery,
     DeviceStatusQuery,
@@ -10,6 +10,8 @@ from api_gateway.schemas.device import (
 )
 
 logger = logging.getLogger(__name__)
+
+_device_acl = DeviceAclRepositoryImpl()
 
 
 class DeviceQueryService:
@@ -42,7 +44,7 @@ class DeviceQueryService:
         query_params_dict = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
         query_params = DeviceListQuery.model_validate(query_params_dict)
 
-        result = device_config_service.get_all(
+        result = _device_acl.get_all(
             page=query_params.page,
             per_page=query_params.per_page,
             keyword=query_params.keyword,
@@ -63,7 +65,7 @@ class DeviceQueryService:
         query_params = DeviceStatusQuery.model_validate(query_params_dict)
         device_ids = query_params.ids
 
-        result = device_config_service.get_statuses(device_ids)
+        result = _device_acl.get_statuses(device_ids)
 
         if not result.get('success'):
             return wrap_grpc_response(result, default_error_msg='查询失败')
@@ -74,7 +76,7 @@ class DeviceQueryService:
     @staticmethod
     def scan():
         """触发驱动层扫描 Android, iOS, HarmonyOS 设备"""
-        result = device_config_service.scan()
+        result = _device_acl.scan()
 
         if not result.get('success'):
             return wrap_grpc_response(result, default_error_msg='扫描失败')
@@ -85,7 +87,7 @@ class DeviceQueryService:
     # 测试设备
     @staticmethod
     def test(device_id):
-        result = device_config_service.test(device_id)
+        result = _device_acl.test(device_id)
 
         if not result.get('success'):
             return wrap_grpc_response(
@@ -99,7 +101,7 @@ class DeviceQueryService:
     # 停止测试
     @staticmethod
     def stop_test(device_id):
-        result = device_config_service.stop_test(device_id)
+        result = _device_acl.stop_test(device_id)
 
         if not result.get('success'):
             return wrap_grpc_response(
@@ -113,7 +115,7 @@ class DeviceQueryService:
     @staticmethod
     def get_driver_keywords():
         """获取所有已注册的驱动关键字"""
-        result = device_config_service.get_driver_keywords()
+        result = _device_acl.get_driver_keywords()
 
         if not result.get('success'):
             return wrap_grpc_response(result, default_error_msg='获取失败')
@@ -123,7 +125,7 @@ class DeviceQueryService:
     # 获取单个设备详情
     @staticmethod
     def get_one(device_id):
-        result = device_config_service.get_one(device_id)
+        result = _device_acl.get_one(device_id)
 
         if not result.get('success'):
             return wrap_grpc_response(
@@ -144,7 +146,7 @@ class DeviceQueryService:
 
         device_ids = req.device_ids or []
 
-        result = device_config_service.health_check(device_ids)
+        result = _device_acl.health_check(device_ids)
 
         if not result.get('success'):
             return wrap_grpc_response(result, default_error_msg='健康检查失败')
@@ -155,7 +157,7 @@ class DeviceQueryService:
     @staticmethod
     def get_available_serials():
         """获取通过 ADB/HDC 命令扫描到的可用设备详细信息列表"""
-        result = device_config_service.get_available_serials()
+        result = _device_acl.get_available_serials()
 
         if not result.get('success'):
             return wrap_grpc_response(result, default_error_msg='获取失败')

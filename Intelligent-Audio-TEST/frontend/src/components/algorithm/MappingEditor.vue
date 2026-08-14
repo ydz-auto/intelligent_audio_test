@@ -45,7 +45,7 @@
               <td>
                 <select v-model="record.source_param" class="form-input form-input-sm" @blur="handleSourceChange(index)">
                   <option value="">选择参数</option>
-                  <option v-for="param in getSourceParams(record.source)" :key="param.code" :value="param.code">{{ param.code }}</option>
+                  <option v-for="param in getSourceParams(record.source, record.source_param)" :key="param.code" :value="param.code">{{ param.code }}</option>
                 </select>
               </td>
               <td class="param-name-cell">{{ getParamName(record.source_param, record.source) }}</td>
@@ -76,14 +76,14 @@
               <td>
                 <select v-model="record.source_param" class="form-input form-input-sm" @blur="handleSourceChange(index)">
                   <option value="">选择参数</option>
-                  <option v-for="param in caseParams" :key="param.code" :value="param.code">{{ param.code }}</option>
+                  <option v-for="param in getSourceParams('case', record.source_param)" :key="param.code" :value="param.code">{{ param.code }}</option>
                 </select>
               </td>
               <td class="param-name-cell">{{ getParamName(record.source_param, 'case') }}</td>
               <td>
                 <select v-model="record.target_param" class="form-input form-input-sm" @blur="handleTargetChange(index)">
                   <option value="">选择参数</option>
-                  <option v-for="param in (componentType === 'device' ? deviceParams : apiParams)" :key="param.code" :value="param.code">{{ param.code }}</option>
+                  <option v-for="param in getTargetParamListForDeviceApi(componentType, record.target_param)" :key="param.code" :value="param.code">{{ param.code }}</option>
                 </select>
               </td>
               <td class="param-name-cell">{{ getTargetParamName(record.target_param, componentType) }}</td>
@@ -208,14 +208,19 @@ async function loadDimensionParams(dimensionId: number) {
   }
 }
 
-function getSourceParams(source: string): any[] {
+function getSourceParams(source: string, currentParam?: string): any[] {
+  let params: any[]
   switch (source) {
-    case 'case': return props.caseParams || []
-    case 'reference': return props.referenceParams || []
-    case 'device': return props.deviceParams || []
-    case 'api': return props.apiParams || []
-    default: return []
+    case 'case': params = props.caseParams || []; break
+    case 'reference': params = props.referenceParams || []; break
+    case 'device': params = props.deviceParams || []; break
+    case 'api': params = props.apiParams || []; break
+    default: params = []
   }
+  if (currentParam && !params.some(p => p.code === currentParam)) {
+    params = [{ code: currentParam, name: currentParam }, ...params]
+  }
+  return params
 }
 
 function getAllSourceParams(): any[] {
@@ -252,6 +257,14 @@ function getTargetParamOptions(dimensionId: number | null, currentTargetParam: s
     return [{ code: currentTargetParam, name: currentTargetParam }]
   }
   return []
+}
+
+function getTargetParamListForDeviceApi(componentType: string, currentTargetParam: string): any[] {
+  const params = componentType === 'device' ? (props.deviceParams || []) : (props.apiParams || [])
+  if (currentTargetParam && !params.some(p => p.code === currentTargetParam)) {
+    return [{ code: currentTargetParam, name: currentTargetParam }, ...params]
+  }
+  return params
 }
 
 function getParamName(code: string, source?: string): string {

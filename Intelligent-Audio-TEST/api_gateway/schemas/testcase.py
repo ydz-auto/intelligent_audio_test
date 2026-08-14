@@ -2,51 +2,50 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 from pydantic import Field, field_validator, AliasChoices, model_validator, ConfigDict
-from pydantic.alias_generators import to_camel
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
 
 
 class ReportAudioItem(APIModel):
-    id: Optional[int] = Field(None, alias='id', validation_alias='id')
-    filename: Optional[str] = Field(None, alias='filename', validation_alias='filename')
-    duration: Optional[float] = Field(None, alias='duration', validation_alias='duration')
-    url: Optional[str] = Field(None, alias='url', validation_alias='url')
-    spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
-    play_order: Optional[int] = Field(None, alias='play_order', validation_alias=AliasChoices('play_order', 'playOrder'))
-    playback_device_id: Optional[int] = Field(None, alias='playback_device_id', validation_alias=AliasChoices('playback_device_id', 'playbackDeviceId'))
-    playback_device_name: Optional[str] = Field(None, alias='playback_device_name', validation_alias=AliasChoices('playback_device_name', 'playbackDeviceName'))
-    label: Optional[str] = Field(None, alias='label', validation_alias='label')
-    timeline_start: Optional[float] = Field(None, alias='timeline_start', validation_alias=AliasChoices('timeline_start', 'timelineStart'))
-    timeline_end: Optional[float] = Field(None, alias='timeline_end', validation_alias=AliasChoices('timeline_end', 'timelineEnd'))
+    id: Optional[int] = Field(None)
+    filename: Optional[str] = Field(None)
+    duration: Optional[float] = Field(None)
+    url: Optional[str] = Field(None)
+    spl: Optional[float] = Field(None)
+    play_order: Optional[int] = Field(None)
+    playback_device_id: Optional[int] = Field(None)
+    playback_device_name: Optional[str] = Field(None)
+    label: Optional[str] = Field(None)
+    timeline_start: Optional[float] = Field(None)
+    timeline_end: Optional[float] = Field(None)
 
 
 class ReportTestCaseItem(APIModel):
-    id: Optional[str] = Field(None, alias='id', validation_alias='id')
-    name: Optional[str] = Field(None, alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    category: Optional[str] = Field(None, alias='category', validation_alias='category')
-    tags: List[Any] = Field(default_factory=list, alias='tags', validation_alias='tags')
-    audios: List[ReportAudioItem] = Field(default_factory=list, alias='audios', validation_alias='audios')
-    metrics: List[Any] = Field(default_factory=list, alias='metrics', validation_alias='metrics')
-    asr: Optional[Dict[str, Any]] = Field(None, alias='asr', validation_alias='asr')
-    translation: Optional[Dict[str, Any]] = Field(None, alias='translation', validation_alias='translation')
-    results: List[Any] = Field(default_factory=list, alias='results', validation_alias='results')
-    logs: Optional[str] = Field(None, alias='logs', validation_alias='logs')
+    id: Optional[str] = Field(None)
+    name: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    category: Optional[str] = Field(None)
+    tags: List[Any] = Field(default_factory=list)
+    audios: List[ReportAudioItem] = Field(default_factory=list)
+    metrics: List[Any] = Field(default_factory=list)
+    asr: Optional[Dict[str, Any]] = Field(None)
+    translation: Optional[Dict[str, Any]] = Field(None)
+    results: List[Any] = Field(default_factory=list)
+    logs: Optional[str] = Field(None)
 
 if TYPE_CHECKING:
     pass
 
 
 class TestCaseAudioConfigItem(APIModel):
-    id: Optional[int] = Field(None, alias='id', validation_alias='id')
-    audio_id: Optional[Union[int, str]] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
-    audio_name: Optional[str] = Field(None, alias='audio_name', validation_alias=AliasChoices('audio_name', 'audioName'))
-    spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
-    playback_device_id: Optional[Union[int, str]] = Field(None, alias='playback_device_id', validation_alias=AliasChoices('playback_device_id', 'playbackDeviceId'))
-    playback_device_name: Optional[str] = Field(None, alias='playback_device_name', validation_alias=AliasChoices('playback_device_name', 'playbackDeviceName'))
-    play_order: Optional[int] = Field(None, alias='play_order', validation_alias=AliasChoices('play_order', 'playOrder'))
+    id: Optional[int] = Field(None)
+    audio_id: Optional[Union[int, str]] = Field(None)
+    audio_name: Optional[str] = Field(None)
+    spl: Optional[float] = Field(None)
+    playback_device_id: Optional[Union[int, str]] = Field(None)
+    playback_device_name: Optional[str] = Field(None)
+    play_order: Optional[int] = Field(None)
 
     @field_validator('spl', mode='before')
     @classmethod
@@ -60,18 +59,18 @@ class TestCaseAudioConfigItem(APIModel):
 
 
 class TestCaseBackgroundNoiseItem(APIModel):
-    audio_id: Optional[Union[int, str]] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
-    spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
-    device_ids: Optional[List[Union[int, str]]] = Field(None, alias='device_ids', validation_alias=AliasChoices('device_ids', 'deviceIds'))
-    loop: Optional[bool] = Field(True, alias='loop', validation_alias='loop')
+    audio_id: Optional[Union[int, str]] = Field(None)
+    spl: Optional[float] = Field(None)
+    device_ids: Optional[List[Union[int, str]]] = Field(None)
+    loop: Optional[bool] = Field(True)
 
 
 class TestCaseDimensionItem(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    weight: Optional[float] = Field(None, alias='weight', validation_alias='weight')
-    threshold: Optional[float] = Field(None, alias='threshold', validation_alias='threshold')
-    test_type: Optional[str] = Field(None, alias='test_type', validation_alias=AliasChoices('test_type', 'testType'))
+    id: int = Field(...)
+    name: str = Field(...)
+    weight: Optional[float] = Field(None)
+    threshold: Optional[float] = Field(None)
+    test_type: Optional[str] = Field(None)
 
 
 class RoundConfigItem(APIModel):
@@ -84,10 +83,10 @@ class RoundConfigItem(APIModel):
     model_config = ConfigDict(extra='allow')
 
     # === 结构性字段 ===
-    round_number: Optional[int] = Field(1, alias='round_number', validation_alias=AliasChoices('round_number', 'roundNumber'))
-    audios: Optional[List[TestCaseAudioConfigItem]] = Field(default_factory=list, alias='audios', validation_alias='audios')
-    background_noise: Optional[TestCaseBackgroundNoiseItem] = Field(None, alias='background_noise', validation_alias=AliasChoices('background_noise', 'backgroundNoise'))
-    evaluation: Optional[Dict[str, Any]] = Field(None, alias='evaluation', validation_alias='evaluation')
+    round_number: Optional[int] = Field(1)
+    audios: Optional[List[TestCaseAudioConfigItem]] = Field(default_factory=list)
+    background_noise: Optional[TestCaseBackgroundNoiseItem] = Field(None)
+    evaluation: Optional[Dict[str, Any]] = Field(None)
 
 
 class TestCaseConfig(APIModel):
@@ -96,28 +95,28 @@ class TestCaseConfig(APIModel):
     算法参数和参考参数在独立列，不在 config 中
     """
     model_config = ConfigDict(extra='allow')
-    rounds: Optional[List[RoundConfigItem]] = Field(default_factory=list, alias='rounds', validation_alias='rounds')
-    dimensions: Optional[List[TestCaseDimensionItem]] = Field(default_factory=list, alias='dimensions', validation_alias='dimensions')
-    background_noise: Optional[Dict[str, Any]] = Field(None, alias='background_noise', validation_alias=AliasChoices('background_noise', 'backgroundNoise'))
-    source_audio: Optional[str] = Field(None, alias='source_audio', validation_alias=AliasChoices('source_audio', 'sourceAudio'))
-    auto_generated: Optional[bool] = Field(False, alias='auto_generated', validation_alias=AliasChoices('auto_generated', 'autoGenerated'))
+    rounds: Optional[List[RoundConfigItem]] = Field(default_factory=list)
+    dimensions: Optional[List[TestCaseDimensionItem]] = Field(default_factory=list)
+    background_noise: Optional[Dict[str, Any]] = Field(None)
+    source_audio: Optional[str] = Field(None)
+    auto_generated: Optional[bool] = Field(False)
 
 
 class TestCaseListItem(APIModel):
-    id: str = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    group_id: Optional[str] = Field(None, alias='group_id', validation_alias=AliasChoices('group_id', 'groupId'))
-    group_name: Optional[str] = Field(None, alias='group_name', validation_alias=AliasChoices('group_name', 'groupName'))
-    type: Optional[str] = Field(None, alias='type', validation_alias='type')
-    tags: List[str] = Field(default_factory=list, alias='tags', validation_alias='tags')
-    config: TestCaseConfig = Field(default_factory=TestCaseConfig, alias='config', validation_alias='config')
-    algorithm_params: Optional[Any] = Field(None, alias='algorithm_params', validation_alias=AliasChoices('algorithm_params', 'algorithmParams'))
-    reference_params: Optional[Any] = Field(None, alias='reference_params', validation_alias=AliasChoices('reference_params', 'referenceParams'))
-    algorithm_type: Optional[str] = Field(None, alias='algorithm_type', validation_alias=AliasChoices('algorithm_type', 'algorithmType'))
-    created_at: Optional[str] = Field(None, alias='created_at', validation_alias=AliasChoices('created_at', 'createdAt'))
-    updated_at: Optional[str] = Field(None, alias='updated_at', validation_alias=AliasChoices('updated_at', 'updatedAt'))
-    total_duration: Optional[float] = Field(None, alias='total_duration', validation_alias=AliasChoices('total_duration', 'totalDuration'))
+    id: str = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    group_name: Optional[str] = Field(None)
+    type: Optional[str] = Field(None)
+    tags: List[str] = Field(default_factory=list)
+    config: TestCaseConfig = Field(default_factory=TestCaseConfig)
+    algorithm_params: Optional[Any] = Field(None)
+    reference_params: Optional[Any] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
+    total_duration: Optional[float] = Field(None)
 
 
 class TestCaseListData(PaginatedData[TestCaseListItem]):
@@ -125,186 +124,186 @@ class TestCaseListData(PaginatedData[TestCaseListItem]):
 
 
 class TestCaseDimensionBrief(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    type: Optional[str] = Field(None, alias='type', validation_alias='type')
+    id: int = Field(...)
+    name: str = Field(...)
+    type: Optional[str] = Field(None)
 
 
 class TestCaseDetailData(APIModel):
-    id: str = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    group_id: Optional[str] = Field(None, alias='group_id', validation_alias=AliasChoices('group_id', 'groupId'))
-    group_name: Optional[str] = Field(None, alias='group_name', validation_alias=AliasChoices('group_name', 'groupName'))
-    group: Optional[Dict[str, Any]] = Field(None, alias='group', validation_alias='group')
-    type: Optional[str] = Field(None, alias='type', validation_alias='type')
-    config: TestCaseConfig = Field(default_factory=TestCaseConfig, alias='config', validation_alias='config')
-    algorithm_params: Optional[Any] = Field(None, alias='algorithm_params', validation_alias=AliasChoices('algorithm_params', 'algorithmParams'))
-    reference_params: Optional[Any] = Field(None, alias='reference_params', validation_alias=AliasChoices('reference_params', 'referenceParams'))
-    tags: List[str] = Field(default_factory=list, alias='tags', validation_alias='tags')
-    audios: List[TestCaseAudioConfigItem] = Field(default_factory=list, alias='audios', validation_alias='audios')
-    dimensions: List[TestCaseDimensionBrief] = Field(default_factory=list, alias='dimensions', validation_alias='dimensions')
-    algorithm_type: Optional[str] = Field(None, alias='algorithm_type', validation_alias=AliasChoices('algorithm_type', 'algorithmType'))
-    created_at: Optional[str] = Field(None, alias='created_at', validation_alias=AliasChoices('created_at', 'createdAt'))
-    updated_at: Optional[str] = Field(None, alias='updated_at', validation_alias=AliasChoices('updated_at', 'updatedAt'))
-    total_duration: Optional[float] = Field(None, alias='total_duration', validation_alias=AliasChoices('total_duration', 'totalDuration'))
+    id: str = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    group_name: Optional[str] = Field(None)
+    group: Optional[Dict[str, Any]] = Field(None)
+    type: Optional[str] = Field(None)
+    config: TestCaseConfig = Field(default_factory=TestCaseConfig)
+    algorithm_params: Optional[Any] = Field(None)
+    reference_params: Optional[Any] = Field(None)
+    tags: List[str] = Field(default_factory=list)
+    audios: List[TestCaseAudioConfigItem] = Field(default_factory=list)
+    dimensions: List[TestCaseDimensionBrief] = Field(default_factory=list)
+    algorithm_type: Optional[str] = Field(None)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
+    total_duration: Optional[float] = Field(None)
 
 
 class TestCasePreviewData(APIModel):
-    test_case_id: str = Field(..., alias='test_case_id', validation_alias=AliasChoices('test_case_id', 'testCaseId'))
-    preview_task_id: Optional[str] = Field(None, alias='preview_task_id', validation_alias=AliasChoices('preview_task_id', 'previewTaskId'))
-    status: str = Field(..., alias='status', validation_alias='status')
-    message: Optional[str] = Field(None, alias='message', validation_alias='message')
-    duration: Optional[float] = Field(None, alias='duration', validation_alias='duration')
-    playback_mode: Optional[str] = Field('backend', alias='playback_mode', validation_alias=AliasChoices('playback_mode', 'playbackMode'))
-    audio_id: Optional[Union[int, str]] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
-    audio_stream_url: Optional[str] = Field(None, alias='audio_stream_url', validation_alias=AliasChoices('audio_stream_url', 'audioStreamUrl'))
+    test_case_id: str = Field(...)
+    preview_task_id: Optional[str] = Field(None)
+    status: str = Field(...)
+    message: Optional[str] = Field(None)
+    duration: Optional[float] = Field(None)
+    playback_mode: Optional[str] = Field('backend')
+    audio_id: Optional[Union[int, str]] = Field(None)
+    audio_stream_url: Optional[str] = Field(None)
     # 多轮音频连续播放
-    audio_stream_urls: Optional[List[str]] = Field(None, alias='audio_stream_urls', validation_alias=AliasChoices('audio_stream_urls', 'audioStreamUrls'))
+    audio_stream_urls: Optional[List[str]] = Field(None)
 
 
 class TestCaseStopPreviewData(APIModel):
-    test_case_id: str = Field(..., alias='test_case_id', validation_alias=AliasChoices('test_case_id', 'testCaseId'))
-    status: str = Field(..., alias='status', validation_alias='status')
-    message: Optional[str] = Field(None, alias='message', validation_alias='message')
+    test_case_id: str = Field(...)
+    status: str = Field(...)
+    message: Optional[str] = Field(None)
 
 
 class TestCaseStatsData(APIModel):
-    total_count: int = Field(..., alias='total_count', validation_alias=AliasChoices('total_count', 'totalCount'))
-    by_group: Dict[str, int] = Field(default_factory=dict, alias='by_group', validation_alias=AliasChoices('by_group', 'byGroup'))
-    recent_updates: List[Dict[str, Any]] = Field(default_factory=list, alias='recent_updates', validation_alias=AliasChoices('recent_updates', 'recentUpdates'))
+    total_count: int = Field(...)
+    by_group: Dict[str, int] = Field(default_factory=dict)
+    recent_updates: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class TagListData(APIModel):
-    items: List[str] = Field(..., alias='items', validation_alias='items')
+    items: List[str] = Field(...)
 
 
 class TagCategoryItem(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    color: Optional[str] = Field(None, alias='color', validation_alias='color')
-    sort_order: int = Field(0, alias='sort_order', validation_alias=AliasChoices('sort_order', 'sortOrder'))
-    tag_count: int = Field(0, alias='tag_count', validation_alias=AliasChoices('tag_count', 'tagCount'))
-    created_at: Optional[str] = Field(None, alias='created_at', validation_alias=AliasChoices('created_at', 'createdAt'))
-    updated_at: Optional[str] = Field(None, alias='updated_at', validation_alias=AliasChoices('updated_at', 'updatedAt'))
+    id: int = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    sort_order: int = Field(0)
+    tag_count: int = Field(0)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
 
 
 class TagCategoryListData(APIModel):
-    items: List[TagCategoryItem] = Field(..., alias='items', validation_alias='items')
-    total: int = Field(..., alias='total', validation_alias='total')
+    items: List[TagCategoryItem] = Field(...)
+    total: int = Field(...)
 
 
 class TagCategoryCreateSchema(APIModel):
-    name: str = Field(..., alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    color: Optional[str] = Field(None, alias='color', validation_alias='color')
-    sort_order: Optional[int] = Field(0, alias='sort_order', validation_alias=AliasChoices('sort_order', 'sortOrder'))
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    sort_order: Optional[int] = Field(0)
 
 
 class TagCategoryUpdateSchema(APIModel):
-    id: Optional[int] = Field(None, alias='id', validation_alias='id')
-    name: Optional[str] = Field(None, alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    color: Optional[str] = Field(None, alias='color', validation_alias='color')
-    sort_order: Optional[int] = Field(None, alias='sort_order', validation_alias=AliasChoices('sort_order', 'sortOrder'))
+    id: Optional[int] = Field(None)
+    name: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    sort_order: Optional[int] = Field(None)
 
 
 class TagItem(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    color: Optional[str] = Field(None, alias='color', validation_alias='color')
-    category_id: Optional[int] = Field(None, alias='category_id', validation_alias=AliasChoices('category_id', 'categoryId'))
-    category_name: Optional[str] = Field(None, alias='category_name', validation_alias=AliasChoices('category_name', 'categoryName'))
-    created_at: Optional[str] = Field(None, alias='created_at', validation_alias=AliasChoices('created_at', 'createdAt'))
-    updated_at: Optional[str] = Field(None, alias='updated_at', validation_alias=AliasChoices('updated_at', 'updatedAt'))
+    id: int = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    category_id: Optional[int] = Field(None)
+    category_name: Optional[str] = Field(None)
+    created_at: Optional[str] = Field(None)
+    updated_at: Optional[str] = Field(None)
 
 
 class TagDetailListData(APIModel):
-    items: List[TagItem] = Field(..., alias='items', validation_alias='items')
-    total: int = Field(..., alias='total', validation_alias='total')
+    items: List[TagItem] = Field(...)
+    total: int = Field(...)
 
 
 class TagCreateSchema(APIModel):
-    name: str = Field(..., alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    color: Optional[str] = Field(None, alias='color', validation_alias='color')
-    category_id: Optional[int] = Field(None, alias='category_id', validation_alias=AliasChoices('category_id', 'categoryId'))
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    category_id: Optional[int] = Field(None)
 
 
 class TagUpdateSchema(APIModel):
-    id: Optional[int] = Field(None, alias='id', validation_alias='id')
-    name: Optional[str] = Field(None, alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    color: Optional[str] = Field(None, alias='color', validation_alias='color')
-    category_id: Optional[int] = Field(None, alias='category_id', validation_alias=AliasChoices('category_id', 'categoryId'))
+    id: Optional[int] = Field(None)
+    name: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    color: Optional[str] = Field(None)
+    category_id: Optional[int] = Field(None)
 
 
 class TestCaseExportJsonData(APIModel):
-    test_cases: List["TestCaseExportItem"] = Field(..., alias='test_cases', validation_alias=AliasChoices('test_cases', 'testCases'))
-    exported_at: str = Field(..., alias='exported_at', validation_alias=AliasChoices('exported_at', 'exportedAt'))
-    total_count: int = Field(..., alias='total_count', validation_alias=AliasChoices('total_count', 'totalCount'))
+    test_cases: List["TestCaseExportItem"] = Field(...)
+    exported_at: str = Field(...)
+    total_count: int = Field(...)
 
 
 class TestCaseImportResult(APIModel):
-    imported_count: int = Field(..., alias='imported_count', validation_alias=AliasChoices('imported_count', 'importedCount'))
-    errors: List[Any] = Field(default_factory=list, alias='errors', validation_alias='errors')
+    imported_count: int = Field(...)
+    errors: List[Any] = Field(default_factory=list)
 
 
 class TestCaseExportTagItem(APIModel):
-    tag_id: int = Field(..., alias='tag_id', validation_alias=AliasChoices('tag_id', 'tagId'))
-    tag_name: str = Field(..., alias='tag_name', validation_alias=AliasChoices('tag_name', 'tagName'))
+    tag_id: int = Field(...)
+    tag_name: str = Field(...)
 
 
 class TestCaseExportAudioItem(APIModel):
-    audio_id: Optional[int] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
-    audio_name: Optional[str] = Field(None, alias='audio_name', validation_alias=AliasChoices('audio_name', 'audioName'))
-    spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
-    playback_device_id: Optional[int] = Field(None, alias='playback_device_id', validation_alias=AliasChoices('playback_device_id', 'playbackDeviceId'))
-    playback_device_name: Optional[str] = Field(None, alias='playback_device_name', validation_alias=AliasChoices('playback_device_name', 'playbackDeviceName'))
-    play_order: Optional[int] = Field(None, alias='play_order', validation_alias=AliasChoices('play_order', 'playOrder'))
+    audio_id: Optional[int] = Field(None)
+    audio_name: Optional[str] = Field(None)
+    spl: Optional[float] = Field(None)
+    playback_device_id: Optional[int] = Field(None)
+    playback_device_name: Optional[str] = Field(None)
+    play_order: Optional[int] = Field(None)
 
 
 class TestCaseExportItem(APIModel):
-    id: str = Field(..., alias='id', validation_alias='id')
-    name: str = Field(..., alias='name', validation_alias='name')
-    description: Optional[str] = Field(None, alias='description', validation_alias='description')
-    group: Optional[str] = Field(None, alias='group', validation_alias='group')
-    group_id: Optional[str] = Field(None, alias='group_id', validation_alias=AliasChoices('group_id', 'groupId'))
-    tags: List[str] = Field(default_factory=list, alias='tags', validation_alias='tags')
-    tag_items: List[TestCaseExportTagItem] = Field(default_factory=list, alias='tag_items', validation_alias=AliasChoices('tag_items', 'tagItems'))
-    dimensions: List[str] = Field(default_factory=list, alias='dimensions', validation_alias='dimensions')
-    dimension_ids: List[int] = Field(default_factory=list, alias='dimension_ids', validation_alias=AliasChoices('dimension_ids', 'dimensionIds'))
-    playback_devices: List[str] = Field(default_factory=list, alias='playback_devices', validation_alias=AliasChoices('playback_devices', 'playbackDevices'))
-    audios: List[TestCaseExportAudioItem] = Field(default_factory=list, alias='audios', validation_alias='audios')
-    audio_details: Optional[str] = Field(None, alias='audio_details', validation_alias=AliasChoices('audio_details', 'audioDetails'))
-    noise_name: Optional[str] = Field(None, alias='noise_name', validation_alias=AliasChoices('noise_name', 'noiseName'))
-    noise_spl: Optional[Any] = Field(None, alias='noise_spl', validation_alias=AliasChoices('noise_spl', 'noiseSpl'))
-    noise_audio_id: Optional[int] = Field(None, alias='noise_audio_id', validation_alias=AliasChoices('noise_audio_id', 'noiseAudioId'))
-    config: Dict[str, Any] = Field(default_factory=dict, alias='config', validation_alias='config')
-    raw_config: Optional[str] = Field(None, alias='raw_config', validation_alias=AliasChoices('raw_config', 'rawConfig'))
+    id: str = Field(...)
+    name: str = Field(...)
+    description: Optional[str] = Field(None)
+    group: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    tags: List[str] = Field(default_factory=list)
+    tag_items: List[TestCaseExportTagItem] = Field(default_factory=list)
+    dimensions: List[str] = Field(default_factory=list)
+    dimension_ids: List[int] = Field(default_factory=list)
+    playback_devices: List[str] = Field(default_factory=list)
+    audios: List[TestCaseExportAudioItem] = Field(default_factory=list)
+    audio_details: Optional[str] = Field(None)
+    noise_name: Optional[str] = Field(None)
+    noise_spl: Optional[Any] = Field(None)
+    noise_audio_id: Optional[int] = Field(None)
+    config: Dict[str, Any] = Field(default_factory=dict)
+    raw_config: Optional[str] = Field(None)
 
 
 class TestCaseAudioConfigRequest(APIModel):
-    audio_id: Optional[int] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
-    spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
-    playback_device_id: Optional[int] = Field(None, alias='playback_device_id', validation_alias=AliasChoices('playback_device_id', 'playbackDeviceId'))
-    play_order: Optional[int] = Field(None, alias='play_order', validation_alias=AliasChoices('play_order', 'playOrder'))
+    audio_id: Optional[int] = Field(None)
+    spl: Optional[float] = Field(None)
+    playback_device_id: Optional[int] = Field(None)
+    play_order: Optional[int] = Field(None)
 
 
 class TestCaseBackgroundNoiseRequest(APIModel):
-    audio_id: Optional[int] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
-    spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
-    device_ids: Optional[List[Union[int, str]]] = Field(None, alias='device_ids', validation_alias=AliasChoices('device_ids', 'deviceIds'))
+    audio_id: Optional[int] = Field(None)
+    spl: Optional[float] = Field(None)
+    device_ids: Optional[List[Union[int, str]]] = Field(None)
 
 
 class TestCaseDimensionItemRequest(APIModel):
-    id: Optional[int] = Field(None, alias='id', validation_alias='id')
-    name: Optional[str] = Field(None, alias='name', validation_alias='name')
-    display_name: Optional[str] = Field(None, alias='display_name', validation_alias=AliasChoices('display_name', 'displayName'))
-    weight: Optional[float] = Field(None, alias='weight', validation_alias='weight')
-    threshold: Optional[float] = Field(None, alias='threshold', validation_alias='threshold')
+    id: Optional[int] = Field(None)
+    name: Optional[str] = Field(None)
+    display_name: Optional[str] = Field(None)
+    weight: Optional[float] = Field(None)
+    threshold: Optional[float] = Field(None)
 
 
 class AlgorithmParamItem(APIModel):
@@ -315,8 +314,8 @@ class AlgorithmParamItem(APIModel):
     """
     model_config = ConfigDict(extra='allow')
 
-    field_code: Optional[str] = Field(None, alias='field_code', validation_alias=AliasChoices('field_code', 'fieldCode'))
-    field_value: Optional[Any] = Field(None, alias='field_value', validation_alias=AliasChoices('field_value', 'fieldValue'))
+    field_code: Optional[str] = Field(None)
+    field_value: Optional[Any] = Field(None)
 
     @staticmethod
     def convert_params(params) -> Optional[List['AlgorithmParamItem']]:
@@ -348,11 +347,11 @@ class AlgorithmParamItem(APIModel):
 class ReferenceParamItem(APIModel):
     model_config = ConfigDict(extra='allow')
 
-    code: Optional[str] = Field(None, alias='code', validation_alias=AliasChoices('code', 'code'))
-    type: Optional[str] = Field(None, alias='type', validation_alias=AliasChoices('type', 'type'))
-    value: Optional[Union[str, Dict[str, Any], List[Any]]] = Field(None, alias='value', validation_alias=AliasChoices('value', 'value'))
-    annotation_code: Optional[str] = Field(None, alias='annotation_code', validation_alias=AliasChoices('annotation_code', 'annotationCode'))
-    annotation_format: Optional[str] = Field(None, alias='annotation_format', validation_alias=AliasChoices('annotation_format', 'annotationFormat'))
+    code: Optional[str] = Field(None)
+    type: Optional[str] = Field(None)
+    value: Optional[Union[str, Dict[str, Any], List[Any]]] = Field(None)
+    annotation_code: Optional[str] = Field(None)
+    annotation_format: Optional[str] = Field(None)
 
     @staticmethod
     def convert_params(params) -> Optional[List['ReferenceParamItem']]:
@@ -379,19 +378,19 @@ class TestCaseCreateSchema(APIModel):
     name: str = Field(..., validation_alias=AliasChoices('name', 'caseName', 'case_name'))
     description: Optional[str] = Field(None, validation_alias=AliasChoices('description', 'Description'))
     group_id: Optional[str] = Field(None, validation_alias=AliasChoices('group_id', 'groupId'))
-    group: Optional[str] = Field(None, alias='group', validation_alias='group')
-    test_type: Optional[str] = Field('api', alias='test_type', validation_alias=AliasChoices('test_type', 'testType'))
-    config: Optional[Dict[str, Any]] = Field(None, alias='config', validation_alias='config')
-    tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
-    background_noise_id: Optional[int] = Field(None, alias='background_noise_id', validation_alias=AliasChoices('background_noise_id', 'backgroundNoiseId'))
-    background_noise_spl: Optional[float] = Field(None, alias='background_noise_spl', validation_alias=AliasChoices('background_noise_spl', 'backgroundNoiseSpl'))
-    audios: Optional[List[TestCaseAudioConfigRequest]] = Field(None, alias='audios', validation_alias='audios')
-    dimensions: Optional[Any] = Field(None, alias='dimensions', validation_alias='dimensions')
-    algorithm_type: Optional[str] = Field(None, alias='algorithm_type', validation_alias=AliasChoices('algorithm_type', 'algorithmType'))
+    group: Optional[str] = Field(None)
+    test_type: Optional[str] = Field('api')
+    config: Optional[Dict[str, Any]] = Field(None)
+    tags: Optional[List[str]] = Field(None)
+    background_noise_id: Optional[int] = Field(None)
+    background_noise_spl: Optional[float] = Field(None)
+    audios: Optional[List[TestCaseAudioConfigRequest]] = Field(None)
+    dimensions: Optional[Any] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
     # 按轮分组：[{round_number, params:[{field_code, field_value}]}]，兼容旧平面格式 [{field_code, field_value}]
-    algorithm_params: Optional[Any] = Field(None, alias='algorithm_params', validation_alias=AliasChoices('algorithm_params', 'algorithmParams'))
+    algorithm_params: Optional[Any] = Field(None)
     # 按轮分组：[{round_number, reference_params_path}]，兼容旧格式
-    reference_params: Optional[Any] = Field(None, alias='reference_params', validation_alias=AliasChoices('reference_params', 'referenceParams'))
+    reference_params: Optional[Any] = Field(None)
 
     @field_validator('algorithm_params', mode='before')
     @classmethod
@@ -442,9 +441,9 @@ class TestCaseCreateSchema(APIModel):
 
 
 class TestCasePreviewRequest(APIModel):
-    offset: Optional[float] = Field(0, alias='offset', validation_alias='offset')
-    preview_type: Optional[str] = Field(None, alias='preview_type', validation_alias=AliasChoices('preview_type', 'previewType'))
-    playback_mode: Optional[str] = Field('backend', alias='playback_mode', validation_alias=AliasChoices('playback_mode', 'playbackMode'))
+    offset: Optional[float] = Field(0)
+    preview_type: Optional[str] = Field(None)
+    playback_mode: Optional[str] = Field('backend')
 
     @field_validator('offset', mode='before')
     @classmethod
@@ -464,53 +463,53 @@ class TestCasePreviewRequest(APIModel):
 
 
 class TestCaseBatchActionRequest(APIModel):
-    ids: List[str] = Field(..., alias='ids', validation_alias='ids')
-    action: str = Field(..., alias='action', validation_alias='action')
-    target_group_id: Optional[str] = Field(None, alias='target_group_id', validation_alias=AliasChoices('target_group_id', 'targetGroupId'))
-    algorithm_params: Optional[Dict[str, Any]] = Field(None, alias='algorithm_params', validation_alias=AliasChoices('algorithm_params', 'algorithmParams'))
-    playback_devices: Optional[Dict[str, Any]] = Field(None, alias='playback_devices', validation_alias=AliasChoices('playback_devices', 'playbackDevices'))
-    spl: Optional[Union[float, Dict[str, Any]]] = Field(None, alias='spl', validation_alias=AliasChoices('spl', 'spl'))
-    noise_spl: Optional[float] = Field(None, alias='noise_spl', validation_alias=AliasChoices('noise_spl', 'noiseSpl'))
-    noise_audio_id: Optional[Union[int, str]] = Field(None, alias='noise_audio_id', validation_alias=AliasChoices('noise_audio_id', 'noiseAudioId'))
-    noise_device_ids: Optional[List[Union[int, str]]] = Field(None, alias='noise_device_ids', validation_alias=AliasChoices('noise_device_ids', 'noiseDeviceIds'))
-    group_name: Optional[str] = Field(None, alias='group_name', validation_alias=AliasChoices('group_name', 'groupName'))
-    tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
-    dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='dimensions', validation_alias='dimensions')
-    old_tag_name: Optional[str] = Field(None, alias='old_tag_name', validation_alias=AliasChoices('old_tag_name', 'oldTagName'))
-    new_tag_name: Optional[str] = Field(None, alias='new_tag_name', validation_alias=AliasChoices('new_tag_name', 'newTagName'))
+    ids: List[str] = Field(...)
+    action: str = Field(...)
+    target_group_id: Optional[str] = Field(None)
+    algorithm_params: Optional[Dict[str, Any]] = Field(None)
+    playback_devices: Optional[Dict[str, Any]] = Field(None)
+    spl: Optional[Union[float, Dict[str, Any]]] = Field(None)
+    noise_spl: Optional[float] = Field(None)
+    noise_audio_id: Optional[Union[int, str]] = Field(None)
+    noise_device_ids: Optional[List[Union[int, str]]] = Field(None)
+    group_name: Optional[str] = Field(None)
+    tags: Optional[List[str]] = Field(None)
+    dimensions: Optional[List[Dict[str, Any]]] = Field(None)
+    old_tag_name: Optional[str] = Field(None)
+    new_tag_name: Optional[str] = Field(None)
 
 
 class TestCaseExportRequest(APIModel):
-    ids: List[str] = Field(default_factory=list, alias='ids', validation_alias='ids')
-    format: Optional[str] = Field('json', alias='format', validation_alias='format')
-    include_deleted: Optional[bool] = Field(False, alias='include_deleted', validation_alias=AliasChoices('include_deleted', 'includeDeleted'))
+    ids: List[str] = Field(default_factory=list)
+    format: Optional[str] = Field('json')
+    include_deleted: Optional[bool] = Field(False)
 
 
 class TestCaseImportRequest(APIModel):
-    file_name: Optional[str] = Field(None, alias='file_name', validation_alias=AliasChoices('file_name', 'fileName'))
-    file_content: Optional[str] = Field(None, alias='file_content', validation_alias=AliasChoices('file_content', 'fileContent'))
-    group_id: Optional[str] = Field(None, alias='group_id', validation_alias=AliasChoices('group_id', 'groupId'))
-    overwrite: Optional[bool] = Field(False, alias='overwrite', validation_alias='overwrite')
+    file_name: Optional[str] = Field(None)
+    file_content: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    overwrite: Optional[bool] = Field(False)
 
 
 class TestCaseUpdateSchema(APIModel):
-    id: Optional[str] = Field(None, alias='id', validation_alias='id')
-    name: Optional[str] = Field(None, alias='name', validation_alias=AliasChoices('name', 'Name'))
-    description: Optional[str] = Field(None, alias='description', validation_alias=AliasChoices('description', 'Description'))
-    group_id: Optional[str] = Field(None, alias='group_id', validation_alias=AliasChoices('group_id', 'groupId'))
-    group: Optional[str] = Field(None, alias='group', validation_alias='group')
-    test_type: Optional[str] = Field(None, alias='test_type', validation_alias=AliasChoices('test_type', 'testType'))
-    config: Optional[Dict[str, Any]] = Field(None, alias='config', validation_alias='config')
-    tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
-    background_noise_id: Optional[int] = Field(None, alias='background_noise_id', validation_alias=AliasChoices('background_noise_id', 'backgroundNoiseId'))
-    background_noise_spl: Optional[float] = Field(None, alias='background_noise_spl', validation_alias=AliasChoices('background_noise_spl', 'backgroundNoiseSpl'))
-    audios: Optional[List[TestCaseAudioConfigRequest]] = Field(None, alias='audios', validation_alias='audios')
-    dimensions: Optional[Any] = Field(None, alias='dimensions', validation_alias='dimensions')
-    algorithm_type: Optional[str] = Field(None, alias='algorithm_type', validation_alias=AliasChoices('algorithm_type', 'algorithmType'))
+    id: Optional[str] = Field(None)
+    name: Optional[str] = Field(None, validation_alias=AliasChoices('name', 'Name'))
+    description: Optional[str] = Field(None, validation_alias=AliasChoices('description', 'Description'))
+    group_id: Optional[str] = Field(None, validation_alias=AliasChoices('group_id', 'groupId'))
+    group: Optional[str] = Field(None)
+    test_type: Optional[str] = Field(None)
+    config: Optional[Dict[str, Any]] = Field(None)
+    tags: Optional[List[str]] = Field(None)
+    background_noise_id: Optional[int] = Field(None)
+    background_noise_spl: Optional[float] = Field(None)
+    audios: Optional[List[TestCaseAudioConfigRequest]] = Field(None)
+    dimensions: Optional[Any] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
     # 按轮分组：[{round_number, params:[{field_code, field_value}]}]，兼容旧平面格式
-    algorithm_params: Optional[Any] = Field(None, alias='algorithm_params', validation_alias=AliasChoices('algorithm_params', 'algorithmParams'))
+    algorithm_params: Optional[Any] = Field(None)
     # 按轮分组：[{round_number, reference_params_path}]
-    reference_params: Optional[Any] = Field(None, alias='reference_params', validation_alias=AliasChoices('reference_params', 'referenceParams'))
+    reference_params: Optional[Any] = Field(None)
 
     @field_validator('algorithm_params', mode='before')
     @classmethod
@@ -550,5 +549,3 @@ class TestCaseUpdateSchema(APIModel):
         if isinstance(self.reference_params, list):
             return self.reference_params
         return None
-
-

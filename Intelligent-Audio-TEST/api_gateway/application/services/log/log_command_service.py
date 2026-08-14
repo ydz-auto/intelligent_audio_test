@@ -30,8 +30,8 @@ class LogCommandService:
 
         try:
             # P0-3: 通过 gRPC 批量更新日志标记
-            from shared.clients.grpc_clients import update_logs_mark
-            result = update_logs_mark(log_ids=req.log_ids, mark=req.mark)
+            from api_gateway.infrastructure.grpc_proxies import task_data_service
+            result = task_data_service.update_logs_mark(log_ids=req.log_ids, mark=req.mark)
             return success_response(None, f"已为 {result.get('updated', 0)} 条日志添加标记: {req.mark}")
         except Exception as e:
             return error_response(str(e))
@@ -43,8 +43,8 @@ class LogCommandService:
 
         try:
             # P0-3: 通过 gRPC 批量清除日志
-            from shared.clients.grpc_clients import clear_logs as grpc_clear_logs
-            result = grpc_clear_logs(
+            from api_gateway.infrastructure.grpc_proxies import task_data_service
+            result = task_data_service.clear_logs(
                 before_datetime=req.before_datetime,
                 keep_marked=req.keep_marked,
             )
@@ -60,8 +60,8 @@ class LogCommandService:
 
         try:
             # P0-3: 通过 gRPC 归档日志
-            from shared.clients.grpc_clients import archive_logs as grpc_archive_logs
-            result = grpc_archive_logs(days=req.days, dry_run=req.dry_run)
+            from api_gateway.infrastructure.grpc_proxies import task_data_service
+            result = task_data_service.archive_logs(days=req.days, dry_run=req.dry_run)
 
             if req.dry_run:
                 return success_response({

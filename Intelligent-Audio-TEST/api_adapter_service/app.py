@@ -14,7 +14,8 @@ try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(project_dir, '.env'))
 except ImportError:
-    pass
+    import logging
+    logging.getLogger(__name__).debug("python-dotenv 未安装，跳过 .env 加载")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

@@ -12,10 +12,13 @@ import time
 import numpy as np
 import os
 import traceback
+import logging
 from abc import ABC, abstractmethod
 from pydub import AudioSegment
 from shared.utils.log_handler import log_and_emit
 from shared.infrastructure.storage import storage
+
+logger = logging.getLogger(__name__)
 
 
 class AudioDriver(ABC):
@@ -202,7 +205,7 @@ class PyAudioDriver(AudioDriver):
                     if os.path.exists(tmp):
                         os.remove(tmp)
                 except Exception:
-                    pass
+                    logger.debug("清理已下载的临时源文件失败: %s", tmp, exc_info=True)
             return None
 
         return (audio_files, audio_channels, audio_gains, audio_file_channels,
@@ -266,8 +269,8 @@ class PyAudioDriver(AudioDriver):
         for wf in audio_files:
             try:
                 wf.close()
-            except:
-                pass
+            except Exception:
+                logger.debug("关闭预重采样前的原始音频文件失败", exc_info=True)
 
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Pre-resampling completed, all files now at rate {target_rate}", category='audio')
         return resampled_audio_files, resampled_audio_rates, resampled_temp_files
@@ -514,16 +517,16 @@ class PyAudioDriver(AudioDriver):
                 try:
                     stream.stop_stream()
                     stream.close()
-                except:
-                    pass
+                except Exception:
+                    logger.debug("关闭音频流失败", exc_info=True)
             # 通知播放已完成（无论正常结束还是被停止）
             if playback_finished_event:
                 playback_finished_event.set()
             for wf in audio_files:
                 try:
                     wf.close()
-                except:
-                    pass
+                except Exception:
+                    logger.debug("关闭音频文件句柄失败", exc_info=True)
             for temp_file in resampled_temp_files:
                 try:
                     if os.path.exists(temp_file):

@@ -49,18 +49,12 @@ class RoundDataBuilderMixin:
         遍历 param_mappings，按 source 类型从每轮的 output（device/api）和
         按轮加载的 reference_params（reference）取值，用 target_param 作为 key。
         """
-        from shared.clients.grpc_clients import (
-            algo_get_param_mapping,
-            algo_get_reference_params_list,
-            algo_load_reference_params_file,
-        )
+        from evaluation_service.infrastructure.acl import algorithm_acl_repository
 
         rounds = algorithm_result.get('rounds', [])
-        # field_mapper 是通过 algo_get_field_mappings 获取的 dict（含 original/mapped）
-        mapped_device_output = field_mapper.get('mapped', {}).get('device', {})
-        output_field_keys = list(mapped_device_output.keys()) if isinstance(mapped_device_output, dict) else \
-            [f.get('code') for f in mapped_device_output]
-        mappings = algo_get_param_mapping(algorithm_type, 'evaluation')
+        # field_mapper 是通过 ACL 包装器包装的对象
+        output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
+        mappings = algorithm_acl_repository.get_param_mapping(algorithm_type, 'evaluation')
 
         if not mappings:
             self._log(
@@ -75,7 +69,8 @@ class RoundDataBuilderMixin:
             item = self._build_single_round(
                 rd, reference_params_col, mappings,
                 test_type, algorithm_type, task_id, test_case_id,
-                algo_get_reference_params_list, algo_load_reference_params_file,
+                algorithm_acl_repository.get_reference_params_list,
+                algorithm_acl_repository.load_reference_params_file,
             )
             rounds_list.append(item)
 

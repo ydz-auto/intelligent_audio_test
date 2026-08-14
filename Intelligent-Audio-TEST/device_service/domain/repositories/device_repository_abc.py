@@ -68,9 +68,6 @@ class PlaybackRepositoryInterface(ABC):
     def create_playback_device(self, data: dict) -> PlaybackDeviceAggregate: ...
 
     @abstractmethod
-    def restore_playback_device(self, device_id: int, data: dict) -> Optional[PlaybackDeviceAggregate]: ...
-
-    @abstractmethod
     def find_playback_by_unique_and_channel(self, device_unique_id: str, channel_index: int) -> Optional[PlaybackDeviceAggregate]: ...
 
     @abstractmethod

@@ -22,6 +22,7 @@ import threading
 from shared.proto import device_service_pb2 as e2e_pb
 from shared.proto import device_service_pb2_grpc as e2e_grpc
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.status_constants import ExecutionStatus
 
 
 # ==================== DeviceServiceServicer ====================
@@ -54,13 +55,22 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
             device_config = _loads(request.device_config, {})
             task_id = request.task_id
 
-            # 兼容调用方直接传 list 格式: [{device_id, device_sn, ...}, ...]
+            # 兼容调用方直接传 list 格式: [{action, device_sn, ...}, ...]
             device_info_list_raw = None
             if isinstance(device_config, list):
                 device_info_list_raw = device_config
+                # 从第一个元素提取 action 及其他字段（默认 initialize，保持向后兼容）
+                first_item = device_info_list_raw[0] if device_info_list_raw else {}
+                if not isinstance(first_item, dict):
+                    first_item = {}
                 device_config = {
-                    'action': 'initialize',
+                    'action': first_item.get('action', 'initialize'),
                     'device_info_list': device_info_list_raw,
+                    'device_sn': first_item.get('device_sn'),
+                    'test_case_id': first_item.get('test_case_id'),
+                    'kwargs': first_item.get('kwargs', {}),
+                    'system': first_item.get('system'),
+                    'keywords': first_item.get('keywords'),
                 }
 
             action = device_config.get('action', 'initialize')
@@ -141,8 +151,10 @@ class DeviceServiceServicer(e2e_grpc.DeviceServiceServicer):
                     data=_dumps({"device_sn": device_sn, "results": []}))
 
             if action == 'teardown':
+                if driver and hasattr(driver, 'teardown'):
+                    driver.teardown(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
                 return e2e_pb.CreateDriverResponse(success=True, message="ok",
-                    data=_dumps({"device_sn": device_sn, "action": "teardown"}))
+                    data=_dumps({"device_sn": device_sn, "action": "teardown", "executed": driver is not None}))
 
             # 未知 action，返回基本信息
             return e2e_pb.CreateDriverResponse(success=True, message="ok",
@@ -315,15 +327,23 @@ class DeviceResultServiceServicer(e2e_grpc.DeviceResultServiceServicer):
             extra_params = collect_config.get('extra_params', {})
             mode = collect_config.get('mode', 'raw')
 
-            if mode == 'round':
+            if mode == 'convert':
+                tagged_results = collect_config.get('tagged_results', [])
+                algorithm_type = collect_config.get('algorithm_type', '')
+                result = self.collector.convert_results(tagged_results, algorithm_type)
+            elif mode == 'round':
                 round_idx = collect_config.get('round_idx', 0)
                 round_config = collect_config.get('round_config', {})
                 round_start_time = collect_config.get('round_start_time')
+                # 注入 driver（gRPC 传输无法序列化 driver 对象）
+                self._inject_drivers(device_info_list, task_id)
                 result = self.collector.collect_round_results(
                     task_id, test_case_id, device_info_list,
                     round_idx, round_config, round_start_time,
                 )
             else:
+                # 注入 driver（gRPC 传输无法序列化 driver 对象）
+                self._inject_drivers(device_info_list, task_id)
                 result = self.collector.collect_raw_results(
                     task_id, test_case_id, device_info_list, extra_params,
                 )
@@ -333,13 +353,30 @@ class DeviceResultServiceServicer(e2e_grpc.DeviceResultServiceServicer):
         except Exception as e:
             return e2e_pb.CollectResultResponse(success=False, message=str(e), data="")
 
+    @staticmethod
+    def _inject_drivers(device_info_list, task_id):
+        """将已注册的 driver 实例注入到 device_info_list 中
+
+        gRPC 传输无法序列化 driver 对象，因此 e2e_test_service 发来的
+        device_info_list 不含 driver 字段。此方法从 device_driver_factory
+        查找并注入，使 collect_raw_results 能正常调用 driver.get_results()。
+        """
+        from device_service.infrastructure.drivers.device_driver import device_driver_factory
+        for info in device_info_list:
+            if isinstance(info, dict) and 'driver' not in info:
+                device_sn = info.get('device_sn')
+                if device_sn:
+                    driver = device_driver_factory.get_driver_by_sn(device_sn, task_id)
+                    if driver:
+                        info['driver'] = driver
+
     def ReextractResult(self, request, context=None):
         """重新提取设备结果"""
         try:
             from device_service.application.device_result_reextractor_service import get_device_result_reextractor
             reextract_config = _loads(request.reextract_config, {})
             task_id = request.task_id
-            execution_status = reextract_config.get('execution_status', 'completed')
+            execution_status = reextract_config.get('execution_status', ExecutionStatus.COMPLETED)
             evaluation_status = reextract_config.get('evaluation_status')
 
             reextractor = get_device_result_reextractor()

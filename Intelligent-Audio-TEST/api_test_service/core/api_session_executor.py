@@ -1,11 +1,13 @@
 """API 多轮会话执行：会话创建、多轮循环、上下文管理、结果聚合"""
 import time
 import json
+import logging
 import uuid
 import requests as http_requests
 from datetime import timezone, timedelta
 
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.status_constants import ExecutionStatus
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
     AudioConfigAclRepositoryImpl,
@@ -22,6 +24,8 @@ _audio_acl = AudioConfigAclRepositoryImpl()
 _algo_acl = AlgorithmQueryAclRepositoryImpl()
 _adapter_acl = AdapterAclRepositoryImpl()
 _evaluation_acl = EvaluationAclRepositoryImpl()
+
+logger = logging.getLogger(__name__)
 
 
 class APISessionExecutor:
@@ -108,7 +112,7 @@ class APISessionExecutor:
                     if 'session' in locals():
                         session.destroy()
                 except Exception:
-                    pass
+                    logger.debug("销毁 session 失败 (api_id=%s)", api_id, exc_info=True)
 
         return True
 
@@ -202,7 +206,7 @@ class APISessionExecutor:
             if not tc_rel:
                 self._log(level='WARNING', content=f"找不到 TaskCase: {tc_rel_id}", task_id=task_id)
                 return
-            if tc_rel.get('execution_status') not in ['pending', 'queued']:
+            if tc_rel.get('execution_status') not in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]:
                 return
 
             test_case_id = tc_rel.get('test_case_id')
@@ -213,7 +217,7 @@ class APISessionExecutor:
             _task_data_acl.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
-                execution_status='running',
+                execution_status=ExecutionStatus.RUNNING,
             )
             self._executor.execution_engine._emit_progress(task_id, force=True)
         except Exception as e:

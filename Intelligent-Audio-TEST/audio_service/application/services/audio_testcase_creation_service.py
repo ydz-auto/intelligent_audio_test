@@ -15,11 +15,6 @@ import logging
 
 from shared.utils.query_utils import now_cst
 from shared.utils.log_handler import log_not_emit
-from shared.clients.grpc_clients import (
-    algo_generate_reference_params,
-    algo_get_all_reference_params,
-    algo_get_reference_params_for_report,
-)
 from audio_service.domain.repositories.audio_repository_abc import AudioRepositoryInterface
 from audio_service.infrastructure.persistence.audio_repository import audio_repository
 from audio_service.application.services.audio_annotation_service import audio_annotation_service
@@ -33,6 +28,19 @@ class AudioTestCaseCreationService:
     def __init__(self, repo: AudioRepositoryInterface = None):
         self.repo = repo or audio_repository
         self._annotation_service = audio_annotation_service
+        # ACL 仓储（跨域只读/读写查询）
+        from audio_service.infrastructure.acl.algorithm_acl_repository import (
+            AlgorithmACLRepositoryImpl,
+        )
+        from audio_service.infrastructure.acl.playback_acl_repository import (
+            PlaybackConfigACLRepositoryImpl,
+        )
+        from audio_service.infrastructure.acl.testcase_acl_repository import (
+            TestCaseConfigACLRepositoryImpl,
+        )
+        self._algorithm_acl = AlgorithmACLRepositoryImpl()
+        self._playback_acl = PlaybackConfigACLRepositoryImpl()
+        self._testcase_acl = TestCaseConfigACLRepositoryImpl()
 
     def create_test_case_from_audio(self, audio_id, test_types, audio_tags,
                                     playback_device_id=None, spl=65.0, noise_spl=60.0,
@@ -43,13 +51,9 @@ class AudioTestCaseCreationService:
                                     noise_device_ids=None):
         """从音频创建测试用例
 
-        通过 gRPC TestCaseConfigService 创建测试用例（含分组/标签/参考参数），
+        通过 ACL 仓储调用 gRPC TestCaseConfigService 创建测试用例（含分组/标签/参考参数），
         避免直接 import task_service PO。
         """
-        from shared.clients.grpc_clients import get_testcase_config_service_stub, get_playback_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb, device_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _loads, dumps as _dumps
-
         if isinstance(test_types, str):
             test_types = [test_types.strip()]
         else:
@@ -63,19 +67,12 @@ class AudioTestCaseCreationService:
 
         effective_playback_device_id = playback_device_id
         if 'e2e' in test_types and not effective_playback_device_id:
-            # 通过 gRPC 查找第一个 device_type='dry' 的播放设备
-            try:
-                stub = get_playback_config_service_stub()
-                resp = stub.ListPlaybackDevices(_e2e_pb.ListPlaybackDevicesRequest())
-                if resp.success:
-                    data = _loads(resp.data, {}) or {}
-                    devices = data.get('devices', []) or data.get('items', []) or []
-                    for dev in devices:
-                        if dev.get('device_type') == 'dry' and not dev.get('is_deleted'):
-                            effective_playback_device_id = dev.get('id')
-                            break
-            except Exception:
-                pass
+            # 通过 ACL 仓储查找第一个 device_type='dry' 的播放设备
+            devices = self._playback_acl.list_playback_devices()
+            for dev in devices:
+                if dev.get('device_type') == 'dry' and not dev.get('is_deleted'):
+                    effective_playback_device_id = dev.get('id')
+                    break
 
             if not effective_playback_device_id:
                 raise ValueError(
@@ -95,21 +92,15 @@ class AudioTestCaseCreationService:
             else:
                 test_case_name = base_name
 
-            # 名称冲突检查：通过 gRPC ListTestCases 搜索同名用例
-            try:
-                stub = get_testcase_config_service_stub()
-                list_req = task_pb.ListTestCasesRequest(
-                    page=1, per_page=50, keyword=test_case_name,
-                )
-                list_resp = stub.ListTestCases(list_req)
-                if list_resp.success:
-                    list_data = _loads(list_resp.data, {})
-                    for item in list_data.get('items', []):
-                        if item.get('name') == test_case_name:
-                            test_case_name = f"{test_case_name}_{now_cst().strftime('%H%M%S')}"
-                            break
-            except Exception:
-                pass
+            # 名称冲突检查：通过 ACL 仓储 ListTestCases 搜索同名用例
+            list_data = self._testcase_acl.list_testcases(
+                page=1, per_page=50, keyword=test_case_name,
+            )
+            if list_data:
+                for item in list_data.get('items', []):
+                    if item.get('name') == test_case_name:
+                        test_case_name = f"{test_case_name}_{now_cst().strftime('%H%M%S')}"
+                        break
 
             rounds_resolved, algo_params_col = self._resolve_rounds_and_strip_params(
                 tt, audio_id, audio, spl, effective_playback_device_id,
@@ -129,7 +120,7 @@ class AudioTestCaseCreationService:
                 noise_device_ids
             )
 
-            # 通过 gRPC CreateTestCaseConfig 创建测试用例
+            # 通过 ACL 仓储创建测试用例
             # （task_service 侧自动处理分组创建/标签关联/参考参数生成）
             create_data = {
                 'name': test_case_name,
@@ -147,19 +138,11 @@ class AudioTestCaseCreationService:
                          f'tc.algorithm_params={_json.dumps(algo_params_col, ensure_ascii=False)[:300]}',
                          category='audio')
 
-            try:
-                stub = get_testcase_config_service_stub()
-                req = task_pb.CreateTestCaseConfigRequest(data=_dumps(create_data))
-                resp = stub.CreateTestCaseConfig(req)
-                if resp.success:
-                    resp_data = _loads(resp.data, {})
-                    tc_id = resp_data.get('id')
-                    if tc_id:
-                        created_tc_ids.append(tc_id)
-                else:
-                    logger.error(f"创建测试用例失败: {resp.message}")
-            except Exception as e:
-                logger.error(f"CreateTestCaseConfig gRPC 调用失败: {e}")
+            resp_data = self._testcase_acl.create_testcase_config(create_data)
+            if resp_data:
+                tc_id = resp_data.get('id')
+                if tc_id:
+                    created_tc_ids.append(tc_id)
 
         return created_tc_ids
 
@@ -253,26 +236,16 @@ class AudioTestCaseCreationService:
                                                   tt, effective_playback_device_id, spl):
         """从标注 JSON 提取 spl 和 playback_device_name
 
-        通过 gRPC ListPlaybackDevices 获取设备 name→id 映射，避免直接 import PO。
+        通过 ACL 仓储 ListPlaybackDevices 获取设备 name→id 映射，避免直接 import PO。
         """
         if not raw_annotations:
             return
-        from shared.clients.grpc_clients import get_playback_config_service_stub
-        from shared.proto import device_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _loads
 
         dev_name_to_id = {}
-        try:
-            stub = get_playback_config_service_stub()
-            resp = stub.ListPlaybackDevices(_e2e_pb.ListPlaybackDevicesRequest())
-            if resp.success:
-                data = _loads(resp.data, {}) or {}
-                devices = data.get('devices', []) or data.get('items', []) or []
-                for dev in devices:
-                    if not dev.get('is_deleted'):
-                        dev_name_to_id.setdefault(dev.get('name'), dev.get('id'))
-        except Exception:
-            pass
+        devices = self._playback_acl.list_playback_devices()
+        for dev in devices:
+            if not dev.get('is_deleted'):
+                dev_name_to_id.setdefault(dev.get('name'), dev.get('id'))
 
         for round_item in rounds_resolved:
             if not isinstance(round_item, dict):
@@ -338,23 +311,12 @@ class AudioTestCaseCreationService:
                                                algorithm_type, tt, algo_params_col):
         """从原始标注提取用例参数
 
-        通过 gRPC 调用 algorithm_service.ListCaseParams 获取参数，避免直接 import PO。
+        通过 ACL 仓储调用 algorithm_service.ListCaseParams 获取参数，避免直接 import PO。
         """
         if not (algorithm_type and raw_annotations):
             return
-        from shared.clients.grpc_clients import get_algorithm_definition_service_stub
-        from shared.proto import algorithm_service_pb2 as _algo_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
 
-        try:
-            stub = get_algorithm_definition_service_stub()
-            resp = stub.ListCaseParams(_algo_pb.ListCaseParamsRequest(algorithm_type=algorithm_type))
-            case_params_list = []
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                case_params_list = data.get('parameters', []) or []
-        except Exception:
-            case_params_list = []
+        case_params_list = self._algorithm_acl.list_case_params(algorithm_type)
 
         scoped_params = [p for p in case_params_list if p.get('scope') == 'common' or p.get('scope') == tt]
         if not scoped_params:
@@ -488,14 +450,10 @@ class AudioTestCaseCreationService:
     def refresh_test_cases_for_audios(self, audio_ids, algorithm_type=None):
         """按 audio_id 反查 config.rounds[].audios[].audio_id 关联的 TestCase
 
-        通过 gRPC ListTestCases 分页获取所有用例，在本地过滤出引用了
-        目标 audio_id 的用例；再通过 gRPC UpdateTestCaseConfig 更新
+        通过 ACL 仓储 ListTestCases 分页获取所有用例，在本地过滤出引用了
+        目标 audio_id 的用例；再通过 ACL 仓储 UpdateTestCaseConfig 更新
         algorithm_params，由 task_service 侧触发参考参数刷新。
         """
-        from shared.clients.grpc_clients import get_testcase_config_service_stub, get_algorithm_definition_service_stub
-        from shared.proto import task_service_pb2 as task_pb, algorithm_service_pb2 as _algo_pb
-        from shared.utils.grpc_json import loads as _loads, dumps as _dumps
-
         target_ids = set(audio_ids)
 
         # 分页获取所有测试用例，本地过滤出引用目标 audio_id 的用例
@@ -503,21 +461,12 @@ class AudioTestCaseCreationService:
         page = 1
         per_page = 100
         while True:
-            try:
-                stub = get_testcase_config_service_stub()
-                req = task_pb.ListTestCasesRequest(
-                    page=page, per_page=per_page, include_deleted=False,
-                )
-                resp = stub.ListTestCases(req)
-            except Exception as e:
-                logger.error(f"ListTestCases gRPC 调用失败 (page={page}): {e}")
+            data = self._testcase_acl.list_testcases(
+                page=page, per_page=per_page, include_deleted=False,
+            )
+            if not data:
                 break
 
-            if not resp.success:
-                logger.error(f"ListTestCases gRPC 返回失败: {resp.message}")
-                break
-
-            data = _loads(resp.data, {})
             items = data.get('items', [])
             total = data.get('total', 0)
 
@@ -539,7 +488,7 @@ class AudioTestCaseCreationService:
                 if found:
                     affected_tcs.append(tc)
 
-            if page * per_page >= total:
+            if page * per_page >= total or not items:
                 break
             page += 1
 
@@ -551,15 +500,7 @@ class AudioTestCaseCreationService:
             tc_id = tc.get('id')
             tc_algo_type = algorithm_type or tc.get('algorithm_type')
             if tc_algo_type:
-                try:
-                    algo_stub = get_algorithm_definition_service_stub()
-                    algo_resp = algo_stub.ListCaseParams(_algo_pb.ListCaseParamsRequest(algorithm_type=tc_algo_type))
-                    case_params_list = []
-                    if algo_resp.success:
-                        algo_data = _loads(algo_resp.data, {}) or {}
-                        case_params_list = algo_data.get('parameters', []) or []
-                except Exception:
-                    case_params_list = []
+                case_params_list = self._algorithm_acl.list_case_params(tc_algo_type)
 
                 tc_test_type = tc.get('type') or tc.get('test_type') or 'api'
                 scoped_params = [
@@ -662,20 +603,10 @@ class AudioTestCaseCreationService:
                                 round_ap_entry.setdefault('params', []).append(p)
                                 existing_codes.add(p['field_code'])
 
-                    # 通过 gRPC UpdateTestCaseConfig 更新 algorithm_params
+                    # 通过 ACL 仓储 UpdateTestCaseConfig 更新 algorithm_params
                     # （task_service 侧会自动触发 ReferenceParamsGenerator.apply_to_config）
                     update_data = {'algorithm_params': algo_params_col}
-                    try:
-                        stub = get_testcase_config_service_stub()
-                        req = task_pb.UpdateTestCaseConfigRequest(
-                            tc_id=str(tc_id),
-                            data=_dumps(update_data),
-                        )
-                        resp = stub.UpdateTestCaseConfig(req)
-                        if not resp.success:
-                            logger.warning(f"更新用例 {tc_id} algorithm_params 失败: {resp.message}")
-                    except Exception as e:
-                        logger.warning(f"UpdateTestCaseConfig gRPC 调用失败 ({tc_id}): {e}")
+                    self._testcase_acl.update_testcase_config(str(tc_id), update_data)
 
             refreshed_ids.append(tc_id)
 

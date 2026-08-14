@@ -7,6 +7,7 @@ import shutil
 from hypium.model import UiParam
 
 from .harmony_driver import HarmonyDriver
+from .device_config import get_device_config
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from device_service.config.config import Config
 from shared.infrastructure.storage import storage
@@ -23,16 +24,24 @@ class XiaoyilivechatV2(HarmonyDriver):
     通话状态流:
         打开通话live态 → 正在听(用户说/音箱在播) → 说话可打断(=小艺说话中) → 正在听(小艺说完回到听)
     """
-    RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
-    RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
 
-    # 问候语结束等待(进 live 态后等"正在听…"出现)
-    WAIT_LISTENING_TIMEOUT = 10
-    # 判定小艺有无回复(等"说话可打断"出现)
-    WAIT_REPLY_TIMEOUT = 10
-    # 小艺回复后等说完(等"正在听…"重新出现)
-    REPLY_DONE_TIMEOUT = 60
 
+    def __init__(self):
+        """初始化HarmonyOS驱动"""
+        super().__init__()
+        # 仅覆盖与父类不同的属性，其余（_drivers, _config, app_name 等）继承父类
+        self.app_icon_key = 'AppIcon_Image_com.huawei.hmos.vassistant.launcherVoiceAbilityentry0_undefined_0'
+
+        self.RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
+        self.RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
+
+        # 问候语结束等待(进 live 态后等"正在听…"出现)
+        self.WAIT_LISTENING_TIMEOUT = 10
+        # 判定小艺有无回复(等"说话可打断"出现)
+        self.WAIT_REPLY_TIMEOUT = 10
+        # 小艺回复后等说完(等"正在听…"重新出现)
+        self.REPLY_DONE_TIMEOUT = 60
+        
     def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
         """将 mp4 无损转换为 wav（pcm_s16le，44.1kHz，双声道）。
         成功返回 wav 绝对路径，失败返回 None。"""
@@ -394,11 +403,14 @@ class XiaoyilivechatV2(HarmonyDriver):
                 storage.save_file(os.path.join(local_dir, fname), 'case_result',
                                  f'{oss_key_prefix}/{fname}')
             shutil.rmtree(local_dir, ignore_errors=True)
+            # 本地临时目录已清理，record_path 使用 OSS URL
+            record_oss_key = f'{oss_key_prefix}/{record_file_name}'
+            wav_oss_key = f'{oss_key_prefix}/{os.path.basename(wav_path)}' if wav_path else ''
             return [{
                 'success': True,
                 'message': 'Success',
-                'record_path': local_path,
-                'wav_path': wav_path or '',
+                'record_path': storage.build_path('case_result', record_oss_key),
+                'wav_path': storage.build_path('case_result', wav_oss_key) if wav_oss_key else '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,

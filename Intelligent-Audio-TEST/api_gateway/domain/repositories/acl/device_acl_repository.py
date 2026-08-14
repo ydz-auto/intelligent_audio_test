@@ -1,50 +1,88 @@
 # -*- coding: utf-8 -*-
-"""device_service 跨域 ACL 仓储接口。"""
+"""device_service 跨域 ACL 仓储接口。
+
+所有方法返回 CommandResultDTO，封装 gRPC 信封 {success, message, data, code}。
+"""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
-from api_gateway.domain.dto import (
-    DeviceDTO, DriverScanDTO, PlaybackDeviceDTO, RegisteredKeywordsDTO, SplMappingDTO,
-)
+from api_gateway.domain.dto import CommandResultDTO
 
 
 class DeviceAclRepository(ABC):
-    """device_config_service 实体查询 + device_driver_factory 只读查询接口。"""
+    """device_config_service 实体 ACL 接口。"""
+
+    # ---- 写操作 ----
+    @abstractmethod
+    def create(self, data) -> CommandResultDTO: ...
 
     @abstractmethod
-    def get_device(self, device_id) -> Optional[DeviceDTO]:
-        ...
+    def update(self, device_id, data) -> CommandResultDTO: ...
 
     @abstractmethod
-    def list_devices(self, **kwargs) -> List[DeviceDTO]:
-        ...
+    def delete(self, device_id) -> CommandResultDTO: ...
+
+    # ---- 读操作 ----
+    @abstractmethod
+    def get_all(self, **kwargs) -> CommandResultDTO: ...
 
     @abstractmethod
-    def scan_devices(self) -> List[DriverScanDTO]:
-        ...
+    def get_one(self, device_id) -> CommandResultDTO: ...
 
     @abstractmethod
-    def get_registered_keywords(self) -> RegisteredKeywordsDTO:
-        ...
+    def get_statuses(self, device_ids=None) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def scan(self) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def test(self, device_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def stop_test(self, device_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_driver_keywords(self) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def health_check(self, device_ids) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_available_serials(self) -> CommandResultDTO: ...
 
 
 class PlaybackConfigAclRepository(ABC):
-    """playback_config_service / spl_config_service 实体查询接口。"""
+    """playback_config_service 实体 ACL 接口。"""
+
+    # ---- 写操作 ----
+    @abstractmethod
+    def create(self, data) -> CommandResultDTO: ...
 
     @abstractmethod
-    def get_playback_device(self, device_id) -> Optional[PlaybackDeviceDTO]:
-        ...
+    def update(self, device_id, data) -> CommandResultDTO: ...
 
     @abstractmethod
-    def list_playback_devices(self, **kwargs) -> List[PlaybackDeviceDTO]:
-        ...
+    def delete(self, device_id) -> CommandResultDTO: ...
 
     @abstractmethod
-    def get_spl_mapping(self, mapping_id) -> Optional[SplMappingDTO]:
-        ...
+    def associate_spl(self, device_id, spl_mapping_id) -> CommandResultDTO: ...
 
     @abstractmethod
-    def list_spl_mappings(self, **kwargs) -> List[SplMappingDTO]:
-        ...
+    def test(self, device_id, test_params) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def stop_test(self, device_id) -> CommandResultDTO: ...
+
+    # ---- 读操作 ----
+    @abstractmethod
+    def get_all(self, **kwargs) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def get_one(self, device_id) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def scan(self) -> CommandResultDTO: ...
+
+    @abstractmethod
+    def check_status(self) -> CommandResultDTO: ...

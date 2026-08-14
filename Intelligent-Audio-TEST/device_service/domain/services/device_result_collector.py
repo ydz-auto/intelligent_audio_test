@@ -122,6 +122,10 @@ class DeviceResultCollector:
             except Exception as e:
                 if log_callback:
                     log_callback('ERROR', f"采集结果失败: {str(e)}", task_id, info["device_id"])
+                else:
+                    log_not_emit('ERROR', 'device_collector',
+                                 f'采集结果失败: {str(e)}', category='engine')
+                res.setdefault('raw_results', {})
                 res.setdefault('adjusted_reference_params', reference_params or [])
                 res.setdefault('alignment_info', {'method': 'error', 'offset': 0.0})
             all_results.append(res)

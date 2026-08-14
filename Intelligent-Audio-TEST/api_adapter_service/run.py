@@ -17,7 +17,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env'))
 except ImportError:
-    pass
+    logging.getLogger(__name__).debug("python-dotenv 未安装，跳过 .env 加载")
 
 from api_adapter_service.utils.logger import logger
 from api_adapter_service.interfaces.grpc.server import start_grpc_server

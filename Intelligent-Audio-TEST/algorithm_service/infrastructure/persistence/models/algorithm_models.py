@@ -20,8 +20,8 @@ from datetime import datetime
 
 from shared.models.database import Base
 from sqlalchemy import (
-    Column, Integer, BigInteger, String, Text, Boolean, Float, UniqueConstraint,
-    DateTime, JSON, ForeignKey,
+    Column, Integer, BigInteger, String, Text, Boolean, Float,
+    DateTime, JSON, ForeignKey, Index, text,
 )
 from sqlalchemy.orm import relationship
 
@@ -29,8 +29,12 @@ from sqlalchemy.orm import relationship
 class AlgorithmGroup(Base):
     """算法分组表"""
     __tablename__ = 'algorithm_groups'
+    __table_args__ = (
+        Index('uq_algorithm_group_name', 'name', unique=True,
+              postgresql_where=text('deleted = false')),
+    )
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String(100), nullable=False, unique=True, comment='分组名称')
+    name = Column(String(100), nullable=False, comment='分组名称')
     description = Column(Text, comment='分组描述')
     icon = Column(String(200), comment='图标URL')
     display_order = Column(Integer, default=0, comment='排序权重')
@@ -94,7 +98,8 @@ class AlgorithmDeviceParam(Base):
     """设备参数定义表 - 单个算法专用"""
     __tablename__ = 'algorithm_device_params'
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'param_code', 'direction', name='uq_algorithm_device_param_direction'),
+        Index('uq_algorithm_device_param_direction', 'algorithm_type', 'param_code', 'direction',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')
@@ -146,7 +151,8 @@ class AlgorithmApiParam(Base):
     """API参数定义表 - 单个算法专用"""
     __tablename__ = 'algorithm_api_params'
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'param_code', 'direction', name='uq_algorithm_api_param_direction'),
+        Index('uq_algorithm_api_param_direction', 'algorithm_type', 'param_code', 'direction',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')
@@ -198,7 +204,8 @@ class AlgorithmReferenceParam(Base):
     """算法参考参数定义表 - 单个算法专用"""
     __tablename__ = 'algorithm_reference_params'
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'code', name='uq_algorithm_reference_param_code'),
+        Index('uq_algorithm_reference_param_code', 'algorithm_type', 'code',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), nullable=False, comment='关联算法类型')
@@ -235,7 +242,8 @@ class EvaluationDimensionParam(Base):
     """评估维度参数定义表 - 多个算法共用"""
     __tablename__ = 'evaluation_dimension_params'
     __table_args__ = (
-        UniqueConstraint('dimension_id', 'param_code', 'param_direction', name='uq_dimension_param_code_direction'),
+        Index('uq_dimension_param_code_direction', 'dimension_id', 'param_code', 'param_direction',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     dimension_id = Column(Integer, nullable=False, comment='关联评估维度ID')
@@ -292,7 +300,8 @@ class ParamMapping(Base):
     """参数映射表 - 设备/API/用例参数 → 评估维度参数"""
     __tablename__ = 'param_mappings'
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'source', 'source_param', 'dimension_id', name='uq_algorithm_source_to_dimension'),
+        Index('uq_algorithm_source_to_dimension', 'algorithm_type', 'source', 'source_param', 'dimension_id',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')
@@ -326,7 +335,8 @@ class AlgorithmDimensionRelation(Base):
     """评估维度与算法关联表"""
     __tablename__ = 'algorithm_dimension_relations'
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'dimension_id', name='uq_algorithm_dimension'),
+        Index('uq_algorithm_dimension', 'algorithm_type', 'dimension_id',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')
@@ -354,7 +364,8 @@ class CaseAlgorithmParam(Base):
     """用例专属参数定义表 - 特定算法专用"""
     __tablename__ = 'case_algorithm_params'
     __table_args__ = (
-        UniqueConstraint('algorithm_type', 'param_code', name='uq_case_algorithm_param_code'),
+        Index('uq_case_algorithm_param_code', 'algorithm_type', 'param_code',
+              unique=True, postgresql_where=text('deleted = false')),
     )
     id = Column(Integer, primary_key=True, autoincrement=True)
     algorithm_type = Column(String(50), ForeignKey('algorithm_definitions.type'), nullable=False, comment='关联算法类型')

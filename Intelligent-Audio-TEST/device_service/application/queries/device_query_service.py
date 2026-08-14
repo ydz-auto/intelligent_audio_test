@@ -44,6 +44,7 @@ class DeviceQueryService:
 
             return {'success': True, 'message': 'Success', 'data': result, 'code': 200}
         except Exception as e:
+            logger.error("get_all failed: %s", e, exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 400}
 
     def get_statuses(self, device_ids: list = None) -> dict:

@@ -1,9 +1,12 @@
 import time
 import subprocess
 import os
+import logging
 from .base_driver import BaseDeviceDriver
 from .device_config import get_device_config
 from .utils import check_stop, UiDriver, By, MatchPattern
+
+logger = logging.getLogger(__name__)
 
 
 class HarmonyDriver(BaseDeviceDriver):
@@ -15,8 +18,7 @@ class HarmonyDriver(BaseDeviceDriver):
         self._drivers = {}
         self._config = get_device_config('harmonyos')
         self.app_name = self._config.get('app_name', 'com.huawei.hmos.vassistant')
-        self.app_icon_key = self._config.get('app_icon_key',
-                                             'AppIconCommonView_com.huawei.hmos.vassistant.launcher.VoiceAbility')
+        self.app_icon_key = 'AppIcon_Image_com.huawei.hmos.vassistant.launcherVoiceAbilityentry0_undefined_0'
         self._unlock_password = self._config.get('unlock_password', '000000')
         self._close_buttons = self._config.get('close_buttons', [])
         self._popup_keywords = self._config.get('popup_keywords', [])
@@ -280,7 +282,7 @@ class HarmonyDriver(BaseDeviceDriver):
                         time.sleep(0.5)
                         continue
             except Exception:
-                pass
+                logger.debug("safe_find_components 查找组件时发生异常 device_sn=%s", device_sn, exc_info=True)
             return result
 
         try:

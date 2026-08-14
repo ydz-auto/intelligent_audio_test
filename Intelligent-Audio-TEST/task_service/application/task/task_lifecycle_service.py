@@ -20,6 +20,8 @@ import logging
 from datetime import datetime
 
 from shared.utils.result_data_store import load_full_result_data
+from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
 
 from task_service.infrastructure.persistence.task_repository import task_repository
 
@@ -38,18 +40,18 @@ class TaskLifecycleService:
                 return {'success': False, 'message': '任务 ID 不存在', 'data': None, 'code': 404}
 
             # 幂等：已在运行或排队
-            if task.status in ('running', 'queued'):
+            if task.status in (TaskStatus.RUNNING, TaskStatus.QUEUED):
                 return {
                     'success': True,
-                    'message': '任务已在运行中' if task.status == 'running' else '任务已在队列中',
+                    'message': '任务已在运行中' if task.status == TaskStatus.RUNNING else '任务已在队列中',
                     'data': {'id': task.id, 'status': task.status},
                 }
 
-            if task.status not in ['pending', 'failed', 'stopped', 'completed']:
+            if task.status not in [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.STOPPED, TaskStatus.COMPLETED]:
                 return {'success': False, 'message': '非法的任务状态转换操作', 'data': None, 'code': 400}
 
             # 重置失败/停止状态（原子提交）
-            if task.status in ['failed', 'stopped']:
+            if task.status in [TaskStatus.FAILED, TaskStatus.STOPPED]:
                 if not task_repository.reset_task_for_start(task_id):
                     return {'success': False, 'message': '任务 ID 不存在', 'data': None, 'code': 404}
 
@@ -60,7 +62,7 @@ class TaskLifecycleService:
 
             # 调用执行引擎
             from task_service.core.execution_engine import execution_engine
-            success, message = execution_engine.start_task(None, task.id)
+            success, message = execution_engine.start_task(task.id)
 
             if not success:
                 return {'success': False, 'message': message, 'data': None, 'code': 500}
@@ -73,7 +75,7 @@ class TaskLifecycleService:
                 'data': {
                     'task_id': str(task.id),
                     'start_time': int(datetime.utcnow().timestamp() * 1000),
-                    'status': 'queued' if '队列' in message else 'running',
+                    'status': TaskStatus.QUEUED if '队列' in message else TaskStatus.RUNNING,
                     'expected_total_time': time_estimate.get('expected_total_time'),
                     'expected_complete_time': time_estimate.get('expected_complete_time'),
                 },
@@ -89,7 +91,7 @@ class TaskLifecycleService:
             if task is None:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
 
-            if task.status in ['running', 'paused', 'queued']:
+            if task.status in [TaskStatus.RUNNING, TaskStatus.PAUSED, TaskStatus.QUEUED]:
                 from task_service.core.execution_engine import execution_engine
                 execution_engine.control_task(None, task_id, 'stop')
 
@@ -99,8 +101,8 @@ class TaskLifecycleService:
             if not retry_cases:
                 return {'success': True, 'message': '没有需要重试的用例', 'data': None}
 
-            completed_cases = [tc for tc in retry_cases if tc.execution_status == 'completed']
-            incomplete_cases = [tc for tc in retry_cases if tc.execution_status != 'completed']
+            completed_cases = [tc for tc in retry_cases if tc.execution_status == ExecutionStatus.COMPLETED]
+            incomplete_cases = [tc for tc in retry_cases if tc.execution_status != ExecutionStatus.COMPLETED]
 
             # 清理旧结果
             if completed_cases:
@@ -114,14 +116,14 @@ class TaskLifecycleService:
 
             # 重置 TaskCase 状态（内存修改，稍后提交）
             for tc in completed_cases:
-                tc.status = 'pending'
-                tc.evaluation_status = 'pending'
+                tc.evaluation_status = EvaluationStatus.PENDING
+                tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
                 tc.error_message = None
                 task_repository.commit_task_case(tc)
             for tc in incomplete_cases:
-                tc.status = 'failed'
-                tc.execution_status = 'pending'
-                tc.evaluation_status = 'pending'
+                tc.execution_status = ExecutionStatus.PENDING
+                tc.evaluation_status = EvaluationStatus.PENDING
+                tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
                 tc.started_at = None
                 tc.completed_at = None
                 tc.duration = None
@@ -138,7 +140,7 @@ class TaskLifecycleService:
 
             # 启动任务
             from task_service.core.execution_engine import execution_engine
-            success, message = execution_engine.start_task(None, task.id)
+            success, message = execution_engine.start_task(task.id)
 
             if not success:
                 return {'success': False, 'message': message, 'data': None, 'code': 500}
@@ -146,7 +148,7 @@ class TaskLifecycleService:
             return {
                 'success': True,
                 'message': '重试任务已启动',
-                'data': {'task_id': str(task.id), 'status': 'running'},
+                'data': {'task_id': str(task.id), 'status': TaskStatus.RUNNING},
             }
         except Exception as e:
             logger.error(f"重试任务失败: {e}", exc_info=True)
@@ -171,28 +173,28 @@ class TaskLifecycleService:
                 if tc is None:
                     return {'success': False, 'message': '未找到指定用例关联', 'data': None, 'code': 404}
 
-                if tc.execution_status in ['queued', 'running'] or tc.evaluation_status == 'running':
+                if tc.execution_status in [ExecutionStatus.QUEUED, ExecutionStatus.RUNNING] or tc.evaluation_status == EvaluationStatus.RUNNING:
                     return {'success': False, 'message': '用例执行中不允许此操作', 'data': None, 'code': 400}
 
                 if action == 'skip':
-                    tc.status = 'skipped'
-                    tc.execution_status = 'stopped'
-                    tc.evaluation_status = 'stopped'
+                    tc.execution_status = ExecutionStatus.STOPPED
+                    tc.evaluation_status = EvaluationStatus.STOPPED
+                    tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
                     tc.error_message = tc.error_message or '用例被手动跳过'
                     task_repository.commit_task_case(tc)
                 else:  # retry
-                    if tc.execution_status == 'completed':
-                        tc.status = 'pending'
-                        tc.evaluation_status = 'pending'
+                    if tc.execution_status == ExecutionStatus.COMPLETED:
+                        tc.evaluation_status = EvaluationStatus.PENDING
+                        tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
                         tc.error_message = None
                         task_repository.commit_task_case(tc)
                         task_repository.cleanup_case_results(
                             task_id, [case_id], preserve_test_result=True
                         )
                     else:
-                        tc.status = 'failed'
-                        tc.execution_status = 'pending'
-                        tc.evaluation_status = 'pending'
+                        tc.execution_status = ExecutionStatus.PENDING
+                        tc.evaluation_status = EvaluationStatus.PENDING
+                        tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
                         tc.started_at = None
                         tc.completed_at = None
                         tc.duration = None
@@ -206,14 +208,14 @@ class TaskLifecycleService:
                     task_repository.reset_task_to_pending(task_id)
 
                 # retry 已执行完成的用例，触发重新评估
-                if action == 'retry' and tc.execution_status == 'completed':
+                if action == 'retry' and tc.execution_status == ExecutionStatus.COMPLETED:
                     self._trigger_reevaluate(task_id, [tc])
 
                 # 如果任务当前没在运行，且是 retry，则尝试重启
                 task_status = task_repository.get_task_orm(task_id)
-                if action == 'retry' and task_status and task_status.status not in ['running', 'paused']:
+                if action == 'retry' and task_status and task_status.status not in [TaskStatus.RUNNING, TaskStatus.PAUSED]:
                     from task_service.core.execution_engine import execution_engine
-                    execution_engine.start_task(None, task_id)
+                    execution_engine.start_task(task_id)
 
                 return {'success': True, 'message': f"Action '{action}' executed successfully", 'data': None}
 
@@ -252,35 +254,28 @@ class TaskLifecycleService:
     def rextract(self, task_id: int, data: dict) -> dict:
         """重新提取设备输出。"""
         try:
-            execution_status = data.get('execution_status', 'completed')
+            execution_status = data.get('execution_status', ExecutionStatus.COMPLETED)
             evaluation_status = data.get('evaluation_status')
 
             task = task_repository.find_task_for_reextract(task_id)
             if task is None:
                 return {'success': False, 'message': '未找到任务', 'data': None, 'code': 404}
-            if task.status not in ['completed', 'failed', 'stopped', 'paused', 'skipped']:
+            if task.status not in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED, TaskStatus.PAUSED, TaskStatus.SKIPPED]:
                 return {'success': False, 'message': '只有已完成/失败/停止/暂停/跳过的任务才能重新提取', 'data': None, 'code': 400}
 
-            # 通过 gRPC 调用 device_service 的重新提取服务
-            from shared.clients.grpc_clients import get_device_result_service_stub
-            from shared.proto import device_service_pb2 as e2e_pb
-            from shared.utils.grpc_json import loads as _loads
-            import json as _json
+            # 通过 ACL 仓储调用 device_service 的重新提取服务
+            from task_service.infrastructure.acl.evaluation_acl_repository import evaluation_acl_repository
+            _eval_repo = evaluation_acl_repository
+            result = _eval_repo.reextract_result(
+                task_id=task_id,
+                execution_status=execution_status,
+                evaluation_status=evaluation_status,
+            )
 
-            stub = get_device_result_service_stub()
-            reextract_config = {
-                'execution_status': execution_status,
-                'evaluation_status': evaluation_status,
-            }
-            resp = stub.ReextractResult(e2e_pb.ReextractResultRequest(
-                task_id=str(task_id),
-                reextract_config=_json.dumps(reextract_config),
-            ))
-            result = _loads(resp.data, {}) if resp.success else {}
-
-            if resp.success:
-                message = result.get('message', '重新提取成功')
-                reextracted_cases = result.get('reextracted_cases', [])
+            if result['success']:
+                data = result['data']
+                message = data.get('message', '重新提取成功')
+                reextracted_cases = data.get('reextracted_cases', [])
                 return {
                     'success': True,
                     'message': message,
@@ -290,7 +285,7 @@ class TaskLifecycleService:
                         'reextracted_cases': reextracted_cases,
                     },
                 }
-            fail_msg = result.get('message') or resp.message or '未知错误'
+            fail_msg = result['data'].get('message') or result['message'] or '未知错误'
             return {'success': False, 'message': f"重新提取失败: {fail_msg}", 'data': None, 'code': 400}
         except Exception as e:
             logger.error(f"重新提取失败: {e}", exc_info=True)
@@ -304,10 +299,8 @@ class TaskLifecycleService:
         注意：此方法内部涉及跨域查询 TestCase / TestResult，后续 gRPC 改造。
         """
         try:
-            from shared.clients.grpc_clients import get_evaluation_service_stub
-            from shared.proto import evaluation_service_pb2 as eval_pb
-
-            stub = get_evaluation_service_stub()
+            from task_service.infrastructure.acl.evaluation_acl_repository import evaluation_acl_repository
+            _eval_repo = evaluation_acl_repository
             test_type = task_repository.get_task_type(task_id)
 
             for tc in completed_cases:
@@ -317,13 +310,13 @@ class TaskLifecycleService:
                     result = task_repository.get_test_result_for_reevaluate(task_id, test_case_id)
 
                     if not result:
-                        tc.evaluation_status = 'failed'
+                        tc.evaluation_status = EvaluationStatus.FAILED
                         tc.error_message = '未找到执行结果，无法重新评估'
                         task_repository.commit_task_case(tc)
                         continue
 
                     if not result.algorithm_result:
-                        tc.evaluation_status = 'failed'
+                        tc.evaluation_status = EvaluationStatus.FAILED
                         tc.error_message = '执行结果无 algorithm_result，无法重新评估'
                         task_repository.commit_task_case(tc)
                         continue
@@ -351,31 +344,31 @@ class TaskLifecycleService:
                     )
 
                     if algo_result and 'rounds' in algo_result:
-                        resp = stub.ReevaluateMultiRound(eval_pb.ReevaluateMultiRoundRequest(
-                            task_id=str(task_id),
-                            result_json=json.dumps(result.id, ensure_ascii=False, default=str),
-                            test_case_id=str(test_case_id or ''),
-                            algorithm_result=json.dumps(algo_result or {}, ensure_ascii=False, default=str),
+                        resp = _eval_repo.reevaluate_multi_round(
+                            task_id=task_id,
+                            result_id=result.id,
+                            test_case_id=test_case_id,
+                            algorithm_result=algo_result,
                             test_type=test_type or 'api',
                             algorithm_type=algorithm_type or 'translation',
-                        ))
+                        )
                         if not resp.success:
                             raise RuntimeError(resp.message)
                     else:
-                        resp = stub.ReevaluateSingle(eval_pb.ReevaluateSingleRequest(
-                            task_id=str(task_id),
-                            result_id=str(result.id or ''),
-                            test_case_id=str(test_case_id or ''),
-                            algorithm_result=json.dumps(algo_result or {}, ensure_ascii=False, default=str),
-                            reference_params=json.dumps(reference_params or {}, ensure_ascii=False, default=str),
+                        resp = _eval_repo.reevaluate_single(
+                            task_id=task_id,
+                            result_id=result.id,
+                            test_case_id=test_case_id,
+                            algorithm_result=algo_result,
+                            reference_params=reference_params,
                             test_type=test_type or 'api',
                             algorithm_type=algorithm_type or 'translation',
-                        ))
+                        )
                         if not resp.success:
                             raise RuntimeError(resp.message)
                 except Exception as e:
                     import traceback
-                    tc.evaluation_status = 'failed'
+                    tc.evaluation_status = EvaluationStatus.FAILED
                     tc.error_message = f'重新评估触发失败: {str(e)}'
                     task_repository.commit_task_case(tc)
                     logger.warning(f'触发重新评估失败: task_id={task_id}, test_case_id={test_case_id}, error={e}, traceback={traceback.format_exc()}')

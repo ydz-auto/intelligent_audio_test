@@ -3,7 +3,7 @@ import logging
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import task_config_service
+from api_gateway.infrastructure.acl import TaskConfigAclRepositoryImpl
 from api_gateway.schemas.common import IdData
 from api_gateway.schemas.task import (
     TaskCreateRequest,
@@ -13,6 +13,8 @@ from api_gateway.schemas.task import (
 )
 
 logger = logging.getLogger(__name__)
+
+_task_acl = TaskConfigAclRepositoryImpl()
 
 
 class TaskCommandService:
@@ -33,7 +35,7 @@ class TaskCommandService:
 
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
 
-        result = task_config_service.create(data_dict)
+        result = _task_acl.create(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -52,7 +54,7 @@ class TaskCommandService:
 
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
 
-        result = task_config_service.update_cases(task_id, data_dict)
+        result = _task_acl.update_cases(task_id, data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -79,7 +81,7 @@ class TaskCommandService:
         if req.action == 'export':
             data_dict['format'] = request.args.get('format', 'json')
 
-        result = task_config_service.batch_action(data_dict)
+        result = _task_acl.batch_action(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -173,7 +175,7 @@ class TaskCommandService:
     # 删除任务
     @staticmethod
     def delete(task_id):
-        result = task_config_service.delete(task_id)
+        result = _task_acl.delete(task_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -190,7 +192,7 @@ class TaskCommandService:
         if not json_data:
             return error_response("请求数据不能为空", 400)
 
-        result = task_config_service.update(task_id, json_data)
+        result = _task_acl.update(task_id, json_data)
 
         if not result.get('success'):
             code = result.get('code', 400)

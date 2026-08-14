@@ -8,10 +8,13 @@
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import spl_config_service
+from api_gateway.infrastructure.acl import SplConfigAclRepositoryImpl
 from api_gateway.schemas.spl import (
     SPLMappingQueryRequest,
 )
+
+
+_spl_acl = SplConfigAclRepositoryImpl()
 
 
 class SPLQueryService:
@@ -31,7 +34,7 @@ class SPLQueryService:
         per_page = req_data.per_page or 10
         device_id = req_data.device_id
 
-        result = spl_config_service.get_all(
+        result = _spl_acl.get_all(
             page=page,
             per_page=per_page,
             keyword=keyword,
@@ -47,7 +50,7 @@ class SPLQueryService:
     # 获取单个映射详情
     @staticmethod
     def get_one(mapping_id):
-        result = spl_config_service.get_one(mapping_id)
+        result = _spl_acl.get_one(mapping_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -60,7 +63,7 @@ class SPLQueryService:
     # 获取校准历史
     @staticmethod
     def get_history(mapping_id):
-        result = spl_config_service.get_history(mapping_id)
+        result = _spl_acl.get_history(mapping_id)
 
         if not result.get('success'):
             return error_response(result.get('message', '查询失败'), code=ErrorCode.DATABASE_ERROR)
@@ -70,7 +73,7 @@ class SPLQueryService:
     # 获取详细校准数据 (最新)
     @staticmethod
     def get_calibration_data(mapping_id):
-        result = spl_config_service.get_calibration_data(mapping_id)
+        result = _spl_acl.get_calibration_data(mapping_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -83,7 +86,7 @@ class SPLQueryService:
     # 获取 SPL 统计信息
     @staticmethod
     def get_stats():
-        result = spl_config_service.get_stats()
+        result = _spl_acl.get_stats()
 
         if not result.get('success'):
             return error_response(result.get('message', '查询失败'), code=ErrorCode.DATABASE_ERROR)
@@ -93,7 +96,7 @@ class SPLQueryService:
     # 按设备ID获取SPL映射列表
     @staticmethod
     def get_by_device(device_id):
-        result = spl_config_service.get_by_device(device_id)
+        result = _spl_acl.get_by_device(device_id)
 
         if not result.get('success'):
             return error_response(result.get('message', '查询失败'), code=ErrorCode.DATABASE_ERROR)

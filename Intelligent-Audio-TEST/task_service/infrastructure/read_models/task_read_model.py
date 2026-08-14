@@ -6,12 +6,16 @@ CQRS 读侧：直接查询 DB，支持过滤、分页、聚合统计。
 """
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List, Optional  # noqa: F401
 
 from shared.models.database import get_db_session
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.query_utils import now_cst
+from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
 from sqlalchemy import and_, or_
+
+logger = logging.getLogger(__name__)
 
 
 class TaskReadModel:
@@ -115,13 +119,13 @@ class TaskReadModel:
                     dt_start = datetime.fromisoformat(start_date)
                     query = query.filter(Task.created_at >= dt_start)
                 except ValueError:
-                    pass
+                    logger.debug("start_date 非法 ISO 格式已忽略: %r", start_date)
             if end_date:
                 try:
                     dt_end = datetime.fromisoformat(end_date)
                     query = query.filter(Task.created_at <= dt_end)
                 except ValueError:
-                    pass
+                    logger.debug("end_date 非法 ISO 格式已忽略: %r", end_date)
 
             query = query.order_by(Task.created_at.desc())
             pagination = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -133,17 +137,13 @@ class TaskReadModel:
                 # 通过 gRPC 查询任务的报告（替代直连 report_service PO）
                 reports = []
                 try:
-                    from shared.clients.grpc_clients import get_report_config_service_stub
-                    from shared.proto import report_service_pb2 as report_pb
-                    from shared.utils.grpc_json import loads as _loads
+                    from task_service.infrastructure.acl.report_acl_repository import report_acl_repository
 
-                    stub = get_report_config_service_stub()
-                    resp = stub.ListReports(report_pb.ListReportsRequest(
-                        task_id=int(task.id), page=1, per_page=100))
-                    if resp.success:
-                        payload = _loads(resp.data, {}) or {}
-                        reports = payload.get('items', []) or []
+                    payload = report_acl_repository.list_reports(
+                        task_id=task.id, page=1, per_page=100)
+                    reports = payload.get('items', []) or [] if payload else []
                 except Exception:
+                    logger.debug("查询任务 %s 的报告列表失败", task.id, exc_info=True)
                     reports = []
                 report_info = {
                     'count': len(reports),
@@ -258,7 +258,7 @@ class TaskReadModel:
                 return None
 
             current_case = session.query(TaskCase).filter_by(
-                task_id=task_id, execution_status='running'
+                task_id=task_id, execution_status=ExecutionStatus.RUNNING
             ).first()
             current_case_data = None
             if current_case:
@@ -299,26 +299,26 @@ class TaskReadModel:
                     'error_message': tc.error_message,
                 })
 
-                if tc.execution_status in ['pending', 'queued']:
+                if tc.execution_status in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]:
                     pending_count += 1
-                elif tc.execution_status == 'running':
+                elif tc.execution_status == ExecutionStatus.RUNNING:
                     running_count += 1
-                elif tc.execution_status == 'completed':
+                elif tc.execution_status == ExecutionStatus.COMPLETED:
                     completed_count += 1
-                elif tc.execution_status == 'failed':
+                elif tc.execution_status == ExecutionStatus.FAILED:
                     failed_count += 1
 
             in_progress_count = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
-                (TaskCase.execution_status.in_(['running', 'queued'])) | (TaskCase.evaluation_status == 'running') |
-                (TaskCase.evaluation_status == 'calculating')
+                (TaskCase.execution_status.in_([ExecutionStatus.RUNNING, ExecutionStatus.QUEUED])) | (TaskCase.evaluation_status == EvaluationStatus.RUNNING) |
+                (TaskCase.evaluation_status == EvaluationStatus.CALCULATING)
             ).count()
 
             actual_total_cases = len(all_task_cases)
             actual_completed_cases = session.query(TaskCase).filter(
                 TaskCase.task_id == task_id,
-                TaskCase.execution_status == 'completed',
-                TaskCase.status == 'completed',
+                TaskCase.execution_status == ExecutionStatus.COMPLETED,
+                TaskCase.status == TaskCaseStatus.COMPLETED,
             ).count()
 
             # API 资源状态
@@ -332,18 +332,18 @@ class TaskReadModel:
                     if api:
                         pending_cases = session.query(TaskCase).filter(
                             TaskCase.task_id == task_id,
-                            TaskCase.execution_status == 'pending',
+                            TaskCase.execution_status == ExecutionStatus.PENDING,
                         ).count()
                         completed_cases = session.query(TaskCase).filter(
                             TaskCase.task_id == task_id,
-                            TaskCase.execution_status == 'completed',
+                            TaskCase.execution_status == ExecutionStatus.COMPLETED,
                         ).count()
                         avg_response_time = 0
                         if completed_cases > 0:
                             from task_service.infrastructure.persistence.models import TestResult
                             completed_results = session.query(TestResult).filter(
                                 TestResult.task_id == task_id,
-                                TestResult.execution_status == 'completed',
+                                TestResult.execution_status == ExecutionStatus.COMPLETED,
                             ).all()
                             total_response_time = sum(
                                 r.response_time for r in completed_results if r.response_time
@@ -379,8 +379,8 @@ class TaskReadModel:
                 'in_progress_count': in_progress_count,
                 'actual_total_cases': actual_total_cases,
                 'actual_completed_cases': actual_completed_cases,
-                'execution_failed_count': sum(1 for tc in test_cases_data if tc['execution_status'] == 'failed'),
-                'evaluation_failed_count': sum(1 for tc in test_cases_data if tc['evaluation_status'] == 'failed'),
+                'execution_failed_count': sum(1 for tc in test_cases_data if tc['execution_status'] == ExecutionStatus.FAILED),
+                'evaluation_failed_count': sum(1 for tc in test_cases_data if tc['evaluation_status'] == EvaluationStatus.FAILED),
                 'api_resource_status': api_resource_status,
                 'started_at': task.started_at.isoformat() if task.started_at else None,
                 'completed_at': task.completed_at.isoformat() if task.completed_at else None,
@@ -419,10 +419,10 @@ class TaskReadModel:
             completed = task.completed_cases or 0
             failed = task.failed_cases or 0
             pending = session.query(TaskCase).filter_by(
-                task_id=task_id, execution_status='pending'
+                task_id=task_id, execution_status=ExecutionStatus.PENDING
             ).count()
             skipped = session.query(TaskCase).filter_by(
-                task_id=task_id, status='skipped'
+                task_id=task_id, status=TaskCaseStatus.SKIPPED
             ).count()
 
             # 按标签统计通过率和平均耗时
@@ -436,7 +436,7 @@ class TaskReadModel:
                 if tag_name not in tag_stats:
                     tag_stats[tag_name] = {"total": 0, "completed": 0, "durations": []}
                 tag_stats[tag_name]["total"] += 1
-                if status == 'completed':
+                if status == TaskCaseStatus.COMPLETED:
                     tag_stats[tag_name]["completed"] += 1
                 if duration:
                     tag_stats[tag_name]["durations"].append(duration)
@@ -634,30 +634,9 @@ class TaskReadModel:
         if not device_ids:
             return []
 
-        import json as _json
-        import logging
-        from shared.clients.grpc_clients import get_device_config_service_stub
-        from shared.proto import device_service_pb2 as e2e_pb
-        from shared.utils.grpc_json import loads as _loads
+        from task_service.infrastructure.acl.device_acl_repository import device_acl_repository
 
-        try:
-            stub = get_device_config_service_stub()
-            resp = stub.GetDeviceStatuses(e2e_pb.GetDeviceStatusesRequest(
-                data=_json.dumps({'ids': list(device_ids)}),
-            ))
-            if not resp.success:
-                logging.getLogger(__name__).warning(
-                    "GetDeviceStatuses gRPC 失败: %s", resp.message
-                )
-                return []
-            payload = _loads(resp.data, {}) if resp.data else {}
-        except Exception as e:
-            logging.getLogger(__name__).warning(
-                "GetDeviceStatuses gRPC 异常: %s", e
-            )
-            return []
-
-        items = payload.get('items', []) if isinstance(payload, dict) else []
+        items = device_acl_repository.get_device_statuses(device_ids)
         return [
             {
                 'id': item.get('id'),
@@ -679,29 +658,9 @@ class TaskReadModel:
         if not api_ids:
             return []
 
-        import logging
-        from shared.clients.grpc_clients import get_api_test_service_stub
-        from shared.proto import api_test_service_pb2 as api_pb
-        from shared.utils.grpc_json import loads as _loads
+        from task_service.infrastructure.acl.report_acl_repository import api_test_acl_repository
 
-        result = []
-        stub = get_api_test_service_stub()
-        for api_id in api_ids:
-            try:
-                resp = stub.GetAPIConfig(api_pb.GetAPIConfigRequest(api_id=api_id))
-                if resp.success and resp.data:
-                    api_data = _loads(resp.data, {})
-                    if isinstance(api_data, dict):
-                        result.append({
-                            'id': api_data.get('id'),
-                            'name': api_data.get('name'),
-                            'status': api_data.get('status'),
-                        })
-            except Exception as e:
-                logging.getLogger(__name__).warning(
-                    "GetAPIConfig gRPC 异常 (api_id=%s): %s", api_id, e
-                )
-        return result
+        return api_test_acl_repository.fetch_api_list(api_ids)
 
     @staticmethod
     def _fetch_device_names(device_ids):
@@ -714,30 +673,9 @@ class TaskReadModel:
         if not device_ids:
             return {}
 
-        import json as _json
-        import logging
-        from shared.clients.grpc_clients import get_device_config_service_stub
-        from shared.proto import device_service_pb2 as e2e_pb
-        from shared.utils.grpc_json import loads as _loads
+        from task_service.infrastructure.acl.device_acl_repository import device_acl_repository
 
-        try:
-            stub = get_device_config_service_stub()
-            resp = stub.GetDeviceStatuses(e2e_pb.GetDeviceStatusesRequest(
-                data=_json.dumps({'ids': list(device_ids)}),
-            ))
-            if not resp.success:
-                logging.getLogger(__name__).warning(
-                    "GetDeviceStatuses gRPC 失败: %s", resp.message
-                )
-                return {}
-            payload = _loads(resp.data, {}) if resp.data else {}
-        except Exception as e:
-            logging.getLogger(__name__).warning(
-                "GetDeviceStatuses gRPC 异常: %s", e
-            )
-            return {}
-
-        items = payload.get('items', []) if isinstance(payload, dict) else []
+        items = device_acl_repository.get_device_statuses(device_ids)
         return {item.get('id'): item.get('name') for item in items if item.get('id') is not None}
 
     @staticmethod
@@ -751,25 +689,9 @@ class TaskReadModel:
         if not api_ids:
             return {}
 
-        import logging
-        from shared.clients.grpc_clients import get_api_test_service_stub
-        from shared.proto import api_test_service_pb2 as api_pb
-        from shared.utils.grpc_json import loads as _loads
+        from task_service.infrastructure.acl.report_acl_repository import api_test_acl_repository
 
-        name_map = {}
-        stub = get_api_test_service_stub()
-        for api_id in api_ids:
-            try:
-                resp = stub.GetAPIConfig(api_pb.GetAPIConfigRequest(api_id=api_id))
-                if resp.success and resp.data:
-                    api_data = _loads(resp.data, {})
-                    if isinstance(api_data, dict):
-                        name_map[api_id] = api_data.get('name')
-            except Exception as e:
-                logging.getLogger(__name__).warning(
-                    "GetAPIConfig gRPC 异常 (api_id=%s): %s", api_id, e
-                )
-        return name_map
+        return api_test_acl_repository.fetch_api_names(api_ids)
 
     @staticmethod
     def _fetch_dim_results_grouped(result_ids):
@@ -782,45 +704,9 @@ class TaskReadModel:
         if not result_ids:
             return {}
 
-        import json as _json
-        import logging
-        from shared.clients.grpc_clients import get_evaluation_data_service_stub
-        from shared.proto import evaluation_service_pb2 as eval_pb
+        from task_service.infrastructure.acl.evaluation_config_acl_repository import evaluation_config_acl_repository
 
-        try:
-            stub = get_evaluation_data_service_stub()
-            resp = stub.GetDimensionResultsByResultIds(eval_pb.GetDimensionResultsByResultIdsRequest(
-                result_ids=_json.dumps(list(result_ids)),
-            ))
-            if not resp.success:
-                logging.getLogger(__name__).warning(
-                    "GetDimensionResultsByResultIds gRPC 失败: %s", resp.message
-                )
-                return {}
-            payload = _json.loads(resp.data) if resp.data else {}
-        except Exception as e:
-            logging.getLogger(__name__).warning(
-                "GetDimensionResultsByResultIds gRPC 异常: %s", e
-            )
-            return {}
-
-        items = payload.get('items', []) if isinstance(payload, dict) else []
-        grouped = {}
-        for item in items:
-            rid = item.get('test_result_id')
-            if rid is None:
-                continue
-            grouped.setdefault(rid, []).append({
-                "id": item.get('id'),
-                "name": item.get('dimension_name'),
-                "value": item.get('dimension_value'),
-                "score": item.get('score'),
-                "status": item.get('status'),
-                "evaluation_status": item.get('evaluation_status'),
-                "error_message": item.get('error_message'),
-                "round_number": item.get('round_number'),
-            })
-        return grouped
+        return evaluation_config_acl_repository.get_dimension_results_by_result_ids(result_ids)
 
     # ---- 内部序列化 ----
 
@@ -853,6 +739,8 @@ class TaskReadModel:
             'estimated_time': task.estimated_time,
             'actual_duration': task.actual_duration,
             'deleted': task.deleted or False,
+            'reevaluated_at': task.reevaluated_at.isoformat() if task.reevaluated_at else None,
+            'reevaluation_count': task.reevaluation_count or 0,
         }
 
     def _to_detail_dto(self, task: Task, session) -> Dict[str, Any]:

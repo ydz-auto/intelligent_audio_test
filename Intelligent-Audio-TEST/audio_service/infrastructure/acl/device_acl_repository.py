@@ -43,3 +43,22 @@ class DeviceACLRepositoryImpl(DeviceACLRepository):
             return count
         except Exception:
             return 0
+
+    def get_spl_mapping(self, mapping_id) -> dict:
+        """通过 gRPC 从 device_service 获取 SPLMapping 数据。
+
+        SPLMapping 归属 device_service，audio_service 不再直连 PO。
+        gRPC 不可用时返回 None。
+        """
+        try:
+            from shared.clients.grpc_clients import get_spl_config_service_stub
+            from shared.proto import device_service_pb2 as _e2e_pb
+            from shared.utils.grpc_json import loads as _grpc_loads
+
+            stub = get_spl_config_service_stub()
+            resp = stub.GetSPLMapping(_e2e_pb.GetSPLMappingRequest(mapping_id=int(mapping_id)))
+            if resp.success:
+                return _grpc_loads(resp.data, {}) or {}
+            return None
+        except Exception:
+            return None

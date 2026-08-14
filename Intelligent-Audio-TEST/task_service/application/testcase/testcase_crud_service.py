@@ -61,10 +61,8 @@ def _apply_reference_params_to_config(test_case) -> None:
     if not rounds:
         return
 
-    from shared.clients.grpc_clients import (
-        algo_generate_reference_params,
-        algo_get_all_reference_params,
-    )
+    from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
+    _algo_repo = AlgorithmRepository()
 
     case_id = getattr(test_case, 'id', '') or str(id(test_case))
 
@@ -83,11 +81,11 @@ def _apply_reference_params_to_config(test_case) -> None:
 
         round_number = round_item.get('round_number') or round_item.get('roundNumber') or 1
 
-        round_params = algo_generate_reference_params(test_case_config, round_item)
+        round_params = _algo_repo.algo_generate_reference_params(test_case_config, round_item)
         if not round_params:
             continue
 
-        round_params = algo_get_all_reference_params(round_params)
+        round_params = _algo_repo.algo_get_all_reference_params(round_params)
 
         oss_key = _build_ref_params_key(case_id, round_number)
 
@@ -234,8 +232,8 @@ class TestCaseCrudService:
                 try:
                     from api_gateway.application.services.stats_cache import refresh_stats_cache
                     refresh_stats_cache()
-                except Exception:
-                    pass
+    1236666     except Exception:
+                    logger.warning("创建测试用例后刷新统计缓存失败", exc_info=True)
 
                 return {'success': True, 'message': '测试用例创建成功', 'data': {'id': tc_id}, 'code': 201}
             except Exception:
@@ -410,7 +408,7 @@ class TestCaseCrudService:
                     from api_gateway.application.services.stats_cache import refresh_stats_cache
                     refresh_stats_cache()
                 except Exception:
-                    pass
+                    logger.warning("更新测试用例后刷新统计缓存失败", exc_info=True)
 
                 return {'success': True, 'message': '测试用例更新成功', 'data': None}
             except Exception:
@@ -433,7 +431,7 @@ class TestCaseCrudService:
                     from api_gateway.application.services.stats_cache import refresh_stats_cache
                     refresh_stats_cache()
                 except Exception:
-                    pass
+                    logger.warning("删除测试用例后刷新统计缓存失败", exc_info=True)
 
                 return {'success': True, 'message': '测试用例已删除', 'data': None}
             except Exception:
@@ -483,7 +481,8 @@ class TestCaseCrudService:
 
     def update_ref_params(self, tc_id: str, round_number: int, data: dict) -> dict:
         """更新指定用例指定轮的参考参数文件。"""
-        from shared.clients.grpc_clients import algo_get_all_reference_params
+        from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
+        _algo_repo = AlgorithmRepository()
 
         try:
             tc = self.repo.get_testcase(tc_id)
@@ -494,7 +493,7 @@ class TestCaseCrudService:
             if new_ref_params is None:
                 return {'success': False, 'message': '缺少 referenceParams 字段', 'data': None, 'code': 400}
 
-            new_ref_params = algo_get_all_reference_params(new_ref_params)
+            new_ref_params = _algo_repo.algo_get_all_reference_params(new_ref_params)
 
             config = tc.config or {}
             rounds = config.get('rounds', [])

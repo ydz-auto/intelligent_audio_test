@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import logging
 
+from shared.utils.status_constants import TaskStatus
+
 from task_service.infrastructure.persistence.task_repository import task_repository
 
 logger = logging.getLogger(__name__)
@@ -55,15 +57,16 @@ class TaskCrudService:
         try:
             from api_gateway.application.services.stats_cache import refresh_stats_cache
 
-            task_id = task_repository.create_task(
+            task_id = task_repository.create_task_with_relations(
                 name=data.get('name'),
+                task_type=data.get('type'),
                 description=data.get('description'),
-                type_=data.get('type'),
                 config=data.get('config'),
+                algorithm_type=data.get('algorithm_type'),
+                algorithm_params=data.get('algorithm_params'),
                 case_ids=data.get('case_ids', []),
                 device_ids=data.get('device_ids', []),
                 api_ids=data.get('api_ids', []),
-                tags=data.get('tags', []),
                 created_by=data.get('created_by'),
             )
             if task_id is None:
@@ -72,7 +75,7 @@ class TaskCrudService:
             try:
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.warning("创建任务后刷新统计缓存失败", exc_info=True)
 
             return {'success': True, 'message': '任务创建成功', 'data': {'id': task_id}, 'code': 201}
         except Exception as e:
@@ -103,17 +106,17 @@ class TaskCrudService:
                 return task
 
             status = (task.get('data') or {}).get('status')
-            if status in ['running', 'paused']:
+            if status in [TaskStatus.RUNNING, TaskStatus.PAUSED]:
                 try:
                     from task_service.core.execution_engine import execution_engine
                     execution_engine.control_task(None, task_id, 'stop')
                 except Exception:
-                    pass
+                    logger.warning("删除任务时停止运行中任务失败 task_id=%s", task_id, exc_info=True)
                 try:
                     from task_service.core.execution_engine import execution_engine
                     execution_engine.remove_from_queue(task_id)
                 except Exception:
-                    pass
+                    logger.warning("删除任务时从队列移除任务失败 task_id=%s", task_id, exc_info=True)
 
             ok = task_repository.soft_delete(task_id)
             if not ok:
@@ -122,7 +125,7 @@ class TaskCrudService:
             try:
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.debug("删除任务后刷新统计缓存失败 task_id=%s", task_id, exc_info=True)
 
             return {'success': True, 'message': '任务已删除', 'data': None}
         except Exception as e:
@@ -160,17 +163,17 @@ class TaskCrudService:
                 # 先停止运行中的任务：通过读模型查询状态，停止副作用由执行引擎处理
                 for tid in task_ids:
                     task = self.query.get_task_detail(tid)
-                    if task.get('success') and (task.get('data') or {}).get('status') in ['running', 'paused']:
+                    if task.get('success') and (task.get('data') or {}).get('status') in [TaskStatus.RUNNING, TaskStatus.PAUSED]:
                         try:
                             from task_service.core.execution_engine import execution_engine
                             execution_engine.control_task(None, tid, 'stop')
                         except Exception:
-                            pass
+                            logger.debug("批量删除时停止运行中任务失败 task_id=%s", tid, exc_info=True)
                         try:
                             from task_service.core.execution_engine import execution_engine
                             execution_engine.remove_from_queue(tid)
                         except Exception:
-                            pass
+                            logger.debug("批量删除时从队列移除任务失败 task_id=%s", tid, exc_info=True)
 
                 deleted_count = task_repository.batch_stop_and_soft_delete(task_ids)
 
@@ -201,16 +204,26 @@ class TaskCrudService:
             if not task_ids or len(task_ids) < 2:
                 return {'success': False, 'message': '合并需要至少两个任务', 'data': None, 'code': 400}
 
-            result = task_repository.merge_tasks(task_ids)
-            if result is None:
-                return {'success': False, 'message': '部分任务未找到', 'data': None, 'code': 404}
-            if 'error' in result:
-                return {'success': False, 'message': result['error'], 'data': None, 'code': 400}
+            from datetime import datetime, timezone, timedelta
+            _utc8 = timezone(timedelta(hours=8))
+
+            merged_task_id, total_results = task_repository.merge_tasks(
+                source_task_ids=task_ids,
+                merged_task_name=data.get('merged_task_name') or f"合并任务_{datetime.now(_utc8).strftime('%Y%m%d%H%M%S')}",
+                merged_task_type=data.get('merged_task_type') or data.get('type') or 'api',
+                description=data.get('description') or '',
+                created_by=data.get('created_by'),
+                now=datetime.now(_utc8),
+            )
 
             return {
                 'success': True,
                 'message': f"成功合并 {len(task_ids)} 个任务",
-                'data': result,
+                'data': {
+                    'merged_task_id': merged_task_id,
+                    'source_task_ids': task_ids,
+                    'total_results': total_results,
+                },
                 'code': 201,
             }
         except Exception as e:

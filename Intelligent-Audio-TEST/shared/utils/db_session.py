@@ -107,7 +107,7 @@ def not_deleted(query: Query) -> Query:
         if deleted_col is not None:
             return query.filter(deleted_col == False)  # noqa: E712
     except (IndexError, KeyError, AttributeError):
-        pass
+        logger.debug("查询软删除列失败，跳过 deleted 过滤", exc_info=True)
     return query
 
 

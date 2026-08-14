@@ -1,17 +1,16 @@
 """用例评估编排混入：evaluate_case 入口及准备/分发编排"""
 import json
 
-# domain 层通过 gRPC 调用 algorithm_service 获取字段映射数据
-# field_mapper 对象已被替换为 gRPC 调用结果（dict 数据）
+# domain 层通过 ACL 仓储获取字段映射数据（延迟 import 避免循环依赖）
 
 
 class CaseEvaluationMixin:
     """用例评估的顶层编排：准备数据 → 分发到 worker"""
 
     def evaluate_case(self, task_id, result_id, test_case_id, algorithm_result, **kwargs):
-        from shared.clients.grpc_clients import algo_get_field_mappings
+        from evaluation_service.infrastructure.acl import algorithm_acl_repository
         algorithm_type = kwargs.get('algorithm_type', 'translation')
-        field_mapper = algo_get_field_mappings(algorithm_type) or {}
+        field_mapper = algorithm_acl_repository.get_field_mappings(algorithm_type)
         test_type = kwargs.get('test_type', 'api')
         round_number = kwargs.get('round_number')  # 多轮评估: 轮次编号 (None=整体评估, 0-indexed)
         reference_params_col = kwargs.pop('reference_params_col', None)

@@ -43,8 +43,8 @@ def safe_rmtree(path):
         try:
             os.chmod(path, stat.S_IWUSR)
             func(path)
-        except:
-            pass
+        except Exception:
+            logger.debug("删除文件时修改权限失败，path=%s", path, exc_info=True)
 
     try:
         retry_file_operation(shutil.rmtree, path, onerror=on_error)

@@ -6,18 +6,18 @@
 from typing import List, Dict, Any
 
 from api_gateway.schemas.algorithm import AlgorithmDetailResponse
+from api_gateway.infrastructure.acl import AlgorithmConfigAclRepositoryImpl
+
+_algorithm_acl = AlgorithmConfigAclRepositoryImpl()
 
 
 def _serialize_algorithm(algo_type: str) -> AlgorithmDetailResponse:
     """序列化算法定义及其关联数据
 
-    通过 gRPC 调用 task_service.AlgorithmConfigService 获取算法详情，
-    替代直连 algorithm_service PO。
+    通过 ACL 仓储调用 algorithm_service 获取算法详情。
     """
-    from api_gateway.infrastructure.grpc_proxies import algorithm_config_service
-
-    # 通过 gRPC 获取算法定义（替代直连 algorithm_service PO）
-    res = algorithm_config_service.get_algorithm(algo_type)
+    # 通过 ACL 获取算法定义
+    res = _algorithm_acl.get_algorithm(algo_type)
     if not res.get('success'):
         return None
 
@@ -33,7 +33,7 @@ def _serialize_algorithm(algo_type: str) -> AlgorithmDetailResponse:
         return None
 
     # 通过 gRPC 获取维度关联（替代直连 algorithm_service PO）
-    dim_res = algorithm_config_service.get_algorithm_dimensions(algo_type)
+    dim_res = _algorithm_acl.get_algorithm_dimensions(algo_type)
     dim_relations = []
     if dim_res.get('success'):
         dim_data = dim_res.get('data') or []
@@ -43,7 +43,7 @@ def _serialize_algorithm(algo_type: str) -> AlgorithmDetailResponse:
             dim_relations = dim_data.get('items', [])
 
     # 通过 gRPC获取映射（替代直连 algorithm_service PO）
-    map_res = algorithm_config_service.list_mappings(algorithm_type=algo_type)
+    map_res = _algorithm_acl.list_mappings(algorithm_type=algo_type)
     mappings_data = []
     if map_res.get('success'):
         map_data = map_res.get('data') or []
@@ -58,7 +58,7 @@ def _serialize_algorithm(algo_type: str) -> AlgorithmDetailResponse:
     case_params = []
     ref_params = []
 
-    params_res = algorithm_config_service.list_params(algorithm_type=algo_type)
+    params_res = _algorithm_acl.list_params(algorithm_type=algo_type)
     if params_res.get('success'):
         params_data = params_res.get('data') or []
         params_items = params_data if isinstance(params_data, list) else (params_data.get('items', []) if isinstance(params_data, dict) else [])
@@ -69,12 +69,12 @@ def _serialize_algorithm(algo_type: str) -> AlgorithmDetailResponse:
             elif p_type == 'api':
                 api_params.append(p)
 
-    case_params_res = algorithm_config_service.list_case_params(algorithm_type=algo_type)
+    case_params_res = _algorithm_acl.list_case_params(algorithm_type=algo_type)
     if case_params_res.get('success'):
         cp_data = case_params_res.get('data') or []
         case_params = cp_data if isinstance(cp_data, list) else (cp_data.get('items', []) if isinstance(cp_data, dict) else [])
 
-    ref_params_res = algorithm_config_service.list_reference_params(algorithm_type=algo_type)
+    ref_params_res = _algorithm_acl.list_reference_params(algorithm_type=algo_type)
     if ref_params_res.get('success'):
         rp_data = ref_params_res.get('data') or []
         ref_params = rp_data if isinstance(rp_data, list) else (rp_data.get('items', []) if isinstance(rp_data, dict) else [])

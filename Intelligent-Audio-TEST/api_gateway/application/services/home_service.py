@@ -1,15 +1,21 @@
 """首页统计服务"""
 import json
+import logging
 
 import redis as redis_lib
 
 from api_gateway.infrastructure.request_adapter import request
-from api_gateway.infrastructure.grpc_proxies import task_config_service, device_config_service
+
+logger = logging.getLogger(__name__)
+from api_gateway.infrastructure.acl import DeviceAclRepositoryImpl, TaskConfigAclRepositoryImpl
 from api_gateway.schemas.home import HomeStatsDetails, HomeStatsRefreshRequest
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.application.services.stats_cache import refresh_stats_cache, _CACHE_KEY
 from shared.infrastructure.config import BaseConfig
-from shared.clients.grpc_clients import list_testcase_groups, get_testcase_stats
+from api_gateway.infrastructure.grpc_proxies import task_data_service
+
+_task_acl = TaskConfigAclRepositoryImpl()
+_device_acl = DeviceAclRepositoryImpl()
 
 
 def _get_redis():
@@ -63,11 +69,11 @@ class HomeService:
         gRPC 失败时返回空列表。
         """
         try:
-            groups_resp = list_testcase_groups() or {}
+            groups_resp = task_data_service.list_testcase_groups() or {}
             group_items = groups_resp.get('items', []) if isinstance(groups_resp, dict) else []
             group_map = {g.get('id'): g for g in group_items if g.get('id') is not None}
 
-            stats_resp = get_testcase_stats(group_by='group_id') or {}
+            stats_resp = task_data_service.get_testcase_stats(group_by='group_id') or {}
             stat_items = stats_resp.get('items', []) if isinstance(stats_resp, dict) else []
         except Exception:
             return []
@@ -97,7 +103,7 @@ class HomeService:
     def get_stats_summary():
         try:
             # 通过 gRPC 获取最近任务（替代直连 task_service PO）
-            result = task_config_service.list_tasks(page=1, per_page=5)
+            result = _task_acl.list_tasks(page=1, per_page=5)
             recent_tasks_data = []
             if result.get('success'):
                 for task in (result.get('data') or {}).get('items', []):
@@ -146,7 +152,7 @@ class HomeService:
             online_count = 0
             offline_count = 0
             try:
-                dev_result = device_config_service.get_all(page=1, per_page=10000)
+                dev_result = _device_acl.get_all(page=1, per_page=10000)
                 if dev_result.get('success'):
                     for dev in (dev_result.get('data') or {}).get('items', []):
                         if dev.get('status') == 'online':
@@ -154,7 +160,7 @@ class HomeService:
                         else:
                             offline_count += 1
             except Exception:
-                pass
+                logger.warning("获取设备状态统计失败", exc_info=True)
 
             device_status = DeviceStatus(
                 online=online_count,

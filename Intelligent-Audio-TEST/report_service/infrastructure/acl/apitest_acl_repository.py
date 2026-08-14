@@ -19,7 +19,7 @@ def _attach(dto, payload):
         try:
             dto.result_data = payload
         except Exception:
-            pass
+            logger.debug("附加 result_data 到 DTO 失败", exc_info=True)
     return dto
 
 
@@ -51,5 +51,5 @@ class ApiTestAclRepositoryImpl(ApiTestAclRepository):
                 try:
                     result[int(a.id)] = a
                 except Exception:
-                    pass
+                    logger.debug("ApiConfig id 转换失败: %r", a.id, exc_info=True)
         return result

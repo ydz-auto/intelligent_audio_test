@@ -7,36 +7,35 @@ T = TypeVar("T")
 
 
 class IdData(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
+    id: int = Field(...)
 
 
 class StringIdData(APIModel):
-    id: str = Field(..., alias='id', validation_alias='id')
+    id: str = Field(...)
 
 
 class StatusData(APIModel):
-    id: int = Field(..., alias='id', validation_alias='id')
-    status: str = Field(..., alias='status', validation_alias='status')
+    id: int = Field(...)
+    status: str = Field(...)
 
 
 class TaskStatusData(APIModel):
-    task_id: str = Field(..., alias='taskId', validation_alias='taskId')
-    status: str = Field(..., alias='status', validation_alias='status')
+    task_id: str = Field(...)
+    status: str = Field(...)
 
 
 class DeletedCountData(APIModel):
-    deleted_count: int = Field(..., alias='deletedCount', validation_alias='deletedCount')
+    deleted_count: int = Field(...)
 
 
 class PaginatedData(APIModel, Generic[T]):
-    items: List[T] = Field(..., alias='items', validation_alias='items')
-    total: int = Field(..., alias='total', validation_alias='total')
-    page: int = Field(..., alias='page', validation_alias='page')
-    per_page: int = Field(..., alias='perPage', validation_alias='perPage')
-    pages: int = Field(..., alias='pages', validation_alias='pages')
+    items: List[T] = Field(...)
+    total: int = Field(...)
+    page: int = Field(...)
+    per_page: int = Field(...)
+    pages: int = Field(...)
 
 
 class CountData(APIModel):
-    count: int = Field(..., alias='count', validation_alias='count')
-    new_count: Optional[int] = Field(None, alias='newCount', validation_alias='newCount')
-
+    count: int = Field(...)
+    new_count: Optional[int] = Field(None)

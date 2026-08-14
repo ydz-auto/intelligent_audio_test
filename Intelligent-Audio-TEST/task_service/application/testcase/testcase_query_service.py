@@ -301,7 +301,8 @@ class TestCaseQueryService:
 
     def get_testcase_ref_params(self, tc_id: str, round_number: int) -> dict:
         """获取指定用例指定轮的参考参数文件内容。"""
-        from shared.clients.grpc_clients import algo_load_reference_params_file
+        from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
+        _algo_repo = AlgorithmRepository()
 
         try:
             tc = self.repo.get_testcase(tc_id)
@@ -324,7 +325,7 @@ class TestCaseQueryService:
             if not ref_path:
                 return {'success': False, 'message': f"第 {round_number} 轮未配置参考参数路径", 'data': None, 'code': 404}
 
-            ref_data = algo_load_reference_params_file(ref_path)
+            ref_data = _algo_repo.algo_load_reference_params_file(ref_path)
             if ref_data is None:
                 return {'success': False, 'message': f"参考参数文件不存在或读取失败: {ref_path}", 'data': None, 'code': 404}
 

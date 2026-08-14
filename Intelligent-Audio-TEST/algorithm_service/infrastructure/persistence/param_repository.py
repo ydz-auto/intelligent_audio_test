@@ -378,36 +378,19 @@ class CaseParamRepository(ICaseParamRepository):
     def revive(
         self, param_id: int, data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """恢复软删除的用例参数并更新字段，返回更新后的 dict。
-
-        字段映射与 servicers.py ReviveCaseParam 一致：
-        - param_name / param_type / required / default_value / help_text
-        - ui_order / hidden / scope / min_value / max_value / step / unit
-        """
+        """恢复软删除的用例参数并更新字段，返回更新后的 dict。"""
         session = get_db_session()
         try:
-            po = session.get(CaseAlgorithmParamPO, param_id)
+            po = session.query(CaseAlgorithmParamPO).filter_by(
+                id=param_id
+            ).first()
             if po is None:
                 raise ValueError(
                     f"Case parameter id={param_id} 不存在，无法恢复"
                 )
             po.deleted = False
-            updatable_fields = {
-                "param_name": data.get("param_name"),
-                "param_type": data.get("param_type"),
-                "required": data.get("required"),
-                "default_value": data.get("default_value"),
-                "help_text": data.get("help_text"),
-                "ui_order": data.get("ui_order"),
-                "hidden": data.get("hidden"),
-                "scope": data.get("scope"),
-                "min_value": data.get("min_value"),
-                "max_value": data.get("max_value"),
-                "step": data.get("step"),
-                "unit": data.get("unit"),
-            }
-            for field, value in updatable_fields.items():
-                if value is not None:
+            for field, value in data.items():
+                if value is not None and hasattr(po, field):
                     setattr(po, field, value)
             session.flush()
             session.commit()

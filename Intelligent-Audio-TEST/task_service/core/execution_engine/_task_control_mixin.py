@@ -4,6 +4,12 @@ from collections import deque
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.database import get_db_session
 from shared.utils import distributed_coordinator as _dc
+from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 # gRPC 调用封装函数（模块级）
 from task_service.core.execution_engine._grpc_helpers import (
@@ -91,8 +97,8 @@ class TaskControlMixin:
                     # CAS: 只有 pending/queued 状态才能翻转为 running
                     claimed = local_db_session.query(Task).filter(
                         Task.id == task_id,
-                        Task.status.in_(['pending', 'queued'])
-                    ).update({Task.status: 'running'}, synchronize_session=False)
+                        Task.status.in_([TaskStatus.PENDING, TaskStatus.QUEUED])
+                    ).update({Task.status: TaskStatus.RUNNING}, synchronize_session=False)
                     if claimed != 1:
                         # 已被其它实例抢占，回滚本地运行状态
                         local_db_session.rollback()
@@ -130,7 +136,7 @@ class TaskControlMixin:
             try:
                 task = local_db_session.get(Task, task_id)
                 if task:
-                    task.status = 'queued'
+                    task.status = TaskStatus.QUEUED
                     local_db_session.commit()
             finally:
                 local_db_session.close()
@@ -158,7 +164,7 @@ class TaskControlMixin:
                     task = local_db_session.get(Task, task_id)
                     task_status = task.status if task else None
                     
-                    if task_status == 'stopped':
+                    if task_status == TaskStatus.STOPPED:
                         continue
                     
                     can_run = False
@@ -179,7 +185,7 @@ class TaskControlMixin:
                             self.running_apis.update(api_ids)
                         
                         if task:
-                            task.status = 'running'
+                            task.status = TaskStatus.RUNNING
                             local_db_session.commit()
                         
                         tasks_to_start.append({
@@ -252,30 +258,30 @@ class TaskControlMixin:
 
             # 检查任务状态是否允许执行操作
             if action == 'pause':
-                if task.status not in ['running', 'queued']:
+                if task.status not in [TaskStatus.RUNNING, TaskStatus.QUEUED]:
                     return False, "只有执行中或排队中的任务才能暂停"
             elif action == 'resume':
-                if task.status != 'paused':
+                if task.status != TaskStatus.PAUSED:
                     return False, "只有已暂停的任务才能恢复"
             elif action == 'stop':
-                if task.status not in ['running', 'paused', 'queued', 'evaluating']:
+                if task.status not in [TaskStatus.RUNNING, TaskStatus.PAUSED, TaskStatus.QUEUED, TaskStatus.EVALUATING]:
                     return False, "只有执行中、已暂停、排队中或评估中的任务才能停止"
 
             # 对于停止操作，即使任务不在workers中，也应该执行
             if action == 'stop':
                 # 更新任务状态为stopped
-                task.status = 'stopped'
+                task.status = TaskStatus.STOPPED
                 task.completed_at = datetime.now(self.utc_plus_8)
                 
                 # 只处理未完成的用例（执行中、排队中、待执行），保留已完成用例的状态
                 cases = local_db_session.query(TaskCase).filter(
                     TaskCase.task_id == task_id,
-                    ~TaskCase.status.in_(['completed', 'failed', 'skipped'])
+                    ~TaskCase.status.in_([TaskCaseStatus.COMPLETED, TaskCaseStatus.FAILED, TaskCaseStatus.SKIPPED])
                 ).all()
                 for tc in cases:
-                    tc.status = 'skipped'
-                    tc.execution_status = 'stopped'
-                    tc.evaluation_status = 'stopped'
+                    tc.execution_status = ExecutionStatus.STOPPED
+                    tc.evaluation_status = EvaluationStatus.STOPPED
+                    tc.status = derive_task_case_status(tc.execution_status, tc.evaluation_status)
                     tc.started_at = None
                     tc.completed_at = datetime.now(self.utc_plus_8)
                     tc.duration = None
@@ -352,7 +358,7 @@ class TaskControlMixin:
                     for tc_rel_id in tc_rel_ids:
                         self.round_progress_cache.pop(tc_rel_id, None)
                 except Exception:
-                    pass
+                    logger.debug("清理多轮进度缓存失败 task_id=%s", task_id, exc_info=True)
 
                 # 检查队列并启动下一个任务
                 self._check_queue()
@@ -364,9 +370,9 @@ class TaskControlMixin:
                 return True, "任务已停止"
             else:
                 # 对于暂停和恢复操作，需要任务在workers中
-                if action == 'pause' and task.status == 'queued':
+                if action == 'pause' and task.status == TaskStatus.QUEUED:
                     self.remove_from_queue(task_id)
-                    task.status = 'paused'
+                    task.status = TaskStatus.PAUSED
                     local_db_session.commit()
                     self._emit_progress(task)
                     return True, "任务已暂停"
@@ -380,7 +386,7 @@ class TaskControlMixin:
                         ]
                         with self.queue_lock:
                             self.task_queue.append({"id": task.id, "type": "api", "api_ids": api_ids, "app": app})
-                        task.status = 'queued'
+                        task.status = TaskStatus.QUEUED
                         local_db_session.commit()
                         self._emit_progress(task)
                         self.trigger_scheduler_check()
@@ -399,7 +405,7 @@ class TaskControlMixin:
                     _register_task_events_via_grpc(
                         task_id, self.stop_flags[task_id], self.pause_flags[task_id]
                     )
-                    task.status = 'paused'  # 更新任务状态
+                    task.status = TaskStatus.PAUSED  # 更新任务状态
                     
                     # 对于 API 任务，不重置执行中的用例状态为 pending
                     # 因为 API 线程是在 pause_event 上阻塞，恢复时会自动继续执行
@@ -407,9 +413,9 @@ class TaskControlMixin:
                     if task.type == 'e2e':
                         # E2E 任务是同步顺序执行的，暂停时可以将当前正在执行的用例重置
                         # 但为了统一和简单，建议也不重置，让 E2E 执行器内部处理暂停
-                        running_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, execution_status='running').all()
+                        running_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, execution_status=ExecutionStatus.RUNNING).all()
                         for tc in running_cases:
-                            tc.execution_status = 'pending'
+                            tc.execution_status = ExecutionStatus.PENDING
                             tc.completed_at = None
                             tc.duration = None
                     
@@ -441,7 +447,7 @@ class TaskControlMixin:
                     _register_task_events_via_grpc(
                         task_id, self.stop_flags[task_id], self.pause_flags[task_id]
                     )
-                    task.status = 'running'  # 更新任务状态
+                    task.status = TaskStatus.RUNNING  # 更新任务状态
                     local_db_session.commit()
                     self._emit_progress(task)  # 发送进度更新
                     return True, "任务已恢复"

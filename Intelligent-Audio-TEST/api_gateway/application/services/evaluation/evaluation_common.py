@@ -96,7 +96,7 @@ def _sync_param_mappings(dimension_id, params, direction='output', algorithm_typ
     if params is None:
         return
 
-    from shared.clients.grpc_clients import get_algorithm_definition_service_stub
+    from api_gateway.infrastructure.grpc_proxies import algorithm_query_service as _algo_svc
     from shared.proto import algorithm_service_pb2 as algo_pb
 
     data = {
@@ -105,7 +105,7 @@ def _sync_param_mappings(dimension_id, params, direction='output', algorithm_typ
         'algorithm_type': algorithm_type,
     }
     try:
-        stub = get_algorithm_definition_service_stub()
+        stub = _algo_svc.definition_stub
         resp = stub.SyncParamMappings(algo_pb.SyncParamMappingsRequest(
             dimension_id=int(dimension_id),
             data=json.dumps(data, ensure_ascii=False, default=str),

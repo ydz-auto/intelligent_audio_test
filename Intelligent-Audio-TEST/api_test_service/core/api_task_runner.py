@@ -423,7 +423,7 @@ class APITaskRunner:
             comp_mappings = [dto_to_dict(d) for d in _algo_acl.get_param_mapping(algorithm_type, comp_type)]
             for mapping in comp_mappings:
                 direction = mapping.get('source_direction', mapping.get('direction', 'output'))
-                target_key = mapping.get('target_key', mapping.get('source_param'))
+                target_key = mapping.get('target_param', mapping.get('source_param'))
                 if direction == 'output' and not field_codes.get('output_field'):
                     field_codes['output_field'] = target_key
                 elif direction == 'input' and not field_codes.get('input_field'):

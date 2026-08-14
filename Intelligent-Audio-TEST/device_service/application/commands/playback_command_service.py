@@ -51,92 +51,46 @@ class PlaybackCommandService:
 
     @staticmethod
     def _get_audio_service_stub():
-        """获取 audio_service gRPC stub（AudioService）"""
-        from shared.clients.grpc_clients import get_audio_service_stub
-        return get_audio_service_stub()
+        """获取 audio_service ACL 仓储（封装 AudioService gRPC 调用）"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository
 
     @staticmethod
     def _get_device_index_via_grpc(unique_id):
-        """通过 gRPC 获取设备索引"""
-        from shared.clients.grpc_clients import get_audio_service_stub
-        from shared.proto import audio_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-        try:
-            stub = get_audio_service_stub()
-            resp = stub.GetDeviceIndex(_e2e_pb.GetDeviceIndexRequest(unique_id=unique_id))
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return data.get('device_index')
-        except Exception:
-            pass
-        return None
+        """通过 ACL 仓储获取设备索引"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository.get_device_index(unique_id)
 
     @staticmethod
     def _play_audio_via_grpc(task_id, file_path, device_index, channel_index, gain, loop=False, player_type='', offset=0):
-        """通过 gRPC 播放音频"""
-        import json as _json
-        from shared.clients.grpc_clients import get_audio_service_stub
-        from shared.proto import audio_service_pb2 as _e2e_pb
-        try:
-            stub = get_audio_service_stub()
-            play_config = _json.dumps({
-                'device_index': device_index,
-                'channel_index': channel_index,
-                'gain': gain,
-                'loop': loop,
-                'player_type': player_type,
-                'offset': offset,
-            })
-            resp = stub.PlayAudio(_e2e_pb.PlayAudioRequest(
-                task_id=task_id,
-                audio_file_paths=_json.dumps([file_path]),
-                play_config=play_config,
-            ))
-            return resp.success
-        except Exception:
-            return False
+        """通过 ACL 仓储播放音频"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository.play_audio(
+            task_id, file_path, device_index, channel_index, gain,
+            loop=loop, player_type=player_type, offset=offset,
+        )
 
     @staticmethod
     def _stop_audio_via_grpc(task_id):
-        """通过 gRPC 停止音频"""
-        from shared.clients.grpc_clients import get_audio_service_stub
-        from shared.proto import audio_service_pb2 as _e2e_pb
-        try:
-            stub = get_audio_service_stub()
-            stub.StopAudio(_e2e_pb.StopAudioRequest(task_id=task_id))
-            return True
-        except Exception:
-            return False
+        """通过 ACL 仓储停止音频"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository.stop_audio(task_id)
 
     @staticmethod
     def _get_physical_devices_via_grpc():
-        """通过 gRPC 获取物理设备列表"""
-        from shared.clients.grpc_clients import get_audio_service_stub
-        from shared.proto import audio_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-        try:
-            stub = get_audio_service_stub()
-            resp = stub.GetPhysicalDevices(_e2e_pb.GetPhysicalDevicesRequest())
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return data.get('devices', []) or []
-        except Exception:
-            pass
-        return []
+        """通过 ACL 仓储获取物理设备列表"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository.get_physical_devices()
 
     @staticmethod
     def _spl_to_gain_via_grpc(mapping_id, target_spl):
-        """通过 gRPC 获取 SPLMapping 并计算增益（不依赖 audio_service 代码）"""
+        """通过 ACL 仓储获取 SPLMapping 并计算增益（不依赖 audio_service 代码）"""
         import numpy as np
-        from shared.clients.grpc_clients import get_spl_config_service_stub
-        from shared.proto import device_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
+        from device_service.infrastructure.acl.spl_config_acl_repository import spl_config_acl_repository
         try:
-            stub = get_spl_config_service_stub()
-            resp = stub.GetSPLMapping(_e2e_pb.GetSPLMappingRequest(mapping_id=int(mapping_id)))
-            if not resp.success:
+            mapping = spl_config_acl_repository.get_spl_mapping(mapping_id)
+            if mapping is None:
                 return 1.0
-            mapping = _grpc_loads(resp.data, {}) or {}
             target_spl_val = mapping.get('target_spl')
             digital_gain = mapping.get('digital_gain')
             calibration_data = mapping.get('calibration_data')
@@ -188,7 +142,7 @@ class PlaybackCommandService:
                 factor = 10 ** (diff_db / 20.0)
                 return _clamp(factor)
         except Exception:
-            pass
+            logger.debug("根据 SPL 计算增益失败 target_spl=%s", target_spl, exc_info=True)
         return 1.0
 
     # ========== 写操作 ==========
@@ -204,21 +158,12 @@ class PlaybackCommandService:
             )
 
             if existing_device:
-                if existing_device.is_deleted == 1:
-                    self.repo.restore_playback_device(existing_device, data)
-                    return {
-                        'success': True,
-                        'message': '已恢复已删除的播放设备',
-                        'data': {'id': existing_device.id},
-                        'code': 201,
-                    }
-                else:
-                    return {
-                        'success': False,
-                        'message': '该播放设备已存在！请检查设备唯一标识和通道索引。',
-                        'data': None,
-                        'code': 400,
-                    }
+                return {
+                    'success': False,
+                    'message': '该播放设备已存在！请检查设备唯一标识和通道索引。',
+                    'data': None,
+                    'code': 400,
+                }
 
             new_device = self.repo.create_playback_device(data)
             return {
@@ -341,15 +286,11 @@ class PlaybackCommandService:
 
             audio_name = os.path.basename(sample_audio)
             if audio_id:
-                # 通过 gRPC 调用 audio_service 获取音频信息
-                from shared.clients.grpc_clients import get_audio_config_service_stub
-                from shared.proto import audio_service_pb2 as _audio_pb
-                from shared.utils.grpc_json import loads as _loads
+                # 通过 ACL 仓储调用 audio_service 获取音频信息
+                from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
                 try:
-                    stub = get_audio_config_service_stub()
-                    resp = stub.GetAudio(_audio_pb.GetAudioRequest(audio_id=audio_id))
-                    if resp.success and resp.data:
-                        audio = _loads(resp.data, {}) or {}
+                    audio = audio_service_acl_repository.get_audio(audio_id)
+                    if audio:
                         file_path = audio.get('file_path')
                         if file_path and not audio.get('deleted'):
                             try:
@@ -357,9 +298,9 @@ class PlaybackCommandService:
                                 sample_audio = storage.load_file(file_path)
                                 audio_name = audio.get('name') or audio.get('filename')
                             except Exception:
-                                pass
+                                logger.debug("从存储加载音频文件失败 file_path=%s", file_path, exc_info=True)
                 except Exception:
-                    pass
+                    logger.debug("通过 ACL 获取音频元数据失败 audio_id=%s", audio_id, exc_info=True)
 
             if not os.path.isabs(sample_audio):
                 sample_audio = os.path.join(os.getcwd(), sample_audio)
@@ -391,7 +332,7 @@ class PlaybackCommandService:
                     # TODO: spl_to_gain 需通过 gRPC 获取校准数据后本地计算，暂跳过
                     pass
                 except Exception:
-                    pass
+                    logger.debug("spl_to_gain 计算失败 device_id=%s spl=%s", device_id, spl, exc_info=True)
 
             task_id = f'test_{device_id}'
             player_type = device.device_type or 'dry'
@@ -477,7 +418,7 @@ class PlaybackCommandService:
 
             devices = self.repo.get_all_playback_devices()
             audio_service = self._get_audio_service()
-            physical_devices = audio_service.get_all_physical_devices()
+            physical_devices = audio_service.get_physical_devices()
 
             results = []
             current_time = now_cst()

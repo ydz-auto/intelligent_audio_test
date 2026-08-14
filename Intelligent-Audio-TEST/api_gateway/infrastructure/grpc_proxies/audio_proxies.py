@@ -295,6 +295,11 @@ class _PlaybackConfigProxy:
     网关侧不再 import PlaybackDevice 模型和 get_db_session()，统一走 gRPC。
     """
 
+    @property
+    def stub(self):
+        """获取 PlaybackConfigService stub（供需要直接调 RPC 的场景使用）"""
+        return get_playback_config_service_stub()
+
     def create(self, data):
         """创建播放设备
 
@@ -900,6 +905,11 @@ class _AudioConfigProxy:
     网关侧不再 import Audio 模型和 get_db_session()，统一走 gRPC。
     所有方法返回 dict: {success, message, data, code}
     """
+
+    @property
+    def stub(self):
+        """获取 AudioConfigService stub（供需要直接调 RPC 的场景使用）"""
+        return get_audio_config_service_stub()
 
     def _resp(self, resp):
         """统一解析 AudioConfigResponse 为 dict"""

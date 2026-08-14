@@ -2,14 +2,14 @@
   <div class="rce-step" id="step-algo">
     <div class="rce-step-header">
       <i class="fas fa-sliders-h rce-step-icon"></i>
-      <span class="rce-step-title">算法参数</span>
+      <span class="rce-step-title">用例参数</span>
       <span class="rce-tag rce-tag-orange">algorithmParams</span>
     </div>
 
-    <!-- 算法参数 (DynamicForm) -->
+    <!-- 用例参数 (DynamicForm) -->
     <div v-if="dynamicSchema.fields.length > 0" class="rce-section">
       <div class="rce-sub-title">
-        <i class="fas fa-cogs"></i> 算法参数 ({{ testType }})
+        <i class="fas fa-cogs"></i> 用例参数 ({{ testType }})
       </div>
       <DynamicForm
         :key="`algo-${round.roundNumber}`"

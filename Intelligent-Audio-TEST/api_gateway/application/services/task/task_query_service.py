@@ -3,7 +3,7 @@ import logging
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response, convert_keys_to_camel
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import task_config_service
+from api_gateway.infrastructure.acl import TaskConfigAclRepositoryImpl
 from shared.utils.grpc_json import loads as _loads
 from api_gateway.schemas.task import (
     TaskListData,
@@ -20,6 +20,8 @@ from api_gateway.schemas.task import (
 )
 
 logger = logging.getLogger(__name__)
+
+_task_acl = TaskConfigAclRepositoryImpl()
 
 
 class TaskQueryService:
@@ -41,7 +43,7 @@ class TaskQueryService:
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
 
-        result = task_config_service.list_tasks(
+        result = _task_acl.list_tasks(
             page=page,
             per_page=per_page,
             status=status,
@@ -116,7 +118,7 @@ class TaskQueryService:
     # 获取单个任务详情
     @staticmethod
     def get_one(task_id):
-        result = task_config_service.get_task_detail(task_id)
+        result = _task_acl.get_task_detail(task_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -178,7 +180,7 @@ class TaskQueryService:
     # 获取单个用例的执行详情
     @staticmethod
     def get_case_detail(task_id, case_id):
-        result = task_config_service.get_case_detail(task_id, case_id)
+        result = _task_acl.get_case_detail(task_id, case_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -192,17 +194,18 @@ class TaskQueryService:
         reference_params = data.get('reference_params', {})
         audios_list = data.get('audio_list', [])
         try:
-            from shared.clients.grpc_clients import get_report_config_service_stub
+            from api_gateway.infrastructure.grpc_proxies import report_config_service
             from shared.proto import report_service_pb2 as report_pb
-            from api_gateway.infrastructure.grpc_proxies import testcase_config_service
+            from api_gateway.infrastructure.acl import TestCaseConfigAclRepositoryImpl
             from shared.utils.grpc_json import dumps as _dumps
 
-            tc_res = testcase_config_service.get_testcase_detail(case_id)
+            _testcase_acl = TestCaseConfigAclRepositoryImpl()
+            tc_res = _testcase_acl.get_testcase_detail(case_id)
             if tc_res.get('success'):
                 case_info_dict = tc_res.get('data') or {}
                 if case_info_dict:
                     test_type = data.get('algorithm_type') or 'api'
-                    stub = get_report_config_service_stub()
+                    stub = report_config_service.stub
                     resp = stub.BuildReferenceParams(report_pb.BuildReferenceParamsRequest(
                         data=_dumps({
                             'case_info': case_info_dict,
@@ -245,7 +248,7 @@ class TaskQueryService:
     # 获取单个用例的执行结果
     @staticmethod
     def get_case_results(task_id, case_id):
-        result = task_config_service.get_case_results(task_id, case_id)
+        result = _task_acl.get_case_results(task_id, case_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -258,7 +261,7 @@ class TaskQueryService:
     # 获取任务实时进度
     @staticmethod
     def get_progress(task_id):
-        result = task_config_service.get_task_progress(task_id)
+        result = _task_acl.get_task_progress(task_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -293,7 +296,7 @@ class TaskQueryService:
     # 获取任务统计信息
     @staticmethod
     def stats(task_id):
-        result = task_config_service.get_task_stats(task_id)
+        result = _task_acl.get_task_stats(task_id)
 
         if not result.get('success'):
             code = result.get('code', 400)

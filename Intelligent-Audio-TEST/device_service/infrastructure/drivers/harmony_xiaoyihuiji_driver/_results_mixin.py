@@ -4,10 +4,13 @@ import os
 import re
 import tempfile
 import shutil
+import logging
 
 from ..utils import check_stop, By
 from shared.infrastructure.storage import storage
 from ._constants import LOG_DEVICE_PATH
+
+logger = logging.getLogger(__name__)
 
 
 class ResultsMixin:
@@ -232,8 +235,8 @@ class ResultsMixin:
                             content = fp.read().strip()
                         if content and content != "[]":
                             return f
-                    except:
-                        pass
+                    except Exception:
+                        logger.debug("选择最佳 ASR 文件时读取文件失败 file=%s", f, exc_info=True)
             return files_sorted[0] if files_sorted else None
 
         def ms10_to_seconds(ms):
@@ -292,8 +295,8 @@ class ResultsMixin:
                                     end_sec = ms10_to_seconds(end_ms)
                                     stm_line = f"{file_id} 1 speaker{speaker} {start_sec:.3f} {end_sec:.3f} {word}"
                                     stm_lines.append(stm_line)
-                except:
-                    pass
+                except Exception:
+                    logger.debug("从 ASR 提取 STM 行失败 filepath=%s file_id=%s", filepath, file_id, exc_info=True)
             return stm_lines
 
         def extract_rttm_from_asr(filepath, file_id, asr_type="final"):
@@ -346,8 +349,8 @@ class ResultsMixin:
                                     duration = ms10_to_seconds(end_ms - start_ms)
                                     rttm_line = f"SPEAKER {file_id} 1 {start_sec:.3f} {duration:.3f} <NA> <NA> speaker{speaker} <NA>"
                                     rttm_lines.append(rttm_line)
-                except:
-                    pass
+                except Exception:
+                    logger.debug("从 ASR 提取 RTTM 行失败 filepath=%s file_id=%s", filepath, file_id, exc_info=True)
             return rttm_lines
 
         def extract_idmap_from_asr(filepath):
@@ -369,8 +372,8 @@ class ResultsMixin:
                             id_map = content_data.get("idMap", [])
                             if id_map:
                                 return id_map
-                except:
-                    pass
+                except Exception:
+                    logger.debug("从 ASR 提取 idMap 失败 filepath=%s", filepath, exc_info=True)
             return id_map
 
         def collect_all_speaker_ids(asr_files_list):
@@ -402,8 +405,8 @@ class ResultsMixin:
                                     for item in speak_info:
                                         old_id = int(item.get("speaker", 1))
                                         all_ids.add(old_id)
-                    except:
-                        pass
+                    except Exception:
+                        logger.debug("收集 speaker id 失败 asr_file=%s", asr_file, exc_info=True)
             return sorted(all_ids)
 
         def build_complete_idmap(all_ids, idmap):

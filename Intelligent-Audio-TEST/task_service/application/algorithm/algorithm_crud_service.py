@@ -287,23 +287,6 @@ class AlgorithmCrudService(AlgorithmGroupCrudService, AlgorithmParamCrudService)
                             update_fields[field] = param_data[field]
                     self.repo.update_param_attrs(dup, update_fields)
                     continue
-                soft_dup = self.repo.find_case_param_by_code(algo_type, pc, deleted=True)
-                if soft_dup:
-                    self.repo.revive_case_param(soft_dup, {
-                        'param_name': param_data.get('param_name'),
-                        'param_type': param_data.get('param_type'),
-                        'required': param_data.get('required'),
-                        'default_value': param_data.get('default_value'),
-                        'help_text': param_data.get('help_text'),
-                        'ui_order': param_data.get('ui_order'),
-                        'hidden': param_data.get('hidden'),
-                        'scope': scope_value,
-                        'min_value': param_data.get('min_value'),
-                        'max_value': param_data.get('max_value'),
-                        'step': param_data.get('step'),
-                        'unit': param_data.get('unit'),
-                    })
-                    continue
                 self.repo.create_case_param({
                     'algorithm_type': algo_type,
                     'param_code': pc,

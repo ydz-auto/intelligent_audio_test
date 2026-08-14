@@ -50,8 +50,8 @@ class LogQueryService:
             algorithm_type = request.args.get('algorithm_type')
 
             # 通过 gRPC 查询 Log 列表（task_id/level/日期由服务端过滤，其余条件客户端过滤）
-            from shared.clients.grpc_clients import list_logs
-            resp = list_logs(
+            from api_gateway.infrastructure.grpc_proxies import task_data_service
+            resp = task_data_service.list_logs(
                 task_id=task_id,
                 level=level.split(',')[0].strip() if level else None,
                 page=page,
@@ -145,9 +145,9 @@ class LogQueryService:
             algorithm_type = request.args.get('algorithm_type')
 
             # P0-3: 通过 gRPC 聚合查询日志统计
-            from shared.clients.grpc_clients import get_log_stats
+            from api_gateway.infrastructure.grpc_proxies import task_data_service
             from api_gateway.schemas.log import LogStatsData
-            stats_dict = get_log_stats(
+            stats_dict = task_data_service.get_log_stats(
                 level=level,
                 module=module if module != 'all' else None,
                 category=category if category != 'all' else None,
@@ -183,8 +183,8 @@ class LogQueryService:
     def refresh_logs():
         req = LogRefreshRequest.model_validate(request.get_json() or {})
         # P0-3: 通过 gRPC 增量查询日志
-        from shared.clients.grpc_clients import list_logs_after_id
-        resp = list_logs_after_id(last_id=req.last_id, limit=100)
+        from api_gateway.infrastructure.grpc_proxies import task_data_service
+        resp = task_data_service.list_logs_after_id(last_id=req.last_id, limit=100)
         new_logs = resp.get('items', [])
         db_max_id = resp.get('max_id', 0)
 
@@ -217,9 +217,9 @@ class LogQueryService:
             last_id=data_list[-1].id if data_list else req.last_id,
         )
         payload_dict = payload.model_dump(by_alias=True, exclude_none=True)
-        payload_dict['db_max_id'] = db_max_id
+        payload_dict['dbMaxId'] = db_max_id
         if req.last_id > db_max_id:
-            payload_dict['reset_required'] = True
+            payload_dict['resetRequired'] = True
         return success_response(payload_dict)
 
     # 导出日志
@@ -229,10 +229,10 @@ class LogQueryService:
         req = LogExportRequest.model_validate(request.get_json() or {})
 
         # P0-3: 通过 gRPC 查询日志（按 id 列表或条件）
-        from shared.clients.grpc_clients import get_logs_for_export
+        from api_gateway.infrastructure.grpc_proxies import task_data_service
         level = request.args.get('level')
         module = request.args.get('module')
-        resp = get_logs_for_export(
+        resp = task_data_service.get_logs_for_export(
             log_ids=req.log_ids if req.log_ids else None,
             level=level,
             module=module,
@@ -289,21 +289,21 @@ class LogQueryService:
             other_count = len([k for k in other_keys if k.endswith('.json')])
 
             # P0-3: 通过 gRPC 查询日志总数
-            from shared.clients.grpc_clients import get_log_count
+            from api_gateway.infrastructure.grpc_proxies import task_data_service
             cutoff_date = now_cst() - timedelta(days=7)
-            result = get_log_count(start_date=cutoff_date.isoformat())
+            result = task_data_service.get_log_count(start_date=cutoff_date.isoformat())
             total_logs = result.get('total', 0)
             hot_logs = result.get('hot', 0)
             cold_logs = result.get('cold', 0)
 
             return success_response({
-                "total_logs": total_logs,
-                "hot_logs": hot_logs,
-                "cold_logs": cold_logs,
-                "archive_dir": "oss://archives",
-                "task_archives": task_count,
-                "case_archives": case_count,
-                "other_archives": other_count
+                "totalLogs": total_logs,
+                "hotLogs": hot_logs,
+                "coldLogs": cold_logs,
+                "archiveDir": "oss://archives",
+                "taskArchives": task_count,
+                "caseArchives": case_count,
+                "otherArchives": other_count
             })
         except Exception as e:
             return error_response(f"获取归档状态失败: {str(e)}", code=500)

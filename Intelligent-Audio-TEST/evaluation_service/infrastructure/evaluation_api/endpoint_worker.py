@@ -5,8 +5,9 @@ import threading
 import json
 # P1.4: TaskCase 改为通过 gRPC 调 task_service
 from evaluation_service.infrastructure.acl import task_acl_repository
+from evaluation_service.infrastructure.acl import algorithm_acl_repository
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin
-from shared.clients.grpc_clients import algo_get_field_mappings
+from shared.utils.status_constants import EvaluationStatus
 
 
 class EndpointWorker(EvaluationLoggerMixin):
@@ -70,11 +71,11 @@ class EndpointWorker(EvaluationLoggerMixin):
                         tc_rels = task_acl_repository.get_task_case_by_ids(
                             task_id=task_id, case_ids=[str(task_data.get('test_case_id'))]
                         )
-                        if tc_rels and tc_rels[0].evaluation_status == 'queued':
+                        if tc_rels and tc_rels[0].evaluation_status == EvaluationStatus.QUEUED:
                             task_acl_repository.update_task_case_status(
                                 task_id=task_id,
                                 case_id=str(task_data.get('test_case_id')),
-                                evaluation_status='running',
+                                evaluation_status=EvaluationStatus.RUNNING,
                             )
                     except Exception as e:
                         self._log(level='WARNING', content=f"更新评估状态为running失败: {str(e)}", task_id=task_id)
@@ -111,16 +112,12 @@ class EndpointWorker(EvaluationLoggerMixin):
     def _execute_evaluation(self, task_id, result_id, test_case_id, algorithm_result,
                            representative_dim_data, group_items, algorithm_type='translation',
                            test_type='api', **kwargs):
-        field_defs = algo_get_field_mappings(algorithm_type)
+        field_defs = algorithm_acl_repository.get_field_mappings(algorithm_type)
         # 按维度获取映射字段（多对一映射时不同维度可能映射不同 source）
         dim_id = representative_dim_data.get('id')
-        mapped_device_output = field_defs.get('mapped', {}).get('device', {})
-        # algo_get_field_mappings 返回的 mapped.device 是 dict（key=target_param），
-        # 兼容原 field_mapper 的 list 结构：items 无 dimension_id 时全部保留
-        output_field_keys = list(mapped_device_output.keys()) if isinstance(mapped_device_output, dict) else \
-            [f.get('code') for f in mapped_device_output]
+        output_field_keys = field_defs.get_mapped_device_output_field_keys(algorithm_type)
 
-        eval_input_fields = field_defs.get('original', {}).get('evaluation', {}).get('input', {})
+        eval_input_fields = field_defs.get_evaluation_input_fields(algorithm_type)
 
         # 1. 构建评估上下文（algo_results、context、input_params）
         payload = self._build_evaluation_context(
@@ -280,11 +277,11 @@ class EndpointWorker(EvaluationLoggerMixin):
                 tc_rels = task_acl_repository.get_task_case_by_ids(
                     task_id=task_id, case_ids=[str(test_case_id)]
                 )
-                if tc_rels and tc_rels[0].evaluation_status == 'running':
+                if tc_rels and tc_rels[0].evaluation_status == EvaluationStatus.RUNNING:
                     task_acl_repository.update_task_case_status(
                         task_id=task_id,
                         case_id=str(test_case_id),
-                        evaluation_status='calculating',
+                        evaluation_status=EvaluationStatus.CALCULATING,
                     )
             except Exception as e:
                 self._log(level='WARNING', content=f"更新评估状态为calculating失败: {str(e)}", task_id=task_id)

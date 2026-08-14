@@ -8,7 +8,9 @@ from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.schemas.api import ApiCreateInput, ApiUpdateInput
 from api_gateway.schemas.common import IdData
-from api_gateway.infrastructure.grpc_proxies import api_config_service
+from api_gateway.infrastructure.acl import ApiConfigAclRepositoryImpl
+
+_api_acl = ApiConfigAclRepositoryImpl()
 
 
 class ApiCommandService:
@@ -26,7 +28,7 @@ class ApiCommandService:
         # 将 Pydantic 模型转为 dict，传给微服务
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
-        result = api_config_service.create(data_dict)
+        result = _api_acl.create(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -46,7 +48,7 @@ class ApiCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
-        result = api_config_service.update(api_id, data_dict)
+        result = _api_acl.update(api_id, data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -54,11 +56,11 @@ class ApiCommandService:
                 return error_response(result.get('message', '未找到API配置'), 404)
             return error_response(result.get('message', '操作失败'), code=code)
 
-        return success_response(None, result.get('message', 'API配置更新成功'))
+        return success_response(result.get('data'), result.get('message', 'API配置更新成功'))
 
     @staticmethod
     def delete(api_id):
-        result = api_config_service.delete(api_id)
+        result = _api_acl.delete(api_id)
 
         if not result.get('success'):
             code = result.get('code', 400)

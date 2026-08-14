@@ -4,6 +4,7 @@
 success_response / error_response 返回 (dict_payload, http_code) 元组，
 路由层用 JSONResponse 包装，或由 FastAPI 自动序列化。
 """
+import logging
 import math
 import functools
 from typing import Type, TypeVar, List, Any, Tuple, Dict, Optional
@@ -11,6 +12,8 @@ from pydantic import BaseModel
 from pydantic.alias_generators import to_camel
 from shared.utils.error_codes import ErrorCode
 from shared.schemas.response import ApiResponse
+
+logger = logging.getLogger(__name__)
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -33,16 +36,17 @@ def _normalize_payload_data(value):
                 return None
             return value.item()
     except Exception:
-        pass
+        logger.debug("numpy 不可用或类型转换失败", exc_info=True)
     try:
         import pandas as pd
         if not isinstance(value, (BaseModel, list, dict)) and pd.isna(value):
             return None
     except Exception:
-        pass
+        logger.debug("pandas 不可用或 NaN 检测失败", exc_info=True)
 
     if isinstance(value, BaseModel):
-        return value.model_dump(by_alias=True, exclude_none=True)
+        dumped = value.model_dump(by_alias=True, exclude_none=True)
+        return _normalize_payload_data(dumped)
     if isinstance(value, list):
         return [_normalize_payload_data(v) for v in value]
     if isinstance(value, dict):

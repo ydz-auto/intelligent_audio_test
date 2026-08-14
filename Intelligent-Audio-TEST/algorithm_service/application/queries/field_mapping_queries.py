@@ -64,15 +64,24 @@ class FieldMappingQueryHandler:
             dim_id = m.get('dimension_id')
             dim_name = m.get('dimension_name')
             if source_param and target_param:
-                if source in original and source_param in original[source].get('output', {}):
-                    entry = {
-                        'source_param': source_param,
-                        'target_param': target_param,
-                        'transform_type': transform,
-                        'dimension_id': dim_id,
-                        'dimension_name': dim_name,
-                    }
-                    original['evaluation']['output'][target_param] = entry
+                # reference 参数只有 input 方向，其余 source 查 output
+                direction = 'input' if source == 'reference' else 'output'
+                # 在所有 source 的对应方向里查找 source_param（mapping 的 source 字段
+                # 标记的是参数来源类型，但 source_param 可能属于任意 source 的参数定义）
+                found = False
+                for src_key in original:
+                    if source_param in original[src_key].get(direction, {}):
+                        entry = {
+                            'source_param': source_param,
+                            'source': source,
+                            'target_param': target_param,
+                            'transform_type': transform,
+                            'dimension_id': dim_id,
+                            'dimension_name': dim_name,
+                        }
+                        original['evaluation']['output'][target_param] = entry
+                        found = True
+                        break
 
         mapped = {'device': {}, 'api': {}, 'evaluation': {}}
 

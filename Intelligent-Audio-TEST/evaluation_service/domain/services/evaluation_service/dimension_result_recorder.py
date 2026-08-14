@@ -3,6 +3,7 @@
 P0 DDD 改造：移除模块级 infrastructure/acl import，改用方法内延迟导入。
 """
 from evaluation_service.domain.entities import DimensionScore
+from shared.utils.status_constants import EvaluationStatus
 
 
 class DimensionResultRecorderMixin:
@@ -19,12 +20,12 @@ class DimensionResultRecorderMixin:
             if not tc_rels:
                 return
             tc = tc_rels[0]
-            if tc.evaluation_status in ['running', 'stopped', 'queued']:
+            if tc.evaluation_status in [EvaluationStatus.RUNNING, EvaluationStatus.STOPPED, EvaluationStatus.QUEUED]:
                 return
             self._task_acl_repo.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
-                evaluation_status='queued',
+                evaluation_status=EvaluationStatus.QUEUED,
             )
         except Exception as e:
             self._log(level='WARNING', content=f"更新评估状态失败: {str(e)}", task_id=task_id, test_case_id=test_case_id)
@@ -80,7 +81,7 @@ class DimensionResultRecorderMixin:
                 algorithm_type=algo_type or '',
                 round_number=round_number,
                 status=None,
-                evaluation_status='pending',
+                evaluation_status=EvaluationStatus.PENDING,
                 error_message=None,
             )
 

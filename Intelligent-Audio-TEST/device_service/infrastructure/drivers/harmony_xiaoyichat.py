@@ -17,6 +17,11 @@ class Xiaoyilivechat(HarmonyDriver):
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
 
+    def __init__(self):
+        super().__init__()
+        # 仅覆盖与父类不同的属性
+        self.app_icon_key = 'AppIcon_Image_com.huawei.hmos.vassistant.launcherVoiceAbilityentry0_undefined_0'
+
     def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
         """将 mp4 无损转换为 wav（pcm_s16le，44.1kHz，双声道）。
         成功返回 wav 绝对路径，失败返回 None。"""
@@ -323,11 +328,14 @@ class Xiaoyilivechat(HarmonyDriver):
                 storage.save_file(os.path.join(local_dir, fname), 'case_result',
                                  f'{oss_key_prefix}/{fname}')
             shutil.rmtree(local_dir, ignore_errors=True)
+            # 本地临时目录已清理，record_path 使用 OSS URL
+            record_oss_key = f'{oss_key_prefix}/{record_file_name}'
+            wav_oss_key = f'{oss_key_prefix}/{os.path.basename(wav_path)}' if wav_path else ''
             result = {
                 'success': True,
                 'message': 'Success',
-                'record_path': local_path,
-                'wav_path': wav_path or '',
+                'record_path': storage.build_path('case_result', record_oss_key),
+                'wav_path': storage.build_path('case_result', wav_oss_key) if wav_oss_key else '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
                 'first_frame_ms': first_frame_ms,

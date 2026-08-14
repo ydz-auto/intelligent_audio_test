@@ -128,7 +128,7 @@ class ClientLogInterceptor(grpc.UnaryUnaryClientInterceptor):
                         try:
                             payload_obj = resp.result()
                         except Exception:
-                            pass
+                            _logger.debug("[gRPC-send] %s  resp.result() 取值失败", method, exc_info=True)
                     if hasattr(payload_obj, 'DESCRIPTOR'):
                         _logger.info("[gRPC-send] %s  response in %.1fms: %s", method, elapsed_ms, _format_payload(payload_obj))
                     else:
@@ -168,7 +168,7 @@ class ServerDbScopeInterceptor(grpc.ServerInterceptor):
                     from shared.models.database import remove_db_session
                     remove_db_session()
                 except Exception:
-                    pass
+                    _logger.debug("gRPC 拦截器清理 DB session 失败", exc_info=True)
 
         if hasattr(handler_call_details, 'unary_unary'):
             inner = handler_call_details.unary_unary

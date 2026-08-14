@@ -1,6 +1,7 @@
 import logging
 from shared.utils.log_handler import log_and_emit
 from shared.utils.result_data_store import load_full_result_data
+from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ class DeviceResultReextractor:
     用于从设备存档日志中重新提取结果，替换原有的 TestResult 记录。
     """
 
-    def reextract_for_task(self, task_id, execution_status='completed', evaluation_status=None):
+    def reextract_for_task(self, task_id, execution_status=ExecutionStatus.COMPLETED, evaluation_status=None):
         """重新提取任务的设备输出
 
         Args:
@@ -179,15 +180,12 @@ class DeviceResultReextractor:
                 }
             }
         """
-        from shared.clients.grpc_clients import get_task_data_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
+        from device_service.infrastructure.acl.task_data_acl_repository import task_data_acl_repository
 
         try:
-            stub = get_task_data_service_stub()
-            # 通过 gRPC 查询 Task
-            task_resp = stub.GetTaskById(task_pb.GetTaskByIdRequest(task_id=int(task_id)))
-            if not task_resp.success:
+            # 通过 ACL 仓储查询 Task
+            task_resp = task_data_acl_repository.get_task_by_id(task_id)
+            if not task_resp.get('success'):
                 return {'success': False, 'message': f'任务 {task_id} 不存在', 'reextracted_cases': []}
 
             device_map = self._filter_reextractable_devices(task_id)
@@ -219,16 +217,10 @@ class DeviceResultReextractor:
         """筛选支持重新提取的设备"""
         from device_service.infrastructure.drivers.device_driver import device_driver_factory
         from device_service.infrastructure.persistence.device_repository import device_repository
-        from shared.clients.grpc_clients import get_task_data_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
+        from device_service.infrastructure.acl.task_data_acl_repository import task_data_acl_repository
 
-        # 通过 gRPC 查询 TaskDevice 关联记录
-        stub = get_task_data_service_stub()
-        resp = stub.GetTaskDevices(task_pb.GetTaskDevicesRequest(task_id=int(task_id)))
-        if not resp.success:
-            return {}
-        task_devices = _loads(resp.data, []) or []
+        # 通过 ACL 仓储查询 TaskDevice 关联记录
+        task_devices = task_data_acl_repository.get_task_devices(task_id)
         if not task_devices:
             return {}
 
@@ -253,15 +245,12 @@ class DeviceResultReextractor:
 
     def _query_task_cases(self, task_id, execution_status, evaluation_status):
         """查询符合条件的用例关联"""
-        from shared.clients.grpc_clients import get_task_data_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
+        from device_service.infrastructure.acl.task_data_acl_repository import task_data_acl_repository
 
-        stub = get_task_data_service_stub()
-        resp = stub.GetTaskCaseByIds(task_pb.GetTaskCaseByIdsRequest(task_id=int(task_id)))
-        if not resp.success:
+        # 通过 ACL 仓储查询 TaskCase 关联记录
+        tc_list = task_data_acl_repository.get_task_case_by_ids(task_id)
+        if not tc_list:
             return []
-        tc_list = _loads(resp.data, []) or []
         # 按 execution_status / evaluation_status 过滤
         filtered = []
         for tc in tc_list:
@@ -274,36 +263,19 @@ class DeviceResultReextractor:
 
     def _reextract_single_case(self, task_id, tc_rel, device_map):
         """重新提取单个用例的所有设备结果"""
-        from shared.clients.grpc_clients import get_task_data_service_stub, get_testcase_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
+        from device_service.infrastructure.acl.task_data_acl_repository import task_data_acl_repository
+        from device_service.infrastructure.acl.testcase_acl_repository import testcase_acl_repository
 
-        # tc_rel 现在是 dict（来自 gRPC GetTaskCaseByIds）
+        # tc_rel 现在是 dict（来自 ACL 仓储 GetTaskCaseByIds）
         test_case_id = tc_rel.get('test_case_id')
         if not test_case_id:
             return None
 
-        stub = get_task_data_service_stub()
-        # 通过 gRPC 查询 TestResult
-        tr_resp = stub.GetTestResultsByTaskAndCase(
-            task_pb.GetTestResultsByTaskAndCaseRequest(
-                task_id=int(task_id),
-                test_case_id=str(test_case_id),
-            )
-        )
-        if not tr_resp.success:
-            return None
-        existing_results = _loads(tr_resp.data, []) or []
+        # 通过 ACL 仓储查询 TestResult
+        existing_results = task_data_acl_repository.get_test_results_by_task_and_case(task_id, test_case_id)
 
-        # 通过 gRPC 查询 TestCase 详情（含 config / algorithm_params / reference_params）
-        tc_detail = None
-        try:
-            tc_stub = get_testcase_config_service_stub()
-            tc_resp = tc_stub.GetTestCaseDetail(task_pb.GetTestCaseDetailRequest(tc_id=str(test_case_id)))
-            if tc_resp.success:
-                tc_detail = _loads(tc_resp.data, {})
-        except Exception as e:
-            logger.warning(f"查询 TestCase {test_case_id} 详情失败: {e}")
+        # 通过 ACL 仓储查询 TestCase 详情（含 config / algorithm_params / reference_params）
+        tc_detail = testcase_acl_repository.get_testcase_detail(test_case_id)
 
         existing_result_map = self._build_existing_result_map(existing_results)
         adjusted_reference_params = self._extract_adjusted_reference_params(existing_results)
@@ -437,48 +409,32 @@ class DeviceResultReextractor:
 
     def _replace_old_results(self, old_ids, tc_rel, task_id, test_case_id, device_id):
         """删除旧结果并标记评估状态为 pending"""
-        from shared.clients.grpc_clients import (
-            get_task_data_service_stub,
-            get_evaluation_data_service_stub,
-        )
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.proto import evaluation_service_pb2 as eval_pb
-        from shared.utils.grpc_json import dumps as _dumps
+        from device_service.infrastructure.acl.task_data_acl_repository import task_data_acl_repository
+        from device_service.infrastructure.acl.evaluation_data_acl_repository import evaluation_data_acl_repository
 
-        # 通过 gRPC 删除维度评估记录（evaluation_service 自有 PO）
-        eval_stub = get_evaluation_data_service_stub()
+        # 通过 ACL 仓储删除维度评估记录（evaluation_service 自有 PO）
         if old_ids:
-            eval_stub.DeleteDimensionResultsByResultIds(
-                eval_pb.DeleteDimensionResultsByResultIdsRequest(
-                    result_ids=_dumps([int(oid) for oid in old_ids])
-                )
-            )
+            evaluation_data_acl_repository.delete_dimension_results_by_result_ids(old_ids)
 
-        # 通过 gRPC 更新旧 TestResult 状态为 deleted（TestResult 没有 delete RPC，
+        # 通过 ACL 仓储更新旧 TestResult 状态为 stopped（TestResult 没有 delete RPC，
         # 但 DeleteDimensionResultsByResultIds 已清理评估记录，
         # 此处将旧 TestResult 标记为 stopped 以便后续过滤）
-        stub = get_task_data_service_stub()
         for old_id in old_ids:
-            stub.UpdateTestResultStatus(task_pb.UpdateTestResultStatusRequest(
-                result_id=int(old_id),
-                execution_status='stopped',
-            ))
+            task_data_acl_repository.update_test_result_status(old_id, ExecutionStatus.STOPPED)
             log_and_emit('INFO', 'reextractor', f"标记旧记录为 stopped", task_id=task_id,
                          test_case_id=test_case_id, device_id=device_id)
 
-        # 通过 gRPC 更新 TaskCase 评估状态为 pending
-        # tc_rel 是 dict（来自 gRPC GetTaskCaseByIds）
+        # 通过 ACL 仓储更新 TaskCase 评估状态为 pending
+        # tc_rel 是 dict（来自 ACL 仓储 GetTaskCaseByIds）
         case_id = tc_rel.get('test_case_id') if isinstance(tc_rel, dict) else tc_rel
-        stub.UpdateTaskCaseStatus(task_pb.UpdateTaskCaseStatusRequest(
-            task_id=int(task_id),
-            case_id=str(case_id),
-            evaluation_status='pending',
-        ))
+        task_data_acl_repository.update_task_case_status(
+            task_id, case_id, evaluation_status=EvaluationStatus.PENDING,
+        )
 
     def _create_test_result(self, task_id, test_case_id, device_id, algorithm_type,
-                            algo_result, result_data, execution_status='completed', response_time=0):
+                            algo_result, result_data, execution_status=ExecutionStatus.COMPLETED, response_time=0):
         """创建新的 TestResult 记录"""
-        from shared.clients.grpc_clients import submit_result
+        from device_service.infrastructure.acl.task_data_acl_repository import task_data_acl_repository
         from shared.utils.result_data_store import write_result_data_file, split_result_data
         import json
 
@@ -498,5 +454,5 @@ class DeviceResultReextractor:
             'error_message': None,
         }
 
-        result_id = submit_result(task_id, result_data_payload)
+        result_id = task_data_acl_repository.submit_result(task_id, result_data_payload)
         return result_id

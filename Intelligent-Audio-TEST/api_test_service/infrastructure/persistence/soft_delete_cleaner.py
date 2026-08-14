@@ -5,6 +5,10 @@
 只清理 api_test_service owned 的表：
   1. apis
 
+保护策略：硬删除前检查待删 apis 是否仍被活跃 task 通过
+          task_api_relations 引用。若被引用则跳过，并刷新 deleted_at
+          为当前时间，重置 60 天保留期，给引用方窗口自然清理。
+
 启动方式：在 api_test_service 的 lifespan 中调用 start()，关闭时调用 stop()。
 """
 import logging
@@ -22,15 +26,29 @@ class ApiTestServiceCleaner(SoftDeleteCleanerBase):
         counts = {}
         bd = self.batch_delete
         cei = self.collect_expired_ids
+        rda = self.refresh_deleted_at
 
         # ================================================================
         # 1. apis
         # ================================================================
         api_ids = cei(session, 'apis', threshold_dt)
         if api_ids:
-            bd(session, "DELETE FROM apis WHERE id IN :ids", api_ids)
-            counts['apis'] = len(api_ids)
-            logger.info(f"[软删除清理:api_test_service] 硬删除 apis: {len(api_ids)} 条")
+            # 跳过仍被 task_api_relations 引用的 API
+            # （关联表无 deleted 列，引用方 task 可能已软删但关联行仍存在；
+            #   等 task_service cleaner 硬删 task 时会清理 task_api_relations）
+            referenced = self.filter_referenced_ids(
+                session, 'task_api_relations', 'api_id', api_ids,
+                exclude_deleted=False)
+            if referenced:
+                rda(session, 'apis', list(referenced))
+                logger.info(
+                    f"[软删除清理:api_test_service] 跳过 {len(referenced)} 条 "
+                    f"仍被 task_api_relations 引用的 apis，已刷新 deleted_at")
+                api_ids = [i for i in api_ids if i not in referenced]
+            if api_ids:
+                bd(session, "DELETE FROM apis WHERE id IN :ids", api_ids)
+                counts['apis'] = len(api_ids)
+                logger.info(f"[软删除清理:api_test_service] 硬删除 apis: {len(api_ids)} 条")
 
         return counts
 

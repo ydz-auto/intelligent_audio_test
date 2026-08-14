@@ -221,6 +221,11 @@ class _DeviceConfigProxy:
     网关侧不再 import Device 模型和 get_db_session()，统一走 gRPC。
     """
 
+    @property
+    def stub(self):
+        """获取 DeviceConfigService stub（供需要直接调 RPC 的场景使用）"""
+        return get_device_config_service_stub()
+
     def create(self, data):
         """创建设备
 

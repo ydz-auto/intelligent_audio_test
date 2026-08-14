@@ -10,7 +10,7 @@ import logging
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import testcase_config_service
+from api_gateway.infrastructure.acl import AudioAclRepositoryImpl, TestCaseConfigAclRepositoryImpl
 from api_gateway.schemas.common import StringIdData
 from api_gateway.schemas.testcase import (
     TestCaseStopPreviewData,
@@ -21,6 +21,9 @@ from api_gateway.schemas.testcase import (
 from shared.utils import testcase_helpers as common
 
 logger = logging.getLogger(__name__)
+
+_testcase_acl = TestCaseConfigAclRepositoryImpl()
+_audio_acl = AudioAclRepositoryImpl()
 
 # reference_params 文件存储到 OSS（ref_params bucket）
 _REF_PARAMS_BUCKET = 'ref_params'
@@ -48,10 +51,7 @@ def _apply_reference_params_to_config(test_case) -> None:
     if not rounds:
         return
 
-    from shared.clients.grpc_clients import (
-        algo_generate_reference_params,
-        algo_get_all_reference_params,
-    )
+    from api_gateway.infrastructure.grpc_proxies import algorithm_query_service as _algo_svc
 
     case_id = getattr(test_case, 'id', '') or str(id(test_case))
 
@@ -69,11 +69,11 @@ def _apply_reference_params_to_config(test_case) -> None:
 
         round_number = round_item.get('round_number') or round_item.get('roundNumber') or 1
 
-        round_params = algo_generate_reference_params(test_case_config, round_item)
+        round_params = _algo_svc.generate_reference_params(test_case_config, round_item)
         if not round_params:
             continue
 
-        round_params = algo_get_all_reference_params(round_params)
+        round_params = _algo_svc.get_all_reference_params(round_params)
 
         oss_key = _build_ref_params_key(case_id, round_number)
 
@@ -119,7 +119,7 @@ class TestCaseCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
-        result = testcase_config_service.create(data_dict)
+        result = _testcase_acl.create(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 500)
@@ -141,7 +141,7 @@ class TestCaseCommandService:
 
         data_dict = data.model_dump(by_alias=False, exclude_none=True)
 
-        result = testcase_config_service.update(tc_id, data_dict)
+        result = _testcase_acl.update(tc_id, data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -154,7 +154,7 @@ class TestCaseCommandService:
     # 删除测试用例（逻辑删除）
     @staticmethod
     def delete(tc_id):
-        result = testcase_config_service.delete(tc_id)
+        result = _testcase_acl.delete(tc_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -167,7 +167,7 @@ class TestCaseCommandService:
     # 复制测试用例
     @staticmethod
     def copy(tc_id):
-        result = testcase_config_service.copy(tc_id)
+        result = _testcase_acl.copy(tc_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -183,7 +183,6 @@ class TestCaseCommandService:
     @staticmethod
     def stop_preview(tc_id):
         """停止预览测试用例：向音频引擎发送停止信号"""
-        from api_gateway.infrastructure.grpc_proxies import audio_service
         preview_task_id = f"PREVIEW_{tc_id}"
 
         # 设置停止标志，通知播放线程停止（共享于 common 模块）
@@ -191,7 +190,7 @@ class TestCaseCommandService:
 
         # 停止音频播放 - 停止所有 PREVIEW_ 开头的任务
         try:
-            audio_service.stop_task_audio_by_pattern("PREVIEW_")
+            _audio_acl.stop_task_audio_by_pattern("PREVIEW_")
         except AttributeError:
             # gRPC 服务不可用时忽略，本地预览已通过 preview_stop_flags 停止
             pass
@@ -209,7 +208,7 @@ class TestCaseCommandService:
 
         data_dict = req_data.model_dump(by_alias=False, exclude_none=True)
 
-        result = testcase_config_service.batch_action(data_dict)
+        result = _testcase_acl.batch_action(data_dict)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -231,7 +230,7 @@ class TestCaseCommandService:
         if not body:
             return error_response("请求体不能为空")
 
-        result = testcase_config_service.update_ref_params(tc_id, round_number, body)
+        result = _testcase_acl.update_ref_params(tc_id, round_number, body)
 
         if not result.get('success'):
             code = result.get('code', 400)

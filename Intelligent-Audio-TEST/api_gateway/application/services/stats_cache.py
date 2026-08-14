@@ -39,10 +39,10 @@ def _fetch_task_stats_via_grpc():
     gRPC 不可用时回退到 0 并打印告警，避免阻塞缓存刷新。
     """
     import logging
-    from shared.clients.grpc_clients import get_task_stats
+    from api_gateway.infrastructure.grpc_proxies import task_data_service
     _log = logging.getLogger(__name__)
     try:
-        grouped = get_task_stats(group_by='status')
+        grouped = task_data_service.get_task_stats(group_by='status')
         items = grouped.get('items', []) if isinstance(grouped, dict) else []
         by_status = {item.get('key', ''): item.get('count', 0) for item in items}
         total = sum(by_status.values())
@@ -62,10 +62,10 @@ def _fetch_testcase_stats_via_grpc():
     gRPC 不可用时回退到 0 并打印告警。
     """
     import logging
-    from shared.clients.grpc_clients import get_testcase_stats
+    from api_gateway.infrastructure.grpc_proxies import task_data_service
     _log = logging.getLogger(__name__)
     try:
-        result = get_testcase_stats()
+        result = task_data_service.get_testcase_stats()
         return int(result.get('total', 0)) if isinstance(result, dict) else 0
     except Exception as e:
         _log.warning("get_testcase_stats gRPC 失败，用例统计置 0: %s", e)
@@ -79,10 +79,10 @@ def _fetch_testcase_group_count_via_grpc():
     gRPC 不可用时回退到 0。
     """
     import logging
-    from shared.clients.grpc_clients import list_testcase_groups
+    from api_gateway.infrastructure.grpc_proxies import task_data_service
     _log = logging.getLogger(__name__)
     try:
-        result = list_testcase_groups()
+        result = task_data_service.list_testcase_groups()
         items = result.get('items', []) if isinstance(result, dict) else []
         return len(items)
     except Exception as e:
@@ -99,11 +99,11 @@ def _fetch_reports_count_via_grpc():
     import logging
     _log = logging.getLogger(__name__)
     try:
-        from shared.clients.grpc_clients import get_report_config_service_stub
+        from api_gateway.infrastructure.grpc_proxies import report_config_service
         from shared.proto import report_service_pb2 as report_pb
         from shared.utils.grpc_json import loads as _loads
 
-        stub = get_report_config_service_stub()
+        stub = report_config_service.stub
         resp = stub.ListReports(report_pb.ListReportsRequest(
             page=1, per_page=1))
         if not resp.success:
@@ -126,11 +126,11 @@ def _fetch_audio_stats_via_grpc():
     import logging
     _log = logging.getLogger(__name__)
     try:
-        from shared.clients.grpc_clients import get_audio_config_service_stub
+        from api_gateway.infrastructure.grpc_proxies import audio_config_service
         from shared.proto import audio_service_pb2 as e2e_pb
         from shared.utils.grpc_json import loads as _loads
 
-        stub = get_audio_config_service_stub()
+        stub = audio_config_service.stub
 
         # 总数
         resp = stub.ListAudios(e2e_pb.ListAudiosRequest(
@@ -181,11 +181,11 @@ def _fetch_device_stats_via_grpc():
     import logging
     _log = logging.getLogger(__name__)
     try:
-        from shared.clients.grpc_clients import get_device_config_service_stub
+        from api_gateway.infrastructure.grpc_proxies import device_config_service
         from shared.proto import device_service_pb2 as e2e_pb
         from shared.utils.grpc_json import loads as _loads
 
-        stub = get_device_config_service_stub()
+        stub = device_config_service.stub
 
         online = offline = 0
         for status in ('online', 'offline'):
@@ -215,11 +215,11 @@ def _fetch_playback_device_stats_via_grpc():
     import logging
     _log = logging.getLogger(__name__)
     try:
-        from shared.clients.grpc_clients import get_playback_config_service_stub
+        from api_gateway.infrastructure.grpc_proxies import playback_config_service
         from shared.proto import device_service_pb2 as e2e_pb
         from shared.utils.grpc_json import loads as _loads
 
-        stub = get_playback_config_service_stub()
+        stub = playback_config_service.stub
         resp = stub.ListPlaybackDevices(e2e_pb.ListPlaybackDevicesRequest(
             page=1, per_page=1,
         ))
@@ -241,14 +241,14 @@ def _fetch_api_stats_via_grpc():
     import logging
     _log = logging.getLogger(__name__)
     try:
-        from shared.clients.grpc_clients import get_api_test_config_service_stub
+        from api_gateway.infrastructure.grpc_proxies import api_config_service
         from shared.proto import api_test_service_pb2 as api_test_pb
         from shared.utils.grpc_json import loads as _loads
 
-        stub = get_api_test_config_service_stub()
+        stub = api_config_service.stub
         online = offline = 0
         for status in ('online', 'offline'):
-            resp = stub.ListAPIs(api_test_pb.ListAPIsRequest(
+            resp = stub.ListAPIConfigs(api_test_pb.ListAPIConfigsRequest(
                 page=1, per_page=1, status=status,
             ))
             if resp.success and resp.data:
@@ -260,7 +260,7 @@ def _fetch_api_stats_via_grpc():
                     offline = cnt
         return online, offline
     except Exception as e:
-        _log.warning("ListAPIs gRPC 失败，API 统计置 0: %s", e)
+        _log.warning("ListAPIConfigs gRPC 失败，API 统计置 0: %s", e)
         return 0, 0
 
 
@@ -273,11 +273,11 @@ def _fetch_dimension_stats_via_grpc():
     import logging
     _log = logging.getLogger(__name__)
     try:
-        from shared.clients.grpc_clients import get_evaluation_config_service_stub
+        from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
         from shared.proto import evaluation_service_pb2 as eval_pb
         from shared.utils.grpc_json import loads as _loads
 
-        stub = get_evaluation_config_service_stub()
+        stub = evaluation_config_service.stub
         resp = stub.ListDimensions(eval_pb.ListDimensionsRequest(
             page=1, per_page=1,
         ))

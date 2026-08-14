@@ -8,13 +8,16 @@ import io
 import pandas as pd
 from datetime import datetime
 
+from shared.utils.status_constants import TaskStatus
 from api_gateway.infrastructure.request_adapter import request
 from fastapi.responses import FileResponse
 from api_gateway.utils.response import success_response, error_response
-# 跨服务调用：通过 gRPC ExecutionService 调用任务执行引擎
-from api_gateway.infrastructure.grpc_proxies import _ReevaluationExecutorProxy
-from api_gateway.infrastructure.grpc_proxies import evaluation_config_service
-from api_gateway.infrastructure.grpc_proxies import task_config_service
+# 跨服务调用：通过 ACL 仓储调用各微服务
+from api_gateway.infrastructure.acl import (
+    EvaluationConfigAclRepositoryImpl,
+    ReevaluationAclRepositoryImpl,
+    TaskConfigAclRepositoryImpl,
+)
 from api_gateway.schemas.common import IdData
 from api_gateway.schemas.evaluation import (
     CategoryCreateInput,
@@ -31,6 +34,11 @@ from api_gateway.schemas.evaluation import (
 )
 
 
+_evaluation_acl = EvaluationConfigAclRepositoryImpl()
+_task_acl = TaskConfigAclRepositoryImpl()
+_reevaluation_acl = ReevaluationAclRepositoryImpl()
+
+
 class EvaluationCommandService:
     """评估维度写操作 Service（CQRS Command Side）。"""
 
@@ -44,7 +52,7 @@ class EvaluationCommandService:
             return error_response(f"数据验证失败: {str(e)}")
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = evaluation_config_service.create_category(data)
+        result = _evaluation_acl.create_category(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', '分类创建成功'), http_code=201)
@@ -58,7 +66,7 @@ class EvaluationCommandService:
             return error_response(f"数据验证失败: {str(e)}")
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = evaluation_config_service.update_category(cat_id, data)
+        result = _evaluation_acl.update_category(cat_id, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', '分类更新成功'))
@@ -69,7 +77,7 @@ class EvaluationCommandService:
 
     @staticmethod
     def delete_category(cat_id):
-        result = evaluation_config_service.delete_category(cat_id)
+        result = _evaluation_acl.delete_category(cat_id)
 
         if result.get('success'):
             return success_response(None, result.get('message', '分类已删除'))
@@ -103,7 +111,7 @@ class EvaluationCommandService:
             if not is_valid:
                 return error_response(f"规则格式错误: {msg}")
 
-        result = evaluation_config_service.create_dimension(data)
+        result = _evaluation_acl.create_dimension(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', '评分维度创建成功'), http_code=201)
@@ -133,7 +141,7 @@ class EvaluationCommandService:
                 if not is_valid:
                     return error_response(f"规则格式错误: {msg}")
 
-        result = evaluation_config_service.update_dimension(dim_id, data)
+        result = _evaluation_acl.update_dimension(dim_id, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', '评分维度更新成功'))
@@ -183,7 +191,7 @@ class EvaluationCommandService:
             return error_response(f"数据验证失败: {str(e)}")
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = evaluation_config_service.calculate_score(dim_id, data)
+        result = _evaluation_acl.calculate_score(dim_id, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', '分值计算完成'))
@@ -195,7 +203,7 @@ class EvaluationCommandService:
     # 删除评分维度 (逻辑删除)
     @staticmethod
     def delete(dim_id):
-        result = evaluation_config_service.delete_dimension(dim_id)
+        result = _evaluation_acl.delete_dimension(dim_id)
 
         if result.get('success'):
             return success_response(None, result.get('message', '评分维度已删除'))
@@ -213,7 +221,7 @@ class EvaluationCommandService:
             return error_response(f"数据验证失败: {str(e)}")
 
         data = req.model_dump(by_alias=False)
-        result = evaluation_config_service.batch_action(data)
+        result = _evaluation_acl.batch_action(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', '批量操作执行成功'))
@@ -226,7 +234,7 @@ class EvaluationCommandService:
         ids = request.args.get('ids')
 
         # 通过 gRPC 代理获取维度数据，避免直接访问 DB
-        result = evaluation_config_service.list_dimensions()
+        result = _evaluation_acl.list_dimensions()
         if not result.get('success'):
             return error_response(result.get('message', '获取维度列表失败'))
 
@@ -337,7 +345,7 @@ class EvaluationCommandService:
 
                 # 通过代理查找现有维度
                 existing_dim_id = None
-                search_result = evaluation_config_service.list_dimensions(search=name, page=1, per_page=1)
+                search_result = _evaluation_acl.list_dimensions(search=name, page=1, per_page=1)
                 if search_result.get('success'):
                     raw = search_result.get('data') or {}
                     items = raw.get('items', []) if isinstance(raw, dict) else (raw if isinstance(raw, list) else [])
@@ -359,7 +367,7 @@ class EvaluationCommandService:
                         "api_settings": api_settings,
                     }
                     data = {k: v for k, v in data.items() if v is not None}
-                    update_result = evaluation_config_service.update_dimension(existing_dim_id, data)
+                    update_result = _evaluation_acl.update_dimension(existing_dim_id, data)
                     if update_result.get('success'):
                         update_count += 1
                 elif not existing_dim_id:
@@ -376,7 +384,7 @@ class EvaluationCommandService:
                         "status": True
                     }
                     data = {k: v for k, v in data.items() if v is not None}
-                    create_result = evaluation_config_service.create_dimension(data)
+                    create_result = _evaluation_acl.create_dimension(data)
                     if create_result.get('success'):
                         import_count += 1
 
@@ -400,23 +408,24 @@ class EvaluationCommandService:
         reextract_device_output = req.reextract_device_output
 
         # 通过 task_config_service 获取任务信息（替代 get_db_session().get(Task, task_id)）
-        task_result = task_config_service.get_task_detail(task_id)
+        task_result = _task_acl.get_task_detail(task_id)
         if not task_result.get('success'):
             return error_response("未找到任务", 404)
 
         task_data = task_result.get('data') or {}
         task_status = task_data.get('status')
 
-        if task_status not in ['completed', 'failed', 'stopped', 'paused', 'skipped']:
+        if task_status not in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.STOPPED, TaskStatus.PAUSED, TaskStatus.SKIPPED]:
             return error_response("只有已完成/失败/停止/暂停/跳过的任务才能重新评估")
 
-        # 跨服务调用：通过 gRPC ExecutionService 重新评估
-        executor = _ReevaluationExecutorProxy.get_instance()
-        success, message = executor.submit(
+        # 跨服务调用：通过 ACL 仓储重新评估
+        reeval_result = _reevaluation_acl.submit(
             task_id=task_id,
             reextract_device_output=reextract_device_output,
             reevaluate_type=reevaluate_type
         )
+        success = reeval_result.success
+        message = reeval_result.message
 
         if success:
             # 实际的重新评估用例数由执行服务处理，网关侧无法直接查询 TestResult

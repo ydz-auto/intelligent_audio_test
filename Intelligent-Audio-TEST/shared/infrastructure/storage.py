@@ -288,8 +288,9 @@ class Storage:
         try:
             if self._oss.exists(category, key):
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            log_not_emit('DEBUG', _MODULE_NAME,
+                         f'exists OSS check failed: {e}', category=category)
         # 也检查本地降级副本
         return os.path.exists(self._local_path(category, key))
 
@@ -310,8 +311,9 @@ class Storage:
         if os.path.exists(local):
             try:
                 os.remove(local)
-            except Exception:
-                pass
+            except Exception as e:
+                log_not_emit('DEBUG', _MODULE_NAME,
+                             f'delete local fallback failed: {e}', category=category)
 
     def list_objects(self, category: str, prefix: str = '') -> list:
         """列出指定类别+前缀下的对象 key 列表。

@@ -10,5 +10,20 @@ from audio_service.infrastructure.acl.task_acl_repository import (
 from audio_service.infrastructure.acl.device_acl_repository import (
     DeviceACLRepositoryImpl,
 )
+from audio_service.infrastructure.acl.algorithm_acl_repository import (
+    AlgorithmACLRepositoryImpl,
+)
+from audio_service.infrastructure.acl.playback_acl_repository import (
+    PlaybackConfigACLRepositoryImpl,
+)
+from audio_service.infrastructure.acl.testcase_acl_repository import (
+    TestCaseConfigACLRepositoryImpl,
+)
 
-__all__ = ['TaskACLRepositoryImpl', 'DeviceACLRepositoryImpl']
+__all__ = [
+    'TaskACLRepositoryImpl',
+    'DeviceACLRepositoryImpl',
+    'AlgorithmACLRepositoryImpl',
+    'PlaybackConfigACLRepositoryImpl',
+    'TestCaseConfigACLRepositoryImpl',
+]

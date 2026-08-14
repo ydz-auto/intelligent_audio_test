@@ -9,6 +9,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.status_constants import ExecutionStatus
 from api_test_service.infrastructure.acl import TaskDataAclRepositoryImpl
 
 _logger = logging.getLogger(__name__)
@@ -129,7 +130,7 @@ class APITestService:
                     tcs = [dto_to_dict(d) for d in _task_data_acl.get_task_case_by_ids(task_id)]
                     target_case_ids = [
                         tc.get('id') for tc in tcs
-                        if tc.get('execution_status') in ['pending', 'queued']
+                        if tc.get('execution_status') in [ExecutionStatus.PENDING, ExecutionStatus.QUEUED]
                     ]
                 except Exception as e:
                     self._log(task_id, 'WARNING', f"查询待执行 TaskCase 失败: {e}")

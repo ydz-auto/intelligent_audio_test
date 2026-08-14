@@ -11,6 +11,8 @@
 本模块不包含导出（Excel/ZIP）相关逻辑，该部分仍由 api_gateway 负责。
 """
 
+import logging
+
 from shared.utils.log_handler import log_not_emit
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
@@ -26,6 +28,8 @@ from report_service.infrastructure.clients.grpc_clients import (
     _dim_id,
     _dim_name,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ReportHelpers:
@@ -230,7 +234,7 @@ class ReportHelpers:
             try:
                 api_request = json.loads(api_request)
             except json.JSONDecodeError:
-                pass
+                logger.debug("解析 API 请求体 JSON 失败，已保留原始字符串", exc_info=True)
         return api_request
 
     # 公共函数：获取任务执行标识前缀

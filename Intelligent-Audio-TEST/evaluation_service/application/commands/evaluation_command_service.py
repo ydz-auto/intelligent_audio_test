@@ -283,7 +283,7 @@ class EvaluationCommandService:
                 from api_gateway.application.services.stats_cache import refresh_stats_cache
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.warning("创建评分维度后刷新统计缓存失败", exc_info=True)
 
             return {
                 'success': True,
@@ -479,7 +479,7 @@ class EvaluationCommandService:
                 from api_gateway.application.services.stats_cache import refresh_stats_cache
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.warning("更新评分维度后刷新统计缓存失败", exc_info=True)
 
             return {'success': True, 'message': '评分维度更新成功'}
         except Exception as e:
@@ -501,7 +501,7 @@ class EvaluationCommandService:
                 from api_gateway.application.services.stats_cache import refresh_stats_cache
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.warning("删除评分维度后刷新统计缓存失败", exc_info=True)
 
             return {'success': True, 'message': '评分维度已删除'}
         except Exception as e:
@@ -550,7 +550,7 @@ class EvaluationCommandService:
                 from api_gateway.application.services.stats_cache import refresh_stats_cache
                 refresh_stats_cache()
             except Exception:
-                pass
+                logger.warning("批量操作后刷新统计缓存失败", exc_info=True)
 
             return {'success': True, 'message': f'批量操作 {action} 执行成功'}
         except Exception as e:

@@ -1,5 +1,8 @@
 from datetime import datetime, timezone, timedelta
+import logging
 from shared.models.database import get_db_session
+
+logger = logging.getLogger(__name__)
 # TODO(gRPC): _time_estimate 属于 event_manager 实时进度估算模块，
 # 在任务执行过程中高频调用以推算预计完成时间。
 # 已迁移到 gRPC 的查询：
@@ -281,5 +284,5 @@ class TimeEstimateMixin:
         finally:
             try:
                 local_db_session.close()
-            except:
-                pass
+            except Exception:
+                logger.warning("关闭数据库会话失败", exc_info=True)

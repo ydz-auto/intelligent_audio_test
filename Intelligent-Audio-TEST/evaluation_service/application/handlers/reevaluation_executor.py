@@ -8,6 +8,7 @@ from shared.utils.log_handler import log_and_emit
 from evaluation_service.infrastructure.evaluation_service_host import evaluation_service
 from evaluation_service.domain.services.reevaluation_service import reevaluation_service
 from shared.utils.result_data_store import load_full_result_data
+from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus
 from sqlalchemy import and_
 
 
@@ -55,7 +56,7 @@ class ReevaluationExecutor:
             })
 
             # P1.4: 通过 gRPC 更新 Task 状态为 reevaluate_queued
-            task_acl_repository.update_task_status(task_id, 'reevaluate_queued')
+            task_acl_repository.update_task_status(task_id, TaskStatus.REEVALUATE_QUEUED)
 
         log_and_emit('INFO', 'reevaluator',
                      f"重新评估任务已提交: task_id={task_id}, type={reevaluate_type}",
@@ -79,7 +80,7 @@ class ReevaluationExecutor:
             reevaluate_type = task_info['reevaluate_type']
 
         # P1.4: 通过 gRPC 更新 Task 状态为 reevaluating
-        task_acl_repository.update_task_status(task_id, 'reevaluating')
+        task_acl_repository.update_task_status(task_id, TaskStatus.REEVALUATING)
 
         log_and_emit('INFO', 'reevaluator',
                      f"开始执行重新评估: task_id={task_id}",
@@ -132,12 +133,12 @@ class ReevaluationExecutor:
             for tc_rel in all_tc_rels:
                 tc_case_id = tc_rel.test_case_id
                 if (tc_case_id not in reevaluated_case_ids
-                        and tc_rel.execution_status == 'completed'
-                        and tc_rel.evaluation_status in ['pending', 'queued', 'running', 'calculating']):
+                        and tc_rel.execution_status == ExecutionStatus.COMPLETED
+                        and tc_rel.evaluation_status in [EvaluationStatus.PENDING, EvaluationStatus.QUEUED, EvaluationStatus.RUNNING, EvaluationStatus.CALCULATING]):
                     task_acl_repository.update_task_case_status(
                         task_id=task_id,
                         case_id=str(tc_case_id),
-                        evaluation_status='completed',
+                        evaluation_status=EvaluationStatus.COMPLETED,
                     )
 
             # 3. 提交用例进行重新评估
@@ -158,24 +159,8 @@ class ReevaluationExecutor:
             self._on_complete(task_id, success)
 
     def _reextract_device_output(self, task_id, reevaluate_type):
-        """通过gRPC重新提取设备输出"""
-        # 跨服务调用：通过 gRPC DeviceResultService 重新提取设备结果
-        from shared.clients.grpc_clients import get_device_result_service_stub
-        import json as _json_re
-        from shared.proto import device_service_pb2 as _e2e_pb2
-        _stub = get_device_result_service_stub()
-        _reeextract_config = {
-            'evaluation_status': None if reevaluate_type == 'all' else 'failed',
-        }
-        _resp = _stub.ReextractResult(_e2e_pb2.ReextractResultRequest(
-            task_id=str(task_id),
-            reextract_config=_json_re.dumps(_reeextract_config)
-        ))
-        reextract_result = {
-            'success': _resp.success,
-            'message': _resp.message,
-            'data': _json_re.loads(_resp.data) if _resp.data else None,
-        }
+        """通过 ACL 仓储重新提取设备输出"""
+        reextract_result = device_result_acl_repository.reextract_result(task_id, reevaluate_type)
 
         if not reextract_result.get('success'):
             log_and_emit('WARNING', 'reevaluator',
@@ -247,33 +232,22 @@ class ReevaluationExecutor:
         )
 
     def _remap_fields_from_raw(self, algo_result, full_data, test_case_id):
-        """从 raw_results 重新映射字段（Infrastructure 编排，涉及 gRPC + field_mapper）"""
+        """从 raw_results 重新映射字段（Infrastructure 编排，涉及 ACL 仓储 + field_mapper）"""
         raw_results_list = full_data.get('raw_results_list') if full_data else None
         if not raw_results_list:
             return
-        from shared.clients.grpc_clients import get_device_result_service_stub, algo_get_field_mappings
-        from shared.infrastructure.base_executor import _DeviceResultCollectorProxy
+        from evaluation_service.infrastructure.acl import algorithm_acl_repository
         test_case = task_acl_repository.get_test_case_detail(str(test_case_id))
         algorithm_type = test_case.algorithm_type if test_case and test_case.algorithm_type else 'translation'
-        collector = _DeviceResultCollectorProxy(get_device_result_service_stub())
-        remapped_results = collector.convert_results(
+        remapped_results = device_result_acl_repository.convert_results(
             [dict(r, raw_results=r.get('raw_results', {})) for r in raw_results_list],
             algorithm_type
         )
         rounds_in_algo = algo_result.get('rounds', [])
         for ri, remapped in enumerate(remapped_results):
             if ri < len(rounds_in_algo):
-                field_defs = algo_get_field_mappings(algorithm_type)
-                mapped_device = field_defs.get('mapped', {}).get('device', {})
-                # algo_get_field_mappings 返回 mapped.device 为 dict（key=target_param）
-                # 兼容原 field_mapper 的 list 结构
-                if isinstance(mapped_device, dict):
-                    mapped_fields = [
-                        {'code': k, **(v if isinstance(v, dict) else {})}
-                        for k, v in mapped_device.items()
-                    ]
-                else:
-                    mapped_fields = mapped_device if isinstance(mapped_device, list) else []
+                field_defs = algorithm_acl_repository.get_field_mappings(algorithm_type)
+                mapped_fields = field_defs.get_mapped_device_fields_list(algorithm_type)
                 round_output = rounds_in_algo[ri].setdefault('output', {})
                 if isinstance(mapped_fields, list):
                     for f in mapped_fields:
@@ -363,12 +337,11 @@ class ReevaluationExecutor:
         )
         tc_rel = tc_rels[0] if tc_rels else None
         if tc_rel:
-            new_status = 'pending' if tc_rel.status not in ['stopped', 'skipped'] else tc_rel.status
+            # 重新评估只更新 evaluation_status，不修改 status（执行结果）
             task_acl_repository.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
-                status=new_status,
-                evaluation_status='queued',
+                evaluation_status=EvaluationStatus.QUEUED,
             )
 
         # P1.4: 通过 gRPC 读 TestCase
@@ -392,7 +365,7 @@ class ReevaluationExecutor:
 
         P1.4: test_case 为 TestCaseDetailDTO（来自 gRPC）
         """
-        from shared.clients.grpc_clients import algo_extract_case_all_params
+        from evaluation_service.infrastructure.acl import algorithm_acl_repository
 
         # E2E: 一次性评估所有轮（不传 round_number，evaluate_case 构建完整 rounds_list）
         algo_params = {}
@@ -410,7 +383,7 @@ class ReevaluationExecutor:
         }
 
         try:
-            all_params = algo_extract_case_all_params(full_case_params)
+            all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
             eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
             eval_params['algorithm_type'] = algorithm_type
             eval_params['test_type'] = test_type
@@ -440,7 +413,7 @@ class ReevaluationExecutor:
 
         P1.4: test_case 为 TestCaseDetailDTO（来自 gRPC）
         """
-        from shared.clients.grpc_clients import algo_extract_case_all_params
+        from evaluation_service.infrastructure.acl import algorithm_acl_repository
 
         # API: 逐轮评估
         for round_idx, round_data in enumerate(rounds):
@@ -465,7 +438,7 @@ class ReevaluationExecutor:
             }
 
             try:
-                all_params = algo_extract_case_all_params(full_case_params)
+                all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
                 eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
                 eval_params['algorithm_type'] = algorithm_type
                 eval_params['test_type'] = test_type
@@ -511,12 +484,11 @@ class ReevaluationExecutor:
         )
         tc_rel = tc_rels[0] if tc_rels else None
         if tc_rel:
-            new_status = 'pending' if tc_rel.status not in ['stopped', 'skipped'] else tc_rel.status
+            # 重新评估只更新 evaluation_status，不修改 status（执行结果）
             task_acl_repository.update_task_case_status(
                 task_id=task_id,
                 case_id=str(test_case_id),
-                status=new_status,
-                evaluation_status='queued',
+                evaluation_status=EvaluationStatus.QUEUED,
             )
 
         # P1.4: 通过 gRPC 读 TestCase
@@ -537,8 +509,8 @@ class ReevaluationExecutor:
             'reference_params_col': reference_params_col,
         }
 
-        from shared.clients.grpc_clients import algo_extract_case_all_params
-        all_params = algo_extract_case_all_params(full_case_params)
+        from evaluation_service.infrastructure.acl import algorithm_acl_repository
+        all_params = algorithm_acl_repository.extract_case_all_params(full_case_params)
         eval_params = all_params.get('evaluation', {}) if isinstance(all_params, dict) else {}
         eval_params['algorithm_type'] = algorithm_type
         eval_params['test_type'] = test_type
@@ -581,7 +553,7 @@ class ReevaluationExecutor:
             self.running_task_id = None
 
         # P1.4: 通过 gRPC 更新 Task 状态
-        new_status = 'completed' if success else 'failed'
+        new_status = TaskStatus.COMPLETED if success else TaskStatus.FAILED
         task_acl_repository.update_task_status(task_id, new_status)
 
         log_and_emit('INFO', 'reevaluator',

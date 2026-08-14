@@ -6,6 +6,8 @@ from evaluation_service.infrastructure.persistence.orm_models import Dimension, 
 # P1.4: 跨服务 PO 改为 gRPC 调 task_service
 from evaluation_service.infrastructure.acl import task_acl_repository
 from shared.models.database import get_db_session
+from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus
 from evaluation_service.domain.services.evaluation_utils import extract_by_path, calculate_score
 from evaluation_service.infrastructure.persistence.round_aggregator import RoundAggregator
 from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
@@ -30,7 +32,7 @@ class EvaluationResultProcessor(RoundAggregator):
         """
         ok = task_acl_repository.update_test_result_status(
             result_id=result_id,
-            execution_status='completed',
+            execution_status=ExecutionStatus.COMPLETED,
         )
         self._log(
             level='DEBUG' if ok else 'ERROR',
@@ -159,8 +161,8 @@ class EvaluationResultProcessor(RoundAggregator):
             dimension_result_id=dimension_result_id,
             raw_value=None,
             score=0,
-            status='failed',
-            evaluation_status='failed',
+            status=TaskCaseStatus.FAILED,
+            evaluation_status=EvaluationStatus.FAILED,
             error_message=error_message,
             api_raw_response=api_raw_response,
             api_request_body=api_request_body,
@@ -177,8 +179,8 @@ class EvaluationResultProcessor(RoundAggregator):
             dimension_result_id=dimension_result_id,
             raw_value=raw_value,
             score=score,
-            status='completed',
-            evaluation_status='completed',
+            status=TaskCaseStatus.COMPLETED,
+            evaluation_status=EvaluationStatus.COMPLETED,
             error_message=None,
             api_raw_response=api_raw_response,
             api_request_body=api_request_body,
@@ -228,8 +230,8 @@ class EvaluationResultProcessor(RoundAggregator):
                 return
 
             # 6. 只有当维度结果搜集全且都评估完成了，才更新最终状态
-            new_status = 'failed' if case_any_failed else 'completed'
-            new_evaluation_status = 'failed' if case_any_failed else 'completed'
+            new_evaluation_status = EvaluationStatus.FAILED if case_any_failed else EvaluationStatus.COMPLETED
+            new_status = derive_task_case_status(ExecutionStatus.COMPLETED, new_evaluation_status)
             self._apply_final_status(task_id, test_case_id, new_status, new_evaluation_status, task)
         except Exception as e:
             self._log(
@@ -347,11 +349,11 @@ class EvaluationResultProcessor(RoundAggregator):
                 res_failed = False
                 for dim in dims:
                     # 如果有任何维度还在进行中，说明这个 TestResult 还没完成
-                    if dim.evaluation_status in ['pending', 'running', 'queued', 'calculating']:
+                    if dim.evaluation_status in [EvaluationStatus.PENDING, EvaluationStatus.RUNNING, EvaluationStatus.QUEUED, EvaluationStatus.CALCULATING]:
                         res_finished = False
                         break
                     # 如果有任何维度评估失败，这个 TestResult 就是失败的
-                    if dim.evaluation_status == 'failed':
+                    if dim.evaluation_status == EvaluationStatus.FAILED:
                         res_failed = True
 
                 # 如果这个 TestResult 还没完成，整体也不能算完成
@@ -381,19 +383,19 @@ class EvaluationResultProcessor(RoundAggregator):
         )
 
         # P1.4: 通过 gRPC 更新 Task 状态
-        if task and task.status == 'evaluating':
+        if task and task.status in (TaskStatus.EVALUATING, TaskStatus.REEVALUATING):
             ok = task_acl_repository.update_task_status(task_id, new_status)
             self._log(
                 level='INFO' if ok else 'ERROR',
                 category='database',
-                content=f"任务状态从 evaluating 更新为 {new_status}: {'成功' if ok else '失败'}",
+                content=f"任务状态从 {task.status} 更新为 {new_status}: {'成功' if ok else '失败'}",
                 task_id=task_id,
                 test_case_id=test_case_id
             )
 
             # 通过 gRPC 调用 task_service 通知进度
-            from shared.clients.grpc_clients import notify_task_progress
-            notify_task_progress(task_id, force=True)
+            from evaluation_service.infrastructure.acl.task_acl_repository import task_acl_repository
+            task_acl_repository.notify_task_progress(task_id, force=True)
 
     def update_all_dimensions_in_group_failed(self, group_items, error_message, task_id, test_case_id=None, api_raw_response=None, api_request_body=None):
         """
@@ -425,7 +427,7 @@ class EvaluationResultProcessor(RoundAggregator):
             if test_case_id:
                 try:
                     update_count = update_task_case_status_in_db(
-                        None, task_id, test_case_id, 'failed', 'failed'
+                        None, task_id, test_case_id, TaskCaseStatus.FAILED, EvaluationStatus.FAILED
                     )
 
                     self._log(
@@ -533,7 +535,7 @@ class EvaluationResultProcessor(RoundAggregator):
                 # 检查是否所有维度都已经不是进行中状态
                 all_completed = True
                 for dim in dimensions:
-                    if dim.evaluation_status in ['pending', 'running', 'queued', 'calculating']:
+                    if dim.evaluation_status in [EvaluationStatus.PENDING, EvaluationStatus.RUNNING, EvaluationStatus.QUEUED, EvaluationStatus.CALCULATING]:
                         all_completed = False
                         break
 

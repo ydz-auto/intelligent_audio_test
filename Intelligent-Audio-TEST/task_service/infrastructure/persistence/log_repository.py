@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
@@ -19,6 +20,8 @@ from sqlalchemy import or_ as _or
 
 from shared.models.database import get_db_session
 from shared.utils.query_utils import now_cst
+
+logger = logging.getLogger(__name__)
 from task_service.domain.repositories.log_repository import LogRepositoryABC
 from task_service.infrastructure.persistence.models.system_models import Log
 
@@ -68,12 +71,12 @@ class LogRepository(LogRepositoryABC):
                 try:
                     query = query.filter(Log.time >= datetime.fromisoformat(start_date))
                 except ValueError:
-                    pass
+                    logger.debug("list_logs start_date 非法 ISO 格式已忽略: %r", start_date)
             if end_date:
                 try:
                     query = query.filter(Log.time <= datetime.fromisoformat(end_date))
                 except ValueError:
-                    pass
+                    logger.debug("list_logs end_date 非法 ISO 格式已忽略: %r", end_date)
             page = page or 1
             per_page = per_page or 20
             total = query.count()
@@ -162,12 +165,12 @@ class LogRepository(LogRepositoryABC):
                 try:
                     query = query.filter(Log.time >= datetime.fromisoformat(start_time))
                 except ValueError:
-                    pass
+                    logger.debug("get_stats start_time 非法 ISO 格式已忽略: %r", start_time)
             if end_time:
                 try:
                     query = query.filter(Log.time <= datetime.fromisoformat(end_time))
                 except ValueError:
-                    pass
+                    logger.debug("get_stats end_time 非法 ISO 格式已忽略: %r", end_time)
             if algorithm_type and algorithm_type != 'all':
                 query = query.filter(Log.algorithm_type == algorithm_type)
             stats = query.group_by(Log.level).all()
@@ -236,7 +239,7 @@ class LogRepository(LogRepositoryABC):
                         or 0
                     )
                 except ValueError:
-                    pass
+                    logger.debug("archive_logs start_date 非法 ISO 格式已忽略: %r", start_date)
             return {'total': total, 'hot': hot, 'cold': total - hot}
         finally:
             session.close()

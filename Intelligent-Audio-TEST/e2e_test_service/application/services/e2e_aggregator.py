@@ -7,6 +7,8 @@ import json
 import logging
 
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
+from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import TaskDataAclRepositoryImpl
 
@@ -77,7 +79,7 @@ class E2EAggregator:
                 dim_key_lower = dim_name.lower().replace(' ', '_').replace('-', '_')
                 if rn not in round_evals:
                     round_evals[rn] = {}
-                if dr.evaluation_status == 'completed' and dr.score is not None:
+                if dr.evaluation_status == EvaluationStatus.COMPLETED and dr.score is not None:
                     round_evals[rn][dim_key_lower] = dr.score
 
             rounds_list = algo_result.get('rounds', [])
@@ -93,12 +95,12 @@ class E2EAggregator:
                     try:
                         all_wer.append(float(ev['wer']))
                     except (ValueError, TypeError):
-                        pass
+                        logger.debug("WER 值无法转换为 float，已跳过 value=%r", ev['wer'], exc_info=True)
                 if 'llm_judge' in ev and ev['llm_judge'] is not None:
                     try:
                         all_llm_judge.append(float(ev['llm_judge']))
                     except (ValueError, TypeError):
-                        pass
+                        logger.debug("llm_judge 值无法转换为 float，已跳过 value=%r", ev['llm_judge'], exc_info=True)
 
             aggregated = algo_result.get('aggregated', {})
             aggregated['avg_wer'] = round(sum(all_wer) / len(all_wer), 4) if all_wer else None
@@ -195,14 +197,12 @@ class E2EAggregator:
                 # 没有采集到设备结果，更新 TaskCase 状态为 failed
                 self._task_data_repo.update_task_case_status(
                     task_id, str(test_case_id),
-                    status='failed', execution_status='failed',
-                    evaluation_status='failed',
+                    status=derive_task_case_status(ExecutionStatus.FAILED, EvaluationStatus.FAILED),
+                    execution_status=ExecutionStatus.FAILED,
+                    evaluation_status=EvaluationStatus.FAILED,
                     error_message='没有采集到设备结果',
                 )
                 return False
-
-            extra_params = self._executor._execute_extra_params(algorithm_type, kwargs, include_format_strings=True)
-            kwargs.update(extra_params)
 
             if is_multi_round:
                 # 多轮场景：algo_result 和 TestResult 已在循环后更新，整体评估已提交
@@ -223,13 +223,16 @@ class E2EAggregator:
                 if execution_success:
                     self._task_data_repo.update_task_case_status(
                         task_id, str(test_case_id),
-                        status='pending', execution_status='completed',
+                        status=derive_task_case_status(ExecutionStatus.COMPLETED, EvaluationStatus.PENDING),
+                        execution_status=ExecutionStatus.COMPLETED,
+                        evaluation_status=EvaluationStatus.PENDING,
                     )
                 else:
                     self._task_data_repo.update_task_case_status(
                         task_id, str(test_case_id),
-                        status='failed', execution_status='failed',
-                        evaluation_status='failed',
+                        status=derive_task_case_status(ExecutionStatus.FAILED, EvaluationStatus.FAILED),
+                        execution_status=ExecutionStatus.FAILED,
+                        evaluation_status=EvaluationStatus.FAILED,
                     )
 
                 return execution_success
@@ -251,17 +254,19 @@ class E2EAggregator:
 
                 # 通过 ACL 仓储更新 TaskCase 状态
                 if execution_success:
-                    eval_status = 'completed' if not all_eval_items else ''
+                    eval_status = EvaluationStatus.COMPLETED if not all_eval_items else ''
                     self._task_data_repo.update_task_case_status(
                         task_id, str(test_case_id),
-                        status='pending', execution_status='completed',
+                        status=derive_task_case_status(ExecutionStatus.COMPLETED, eval_status or EvaluationStatus.PENDING),
+                        execution_status=ExecutionStatus.COMPLETED,
                         evaluation_status=eval_status,
                     )
                 else:
                     self._task_data_repo.update_task_case_status(
                         task_id, str(test_case_id),
-                        status='failed', execution_status='failed',
-                        evaluation_status='failed',
+                        status=derive_task_case_status(ExecutionStatus.FAILED, EvaluationStatus.FAILED),
+                        execution_status=ExecutionStatus.FAILED,
+                        evaluation_status=EvaluationStatus.FAILED,
                     )
 
                 if execution_success and all_eval_items:

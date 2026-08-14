@@ -9,6 +9,7 @@ P5+DOMAIN 改造：移除直接返回 PO 对象的 ORM 包装模式，改为 PO 
 转换。仓储方法返回 domain entities（AudioAggregate 等），而非 PO；上层不再
 感知 SQLAlchemy ORM。关联集合（标注/标签/算法关联）按需加载。
 """
+import logging
 from typing import List, Optional, Dict, Any
 
 from sqlalchemy import cast, String, func
@@ -39,6 +40,9 @@ from audio_service.domain.repositories.audio_repository_abc import AudioReposito
 def _now():
     from shared.utils.query_utils import now_cst
     return now_cst()
+
+
+logger = logging.getLogger(__name__)
 
 
 # ========== PO ↔ Entity 转换 ==========
@@ -386,7 +390,7 @@ class AudioRepository(AudioRepositoryInterface):
                 rate_value = float(str(sample_rate).split()[0]) * 1000
                 query = query.filter_by(sample_rate=rate_value)
             except (ValueError, IndexError):
-                pass
+                logger.debug("解析采样率参数失败，跳过采样率过滤: sample_rate=%s", sample_rate, exc_info=True)
         if duration:
             if duration == 'short':
                 query = query.filter(Audio.duration <= 30)
@@ -508,7 +512,7 @@ class AudioRepository(AudioRepositoryInterface):
                 rate_value = float(str(sample_rate).split()[0]) * 1000
                 query = query.filter_by(sample_rate=rate_value)
             except (ValueError, IndexError):
-                pass
+                logger.debug("解析采样率参数失败，跳过采样率过滤: sample_rate=%s", sample_rate, exc_info=True)
         if duration:
             if duration == 'short':
                 query = query.filter(Audio.duration <= 30)
@@ -712,136 +716,23 @@ class AudioRepository(AudioRepositoryInterface):
 
     def _get_tag_name_to_id_map(self, tag_names: List[str]) -> Dict[str, int]:
         """通过 gRPC 查询标签名 → ID 映射（Tag 属于 task_service 域）"""
-        if not tag_names:
-            return {}
-        from shared.clients.grpc_clients import get_tag_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
-        result = {}
-        try:
-            stub = get_tag_config_service_stub()
-            page = 1
-            per_page = 500
-            target_names = set(tag_names)
-            while target_names:
-                resp = stub.ListTags(task_pb.ListTagsRequest(
-                    page=page,
-                    per_page=per_page,
-                ))
-                if not resp.success:
-                    break
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    break
-                items = data.get('items', []) or []
-                for item in items:
-                    name = item.get('name')
-                    tid = item.get('id')
-                    if name and tid and name in target_names:
-                        result[name] = tid
-                        target_names.discard(name)
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    break
-                page += 1
-        except Exception:
-            pass
-        return result
+        from audio_service.infrastructure.acl.tag_acl_repository import tag_acl_repository
+        return tag_acl_repository.get_tag_name_to_id_map(tag_names)
 
     def _get_all_tag_name_to_id_map(self) -> Dict[str, int]:
         """通过 gRPC 查询所有标签名 → ID 映射"""
-        from shared.clients.grpc_clients import get_tag_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
-        result = {}
-        try:
-            stub = get_tag_config_service_stub()
-            page = 1
-            per_page = 500
-            while True:
-                resp = stub.ListTags(task_pb.ListTagsRequest(
-                    page=page,
-                    per_page=per_page,
-                ))
-                if not resp.success:
-                    break
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    break
-                items = data.get('items', []) or []
-                for item in items:
-                    name = item.get('name')
-                    tid = item.get('id')
-                    if name and tid:
-                        result[name] = tid
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    break
-                page += 1
-        except Exception:
-            pass
-        return result
+        from audio_service.infrastructure.acl.tag_acl_repository import tag_acl_repository
+        return tag_acl_repository.get_all_tag_name_to_id_map()
 
     def get_all_tag_names(self) -> List[str]:
         """查询所有不重复的标签名"""
-        from shared.clients.grpc_clients import get_tag_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
-        try:
-            stub = get_tag_config_service_stub()
-            resp = stub.ListTagNames(task_pb.ListTagNamesRequest(
-                page=1,
-                per_page=500,
-            ))
-            if not resp.success:
-                return []
-            data = _loads(resp.data, {})
-            if isinstance(data, dict):
-                return data.get('items', []) or []
-            return []
-        except Exception:
-            return []
+        from audio_service.infrastructure.acl.tag_acl_repository import tag_acl_repository
+        return tag_acl_repository.get_all_tag_names()
 
     def get_or_create_tag(self, tag_name: str):
         """查找或创建标签，返回含 id 和 name 的对象（供 add_audio_tag 使用 tag.id）"""
-        from shared.clients.grpc_clients import get_tag_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads, dumps as _dumps
-        try:
-            stub = get_tag_config_service_stub()
-            # 先查找
-            page = 1
-            per_page = 500
-            while True:
-                resp = stub.ListTags(task_pb.ListTagsRequest(
-                    page=page,
-                    per_page=per_page,
-                    keyword=tag_name,
-                ))
-                if not resp.success:
-                    break
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    break
-                items = data.get('items', []) or []
-                for item in items:
-                    if item.get('name') == tag_name:
-                        return _TagProxy(id=item.get('id'), name=item.get('name'))
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    break
-                page += 1
-            # 创建
-            create_resp = stub.CreateTag(task_pb.CreateTagRequest(
-                data=_dumps({'name': tag_name}),
-            ))
-            if create_resp.success:
-                data = _loads(create_resp.data, {})
-                if isinstance(data, dict) and data.get('id'):
-                    return _TagProxy(id=data.get('id'), name=data.get('name', tag_name))
-        except Exception:
-            pass
-        return _TagProxy(id=None, name=tag_name)
+        from audio_service.infrastructure.acl.tag_acl_repository import tag_acl_repository
+        return tag_acl_repository.get_or_create_tag(tag_name)
 
     def delete_audio_tags(self, audio_id: int) -> int:
         """删除音频的所有标签关联"""
@@ -891,41 +782,8 @@ class AudioRepository(AudioRepositoryInterface):
 
     def _get_tag_id_to_name_map(self, tag_ids: List[int]) -> Dict[int, str]:
         """通过 gRPC 查询标签 ID → 名映射（Tag 属于 task_service 域）"""
-        if not tag_ids:
-            return {}
-        from shared.clients.grpc_clients import get_tag_config_service_stub
-        from shared.proto import task_service_pb2 as task_pb
-        from shared.utils.grpc_json import loads as _loads
-        result = {}
-        try:
-            stub = get_tag_config_service_stub()
-            page = 1
-            per_page = 500
-            remaining = set(tag_ids)
-            while remaining:
-                resp = stub.ListTags(task_pb.ListTagsRequest(
-                    page=page,
-                    per_page=per_page,
-                ))
-                if not resp.success:
-                    break
-                data = _loads(resp.data, {})
-                if not isinstance(data, dict):
-                    break
-                items = data.get('items', []) or []
-                for item in items:
-                    tid = item.get('id')
-                    name = item.get('name')
-                    if tid and name and tid in remaining:
-                        result[tid] = name
-                        remaining.discard(tid)
-                total_pages = data.get('pages', 1)
-                if page >= total_pages or not items:
-                    break
-                page += 1
-        except Exception:
-            pass
-        return result
+        from audio_service.infrastructure.acl.tag_acl_repository import tag_acl_repository
+        return tag_acl_repository.get_tag_id_to_name_map(tag_ids)
 
     # ========== Annotation 相关 ==========
 

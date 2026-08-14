@@ -2,14 +2,16 @@ import time
 
 from e2e_test_service.domain.services import E2ECalculationService
 from e2e_test_service.infrastructure.acl import (
+    AlgorithmAclRepositoryImpl,
     PlaybackAclRepositoryImpl,
     DeviceResultAclRepositoryImpl,
 )
 from shared.utils.dto_utils import dto_to_dict
+from shared.utils.status_constants import ExecutionStatus
 
 
 class RoundsLoopMixin:
-    """阶段二：多轮循环 —— 环境设置 → 预处理 → 播放 → 后处理 → 采集 → 评估"""
+    """阶段二：多轮循环 —— 环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估"""
 
     def _run_rounds_loop(self, task_id, tc_rel_id, data, case_config, case_name,
                          algorithm_type, test_case_id, rounds,
@@ -51,14 +53,16 @@ class RoundsLoopMixin:
                               algorithm_type, test_case_id, rounds,
                               device_info_list, result_id, case_reference_params,
                               round_idx, round_config, round_number, rounds_data):
-        """执行单轮：环境设置 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
-        from shared.clients.grpc_clients import algo_normalize_algorithm_params
-        round_algo_params = algo_normalize_algorithm_params(round_config.get('algorithm_params', []))
+        """执行单轮：环境设置 → 声纹注册 → 预处理 → 播放 → 后处理 → 采集 → 评估，返回轮次结果 dict"""
+        round_algo_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(round_config.get('algorithm_params', []))
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
+        self._register_voiceprint(task_id, tc_rel_id, round_algo_params, test_case_id)
         self._device_manager.pre_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
-            extra_params={**self.current_extra_params, 'round_number': round_idx},
+            extra_params={'round_number': round_idx,
+                          'total_rounds': len(rounds),
+                          **round_algo_params},
         )
 
         play_result = PlaybackAclRepositoryImpl().play_round(
@@ -86,7 +90,9 @@ class RoundsLoopMixin:
         playback_ts = self._playback_timestamps.get(task_id, {})
         round_start_ms = playback_ts.get('current_round_start_ms')
         round_end_ms = playback_ts.get('current_round_end_ms')
-        post_extra_params = {**self.current_extra_params, 'round_number': round_idx}
+        post_extra_params = {'round_number': round_idx,
+                             'total_rounds': len(rounds),
+                             **round_algo_params}
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms
             post_extra_params['playback_end_time_ms'] = round_end_ms
@@ -111,7 +117,8 @@ class RoundsLoopMixin:
         collect_result = self._collector.collect_results(
             task_id, test_case_id, device_info_list,
             algorithm_type=algorithm_type,
-            case_reference_params=case_reference_params
+            case_reference_params=case_reference_params,
+            round_algo_params=round_algo_params,
         )
         if isinstance(collect_result, tuple):
             round_results, adjusted_case_ref_params = collect_result
@@ -142,7 +149,8 @@ class RoundsLoopMixin:
                 task_id, tc_rel_id, data, case_config, case_name,
                 algorithm_type, test_case_id, rounds,
                 result_id, case_reference_params,
-                round_idx, primary, tagged_results, rounds_data
+                round_idx, primary, tagged_results, rounds_data,
+                round_algo_params
             )
 
         self._device_manager.teardown_env_devices_for_round(env_states, task_id)
@@ -157,13 +165,15 @@ class RoundsLoopMixin:
     def _build_and_submit_round_data(self, task_id, tc_rel_id, data, case_config, case_name,
                                      algorithm_type, test_case_id, rounds,
                                      result_id, case_reference_params,
-                                     round_idx, primary, tagged_results, rounds_data):
+                                     round_idx, primary, tagged_results, rounds_data,
+                                     round_algo_params=None):
         """构建本轮 round_data，增量更新 TestResult，提交单轮评估，返回 round_data
 
         Args:
             rounds_data: 已执行轮次的 round_data 列表（累积），用于构建含全部轮次的 algo_result
+            round_algo_params: 本轮算法参数（已扁平化为 dict）
         """
-        ref_fields = E2ECalculationService.build_ref_fields(self.current_extra_params)
+        ref_fields = E2ECalculationService.build_ref_fields(round_algo_params or {})
 
         self._aggregator.log_case_result(
             task_id, case_name, primary, ref_fields,
@@ -193,12 +203,13 @@ class RoundsLoopMixin:
         }
         self._aggregator.update_test_result(
             result_id=result_id, algo_result=current_algo_result,
-            execution_status='running', task_id=task_id,
+            execution_status=ExecutionStatus.RUNNING, task_id=task_id,
         )
         # DEBUG: 记录单轮写入后的 record_file 状态
+        _round_output = round_data.get('output', {}) if isinstance(round_data, dict) else {}
         self._log(
             level='DEBUG',
-            content=f"[_build_and_submit_round_data] round_idx={round_idx}, round_output_keys={list(round_output.keys())}, record_file={round_output.get('record_file', '<MISSING>')}",
+            content=f"[_build_and_submit_round_data] round_idx={round_idx}, round_output_keys={list(_round_output.keys())}, record_file={_round_output.get('record_file', '<MISSING>')}",
             task_id=task_id, test_case_id=test_case_id,
         )
 
@@ -216,8 +227,7 @@ class RoundsLoopMixin:
 
     def _collect_playback_timestamps(self, task_id, play_result, case_config):
         """从 play_result 的 audio_timelines 收集播放时间戳"""
-        from shared.clients.grpc_clients import algo_normalize_algorithm_params
-        algo_params = algo_normalize_algorithm_params(case_config.get('algorithm_params', {})) if case_config else {}
+        algo_params = AlgorithmAclRepositoryImpl.normalize_algorithm_params(case_config.get('algorithm_params', {})) if case_config else {}
         try:
             overlap_rate = max(0.0, min(1.0, float(algo_params.get('overlap_rate', 0)))) if algo_params else 0
         except (ValueError, TypeError):

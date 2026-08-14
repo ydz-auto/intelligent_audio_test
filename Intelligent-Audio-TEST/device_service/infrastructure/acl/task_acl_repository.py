@@ -10,6 +10,8 @@
 """
 import logging
 
+from shared.utils.status_constants import TaskStatus
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,7 +38,7 @@ class TaskACLRepository:
             resp = stub.ListTasks(task_pb.ListTasksRequest(
                 page=1,
                 per_page=1,
-                status='running',
+                status=TaskStatus.RUNNING,
                 type='e2e',
             ))
             if not resp.success:
@@ -52,6 +54,43 @@ class TaskACLRepository:
             if isinstance(data, list):
                 return len(data) > 0
             return False
+        except Exception:
+            return False
+
+    def check_device_in_tasks(self, device_id: int) -> bool:
+        """检查设备是否被任务引用
+
+        通过 gRPC 调用 task_service.TaskConfigService.ListTasks 全量分页扫描，
+        检查是否有任务的 devices 列表引用了此设备。
+        gRPC 不可用时回退到无引用。
+        """
+        try:
+            from shared.clients.grpc_clients import get_task_config_service_stub
+            from shared.proto import task_service_pb2 as task_pb
+            from shared.utils.grpc_json import loads as _loads
+
+            stub = get_task_config_service_stub()
+            page = 1
+            per_page = 100
+            while True:
+                resp = stub.ListTasks(task_pb.ListTasksRequest(
+                    page=page,
+                    per_page=per_page,
+                ))
+                if not resp.success:
+                    return False
+                data = _loads(resp.data, {})
+                if not isinstance(data, dict):
+                    return False
+                items = data.get('items', []) or []
+                for task_item in items:
+                    for dev in task_item.get('devices', []) or []:
+                        if dev.get('id') == device_id:
+                            return True
+                total_pages = data.get('pages', 1)
+                if page >= total_pages or not items:
+                    return False
+                page += 1
         except Exception:
             return False
 

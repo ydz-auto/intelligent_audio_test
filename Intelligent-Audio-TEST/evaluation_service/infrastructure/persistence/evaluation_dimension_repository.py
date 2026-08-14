@@ -13,6 +13,7 @@ PO ↔ Entity 转换规则：
 from typing import List, Optional
 
 from shared.models.database import get_db_session
+from shared.utils.status_constants import EvaluationStatus
 
 from evaluation_service.infrastructure.persistence.orm_models import (
     Category as CategoryPO,
@@ -77,7 +78,7 @@ def _trd_po_to_entity(po: TestResultDimensionPO) -> DimensionScore:
         dimension_value=po.dimension_value,
         score=po.score,
         status=po.status,
-        evaluation_status=po.evaluation_status or 'pending',
+        evaluation_status=po.evaluation_status or EvaluationStatus.PENDING,
         error_message=po.error_message,
     )
 
@@ -197,7 +198,7 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
         session = get_db_session()
         pos = session.query(TestResultDimensionPO).filter(
             TestResultDimensionPO.test_result_id == result_id,
-            TestResultDimensionPO.evaluation_status == 'pending',
+            TestResultDimensionPO.evaluation_status == EvaluationStatus.PENDING,
         ).all()
         return [_trd_po_to_entity(po) for po in pos]
 
@@ -280,8 +281,8 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
         session = get_db_session()
         count = session.query(TestResultDimensionPO).filter(
             TestResultDimensionPO.test_result_id == result_id,
-            TestResultDimensionPO.evaluation_status != 'completed',
-        ).update({'evaluation_status': 'completed'}, synchronize_session=False)
+            TestResultDimensionPO.evaluation_status != EvaluationStatus.COMPLETED,
+        ).update({'evaluation_status': EvaluationStatus.COMPLETED}, synchronize_session=False)
         session.flush()
         return count
 

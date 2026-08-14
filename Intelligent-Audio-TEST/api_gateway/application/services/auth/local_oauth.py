@@ -24,11 +24,11 @@ class LocalOAuthProvider:
         校验用户名/密码，返回 UserInfo。
         开发模式下：用户不存在则自动创建，密码与 .env 默认值匹配即放行。
         """
-        from shared.clients.grpc_clients import get_auth_service_stub
+        from api_gateway.infrastructure.grpc_proxies import auth_config_service
         from shared.proto import auth_service_pb2 as auth_pb
         from shared.utils.grpc_json import loads as _loads
 
-        stub = get_auth_service_stub()
+        stub = auth_config_service.stub
 
         # 开发模式：默认凭证直接放行
         if (username == Config.DEV_DEFAULT_USERNAME

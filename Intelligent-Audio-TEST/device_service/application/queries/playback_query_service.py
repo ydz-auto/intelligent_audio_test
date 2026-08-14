@@ -27,19 +27,9 @@ class PlaybackQueryService:
 
     @staticmethod
     def _get_physical_devices_via_grpc():
-        """通过 gRPC 获取物理设备列表"""
-        from shared.clients.grpc_clients import get_audio_service_stub
-        from shared.proto import audio_service_pb2 as _e2e_pb
-        from shared.utils.grpc_json import loads as _grpc_loads
-        try:
-            stub = get_audio_service_stub()
-            resp = stub.GetPhysicalDevices(_e2e_pb.GetPhysicalDevicesRequest())
-            if resp.success:
-                data = _grpc_loads(resp.data, {}) or {}
-                return data.get('devices', []) or []
-        except Exception:
-            pass
-        return []
+        """通过 ACL 仓储获取物理设备列表"""
+        from device_service.infrastructure.acl.audio_service_acl_repository import audio_service_acl_repository
+        return audio_service_acl_repository.get_physical_devices()
 
     # ========== 读操作 ==========
 

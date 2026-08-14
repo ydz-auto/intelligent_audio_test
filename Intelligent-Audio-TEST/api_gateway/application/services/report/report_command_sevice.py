@@ -13,7 +13,7 @@ from api_gateway.schemas.report import (
     CompareReportsRequest,
     SecondaryCompareRequest,
 )
-from shared.clients.grpc_clients import get_report_config_service_stub
+from api_gateway.infrastructure.grpc_proxies import report_config_service
 from shared.proto import report_service_pb2 as report_pb
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
@@ -30,7 +30,7 @@ class ReportCommandService:
     @staticmethod
     def delete(report_id):
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.DeleteReport(report_pb.DeleteReportRequest(
                 report_id=int(report_id)))
             if not resp.success:
@@ -53,10 +53,10 @@ class ReportCommandService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.UpdateReport(report_pb.UpdateReportRequest(
                 report_id=int(report_id),
-                data=_dumps(req.model_dump(by_alias=True, exclude_none=True))))
+                data=_dumps(req.model_dump(by_alias=False, exclude_none=True))))
             if not resp.success:
                 return error_response(resp.message or '更新失败')
             data = _loads(resp.data, {}) or {}
@@ -71,7 +71,7 @@ class ReportCommandService:
     @staticmethod
     def publish(report_id):
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.UpdateReportStatus(report_pb.UpdateReportStatusRequest(
                 report_id=int(report_id),
                 status='published'))
@@ -97,7 +97,7 @@ class ReportCommandService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.BatchActionReports(report_pb.BatchActionReportsRequest(
                 data=_dumps({
                     'ids': [int(i) for i in ids],
@@ -126,7 +126,7 @@ class ReportCommandService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.GenerateCompareReport(report_pb.GenerateCompareReportRequest(
                 data=_dumps({
                     'task_ids': req.task_ids,
@@ -155,7 +155,7 @@ class ReportCommandService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.GenerateSecondaryCompareReport(report_pb.GenerateSecondaryCompareReportRequest(
                 data=_dumps({
                     'report_ids': req.report_ids,
@@ -183,7 +183,7 @@ class ReportCommandService:
             return error_response(f'参数错误: {str(e)}', 400)
 
         try:
-            stub = get_report_config_service_stub()
+            stub = report_config_service.stub
             resp = stub.GenerateTaskReport(report_pb.GenerateTaskReportRequest(
                 task_id=int(req.task_id),
                 name=req.name or '',

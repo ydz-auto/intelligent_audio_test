@@ -49,9 +49,6 @@ class AudioPreviewService:
                 _get_playback_device_via_grpc,
                 _find_playback_device_by_unique_id,
             )
-            from shared.clients.grpc_clients import get_playback_config_service_stub
-            from shared.proto import device_service_pb2 as _e2e_pb
-            from shared.utils.grpc_json import loads as _grpc_loads
 
             playback_device_id = data.get('playback_device_id') or data.get('playbackDeviceId')
             playback_device_ids = data.get('playback_device_ids') or data.get('playbackDeviceIds') or []

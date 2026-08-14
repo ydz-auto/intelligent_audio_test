@@ -8,7 +8,13 @@ import logging
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
-from api_gateway.infrastructure.grpc_proxies import testcase_config_service
+from shared.utils.status_constants import TaskStatus
+from api_gateway.infrastructure.acl import (
+    AudioAclRepositoryImpl,
+    PlaybackAclRepositoryImpl,
+    TaskConfigAclRepositoryImpl,
+    TestCaseConfigAclRepositoryImpl,
+)
 from api_gateway.schemas.testcase import (
     TagListData,
     TestCaseAudioConfigItem,
@@ -22,6 +28,11 @@ from api_gateway.schemas.testcase import (
 from shared.utils import testcase_helpers as common
 
 logger = logging.getLogger(__name__)
+
+_testcase_acl = TestCaseConfigAclRepositoryImpl()
+_audio_acl = AudioAclRepositoryImpl()
+_task_acl = TaskConfigAclRepositoryImpl()
+_playback_acl = PlaybackAclRepositoryImpl()
 
 
 class TestCaseQueryService:
@@ -43,7 +54,7 @@ class TestCaseQueryService:
         include_deleted_raw = request.args.get('include_deleted', 'false')
         include_deleted = str(include_deleted_raw).lower() in ('true', '1', 'yes')
 
-        result = testcase_config_service.list_testcases(
+        result = _testcase_acl.list_testcases(
             page=page,
             per_page=per_page,
             keyword=keyword,
@@ -99,7 +110,7 @@ class TestCaseQueryService:
 
     @staticmethod
     def get_one(tc_id):
-        result = testcase_config_service.get_testcase_detail(tc_id)
+        result = _testcase_acl.get_testcase_detail(tc_id)
 
         if not result.get('success'):
             code = result.get('code', 400)
@@ -163,11 +174,10 @@ class TestCaseQueryService:
 
         保留在网关侧：涉及跨服务编排（audio_service, playback_orchestrator），非纯 DB 操作。
         """
-        # 通过 gRPC 获取测试用例数据（替代直连 task_service PO）
-        from api_gateway.infrastructure.grpc_proxies import testcase_config_service
+        # 通过 ACL 获取测试用例数据
         from api_gateway.schemas.testcase import TestCasePreviewRequest
 
-        result = testcase_config_service.get_testcase_detail(tc_id)
+        result = _testcase_acl.get_testcase_detail(tc_id)
         if not result.get('success'):
             code = result.get('code', 400)
             if code == 404:
@@ -225,8 +235,8 @@ class TestCaseQueryService:
         first_audio_id = audio_ids[0]
 
         # 计算总时长（所有音频时长之和）
-        from shared.clients.grpc_clients import algo_normalize_algorithm_params
-        _overlap_params = algo_normalize_algorithm_params(config.get('algorithm_params', {})) if config else {}
+        from api_gateway.infrastructure.grpc_proxies import algorithm_query_service as _algo_svc
+        _overlap_params = _algo_svc.normalize_algorithm_params(config.get('algorithm_params', {})) if config else {}
         try:
             overlap_time = max(0.0, float(_overlap_params.get('overlap_time', 0))) if config else 0
         except (ValueError, TypeError):
@@ -238,21 +248,19 @@ class TestCaseQueryService:
 
         total_duration = 0
         try:
-            # 通过 gRPC 获取音频信息（替代直连 audio_service PO）
-            from api_gateway.infrastructure.grpc_proxies import audio_config_service
+            # 通过 ACL 获取音频信息
             for aid in audio_ids:
-                res = audio_config_service.get_one(aid)
+                res = _audio_acl.get_one(aid)
                 if res.get('success'):
                     rec = res.get('data') or {}
                     if rec.get('duration'):
                         total_duration += rec.get('duration')
         except Exception:
-            pass
+            logger.warning("预览用例 %s 时获取音频总时长失败", tc_id, exc_info=True)
 
         # 前端播放模式：返回所有音频的预签名 URL，前端连续播放
         if playback_mode == 'frontend':
             from shared.infrastructure.storage import storage
-            from api_gateway.infrastructure.grpc_proxies import audio_config_service
 
             # 生成预签名 URL 的辅助函数（兼容旧数据裸 OSS key）
             def _make_presigned_url(file_path):
@@ -262,7 +270,7 @@ class TestCaseQueryService:
 
             audio_stream_urls = []
             for aid in audio_ids:
-                res = audio_config_service.get_one(aid)
+                res = _audio_acl.get_one(aid)
                 if res.get('success'):
                     rec = res.get('data') or {}
                     file_path = rec.get('file_path')
@@ -292,10 +300,9 @@ class TestCaseQueryService:
         # 后端播放模式：检查E2E任务并执行播放
         # 通过 gRPC 检查是否有运行中的 E2E 任务（替代直连 task_service PO）
         def _has_running_e2e_tasks():
-            from api_gateway.infrastructure.grpc_proxies import task_config_service
-            for st in ('queued', 'pending', 'running'):
+            for st in (TaskStatus.QUEUED, TaskStatus.PENDING, TaskStatus.RUNNING):
                 try:
-                    r = task_config_service.list_tasks(page=1, per_page=1, status=st, task_type='e2e')
+                    r = _task_acl.list_tasks(page=1, per_page=1, status=st, task_type='e2e')
                     if r.get('success'):
                         raw = r.get('data') or {}
                         if raw.get('total', 0) > 0:
@@ -307,18 +314,14 @@ class TestCaseQueryService:
         if _has_running_e2e_tasks():
             return error_response("当前有待执行的E2E测试任务，不允许使用后端扬声器播放", 403)
 
-        # 跨服务调用：通过 gRPC AudioService 调用音频引擎
-        from api_gateway.infrastructure.grpc_proxies import audio_service
-        # 跨服务调用：通过 gRPC AudioService 的 SPL 测量
-        from api_gateway.infrastructure.grpc_proxies import spl_service
-
+        # 通过 ACL 调用音频引擎
         preview_task_id = f"PREVIEW_{tc_id}"
 
         # 停止之前的预览
-        audio_service.stop_task_audio_by_pattern("PREVIEW_")
+        _audio_acl.stop_task_audio_by_pattern("PREVIEW_")
 
         # 清除设备缓存，强制重新扫描
-        audio_service._device_cache = None
+        _audio_acl.clear_device_cache()
 
         import time
         time.sleep(0.2)
@@ -327,10 +330,8 @@ class TestCaseQueryService:
         common.preview_stop_flags[tc_id] = False
 
         try:
-            # 跨服务调用：通过 gRPC PlaybackService 调用播放编排
-            from api_gateway.infrastructure.grpc_proxies import playback_orchestrator
-
-            preview_result = playback_orchestrator.preview(
+            # 通过 ACL 调用播放编排
+            preview_result = _playback_acl.preview(
                 audio_configs=preview_audios,
                 case_config=config,
                 task_id=preview_task_id,
@@ -338,10 +339,10 @@ class TestCaseQueryService:
                 overlap_rate=overlap_rate,
                 overlap_time=overlap_time,
             )
-            if not preview_result:
+            if not preview_result or not preview_result.result_data:
                 return error_response("用例未配置有效的干声音频")
 
-            total_duration = preview_result.get('total_duration', 0)
+            total_duration = preview_result.result_data.get('total_duration', 0)
             common.log(
                 'info',
                 f"Previewing test case {tc_id}: offset={offset}, duration={total_duration:.2f}s",
@@ -366,7 +367,7 @@ class TestCaseQueryService:
 
     @staticmethod
     def get_stats():
-        result = testcase_config_service.get_testcase_stats()
+        result = _testcase_acl.get_testcase_stats()
 
         if not result.get('success'):
             return error_response(result.get('message', '查询失败'))
@@ -376,7 +377,7 @@ class TestCaseQueryService:
 
     @staticmethod
     def get_tags():
-        result = testcase_config_service.get_testcase_tags()
+        result = _testcase_acl.get_testcase_tags()
 
         if not result.get('success'):
             return error_response(result.get('message', '查询失败'))
@@ -388,7 +389,7 @@ class TestCaseQueryService:
     @staticmethod
     def get_ref_params(tc_id, round_number):
         """获取指定用例指定轮的参考参数文件内容"""
-        result = testcase_config_service.get_testcase_ref_params(tc_id, round_number)
+        result = _testcase_acl.get_testcase_ref_params(tc_id, round_number)
 
         if not result.get('success'):
             code = result.get('code', 400)

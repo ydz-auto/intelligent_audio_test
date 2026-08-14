@@ -19,6 +19,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from shared.infrastructure.storage import storage
+from shared.utils.status_constants import TaskStatus
 
 from task_service.infrastructure.persistence.task_repository import task_repository
 from task_service.infrastructure.read_models.task_read_model import task_read_model
@@ -74,7 +75,7 @@ class TaskQueryService:
 
                     if tz_completed:
                         elapsed_seconds = max(0.0, (tz_completed - tz_started).total_seconds())
-                    elif result.get('status') in ('completed', 'failed'):
+                    elif result.get('status') in (TaskStatus.COMPLETED, TaskStatus.FAILED):
                         elapsed_seconds = 0.0
                     else:
                         elapsed_seconds = max(0.0, (now - tz_started).total_seconds())
@@ -155,12 +156,13 @@ class TaskQueryService:
             result_audios = {}
 
             try:
-                from shared.clients.grpc_clients import algo_get_full_field_mapping, algo_get_output_fields
+                from task_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
+                _algo_repo = AlgorithmRepository()
 
                 if algorithm_type:
-                    field_mapping = algo_get_full_field_mapping(algorithm_type)
+                    field_mapping = _algo_repo.algo_get_full_field_mapping(algorithm_type)
 
-                output_fields = algo_get_output_fields(algorithm_type) if algorithm_type else []
+                output_fields = _algo_repo.algo_get_output_fields(algorithm_type) if algorithm_type else []
 
                 for i, result in enumerate(results):
                     pr = results[i]

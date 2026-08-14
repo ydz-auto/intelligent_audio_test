@@ -199,23 +199,28 @@ class DeviceDriverFactory:
 
         遍历所有基础驱动和专用驱动，返回持有该 device_sn 的 driver。
         """
-        # 先从专用驱动找
+        # 先从专用驱动找：仅当 device_sn 确实在该 driver._drivers 中时返回
         for entry in self._specialized_drivers:
             driver = entry['driver']
             if hasattr(driver, '_drivers') and device_sn in driver._drivers:
-                return driver
-            # 专用驱动可能不按 device_sn 索引，但也可能是目标
-            if hasattr(driver, 'pre_process'):
                 return driver
 
         # 再从基础驱动找
         for key, driver in self._base_drivers.items():
             if hasattr(driver, '_drivers') and device_sn in driver._drivers:
+                # 专用驱动继承基础驱动时会共用同一 _drivers dict（通过 super().__init__）
+                # 检查是否有专用驱动与该基础 driver 共享 _drivers 实例
+                for entry in self._specialized_drivers:
+                    spec_driver = entry['driver']
+                    if (hasattr(spec_driver, '_drivers')
+                            and spec_driver._drivers is driver._drivers):
+                        return spec_driver
                 return driver
-            # 如果设备已注册到 task_device_map，返回对应系统的基础 driver
-            if task_id and task_id in self._task_device_map:
-                if device_sn in self._task_device_map[task_id]:
-                    return driver
+
+        # 如果设备已注册到 task_device_map，返回对应系统的基础 driver 作为兜底
+        if task_id and task_id in self._task_device_map:
+            if device_sn in self._task_device_map[task_id]:
+                return self._base_drivers.get('HarmonyOS')
         return None
 
     def get_driver(self, system, keywords=None, device_sn=None):

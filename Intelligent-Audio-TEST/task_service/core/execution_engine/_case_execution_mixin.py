@@ -1,6 +1,8 @@
 from datetime import datetime
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.models.database import get_db_session
+from shared.utils.status_utils import derive_task_case_status
+from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
 
 # gRPC 调用封装函数（模块级）
 from task_service.core.execution_engine._grpc_helpers import (
@@ -94,8 +96,8 @@ class CaseExecutionMixin:
             try:
                 tc_rel = local_db_session.get(TaskCase, tc_rel_id)
                 if tc_rel:
-                    tc_rel.status = 'failed'
-                    tc_rel.execution_status = 'failed'
+                    tc_rel.execution_status = ExecutionStatus.FAILED
+                    tc_rel.status = derive_task_case_status(tc_rel.execution_status, tc_rel.evaluation_status or EvaluationStatus.PENDING)
                     # 如果started_at字段为空，设置它
                     if not tc_rel.started_at:
                         tc_rel.started_at = datetime.now(self.utc_plus_8)
@@ -113,9 +115,9 @@ class CaseExecutionMixin:
                     if task:
                         task.completed_cases = local_db_session.query(TaskCase).filter(
                             TaskCase.task_id == task_id,
-                            TaskCase.status == 'completed'
+                            TaskCase.status == TaskCaseStatus.COMPLETED
                         ).count()
-                        task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status='failed').count()
+                        task.failed_cases = local_db_session.query(TaskCase).filter_by(task_id=task_id, status=TaskCaseStatus.FAILED).count()
                         local_db_session.commit()
                         self._emit_progress(task)
             finally:

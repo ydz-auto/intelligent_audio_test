@@ -1,19 +1,18 @@
-from shared.clients.grpc_clients import (
-    algo_get_device_params,
-    algo_get_api_params,
-    algo_get_param_mapping,
-)
 from shared.infrastructure.base_executor import BaseExecutor
+from shared.utils.status_constants import ExecutionStatus, TaskCaseStatus
 from e2e_test_service.application.services.e2e_device_manager import E2EDeviceManager
 from e2e_test_service.application.services.e2e_collector import E2ECollector
 from e2e_test_service.application.services.e2e_aggregator import E2EAggregator
 from e2e_test_service.application.services.e2e_executor.preparation_mixin import PreparationMixin
 from e2e_test_service.application.services.e2e_executor.rounds_loop_mixin import RoundsLoopMixin
 from e2e_test_service.application.services.e2e_executor.finalization_mixin import FinalizationMixin
-# 跨服务调用：通过 ACL 仓储访问 device_service / playback_service
+# 跨服务调用：通过 ACL 仓储访问 device_service / playback_service / device_result_service
 from e2e_test_service.infrastructure.acl import (
+    AlgorithmAclRepositoryImpl,
     DeviceAclRepositoryImpl,
+    DeviceResultAclRepositoryImpl,
     PlaybackAclRepositoryImpl,
+    TaskDataAclRepositoryImpl,
 )
 
 
@@ -29,6 +28,20 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         # ACL 仓储
         self._device_repo = DeviceAclRepositoryImpl()
         self._playback_repo = PlaybackAclRepositoryImpl()
+        self._device_result_repo = DeviceResultAclRepositoryImpl()
+        self._task_data_repo = TaskDataAclRepositoryImpl()
+
+    def _get_result_mapper(self):
+        """返回 DeviceResult ACL 仓储，供 ResultsMixin 使用"""
+        return self._device_result_repo
+
+    def _get_algorithm_acl(self):
+        """返回 algorithm_service ACL 仓储，供 DbMixin 使用"""
+        return AlgorithmAclRepositoryImpl
+
+    def _get_task_data_acl(self):
+        """返回 task_service ACL 仓储，供 DbMixin 使用"""
+        return self._task_data_repo
 
     def execute_e2e_case(self, task_id, tc_rel_id):
         """执行E2E测试用例"""
@@ -42,13 +55,13 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             error_msg = "任务ID和测试用例关联ID不能为空"
             self._log(level='ERROR', content=f"E2E 用例执行失败: {error_msg}", task_id=task_id)
             if tc_rel_id:
-                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status='failed', status='failed', error_message=error_msg)
+                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
             return False
 
         data_result = self._validate_and_get_data(task_id, tc_rel_id)
         if not data_result['success']:
             error_msg = data_result.get('error', '获取基础数据失败')
-            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status='failed', status='failed', error_message=error_msg)
+            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
             return False
 
         data = data_result['data']
@@ -62,25 +75,8 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
         test_case_id = data['test_case_id']
         algorithm_type = data.get('algorithm_type', 'translation')
 
-        # 初始化 case_field_values
-        # 通过 gRPC 获取 device/api 参数与映射，内联实现 get_case_fields 逻辑
-        device_params = algo_get_device_params(algorithm_type)
-        api_params = algo_get_api_params(algorithm_type)
-        all_params = (device_params or []) + (api_params or [])
-        case_fields = {}
-        for param in all_params:
-            param_code = param.get('code', '')
-            param_type = param.get('param_type', '')
-            source = param.get('source', '')
-            if source == 'case_table' or param_type in ['direction', 'language']:
-                case_fields[param_code] = param_code
-        mappings = algo_get_param_mapping(algorithm_type, 'case') or []
-        for mapping in mappings:
-            source_param = mapping.get('source_param', '')
-            target_key = mapping.get('target_key', source_param)
-            source = mapping.get('source', '')
-            if source == 'case_table':
-                case_fields[target_key] = source_param
+        # case_fields 已由 _validate_and_get_data → _get_case_fields 查询并填入 data
+        case_fields = data.get('case_fields', {})
         case_field_values = {key: data.get(key) for key in case_fields.keys()}
 
         self.current_case_field_values = case_field_values
@@ -98,7 +94,7 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             )
 
             self._handle_control(task_id)
-            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status='running')
+            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.RUNNING)
             stop_event, pause_event = self._get_control_events(task_id)
             # 通过 ACL 仓储注册任务事件
             self._device_repo.register_task_events(
@@ -122,7 +118,7 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
 
             if not all_round_results:
                 error_msg = "所有轮次均未产生有效结果"
-                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status='failed', status='failed', error_message=error_msg)
+                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
                 return False
 
             # ── 阶段三：循环后聚合 + 评估 ──
@@ -140,7 +136,7 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             error_msg = f"用例执行异常: {str(e)}"
             self._log(level='ERROR', content=f"用例 {case_name} 执行异常: {str(e)}\n{traceback.format_exc()}",
                       task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None))
-            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status='failed', status='failed', error_message=error_msg)
+            self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
             return False
         finally:
             # ── 阶段四：设备驱动 teardown（与 initialize 对称）──

@@ -7,7 +7,7 @@ import { useAlgorithmParamOps } from './useAlgorithmParamOps'
 import { useAlgorithmDimensionOps } from './useAlgorithmDimensionOps'
 import { useAlgorithmMappingOps } from './useAlgorithmMappingOps'
 import { useAlgorithmFeatureBundles } from './useAlgorithmFeatureBundles'
-import { useAlgorithmCrudOps } from './useAlgorithmCrudOps'
+import { useAlgorithmCrudOps, normalizeMappings } from './useAlgorithmCrudOps'
 import type { AlgorithmGroup, Dimension, AlgorithmRecord, ModalProps } from './algorithmTypes'
 
 // Re-export types so existing imports from './AlgorithmConfigModal' keep working
@@ -240,7 +240,7 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
         api_params: apiParams,
         case_params: caseParams,
         params: editData.params || [],
-        mappings: JSON.parse(JSON.stringify(editData.mappings || { device: [], api: [], evaluation: [] })),
+        mappings: normalizeMappings(editData.mappings),
         associated_dimensions: ((editData.associatedDimensions ?? editData.associated_dimensions) || []).map((d: any) => ({
           dimension_id: d.dimensionId ?? d.dimension_id,
           weight: d.weight ?? 1.0,

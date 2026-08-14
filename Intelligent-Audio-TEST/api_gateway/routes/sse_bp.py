@@ -7,11 +7,14 @@ SSE 事件流 —— 通过 Redis PubSub 订阅实时事件并推送给前端
 - sse_events     → event: 由消息体 event 字段决定（如 report_generated）
 """
 import json
+import logging
 
 import redis as redis_lib
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from api_gateway.application.services.auth.dependencies import require_permission
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -66,7 +69,7 @@ def stream_events(_: None = require_permission('sse:read')):
             try:
                 pubsub.close()
             except Exception:
-                pass
+                logger.debug("关闭 Redis pubsub 失败", exc_info=True)
 
     return StreamingResponse(
         generate(),

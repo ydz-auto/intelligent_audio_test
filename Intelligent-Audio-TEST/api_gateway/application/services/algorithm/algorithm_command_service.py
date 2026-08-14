@@ -6,7 +6,7 @@
 """
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
-from api_gateway.infrastructure.grpc_proxies import algorithm_config_service
+from api_gateway.infrastructure.acl import AlgorithmConfigAclRepositoryImpl
 
 from api_gateway.schemas.algorithm import (
     AlgorithmDefinitionCreate,
@@ -30,6 +30,9 @@ from api_gateway.schemas.algorithm import (
 )
 
 
+_algorithm_acl = AlgorithmConfigAclRepositoryImpl()
+
+
 class AlgorithmCommandService:
     # ========== 算法定义 CRUD ==========
 
@@ -42,7 +45,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.create_algorithm(data)
+        result = _algorithm_acl.create_algorithm(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Algorithm created'))
@@ -57,7 +60,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.update_algorithm(algo_type, data)
+        result = _algorithm_acl.update_algorithm(algo_type, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Algorithm updated'))
@@ -66,7 +69,7 @@ class AlgorithmCommandService:
     @staticmethod
     def delete_algorithm(algo_type: str):
         """删除算法定义（软删除）"""
-        result = algorithm_config_service.delete_algorithm(algo_type)
+        result = _algorithm_acl.delete_algorithm(algo_type)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Algorithm deleted'))
@@ -92,7 +95,7 @@ class AlgorithmCommandService:
                 return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.create_param(data)
+        result = _algorithm_acl.create_param(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Parameter created'))
@@ -106,7 +109,7 @@ class AlgorithmCommandService:
         现在该判断逻辑下沉到微服务。网关侧直接把原始 JSON 传给代理。
         """
         data = request.get_json() or {}
-        result = algorithm_config_service.update_param(param_id, data)
+        result = _algorithm_acl.update_param(param_id, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Parameter updated'))
@@ -115,7 +118,7 @@ class AlgorithmCommandService:
     @staticmethod
     def delete_param(param_id: int):
         """删除参数（软删除）"""
-        result = algorithm_config_service.delete_param(param_id)
+        result = _algorithm_acl.delete_param(param_id)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Parameter deleted'))
@@ -132,7 +135,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.create_mapping(data)
+        result = _algorithm_acl.create_mapping(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Mapping created'))
@@ -147,7 +150,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.update_mapping(mapping_id, data)
+        result = _algorithm_acl.update_mapping(mapping_id, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Mapping updated'))
@@ -156,7 +159,7 @@ class AlgorithmCommandService:
     @staticmethod
     def delete_mapping(mapping_id: int):
         """删除参数映射"""
-        result = algorithm_config_service.delete_mapping(mapping_id)
+        result = _algorithm_acl.delete_mapping(mapping_id)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Mapping deleted'))
@@ -173,7 +176,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.create_case_param(data)
+        result = _algorithm_acl.create_case_param(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Case parameter created'))
@@ -188,7 +191,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.update_case_param(param_id, data)
+        result = _algorithm_acl.update_case_param(param_id, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Case parameter updated'))
@@ -197,7 +200,7 @@ class AlgorithmCommandService:
     @staticmethod
     def delete_case_param(param_id: int):
         """删除用例专属参数"""
-        result = algorithm_config_service.delete_case_param(param_id)
+        result = _algorithm_acl.delete_case_param(param_id)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Case parameter deleted'))
@@ -214,7 +217,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.create_reference_param(data)
+        result = _algorithm_acl.create_reference_param(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Reference parameter created'))
@@ -229,7 +232,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.update_reference_param(param_id, data)
+        result = _algorithm_acl.update_reference_param(param_id, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Reference parameter updated'))
@@ -238,7 +241,7 @@ class AlgorithmCommandService:
     @staticmethod
     def delete_reference_param(param_id: int):
         """删除参考参数"""
-        result = algorithm_config_service.delete_reference_param(param_id)
+        result = _algorithm_acl.delete_reference_param(param_id)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Reference parameter deleted'))
@@ -255,7 +258,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.associate_dimensions(algo_type, data)
+        result = _algorithm_acl.associate_dimensions(algo_type, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Dimensions associated'))
@@ -270,7 +273,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.create_dimension_relation(data)
+        result = _algorithm_acl.create_dimension_relation(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Dimension relation created'))
@@ -285,7 +288,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.update_dimension_relation(relation_id, data)
+        result = _algorithm_acl.update_dimension_relation(relation_id, data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Dimension relation updated'))
@@ -294,7 +297,7 @@ class AlgorithmCommandService:
     @staticmethod
     def delete_dimension_relation(relation_id: int):
         """删除单条维度关联"""
-        result = algorithm_config_service.delete_dimension_relation(relation_id)
+        result = _algorithm_acl.delete_dimension_relation(relation_id)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Dimension relation deleted'))
@@ -311,7 +314,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.import_algorithms(data)
+        result = _algorithm_acl.import_algorithms(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Import completed'))
@@ -326,7 +329,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.bulk_delete(data)
+        result = _algorithm_acl.bulk_delete(data)
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Bulk delete completed'))
@@ -341,7 +344,7 @@ class AlgorithmCommandService:
             return error_response(f"请求数据验证失败: {str(e)}", 400)
 
         data = req.model_dump(by_alias=False, exclude_none=True)
-        result = algorithm_config_service.extract_params(data)
+        result = _algorithm_acl.extract_params(data)
 
         if result.get('success'):
             return success_response(result.get('data'))
@@ -352,7 +355,7 @@ class AlgorithmCommandService:
     @staticmethod
     def reload_config():
         """重新加载配置（热更新）"""
-        result = algorithm_config_service.reload_config()
+        result = _algorithm_acl.reload_config()
 
         if result.get('success'):
             return success_response(result.get('data'), result.get('message', 'Config reloaded'))

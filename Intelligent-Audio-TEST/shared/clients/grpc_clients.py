@@ -1076,7 +1076,8 @@ def get_audios_by_ids(audio_ids):
         from shared.proto import audio_service_pb2 as e2e_pb
         from shared.utils.grpc_json import loads as _loads
         stub = get_audio_config_service_stub()
-        req = e2e_pb.GetAudiosByIdsRequest(audio_ids=','.join(str(aid) for aid in audio_ids))
+        import json as _json
+        req = e2e_pb.GetAudiosByIdsRequest(data=_json.dumps({"ids": list(audio_ids)}))
         resp = stub.GetAudiosByIds(req)
         data = _loads(resp.data, {})
         audio_map = {}
@@ -1234,8 +1235,10 @@ def algo_reload_config():
 
 
 def algo_get_field_mappings(algorithm_type: str):
-    """获取字段定义（original + mapped）"""
-    return _call_algo_query_rpc('GetFieldMappings', algorithm_type=algorithm_type or '') or {}
+    """获取字段定义（original + mapped），返回 FieldMapperWrapper"""
+    from shared.utils.field_mapper_wrapper import FieldMapperWrapper
+    data = _call_algo_query_rpc('GetFieldMappings', algorithm_type=algorithm_type or '') or {}
+    return FieldMapperWrapper(data)
 
 
 def algo_get_evaluation_field_mappings(algorithm_type: str):

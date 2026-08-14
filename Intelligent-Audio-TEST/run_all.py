@@ -15,8 +15,12 @@ import sys
 import os
 import time
 import signal
+import logging
 import threading
 import socket
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s %(name)s: %(message)s')
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ENV_FILE = os.path.join(BASE_DIR, '.env')
@@ -85,7 +89,7 @@ def _stream(proc, name):
         try:
             proc.stdout.close()
         except Exception:
-            pass
+            logger.debug("关闭子进程 stdout 失败", exc_info=True)
 
 
 def _is_port_open(host, port):
@@ -125,7 +129,7 @@ def _find_pids_on_port(port):
         if pids:
             return pids
     except Exception:
-        pass
+        logger.debug("psutil 查询占用端口 %s 的进程失败", port, exc_info=True)
     # 回退：Windows netstat
     if os.name == 'nt':
         try:
@@ -138,7 +142,7 @@ def _find_pids_on_port(port):
                     if parts and parts[-1].isdigit():
                         pids.add(int(parts[-1]))
         except Exception:
-            pass
+            logger.debug("netstat 查询占用端口 %s 的进程失败", port, exc_info=True)
     return pids
 
 
@@ -179,7 +183,7 @@ def cleanup_occupied_ports():
                 import psutil
                 proc_name = psutil.Process(pid).name()
             except Exception:
-                pass
+                logger.debug("获取进程 %s 名称失败", pid, exc_info=True)
             print(f"[CLEAN] port {port} occupied by PID {pid} ({proc_name}), killing...",
                   flush=True)
             if _kill_pid(pid):
@@ -443,7 +447,7 @@ def stop_all():
         except subprocess.TimeoutExpired:
             p['proc'].kill()
         except Exception:
-            pass
+            logger.debug("停止子进程 %s 失败", p.get('name', '?'), exc_info=True)
     print("[OK] All services stopped.", flush=True)
 
 

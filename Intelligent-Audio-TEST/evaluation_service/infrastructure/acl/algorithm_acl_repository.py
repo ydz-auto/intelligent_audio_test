@@ -60,6 +60,39 @@ class AlgorithmAclRepository(_AlgorithmAclRepositoryABC):
             logger.exception('sync_dimension_relations failed: %s', e)
             return False
 
+    def get_algorithm_dimensions(self, algorithm_type: str) -> List[int]:
+        """查询算法关联的 dimension_ids 列表。
+
+        封装 algorithm_service.AlgorithmDefinitionService.GetAlgorithmDimensions RPC。
+        失败时返回空列表。
+        """
+        try:
+            stub = get_algorithm_definition_service_stub()
+            req = algo_pb.GetAlgorithmDimensionsRequest(
+                algorithm_type=algorithm_type or ''
+            )
+            resp = stub.GetAlgorithmDimensions(req)
+            if resp.success:
+                data = _loads(resp.data, {}) or {}
+                return [int(d) for d in data.get('dimension_ids', [])]
+        except Exception:
+            logger.warning("get_algorithm_dimensions 失败", exc_info=True)
+        return []
+
+    def create_dimension_relation(self, data: Dict[str, Any]) -> bool:
+        """创建单条算法-维度关联。
+
+        封装 algorithm_service.AlgorithmDefinitionService.CreateDimensionRelation RPC。
+        """
+        try:
+            stub = get_algorithm_definition_service_stub()
+            resp = stub.CreateDimensionRelation(algo_pb.CreateDimensionRelationRequest(
+                data=_dumps(data),
+            ))
+            return resp.success
+        except Exception:
+            return False
+
     def get_relations_by_dimension(self, dimension_id: int) -> List[DimensionRelationDTO]:
         """按 dimension_id 查询未删除的算法-维度关联列表。"""
         try:
@@ -146,6 +179,39 @@ class AlgorithmAclRepository(_AlgorithmAclRepositoryABC):
         except Exception as e:
             logger.exception('find_audio_dimension_ids failed: %s', e)
             return set()
+
+    def get_field_mappings(self, algorithm_type: str):
+        """获取字段定义（original + mapped），返回 FieldMapperWrapper"""
+        from shared.clients.grpc_clients import algo_get_field_mappings
+        return algo_get_field_mappings(algorithm_type)
+
+    def get_param_mapping(self, algorithm_type: str, component_type: str):
+        """获取参数映射"""
+        from shared.clients.grpc_clients import algo_get_param_mapping
+        return algo_get_param_mapping(algorithm_type, component_type)
+
+    def get_reference_params_list(self, *args, **kwargs):
+        """获取参考参数列表"""
+        from shared.clients.grpc_clients import algo_get_reference_params_list
+        return algo_get_reference_params_list(*args, **kwargs)
+
+    def load_reference_params_file(self, filepath: str = ''):
+        """加载参考参数文件"""
+        from shared.clients.grpc_clients import algo_load_reference_params_file
+        return algo_load_reference_params_file(filepath)
+
+    def extract_case_all_params(self, case_config=None):
+        """提取用例所有参数"""
+        from shared.clients.grpc_clients import algo_extract_case_all_params
+        return algo_extract_case_all_params(case_config)
+
+    def get_output_fields(self, algorithm_type: str, test_type: str = None):
+        """获取结果输出字段（GetOutputFields）
+
+        通过 gRPC 调用 algorithm_service.AlgorithmQueryService.GetOutputFields。
+        """
+        from shared.clients.grpc_clients import algo_get_output_fields
+        return algo_get_output_fields(algorithm_type, test_type=test_type)
 
     # ========== 参数映射同步 ==========
 

@@ -17,7 +17,7 @@ try:
     from dotenv import load_dotenv
     load_dotenv(os.path.join(project_dir, '.env'))
 except ImportError:
-    pass
+    logging.getLogger(__name__).debug("python-dotenv 未安装，跳过 .env 加载")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -54,8 +54,8 @@ async def lifespan(app: FastAPI):
     import asyncio as _asyncio
     try:
         ws_manager._main_loop = _asyncio.get_running_loop()
-    except RuntimeError:
-        pass
+    except RuntimeError as e:
+        logger.debug("获取运行中事件循环失败: %s", e)
 
     # 服务注册
     registry = RedisServiceRegistry()

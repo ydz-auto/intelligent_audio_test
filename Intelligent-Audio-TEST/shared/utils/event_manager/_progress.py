@@ -1,7 +1,10 @@
 import time
+import logging
 from datetime import datetime, timezone, timedelta
 from shared.models.database import get_db_session
 from shared.utils.event_manager._common import get_socketio
+
+logger = logging.getLogger(__name__)
 
 # 缓存策略：使用 shared.utils.task_data_cache 的 TTL 缓存减少 DB 往返。
 # gRPC GetTaskProgress 现已返回完整进度数据（test_cases 列表/计数/api_resource_status），
@@ -35,8 +38,8 @@ class ProgressMixin:
         else:
             try:
                 task_id = str(getattr(task, 'id', None))
-            except:
-                pass
+            except Exception:
+                logger.debug("从任务对象获取 task_id 失败", exc_info=True)
 
         if not task_id:
             self._log(level='WARNING', content=f"无法获取任务ID，跳过进度更新", task_id=task_id)

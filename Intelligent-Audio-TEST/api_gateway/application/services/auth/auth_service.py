@@ -104,11 +104,11 @@ class AuthService:
     @staticmethod
     def _find_or_create_user(user_info: UserInfo) -> AuthUser:
         """查找或创建用户（通过 gRPC 调用 auth_service）"""
-        from shared.clients.grpc_clients import get_auth_service_stub
+        from api_gateway.infrastructure.grpc_proxies import auth_config_service
         from shared.proto import auth_service_pb2 as auth_pb
         from shared.utils.grpc_json import loads as _loads
 
-        stub = get_auth_service_stub()
+        stub = auth_config_service.stub
 
         # 1. 按 OAuth 外部 ID 查找
         if user_info.external_id:
