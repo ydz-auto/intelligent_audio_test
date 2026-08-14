@@ -46,7 +46,7 @@ export function useDimensions() {
           // 从 required_inputs 推导 requiresAudio 标记
           const reqInputs = (dim as any).required_inputs
           if (Array.isArray(reqInputs)) {
-            (dim as any).requiresAudio = reqInputs.some((p: any) => p?.field_type === 'audio' && p?.param_direction === 'input')
+            (dim as any).requiresAudio = reqInputs.some((p: any) => (p?.fieldType || p?.field_type) === 'audio' && (p?.paramDirection || p?.param_direction) === 'input')
           }
           if (!byId.has(dim.id)) {
             byId.set(dim.id, dim)

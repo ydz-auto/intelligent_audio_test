@@ -19,7 +19,7 @@ _MODULE_NAME = 'result_data_store'
 
 
 def _sanitize_path(s):
-    return re.sub(r'[^a-zA-Z0-9_]', '_', str(s))
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', str(s))
 
 
 def _build_result_dir(task_id, test_case_id, device_sn):

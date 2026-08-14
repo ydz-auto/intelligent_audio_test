@@ -17,10 +17,7 @@ from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 class Xiaoyilivechat(HarmonyDriver):
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
-    def __init__(self):
-        super().__init__()
-        # 仅覆盖与父类不同的属性
-        self.app_icon_key = 'AppIcon_Image_com.huawei.hmos.vassistant.launcherVoiceAbilityentry0_undefined_0'
+
 
     # 是否启用录屏(小艺=True 保留录屏 wav 作为评估音频源)。
     # Doubao/ChatGPT 在各自子类置 False:无录屏,get_results 跳过录屏拉取,
@@ -538,7 +535,7 @@ class Xiaoyilivechat(HarmonyDriver):
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
 
-        if not record_mode == 'case':
+        if record_mode == 'case':
             # case 模式：中间轮不停录屏、不挂断（保持通话与录屏连续）；
             # 仅末轮停止录屏，以便 get_results 拉取完整文件；全程不在此挂断，交给 teardown 兜底
             if is_last:

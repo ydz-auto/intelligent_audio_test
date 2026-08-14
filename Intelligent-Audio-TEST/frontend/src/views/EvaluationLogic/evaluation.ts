@@ -140,11 +140,11 @@ export function useEvaluation() {
       headers: {
         'content-type': 'application/json'
       },
-      body_template: {
+      bodyTemplate: {
         rounds: [
           {
             answer: "{{answer}}",
-            correct_answer: "{{correct_answer}}"
+            correctAnswer: "{{correct_answer}}"
           }
         ]
       },
@@ -193,11 +193,11 @@ export function useEvaluation() {
       headers: {
         'content-type': 'application/json'
       },
-      body_template: {
+      bodyTemplate: {
         rounds: [
           {
             answer: "{{answer}}",
-            correct_answer: "{{correct_answer}}"
+            correctAnswer: "{{correct_answer}}"
           }
         ]
       },
@@ -377,7 +377,7 @@ export function useEvaluation() {
 
       const apiUrl = dimension.apiUrl || (dimension as any).api_url || '';
       const rawApiSettings = dimension.apiSettings || (dimension as any).api_settings;
-      let apiSettingsObj = { method: 'POST', headers: {}, body_template: {}, timeout: 30000 };
+      let apiSettingsObj = { method: 'POST', headers: {}, bodyTemplate: {}, timeout: 30000 };
       if (rawApiSettings) {
         if (typeof rawApiSettings === 'object') {
           apiSettingsObj = { ...apiSettingsObj, ...rawApiSettings };
@@ -395,12 +395,12 @@ export function useEvaluation() {
       const requiredInputsArray = Array.isArray(rawRequiredInputs) ? rawRequiredInputs : [];
       const requiredInputsObj = requiredInputsArray;
 
-      if (apiSettingsObj.body_template) {
+      if (apiSettingsObj.bodyTemplate) {
         // 对齐 rounds 内的字段
-        if (apiSettingsObj.body_template.rounds && Array.isArray(apiSettingsObj.body_template.rounds)) {
-          const roundTpl = apiSettingsObj.body_template.rounds[0] || {};
+        if (apiSettingsObj.bodyTemplate.rounds && Array.isArray(apiSettingsObj.bodyTemplate.rounds)) {
+          const roundTpl = apiSettingsObj.bodyTemplate.rounds[0] || {};
           const requiredInputKeys = new Set(
-            requiredInputsArray.map((input: any) => input.param_code || input.key).filter(Boolean)
+            requiredInputsArray.map((input: any) => input.paramCode || input.param_code || input.key).filter(Boolean)
           );
           Object.keys(roundTpl).forEach(key => {
             if (!requiredInputKeys.has(key)) {
@@ -408,12 +408,12 @@ export function useEvaluation() {
             }
           });
           requiredInputsArray.forEach((input: any) => {
-            const inputKey = input.param_code || input.key;
+            const inputKey = input.paramCode || input.param_code || input.key;
             if (inputKey && !roundTpl[inputKey]) {
               roundTpl[inputKey] = `{{${inputKey}}}`;
             }
           });
-          apiSettingsObj.body_template.rounds[0] = roundTpl;
+          apiSettingsObj.bodyTemplate.rounds[0] = roundTpl;
         }
       }
       
@@ -591,17 +591,17 @@ export function useEvaluation() {
             if (!dimensionData.apiSettings) {
               dimensionData.apiSettings = {};
             }
-            if (!dimensionData.apiSettings.body_template) {
-              dimensionData.apiSettings.body_template = {};
+            if (!dimensionData.apiSettings.bodyTemplate) {
+              dimensionData.apiSettings.bodyTemplate = {};
             }
-            // 确保 body_template 有 rounds 结构
-            if (!dimensionData.apiSettings.body_template.rounds) {
-              dimensionData.apiSettings.body_template.rounds = [{}];
+            // 确保 bodyTemplate 有 rounds 结构
+            if (!dimensionData.apiSettings.bodyTemplate.rounds) {
+              dimensionData.apiSettings.bodyTemplate.rounds = [{}];
             }
-            const roundTpl = dimensionData.apiSettings.body_template.rounds[0];
+            const roundTpl = dimensionData.apiSettings.bodyTemplate.rounds[0];
 
             dimensionData.requiredInputs.forEach((input: any) => {
-              const inputKey = input.param_code || input.key;
+              const inputKey = input.paramCode || input.param_code || input.key;
               if (inputKey && !roundTpl[inputKey]) {
                 roundTpl[inputKey] = `{{${inputKey}}}`;
               }
@@ -610,7 +610,7 @@ export function useEvaluation() {
             // 清理 rounds 内不在 requiredInputs 中的 key
             Object.keys(roundTpl).forEach(key => {
               const exists = dimensionData.requiredInputs.some((input: any) => {
-                const inputKey = input.param_code || input.key;
+                const inputKey = input.paramCode || input.param_code || input.key;
                 return inputKey === key;
               });
               if (!exists) {
@@ -1123,11 +1123,11 @@ export function useEvaluation() {
         headers: {
           'content-type': 'application/json'
         },
-        body_template: {
+        bodyTemplate: {
         rounds: [
           {
-            asr_ref: "{{asr_ref}}",
-            output_text: "{{output_text}}"
+            asrRef: "{{asr_ref}}",
+            outputText: "{{output_text}}"
           }
         ]
       },

@@ -433,7 +433,7 @@ const getInitialValue = () => {
     case 'multi-select-tags':
       return Array.isArray(val) ? val : [];
     case 'apiSettingsEditor':
-      return val !== undefined && val !== null && typeof val === 'object' ? val : {method: 'POST', headers: {}, body_template: {}, timeout: 30000};
+      return val !== undefined && val !== null && typeof val === 'object' ? val : {method: 'POST', headers: {}, bodyTemplate: {}, timeout: 30000};
     case 'ruleEditor':
       return val !== undefined && val !== null && typeof val === 'object' ? val : {rules: [], defaultScore: 0};
     default:

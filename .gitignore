@@ -87,14 +87,12 @@ eval_server/app/database/uploads/
 eval_server/app/database/endpoints.json
 
 # Runtime data - test results & ref params
-Intelligent-Audio-TEST/static/ref_params/
-Intelligent-Audio-TEST/static/case_result/
+Intelligent-Audio-TEST/static/
 Intelligent-Audio-TEST/backend/static/case_result/
 
 # Temp files
 Intelligent-Audio-TEST/tmp_hypium/
 Intelligent-Audio-TEST/backend/tmp_hypium/
-Intelligent-Audio-TEST/static/audios/chunks/
 
 # Screenshots
 *.png
@@ -135,3 +133,14 @@ Intelligent-Audio-TEST/log
 prod_capture/capture_config.env
 prod_capture/run_*/
 prod_capture/capture_*.zip
+prod_capture/stop.flag
+
+# Temp debug scripts
+Intelligent-Audio-TEST/tmp_*.py
+Intelligent-Audio-TEST/log.txt
+
+# wjh scratch dir
+wjh/
+
+# eval_server temp tests
+eval_server/tests/test_xiaoyi_repro.py

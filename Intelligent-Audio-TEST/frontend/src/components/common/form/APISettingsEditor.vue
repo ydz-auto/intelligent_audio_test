@@ -42,7 +42,7 @@
       
       <div class="api-settings-right">
         <div class="editor-section preview-section">
-          <h4>body_template JSON</h4>
+          <h4>bodyTemplate JSON</h4>
           <span class="section-hint">rounds 内的字段由左侧表单管理，rounds 外的字段（如 model/prompt）可直接在此编辑</span>
           <textarea
             v-model="bodyTemplateJson"
@@ -65,7 +65,7 @@ const props = defineProps({
     default: () => ({
       method: 'POST',
       headers: {},
-      body_template: {},
+      bodyTemplate: {},
       timeout: 30000
     })
   }
@@ -76,7 +76,7 @@ const emit = defineEmits(['update:modelValue', 'change'])
 const localValue = reactive({
   method: 'POST',
   headers: {},
-  body_template: {},
+  bodyTemplate: {},
   timeout: 30000
 })
 
@@ -88,13 +88,13 @@ watch(() => props.modelValue, (newVal) => {
   if (newVal && typeof newVal === 'object') {
     localValue.method = newVal.method || 'POST'
     localValue.headers = newVal.headers ? { ...newVal.headers } : {}
-    localValue.body_template = newVal.body_template ? JSON.parse(JSON.stringify(newVal.body_template)) : {}
+    localValue.bodyTemplate = newVal.bodyTemplate ? JSON.parse(JSON.stringify(newVal.bodyTemplate)) : {}
     localValue.timeout = newVal.timeout || 30000
 
     headersJson.value = JSON.stringify(localValue.headers, null, 2)
-    bodyTemplateJson.value = JSON.stringify(localValue.body_template, null, 2)
+    bodyTemplateJson.value = JSON.stringify(localValue.bodyTemplate, null, 2)
 
-    const bodyTemplate = localValue.body_template || {}
+    const bodyTemplate = localValue.bodyTemplate || {}
     // 从 rounds[0] 取输入字段
     const roundTpl = (bodyTemplate.rounds && bodyTemplate.rounds[0]) || {}
     const inputKeys = Object.keys(roundTpl)
@@ -123,7 +123,7 @@ function parseHeaders() {
 function parseBodyTemplate() {
   try {
     const parsed = JSON.parse(bodyTemplateJson.value || '{}')
-    localValue.body_template = parsed
+    localValue.bodyTemplate = parsed
     // 同步 rounds[0] 的 key 到 localInputs
     const roundTpl = (parsed.rounds && parsed.rounds[0]) || {}
     const inputKeys = Object.keys(roundTpl)
@@ -161,7 +161,7 @@ function addInput() {
 function removeInput(index) {
   const removedInput = localInputs.value[index]
   if (removedInput && removedInput.param_code) {
-    const roundTpl = localValue.body_template.rounds?.[0]
+    const roundTpl = localValue.bodyTemplate.rounds?.[0]
     if (roundTpl) {
       delete roundTpl[removedInput.param_code]
     }
@@ -176,11 +176,11 @@ function handleInputChange() {
 }
 
 function syncBodyTemplate() {
-  // 确保 body_template 有 rounds 结构
-  if (!localValue.body_template.rounds) {
-    localValue.body_template.rounds = [{}]
+  // 确保 bodyTemplate 有 rounds 结构
+  if (!localValue.bodyTemplate.rounds) {
+    localValue.bodyTemplate.rounds = [{}]
   }
-  const roundTpl = localValue.body_template.rounds[0]
+  const roundTpl = localValue.bodyTemplate.rounds[0]
 
   localInputs.value.forEach(input => {
     if (input.param_code && !roundTpl[input.param_code]) {
@@ -195,7 +195,7 @@ function syncBodyTemplate() {
     }
   })
   // 同步 JSON 文本
-  bodyTemplateJson.value = JSON.stringify(localValue.body_template, null, 2)
+  bodyTemplateJson.value = JSON.stringify(localValue.bodyTemplate, null, 2)
 }
 
 function handleChange() {

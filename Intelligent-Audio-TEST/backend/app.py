@@ -368,10 +368,19 @@ def create_app(config_name='default'):
                 pass
             else:
                 elapsed_str = f" | Elapsed: {elapsed_ms}ms" if elapsed_ms else ""
+                # 对错误响应记录响应体，方便排查问题
+                body_str = ""
+                if response.status_code >= 400 and 'application/json' in content_type:
+                    try:
+                        resp_data = response.get_json(silent=True)
+                        if resp_data:
+                            body_str = f" | Body: {json.dumps(resp_data, ensure_ascii=False)[:500]}"
+                    except Exception:
+                        pass
                 log_and_emit(
                     level='INFO' if elapsed_ms and elapsed_ms > 1000 else 'DEBUG',
                     module='after_request',
-                    content=f"API Response - URL: {request.path} | Method: {request.method} | Status: {response.status_code}{elapsed_str}",
+                    content=f"API Response - URL: {request.path} | Method: {request.method} | Status: {response.status_code}{elapsed_str}{body_str}",
                     push_to_websocket=False
                 )
         except Exception:

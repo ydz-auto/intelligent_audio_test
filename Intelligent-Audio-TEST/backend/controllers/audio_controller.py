@@ -122,12 +122,18 @@ def convert_to_wav(file_path):
     # 加载原始音频
     audio_seg = AudioSegment.from_file(file_path)
     
-    # 获取原始音频的采样率和位深信息
+    # 获取原始音频的采样率信息
     original_sample_rate = audio_seg.frame_rate
     original_channels = audio_seg.channels
-    # 位深信息通过frame_width获取（bytes per sample）
-    original_bits_per_sample = audio_seg.frame_width * 8
-    
+
+    # 多声道只保留第一个声道（转为单声道）
+    if original_channels > 1:
+        audio_seg = audio_seg.split_to_mono()[0]
+        original_channels = 1
+
+    # 位深信息通过sample_width获取（bytes per sample per channel）
+    original_bits_per_sample = audio_seg.sample_width * 8
+
     # 生成新的WAV文件路径
     directory = os.path.dirname(file_path)
     filename = os.path.splitext(os.path.basename(file_path))[0]
@@ -1262,7 +1268,7 @@ class AudioController:
             # 初始化元数据默认值（不依赖ffmpeg）
             duration = 0.0
             sample_rate = 44100  # 默认采样率
-            channels = 2  # 默认双声道
+            channels = 1  # 默认单声道
             bitrate = 128000  # 默认比特率
             
             # 尝试提取详细元数据，但不依赖ffmpeg可用性

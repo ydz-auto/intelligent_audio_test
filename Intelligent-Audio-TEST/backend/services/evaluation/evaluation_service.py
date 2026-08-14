@@ -169,11 +169,13 @@ class EvaluationService(EvaluationLoggerMixin):
         return flat
 
     def _build_rounds_list(self, algorithm_result, reference_params_col,
-                            field_mapper, algorithm_type, test_type, task_id, test_case_id):
+                            field_mapper, algorithm_type, test_type, task_id, test_case_id,
+                            algorithm_params_col=None):
         """从 algo_result.rounds 构建 [{reference, hypothesis, ...}, ...] 列表
 
-        遍历 param_mappings，按 source 类型从每轮的 output（device/api）和
-        按轮加载的 reference_params（reference）取值，用 target_param 作为 key。
+        遍历 param_mappings，按 source 类型从每轮的 output（device/api）、
+        按轮加载的 reference_params（reference）和按轮加载的 case 参数（case）取值，
+        用 target_param 作为 key。
         """
         from backend.utils.algorithm.case_parameter_extractor import CaseParameterExtractor
         from backend.utils.algorithm.reference_params_generator import (
@@ -231,9 +233,12 @@ class EvaluationService(EvaluationLoggerMixin):
                             case_config={}
                         )
                 elif source == 'case':
-                    # case 参数暂不按轮处理，跳过
-                    pass
-
+                    # 按轮从独立列加载 case 参数
+                    # algo_result.rounds[].round 是 0-indexed，algorithm_params_col 用 1-indexed
+                    round_case_params = CaseParameterExtractor.get_round_algorithm_params(
+                        algorithm_params_col, round_number + 1
+                    ) if algorithm_params_col else {}
+                    value = round_case_params.get(source_param)
                 if value is not None:
                     item[target_param] = value
 
@@ -247,12 +252,21 @@ class EvaluationService(EvaluationLoggerMixin):
         round_number = kwargs.get('round_number')  # 多轮评估: 轮次编号 (None=整体评估, 0-indexed)
         reference_params_col = kwargs.pop('reference_params_col', None)
 
+        # 从 TestCase 独立列读取 algorithm_params（按轮分组），用于 _build_rounds_list 的 case 参数映射
+        algorithm_params_col = None
+        current_app = get_app()
+        with current_app.app_context():
+            tc = db.session.query(TestCase).get(test_case_id)
+            if tc:
+                algorithm_params_col = getattr(tc, 'algorithm_params', None)
+
         # 多轮场景：统一构建 rounds 列表（单轮也走此路径，列表只有一个元素）
         if isinstance(algorithm_result, dict) and algorithm_result.get('rounds'):
             rounds_list = self._build_rounds_list(
                 algorithm_result, reference_params_col,
                 field_mapper, kwargs.get('algorithm_type', 'translation'),
-                test_type, task_id, test_case_id
+                test_type, task_id, test_case_id,
+                algorithm_params_col=algorithm_params_col
             )
             if round_number is not None:
                 # 指定轮次：只取对应轮

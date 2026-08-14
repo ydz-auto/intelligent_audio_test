@@ -423,7 +423,11 @@ class ReevaluationExecutor:
         if is_e2e:
             # E2E: 一次性评估所有轮（不传 round_number，evaluate_case 构建完整 rounds_list）
             algo_params = {}
-            if test_case and test_case.config:
+            algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
+            if algorithm_params_col:
+                from backend.utils.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
+                algo_params = _normalize_algorithm_params(_get_round_algo_params(algorithm_params_col, 1))
+            elif test_case and test_case.config:
                 config = test_case.config
                 config_rounds = config.get('rounds', [])
                 if config_rounds and isinstance(config_rounds[0], dict):
@@ -474,7 +478,11 @@ class ReevaluationExecutor:
                     continue
 
                 algo_params = {}
-                if test_case and test_case.config:
+                algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
+                if algorithm_params_col:
+                    from backend.utils.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
+                    algo_params = _normalize_algorithm_params(_get_round_algo_params(algorithm_params_col, round_idx + 1))
+                elif test_case and test_case.config:
                     config = test_case.config
                     config_rounds = config.get('rounds', [])
                     if round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
@@ -550,9 +558,13 @@ class ReevaluationExecutor:
 
         test_case = db.session.get(TestCase, test_case_id)
 
-        # 从 rounds[0].algorithm_params 读取
+        # 优先从独立列读取 algorithm_params（按轮分组），兼容旧数据从 config.rounds 读取
         algo_params = {}
-        if test_case and test_case.config:
+        algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
+        if algorithm_params_col:
+            from backend.utils.algorithm.case_parameter_extractor import _get_round_algo_params, _normalize_algorithm_params
+            algo_params = _normalize_algorithm_params(_get_round_algo_params(algorithm_params_col, 1))
+        elif test_case and test_case.config:
             config = test_case.config
             rounds = config.get('rounds', [])
             if rounds and isinstance(rounds[0], dict):
