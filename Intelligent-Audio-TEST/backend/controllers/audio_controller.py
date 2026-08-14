@@ -1,11 +1,11 @@
 import os
+import re
 import uuid
 import requests
 import time
 import shutil
 import logging
 from flask import request, send_file, Response, current_app
-from werkzeug.utils import secure_filename
 from sqlalchemy.orm import joinedload
 from sqlalchemy import cast, String, func
 from backend.models.models import Audio, Tag, AudioAnnotation, AudioTag, TestCase, TestCaseGroup, PlaybackDevice, UploadTask, UploadFile, UploadChunk
@@ -34,6 +34,28 @@ from pydantic import ValidationError
 from datetime import datetime, timedelta, timezone
 from backend.utils.common.query_utils import now_cst
 from pydub import AudioSegment
+
+
+def _sanitize_filename(filename):
+    """清理文件名，防止路径穿越，同时保留中文等非ASCII字符。
+
+    与 werkzeug.secure_filename 不同，不会将中文替换为下划线。
+    仅移除/替换路径穿越危险字符（.., /, \\, 空字符等）。
+    """
+    if not filename:
+        return ''
+    # 去掉路径分隔符和父目录引用，防止路径穿越
+    # 先把 \\ 转为 / 统一处理
+    cleaned = filename.replace('\\', '/').replace('\x00', '')
+    # 取 basename，去掉任何目录部分
+    cleaned = cleaned.split('/')[-1]
+    # 把路径穿越用的点序列中危险的部分替换掉（如 .. 变为 _）
+    # 但保留文件名中正常的点（扩展名分隔符）
+    # 替换 Windows 不允许的字符: < > : " | ? *
+    cleaned = re.sub(r'[<>:"|?*]', '_', cleaned)
+    # 去掉开头/结尾的点和空格（Windows 下不允许）
+    cleaned = cleaned.strip('. ')
+    return cleaned
 
 logger = logging.getLogger(__name__)
 
@@ -651,8 +673,8 @@ class AudioController:
     # 内部辅助方法：处理文件名冲突
     @staticmethod
     def _get_unique_filename(directory, original_filename):
-        # 去除文件名中的特殊字符，保留基本字符和扩展名
-        safe_filename = secure_filename(original_filename)
+        # 清理文件名中的危险字符，保留中文等非ASCII字符
+        safe_filename = _sanitize_filename(original_filename)
         if not safe_filename:
             # 如果文件名被完全清理为空，使用默认名
             safe_filename = f"audio_{uuid.uuid4().hex[:8]}"

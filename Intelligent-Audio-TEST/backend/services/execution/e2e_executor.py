@@ -100,7 +100,8 @@ class E2EExecutor(BaseExecutor):
                 task_id, tc_rel_id, data, case_config, case_name,
                 algorithm_type, test_case_id, result_id,
                 all_round_results, execution_success,
-                case_reference_params, last_adjusted_ref_params
+                case_reference_params, last_adjusted_ref_params,
+                device_info_list, rounds_data
             )
 
             return success
@@ -507,8 +508,59 @@ class E2EExecutor(BaseExecutor):
     def _finalize_rounds(self, task_id, tc_rel_id, data, case_config, case_name,
                          algorithm_type, test_case_id, result_id,
                          all_round_results, execution_success,
-                         case_reference_params, last_adjusted_ref_params):
-        """构建最终 algo_result，提交整体评估，聚合维度分数，更新 TaskCase 状态"""
+                         case_reference_params, last_adjusted_ref_params,
+                         device_info_list=None, rounds_data=None):
+        """构建最终 algo_result，提交整体评估，聚合维度分数，更新 TaskCase 状态
+
+        若设备驱动覆写了 get_final_results()，则优先使用其返回的最终结果替代逐轮聚合。
+        返回值会走与 get_results 相同的 collect_raw_results 包装 + convert_results 字段映射。
+        """
+        # 设备驱动的最终结果获取步骤（可选）
+        if device_info_list:
+            for info in device_info_list:
+                driver = info.get('driver')
+                if driver is None:
+                    continue
+                device_sn = info.get('device_sn') or info.get('device_id', '')
+                try:
+                    final_results = driver.get_final_results(
+                        device_sn, task_id=task_id, test_case_id=test_case_id,
+                        rounds_data=rounds_data or [],
+                        all_round_results=all_round_results,
+                        case_config=case_config or {},
+                    )
+                except Exception as e:
+                    self._log(
+                        level='WARNING',
+                        content=f"get_final_results 异常(回退到逐轮聚合): {e}",
+                        task_id=task_id, test_case_id=test_case_id,
+                    )
+                    final_results = False
+                if final_results is not False:
+                    self._log(
+                        level='INFO',
+                        content=f"使用驱动 get_final_results 返回的最终结果: device_sn={device_sn}, "
+                                f"results_count={len(final_results) if isinstance(final_results, list) else 1}",
+                        task_id=task_id, test_case_id=test_case_id,
+                    )
+                    # 走与单轮采集相同的包装链路：raw_results → 包装 → convert_results
+                    from backend.services.device.device_result_collector import get_device_result_collector
+                    import copy as _copy
+                    base = {
+                        'device_id': info.get('device_id'),
+                        'device_name': info.get('device_name'),
+                        'device_sn': device_sn,
+                    }
+                    raw_list = final_results if isinstance(final_results, list) else [final_results]
+                    wrapped = []
+                    for item in raw_list:
+                        w = base.copy()
+                        w['raw_results'] = _copy.deepcopy(item)
+                        w['result_type'] = item.get('result_type', 'default') if isinstance(item, dict) else 'default'
+                        wrapped.append(w)
+                    all_round_results = get_device_result_collector().convert_results(wrapped, algorithm_type)
+                    break
+
         # 构建最终 algo_result
         final_algo_result = self._aggregator.build_algorithm_result(task_id, all_round_results, case_config, algorithm_type)
 

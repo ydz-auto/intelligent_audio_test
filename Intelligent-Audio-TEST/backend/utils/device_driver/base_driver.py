@@ -165,6 +165,25 @@ class BaseDeviceDriver:
         """
         return []
 
+    def get_final_results(self, device_sn, task_id=None, test_case_id=None, **kwargs):
+        """所有轮次结束后获取最终结果（可选覆写）。
+
+        当设备驱动需要在所有轮次完成后执行统一的结果获取步骤时覆写此方法，
+        返回与 get_results() 相同格式的结果（dict 或 list[dict]）。
+        框架会自动对返回值做与 get_results 相同的包装（collect_raw_results）和字段映射（convert_results）。
+        默认返回 False，表示走框架原逐轮聚合逻辑。
+
+        Args:
+            device_sn: 设备序列号
+            task_id: 任务ID
+            test_case_id: 测试用例ID
+            **kwargs: 其他参数（如 rounds_data、all_round_results 等上下文）
+
+        Returns:
+            list | dict | False: 结果列表/字典（同 get_results 格式），False 表示未覆写、走默认聚合
+        """
+        return False
+
     def teardown(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """用例结束后清理设备状态（与 initialize 对称）
 
