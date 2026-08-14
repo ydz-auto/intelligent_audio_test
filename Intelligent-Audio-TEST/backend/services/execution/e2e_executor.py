@@ -428,15 +428,25 @@ class E2EExecutor(BaseExecutor):
             task_id=task_id, test_case_id=test_case_id,
         )
 
-        self._evaluate_result(
-            task_id=task_id, result_id=result_id, test_case_id=test_case_id,
-            algo_result=current_algo_result, case_config=case_config or {},
-            case_reference_params=case_reference_params,
-            algorithm_type=algorithm_type, test_type='e2e',
-            case_algorithm_params=data.get('case_algorithm_params'),
-            round_number=round_idx,
-            reference_params_col=data.get('reference_params_col')
-        )
+        # 检查本轮 evaluation.enabled 开关，enabled 为 False 时跳过单轮评估
+        _round_eval_enabled = True
+        if case_config:
+            _case_rounds = case_config.get('rounds', [])
+            if _case_rounds and round_idx < len(_case_rounds):
+                _round_eval = _case_rounds[round_idx].get('evaluation', {})
+                if isinstance(_round_eval, dict) and _round_eval.get('enabled', True) is False:
+                    _round_eval_enabled = False
+
+        if _round_eval_enabled:
+            self._evaluate_result(
+                task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+                algo_result=current_algo_result, case_config=case_config or {},
+                case_reference_params=case_reference_params,
+                algorithm_type=algorithm_type, test_type='e2e',
+                case_algorithm_params=data.get('case_algorithm_params'),
+                round_number=round_idx,
+                reference_params_col=data.get('reference_params_col')
+            )
 
         return round_data
 
@@ -606,6 +616,7 @@ class E2EExecutor(BaseExecutor):
 
         # 整体评估
         # 检查是否有评估维度（从 rounds[].evaluation.dimensions 读单轮维度，从 config.dimensions 读多轮维度）
+        # 同时检查 evaluation.enabled 开关：enabled 为 False 时不提交评估
         _has_dims = False
         if case_config:
             rounds = case_config.get('rounds', [])
@@ -613,9 +624,12 @@ class E2EExecutor(BaseExecutor):
                 for round_item in rounds:
                     if isinstance(round_item, dict):
                         evaluation = round_item.get('evaluation', {})
-                        if isinstance(evaluation, dict) and evaluation.get('dimensions'):
-                            _has_dims = True
-                            break
+                        if isinstance(evaluation, dict):
+                            if evaluation.get('enabled', True) is False:
+                                continue
+                            if evaluation.get('dimensions'):
+                                _has_dims = True
+                                break
             if not _has_dims and case_config.get('dimensions'):
                 _has_dims = True
 
@@ -639,8 +653,9 @@ class E2EExecutor(BaseExecutor):
                 reference_params_col=data.get('reference_params_col')
             )
 
-        # 聚合各轮评估分数到 algo_result
-        self._aggregator.update_algorithm_result_evaluation(task_id, result_id)
+        # 聚合各轮评估分数到 algo_result（仅当有评估维度时才执行）
+        if _has_dims:
+            self._aggregator.update_algorithm_result_evaluation(task_id, result_id)
 
         # 更新 TaskCase 状态
         success = self._aggregator.process_results(
