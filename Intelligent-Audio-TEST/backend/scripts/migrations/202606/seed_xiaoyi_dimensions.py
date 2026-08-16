@@ -250,6 +250,19 @@ DIMENSIONS = [
             ('device', 'output', 'start_ms', 'start_ms', 'none'),
             ('reference', 'output', 'input_lastword', 'input_lastword', 'none'),
         ],
+        'body_template': {
+            'rounds': [
+                {
+                    'user_wav': '{{user_wav}}',
+                    'ai_wav': '{{ai_wav}}',
+                    'pause': '{{pause}}',
+                    'first_frame_ms': '{{first_frame_ms}}',
+                    'start_ms': '{{start_ms}}',
+                    'input_lastword': '{{input_lastword}}',
+                    'offset_ms': '{{offset_ms}}',
+                }
+            ]
+        },
     },
 ]
 
@@ -274,24 +287,27 @@ def seed_xiaoyi_dimensions():
                 "WHERE task_type_code = :tc AND deleted = FALSE"
             ), {'tc': task_code}).fetchone()
 
+            # body_template：维度自定义优先，否则用默认模板
+            default_body_template = {
+                'rounds': [
+                    {
+                        'end_ms': '{{end_ms}}',
+                        'first_frame_ms': '{{first_frame_ms}}',
+                        'input_lastword': '{{input_lastword}}',
+                        'offset_ms': '{{offset_ms}}',
+                        'pause': '{{pause}}',
+                        'record_file': '{{record_file}}',
+                        'start_ms': '{{start_ms}}',
+                        'query': '{{query}}',
+                        'question': '{{question}}'
+                    }
+                ]
+            }
+            body_template = dim_def.get('body_template', default_body_template)
             api_settings = json.dumps({
                 'method': 'POST',
                 'headers': {},
-                'body_template': {
-                    'rounds': [
-                        {
-                            'end_ms': '{{end_ms}}',
-                            'first_frame_ms': '{{first_frame_ms}}',
-                            'input_lastword': '{{input_lastword}}',
-                            'offset_ms': '{{offset_ms}}',
-                            'pause': '{{pause}}',
-                            'record_file': '{{record_file}}',
-                            'start_ms': '{{start_ms}}',
-                            'query': '{{query}}',
-                            'question': '{{question}}'
-                        }
-                    ]
-                },
+                'body_template': body_template,
                 'timeout': 30000
             }, ensure_ascii=False)
             rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)

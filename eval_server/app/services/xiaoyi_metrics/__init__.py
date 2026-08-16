@@ -315,12 +315,16 @@ def calculate_takeover_metrics(task_params):
     logger.info(f"[takeover_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
 
     rounds = task_params.get('rounds', [])
-    round0 = rounds[0] if rounds else {}
+    round0 = rounds[0] if (isinstance(rounds, list) and rounds and isinstance(rounds[0], dict)) else {}
 
     user_wav = task_params.get('user_wav') or round0.get('user_wav')
     ai_wav = task_params.get('ai_wav') or round0.get('ai_wav')
     start_ms = task_params.get('start_ms') or round0.get('start_ms')
-    offset_ms = task_params.get('offset_ms') or round0.get('offset_ms') or 40
+    _raw_offset_ms = task_params.get('offset_ms') or round0.get('offset_ms') or 40
+    try:
+        offset_ms = int(_raw_offset_ms)
+    except (TypeError, ValueError):
+        offset_ms = 40
     first_frame_ms = task_params.get('first_frame_ms') or round0.get('first_frame_ms')
     input_words = (
         task_params.get('input')
@@ -333,7 +337,13 @@ def calculate_takeover_metrics(task_params):
     # pause 数据：兼容顶层 / rounds[0] / JSON 字符串
     pause_intervals = task_params.get('pause') or round0.get('pause') or []
     if isinstance(pause_intervals, str):
-        pause_intervals = _json.loads(pause_intervals)
+        try:
+            pause_intervals = _json.loads(pause_intervals)
+        except _json.JSONDecodeError:
+            logger.warning(f"[takeover_metrics] pause JSON 解析失败，使用空列表")
+            pause_intervals = []
+    if pause_intervals is None:
+        pause_intervals = []
 
     print(
         "\n==================== takeover_metrics 收到数据 ====================\n"

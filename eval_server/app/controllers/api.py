@@ -211,7 +211,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 pool = _get_calc_pool()
                 future = pool.submit(calculate_in_process, task_type, task_params)
                 result = future.result()  # 阻塞等待线程完成，但释放 GIL，不阻塞 HTTP 处理线程
-                if task_type == 'xiaoyi_metrics' and isinstance(result, dict):
+                if task_type in ('xiaoyi_metrics', 'takeover') and isinstance(result, dict):
                     tl = result.get('takeover_latency')
                     if tl:
                         logger.info(
@@ -386,7 +386,7 @@ def create_task_upload():
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) == 1 and isinstance(rounds_list[0], dict):
             rd = rounds_list[0]
-            for fld in ('record_file', 'user_wav', 'ai_wav', 'pause', 'first_frame_ms', 'start_ms', 'input', 'offset_ms'):
+            for fld in ('record_file', 'user_wav', 'ai_wav', 'pause', 'first_frame_ms', 'start_ms', 'input', 'input_lastword', 'offset_ms'):
                 val = rd.get(fld)
                 if val is not None and val != '' and not task_params.get(fld):
                     task_params[fld] = val
