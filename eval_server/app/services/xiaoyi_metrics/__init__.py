@@ -147,7 +147,6 @@ def calculate_xiaoyi_metrics(task_params):
             - question (str): get_results() 返回的设备识别用户提问文本
             - user_wav (str|None): 用户打断语音 wav 路径（打断指标用；两路 wav 齐全才算）
             - ai_wav (str|None): 模型恢复语音 wav 路径（打断指标用；两路 wav 齐全才算）
-            - test_class (str|None): 测试类别，当值为 '接管准确率' 时仅执行 TOR 评估，跳过其他指标
 
     Returns:
         dict: {
@@ -176,7 +175,6 @@ def calculate_xiaoyi_metrics(task_params):
     _offset_ms = task_params.get('offset_ms') or _round0.get('offset_ms')
     _query = task_params.get('query') or _round0.get('query')
     _question = task_params.get('question') or _round0.get('question')
-    _test_class = task_params.get('test_class') or _round0.get('test_class') or ''
     print(
         "\n==================== xiaoyi_metrics 收到数据 ====================\n"
         f"  录音文件(record_file)        : {_short(task_params.get('record_file') or task_params.get('wav_path'))}\n"
@@ -189,16 +187,11 @@ def calculate_xiaoyi_metrics(task_params):
         f"  用例问题(query) / 模型识别(question): {(_query or '')!r} / {(_question or '')!r}\n"
         f"  时延补偿(offset_ms)          : {_offset_ms}\n"
         f"  双路音频是否齐全             : {'是 → 将计算打断指标' if (_user_wav and _ai_wav) else '否 → 跳过打断指标'}\n"
-        f"  测试类别(test_class)          : {_test_class or '全量(默认)'}\n"
         "================================================================"
     )
 
     wav_path = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path')
-    if _test_class == '接管准确率':
-        # 接管准确率只需要双路 ASR，跳过主录音 ASR
-        asr_hyp = {'text': '', 'chunks': []}
-        logger.info("test_class=接管准确率，跳过主录音 ASR")
-    elif wav_path:
+    if wav_path:
         # 1. 调一次 ASR，三个维度共享（不写文件，通过返回值传递）
         raw = call_modelscope_asr(wav_path)
         asr_hyp = parse_result(raw)
@@ -231,39 +224,8 @@ def calculate_xiaoyi_metrics(task_params):
     start_ms = task_params.get('start_ms') or round0.get('start_ms')
     offset_ms = task_params.get('offset_ms') or round0.get('offset_ms') or 40
 
-    # 接管准确率使用词级时间戳，其他场景用字级时间戳
-    if _test_class == '接管准确率':
-        user_chunks = _get_asr_word_chunks(user_wav) if user_wav else None
-        ai_chunks = _get_asr_word_chunks(ai_wav) if ai_wav else None
-    else:
-        user_chunks = _get_asr_chunks(user_wav) if user_wav else None
-        ai_chunks = _get_asr_chunks(ai_wav) if ai_wav else None
-
-    # ── 按测试类别选择性执行 ──
-    if _test_class == '接管准确率':
-        logger.info("[xiaoyi_metrics] test_class=接管准确率，仅执行 TOR 评估")
-        results['tor'] = compute_tor(user_chunks=user_chunks or [], ai_chunks=ai_chunks or [], min_text_len=0)
-        logger.info(f"[tor] {results['tor']}")
-        results['false_takeover'] = {
-            'tor': 0, 'n_words': 0, 'duration': 0.0,
-            'total_pauses': 0, 'hit_words': [], 'details': [],
-            'message': 'test_class=接管准确率，跳过',
-        }
-        results['takeover_latency'] = {
-            'takeover_latency_ms': None,
-            'user_last_word_end_ms': None,
-            'ai_first_word_start_ms': None,
-            'message': 'test_class=接管准确率，跳过',
-        }
-        results['input_asr'] = {
-            'match': False, 'similarity': 0.0,
-            'query_original': '', 'question_original': '',
-            'query_normalized': '', 'question_normalized': '',
-            'threshold': 0, 'message': 'test_class=接管准确率，跳过',
-        }
-        results['interruption'] = _empty_interruption('test_class=接管准确率，跳过')
-        _print_results_bilingual(results)
-        return results
+    user_chunks = _get_asr_chunks(user_wav) if user_wav else None
+    ai_chunks = _get_asr_chunks(ai_wav) if ai_wav else None
 
     # tor: 用户结束说话后模型是否正确开始回复
     results['tor'] = compute_tor(user_chunks=user_chunks or [], ai_chunks=ai_chunks or [])
