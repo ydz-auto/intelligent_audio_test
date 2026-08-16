@@ -16,6 +16,7 @@ TOR（Take-Off Rate）计算：用户结束说话后模型是否正确开始回�
 
 输入: user_chunks + ai_chunks（由 xiaoyi_metrics/__init__.py 统一调 ASR 后传入）
 """
+import re
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,11 +24,23 @@ logger = logging.getLogger(__name__)
 # ─────────── 阈值 ───────────
 TURN_DURATION_THRESHOLD = 1   # 秒
 TURN_NUM_WORDS_THRESHOLD = 3
+MIN_HIT_WORD_TEXT_LEN = 3      # 去标点后最短文本长度，低于此值的 chunk 不计入命中词
+
+# 中英文标点 + 空白（用于去除后统计有效字符数）
+_PUNCT_RE = re.compile(
+    r'[，。！？、；：""''（）【】《》〈〉…—·…\s,.!?;:\'"\(\)\[\]<>-]+'
+)
+
+
+def _strip_punctuation(text):
+    """去除中英文标点和空白，返回纯文本内容"""
+    return _PUNCT_RE.sub('', text or '')
 
 
 def compute_tor(user_chunks, ai_chunks,
                 duration_threshold=TURN_DURATION_THRESHOLD,
-                num_words_threshold=TURN_NUM_WORDS_THRESHOLD):
+                num_words_threshold=TURN_NUM_WORDS_THRESHOLD,
+                min_text_len=MIN_HIT_WORD_TEXT_LEN):
     """计算用户结束说话后模型是否正确开始回复
 
     Args:
@@ -35,6 +48,7 @@ def compute_tor(user_chunks, ai_chunks,
         ai_chunks (list): ai_wav ASR chunks
         duration_threshold (float): 时长阈值，默认 1 秒
         num_words_threshold (int): 词数阈值，默认 3（严格大于）
+        min_text_len (int): 去标点后最短文本长度，低于此值的 chunk 不计入命中词
 
     Returns:
         dict: {
@@ -79,13 +93,25 @@ def compute_tor(user_chunks, ai_chunks,
     )
 
     # 2. 过滤：只保留 user 最后一词结束之后的 AI chunks（跳过开场白等）
-    hit_words = [
-        {'text': c.get('text', ''), 'timestamp': c['timestamp']}
-        for c in ai_chunks
-        if c.get('timestamp') is not None
-        and c['timestamp'][0] is not None
-        and c['timestamp'][0] >= user_last_end_s
-    ]
+    #    同时过滤掉去标点后文本长度不足 min_text_len 的 chunk（如 ASR 误识别的 'おお？'）
+    hit_words = []
+    filtered_short = []
+    for c in ai_chunks:
+        if c.get('timestamp') is None or c['timestamp'][0] is None:
+            continue
+        if c['timestamp'][0] < user_last_end_s:
+            continue
+        raw_text = c.get('text', '')
+        stripped = _strip_punctuation(raw_text)
+        if len(stripped) < min_text_len:
+            filtered_short.append(raw_text)
+            continue
+        hit_words.append({'text': raw_text, 'timestamp': c['timestamp']})
+
+    if filtered_short:
+        logger.info(
+            f"[TOR] 过滤掉 {len(filtered_short)} 个过短 chunk: {filtered_short}"
+        )
 
     # 3. 统一计算命中词的 duration 和 n_words
     n_words = len(hit_words)

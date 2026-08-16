@@ -147,6 +147,7 @@ def calculate_xiaoyi_metrics(task_params):
             - question (str): get_results() 返回的设备识别用户提问文本
             - user_wav (str|None): 用户打断语音 wav 路径（打断指标用；两路 wav 齐全才算）
             - ai_wav (str|None): 模型恢复语音 wav 路径（打断指标用；两路 wav 齐全才算）
+            - test_class (str|None): 测试类别，当值为 '接管准确率' 时仅执行 TOR 评估，跳过其他指标
 
     Returns:
         dict: {
@@ -175,6 +176,7 @@ def calculate_xiaoyi_metrics(task_params):
     _offset_ms = task_params.get('offset_ms') or _round0.get('offset_ms')
     _query = task_params.get('query') or _round0.get('query')
     _question = task_params.get('question') or _round0.get('question')
+    _test_class = task_params.get('test_class') or _round0.get('test_class') or ''
     print(
         "\n==================== xiaoyi_metrics 收到数据 ====================\n"
         f"  录音文件(record_file)        : {_short(task_params.get('record_file') or task_params.get('wav_path'))}\n"
@@ -187,11 +189,16 @@ def calculate_xiaoyi_metrics(task_params):
         f"  用例问题(query) / 模型识别(question): {(_query or '')!r} / {(_question or '')!r}\n"
         f"  时延补偿(offset_ms)          : {_offset_ms}\n"
         f"  双路音频是否齐全             : {'是 → 将计算打断指标' if (_user_wav and _ai_wav) else '否 → 跳过打断指标'}\n"
+        f"  测试类别(test_class)          : {_test_class or '全量(默认)'}\n"
         "================================================================"
     )
 
     wav_path = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path')
-    if wav_path:
+    if _test_class == '接管准确率':
+        # 接管准确率只需要双路 ASR，跳过主录音 ASR
+        asr_hyp = {'text': '', 'chunks': []}
+        logger.info("test_class=接管准确率，跳过主录音 ASR")
+    elif wav_path:
         # 1. 调一次 ASR，三个维度共享（不写文件，通过返回值传递）
         raw = call_modelscope_asr(wav_path)
         asr_hyp = parse_result(raw)
@@ -224,8 +231,39 @@ def calculate_xiaoyi_metrics(task_params):
     start_ms = task_params.get('start_ms') or round0.get('start_ms')
     offset_ms = task_params.get('offset_ms') or round0.get('offset_ms') or 40
 
-    user_chunks = _get_asr_chunks(user_wav) if user_wav else None
-    ai_chunks = _get_asr_chunks(ai_wav) if ai_wav else None
+    # 接管准确率使用词级时间戳，其他场景用字级时间戳
+    if _test_class == '接管准确率':
+        user_chunks = _get_asr_word_chunks(user_wav) if user_wav else None
+        ai_chunks = _get_asr_word_chunks(ai_wav) if ai_wav else None
+    else:
+        user_chunks = _get_asr_chunks(user_wav) if user_wav else None
+        ai_chunks = _get_asr_chunks(ai_wav) if ai_wav else None
+
+    # ── 按测试类别选择性执行 ──
+    if _test_class == '接管准确率':
+        logger.info("[xiaoyi_metrics] test_class=接管准确率，仅执行 TOR 评估")
+        results['tor'] = compute_tor(user_chunks=user_chunks or [], ai_chunks=ai_chunks or [], min_text_len=0)
+        logger.info(f"[tor] {results['tor']}")
+        results['false_takeover'] = {
+            'tor': 0, 'n_words': 0, 'duration': 0.0,
+            'total_pauses': 0, 'hit_words': [], 'details': [],
+            'message': 'test_class=接管准确率，跳过',
+        }
+        results['takeover_latency'] = {
+            'takeover_latency_ms': None,
+            'user_last_word_end_ms': None,
+            'ai_first_word_start_ms': None,
+            'message': 'test_class=接管准确率，跳过',
+        }
+        results['input_asr'] = {
+            'match': False, 'similarity': 0.0,
+            'query_original': '', 'question_original': '',
+            'query_normalized': '', 'question_normalized': '',
+            'threshold': 0, 'message': 'test_class=接管准确率，跳过',
+        }
+        results['interruption'] = _empty_interruption('test_class=接管准确率，跳过')
+        _print_results_bilingual(results)
+        return results
 
     # tor: 用户结束说话后模型是否正确开始回复
     results['tor'] = compute_tor(user_chunks=user_chunks or [], ai_chunks=ai_chunks or [])
@@ -280,7 +318,196 @@ def calculate_xiaoyi_metrics(task_params):
         logger.info("[interruption] 无双路音频(user_wav/ai_wav)，跳过打断指标")
         results['interruption'] = _empty_interruption('无双路音频，跳过打断')
 
+    # ── 控制台打印最终评估结果（中英文对照），便于直观核对 ──
+    _print_results_bilingual(results)
+
     return results
+
+
+def calculate_takeover_metrics(task_params):
+    """话轮接管维度：计算接话率 + 误接管率 + 接管时延
+
+    与 calculate_xiaoyi_metrics 不同：只计算 tor、false_takeover 和 takeover_latency，
+    不执行主录音 ASR、input_asr、interruption。
+
+    Args:
+        task_params (dict): 包含以下字段（可通过 rounds[0] 传同等效字段）
+            - user_wav (str|None): 用户通道 wav 路径
+            - ai_wav   (str|None): AI 回复通道 wav 路径
+            - pause    (list|str): 停顿区间数据
+            - first_frame_ms (int|None): 录屏首帧时刻（legacy 回退用）
+            - start_ms        (int|None): 音频开始播放时刻（legacy 回退用）
+            - input / input_lastword (list): 主服务下发的 input 词级时间戳（legacy 回退用）
+            - offset_ms (int): 时延补偿，默认 40
+            - rounds (list): 多轮数据，从中提取上述字段
+
+    Returns:
+        dict: {
+            'tor':              {...},  接话率结果
+            'false_takeover':   {...},  误接管率结果
+            'takeover_latency': {...},  接管时延结果
+        }
+    """
+    import json as _json
+
+    logger.info(f"[takeover_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
+
+    rounds = task_params.get('rounds', [])
+    round0 = rounds[0] if rounds else {}
+
+    user_wav = task_params.get('user_wav') or round0.get('user_wav')
+    ai_wav = task_params.get('ai_wav') or round0.get('ai_wav')
+    start_ms = task_params.get('start_ms') or round0.get('start_ms')
+    offset_ms = task_params.get('offset_ms') or round0.get('offset_ms') or 40
+    first_frame_ms = task_params.get('first_frame_ms') or round0.get('first_frame_ms')
+    input_words = (
+        task_params.get('input')
+        or task_params.get('input_lastword')
+        or round0.get('input')
+        or round0.get('input_lastword')
+        or []
+    )
+
+    # pause 数据：兼容顶层 / rounds[0] / JSON 字符串
+    pause_intervals = task_params.get('pause') or round0.get('pause') or []
+    if isinstance(pause_intervals, str):
+        pause_intervals = _json.loads(pause_intervals)
+
+    print(
+        "\n==================== takeover_metrics 收到数据 ====================\n"
+        f"  用户通道音频(user_wav) : {_short(user_wav)}\n"
+        f"  AI回复音频(ai_wav)     : {_short(ai_wav)}\n"
+        f"  停顿区间(pause)        : {_len_of(pause_intervals)} 条\n"
+        f"  录屏首帧(first_frame_ms): {first_frame_ms}\n"
+        f"  音频开始(start_ms)     : {start_ms}\n"
+        f"  时延补偿(offset_ms)    : {offset_ms}\n"
+        f"  输入末词(input)        : {_len_of(input_words)} 个\n"
+        "================================================================="
+    )
+
+    results = {}
+
+    # ── 双路 ASR：字级时间戳（tor / takeover_latency 共用） ──
+    user_chunks = _get_asr_chunks(user_wav) if user_wav else None
+    ai_chunks = _get_asr_chunks(ai_wav) if ai_wav else None
+
+    # 接话率：用户结束说话后模型是否正确开始回复
+    results['tor'] = compute_tor(user_chunks=user_chunks or [], ai_chunks=ai_chunks or [])
+    logger.info(f"[tor] {results['tor']}")
+
+    # 误接管率：用 ai_wav 词级时间戳 + pause 区间
+    ai_word_chunks = _get_asr_word_chunks(ai_wav) if ai_wav else []
+    results['false_takeover'] = compute_false_takeover(ai_word_chunks or [], pause_intervals)
+    logger.info(f"[false_takeover] {results['false_takeover']}")
+
+    # 接管时延：优先双路 ASR chunks 直接相减，回退到 legacy 逻辑
+    results['takeover_latency'] = compute_takeover_latency_from_raw(
+        first_frame_ms=first_frame_ms,
+        asr_hyp={'text': '', 'chunks': []},
+        start_ms=start_ms,
+        input_words=input_words,
+        offset_ms=offset_ms,
+        user_chunks=user_chunks,
+        ai_chunks=ai_chunks,
+    )
+    logger.info(f"[takeover_latency] {_format_takeover_latency(results['takeover_latency'])}")
+
+    _print_takeover_results(results)
+
+    return results
+
+
+def _print_takeover_results(results):
+    """打印话轮接管三项指标（中英文对照）"""
+    def _x(v):
+        return v if v is not None else 'None'
+
+    tor = results.get('tor', {})
+    ft = results.get('false_takeover', {})
+    tl = results.get('takeover_latency', {})
+
+    print(
+        "\n==================== takeover_metrics 评估结果 ====================\n"
+        f"  1. 接话率 TOR / Turn-Over Rate\n"
+        f"     接话率 tor                       : {_x(tor.get('tor'))}\n"
+        f"     词数 n_words                     : {_x(tor.get('n_words'))}\n"
+        f"     时长 duration(s)                : {_x(tor.get('duration'))}\n"
+        f"     命中词 hit_words                 : {tor.get('hit_words')}\n"
+        f"     用户末词 user_last_word_end_s    : {_x(tor.get('user_last_word_end_s'))}\n"
+        f"     说明 message                     : {_x(tor.get('message'))}\n"
+        f"  2. 误接管率 False Takeover\n"
+        f"     误接管率 tor                     : {_x(ft.get('tor'))}\n"
+        f"     词数 n_words                     : {_x(ft.get('n_words'))}\n"
+        f"     时长 duration(s)                : {_x(ft.get('duration'))}\n"
+        f"     停顿数 total_pauses              : {_x(ft.get('total_pauses'))}\n"
+        f"     命中词 hit_words                 : {ft.get('hit_words')}\n"
+        f"     明细 details                     : {ft.get('details')}\n"
+        f"  3. 接管时延 Takeover Latency\n"
+        f"     接管时延 takeover_latency_ms     : {_x(tl.get('takeover_latency_ms'))}\n"
+        f"     用户末词 user_last_word_end_ms   : {_x(tl.get('user_last_word_end_ms'))}\n"
+        f"     模型首词 ai_first_word_start_ms  : {_x(tl.get('ai_first_word_start_ms'))}\n"
+        f"     说明 message                     : {_x(tl.get('message'))}\n"
+        "================================================================="
+    )
+
+
+def _print_results_bilingual(results):
+    """把五项指标按中英文打印到控制台，格式与『收到数据』块对齐。"""
+    def _x(v):
+        return v if v is not None else 'None'
+
+    tor = results.get('tor', {})
+    ft = results.get('false_takeover', {})
+    tl = results.get('takeover_latency', {})
+    ia = results.get('input_asr', {})
+    it = results.get('interruption', {})
+
+    print(
+        "\n==================== xiaoyi_metrics 评估结果 / Evaluation Result ====================\n"
+        f"  1. 接话率 TOR / Turn-Over Rate\n"
+        f"     接话率 tor                       : {_x(tor.get('tor'))}\n"
+        f"     词数 n_words                     : {_x(tor.get('n_words'))}\n"
+        f"     时长 duration(s)                : {_x(tor.get('duration'))}\n"
+        f"     命中词 hit_words                 : {tor.get('hit_words')}\n"
+        f"     用户末词结束 user_last_word_end_s: {_x(tor.get('user_last_word_end_s'))}\n"
+        f"     说明 message                     : {_x(tor.get('message'))}\n"
+        f"  2. 误接管率 False Takeover\n"
+        f"     误接管率 tor                     : {_x(ft.get('tor'))}\n"
+        f"     词数 n_words                     : {_x(ft.get('n_words'))}\n"
+        f"     时长 duration(s)                : {_x(ft.get('duration'))}\n"
+        f"     停顿数 total_pauses              : {_x(ft.get('total_pauses'))}\n"
+        f"     命中词 hit_words                 : {ft.get('hit_words')}\n"
+        f"     明细 details                     : {ft.get('details')}\n"
+        f"  3. 接管时延 Takeover Latency\n"
+        f"     接管时延 takeover_latency_ms     : {_x(tl.get('takeover_latency_ms'))}\n"
+        f"     用户末词 user_last_word_end_ms   : {_x(tl.get('user_last_word_end_ms'))}\n"
+        f"     模型首词 ai_first_word_start_ms  : {_x(tl.get('ai_first_word_start_ms'))}\n"
+        f"     音频起点 start_ms                : {_x(tl.get('start_ms'))}\n"
+        f"     时延补偿 offset_ms               : {_x(tl.get('offset_ms'))}\n"
+        f"     说明 message                     : {_x(tl.get('message'))}\n"
+        f"  4. 输入识别匹配 Input ASR Match\n"
+        f"     是否匹配 match                   : {_x(ia.get('match'))}\n"
+        f"     相似度 similarity                : {_x(ia.get('similarity'))}\n"
+        f"     阈值 threshold                  : {_x(ia.get('threshold'))}\n"
+        f"     参考文本 query_original           : {str(ia.get('query_original',''))[:80]}\n"
+        f"     设备识别 question_original        : {str(ia.get('question_original',''))[:80]}\n"
+        f"     说明 message                     : {_x(ia.get('message'))}\n"
+        f"  5. 打断指标 Interruption Metrics\n"
+        f"     打断成功率 interruption_success_rate : {_x(it.get('interruption_success_rate'))}\n"
+        f"     停下率 stop_rate                      : {_x(it.get('stop_rate'))}\n"
+        f"     恢复率 resume_rate                    : {_x(it.get('resume_rate'))}\n"
+        f"     平均停下时延 avg_stop_latency_s      : {_x(it.get('avg_stop_latency_s'))}\n"
+        f"     平均恢复时延 avg_recovery_latency_s   : {_x(it.get('avg_recovery_latency_s'))}\n"
+        f"     平均重叠 avg_overlap_s               : {_x(it.get('avg_overlap_s'))}\n"
+        f"     平均静默 avg_silence_gap_s            : {_x(it.get('avg_silence_gap_s'))}\n"
+        f"     事件数 n_events                       : {_x(it.get('n_events'))}\n"
+        f"     用户段数 n_user_segments              : {_x(it.get('n_user_segments'))}\n"
+        f"     仅恢复 n_recovery_only                : {_x(it.get('n_recovery_only'))}\n"
+        f"     无模型语音 n_no_model_speech          : {_x(it.get('n_no_model_speech'))}\n"
+        f"     明细 per_event                        : {it.get('per_event')}\n"
+        f"     说明 message                          : {_x(it.get('message'))}\n"
+        "===================================================================================="
+    )
 
 
 def _empty_interruption(message):

@@ -361,6 +361,8 @@ def create_task_upload():
             uploaded_file_paths[field_name] = file_path
 
     # 解析 rounds JSON 字符串，并把 __MULTIPART__ 占位符替换为上传后的实际路径
+    # 遍历每个轮次里所有字段，凡是 '__MULTIPART__:<field_name>' 形式的值都替换成
+    # uploaded_file_paths 中对应的上传落盘路径（record_file / user_wav / ai_wav 等）
     rounds_str = task_params.get('rounds')
     if rounds_str and isinstance(rounds_str, str):
         try:
@@ -369,22 +371,22 @@ def create_task_upload():
                 for rd in rounds_list:
                     if not isinstance(rd, dict):
                         continue
-                    rf = rd.get('record_file', '')
-                    if isinstance(rf, str) and rf.startswith('__MULTIPART__:'):
-                        placeholder_key = rf.split(':', 1)[1]
-                        if placeholder_key in uploaded_file_paths:
-                            rd['record_file'] = uploaded_file_paths[placeholder_key]
+                    for fld, val in list(rd.items()):
+                        if isinstance(val, str) and val.startswith('__MULTIPART__:'):
+                            placeholder_key = val.split(':', 1)[1]
+                            if placeholder_key in uploaded_file_paths:
+                                rd[fld] = uploaded_file_paths[placeholder_key]
                 task_params['rounds'] = rounds_list
         except (json.JSONDecodeError, TypeError):
             pass  # rounds 不是合法 JSON，保持原样
 
     # xiaoyi_metrics：单轮时把 rounds[0] 里的字段提到顶层，供校验和计算使用
-    # （record_file 已作为文件上传保存到 task_params['record_file']，这里补充其他标量字段）
+    # （record_file / user_wav / ai_wav 已作为文件上传保存，这里补充其他标量字段）
     if task_type == 'xiaoyi_metrics':
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) == 1 and isinstance(rounds_list[0], dict):
             rd = rounds_list[0]
-            for fld in ('record_file', 'pause', 'first_frame_ms', 'start_ms', 'input', 'offset_ms'):
+            for fld in ('record_file', 'user_wav', 'ai_wav', 'pause', 'first_frame_ms', 'start_ms', 'input', 'offset_ms'):
                 val = rd.get(fld)
                 if val is not None and val != '' and not task_params.get(fld):
                     task_params[fld] = val

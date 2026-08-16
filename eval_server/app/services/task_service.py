@@ -210,6 +210,9 @@ class TaskService:
         elif task_type == 'interruption_metrics':
             from .xiaoyi_metrics import calculate_interruption_metrics
             return calculate_interruption_metrics(task_params)
+        elif task_type == 'takeover':
+            from .xiaoyi_metrics import calculate_takeover_metrics
+            return calculate_takeover_metrics(task_params)
         else:
             raise ValueError(f"Unknown task type: {task_type}")
 
