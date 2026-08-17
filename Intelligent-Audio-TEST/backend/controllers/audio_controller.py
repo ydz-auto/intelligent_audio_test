@@ -1180,18 +1180,28 @@ class AudioController:
                         # 秒传场景：已有音频的 name 可能改过名，前端传的 audio_name 匹配不上，
                         # 这里直接把 existing_audio.id 填进 rounds_config 里对应的项
                         if rounds_config:
+                            # 先收集所有未匹配的音频项
+                            unmatched_items = []
                             for r in rounds_config:
                                 if not isinstance(r, dict):
                                     continue
                                 for a in r.get('audios', []):
                                     if not isinstance(a, dict) or a.get('audio_id'):
                                         continue
-                                    item_name = a.get('audio_name') or ''
-                                    if (item_name == existing_audio.name
-                                            or item_name == (existing_audio.original_filename or '')
-                                            or item_name == (existing_audio.md5 or '')
-                                            or not item_name):
-                                        a['audio_id'] = existing_audio.id
+                                    unmatched_items.append(a)
+                            # 对未匹配项尝试按 name/original_filename/md5 匹配
+                            matched_count = 0
+                            for a in unmatched_items:
+                                item_name = a.get('audio_name') or ''
+                                if (item_name == existing_audio.name
+                                        or item_name == (existing_audio.original_filename or '')
+                                        or item_name == (existing_audio.md5 or '')
+                                        or not item_name):
+                                    a['audio_id'] = existing_audio.id
+                                    matched_count += 1
+                            # 如果按名称都匹配不上，且只有一个未匹配项，直接填（秒传的音频就是它）
+                            if matched_count == 0 and len(unmatched_items) == 1:
+                                unmatched_items[0]['audio_id'] = existing_audio.id
                         # 秒传场景也要持久化标注（同 code 覆盖旧记录），并构造 raw_annotations 供用例参数提取
                         raw_annotations_data = AudioController._persist_annotations_and_raw(
                             existing_audio.id,
@@ -1720,7 +1730,20 @@ class AudioController:
                     effective_playback_device_id = default_device.id
 
             # 创建测试用例名称（基础名）
-            base_name = f"测试用例_{audio.name}"
+            # 秒传场景下 audio.name 可能是旧的改名（如 "1.wav"），
+            # 优先用 rounds_config 里前端传的 audio_name 作为用例名
+            tc_audio_name = audio.name
+            if rounds_config:
+                for r in rounds_config:
+                    if not isinstance(r, dict):
+                        continue
+                    for a in r.get('audios', []):
+                        if isinstance(a, dict) and a.get('audio_name'):
+                            tc_audio_name = a['audio_name']
+                            break
+                    if tc_audio_name != audio.name:
+                        break
+            base_name = f"测试用例_{tc_audio_name}"
 
             # 确保至少有一个 test_type
             if not test_types:
