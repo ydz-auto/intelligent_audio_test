@@ -236,7 +236,7 @@ class XiaoyilivechatV2(HarmonyDriver):
 
         # 进入 post_process 时音频已播完, 等待"说话可打断"出现判定小艺有无回复
         # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
-        if kwargs.get('is_interruption'):
+        if kwargs.get('is_interruption') in (True, 'true', '1', 1):
             self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
                       task_id=task_id, test_case_id=test_case_id)
             self._no_reply = False

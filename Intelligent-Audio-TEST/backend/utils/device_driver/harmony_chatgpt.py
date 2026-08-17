@@ -516,7 +516,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         # 等 AI 回复完成：client_in PCM 尾部 RMS(平台流:音频紧接 pre_process 后播,start_timeout=60 够;
         # 手动测试:用户随时播,可经 kwargs 传更大 ai_start_timeout 防提前超时)
         # 打断轮(is_interruption=True):不等 AI 回复完成,直接进入下一轮 pre_process
-        if kwargs.get('is_interruption'):
+        if kwargs.get('is_interruption') in (True, 'true', '1', 1):
             self._log(level='INFO',
                       content=f"[post_process] is_interruption=True,跳过等待 AI 回复完成,直接收尾",
                       task_id=task_id, test_case_id=test_case_id)

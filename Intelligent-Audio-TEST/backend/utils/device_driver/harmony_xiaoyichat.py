@@ -492,7 +492,7 @@ class Xiaoyilivechat(HarmonyDriver):
                   task_id=task_id, test_case_id=test_case_id)
 
         # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
-        if kwargs.get('is_interruption'):
+        if kwargs.get('is_interruption') in (True, 'true', '1', 1):
             self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
                       task_id=task_id, test_case_id=test_case_id)
             replied = True
