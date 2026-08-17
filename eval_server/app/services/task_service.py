@@ -209,6 +209,40 @@ class TaskService:
         elif task_type == 'interruption_metrics':
             from .xiaoyi_metrics.turn_taking import calculate_interruption_metrics
             return calculate_interruption_metrics(task_params)
+        elif task_type == 'non_interactive_latency':
+            from .xiaoyi_metrics.rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency
+            user_asr = task_params.get('user_asr') or task_params.get('user_chunks')
+            model_asr = task_params.get('model_asr') or task_params.get('model_chunks')
+            kwargs = {}
+            if task_params.get('seg_merge_gap_s') is not None:
+                kwargs['seg_merge_gap_s'] = task_params['seg_merge_gap_s']
+            if task_params.get('target_segment_index') is not None:
+                kwargs['target_segment_index'] = task_params['target_segment_index']
+            return compute_non_interactive_latency(user_asr, model_asr, **kwargs)
+        elif task_type == 'noise_latency':
+            from .xiaoyi_metrics.rejection_scene_awareness.noise_latency import compute_noise_latency
+            model_asr = task_params.get('model_asr') or task_params.get('model_chunks')
+            kwargs = {}
+            if task_params.get('seg_merge_gap_s') is not None:
+                kwargs['seg_merge_gap_s'] = task_params['seg_merge_gap_s']
+            return compute_noise_latency(
+                model_asr,
+                task_params['start_ms'],
+                task_params['end_ms'],
+                task_params['pcm_first_ms'],
+                **kwargs,
+            )
+        elif task_type == 'env_sound_judge':
+            from .xiaoyi_metrics.utils.env_sound_judge import evaluate_env_sound_judge
+            video_path = task_params.get('video_path') or task_params.get('record_file')
+            return evaluate_env_sound_judge(
+                video_path,
+                task_type=task_params.get('task_type', 'env_sound_judge'),
+                env_type=task_params.get('env_type', ''),
+                model=task_params.get('model', ''),
+                max_tokens=task_params.get('max_tokens', 4096),
+                temperature=task_params.get('temperature', 0.1),
+            )
 
         else:
             raise ValueError(f"Unknown task type: {task_type}")

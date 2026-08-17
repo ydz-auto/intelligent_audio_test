@@ -126,7 +126,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
     caller_task_id 为调用方的任务 ID（可选）。
     eval_task_id 可由调用方预先生成（如 create_task_upload 需要先存文件）。
     """
-    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'turn_taking', 'interruption_metrics']
+    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'turn_taking', 'interruption_metrics', 'non_interactive_latency', 'noise_latency', 'env_sound_judge']
     if task_type not in SUPPORTED_TASK_TYPES:
         return error_response(f"Unsupported task type: {task_type}. Supported types: {SUPPORTED_TASK_TYPES}", code=CODE_BUSINESS_ERROR)
 
@@ -156,6 +156,22 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             return error_response("Missing required field for interruption_metrics: user_asr (用户提问/打断 ASR)", code=CODE_VALIDATION_ERROR)
         if not task_params.get('model_asr') and not task_params.get('model_chunks'):
             return error_response("Missing required field for interruption_metrics: model_asr (模型恢复 ASR)", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'non_interactive_latency':
+        if not task_params.get('user_asr') and not task_params.get('user_chunks'):
+            return error_response("Missing required field for non_interactive_latency: user_asr (用户 ASR)", code=CODE_VALIDATION_ERROR)
+        if not task_params.get('model_asr') and not task_params.get('model_chunks'):
+            return error_response("Missing required field for non_interactive_latency: model_asr (模型 ASR)", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'noise_latency':
+        required_fields = ['model_asr', 'start_ms', 'end_ms', 'pcm_first_ms']
+        # model_asr 也接受 model_chunks 别名
+        if not task_params.get('model_asr') and not task_params.get('model_chunks'):
+            return error_response("Missing required field for noise_latency: model_asr (模型 ASR)", code=CODE_VALIDATION_ERROR)
+        missing = [f for f in ['start_ms', 'end_ms', 'pcm_first_ms'] if task_params.get(f) is None]
+        if missing:
+            return error_response(f"Missing required fields for noise_latency: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'env_sound_judge':
+        if not task_params.get('video_path') and not task_params.get('record_file'):
+            return error_response("Missing required field for env_sound_judge: video_path (录屏文件路径)", code=CODE_VALIDATION_ERROR)
 
     if eval_task_id is None:
         eval_task_id = f"task_{uuid.uuid4().hex}"

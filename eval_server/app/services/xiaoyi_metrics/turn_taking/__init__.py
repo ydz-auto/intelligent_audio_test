@@ -16,8 +16,8 @@ from .tor import compute_tor
 from .false_takeover import compute_false_takeover
 from .takeover_latency import compute_takeover_latency_from_raw
 from .input_asr import compute_input_asr_match
-from .interruption import compute_interruption_metrics
-from .non_interactive_latency import compute_non_interactive_latency
+from ..interruptbility.interruption import compute_interruption_metrics
+from ..rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency
 
 logger = logging.getLogger(__name__)
 
@@ -658,7 +658,7 @@ def calculate_interruption_metrics(task_params):
     rounds = task_params.get('rounds')
     if enable_llm and rounds:
         try:
-            from .interruption_llm import evaluate_interruption_llm
+            from ..interruptbility.interruption_llm import evaluate_interruption_llm
             llm_result = evaluate_interruption_llm(rounds, task_params)
             result['llm_eval'] = llm_result
             # 顶层平铺关键聚合值，便于维度参数直接按 field_path 取值
