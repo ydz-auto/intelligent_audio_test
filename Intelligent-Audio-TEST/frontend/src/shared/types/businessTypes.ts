@@ -65,6 +65,8 @@ export interface AudioUploadFile {
     uploadedChunks?: number[];
     audioId?: string | number;
     folderGroupName?: string;
+    /** 最子级文件夹名（无文件夹结构时为去扩展名的文件名），用于按分组独立创建测试用例 */
+    groupKey?: string;
     asrText?: string;
     translations?: Array<{ text: string, direction: string }>;
     annotations?: Array<{

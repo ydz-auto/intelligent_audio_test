@@ -505,8 +505,9 @@ const handleImport = async () => {
 
     const txtDataMap = new Map<string, { asrText: string; translations: Array<{ text: string; direction: string }> }>()
     const annotationDataMap = new Map<string, any[]>()
-    // 统一标注文件（如 group1.json）里的 rounds 结构
-    let unifiedRounds: any[] | null = null
+    // 统一标注文件（如 9.json）里的 rounds 结构，按标注文件所在分组（最子级文件夹名）分发
+    // 每个分组可有自己的统一标注文件，该分组的 rounds 覆盖 folderParser 自动推断的 rounds
+    const unifiedRoundsByGroup = new Map<string, any[]>()
 
     for (const txtFile of txtFiles) {
       try {
@@ -551,8 +552,9 @@ const handleImport = async () => {
         // 按 segment.audio 匹配音频文件，把对应 segment 分发到音频的 annotationDataMap
         const rawJson = format === 'json' ? JSON.parse(content) : null
         if (rawJson && Array.isArray(rawJson.rounds)) {
-          // 提取统一标注文件的 rounds 结构，供后续覆盖 folderParser 自动推断的 rounds
-          unifiedRounds = rawJson.rounds.map((round: any, ri: number) => {
+          // 提取统一标注文件的 rounds 结构，按标注文件所在分组（最子级文件夹名）分发
+          // 该分组的 rounds 将覆盖 folderParser 自动推断的 rounds
+          const groupRounds = rawJson.rounds.map((round: any, ri: number) => {
             if (!round || !Array.isArray(round.segments)) return null
             const audios = round.segments
               .filter((seg: any) => seg && typeof seg === 'object')
@@ -570,6 +572,18 @@ const handleImport = async () => {
               audios
             }
           }).filter((r: any) => r !== null)
+
+          // 推断该标注文件对应的分组键（最子级文件夹名）：
+          // 标注文件通常与其所在子文件夹同名（如 9/9.json → 分组键 "9"），
+          // 或与音频同级（如 folder1/a.json 与 folder1/a.wav 同级 → 分组键 "folder1"）。
+          // 这里用标注文件所在目录的最后一段作为分组键。
+          const annPathParts = baseKey.split('/').filter(Boolean)
+          const groupKey = annPathParts.length >= 1
+            ? annPathParts[annPathParts.length - 1]
+            : ''
+          if (groupKey && groupRounds.length > 0) {
+            unifiedRoundsByGroup.set(groupKey, groupRounds)
+          }
           const annotationCode = parsedData.code || uploadConfig.algorithmType || determineAnnotationName(annFile.name, format)
           for (const round of rawJson.rounds) {
             if (!round || !Array.isArray(round.segments)) continue
@@ -709,7 +723,7 @@ const handleImport = async () => {
       folderGroupMappings: Object.fromEntries(folderGroupNames.value),
       selectedFolders: selectedFolders.value,
       algorithmParams: algorithmParams.value,
-      unifiedRounds: unifiedRounds && unifiedRounds.length > 0 ? unifiedRounds : undefined,
+      unifiedRoundsByGroup: unifiedRoundsByGroup.size > 0 ? Object.fromEntries(unifiedRoundsByGroup) : undefined,
       onProgressUpdate: (progress: number) => {
       },
       onImportComplete: () => {

@@ -1166,7 +1166,7 @@ export function useAudioImport() {
           if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
           
           selectedFilesForUpload.value = data.files;
-          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRounds);
+          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup);
         }
       }
     });
@@ -1207,7 +1207,7 @@ export function useAudioImport() {
     }
   }
 
-  async function startUploadProcess(files: any[], folderGroupMappings?: Record<string, string>, unifiedRounds?: any[]) {
+  async function startUploadProcess(files: any[], folderGroupMappings?: Record<string, string>, unifiedRoundsByGroup?: Record<string, any[]>) {
     if (files.length === 0) return;
 
     uploadStatus.value = 'preparing';
@@ -1219,19 +1219,17 @@ export function useAudioImport() {
       await new Promise(resolve => requestAnimationFrame(resolve));
     }
 
-    // 构建多轮测试用例配置（testCaseConfig）
+    // 构建测试用例配置：按最子级文件夹分组，每个分组独立一个测试用例
     // 从 files 中提取所有原始 File 对象，用于文件夹解析
     const allRawFiles: File[] = files.map((f: any) => f.file || f)
     const audioFileInfos = extractAudioFiles(allRawFiles)
     // 按最子级文件夹分组
     const audioGroups = groupAudioFilesByLeafFolder(audioFileInfos)
-    // 为每个分组构建 rounds 配置，合并为一个 testCaseConfig
-    let testCaseConfig: TestCaseConfig | undefined
+    // 为每个分组构建独立的 testCaseConfig（分组键 = 最子级文件夹名）
+    // 每个分组最后一个文件 mergeChunks 时才创建用例
+    const groupTestCaseConfigs = new Map<string, TestCaseConfig | undefined>()
     if (audioFileInfos.length > 0 && uploadOptions.createTestCase) {
-      // 如果只有一个分组，直接构建；多个分组时，合并所有 rounds
-      const allRounds: any[] = []
-      let roundNumber = 1
-      audioGroups.forEach(groupFiles => {
+      audioGroups.forEach((groupFiles, groupKey) => {
         const groupConfig = buildTestCaseConfig(groupFiles, allRawFiles, {
           spl: uploadOptions.spl,
           playbackDeviceId: uploadOptions.playbackDeviceId,
@@ -1239,34 +1237,12 @@ export function useAudioImport() {
           inheritTags: uploadOptions.inheritTags,
           algorithmParams: uploadOptions.algorithmParams
         })
-        if (groupConfig.rounds) {
-          groupConfig.rounds.forEach(r => {
-            allRounds.push({ ...r, roundNumber: roundNumber++ })
-          })
+        // 用该分组的统一标注文件（如 9.json）的 rounds 覆盖 folderParser 自动推断的 rounds
+        if (unifiedRoundsByGroup && unifiedRoundsByGroup[groupKey] && unifiedRoundsByGroup[groupKey].length > 0) {
+          groupConfig.rounds = unifiedRoundsByGroup[groupKey]
         }
+        groupTestCaseConfigs.set(groupKey, groupConfig.rounds && groupConfig.rounds.length > 0 ? groupConfig : undefined)
       })
-      if (allRounds.length > 0) {
-        // 新设计：algorithm_params 作为 test_cases 独立列，按轮分组格式
-        // [{round_number, params:[{field_code, field_value}]}]
-        // folderParser.buildTestCaseConfig 返回的 algorithm_params 可能是平面格式，
-        // 这里统一包装为按轮分组（第 1 轮）。后端 schema 也兼容旧平面格式，但前端输出新格式。
-        const flatParams = stripAlgorithmParamSchema(uploadOptions.algorithmParams)
-        const groupedParams = Array.isArray(flatParams) && flatParams.length > 0
-          ? [{ round_number: 1, params: flatParams }]
-          : []
-        testCaseConfig = {
-          rounds: allRounds,
-          group_name: folderGroupMappings ? Object.values(folderGroupMappings)[0] : undefined,
-          inherit_tags: uploadOptions.inheritTags,
-          algorithm_params: groupedParams
-        }
-        // 从统一标注文件（如 group1.json）提取的 rounds 结构覆盖 folderParser 自动推断的 rounds
-        // unifiedRounds 由 FolderImportModal.vue 解析统一标注文件后传入
-        if (unifiedRounds && unifiedRounds.length > 0) {
-          testCaseConfig.rounds = unifiedRounds
-        }
-        console.log('[audioImport] testCaseConfig.rounds:', JSON.stringify(testCaseConfig.rounds, null, 2))
-      }
     }
 
     try {
@@ -1304,6 +1280,14 @@ export function useAudioImport() {
           }
         }
 
+        // 计算该文件所属分组键（最子级文件夹名）
+        // 与 folderParser.groupAudioFilesByLeafFolder 的分组逻辑一致
+        const relativePath = (file as any).webkitRelativePath || ''
+        const pathParts = relativePath.split('/').filter(Boolean)
+        const groupKey = pathParts.length >= 2
+          ? pathParts[pathParts.length - 2]
+          : file.name.replace(/\.[^.]+$/, '')
+
         preparedFiles.push({
           id: fileId,
           fileId,
@@ -1315,6 +1299,7 @@ export function useAudioImport() {
           progress: 0,
           uploadedSize: 0,
           folderGroupName,
+          groupKey,
           asrText: asrText,
           translations,
           annotations: item.annotations || [],
@@ -1365,26 +1350,37 @@ export function useAudioImport() {
       uploadStatus.value = 'uploading';
       updateOverallProgress();
 
-      // 多轮上传时，只有最后一个音频 mergeChunks 才创建用例
-      // 之前的音频只入库（createTestCase=false），最后一次时后端从数据库按 audio_name 查到所有 audio_id
-      const hasRoundsConfig = !!testCaseConfig?.rounds?.length
-      const pendingTasks = tasks.filter(t => t.status !== 'failed')
-      const totalPending = pendingTasks.length
+      // 按分组创建测试用例：每个分组（最子级文件夹）独立一个测试用例
+      // 分组内最后一个待处理文件 mergeChunks 时才创建用例，之前的文件只入库
+      // 后端在最后一个文件 mergeChunks 时从数据库按 audio_name 查到该分组所有 audio_id
 
-      // 追踪 pendingTasks 中已处理的个数，用于准确判断是否最后一个
-      let processedPending = 0
+      // 统计每个分组的待处理文件数和已处理数
+      const groupPendingCounts = new Map<string, number>()
+      const groupProcessedCounts = new Map<string, number>()
+      for (const t of tasks) {
+        if (t.status === 'failed') continue
+        const gk = t.groupKey || t.name.replace(/\.[^.]+$/, '')
+        groupPendingCounts.set(gk, (groupPendingCounts.get(gk) || 0) + 1)
+        groupProcessedCounts.set(gk, 0)
+      }
+
       for (const fileTask of tasks) {
         if ((uploadStatus.value as string) === 'paused' || (uploadStatus.value as string) === 'stopped') break;
 
-        // 跳过已失败文件（不参与 pendingTasks 序列）
+        // 跳过已失败文件（不参与 pending 序列）
         if (fileTask.status === 'failed') {
           continue;
         }
 
-        // 判断是否最后一个待处理文件（多轮场景下只有最后一个才创建用例）
-        const isFinalMerge = hasRoundsConfig && (processedPending === totalPending - 1)
-        // 非最后一个且是多轮场景时，createTestCase 设为 false
-        const effectiveOptions = (hasRoundsConfig && !isFinalMerge)
+        // 该文件所属分组键
+        const gk = fileTask.groupKey || fileTask.name.replace(/\.[^.]+$/, '')
+        const groupConfig = groupTestCaseConfigs.get(gk)
+        const hasGroupRounds = !!groupConfig?.rounds?.length
+        const processedInGroup = groupProcessedCounts.get(gk) || 0
+        const pendingInGroup = groupPendingCounts.get(gk) || 0
+        // 分组内最后一个待处理文件才创建用例
+        const isGroupFinalMerge = hasGroupRounds && (processedInGroup === pendingInGroup - 1)
+        const effectiveOptions = (hasGroupRounds && !isGroupFinalMerge)
           ? { ...uploadOptions, createTestCase: false }
           : uploadOptions
 
@@ -1395,7 +1391,7 @@ export function useAudioImport() {
 
           try {
             // 秒传时也需要调用 merge 来处理测试用例创建
-            await processMergeForExistingFile(taskId, fileTask, effectiveOptions, testCaseConfig);
+            await processMergeForExistingFile(taskId, fileTask, effectiveOptions, groupConfig);
             fileTask.status = 'completed';
             // 秒传文件在 task 初始化时已计入 completedFiles，这里不重复 +1
             saveLocalTask(task);
@@ -1407,7 +1403,7 @@ export function useAudioImport() {
             saveLocalTask(task);
           }
           updateOverallProgress();
-          processedPending++
+          groupProcessedCounts.set(gk, processedInGroup + 1)
           continue;
         }
 
@@ -1420,7 +1416,7 @@ export function useAudioImport() {
         currentUploadingFile.value = fileTask.name;
 
         try {
-          await uploadFileChunks(taskId, fileTask, effectiveOptions, testCaseConfig);
+          await uploadFileChunks(taskId, fileTask, effectiveOptions, groupConfig);
           fileTask.status = 'completed';
           fileTask.progress = 100;
           task.completedFiles = (task.completedFiles || 0) + 1;
@@ -1433,7 +1429,7 @@ export function useAudioImport() {
           saveLocalTask(task);
         }
         updateOverallProgress();
-        processedPending++
+        groupProcessedCounts.set(gk, processedInGroup + 1)
       }
 
       uploadStatus.value = (task.failedFiles || 0) > 0 ? 'failed' : 'completed';
@@ -2279,7 +2275,7 @@ export function useAudioImport() {
           if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
           
           selectedFilesForUpload.value = data.files;
-          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRounds);
+          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup);
         }
       }
     });

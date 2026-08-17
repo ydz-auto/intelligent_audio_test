@@ -1177,6 +1177,21 @@ class AudioController:
                     
                     # 如果是秒传且需要创建测试用例
                     if create_test_case:
+                        # 秒传场景：已有音频的 name 可能改过名，前端传的 audio_name 匹配不上，
+                        # 这里直接把 existing_audio.id 填进 rounds_config 里对应的项
+                        if rounds_config:
+                            for r in rounds_config:
+                                if not isinstance(r, dict):
+                                    continue
+                                for a in r.get('audios', []):
+                                    if not isinstance(a, dict) or a.get('audio_id'):
+                                        continue
+                                    item_name = a.get('audio_name') or ''
+                                    if (item_name == existing_audio.name
+                                            or item_name == (existing_audio.original_filename or '')
+                                            or item_name == (existing_audio.md5 or '')
+                                            or not item_name):
+                                        a['audio_id'] = existing_audio.id
                         # 秒传场景也要持久化标注（同 code 覆盖旧记录），并构造 raw_annotations 供用例参数提取
                         raw_annotations_data = AudioController._persist_annotations_and_raw(
                             existing_audio.id,
@@ -1274,9 +1289,9 @@ class AudioController:
                 
                 # 更新文件路径为WAV文件（统一用正斜杠）
                 final_path = wav_file_path.replace('\\', '/')
-                # 更新文件名为WAV文件名
+                # 更新文件名为WAV文件名（转换后存储用的文件名）
+                # original_filename 保留注册时记录的原始上传名，不覆盖
                 upload_file.filename = wav_filename
-                upload_file.original_filename = wav_filename
                 
             except Exception as e:
                 # 如果转换失败，保留原始文件但标记格式
@@ -1799,8 +1814,14 @@ class AudioController:
                 # 前端构建 rounds 时音频还没上传完，只能用文件名占位；
                 # 后端按 audio_name 匹配当前音频，同时查库补全其他已入库音频的 audio_id
                 # （多轮上传最后一个音频 mergeChunks 时，其他音频已入库，可从数据库查到）
+                # 秒传场景下已有音频的 name 可能与前端传的 audio_name 不一致（之前上传时可能改名），
+                # 所以额外用 original_filename 和 md5 兜底匹配
                 audio_name_for_match = audio.name
+                audio_original_for_match = getattr(audio, 'original_filename', None) or audio.name
+                audio_md5_for_match = getattr(audio, 'md5', None) or ''
+                log_not_emit('INFO', 'audio_controller', f'[DEBUG_MATCH] audio_id={audio_id}, audio.name={audio.name}, original_filename={audio_original_for_match}, md5={audio_md5_for_match}', category='audio')
                 # 预查所有 audio_name → audio_id 映射（避免循环里重复查库）
+                # 按 name / original_filename / md5 三重匹配
                 audio_name_to_id = {}
                 for round_item in rounds_resolved:
                     if not isinstance(round_item, dict):
@@ -1812,8 +1833,13 @@ class AudioController:
                         if item_name and not audio_item.get('audio_id') and item_name not in audio_name_to_id:
                             # 查库：按文件名找已入库的音频
                             found = Audio.query.filter_by(name=item_name, deleted=False).first()
+                            if not found:
+                                # 按 original_filename 兜底
+                                found = Audio.query.filter_by(original_filename=item_name, deleted=False).first()
                             if found:
                                 audio_name_to_id[item_name] = found.id
+                # 第一轮：按 name / original_filename / md5 / 预查映射 匹配
+                unmatched_items = []
                 for round_item in rounds_resolved:
                     if not isinstance(round_item, dict):
                         continue
@@ -1821,20 +1847,31 @@ class AudioController:
                     if not isinstance(audios, list):
                         round_item['audios'] = []
                         audios = []
-                    # algorithm_params 已剥离到独立列，不再写回 rounds
                     for audio_item in audios:
                         if not isinstance(audio_item, dict):
                             continue
-                        # 已有 audio_id 的不覆盖
                         if audio_item.get('audio_id'):
+                            log_not_emit('INFO', 'audio_controller', f'[DEBUG_MATCH] skip (already has audio_id): item_name={audio_item.get("audio_name")}', category='audio')
                             continue
                         item_name = audio_item.get('audio_name') or ''
-                        # 优先用当前音频匹配
-                        if item_name == audio_name_for_match or not item_name:
+                        log_not_emit('INFO', 'audio_controller', f'[DEBUG_MATCH] comparing item_name="{item_name}" == name="{audio_name_for_match}" / original="{audio_original_for_match}" / md5="{audio_md5_for_match}"', category='audio')
+                        if (item_name == audio_name_for_match
+                                or item_name == audio_original_for_match
+                                or (audio_md5_for_match and item_name == audio_md5_for_match)
+                                or not item_name):
                             audio_item['audio_id'] = audio_id
-                        # 其次用预查映射补全
+                            log_not_emit('INFO', 'audio_controller', f'[DEBUG_MATCH] MATCHED current: set audio_id={audio_id}', category='audio')
                         elif item_name in audio_name_to_id:
                             audio_item['audio_id'] = audio_name_to_id[item_name]
+                            log_not_emit('INFO', 'audio_controller', f'[DEBUG_MATCH] MATCHED preload: set audio_id={audio_name_to_id[item_name]}', category='audio')
+                        else:
+                            unmatched_items.append(audio_item)
+                            log_not_emit('WARNING', 'audio_controller', f'[DEBUG_MATCH] NO MATCH for item_name="{item_name}"', category='audio')
+                # 第二轮兜底：剩余唯一未匹配项直接用当前 audio_id
+                # （秒传场景下当前 audio_id 就是已有音频 ID，无论单轮多轮都适用）
+                if len(unmatched_items) == 1:
+                    unmatched_items[0]['audio_id'] = audio_id
+                    log_not_emit('WARNING', 'audio_controller', f'[DEBUG_MATCH] FALLBACK sole-unmatched: set audio_id={audio_id} (name mismatch, sole unmatched item)', category='audio')
 
                 # 从标注 JSON 提取 spl 和 playback_device_name，注入到每个 audio_item
                 # 标注 segment 里可写 spl / playback_device_name / playback_device_id
