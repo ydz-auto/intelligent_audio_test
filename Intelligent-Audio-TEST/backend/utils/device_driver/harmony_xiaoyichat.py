@@ -401,22 +401,23 @@ class Xiaoyilivechat(HarmonyDriver):
         # 用例开始前清理设备上目标 app 的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
         self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         # 点开小艺聊天窗口
-        user_center = driver.find_component(By.text("小艺"))
-        if user_center:
-            user_center.click()
-            time.sleep(2)
+        # user_center = driver.find_component(By.text("小艺"))
+        # if user_center:
+        #     user_center.click()
+        #     time.sleep(2)
         # 清除上下文
         # 进入设置界面
-        driver.touch(By.isAfter(By.type('Image')).isBefore(By.key('water_mark.build.stack')).type('SymbolGlyph'))
+        # 根据条件点击控件
+        driver.touch(By.isAfter(By.key('title_bar.broadcastType.icon')).isBefore(By.key('water_mark.build.stack')).type('SymbolGlyph'))
+        # 根据条件点击控件
         driver.wait(2)
         clear_text = driver.find_component(By.text('清除上下文'))
         if clear_text:
             clear_text.click()
             time.sleep(2)
         # 进入设置界面删除对话记录
-        driver.touch(By.isAfter(By.type('Image')).isBefore(By.key('water_mark.build.stack')).type('SymbolGlyph'))
+        driver.touch(By.isAfter(By.key('title_bar.broadcastType.icon')).isBefore(By.key('water_mark.build.stack')).type('SymbolGlyph'))
         driver.wait(2)
-        driver.swipe(UiParam.UP, 30, side=UiParam.LEFT)
         clear_chat = driver.find_component(By.text("删除对话记录"))
         if clear_chat:
             clear_chat.click()
@@ -453,8 +454,8 @@ class Xiaoyilivechat(HarmonyDriver):
             return True
 
         # 开启通话聊天（首轮）
-        driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type(
-            'SymbolGlyph'))
+        # 根据条件点击控件
+        driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type('SymbolGlyph'))
         driver.wait(2)
         try:
             if driver.find_component(By.text("小艺")):
@@ -543,6 +544,7 @@ class Xiaoyilivechat(HarmonyDriver):
             time.sleep(5)
             # 通话挂断
             try:
+                # 根据条件点击控件
                 hangup_btn = driver.find_component(
                     By.isAfter(By.key('live.tool_bar.hangup_button')).isBefore(By.key('GuideText')).type('SymbolGlyph'))
                 if hangup_btn:
