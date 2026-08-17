@@ -125,15 +125,12 @@ DIMENSIONS = [
             ('takeover_latency_ms', '接管时延', '接管时延', 'number', 'output',
              'takeover_latency.takeover_latency_ms', 'value', 'main', True,
              False, None, '接管时延(毫秒)', 80),
-            ('first_word_begin_ms', '首词偏移', '首词偏移', 'number', 'output',
-             'takeover_latency.first_word_begin_ms', None, 'aux', False,
-             False, None, 'ASR 第一个词相对 mp4 起点的偏移(毫秒)', 81),
-            ('model_first_word_ms', '模型首词时刻', '模型首词时刻', 'number', 'output',
-             'takeover_latency.model_first_word_ms', None, 'aux', False,
-             False, None, '模型回复第一个词的绝对时刻(毫秒 Unix 时间戳)', 82),
-            ('audio_end_with_offset_ms', '音频结束+补偿', '音频结束+补偿', 'number', 'output',
-             'takeover_latency.audio_end_with_offset_ms', None, 'aux', False,
-             False, None, 'end_ms + offset_ms', 83),
+            ('tl_ai_first_word_start_ms', '模型首词开始时刻', '模型首词开始时刻', 'number', 'output',
+             'takeover_latency.ai_first_word_start_ms', None, 'aux', False,
+             False, None, 'takeover_latency: AI 首词开始时间(毫秒)', 81),
+            ('tl_user_last_word_end_ms', '用户末词结束时刻', '用户末词结束时刻', 'number', 'output',
+             'takeover_latency.user_last_word_end_ms', None, 'aux', False,
+             False, None, 'takeover_latency: 用户末词结束时间(毫秒)', 82),
             ('latency_message', '时延说明', '时延说明', 'text', 'output',
              'takeover_latency.message', None, 'aux', False,
              False, None, 'takeover_latency: 错误/成功说明', 84),
@@ -366,6 +363,37 @@ def seed_xiaoyi_dimensions():
             # Step 2: 注册输入/输出参数
             # ============================================================
             print(f"\n--- Step 2: 注册 {task_code} 参数 (evaluation_dimension_params) ---")
+
+            # 清理 DB 中已废弃的 param_code（当前 DIMENSIONS 定义里不再出现的条目）
+            current_output_codes = {
+                p[0] for p in dim_def['params'] if p[4] == 'output'
+            }
+            current_input_codes = {
+                p[0] for p in dim_def['params'] if p[4] == 'input'
+            }
+            for direction, current_codes in (
+                ('output', current_output_codes),
+                ('input', current_input_codes),
+            ):
+                if not current_codes:
+                    continue
+                placeholders = ','.join(f':c{i}' for i in range(len(current_codes)))
+                bind = {f'c{i}': code for i, code in enumerate(current_codes)}
+                stale = conn.execute(text(
+                    "SELECT param_code FROM evaluation_dimension_params "
+                    "WHERE dimension_id = :did AND param_direction = :dir "
+                    f"AND param_code NOT IN ({placeholders}) "
+                    "AND deleted = FALSE"
+                ), {'did': dim_id, 'dir': direction, **bind}).fetchall()
+                if stale:
+                    stale_codes = [r[0] for r in stale]
+                    print(f"  ! 清理已废弃 {direction} 参数: {stale_codes}")
+                    conn.execute(text(
+                        "UPDATE evaluation_dimension_params SET "
+                        "  deleted = TRUE, updated_at = NOW() "
+                        "WHERE dimension_id = :did AND param_direction = :dir "
+                        f"AND param_code IN ({placeholders})"
+                    ), {'did': dim_id, 'dir': direction, **bind})
 
             param_inserted = 0
             param_skipped = 0

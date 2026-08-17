@@ -55,7 +55,14 @@ class AudioDriver(ABC):
             gcd = self._gcd(orig_rate, target_rate)
             up = target_rate // gcd
             down = orig_rate // gcd
-            resampled = signal.resample_poly(audio_data, up, down)
+            # 对输入信号做边缘扩展 padding，消除 resample_poly 滤波器的启动瞬态，
+            # 避免音频开头第一个字被衰减/畸变。
+            pad_len = 2 * max(up, down)
+            padded = np.pad(audio_data, (pad_len, pad_len), mode='edge')
+            resampled = signal.resample_poly(padded, up, down)
+            # 裁掉 padding 产生的多余样本，保持与原信号时间对齐
+            trim_before = int(round(pad_len * up / down))
+            resampled = resampled[trim_before:trim_before + int(round(len(audio_data) * up / down))]
             log_and_emit('DEBUG', 'audio_engine', f"[resample_audio_data] Resampled from {orig_rate} to {target_rate} (up={up}, down={down}), frames: {len(audio_data)} -> {len(resampled)}", category='audio')
             return resampled
         except Exception as e:

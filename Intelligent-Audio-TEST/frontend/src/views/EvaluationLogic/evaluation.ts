@@ -337,8 +337,7 @@ export function useEvaluation() {
       conditional: { field: 'dimensionType', value: 'main' } },
     { key: 'requiredInputs', label: '所需输入配置', type: 'requiredInputs', required: false, fullWidth: true, group: 'API配置',
       conditional: { field: 'dimensionType', value: 'main' } },
-    { key: 'outputFields', label: '输出字段配置', type: 'outputFields', required: false, fullWidth: true, group: 'API配置',
-      conditional: { field: 'dimensionType', value: 'main' } },
+    { key: 'outputFields', label: '输出字段配置', type: 'outputFields', required: false, fullWidth: true, group: 'API配置' },
     { key: 'statisticMethod', label: '统计方式', type: 'select', required: false, default: 'average', group: 'API配置',
       options: [
         { value: 'average', label: '简单平均' },
