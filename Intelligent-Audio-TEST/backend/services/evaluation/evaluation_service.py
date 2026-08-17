@@ -476,14 +476,20 @@ class EvaluationService(EvaluationLoggerMixin):
                     self._log(level='WARNING', content=f"用例 {test_case.name} 关联的维度都不可用，跳过评估", task_id=task_id, test_case_id=test_case_id)
                     return []
 
-                # 预加载所有维度的 output 和 input 参数，避免 N+1 查询
+                # 预加载所有维度（含父维度）的 output 和 input 参数，避免 N+1 查询
                 dim_ids = [dim.id for dim in dimensions]
+                # 收集 sub 维度的父维度 id，用于补查父维度的 input params（继承机制）
+                parent_ids_to_load = set()
+                for dim in dimensions:
+                    if getattr(dim, 'dimension_type', 'main') == 'sub' and getattr(dim, 'parent_dimension_id', None):
+                        parent_ids_to_load.add(dim.parent_dimension_id)
+                all_ids_to_load = set(dim_ids) | parent_ids_to_load
                 output_param_map = {}
                 input_param_map = {}
-                if dim_ids:
+                if all_ids_to_load:
                     from backend.models.algorithm_models import EvaluationDimensionParam
                     all_params = EvaluationDimensionParam.query.filter(
-                        EvaluationDimensionParam.dimension_id.in_(dim_ids),
+                        EvaluationDimensionParam.dimension_id.in_(list(all_ids_to_load)),
                         EvaluationDimensionParam.deleted == False
                     ).all()
                     for p in all_params:
@@ -525,13 +531,18 @@ class EvaluationService(EvaluationLoggerMixin):
                         'input_params': input_param_map.get(dim.id, [])
                     }
 
-                    # 子维度继承父维度的API配置
-                    if getattr(dim, 'dimension_type', 'main') == 'sub' and not dim_dict.get('api_endpoints') and not dim_dict.get('api_url'):
+                    # 子维度继承父维度的API配置和 input_params（output_params 不继承，各子维度自己挂）
+                    if getattr(dim, 'dimension_type', 'main') == 'sub':
                         parent_dim = getattr(dim, 'parent_dimension', None)
                         if parent_dim:
-                            for k in ['api_endpoints', 'api_url', 'api_settings', 'task_type_code']:
-                                if not dim_dict.get(k):
-                                    dim_dict[k] = getattr(parent_dim, k, None)
+                            # API 配置：仅当子维度缺 api_endpoints/api_url 时继承
+                            if not dim_dict.get('api_endpoints') and not dim_dict.get('api_url'):
+                                for k in ['api_endpoints', 'api_url', 'api_settings', 'task_type_code']:
+                                    if not dim_dict.get(k):
+                                        dim_dict[k] = getattr(parent_dim, k, None)
+                            # input_params 继承：子维度自己没有 input 时，用父维度的 input_params
+                            if not dim_dict.get('input_params') and input_param_map.get(parent_dim.id):
+                                dim_dict['input_params'] = input_param_map.get(parent_dim.id)
 
                     dimension_data_list.append(dim_dict)
 

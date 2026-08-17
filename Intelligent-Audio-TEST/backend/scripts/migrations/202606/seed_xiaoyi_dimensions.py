@@ -1,20 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-小艺评估维度种子数据
+话轮接管维度种子数据（turn_taking 主维度 + 三个子维度）
 
 功能：
-1. 注册三个评估维度（dimensions）：
-   - tor (Take-Off Rate，打断后接话率)
-   - false_takeover (误接管率，用户停顿期间模型是否抢话)
-   - takeover_latency (接管时延，模型回复第一词时刻 - 音频结束时刻)
-2. 注册各维度的输入/输出参数（evaluation_dimension_params）
-3. 注册 voice_llm 算法与各维度的关联（algorithm_dimension_relations）
-4. 注册 voice_llm → 各维度的参数映射（param_mappings）
+1. 软删除 id=2 的 xiaoyi_metrics（历史单维度多指标方案，已被子维度方案替代）
+2. 注册/更新 turn_taking 主维度（dimension_type='main'）：
+   - 配置全部 input params、api_settings、body_template、param_mappings
+   - 不配 output params（主维度不直接参与评估，只作容器）
+3. 注册/更新三个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
+   - tor              → output field_path = tor.tor
+   - false_takeover   → output field_path = false_takeover.tor
+   - takeover_latency → output field_path = takeover_latency.takeover_latency_ms
+   - 子维度不重复 input params / param_mappings，由 evaluation_service._load_dimension_data
+     的继承逻辑从父维度合并 input_params；param_mappings 不按 dimension_id 过滤
+     （主调用路径 dimension_ids=None），挂在主维度 id 下即可被三个子维度共用
+4. 注册 voice_llm 算法与主维度 + 三个子维度的关联（algorithm_dimension_relations）
+5. 注册 voice_llm → 主维度的参数映射（param_mappings.dimension_id = 主维度id）
+
+执行链路：
+   用例选三个子维度 → 三者继承父维度 task_type_code/api 配置 → 被
+   (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server
+   → process_group_dimension_results 把同一份响应按各自 output field_path 分发提取
 
 对应 eval_server 服务：
-   - daily_chat_TOR.py        → tor 维度
-   - xiaoyi_false_takeover.py → false_takeover 维度
-   - xiaoyi_takeover_latency.py → takeover_latency 维度
+   - xiaoyi_turn_taking.py 一次返回包含 tor/false_takeover/takeover_latency 三块的 JSON
 
 使用方法：
     cd Intelligent-Audio-TEST
@@ -37,124 +46,84 @@ POSTGRES_URI = os.environ.get(
 )
 
 # ============================================================
-# 维度定义
+# 主维度定义：turn_taking（只配 input + api_settings + param_mappings，不配 output）
 # ============================================================
-# xiaoyi_metrics 统一维度：调一次 ASR，三个子指标共享结果
-# 子指标: tor(接话率), false_takeover(误接管率), takeover_latency(接管时延)
-DIMENSIONS = [
-    {
-        'task_type_code': 'xiaoyi_metrics',
-        'name': '小艺指标',
-        'keywords': 'xiaoyi,tor,takeoff,接话,误接管,抢话,接管时延,延迟',
-        'description': '小艺评估统一指标：调一次 ASR 共享结果，计算 tor(接话率)、false_takeover(误接管率)、takeover_latency(接管时延)',
-        'type': 'auto',
-        'result_type': 0,
-        'result_min': 0.0,
-        'result_max': 1.0,
-        'decimal_places': 0,
-        'weight': 1,
-        'estimated_exec_time': 30,
-        'score_unit': '',
-        'statistic_method': 'average',
-        'params': [
-            # ─── 输入参数 ───
-            ('input_lastword', '输入音频最后一词时间戳', '输入音频最后一词时间戳', 'json', 'input',
-             None, None, None, True,
-             False, None, '输入音频最后一词时间戳（主服务参数传递）', 5),
-            ('start_ms', '音频开启时刻', '音频开启时刻', 'number', 'input',
-             None, None, None, True,
-             False, None, '本轮音频播放开始的绝对时刻(毫秒 Unix 时间戳)', 6),
-            ('query', '用例问题', '用例问题', 'text', 'input',
-             None, None, None, True,
-             False, None, '用例问题', 7),
-            ('question', '模型识别问题结果', '模型识别问题结果', 'text', 'input',
-             None, None, None, True,
-             False, None, '模型识别问题结果', 8),
-            ('record_file', '录音文件', '录音文件', 'audio', 'input',
-             None, None, None, True,
-             False, None, 'wav 录音文件路径(eval_server 调用 asr_server.py /asr 接口获取 ASR 结果)', 10),
-            ('pause', '停顿区间', '停顿区间', 'json', 'input',
-             None, None, None, True,
-             False, None, '停顿区间数据(主服务用例参数传递)', 20),
-            ('first_frame_ms', '录屏首帧时刻', '录屏首帧时刻', 'number', 'input',
-             None, None, None, True,
-             False, None, '录屏首帧写入的绝对时刻(毫秒 Unix 时间戳)', 30),
-            ('end_ms', '音频结束时刻', '音频结束时刻', 'number', 'input',
-             None, None, None, True,
-             False, None, '本轮音频播放结束的绝对时刻(毫秒 Unix 时间戳)', 40),
-            ('offset_ms', '时延补偿', '时延补偿', 'number', 'input',
-             None, None, None, True,
-             False, '40', '音响结束播放与音频最后内容词的时延补偿(毫秒)', 50),
-
-            # ─── 输出参数: tor (接话率) ───
-            # field_path 使用点号路径导航嵌套结构: result.tor.tor → 标量值 1
-            ('tor', 'TOR接话率', 'TOR接话率', 'number', 'output',
-             'tor.tor', 'value', 'main', True,
-             False, None, '接话率(0=没接话, 1=接话)', 60),
-            ('tor_n_words', 'TOR命中词数', 'TOR命中词数', 'number', 'output',
-             'tor.n_words', None, 'aux', False,
-             False, None, 'tor: 命中词总数', 61),
-            ('tor_duration', 'TOR命中词时长', 'TOR命中词时长', 'number', 'output',
-             'tor.duration', None, 'aux', False,
-             False, None, 'tor: 命中词总跨度(秒)', 62),
-            ('tor_hit_words', 'TOR命中词列表', 'TOR命中词列表', 'json', 'output',
-             'tor.hit_words', None, 'aux', False,
-             False, None, 'tor: 命中词列表', 63),
-
-            # ─── 输出参数: false_takeover (误接管率) ───
-            ('false_takeover', '误接管率', '误接管率', 'number', 'output',
-             'false_takeover.tor', 'value', 'main', True,
-             False, None, '误接管率(0=未抢话, 1=抢话)', 70),
-            ('ft_n_words', '误接管命中词数', '误接管命中词数', 'number', 'output',
-             'false_takeover.n_words', None, 'aux', False,
-             False, None, 'false_takeover: 所有 pause 区间内命中词总数', 71),
-            ('ft_duration', '误接管命中词时长', '误接管命中词时长', 'number', 'output',
-             'false_takeover.duration', None, 'aux', False,
-             False, None, 'false_takeover: 命中词的总跨度(秒)', 72),
-            ('ft_total_pauses', '误接管Pause总数', '误接管Pause总数', 'number', 'output',
-             'false_takeover.total_pauses', None, 'aux', False,
-             False, None, 'false_takeover: pause 区间总数', 73),
-            ('ft_hit_words', '误接管命中词列表', '误接管命中词列表', 'json', 'output',
-             'false_takeover.hit_words', None, 'aux', False,
-             False, None, 'false_takeover: 所有 pause 区间内命中的模型词列表', 74),
-            ('ft_details', '误接管逐区间详情', '误接管逐区间详情', 'json', 'output',
-             'false_takeover.details', None, 'aux', False,
-             False, None, 'false_takeover: 每个 pause 区间的命中情况', 75),
-
-            # ─── 输出参数: takeover_latency (接管时延) ───
-            ('takeover_latency_ms', '接管时延', '接管时延', 'number', 'output',
-             'takeover_latency.takeover_latency_ms', 'value', 'main', True,
-             False, None, '接管时延(毫秒)', 80),
-            ('tl_ai_first_word_start_ms', '模型首词开始时刻', '模型首词开始时刻', 'number', 'output',
-             'takeover_latency.ai_first_word_start_ms', None, 'aux', False,
-             False, None, 'takeover_latency: AI 首词开始时间(毫秒)', 81),
-            ('tl_user_last_word_end_ms', '用户末词结束时刻', '用户末词结束时刻', 'number', 'output',
-             'takeover_latency.user_last_word_end_ms', None, 'aux', False,
-             False, None, 'takeover_latency: 用户末词结束时间(毫秒)', 82),
-            ('latency_message', '时延说明', '时延说明', 'text', 'output',
-             'takeover_latency.message', None, 'aux', False,
-             False, None, 'takeover_latency: 错误/成功说明', 84),
-        ],
-        # wav_path, first_frame_ms, end_ms, start_ms 从 device 输出映射
-        # pause, input_lastword 从 reference 映射
-        # ASR 结果由 eval_server 内部调用 asr_server.py 获取，通过返回值传递，三个子指标共享
-        'param_mappings': [
-            ('device', 'output', 'wav_path', 'record_file', 'none'),
-            ('reference', 'output', 'pause', 'pause', 'none'),
-            ('device', 'output', 'first_frame_ms', 'first_frame_ms', 'none'),
-            ('device', 'output', 'end_ms', 'end_ms', 'none'),
-            ('device', 'output', 'start_ms', 'start_ms', 'none'),
-            ('reference', 'output', 'input_lastword', 'input_lastword', 'none'),
-        ],
+MAIN_DIMENSION = {
+    'task_type_code': 'turn_taking',
+    'name': '话轮接管',
+    'keywords': 'turn_taking,话轮,接管,tor,接话,误接管,抢话,接管时延,延迟',
+    'description': '话轮接管主维度：调双路 ASR 一次，共享结果给三个子维度（tor/false_takeover/takeover_latency）。主维度只配 input 和映射，不配 output。',
+    'type': 'auto',
+    'result_type': 0,
+    'result_min': 0.0,
+    'result_max': 1.0,
+    'decimal_places': 0,
+    'weight': 1,
+    'estimated_exec_time': 30,
+    'score_unit': '',
+    'statistic_method': 'average',
+    'body_template': {
+        'rounds': [
+            {
+                'user_wav': '{{user_wav}}',
+                'ai_wav': '{{ai_wav}}',
+                'pause': '{{pause}}',
+                'first_frame_ms': '{{first_frame_ms}}',
+                'start_ms': '{{start_ms}}',
+                'input_lastword': '{{input_lastword}}',
+                'offset_ms': '{{offset_ms}}',
+            }
+        ]
     },
+    'params': [
+        # ─── 输入参数（挂在主维度 id 下，子维度通过继承机制使用）───
+        ('user_wav', '用户通道音频', '用户通道音频', 'audio', 'input',
+         None, None, None, True,
+         False, None, '用户通道 wav 路径（cap_client_process_out.wav）', 1),
+        ('ai_wav', 'AI回复通道音频', 'AI回复通道音频', 'audio', 'input',
+         None, None, None, True,
+         False, None, 'AI 回复通道 wav 路径（cap_client_ec_out.wav）', 2),
+        ('pause', '停顿区间', '停顿区间', 'json', 'input',
+         None, None, None, True,
+         False, None, '停顿区间数据(主服务用例参数传递)', 10),
+        ('first_frame_ms', '录屏首帧时刻', '录屏首帧时刻', 'number', 'input',
+         None, None, None, True,
+         False, None, '录屏首帧写入的绝对时刻(毫秒 Unix 时间戳)，legacy 回退用', 20),
+        ('start_ms', '音频开启时刻', '音频开启时刻', 'number', 'input',
+         None, None, None, True,
+         False, None, '本轮音频播放开始的绝对时刻(毫秒 Unix 时间戳)，legacy 回退用', 30),
+        ('input_lastword', '输入末词时间戳', '输入末词时间戳', 'json', 'input',
+         None, None, None, True,
+         False, None, '输入音频最后一词时间戳（主服务参数传递），legacy 回退用', 40),
+        ('offset_ms', '时延补偿', '时延补偿', 'number', 'input',
+         None, None, None, True,
+         False, '40', '音响结束播放与音频最后内容词的时延补偿(毫秒)', 50),
+        # 主维度不配 output 参数
+    ],
+    'param_mappings': [
+        ('device', 'output', 'user_wav', 'user_wav', 'none'),
+        ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
+        ('reference', 'output', 'pause', 'pause', 'none'),
+        ('device', 'output', 'first_frame_ms', 'first_frame_ms', 'none'),
+        ('device', 'output', 'start_ms', 'start_ms', 'none'),
+        ('reference', 'output', 'input_lastword', 'input_lastword', 'none'),
+    ],
+}
+
+# ============================================================
+# 三个子维度定义：各自只配自己的 output 参数
+# ============================================================
+# params 元组顺序：
+# (param_code, param_name, label, field_type, param_direction,
+#  field_path, agg_role, output_role, visible_in_report,
+#  required, default_value, help_text, ui_order)
+
+SUB_DIMENSIONS = [
     {
-        # ── 话轮接管维度：tor + false_takeover + takeover_latency ──
-        # 只计算三项指标，不执行主录音 ASR、input_asr、interruption
-        # 双路 wav（user_wav + ai_wav）由 eval_server 内部调 ASR，三项共享
-        'task_type_code': 'takeover',
-        'name': '话轮接管',
-        'keywords': 'takeover,话轮,接管,tor,接话,误接管,抢话,接管时延,延迟',
-        'description': '话轮接管维度：调双路 ASR 共享结果，计算 tor(接话率)、false_takeover(误接管率)、takeover_latency(接管时延)',
+        'task_type_code': 'turn_taking',  # 与主维度相同，保证被分到同一组
+        'name': '接话率(TOR)',
+        'keywords': 'tor,接话率,takeoff',
+        'description': '子维度：打断后接话率。output field_path = tor.tor',
         'type': 'auto',
         'result_type': 0,
         'result_min': 0.0,
@@ -165,30 +134,7 @@ DIMENSIONS = [
         'score_unit': '',
         'statistic_method': 'average',
         'params': [
-            # ─── 输入参数 ───
-            ('user_wav', '用户通道音频', '用户通道音频', 'audio', 'input',
-             None, None, None, True,
-             False, None, '用户通道 wav 路径（cap_client_process_out.wav）', 1),
-            ('ai_wav', 'AI回复通道音频', 'AI回复通道音频', 'audio', 'input',
-             None, None, None, True,
-             False, None, 'AI 回复通道 wav 路径（cap_client_ec_out.wav）', 2),
-            ('pause', '停顿区间', '停顿区间', 'json', 'input',
-             None, None, None, True,
-             False, None, '停顿区间数据(主服务用例参数传递)', 10),
-            ('first_frame_ms', '录屏首帧时刻', '录屏首帧时刻', 'number', 'input',
-             None, None, None, True,
-             False, None, '录屏首帧写入的绝对时刻(毫秒 Unix 时间戳)，legacy 回退用', 20),
-            ('start_ms', '音频开启时刻', '音频开启时刻', 'number', 'input',
-             None, None, None, True,
-             False, None, '本轮音频播放开始的绝对时刻(毫秒 Unix 时间戳)，legacy 回退用', 30),
-            ('input_lastword', '输入末词时间戳', '输入末词时间戳', 'json', 'input',
-             None, None, None, True,
-             False, None, '输入音频最后一词时间戳（主服务参数传递），legacy 回退用', 40),
-            ('offset_ms', '时延补偿', '时延补偿', 'number', 'input',
-             None, None, None, True,
-             False, '40', '音响结束播放与音频最后内容词的时延补偿(毫秒)', 50),
-
-            # ─── 输出参数: tor (接话率) ───
+            # ─── tor 子维度的 output 参数 ───
             ('tor', 'TOR接话率', 'TOR接话率', 'number', 'output',
              'tor.tor', 'value', 'main', True,
              False, None, '接话率(0=没接话, 1=接话)', 60),
@@ -204,8 +150,24 @@ DIMENSIONS = [
             ('tor_user_last_word_end_s', 'TOR用户末词结束', 'TOR用户末词结束', 'number', 'output',
              'tor.user_last_word_end_s', None, 'aux', False,
              False, None, 'tor: user 最后一词结束时间(秒)', 64),
-
-            # ─── 输出参数: false_takeover (误接管率) ───
+        ],
+    },
+    {
+        'task_type_code': 'turn_taking',
+        'name': '误接管率',
+        'keywords': 'false_takeover,误接管,抢话',
+        'description': '子维度：用户停顿期间模型是否抢话。output field_path = false_takeover.tor',
+        'type': 'auto',
+        'result_type': 0,
+        'result_min': 0.0,
+        'result_max': 1.0,
+        'decimal_places': 0,
+        'weight': 1,
+        'estimated_exec_time': 30,
+        'score_unit': '',
+        'statistic_method': 'average',
+        'params': [
+            # ─── false_takeover 子维度的 output 参数 ───
             ('false_takeover', '误接管率', '误接管率', 'number', 'output',
              'false_takeover.tor', 'value', 'main', True,
              False, None, '误接管率(0=未抢话, 1=抢话)', 70),
@@ -224,8 +186,24 @@ DIMENSIONS = [
             ('ft_details', '误接管逐区间详情', '误接管逐区间详情', 'json', 'output',
              'false_takeover.details', None, 'aux', False,
              False, None, 'false_takeover: 每个 pause 区间的命中情况', 75),
-
-            # ─── 输出参数: takeover_latency (接管时延) ───
+        ],
+    },
+    {
+        'task_type_code': 'turn_taking',
+        'name': '接管时延',
+        'keywords': 'takeover_latency,接管时延,延迟',
+        'description': '子维度：模型回复第一词时刻 - 音频结束时刻。output field_path = takeover_latency.takeover_latency_ms',
+        'type': 'auto',
+        'result_type': 0,
+        'result_min': 0.0,
+        'result_max': 1.0,
+        'decimal_places': 0,
+        'weight': 1,
+        'estimated_exec_time': 30,
+        'score_unit': '',
+        'statistic_method': 'average',
+        'params': [
+            # ─── takeover_latency 子维度的 output 参数 ───
             ('takeover_latency_ms', '接管时延', '接管时延', 'number', 'output',
              'takeover_latency.takeover_latency_ms', 'value', 'main', True,
              False, None, '接管时延(毫秒)，正=AI后回复，负=抢话', 80),
@@ -234,325 +212,378 @@ DIMENSIONS = [
              False, None, 'takeover_latency: user 末词结束时间(毫秒)', 81),
             ('tl_ai_first_word_start_ms', '模型首词开始时刻', '模型首词开始时刻', 'number', 'output',
              'takeover_latency.ai_first_word_start_ms', None, 'aux', False,
-             False, None, 'takeover_latency: AI 首字开始时间(毫秒)', 82),
+             False, None, 'takeover_latency: AI 首词开始时间(毫秒)', 82),
             ('latency_message', '时延说明', '时延说明', 'text', 'output',
              'takeover_latency.message', None, 'aux', False,
              False, None, 'takeover_latency: 错误/成功说明', 84),
         ],
-        'param_mappings': [
-            ('device', 'output', 'user_wav', 'user_wav', 'none'),
-            ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
-            ('reference', 'output', 'pause', 'pause', 'none'),
-            ('device', 'output', 'first_frame_ms', 'first_frame_ms', 'none'),
-            ('device', 'output', 'start_ms', 'start_ms', 'none'),
-            ('reference', 'output', 'input_lastword', 'input_lastword', 'none'),
-        ],
-        'body_template': {
-            'rounds': [
-                {
-                    'user_wav': '{{user_wav}}',
-                    'ai_wav': '{{ai_wav}}',
-                    'pause': '{{pause}}',
-                    'first_frame_ms': '{{first_frame_ms}}',
-                    'start_ms': '{{start_ms}}',
-                    'input_lastword': '{{input_lastword}}',
-                    'offset_ms': '{{offset_ms}}',
-                }
-            ]
-        },
     },
 ]
 
 
-def seed_xiaoyi_dimensions():
+def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
+    """注册/更新一个维度，返回 dim_id。dimension_type: 'main' or 'sub'。"""
+    task_code = dim_def['task_type_code']
+    name = dim_def['name']
+
+    # 子维度用 name 做唯一性匹配（同 task_type_code 下多个子维度）
+    if dimension_type == 'sub':
+        existing = conn.execute(text(
+            "SELECT id FROM dimensions "
+            "WHERE task_type_code = :tc AND name = :name "
+            "AND dimension_type = 'sub' AND deleted = FALSE"
+        ), {'tc': task_code, 'name': name}).fetchone()
+    else:
+        existing = conn.execute(text(
+            "SELECT id FROM dimensions "
+            "WHERE task_type_code = :tc AND dimension_type = 'main' "
+            "AND parent_dimension_id IS NULL AND deleted = FALSE"
+        ), {'tc': task_code}).fetchone()
+
+    # api_settings + body_template
+    body_template = dim_def.get('body_template', {
+        'rounds': [
+            {
+                'user_wav': '{{user_wav}}',
+                'ai_wav': '{{ai_wav}}',
+                'pause': '{{pause}}',
+                'first_frame_ms': '{{first_frame_ms}}',
+                'start_ms': '{{start_ms}}',
+                'input_lastword': '{{input_lastword}}',
+                'offset_ms': '{{offset_ms}}',
+            }
+        ]
+    })
+    api_settings = json.dumps({
+        'method': 'POST',
+        'headers': {},
+        'body_template': body_template,
+        'timeout': 30000
+    }, ensure_ascii=False)
+    rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
+
+    common_fields = {
+        'name': name,
+        'kw': dim_def['keywords'],
+        'desc': dim_def['description'],
+        'type': dim_def['type'],
+        'rt': dim_def['result_type'],
+        'rmin': dim_def['result_min'],
+        'rmax': dim_def['result_max'],
+        'dp': dim_def['decimal_places'],
+        'w': dim_def['weight'],
+        'et': dim_def['estimated_exec_time'],
+        'su': dim_def['score_unit'],
+        'sm': dim_def['statistic_method'],
+        'apis': api_settings,
+        'rule': rule,
+        'dtype': dimension_type,
+        'pid': parent_id,
+    }
+
+    if existing:
+        dim_id = existing[0]
+        print(f"  - {dimension_type} 维度已存在 (id={dim_id}, name={name})，更新")
+        conn.execute(text(
+            "UPDATE dimensions SET "
+            "  name = :name, keywords = :kw, description = :desc, "
+            "  type = :type, result_type = :rt, result_min = :rmin, "
+            "  result_max = :rmax, decimal_places = :dp, weight = :w, "
+            "  estimated_exec_time = :et, score_unit = :su, "
+            "  statistic_method = :sm, api_settings = :apis, "
+            "  rule = :rule, dimension_type = :dtype, "
+            "  parent_dimension_id = :pid, "
+            "  deleted = FALSE, updated_at = NOW() "
+            "WHERE id = :did"
+        ), {**common_fields, 'did': dim_id})
+    else:
+        result = conn.execute(text(
+            "INSERT INTO dimensions "
+            "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
+            "   type, result_type, result_min, result_max, decimal_places, "
+            "   weight, estimated_exec_time, rule, api_settings, status, "
+            "   api_status, score_unit, statistic_method, "
+            "   deleted, created_at, updated_at) "
+            "VALUES "
+            "  (:name, :kw, :dtype, :pid, :tc, :desc, "
+            "   :type, :rt, :rmin, :rmax, :dp, "
+            "   :w, :et, :rule, :apis, TRUE, "
+            "   'online', :su, :sm, "
+            "   FALSE, NOW(), NOW()) "
+            "RETURNING id"
+        ), {**common_fields, 'tc': task_code})
+        dim_id = result.fetchone()[0]
+        print(f"  + {dimension_type} 维度已插入 (id={dim_id}, name={name})")
+    return dim_id
+
+
+def _cleanup_stale_params(conn, dim_id, dim_def):
+    """软清理 DB 中当前 dim_def.params 不再出现的 param_code（按 direction 分组）。"""
+    current_output_codes = {p[0] for p in dim_def['params'] if p[4] == 'output'}
+    current_input_codes = {p[0] for p in dim_def['params'] if p[4] == 'input'}
+    for direction, current_codes in (
+        ('output', current_output_codes),
+        ('input', current_input_codes),
+    ):
+        if not current_codes:
+            # 当前定义里这个方向没有 param_code，把 DB 里该方向所有非 deleted 记录软删
+            stale = conn.execute(text(
+                "SELECT param_code FROM evaluation_dimension_params "
+                "WHERE dimension_id = :did AND param_direction = :dir "
+                "AND deleted = FALSE"
+            ), {'did': dim_id, 'dir': direction}).fetchall()
+            if stale:
+                stale_codes = [r[0] for r in stale]
+                print(f"  ! 清理已废弃 {direction} 参数: {stale_codes}")
+                conn.execute(text(
+                    "UPDATE evaluation_dimension_params SET "
+                    "  deleted = TRUE, updated_at = NOW() "
+                    "WHERE dimension_id = :did AND param_direction = :dir"
+                ), {'did': dim_id, 'dir': direction})
+            continue
+        placeholders = ','.join(f':c{i}' for i in range(len(current_codes)))
+        bind = {f'c{i}': code for i, code in enumerate(current_codes)}
+        stale = conn.execute(text(
+            "SELECT param_code FROM evaluation_dimension_params "
+            "WHERE dimension_id = :did AND param_direction = :dir "
+            f"AND param_code NOT IN ({placeholders}) "
+            "AND deleted = FALSE"
+        ), {'did': dim_id, 'dir': direction, **bind}).fetchall()
+        if stale:
+            stale_codes = [r[0] for r in stale]
+            print(f"  ! 清理已废弃 {direction} 参数: {stale_codes}")
+            conn.execute(text(
+                "UPDATE evaluation_dimension_params SET "
+                "  deleted = TRUE, updated_at = NOW() "
+                "WHERE dimension_id = :did AND param_direction = :dir "
+                f"AND param_code IN ({placeholders})"
+            ), {'did': dim_id, 'dir': direction, **bind})
+
+
+def _upsert_params(conn, dim_id, dim_def):
+    """注册/更新维度的 params。"""
+    print(f"  --- 注册参数 (dimension_id={dim_id}) ---")
+    _cleanup_stale_params(conn, dim_id, dim_def)
+
+    inserted = 0
+    updated = 0
+    for dp in dim_def['params']:
+        (param_code, param_name, label, field_type, param_direction,
+         field_path, agg_role, output_role, visible_in_report,
+         required, default_value, help_text, ui_order) = dp
+
+        existing = conn.execute(text(
+            "SELECT id FROM evaluation_dimension_params "
+            "WHERE dimension_id = :did AND param_code = :pc "
+            "AND param_direction = :dir"
+        ), {'did': dim_id, 'pc': param_code, 'dir': param_direction}).fetchone()
+
+        if existing:
+            conn.execute(text(
+                "UPDATE evaluation_dimension_params SET "
+                "  param_name = :pn, label = :lb, field_type = :ft, "
+                "  field_path = :fp, agg_role = :ar, output_role = :or, "
+                "  visible_in_report = :vir, required = :req, "
+                "  default_value = :dv, help_text = :ht, ui_order = :uo, "
+                "  deleted = FALSE, updated_at = NOW() "
+                "WHERE id = :id"
+            ), {
+                'pn': param_name, 'lb': label, 'ft': field_type,
+                'fp': field_path, 'ar': agg_role, 'or': output_role,
+                'vir': visible_in_report, 'req': required,
+                'dv': default_value, 'ht': help_text, 'uo': ui_order,
+                'id': existing[0],
+            })
+            updated += 1
+        else:
+            conn.execute(text(
+                "INSERT INTO evaluation_dimension_params "
+                "  (dimension_id, param_code, param_name, label, field_type, "
+                "   param_direction, field_path, agg_role, output_role, "
+                "   visible_in_report, required, default_value, help_text, "
+                "   ui_order, deleted, created_at, updated_at) "
+                "VALUES "
+                "  (:did, :pc, :pn, :lb, :ft, "
+                "   :dir, :fp, :ar, :or, "
+                "   :vir, :req, :dv, :ht, "
+                "   :uo, FALSE, NOW(), NOW())"
+            ), {
+                'did': dim_id, 'pc': param_code, 'pn': param_name,
+                'lb': label, 'ft': field_type, 'dir': param_direction,
+                'fp': field_path, 'ar': agg_role, 'or': output_role,
+                'vir': visible_in_report, 'req': required,
+                'dv': default_value, 'ht': help_text, 'uo': ui_order,
+            })
+            inserted += 1
+    print(f"  插入 {inserted} 条，更新 {updated} 条")
+
+
+def _upsert_relation(conn, dim_id):
+    """注册 voice_llm → 维度关联（幂等）。"""
+    existing = conn.execute(text(
+        "SELECT id FROM algorithm_dimension_relations "
+        "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did"
+    ), {'did': dim_id}).fetchone()
+    if existing:
+        print(f"  - 关联 voice_llm → dim {dim_id} 已存在，跳过")
+    else:
+        conn.execute(text(
+            "INSERT INTO algorithm_dimension_relations "
+            "  (algorithm_type, dimension_id, is_default, weight, "
+            "   deleted, created_at, updated_at) "
+            "VALUES "
+            "  ('voice_llm', :did, FALSE, 1.0, FALSE, NOW(), NOW())"
+        ), {'did': dim_id})
+        print(f"  + 关联 voice_llm → dim {dim_id} 已插入")
+
+
+def _upsert_param_mappings(conn, dim_id, dim_def):
+    """注册 voice_llm → 维度的 param_mappings（幂等）。只在主维度配。"""
+    print(f"  --- 注册 param_mappings (dimension_id={dim_id}) ---")
+    inserted = 0
+    updated = 0
+    for m in dim_def.get('param_mappings', []):
+        (source, source_direction, source_param, target_param,
+         transform_type) = m
+        existing = conn.execute(text(
+            "SELECT id FROM param_mappings "
+            "WHERE algorithm_type = 'voice_llm' AND source = :src "
+            "AND source_param = :sp AND dimension_id = :did"
+        ), {'src': source, 'sp': source_param, 'did': dim_id}).fetchone()
+        if existing:
+            conn.execute(text(
+                "UPDATE param_mappings SET "
+                "  target_param = :tp, transform_type = :tt, "
+                "  deleted = FALSE, updated_at = NOW() "
+                "WHERE id = :id"
+            ), {'tp': target_param, 'tt': transform_type, 'id': existing[0]})
+            updated += 1
+        else:
+            conn.execute(text(
+                "INSERT INTO param_mappings "
+                "  (algorithm_type, source, source_direction, source_param, "
+                "   dimension_id, target_param, transform_type, "
+                "   deleted, created_at, updated_at) "
+                "VALUES "
+                "  ('voice_llm', :src, :sd, :sp, :did, :tp, :tt, "
+                "   FALSE, NOW(), NOW())"
+            ), {
+                'src': source, 'sd': source_direction, 'sp': source_param,
+                'did': dim_id, 'tp': target_param, 'tt': transform_type,
+            })
+            inserted += 1
+    print(f"  插入 {inserted} 条，更新 {updated} 条")
+
+
+def _soft_delete_dimension_tree(conn, dim_id, reason):
+    """软删除一个维度及其 params / mappings / 子维度。"""
+    # 子维度
+    subs = conn.execute(text(
+        "SELECT id, name FROM dimensions "
+        "WHERE parent_dimension_id = :pid AND deleted = FALSE"
+    ), {'pid': dim_id}).fetchall()
+    for sub_id, sub_name in subs:
+        _soft_delete_dimension_tree(conn, sub_id, f"父维度 {dim_id} 被软删")
+
+    conn.execute(text(
+        "UPDATE dimensions SET deleted = TRUE, updated_at = NOW() "
+        "WHERE id = :did AND deleted = FALSE"
+    ), {'did': dim_id})
+    conn.execute(text(
+        "UPDATE evaluation_dimension_params SET deleted = TRUE, updated_at = NOW() "
+        "WHERE dimension_id = :did AND deleted = FALSE"
+    ), {'did': dim_id})
+    conn.execute(text(
+        "UPDATE param_mappings SET deleted = TRUE, updated_at = NOW() "
+        "WHERE dimension_id = :did AND deleted = FALSE"
+    ), {'did': dim_id})
+    conn.execute(text(
+        "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() "
+        "WHERE dimension_id = :did AND deleted = FALSE"
+    ), {'did': dim_id})
+    print(f"  ! 软删维度 id={dim_id}（{reason}）：dimensions/params/mappings/relations 已置 deleted=TRUE")
+
+
+def seed_turn_taking():
     engine = create_engine(POSTGRES_URI)
 
     with engine.begin() as conn:
-        for dim_def in DIMENSIONS:
-            task_code = dim_def['task_type_code']
-            print(f"\n{'=' * 60}")
-            print(f"  处理维度: {task_code} ({dim_def['name']})")
-            print(f"{'=' * 60}")
+        # ============================================================
+        # Step 0: 软删除历史 xiaoyi_metrics（id=2）
+        # ============================================================
+        print(f"\n{'=' * 60}")
+        print(f"  Step 0: 软删除历史 xiaoyi_metrics")
+        print(f"{'=' * 60}")
+        legacy = conn.execute(text(
+            "SELECT id, name, task_type_code FROM dimensions "
+            "WHERE task_type_code = 'xiaoyi_metrics' AND deleted = FALSE"
+        )).fetchall()
+        if legacy:
+            for dim_id, name, tc in legacy:
+                print(f"  软删历史维度: id={dim_id}, name={name}, task_type_code={tc}")
+                _soft_delete_dimension_tree(conn, dim_id, "被 turn_taking 子维度方案替代")
+        else:
+            print("  无 xiaoyi_metrics 需清理")
 
-            # ============================================================
-            # Step 1: 注册维度
-            # ============================================================
-            print(f"\n--- Step 1: 注册 {task_code} 维度 (dimensions) ---")
+        # ============================================================
+        # Step 1: 注册/更新 turn_taking 主维度
+        # ============================================================
+        print(f"\n{'=' * 60}")
+        print(f"  Step 1: 注册 turn_taking 主维度")
+        print(f"{'=' * 60}")
+        main_id = _upsert_dimension(conn, MAIN_DIMENSION, dimension_type='main', parent_id=None)
+        print(f"  主维度 id = {main_id}")
+        _upsert_params(conn, main_id, MAIN_DIMENSION)
+        _upsert_relation(conn, main_id)
+        _upsert_param_mappings(conn, main_id, MAIN_DIMENSION)
 
-            existing_dim = conn.execute(text(
-                "SELECT id FROM dimensions "
-                "WHERE task_type_code = :tc AND deleted = FALSE"
-            ), {'tc': task_code}).fetchone()
-
-            # body_template：维度自定义优先，否则用默认模板
-            default_body_template = {
-                'rounds': [
-                    {
-                        'end_ms': '{{end_ms}}',
-                        'first_frame_ms': '{{first_frame_ms}}',
-                        'input_lastword': '{{input_lastword}}',
-                        'offset_ms': '{{offset_ms}}',
-                        'pause': '{{pause}}',
-                        'record_file': '{{record_file}}',
-                        'start_ms': '{{start_ms}}',
-                        'query': '{{query}}',
-                        'question': '{{question}}'
-                    }
-                ]
-            }
-            body_template = dim_def.get('body_template', default_body_template)
-            api_settings = json.dumps({
-                'method': 'POST',
-                'headers': {},
-                'body_template': body_template,
-                'timeout': 30000
-            }, ensure_ascii=False)
-            rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
-
-            if existing_dim:
-                dim_id = existing_dim[0]
-                print(f"  - {task_code} 维度已存在 (id={dim_id})，更新描述")
-                conn.execute(text(
-                    "UPDATE dimensions SET "
-                    "  name = :name, keywords = :kw, description = :desc, "
-                    "  type = :type, result_type = :rt, result_min = :rmin, "
-                    "  result_max = :rmax, decimal_places = :dp, weight = :w, "
-                    "  estimated_exec_time = :et, score_unit = :su, "
-                    "  statistic_method = :sm, api_settings = :apis, "
-                    "  rule = :rule, "
-                    "  updated_at = NOW() "
-                    "WHERE id = :did"
-                ), {
-                    'name': dim_def['name'], 'kw': dim_def['keywords'],
-                    'desc': dim_def['description'], 'type': dim_def['type'],
-                    'rt': dim_def['result_type'], 'rmin': dim_def['result_min'],
-                    'rmax': dim_def['result_max'], 'dp': dim_def['decimal_places'],
-                    'w': dim_def['weight'], 'et': dim_def['estimated_exec_time'],
-                    'su': dim_def['score_unit'], 'sm': dim_def['statistic_method'],
-                    'apis': api_settings, 'rule': rule, 'did': dim_id,
-                })
-            else:
-                result = conn.execute(text(
-                    "INSERT INTO dimensions "
-                    "  (name, keywords, dimension_type, task_type_code, description, "
-                    "   type, result_type, result_min, result_max, decimal_places, "
-                    "   weight, estimated_exec_time, rule, api_settings, status, "
-                    "   api_status, score_unit, statistic_method, "
-                    "   deleted, created_at, updated_at) "
-                    "VALUES "
-                    "  (:name, :kw, 'main', :tc, :desc, "
-                    "   :type, :rt, :rmin, :rmax, :dp, "
-                    "   :w, :et, :rule, :apis, TRUE, "
-                    "   'online', :su, :sm, "
-                    "   FALSE, NOW(), NOW()) "
-                    "RETURNING id"
-                ), {
-                    'name': dim_def['name'], 'kw': dim_def['keywords'],
-                    'tc': task_code, 'desc': dim_def['description'],
-                    'type': dim_def['type'], 'rt': dim_def['result_type'],
-                    'rmin': dim_def['result_min'], 'rmax': dim_def['result_max'],
-                    'dp': dim_def['decimal_places'], 'w': dim_def['weight'],
-                    'et': dim_def['estimated_exec_time'],
-                    'rule': rule, 'apis': api_settings,
-                    'su': dim_def['score_unit'], 'sm': dim_def['statistic_method'],
-                })
-                dim_id = result.fetchone()[0]
-                print(f"  + {task_code} 维度已插入 (id={dim_id})")
-
-            # ============================================================
-            # Step 2: 注册输入/输出参数
-            # ============================================================
-            print(f"\n--- Step 2: 注册 {task_code} 参数 (evaluation_dimension_params) ---")
-
-            # 清理 DB 中已废弃的 param_code（当前 DIMENSIONS 定义里不再出现的条目）
-            current_output_codes = {
-                p[0] for p in dim_def['params'] if p[4] == 'output'
-            }
-            current_input_codes = {
-                p[0] for p in dim_def['params'] if p[4] == 'input'
-            }
-            for direction, current_codes in (
-                ('output', current_output_codes),
-                ('input', current_input_codes),
-            ):
-                if not current_codes:
-                    continue
-                placeholders = ','.join(f':c{i}' for i in range(len(current_codes)))
-                bind = {f'c{i}': code for i, code in enumerate(current_codes)}
-                stale = conn.execute(text(
-                    "SELECT param_code FROM evaluation_dimension_params "
-                    "WHERE dimension_id = :did AND param_direction = :dir "
-                    f"AND param_code NOT IN ({placeholders}) "
-                    "AND deleted = FALSE"
-                ), {'did': dim_id, 'dir': direction, **bind}).fetchall()
-                if stale:
-                    stale_codes = [r[0] for r in stale]
-                    print(f"  ! 清理已废弃 {direction} 参数: {stale_codes}")
-                    conn.execute(text(
-                        "UPDATE evaluation_dimension_params SET "
-                        "  deleted = TRUE, updated_at = NOW() "
-                        "WHERE dimension_id = :did AND param_direction = :dir "
-                        f"AND param_code IN ({placeholders})"
-                    ), {'did': dim_id, 'dir': direction, **bind})
-
-            param_inserted = 0
-            param_skipped = 0
-            for dp in dim_def['params']:
-                (param_code, param_name, label, field_type, param_direction,
-                 field_path, agg_role, output_role, visible_in_report,
-                 required, default_value, help_text, ui_order) = dp
-
-                existing = conn.execute(text(
-                    "SELECT id FROM evaluation_dimension_params "
-                    "WHERE dimension_id = :did AND param_code = :pc "
-                    "AND param_direction = :dir"
-                ), {'did': dim_id, 'pc': param_code, 'dir': param_direction}).fetchone()
-
-                if existing:
-                    # 更新已有参数
-                    conn.execute(text(
-                        "UPDATE evaluation_dimension_params SET "
-                        "  param_name = :pn, label = :lb, field_type = :ft, "
-                        "  field_path = :fp, agg_role = :ar, output_role = :or, "
-                        "  visible_in_report = :vir, required = :req, "
-                        "  default_value = :dv, help_text = :ht, ui_order = :uo, "
-                        "  updated_at = NOW() "
-                        "WHERE id = :id"
-                    ), {
-                        'pn': param_name, 'lb': label, 'ft': field_type,
-                        'fp': field_path, 'ar': agg_role, 'or': output_role,
-                        'vir': visible_in_report, 'req': required,
-                        'dv': default_value, 'ht': help_text, 'uo': ui_order,
-                        'id': existing[0],
-                    })
-                    print(f"  - {param_code} ({param_direction}) 已存在，已更新")
-                    param_skipped += 1
-                else:
-                    conn.execute(text(
-                        "INSERT INTO evaluation_dimension_params "
-                        "  (dimension_id, param_code, param_name, label, field_type, "
-                        "   param_direction, field_path, agg_role, output_role, "
-                        "   visible_in_report, required, default_value, help_text, "
-                        "   ui_order, deleted, created_at, updated_at) "
-                        "VALUES "
-                        "  (:did, :pc, :pn, :lb, :ft, "
-                        "   :dir, :fp, :ar, :or, "
-                        "   :vir, :req, :dv, :ht, "
-                        "   :uo, FALSE, NOW(), NOW())"
-                    ), {
-                        'did': dim_id, 'pc': param_code, 'pn': param_name,
-                        'lb': label, 'ft': field_type, 'dir': param_direction,
-                        'fp': field_path, 'ar': agg_role, 'or': output_role,
-                        'vir': visible_in_report, 'req': required,
-                        'dv': default_value, 'ht': help_text, 'uo': ui_order,
-                    })
-                    print(f"  + {param_code} ({field_type}, {param_direction})")
-                    param_inserted += 1
-
-            print(f"  插入 {param_inserted} 条，跳过/更新 {param_skipped} 条")
-
-            # ============================================================
-            # Step 3: 注册 voice_llm → 维度关联
-            # ============================================================
-            print(f"\n--- Step 3: 注册 voice_llm → {task_code} 关联 ---")
-
-            existing_rel = conn.execute(text(
-                "SELECT id FROM algorithm_dimension_relations "
-                "WHERE algorithm_type = 'voice_llm' AND dimension_id = :did"
-            ), {'did': dim_id}).fetchone()
-
-            if existing_rel:
-                print(f"  - 关联已存在 (voice_llm → {task_code} id={dim_id})，跳过")
-            else:
-                conn.execute(text(
-                    "INSERT INTO algorithm_dimension_relations "
-                    "  (algorithm_type, dimension_id, is_default, weight, "
-                    "   deleted, created_at, updated_at) "
-                    "VALUES "
-                    "  ('voice_llm', :did, FALSE, 1.0, FALSE, NOW(), NOW())"
-                ), {'did': dim_id})
-                print(f"  + 关联已插入 (voice_llm → {task_code} id={dim_id})")
-
-            # ============================================================
-            # Step 4: 注册参数映射
-            # ============================================================
-            print(f"\n--- Step 4: 注册 voice_llm → {task_code} 参数映射 ---")
-
-            map_inserted = 0
-            map_skipped = 0
-            for m in dim_def['param_mappings']:
-                (source, source_direction, source_param, target_param,
-                 transform_type) = m
-
-                existing = conn.execute(text(
-                    "SELECT id FROM param_mappings "
-                    "WHERE algorithm_type = 'voice_llm' AND source = :src "
-                    "AND source_param = :sp AND dimension_id = :did"
-                ), {'src': source, 'sp': source_param, 'did': dim_id}).fetchone()
-
-                if existing:
-                    # 更新 target_param 和 transform_type
-                    conn.execute(text(
-                        "UPDATE param_mappings SET "
-                        "  target_param = :tp, transform_type = :tt, "
-                        "  updated_at = NOW() "
-                        "WHERE id = :id"
-                    ), {
-                        'tp': target_param, 'tt': transform_type,
-                        'id': existing[0],
-                    })
-                    print(f"  - {source}.{source_param} → {target_param} 已存在，已更新")
-                    map_skipped += 1
-                else:
-                    conn.execute(text(
-                        "INSERT INTO param_mappings "
-                        "  (algorithm_type, source, source_direction, source_param, "
-                        "   dimension_id, target_param, transform_type, "
-                        "   deleted, created_at, updated_at) "
-                        "VALUES "
-                        "  ('voice_llm', :src, :sd, :sp, :did, :tp, :tt, "
-                        "   FALSE, NOW(), NOW())"
-                    ), {
-                        'src': source, 'sd': source_direction, 'sp': source_param,
-                        'did': dim_id, 'tp': target_param, 'tt': transform_type,
-                    })
-                    print(f"  + {source}.{source_param} → {target_param}")
-                    map_inserted += 1
-
-            print(f"  插入 {map_inserted} 条，跳过/更新 {map_skipped} 条")
+        # ============================================================
+        # Step 2: 注册三个子维度
+        # ============================================================
+        print(f"\n{'=' * 60}")
+        print(f"  Step 2: 注册三个子维度（parent_dimension_id={main_id}）")
+        print(f"{'=' * 60}")
+        for sub_def in SUB_DIMENSIONS:
+            print(f"\n  -- 子维度: {sub_def['name']} --")
+            sub_id = _upsert_dimension(conn, sub_def, dimension_type='sub', parent_id=main_id)
+            print(f"  子维度 id = {sub_id}")
+            _upsert_params(conn, sub_id, sub_def)
+            _upsert_relation(conn, sub_id)
+            # 子维度不配 param_mappings，共用主维度的 mappings
 
         print(f"\n{'=' * 60}")
-        print("  小艺评估维度种子数据注册完成")
+        print(f"  话轮接管维度种子数据注册完成")
+        print(f"  主维度 turn_taking id={main_id}（无 output）")
+        print(f"  三个子维度（各自 output field_path）:")
+        print(f"    - tor              → tor.tor")
+        print(f"    - false_takeover   → false_takeover.tor")
+        print(f"    - takeover_latency → takeover_latency.takeover_latency_ms")
         print(f"{'=' * 60}")
 
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("小艺评估维度种子数据注册")
+    print("话轮接管（turn_taking）维度种子数据注册")
     print("=" * 60)
     print()
     print(f"数据库: {POSTGRES_URI[:POSTGRES_URI.rindex('@')]}@localhost/...")
     print()
-    print("此脚本将注册：")
-    print("1. xiaoyi_metrics 维度 — 小艺评估统一指标")
-    print("   调一次 ASR，三个子指标共享结果")
+    print("此脚本将：")
+    print("1. 软删除历史 xiaoyi_metrics 维度（id=2，被替代）")
+    print("2. 注册/更新 turn_taking 主维度（dimension_type=main，无 output）")
+    print("   配置 input params + api_settings + param_mappings")
+    print("3. 注册/更新三个子维度（dimension_type=sub，parent_dimension_id=主维度id）：")
+    print("   - 接话率(TOR)        → output field_path = tor.tor")
+    print("   - 误接管率           → output field_path = false_takeover.tor")
+    print("   - 接管时延           → output field_path = takeover_latency.takeover_latency_ms")
+    print("4. 子维度不重复 input params / param_mappings：")
+    print("   - input_params 通过 evaluation_service._load_dimension_data 继承父维度")
+    print("   - param_mappings 挂主维度 id 下，子维度共用（dimension_ids=None 不过滤）")
+    print("5. 注册 voice_llm → 主维度 + 三个子维度的关联")
     print()
-    print("   输入: input_lastword, start_ms, query, question, record_file(wav), pause(停顿区间), first_frame_ms, end_ms, offset_ms")
-    print()
-    print("   子指标1: tor (接话率)")
-    print("     输出: tor, tor_takeover_count, tor_total_pauses, tor_per_pause")
-    print()
-    print("   子指标2: false_takeover (误接管率)")
-    print("     输出: false_takeover, ft_n_words, ft_duration, ft_total_pauses, ft_hit_words, ft_details")
-    print()
-    print("   子指标3: takeover_latency (接管时延)")
-    print("     输出: takeover_latency_ms, first_word_begin_ms, model_first_word_ms, ...")
-    print()
-    print("ASR 结果由 eval_server 内部调用 asr_server.py /asr 接口获取，通过返回值传递")
-    print()
-    print("同时注册：")
-    print("- voice_llm → xiaoyi_metrics 关联(algorithm_dimension_relations)")
-    print("- voice_llm → xiaoyi_metrics 参数映射(param_mappings)")
+    print("执行链路：用例选三个子维度 → 继承父维度 task_type_code/api 配置")
+    print("→ 按 (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server")
+    print("→ process_group_dimension_results 按各自 output field_path 分发提取")
     print()
     print("脚本可重复执行（幂等）")
     print()
@@ -563,7 +594,7 @@ if __name__ == '__main__':
         sys.exit(0)
 
     try:
-        seed_xiaoyi_dimensions()
+        seed_turn_taking()
     except Exception as e:
         print(f"\n迁移失败: {e}")
         import traceback
