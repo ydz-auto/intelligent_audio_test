@@ -520,20 +520,25 @@ const extractInitialMetricData = (reportData) => {
           });
         });
       } else {
-        const category = row.categoryName || row.categoryId || '未分类';
+        // resource-flat 格式（无 category 维度），数据属于 resource 级别全局平均
+        // 将数据复制到所有已知的 caseCategories 下，以便按 category 查找时能命中
+        const cats = getCategories(reportData)
+        const categories = cats.length > 0 ? cats : (row.categoryName || row.categoryId ? [row.categoryName || row.categoryId] : ['未分类'])
         const resourceKey = row.resource || '0-默认资源';
-        if (!mergedData[category]) mergedData[category] = {};
-        if (!mergedData[category][resourceKey]) mergedData[category][resourceKey] = {};
-        if (Array.isArray(row.metrics)) {
-          row.metrics.forEach(m => {
-            if (!m || !m.metric) return;
-            mergedData[category][resourceKey][m.metric] = Number(m.value ?? 0);
-          });
-        } else {
-          const metricName = row.metric;
-          if (!metricName) return;
-          mergedData[category][resourceKey][metricName] = Number(row.value ?? 0);
-        }
+        categories.forEach(category => {
+          if (!mergedData[category]) mergedData[category] = {};
+          if (!mergedData[category][resourceKey]) mergedData[category][resourceKey] = {};
+          if (Array.isArray(row.metrics)) {
+            row.metrics.forEach(m => {
+              if (!m || !m.metric) return;
+              mergedData[category][resourceKey][m.metric] = Number(m.value ?? 0);
+            });
+          } else {
+            const metricName = row.metric;
+            if (!metricName) return;
+            mergedData[category][resourceKey][metricName] = Number(row.value ?? 0);
+          }
+        });
       }
     });
     
@@ -797,7 +802,7 @@ const displayTypes = ref([
   { type: 'distribution', label: '正态分布图', icon: 'fas fa-chart-area' }
 ])
 
-const activeDisplayType = ref('table')
+const activeDisplayType = ref('distribution') // 临时改为 distribution 用于调试
 
 // Computed
 const filteredCategories = computed(() => {
@@ -1134,6 +1139,16 @@ const applyFilters = async () => {
   }
 }
 
+const buildResourceKey = (device) => {
+  if (typeof device === 'object' && device !== null) {
+    const parts = [device.id, device.name]
+    const version = device.appVersion || device.app_version
+    if (version) parts.push(version)
+    return parts.join('-')
+  }
+  return String(device ?? '')
+}
+
 const getMetricValue = (category, device, metricName) => {
   // device 可能是 "ID-Name" 格式的字符串，也可能是包含 id 和 name 的对象
   if (metricData.value) {
@@ -1144,9 +1159,9 @@ const getMetricValue = (category, device, metricName) => {
         return categoryData[device][metricName];
       }
 
-      // 2. 如果 device 是对象，尝试构建 key 查找
+      // 2. 如果 device 是对象，尝试构建 key 查找（含 appVersion，与后端 resource key 格式一致）
       if (typeof device === 'object' && device !== null) {
-        const resourceKey = `${device.id}-${device.name}`;
+        const resourceKey = buildResourceKey(device);
         if (categoryData[resourceKey] && categoryData[resourceKey][metricName] !== undefined) {
           return categoryData[resourceKey][metricName];
         }
@@ -1180,9 +1195,9 @@ const getRawDataValue = (category, device, metricName) => {
         return categoryData[device][rawDataKey];
       }
 
-      // 2. 如果 device 是对象，尝试构建 key 查找
+      // 2. 如果 device 是对象，尝试构建 key 查找（含 appVersion，与后端 resource key 格式一致）
       if (typeof device === 'object' && device !== null) {
-        const resourceKey = `${device.id}-${device.name}`;
+        const resourceKey = buildResourceKey(device);
         if (categoryData[resourceKey] && Array.isArray(categoryData[resourceKey][rawDataKey])) {
           return categoryData[resourceKey][rawDataKey];
         }
@@ -1307,6 +1322,10 @@ const chartBorderColors = [
 const getChartData = (metricName) => {
   // 如果是正态分布图，生成不同的数据结构
   if (activeDisplayType.value === 'distribution') {
+    // 临时调试：输出 metricData 结构和设备匹配情况
+    const _debugCats = Object.keys(metricData.value || {})
+    const _debugSample = _debugCats[0] ? Object.keys(metricData.value[_debugCats[0]] || {}) : []
+    console.log('[DEBUG getChartData] metricData categories:', _debugCats, 'resource keys in first category:', _debugSample, 'devices:', devices.value.map(d => typeof d === 'object' ? buildResourceKey(d) : d))
     // 收集所有原始数据点用于正态分布计算
     let allRawData = [];
     const deviceRawDataMap = {};
@@ -1340,6 +1359,7 @@ const getChartData = (metricName) => {
     Object.keys(deviceRawDataMap).forEach(device => {
       deviceRawDataMap[device] = deviceRawDataMap[device].filter(v => typeof v === 'number' && !isNaN(v) && isFinite(v));
     });
+    console.log('[DEBUG getChartData] allRawData length:', allRawData.length, 'sample:', allRawData.slice(0, 5))
 
     // 计算正态分布统计信息
     const calculateNormalDistribution = (data) => {
@@ -1366,7 +1386,14 @@ const getChartData = (metricName) => {
     
     // 按标准差划分区间：以mean为中心，向两侧按σ/8步长划分，共约64个区间
     // 区间细密，放大后自然展示更细的分布细节，无需动态重算
-    const step = distribution.stdDev / 8; // 每个区间宽度 = σ/8
+    let step = distribution.stdDev / 8; // 每个区间宽度 = σ/8
+    // 当标准差为0（所有值相同或只有一个数据点）时，使用数据范围的1/10作为步长，避免除以0
+    if (step === 0 || !isFinite(step)) {
+      const dataMin = Math.min(...allRawData);
+      const dataMax = Math.max(...allRawData);
+      const dataRange = dataMax - dataMin;
+      step = dataRange > 0 ? dataRange / 10 : Math.max(Math.abs(distribution.mean) * 0.1, 1);
+    }
     let minValue = distribution.mean - 32 * step; // mean - 4σ
     const maxValue = distribution.mean + 32 * step; // mean + 4σ
     // 如果所有数据都非负，横轴从0开始

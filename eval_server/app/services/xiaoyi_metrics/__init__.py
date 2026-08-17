@@ -10,7 +10,7 @@
     - non_interactive_latency (非交互意图时延)
     - interruption_llm (打断 LLM 评估)
     - noise_latency (噪声打断时延)
-    - env_sound_judge (环境音裁判)
+    - env_judge (环境音裁判)
 
 统一入口见 turn_taking.calculate_xiaoyi_metrics。
 """

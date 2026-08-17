@@ -1182,6 +1182,16 @@ const computeTagMetricDataFromCases = (cases) => {
   return reconstructedData
 }
 
+const buildResourceKey = (device) => {
+  if (typeof device === 'object' && device !== null) {
+    const parts = [device.id, device.name]
+    const version = device.appVersion || device.app_version
+    if (version) parts.push(version)
+    return parts.join('-')
+  }
+  return String(device ?? '')
+}
+
 const getMetricValue = (tag, device, metricName) => {
   // 使用过滤后的tagMetricData
   const dataToUse = filteredTagMetricData.value;
@@ -1191,9 +1201,18 @@ const getMetricValue = (tag, device, metricName) => {
       // 首先尝试直接使用device作为key查找数据
       let deviceData = tagData[device];
 
+      // 如果device是对象，构建resource key查找（含appVersion，与后端格式一致）
+      if (!deviceData && typeof device === 'object' && device !== null) {
+        const resourceKey = buildResourceKey(device);
+        if (tagData[resourceKey]) {
+          deviceData = tagData[resourceKey];
+        }
+      }
+
       // 如果找不到，按名称匹配（去掉ID前缀）
       if (!deviceData || deviceData[metricName] === undefined) {
-        const deviceName = typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device;
+        const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
+                          (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device);
         for (const [resourceKey, data] of Object.entries(tagData)) {
           const currentResourceName = resourceKey.includes('-') ? resourceKey.split('-').slice(1).join('-') : resourceKey;
           if (currentResourceName === deviceName) {
@@ -1225,8 +1244,17 @@ const getRawDataValue = (tag, device, metricName) => {
         return tagData[device][rawDataKey];
       }
 
-      // 2. 按名称匹配（去掉ID前缀）
-      const deviceName = typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device;
+      // 2. 如果device是对象，构建resource key查找（含appVersion）
+      if (typeof device === 'object' && device !== null) {
+        const resourceKey = buildResourceKey(device);
+        if (tagData[resourceKey] && Array.isArray(tagData[resourceKey][rawDataKey])) {
+          return tagData[resourceKey][rawDataKey];
+        }
+      }
+
+      // 3. 按名称匹配（去掉ID前缀）
+      const deviceName = typeof device === 'object' ? (device.name || device.deviceName) :
+                        (typeof device === 'string' && device.includes('-') ? device.split('-').slice(1).join('-') : device);
       for (const [resourceKey, data] of Object.entries(tagData)) {
         const currentResourceName = resourceKey.includes('-') ? resourceKey.split('-').slice(1).join('-') : resourceKey;
         if (currentResourceName === deviceName && Array.isArray(data[rawDataKey])) {
@@ -1407,7 +1435,14 @@ const getChartData = (metricName) => {
     
     // 按标准差划分区间：以mean为中心，向两侧按σ/8步长划分，共约64个区间
     // 区间细密，放大后自然展示更细的分布细节，无需动态重算
-    const step = distribution.stdDev / 8; // 每个区间宽度 = σ/8
+    let step = distribution.stdDev / 8; // 每个区间宽度 = σ/8
+    // 当标准差为0（所有值相同或只有一个数据点）时，使用数据范围的1/10作为步长，避免除以0
+    if (step === 0 || !isFinite(step)) {
+      const dataMin = Math.min(...allRawData);
+      const dataMax = Math.max(...allRawData);
+      const dataRange = dataMax - dataMin;
+      step = dataRange > 0 ? dataRange / 10 : Math.max(Math.abs(distribution.mean) * 0.1, 1);
+    }
     let minValue = distribution.mean - 32 * step; // mean - 4σ
     const maxValue = distribution.mean + 32 * step; // mean + 4σ
     // 如果所有数据都非负，横轴从0开始

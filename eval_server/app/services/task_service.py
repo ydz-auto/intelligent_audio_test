@@ -211,37 +211,53 @@ class TaskService:
             return calculate_interruption_metrics(task_params)
         elif task_type == 'non_interactive_latency':
             from .xiaoyi_metrics.rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency
-            user_asr = task_params.get('user_asr') or task_params.get('user_chunks')
-            model_asr = task_params.get('model_asr') or task_params.get('model_chunks')
+            _rounds = task_params.get('rounds') or []
+            _r0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
+            user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or _r0.get('user_asr') or _r0.get('user_chunks')
+            model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or _r0.get('model_asr') or _r0.get('model_chunks')
             kwargs = {}
-            if task_params.get('seg_merge_gap_s') is not None:
-                kwargs['seg_merge_gap_s'] = task_params['seg_merge_gap_s']
-            if task_params.get('target_segment_index') is not None:
-                kwargs['target_segment_index'] = task_params['target_segment_index']
+            gap = task_params.get('seg_merge_gap_s') or _r0.get('seg_merge_gap_s')
+            if gap is not None:
+                kwargs['seg_merge_gap_s'] = gap
+            tsi = task_params.get('target_segment_index') or _r0.get('target_segment_index')
+            if tsi is not None:
+                kwargs['target_segment_index'] = tsi
             return compute_non_interactive_latency(user_asr, model_asr, **kwargs)
         elif task_type == 'noise_latency':
             from .xiaoyi_metrics.rejection_scene_awareness.noise_latency import compute_noise_latency
-            model_asr = task_params.get('model_asr') or task_params.get('model_chunks')
+            _rounds = task_params.get('rounds') or []
+            _r0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
+            model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or _r0.get('model_asr') or _r0.get('model_chunks')
+            start_ms = task_params.get('start_ms') or _r0.get('start_ms')
+            end_ms = task_params.get('end_ms') or _r0.get('end_ms')
+            pcm_first_ms = task_params.get('pcm_first_ms') or _r0.get('pcm_first_ms')
             kwargs = {}
-            if task_params.get('seg_merge_gap_s') is not None:
-                kwargs['seg_merge_gap_s'] = task_params['seg_merge_gap_s']
+            gap = task_params.get('seg_merge_gap_s') or _r0.get('seg_merge_gap_s')
+            if gap is not None:
+                kwargs['seg_merge_gap_s'] = gap
             return compute_noise_latency(
                 model_asr,
-                task_params['start_ms'],
-                task_params['end_ms'],
-                task_params['pcm_first_ms'],
+                start_ms,
+                end_ms,
+                pcm_first_ms,
                 **kwargs,
             )
-        elif task_type == 'env_sound_judge':
-            from .xiaoyi_metrics.utils.env_sound_judge import evaluate_env_sound_judge
-            video_path = task_params.get('video_path') or task_params.get('record_file')
-            return evaluate_env_sound_judge(
+        elif task_type == 'env_judge':
+            from .xiaoyi_metrics.env_judge.env_judge import evaluate_env_judge
+            _rounds = task_params.get('rounds') or []
+            _r0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
+            video_path = task_params.get('video_path') or task_params.get('record_file') or _r0.get('video_path') or _r0.get('record_file')
+            env_type = task_params.get('env_type') or _r0.get('env_type') or ''
+            model = task_params.get('model') or _r0.get('model') or ''
+            max_tokens = task_params.get('max_tokens') or _r0.get('max_tokens') or 4096
+            temperature = task_params.get('temperature') or _r0.get('temperature') or 0.1
+            return evaluate_env_judge(
                 video_path,
-                task_type=task_params.get('task_type', 'env_sound_judge'),
-                env_type=task_params.get('env_type', ''),
-                model=task_params.get('model', ''),
-                max_tokens=task_params.get('max_tokens', 4096),
-                temperature=task_params.get('temperature', 0.1),
+                task_type=task_params.get('task_type', 'env_judge'),
+                env_type=env_type,
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
             )
 
         else:

@@ -1,0 +1,67 @@
+{
+  "rounds": [
+    {
+      "round_number": 1,
+      "segments": [
+        {
+          "audio": "B-TA-009_话轮接管_接管准确率_女_客服_第01轮_想学新乐器求建议.wav",
+          "query": "用户1：我最近想学一门新乐器，你有什么好的建议吗？",
+          "correctAnswer": "",
+          "correctnessType": "",
+          "text": " ",
+          "spl": 65.0,
+          "playback_device_name": "设备正面（0.5m+0°）",
+          "rail_distance": 80,
+          "volume_level": 60,
+          "interferers": [],
+          "voiceprint_enabled": false,
+          "voiceprint_spl": 70.0,
+          "voiceprint_wait_time": 5.0,
+          "input_text": "我最近想学一门新乐器，你有什么好的建议吗？"
+        }
+      ]
+    },
+    {
+      "round_number": 2,
+      "segments": [
+        {
+          "audio": "B-TA-009_话轮接管_接管准确率_女_客服_第02轮_吉他尤克里里哪个易上手.wav",
+          "query": "用户2：那吉他和尤克里里相比，哪个更容易上手一些？",
+          "correctAnswer": "",
+          "correctnessType": "",
+          "text": " ",
+          "spl": 65.0,
+          "playback_device_name": "设备正面（0.5m+0°）",
+          "rail_distance": 80,
+          "volume_level": 60,
+          "interferers": [],
+          "voiceprint_enabled": false,
+          "voiceprint_spl": 70.0,
+          "voiceprint_wait_time": 5.0,
+          "input_text": "那吉他和尤克里里相比，哪个更容易上手一些？"
+        }
+      ]
+    },
+    {
+      "round_number": 3,
+      "segments": [
+        {
+          "audio": "B-TA-009_话轮接管_接管准确率_女_客服_第03轮_决定先学尤克里里.wav",
+          "query": "用户3：好的，谢谢你的建议，我决定先从尤克里里开始学。",
+          "correctAnswer": "",
+          "correctnessType": "",
+          "text": " ",
+          "spl": 65.0,
+          "playback_device_name": "设备正面（0.5m+0°）",
+          "rail_distance": 80,
+          "volume_level": 60,
+          "interferers": [],
+          "voiceprint_enabled": false,
+          "voiceprint_spl": 70.0,
+          "voiceprint_wait_time": 5.0,
+          "input_text": "好的，谢谢你的建议，我决定先从尤克里里开始学。"
+        }
+      ]
+    }
+  ]
+}

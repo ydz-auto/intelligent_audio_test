@@ -1,0 +1,11 @@
+{
+  "audio": "B-TA-001_话轮接管_接管准确率_男_年轻_今天天气怎么样.wav",
+  "caseId": "",
+  "content": "",
+  "query": "今天天气怎么样？",
+  "correctAnswer": "",
+  "correctnessType": "",
+  "text": " ",
+  "spl": 65.0,
+  "playback_device_name": "设备正面（0.5m+0°）"
+}

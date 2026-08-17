@@ -939,7 +939,7 @@ function normalizeMappings(raw: any): { device: any[]; api: any[]; evaluation: a
     id: m.id,
     source: m.source,
     source_param: m.sourceParam ?? m.source_param ?? '',
-    param_name: m.paramName ?? m.param_name ?? m.sourceParam ?? m.source_param ?? '',
+    param_name: m.paramName ?? m.param_name ?? '',
     dimension_id: m.dimensionId ?? m.dimension_id ?? null,
     dimension_name: m.dimensionName ?? m.dimension_name ?? '',
     target_param: m.targetParam ?? m.target_param ?? '',

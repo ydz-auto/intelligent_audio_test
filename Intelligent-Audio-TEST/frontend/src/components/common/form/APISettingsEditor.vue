@@ -161,9 +161,10 @@ function addInput() {
 function removeInput(index) {
   const removedInput = localInputs.value[index]
   if (removedInput && removedInput.param_code) {
-    const roundTpl = localValue.bodyTemplate.rounds?.[0]
-    if (roundTpl) {
-      delete roundTpl[removedInput.param_code]
+    const rawRound = localValue.bodyTemplate.rounds?.[0]
+    // 防御：仅当 rounds[0] 为普通对象时才 delete，否则忽略
+    if (rawRound && typeof rawRound === 'object' && !Array.isArray(rawRound)) {
+      delete rawRound[removedInput.param_code]
     }
   }
   localInputs.value.splice(index, 1)
@@ -176,11 +177,19 @@ function handleInputChange() {
 }
 
 function syncBodyTemplate() {
-  // 确保 bodyTemplate 有 rounds 结构
-  if (!localValue.bodyTemplate.rounds) {
+  // 防御：bodyTemplate 必须是普通对象（脏数据可能是字符串）
+  if (!localValue.bodyTemplate || typeof localValue.bodyTemplate !== 'object' || Array.isArray(localValue.bodyTemplate)) {
+    localValue.bodyTemplate = {}
+  }
+  // 确保 bodyTemplate.rounds 是数组（脏数据可能为字符串 '{{rounds}}'）
+  if (!Array.isArray(localValue.bodyTemplate.rounds)) {
     localValue.bodyTemplate.rounds = [{}]
   }
-  const roundTpl = localValue.bodyTemplate.rounds[0]
+  // 防御：rounds[0] 必须是普通对象，否则无法设置属性
+  const rawRound = localValue.bodyTemplate.rounds[0]
+  const roundTpl = (rawRound && typeof rawRound === 'object' && !Array.isArray(rawRound))
+    ? rawRound
+    : {}
 
   localInputs.value.forEach(input => {
     if (input.param_code && !roundTpl[input.param_code]) {
@@ -194,6 +203,7 @@ function syncBodyTemplate() {
       delete roundTpl[key]
     }
   })
+  localValue.bodyTemplate.rounds[0] = roundTpl
   // 同步 JSON 文本
   bodyTemplateJson.value = JSON.stringify(localValue.bodyTemplate, null, 2)
 }

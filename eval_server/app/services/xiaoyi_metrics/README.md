@@ -10,6 +10,9 @@ xiaoyi_metrics/
 ├── README.md                    # 本文档
 ├── llm_judge/                   # LLM 语义打分子包
 │   └── llm_judge_calculator.py  #   通用 LLM Judge（准确率/流畅度/相关性）
+├── env_judge/                   # 环境音/打断能力录屏 LLM 裁判子包
+│   ├── __init__.py
+│   └── env_judge.py             #   录屏文件 LLM 裁判（env_judge / interruption_judge）
 └── turn_taking/                 # 话轮接管与打断指标子包（统一 ASR 入口）
     ├── __init__.py              #   统一入口：calculate_xiaoyi_metrics 等
     ├── tor.py                   #   接话率（Turn-Over Rate）
@@ -20,7 +23,6 @@ xiaoyi_metrics/
     ├── non_interactive_latency.py # 非交互意图时延（模型回复期间用户说话）
     ├── interruption_llm.py      #   打断 LLM 评估（回复连贯性/相关性/适应性）
     ├── noise_latency.py         #   噪声打断时延（噪声播放期间模型响应）
-    ├── env_sound_judge.py       #   环境音/打断能力录屏 LLM 裁判
     └── _show_segments.py        #   调试脚本：可视化 ASR 分段
 ```
 
@@ -143,12 +145,12 @@ SEG_MERGE_GAP_S = 0.7   # 句内最大停顿适配
 - 用 `pcm_first_ms` 换算到模型音频相对秒：`n_s = (start_ms - pcm_first_ms) / 1000`
 - 复用 `non_interactive_latency` 同套段提取逻辑，补充绝对毫秒输出
 
-##### 9. env_sound_judge —— 环境音/打断能力录屏裁判 [env_sound_judge.py](turn_taking/env_sound_judge.py)
+##### 9. env_judge —— 环境音/打断能力录屏裁判 [env_judge/env_judge.py](env_judge/env_judge.py)
 
 传入录屏/音频文件，由裁判 LLM 对语音大模型行为评判。
 
 支持两类 task_type：
-- **env_sound_judge**（拒识与环境理解）：旁人交谈静默 / 环境噪声 / 反馈词 / 生理声 / 环境事件回溯
+- **env_judge**（拒识与环境理解）：旁人交谈静默 / 环境噪声 / 反馈词 / 生理声 / 环境事件回溯
 - **interruption_judge**（打断能力）：插话打断与重新响应 / 停止指令响应 / 多轮打断后恢复原话题
 
 行为五分类：回应 / 恢复 / 询问 / 无关回复 / 沉默。音频用 `input_audio` 格式（base64），视频用 `image_url` 格式。支持 Qwen omni 等模型的 stream 模式。

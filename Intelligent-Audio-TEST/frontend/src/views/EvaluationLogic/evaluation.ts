@@ -395,25 +395,36 @@ export function useEvaluation() {
       const requiredInputsObj = requiredInputsArray;
 
       if (apiSettingsObj.bodyTemplate) {
-        // 对齐 rounds 内的字段
-        if (apiSettingsObj.bodyTemplate.rounds && Array.isArray(apiSettingsObj.bodyTemplate.rounds)) {
-          const roundTpl = apiSettingsObj.bodyTemplate.rounds[0] || {};
-          const requiredInputKeys = new Set(
-            requiredInputsArray.map((input: any) => input.paramCode || input.param_code || input.key).filter(Boolean)
-          );
-          Object.keys(roundTpl).forEach(key => {
-            if (!requiredInputKeys.has(key)) {
-              delete roundTpl[key];
-            }
-          });
-          requiredInputsArray.forEach((input: any) => {
-            const inputKey = input.paramCode || input.param_code || input.key;
-            if (inputKey && !roundTpl[inputKey]) {
-              roundTpl[inputKey] = `{{${inputKey}}}`;
-            }
-          });
-          apiSettingsObj.bodyTemplate.rounds[0] = roundTpl;
+        // 防御：bodyTemplate 必须是普通对象（脏数据可能是字符串）
+        if (typeof apiSettingsObj.bodyTemplate !== 'object' || Array.isArray(apiSettingsObj.bodyTemplate)) {
+          apiSettingsObj.bodyTemplate = {};
         }
+        // 防御：rounds 必须是数组（脏数据可能是字符串 '{{rounds}}'）
+        if (!Array.isArray(apiSettingsObj.bodyTemplate.rounds)) {
+          apiSettingsObj.bodyTemplate.rounds = [{}];
+        }
+        // 对齐 rounds 内的字段
+        // 防御：rounds[0] 必须是普通对象，否则 delete/赋值会抛
+        //  "Cannot create property 'xxx' on string"（历史脏数据可能为字符串）
+        const rawRound = apiSettingsObj.bodyTemplate.rounds[0];
+        const roundTpl = (rawRound && typeof rawRound === 'object' && !Array.isArray(rawRound))
+          ? rawRound
+          : {};
+        const requiredInputKeys = new Set(
+          requiredInputsArray.map((input: any) => input.paramCode || input.param_code || input.key).filter(Boolean)
+        );
+        Object.keys(roundTpl).forEach(key => {
+          if (!requiredInputKeys.has(key)) {
+            delete roundTpl[key];
+          }
+        });
+        requiredInputsArray.forEach((input: any) => {
+          const inputKey = input.paramCode || input.param_code || input.key;
+          if (inputKey && !roundTpl[inputKey]) {
+            roundTpl[inputKey] = `{{${inputKey}}}`;
+          }
+        });
+        apiSettingsObj.bodyTemplate.rounds[0] = roundTpl;
       }
       
       const rawRule = dimension.rule;
@@ -590,14 +601,20 @@ export function useEvaluation() {
             if (!dimensionData.apiSettings) {
               dimensionData.apiSettings = {};
             }
-            if (!dimensionData.apiSettings.bodyTemplate) {
+            // 防御：bodyTemplate 必须是普通对象
+            // （历史脏数据可能让 bodyTemplate 变成字符串，导致后续赋值报错）
+            if (!dimensionData.apiSettings.bodyTemplate || typeof dimensionData.apiSettings.bodyTemplate !== 'object' || Array.isArray(dimensionData.apiSettings.bodyTemplate)) {
               dimensionData.apiSettings.bodyTemplate = {};
             }
-            // 确保 bodyTemplate 有 rounds 结构
-            if (!dimensionData.apiSettings.bodyTemplate.rounds) {
+            // 确保 bodyTemplate.rounds 是数组（脏数据可能为字符串 '{{rounds}}' 等）
+            if (!Array.isArray(dimensionData.apiSettings.bodyTemplate.rounds)) {
               dimensionData.apiSettings.bodyTemplate.rounds = [{}];
             }
-            const roundTpl = dimensionData.apiSettings.bodyTemplate.rounds[0];
+            // 防御：rounds[0] 必须是普通对象，否则无法设置属性
+            const roundTplRaw = dimensionData.apiSettings.bodyTemplate.rounds[0];
+            const roundTpl = (roundTplRaw && typeof roundTplRaw === 'object' && !Array.isArray(roundTplRaw))
+              ? roundTplRaw
+              : {};
 
             dimensionData.requiredInputs.forEach((input: any) => {
               const inputKey = input.paramCode || input.param_code || input.key;
@@ -616,6 +633,8 @@ export function useEvaluation() {
                 delete roundTpl[key];
               }
             });
+
+            dimensionData.apiSettings.bodyTemplate.rounds[0] = roundTpl;
           }
         } else {
           delete dimensionData.requiredInputs;

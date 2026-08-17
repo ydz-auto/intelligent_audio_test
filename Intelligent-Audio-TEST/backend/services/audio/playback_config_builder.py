@@ -294,19 +294,24 @@ def build_interferer_configs(task_id, interferer_config, audio_service):
         if not isinstance(interferer, dict):
             continue
 
-        # 兼容两种存储结构：
+        # 兼容三种存储结构：
         # - 嵌套（前端 syncStructuredFields 生成）：{audio:{id,name}, device:{id}, start_delay, ...}
-        # - 扁平（algorithm_params 独立列原样存储）：{audio_id, audio_name, playback_device_id, start_delay, ...}
+        # - 扁平 ID（algorithm_params 独立列原样存储）：{audio_id, audio_name, playback_device_id, start_delay, ...}
+        # - 扁平名称（统一标注文件导入）：{audio:"文件名.wav", playback_device_name:"设备名", spl, ...}
         audio_info = interferer.get('audio')
         device_cfg = interferer.get('device')
-        if not audio_info:
+        if not audio_info or (isinstance(audio_info, dict) and not audio_info.get('id') and not audio_info.get('name')):
             _aid = interferer.get('audio_id')
-            if _aid:
+            _aname = interferer.get('audio_name') or ''
+            # 兼容统一标注文件的 audio 字段（文件名字符串）
+            if not _aid and not _aname:
+                _aname = interferer.get('audio') or ''
+            if _aid or _aname:
                 audio_info = {
                     'id': _aid,
-                    'name': interferer.get('audio_name') or '',
+                    'name': _aname,
                 }
-        if not device_cfg:
+        if not device_cfg or (isinstance(device_cfg, dict) and not device_cfg.get('id')):
             _did = interferer.get('playback_device_id')
             if _did:
                 device_cfg = {'id': _did}
@@ -329,6 +334,11 @@ def build_interferer_configs(task_id, interferer_config, audio_service):
             dev_obj = db.session.get(PlaybackDevice, playback_dev_id)
         except Exception:
             dev_obj = None
+        # 兜底：按设备名查表（统一标注文件用 playback_device_name 而非 ID）
+        if not dev_obj:
+            _dev_name = interferer.get('playback_device_name') or device_cfg.get('name') or ''
+            if _dev_name:
+                dev_obj = PlaybackDevice.query.filter_by(name=_dev_name, is_deleted=0).first()
         if not dev_obj:
             _log('WARNING',
                  f'干扰人 {idx} 播放设备 (id={playback_dev_id}, name={device_cfg.get("name")}) 未找到，跳过',
@@ -355,6 +365,19 @@ def build_interferer_configs(task_id, interferer_config, audio_service):
                 audio_obj = db.session.get(Audio, audio_info['id'])
                 if audio_obj:
                     file_path = audio_obj.file_path
+            except Exception:
+                pass
+        # 兜底：按 audio_name（文件名）查库找已入库音频
+        if not file_path and audio_info.get('name'):
+            try:
+                _aname = audio_info['name']
+                audio_obj = Audio.query.filter_by(name=_aname, deleted=False).first()
+                if not audio_obj:
+                    audio_obj = Audio.query.filter_by(original_filename=_aname, deleted=False).first()
+                if audio_obj:
+                    file_path = audio_obj.file_path
+                    # 回填 id 便于后续追溯
+                    audio_info['id'] = audio_obj.id
             except Exception:
                 pass
 

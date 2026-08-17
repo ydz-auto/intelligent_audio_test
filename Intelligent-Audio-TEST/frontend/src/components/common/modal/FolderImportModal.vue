@@ -565,6 +565,10 @@ const handleImport = async () => {
                 if (seg.playback_device_name || seg.playbackDeviceName) {
                   cfg.playback_device_name = seg.playback_device_name || seg.playbackDeviceName
                 }
+                // 保留干扰人配置（interferers），后端导入时解析 audio→audio_id、playback_device_name→playback_device_id
+                if (Array.isArray(seg.interferers) && seg.interferers.length > 0) {
+                  cfg.interferers = seg.interferers
+                }
                 return cfg
               })
             return {

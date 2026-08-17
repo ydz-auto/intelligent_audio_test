@@ -205,13 +205,15 @@ function setParam(fieldCode: string, value: unknown) {
 // - 嵌套结构（{audio:{id,name}, device:{id}, startDelay, ...}）
 // - 扁平 camelCase（{audioId, audioName, playbackDeviceId, startDelay, ...}）
 // - 扁平 snake_case（{audio_id, audio_name, playback_device_id, start_delay, ...}）
+// - 扁平名称（统一标注文件导入：{audio:"文件名.wav", playback_device_name:"设备名", spl, ...}）
 function normalizeInterfererItem(item: any): InterfererConfigItem {
   if (!item || typeof item !== 'object') return {
     audioId: '', audioName: '', playbackDeviceId: '', spl: 70, startDelay: 0, loop: true,
   }
   // 嵌套结构
   const audioId = item.audio?.id ?? item.audioId ?? item.audio_id ?? ''
-  const audioName = item.audio?.name ?? item.audioName ?? item.audio_name ?? ''
+  // 兼容 audio 为文件名字符串（统一标注文件格式）
+  const audioName = item.audio?.name ?? item.audioName ?? item.audio_name ?? (typeof item.audio === 'string' ? item.audio : '')
   const playbackDeviceId = item.device?.id ?? item.playbackDeviceId ?? item.playback_device_id ?? ''
   return {
     audioId: String(audioId),

@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""env_sound_judge.py
+"""env_judge.py
 语音对话能力 — 录屏文件 LLM 裁判
 
 参考 llm_judge_calculator.py 的请求格式，传入录屏文件（视频），
 由裁判模型对语音大模型的行为进行评判。
 
 支持两种 task_type:
-    1. 拒识与环境理解 (env_sound_judge)
+    1. 拒识与环境理解 (env_judge)
        场景: 旁人交谈静默 / 环境噪声 / 反馈词 / 生理声 / 环境事件回溯
     2. 打断能力 (interruption_judge)
        场景: 插话打断与重新响应 / 停止指令响应 / 多轮打断后恢复原话题
@@ -89,7 +89,7 @@ _INTERRUPTION_SCENES = {
 }
 
 _BEHAVIOR_DEFS = {
-    'env_sound_judge': """- 回应：模型针对用户的真实意图或主动询问给出了直接、相关的回复。包括场景5中用户询问环境事件后模型正确识别并作答的情况。
+    'env_judge': """- 回应：模型针对用户的真实意图或主动询问给出了直接、相关的回复。包括场景5中用户询问环境事件后模型正确识别并作答的情况。
 - 恢复：模型未直接回应当前输入，但其回复内容已自然回到此前的话题或交互主线，体现出对话恢复能力。
 - 询问：模型对用户的意图进行追问、澄清或确认（如"您是想了解……吗？"），而非直接给出答案。
 - 无关回复：模型产生了回复，但内容与当前用户意图、对话上下文或场景要求无关。包括本应沉默却给出了回复。
@@ -102,15 +102,15 @@ _BEHAVIOR_DEFS = {
 }
 
 _TASK_TYPE_SCENES = {
-    'env_sound_judge': _ENV_SOUND_SCENES,
+    'env_judge': _ENV_SOUND_SCENES,
     '拒识与环境理解': _ENV_SOUND_SCENES,
     'interruption_judge': _INTERRUPTION_SCENES,
     '打断能力': _INTERRUPTION_SCENES,
 }
 
 _TASK_TYPE_BEHAVIORS = {
-    'env_sound_judge': _BEHAVIOR_DEFS['env_sound_judge'],
-    '拒识与环境理解': _BEHAVIOR_DEFS['env_sound_judge'],
+    'env_judge': _BEHAVIOR_DEFS['env_judge'],
+    '拒识与环境理解': _BEHAVIOR_DEFS['env_judge'],
     'interruption_judge': _BEHAVIOR_DEFS['interruption_judge'],
     '打断能力': _BEHAVIOR_DEFS['interruption_judge'],
 }
@@ -510,9 +510,9 @@ def _parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
 
 
 # ─────────── 主入口 ───────────
-def evaluate_env_sound_judge(
+def evaluate_env_judge(
     video_path: str,
-    task_type: str = 'env_sound_judge',
+    task_type: str = 'env_judge',
     env_type: str = '',
     model: str = '',
     max_tokens: int = 4096,
@@ -526,7 +526,7 @@ def evaluate_env_sound_judge(
     Args:
         video_path: 录屏/音频文件路径
         task_type: 测试类型，支持：
-            - 'env_sound_judge' 或 '拒识与环境理解' → 拒识环境音 prompt
+            - 'env_judge' 或 '拒识与环境理解' → 拒识环境音 prompt
             - 'interruption_judge' 或 '打断能力' → 打断能力 prompt
         env_type: 环境子场景类型（如 '环境回溯' '旁人交谈' '环境噪声' 等），
                   用于标识本次音频实际测试的具体场景
@@ -639,10 +639,10 @@ if __name__ == '__main__':
         description='语音对话能力 — 录屏文件 LLM 裁判'
     )
     parser.add_argument('video', help='录屏文件路径')
-    parser.add_argument('--task_type', default='env_sound_judge',
-                        choices=['env_sound_judge', '拒识与环境理解',
+    parser.add_argument('--task_type', default='env_judge',
+                        choices=['env_judge', '拒识与环境理解',
                                  'interruption_judge', '打断能力'],
-                        help='测试类型: env_sound_judge(拒识与环境理解) '
+                        help='测试类型: env_judge(拒识与环境理解) '
                              '或 interruption_judge(打断能力)')
     parser.add_argument('--env_type', default='',
                         help='环境子场景类型（如 环境回溯/旁人交谈/环境噪声等）')
@@ -651,7 +651,7 @@ if __name__ == '__main__':
     parser.add_argument('--temperature', type=float, default=0.1)
     args = parser.parse_args()
 
-    r = evaluate_env_sound_judge(
+    r = evaluate_env_judge(
         video_path=args.video,
         task_type=args.task_type,
         env_type=args.env_type,

@@ -334,11 +334,46 @@ class ParamMapping(db.Model):
     )
 
     def to_dict(self):
+        # 根据 source 查对应的参数表，回填 param_name 供前端直接展示
+        param_name = None
+        try:
+            if self.source == 'case':
+                p = CaseAlgorithmParam.query.filter_by(
+                    algorithm_type=self.algorithm_type,
+                    param_code=self.source_param,
+                    deleted=False,
+                ).first()
+                param_name = p.param_name if p else None
+            elif self.source == 'reference':
+                p = AlgorithmReferenceParam.query.filter_by(
+                    algorithm_type=self.algorithm_type,
+                    code=self.source_param,
+                    deleted=False,
+                ).first()
+                param_name = p.name if p else None
+            elif self.source == 'device':
+                p = AlgorithmDeviceParam.query.filter_by(
+                    algorithm_type=self.algorithm_type,
+                    param_code=self.source_param,
+                    deleted=False,
+                ).first()
+                param_name = p.param_name if p else None
+            elif self.source == 'api':
+                p = AlgorithmApiParam.query.filter_by(
+                    algorithm_type=self.algorithm_type,
+                    param_code=self.source_param,
+                    deleted=False,
+                ).first()
+                param_name = p.param_name if p else None
+        except Exception:
+            param_name = None
+
         return {
             'id': self.id,
             'algorithm_type': self.algorithm_type,
             'source': self.source,
             'source_param': self.source_param,
+            'param_name': param_name,
             'source_direction': self.source_direction,
             'dimension_id': self.dimension_id,
             'dimension_name': self.dimension.name if self.dimension else None,

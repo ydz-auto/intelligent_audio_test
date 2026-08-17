@@ -48,7 +48,7 @@
                   <option v-for="param in getSourceParams(record.source, record.source_param)" :key="param.code" :value="param.code">{{ param.code }}</option>
                 </select>
               </td>
-              <td class="param-name-cell">{{ getParamName(record.source_param, record.source) }}</td>
+              <td class="param-name-cell">{{ getParamName(record.source_param, record.source, record.param_name) }}</td>
               <td>
                 <select v-model="record.dimension_id" class="form-input form-input-sm" @blur="handleDimensionChange(index)">
                   <option :value="null">选择维度</option>
@@ -79,7 +79,7 @@
                   <option v-for="param in getSourceParams('case', record.source_param)" :key="param.code" :value="param.code">{{ param.code }}</option>
                 </select>
               </td>
-              <td class="param-name-cell">{{ getParamName(record.source_param, 'case') }}</td>
+              <td class="param-name-cell">{{ getParamName(record.source_param, 'case', record.param_name) }}</td>
               <td>
                 <select v-model="record.target_param" class="form-input form-input-sm" @blur="handleTargetChange(index)">
                   <option value="">选择参数</option>
@@ -180,6 +180,8 @@ async function loadDimensions() {
 
 onMounted(() => {
   loadDimensions()
+  // 编辑模式打开时，已有映射的 dimension_id 需要预加载参数列表，否则目标参数下拉框为空
+  preloadDimensionParamsForMappings()
 })
 
 watch(() => props.algorithmType, () => {
@@ -191,6 +193,23 @@ watch(() => props.mainDimensions, (newVal) => {
     availableDimensions.value = newVal
   }
 }, { immediate: true })
+
+// 当 mappings 变化时，对新出现的 dimension_id 预加载参数列表
+watch(() => props.mappings, (newMappings) => {
+  preloadDimensionParamsForMappings(newMappings)
+}, { immediate: false, deep: false })
+
+async function preloadDimensionParamsForMappings(list?: any[]) {
+  const mappings = list || props.mappings || []
+  const dimIds = new Set<number>()
+  for (const m of mappings) {
+    if (m.dimension_id && !dimensionParamsMap.value[m.dimension_id]) {
+      dimIds.add(m.dimension_id)
+    }
+  }
+  // 并行预加载所有未加载过的维度参数
+  await Promise.all(Array.from(dimIds).map(id => loadDimensionParams(id)))
+}
 
 async function loadDimensionParams(dimensionId: number) {
   if (dimensionParamsMap.value[dimensionId] || loadingDimensionParams.value[dimensionId]) return
@@ -267,11 +286,11 @@ function getTargetParamListForDeviceApi(componentType: string, currentTargetPara
   return params
 }
 
-function getParamName(code: string, source?: string): string {
+function getParamName(code: string, source?: string, fallbackName?: string): string {
   if (!code) return '-'
   const allParams = getAllSourceParams()
   const param = allParams.find(p => p.code === code)
-  return param?.name || code
+  return param?.name || fallbackName || code
 }
 
 function getTargetParamName(code: string, componentType: string): string {

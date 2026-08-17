@@ -625,8 +625,12 @@ def calculate_interruption_metrics(task_params):
 
     logger.info(f"[interruption_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
 
-    user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or task_params.get('input_asr')
-    model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or task_params.get('recovery_asr')
+    # 兼容参数在顶层或 rounds[0]（body_template 把数据字段放 rounds 里）
+    _rounds = task_params.get('rounds') or []
+    _r0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
+
+    user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or task_params.get('input_asr') or _r0.get('user_asr') or _r0.get('user_chunks')
+    model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or task_params.get('recovery_asr') or _r0.get('model_asr') or _r0.get('model_chunks')
 
     if user_asr is None:
         raise ValueError("interruption_metrics: 缺少 user_asr（用户提问/打断 ASR）")
@@ -634,7 +638,7 @@ def calculate_interruption_metrics(task_params):
         raise ValueError("interruption_metrics: 缺少 model_asr（模型恢复 ASR）")
 
     stop_tol = task_params.get('stop_tolerance_s')
-    merge_gap = task_params.get('seg_merge_gap_s')
+    merge_gap = task_params.get('seg_merge_gap_s') or _r0.get('seg_merge_gap_s')
 
     kwargs = {}
     if stop_tol is not None:
