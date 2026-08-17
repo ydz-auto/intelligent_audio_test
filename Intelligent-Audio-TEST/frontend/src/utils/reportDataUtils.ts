@@ -55,6 +55,16 @@ export const buildMetricDecimalPlacesMap = (allMetrics: any[]): Record<string, n
   return map;
 };
 
+export const buildMetricStatMethodMap = (allMetrics: any[]): Record<string, string> => {
+  const map: Record<string, string> = {};
+  const list = Array.isArray(allMetrics) ? allMetrics : [];
+  list.forEach((m: any) => {
+    if (!m || !m.name) return;
+    map[String(m.name)] = m.statisticMethod ?? m.statistic_method ?? 'average';
+  });
+  return map;
+};
+
 export const formatMetricForDisplay = (
   metricName: string,
   value: any,

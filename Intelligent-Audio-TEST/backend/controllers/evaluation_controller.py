@@ -583,6 +583,7 @@ class EvaluationController:
                             visible_in_report=outp.get('visible_in_report', True),
                             required=False,
                             default_value=json.dumps(outp.get('default_value')) if outp.get('default_value') else None,
+                            pass_threshold=outp.get('pass_threshold', outp.get('passThreshold')) if outp.get('pass_threshold', outp.get('passThreshold')) not in (None, '') else None,
                             help_text=outp.get('help_text', ''),
                             ui_order=outp.get('ui_order', idx)
                         )
@@ -761,6 +762,7 @@ class EvaluationController:
                             visible_in_report=outp.get('visible_in_report', True),
                             required=False,
                             default_value=json.dumps(outp.get('default_value')) if outp.get('default_value') else None,
+                            pass_threshold=outp.get('pass_threshold', outp.get('passThreshold')) if outp.get('pass_threshold', outp.get('passThreshold')) not in (None, '') else None,
                             help_text=outp.get('help_text', ''),
                             ui_order=outp.get('ui_order', idx)
                         )

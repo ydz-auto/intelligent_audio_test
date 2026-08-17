@@ -116,7 +116,8 @@ MAIN_DIMENSION = {
 # params 元组顺序：
 # (param_code, param_name, label, field_type, param_direction,
 #  field_path, agg_role, output_role, visible_in_report,
-#  required, default_value, help_text, ui_order)
+#  required, default_value, help_text, ui_order, pass_threshold)
+# pass_threshold 可选，pass_rate 策略时用，默认 None
 
 SUB_DIMENSIONS = [
     {
@@ -132,12 +133,12 @@ SUB_DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 30,
         'score_unit': '',
-        'statistic_method': 'average',
+        'statistic_method': 'pass_rate',
         'params': [
             # ─── tor 子维度的 output 参数 ───
             ('tor', 'TOR接话率', 'TOR接话率', 'number', 'output',
-             'tor.tor', 'value', 'main', True,
-             False, None, '接话率(0=没接话, 1=接话)', 60),
+             'tor.tor', 'pass_eq', 'main', True,
+             False, None, '接话率(0=没接话, 1=接话)', 60, 1.0),
             ('tor_n_words', 'TOR命中词数', 'TOR命中词数', 'number', 'output',
              'tor.n_words', None, 'aux', False,
              False, None, 'tor: 命中词总数', 61),
@@ -165,12 +166,12 @@ SUB_DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 30,
         'score_unit': '',
-        'statistic_method': 'average',
+        'statistic_method': 'pass_rate',
         'params': [
             # ─── false_takeover 子维度的 output 参数 ───
             ('false_takeover', '误接管率', '误接管率', 'number', 'output',
-             'false_takeover.tor', 'value', 'main', True,
-             False, None, '误接管率(0=未抢话, 1=抢话)', 70),
+             'false_takeover.tor', 'pass_eq', 'main', True,
+             False, None, '误接管率(0=未抢话, 1=抢话)', 70, 0.0),
             ('ft_n_words', '误接管命中词数', '误接管命中词数', 'number', 'output',
              'false_takeover.n_words', None, 'aux', False,
              False, None, 'false_takeover: 所有 pause 区间内命中词总数', 71),
@@ -200,7 +201,7 @@ SUB_DIMENSIONS = [
         'decimal_places': 0,
         'weight': 1,
         'estimated_exec_time': 30,
-        'score_unit': '',
+        'score_unit': 'ms',
         'statistic_method': 'average',
         'params': [
             # ─── takeover_latency 子维度的 output 参数 ───
@@ -370,7 +371,8 @@ def _upsert_params(conn, dim_id, dim_def):
     for dp in dim_def['params']:
         (param_code, param_name, label, field_type, param_direction,
          field_path, agg_role, output_role, visible_in_report,
-         required, default_value, help_text, ui_order) = dp
+         required, default_value, help_text, ui_order, *rest) = dp
+        pass_threshold = rest[0] if rest else None
 
         existing = conn.execute(text(
             "SELECT id FROM evaluation_dimension_params "
@@ -384,14 +386,15 @@ def _upsert_params(conn, dim_id, dim_def):
                 "  param_name = :pn, label = :lb, field_type = :ft, "
                 "  field_path = :fp, agg_role = :ar, output_role = :or, "
                 "  visible_in_report = :vir, required = :req, "
-                "  default_value = :dv, help_text = :ht, ui_order = :uo, "
+                "  default_value = :dv, pass_threshold = :pt, help_text = :ht, ui_order = :uo, "
                 "  deleted = FALSE, updated_at = NOW() "
                 "WHERE id = :id"
             ), {
                 'pn': param_name, 'lb': label, 'ft': field_type,
                 'fp': field_path, 'ar': agg_role, 'or': output_role,
                 'vir': visible_in_report, 'req': required,
-                'dv': default_value, 'ht': help_text, 'uo': ui_order,
+                'dv': default_value, 'pt': pass_threshold,
+                'ht': help_text, 'uo': ui_order,
                 'id': existing[0],
             })
             updated += 1
@@ -400,19 +403,20 @@ def _upsert_params(conn, dim_id, dim_def):
                 "INSERT INTO evaluation_dimension_params "
                 "  (dimension_id, param_code, param_name, label, field_type, "
                 "   param_direction, field_path, agg_role, output_role, "
-                "   visible_in_report, required, default_value, help_text, "
+                "   visible_in_report, required, default_value, pass_threshold, help_text, "
                 "   ui_order, deleted, created_at, updated_at) "
                 "VALUES "
                 "  (:did, :pc, :pn, :lb, :ft, "
                 "   :dir, :fp, :ar, :or, "
-                "   :vir, :req, :dv, :ht, "
+                "   :vir, :req, :dv, :pt, :ht, "
                 "   :uo, FALSE, NOW(), NOW())"
             ), {
                 'did': dim_id, 'pc': param_code, 'pn': param_name,
                 'lb': label, 'ft': field_type, 'dir': param_direction,
                 'fp': field_path, 'ar': agg_role, 'or': output_role,
                 'vir': visible_in_report, 'req': required,
-                'dv': default_value, 'ht': help_text, 'uo': ui_order,
+                'dv': default_value, 'pt': pass_threshold,
+                'ht': help_text, 'uo': ui_order,
             })
             inserted += 1
     print(f"  插入 {inserted} 条，更新 {updated} 条")

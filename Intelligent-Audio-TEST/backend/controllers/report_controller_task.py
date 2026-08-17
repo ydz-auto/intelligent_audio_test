@@ -379,9 +379,20 @@ class ReportControllerTask(ReportControllerBase):
     def _build_all_metrics(all_dimensions):
         all_metrics = []
         for dim in all_dimensions:
-            unit = dim.score_unit if dim.score_unit and dim.score_unit.strip() else "%"
+            statistic_method = dim.statistic_method or "average"
+            # 聚合方式决定 unit：pass_rate 产出百分比，强制为 %；其余用维度配置的 score_unit
+            if statistic_method == 'pass_rate':
+                unit = "%"
+            else:
+                unit = dim.score_unit if dim.score_unit and dim.score_unit.strip() else ""
             decimal_places = dim.decimal_places if dim.decimal_places is not None else 2
-            all_metrics.append({"id": dim.id, "name": dim.name, "unit": unit, "decimal_places": decimal_places})
+            all_metrics.append({
+                "id": dim.id,
+                "name": dim.name,
+                "unit": unit,
+                "decimal_places": decimal_places,
+                "statistic_method": statistic_method
+            })
         return all_metrics
 
     @staticmethod

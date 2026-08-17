@@ -337,13 +337,13 @@ export function useEvaluation() {
       conditional: { field: 'dimensionType', value: 'main' } },
     { key: 'requiredInputs', label: '所需输入配置', type: 'requiredInputs', required: false, fullWidth: true, group: 'API配置',
       conditional: { field: 'dimensionType', value: 'main' } },
-    { key: 'outputFields', label: '输出字段配置', type: 'outputFields', required: false, fullWidth: true, group: 'API配置' },
     { key: 'statisticMethod', label: '统计方式', type: 'select', required: false, default: 'average', group: 'API配置',
       options: [
         { value: 'average', label: '简单平均' },
-        { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' }
-      ],
-      conditional: { field: 'dimensionType', value: 'main' } },
+        { value: 'weighted_wer', label: '加权WER (Σ分子/Σ分母)' },
+        { value: 'pass_rate', label: '达标率 (达标用例数/总用例数)' }
+      ] },
+    { key: 'outputFields', label: '输出字段配置', type: 'outputFields', required: false, fullWidth: true, group: 'API配置' },
     { key: 'apiEndpoints', label: 'API端点配置', type: 'array', arrayItemType: 'apiEndpoint', required: false, fullWidth: true, arrayItemTemplate: {url: '', name: '', priority: 1, maxProcess: 5, maxTimeout: 30, maxAudioDuration: 60}, group: 'API配置', 
       conditional: { field: 'dimensionType', value: 'main' } },
     { key: 'associatedAlgorithms', label: '关联算法', type: 'multi-select-tags', required: false, options: algorithms.value.length > 0 ? algorithms.value : [

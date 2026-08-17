@@ -201,7 +201,8 @@ class ReportUtils:
                         'field_type': p.field_type,
                         'agg_role': p.agg_role,
                         'output_role': p.output_role,
-                        'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True
+                        'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True,
+                        'pass_threshold': p.pass_threshold
                     })
 
         # 收集需要聚合的 items: {dim_name: {group_key: {resource: [items]}}}

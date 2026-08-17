@@ -397,7 +397,7 @@ class ReportControllerCompare(ReportControllerBase):
 
             all_metrics = []
             for dim in all_dimensions:
-                unit = dim.score_unit if dim.score_unit and dim.score_unit.strip() else "%"
+                unit = dim.score_unit if dim.score_unit and dim.score_unit.strip() else ""
                 decimal_places = dim.decimal_places if dim.decimal_places is not None else 2
                 all_metrics.append({"id": dim.id, "name": dim.name, "unit": unit, "decimal_places": decimal_places})
 

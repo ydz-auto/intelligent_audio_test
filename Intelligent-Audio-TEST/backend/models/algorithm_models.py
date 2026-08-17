@@ -258,11 +258,12 @@ class EvaluationDimensionParam(db.Model):
     field_type = Column(String(20), default='text', comment='字段类型：text, audio, number, boolean, json')
     param_direction = Column(String(10), nullable=False, default='input', comment='参数方向：input(输入参数), output(结果提取字段)')
     field_path = Column(String(200), nullable=True, comment='结果提取路径（output专用，如 wer 或 data.result.wer）')
-    agg_role = Column(String(20), nullable=True, comment='聚合角色（output专用）：numerator(分子), denominator(分母), value(直接值)')
+    agg_role = Column(String(20), nullable=True, comment='聚合角色（output专用）：numerator(分子), denominator(分母), value(直接值), pass_le(≤阈值), pass_ge(≥阈值), pass_eq(==目标值)')
     output_role = Column(String(10), nullable=True, comment='输出字段角色（output专用）：main(主结果), aux(辅助字段)')
     visible_in_report = Column(Boolean, default=True, comment='是否在报告中显示该字段')
     required = Column(Boolean, default=True, comment='是否必填')
     default_value = Column(Text, comment='默认值（JSON格式）')
+    pass_threshold = Column(Float, nullable=True, comment='达标阈值/目标值（pass_rate策略专用，配合agg_role=pass_le/pass_ge/pass_eq使用）')
     help_text = Column(Text, comment='帮助提示文字')
     ui_order = Column(Integer, default=0, comment='界面排序')
     deleted = Column(Boolean, default=False, comment='逻辑删除标志')
@@ -292,6 +293,7 @@ class EvaluationDimensionParam(db.Model):
             'visible_in_report': self.visible_in_report if self.visible_in_report is not None else True,
             'required': self.required,
             'default_value': self._parse_json(self.default_value),
+            'pass_threshold': self.pass_threshold,
             'help_text': self.help_text,
             'ui_order': self.ui_order
         }

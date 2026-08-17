@@ -289,7 +289,8 @@ def seed_interruption_dimensions():
             for dp in dim_def['params']:
                 (param_code, param_name, label, field_type, param_direction,
                  field_path, agg_role, output_role, visible_in_report,
-                 required, default_value, help_text, ui_order) = dp
+                 required, default_value, help_text, ui_order, *rest) = dp
+                pass_threshold = rest[0] if rest else None
 
                 existing = conn.execute(text(
                     "SELECT id FROM evaluation_dimension_params "
@@ -303,14 +304,15 @@ def seed_interruption_dimensions():
                         "  param_name = :pn, label = :lb, field_type = :ft, "
                         "  field_path = :fp, agg_role = :ar, output_role = :or, "
                         "  visible_in_report = :vir, required = :req, "
-                        "  default_value = :dv, help_text = :ht, ui_order = :uo, "
+                        "  default_value = :dv, pass_threshold = :pt, help_text = :ht, ui_order = :uo, "
                         "  updated_at = NOW() "
                         "WHERE id = :id"
                     ), {
                         'pn': param_name, 'lb': label, 'ft': field_type,
                         'fp': field_path, 'ar': agg_role, 'or': output_role,
                         'vir': visible_in_report, 'req': required,
-                        'dv': default_value, 'ht': help_text, 'uo': ui_order,
+                        'dv': default_value, 'pt': pass_threshold,
+                        'ht': help_text, 'uo': ui_order,
                         'id': existing[0],
                     })
                     print(f"  - {param_code} ({param_direction}) 已存在，已更新")
@@ -320,19 +322,20 @@ def seed_interruption_dimensions():
                         "INSERT INTO evaluation_dimension_params "
                         "  (dimension_id, param_code, param_name, label, field_type, "
                         "   param_direction, field_path, agg_role, output_role, "
-                        "   visible_in_report, required, default_value, help_text, "
+                        "   visible_in_report, required, default_value, pass_threshold, help_text, "
                         "   ui_order, deleted, created_at, updated_at) "
                         "VALUES "
                         "  (:did, :pc, :pn, :lb, :ft, "
                         "   :dir, :fp, :ar, :or, "
-                        "   :vir, :req, :dv, :ht, "
+                        "   :vir, :req, :dv, :pt, :ht, "
                         "   :uo, FALSE, NOW(), NOW())"
                     ), {
                         'did': dim_id, 'pc': param_code, 'pn': param_name,
                         'lb': label, 'ft': field_type, 'dir': param_direction,
                         'fp': field_path, 'ar': agg_role, 'or': output_role,
                         'vir': visible_in_report, 'req': required,
-                        'dv': default_value, 'ht': help_text, 'uo': ui_order,
+                        'dv': default_value, 'pt': pass_threshold,
+                        'ht': help_text, 'uo': ui_order,
                     })
                     print(f"  + {param_code} ({field_type}, {param_direction})")
                     param_inserted += 1

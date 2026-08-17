@@ -599,7 +599,7 @@ const audioListWithTimeline = computed(() => {
     ...a,
     timelineStart: a.timelineStart ?? a.timeline_start ?? 0,
     timelineEnd: a.timelineEnd ?? a.timeline_end ?? ((a.timelineStart ?? a.timeline_start ?? 0) + (a.duration || 0)),
-    testType: a.testType ?? a.test_type ?? a.audio_type ?? 'api',
+    testType: a.testType ?? a.test_type ?? a.audio_type ?? a.type ?? 'api',
     playOrder: a.playOrder ?? a.play_order,
     playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
     roundNumber: a.roundNumber ?? a.round_number ?? a.round ?? 1,

@@ -702,10 +702,13 @@ const normalizeAudioFields = (caseItem, taskType) => {
   if (!caseItem || typeof caseItem !== 'object') return caseItem
   const normalized = { ...caseItem }
 
+  // 用例级 testType 是测试用例/任务的属性，作为音频类型的兜底
+  const caseTestType = normalized.testType ?? normalized.test_type ?? taskType ?? 'api'
+
   if (normalized.audios && Array.isArray(normalized.audios) && normalized.audios.length > 0) {
     normalized.audioList = normalized.audios.map((audio, idx) => {
       let typeLabel = '测试音频'
-      const audioType = audio.testType ?? audio.audioType ?? audio.test_type ?? audio.audio_type ?? 'api'
+      const audioType = audio.testType ?? audio.audioType ?? audio.test_type ?? audio.audio_type ?? caseTestType
       if (audioType === 'api') {
         typeLabel = 'API测试音频'
       } else if (audioType === 'e2e') {
@@ -727,7 +730,10 @@ const normalizeAudioFields = (caseItem, taskType) => {
         playOrder: audio.playOrder ?? audio.play_order,
         noiseSpl: audio.noiseSpl ?? audio.noise_spl,
         deviceId: audio.playbackDeviceId ?? audio.deviceId ?? audio.device_id,
-        deviceName: audio.playbackDeviceName ?? audio.deviceName ?? audio.device_name
+        deviceName: audio.playbackDeviceName ?? audio.deviceName ?? audio.device_name,
+        timelineStart: audio.timelineStart ?? audio.timeline_start ?? 0,
+        timelineEnd: audio.timelineEnd ?? audio.timeline_end ?? (audio.timelineStart ?? 0 + (audio.duration || 0)),
+        roundNumber: audio.roundNumber ?? audio.round_number
       }
     })
   }

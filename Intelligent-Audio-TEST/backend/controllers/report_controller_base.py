@@ -668,6 +668,7 @@ class ReportControllerBase:
         paginated = query.paginate(page=page, per_page=per_page, error_out=False)
         
         items = []
+        test_type = ReportControllerBase._get_report_test_type(report)
         for case in paginated.items:
             # 对 voice_llm 多轮场景做 question/answer 展开 + 参考参数多轮展开
             raw_algo_results = case.algorithm_results
@@ -688,6 +689,7 @@ class ReportControllerBase:
                 "referenceParams": expanded_ref,
                 "algorithmResults": expanded_algo,
                 "algorithmType": case.algorithm_type,
+                "testType": test_type,
                 "logs": case.logs
             })
         
@@ -819,6 +821,20 @@ class ReportControllerBase:
                 content=f'下载用例日志失败 - report_id: {report_id}, case_id: {case_id}, error: {str(e)}'
             )
             return error_response(f"创建ZIP文件失败: {str(e)}", 500)
+
+    @staticmethod
+    def _get_report_test_type(report):
+        """
+        报告关联任务的测试类型 (api/e2e)，用于前端区分音频时间轴类型。
+        类型是测试用例/任务的属性，不是音频的属性。
+        """
+        try:
+            task = db.session.get(Task, report.task_id) if report.task_id else None
+            if task and task.type in ('api', 'e2e'):
+                return task.type
+        except Exception:
+            pass
+        return 'api'
 
     @staticmethod
     def _expand_algorithm_results_for_report(algorithm_results, algorithm_type=None):
@@ -977,6 +993,7 @@ class ReportControllerBase:
         paginated = query.paginate(page=page, per_page=per_page, error_out=False)
         
         items = []
+        test_type = ReportControllerBase._get_report_test_type(report)
         for case in paginated.items:
             # 对 voice_llm 多轮场景做 question/answer 展开 + 参考参数多轮展开
             raw_algo_results = case.algorithm_results
@@ -997,6 +1014,7 @@ class ReportControllerBase:
                 "referenceParams": expanded_ref,
                 "algorithmResults": expanded_algo,
                 "algorithmType": case.algorithm_type,
+                "testType": test_type,
                 "logs": case.logs
             })
         

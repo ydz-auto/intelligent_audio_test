@@ -165,7 +165,7 @@
             @click="toggleMetric(metric.name)"
           >
             <i class="fas fa-check-circle"></i>
-            {{ metric.name }}（{{ metric.unit }}）
+            {{ metric.name }}（{{ getMetricUnit(metric.name) }}）
           </div>
           <div v-if="filteredMetricsForDisplay.length === 0" class="no-data-tip">
             暂无可用的评估维度
@@ -197,7 +197,7 @@
         <div class="metric-table-title">
           <div class="title-content" @click="toggleMetricCollapse(metric.name)">
             <i class="fas fa-chart-bar"></i>
-            <span>{{ metric.name }} 对比（单位：{{ metric.unit }}）</span>
+            <span>{{ metric.name }} 对比（单位：{{ getMetricUnit(metric.name) }}）</span>
           </div>
           <div class="title-actions">
             <div class="display-type-selector" v-if="!collapsedMetrics[metric.name]">
@@ -243,7 +243,7 @@
 
               <!-- 自定义数据列 -->
               <template #cell-value="{ row, value, column }">
-                {{ value }}{{ metric.unit }}
+                {{ value }}{{ getMetricUnit(metric.name) }}
               </template>
 
               <!-- 空状态 -->
@@ -416,6 +416,11 @@ const metricDecimalPlacesMap = computed(() => {
   })
   return map
 })
+
+const getMetricUnit = (metricName) => {
+  const m = allMetrics.value.find(x => x.name === metricName)
+  return m?.unit || ''
+}
 
 const formatMetricForDisplay = (metricName, value) => {
   if (value === '-' || value === null || value === undefined) return '-'
@@ -1200,11 +1205,6 @@ const getRawDataValue = (category, device, metricName) => {
 
 const getMetricDisplayValue = (category, device, metricName) => {
   return formatMetricForDisplay(metricName, getMetricValue(category, device, metricName))
-}
-
-const getMetricUnit = (metricName) => {
-  const metric = allMetrics.value.find(m => m.name === metricName)
-  return metric?.unit || ''
 }
 
 const getTableColumns = (metricName) => {

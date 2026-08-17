@@ -458,9 +458,10 @@ class EvaluationDimensionParamCreate(BaseModel):
     field_type: str = Field(default='text', description='字段类型：text, audio, number, boolean, json', validation_alias='fieldType')
     param_direction: str = Field(default='input', description='参数方向：input, output', validation_alias='paramDirection')
     field_path: Optional[str] = Field(None, description='结果提取路径（output专用）', validation_alias='fieldPath')
-    agg_role: Optional[str] = Field(None, description='聚合角色（output专用）：numerator/denominator/value', validation_alias='aggRole')
+    agg_role: Optional[str] = Field(None, description='聚合角色（output专用）：numerator/denominator/value/pass_le/pass_ge/pass_eq', validation_alias='aggRole')
     required: bool = Field(default=True, description='是否必填', validation_alias='required')
     default_value: Optional[str] = Field(None, validation_alias='defaultValue')
+    pass_threshold: Optional[float] = Field(None, description='达标阈值/目标值（pass_rate策略专用）', validation_alias='passThreshold')
     help_text: Optional[str] = Field(None, validation_alias='helpText')
     ui_order: int = Field(default=0, ge=0, description='界面排序', validation_alias='uiOrder')
 
@@ -477,6 +478,7 @@ class EvaluationDimensionParamUpdate(BaseModel):
     agg_role: Optional[str] = Field(None, validation_alias='aggRole')
     required: Optional[bool] = Field(None, validation_alias='required')
     default_value: Optional[str] = Field(None, validation_alias='defaultValue')
+    pass_threshold: Optional[float] = Field(None, description='达标阈值/目标值（pass_rate策略专用）', validation_alias='passThreshold')
     help_text: Optional[str] = Field(None, validation_alias='helpText')
     ui_order: Optional[int] = Field(None, validation_alias='uiOrder')
 
@@ -497,6 +499,7 @@ class EvaluationDimensionParamItem(BaseModel):
     agg_role: Optional[str]
     required: bool
     default_value: Optional[Any]
+    pass_threshold: Optional[float]
     help_text: Optional[str]
     ui_order: int
 
