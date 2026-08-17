@@ -1,0 +1,36 @@
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_service.py
+  s_6fa8df7c7d8f8c::t_fa4fc741b71e5f 479,481-486,489,492,540-542
+  h_f411275616c284 534-535,538-539,543-545
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_6fa8df7c7d8f8c::t_ad766784c5aa49 3,6-23,26,49,51-121,123-126,137,150-152,156-159,170,189-206,215,224-507,511-552,555-560,566,571-582,584-586,597
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "cfa9ee63482260a28feb7fa0ae0b03ce33b0aba0",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_6fa8df7c7d8f8c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82840de88248d08ea2a75e",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "session_id": "6a82840de88248d08ea2a75e",
+        "display_model_name": "glm-5.2",
+        "tool_name": "RunCommand",
+        "external_session_id": "6a82840de88248d08ea2a75e",
+        "tool_use_id": "6a82b348e88248d08ea2aa7e",
+        "edit_kind": "bash",
+        "operation_id": "6a82b348e88248d08ea2aa7e"
+      }
+    }
+  }
+}
