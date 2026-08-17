@@ -8,7 +8,9 @@ def run_server(port):
     print(f"Starting server on port {port}...")
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    subprocess.run([sys.executable, "-u", "app.py", "--port", str(port)], env=env)
+    server_dir = os.path.dirname(os.path.abspath(__file__))
+    subprocess.run([sys.executable, "-u", "app.py", "--port", str(port)],
+                   env=env, cwd=server_dir)
 
 def main():
     ports = [5000]

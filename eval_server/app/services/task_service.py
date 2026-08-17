@@ -3,7 +3,6 @@ import time
 from datetime import datetime
 from ..models.task import TaskModel
 from .wer_calculator import calculate_wer, calculate_ser, calculate_cpwer, calculate_tcpwer, calculate_stm_wer
-from ..config import config
 from ..utils.concurrency import ConcurrencyManager
 from ..utils.decorators import limit_task_concurrency
 
@@ -204,15 +203,13 @@ class TaskService:
                 scoring_criteria=jp['scoring_criteria'],
                 **jp['extra_kwargs'],
             )
-        elif task_type == 'xiaoyi_metrics':
-            from .xiaoyi_metrics import calculate_xiaoyi_metrics
+        elif task_type == 'turn_taking':
+            from .xiaoyi_metrics.turn_taking import calculate_xiaoyi_metrics
             return calculate_xiaoyi_metrics(task_params)
         elif task_type == 'interruption_metrics':
-            from .xiaoyi_metrics import calculate_interruption_metrics
+            from .xiaoyi_metrics.turn_taking import calculate_interruption_metrics
             return calculate_interruption_metrics(task_params)
-        elif task_type == 'takeover':
-            from .xiaoyi_metrics import calculate_takeover_metrics
-            return calculate_takeover_metrics(task_params)
+
         else:
             raise ValueError(f"Unknown task type: {task_type}")
 
@@ -273,6 +270,7 @@ class TaskService:
                 completed_at=datetime.now().isoformat(),
                 result=result
             )
+
         except Exception as e:
             TaskModel.update_task_status(
                 eval_task_id,
@@ -280,7 +278,6 @@ class TaskService:
                 completed_at=datetime.now().isoformat(),
                 error_msg=str(e)
             )
-
 
 def calculate_in_process(task_type, task_params):
     """模块级函数，供 ThreadPoolExecutor 调用。

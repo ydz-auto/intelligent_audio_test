@@ -12,7 +12,7 @@
 用法: cd eval_server && python tests/test_interruption_llm_scoring_v2.py
 """
 import json
-from app.services.xiaoyi_metrics import calculate_interruption_metrics
+from app.services.xiaoyi_metrics.turn_taking import calculate_interruption_metrics
 
 ORIGINAL_TOPIC = '帮我规划北京周末两日游'
 

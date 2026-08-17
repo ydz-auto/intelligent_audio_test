@@ -162,7 +162,7 @@ def _build_evaluation_prompt(answer, correct_answer, question, query,
     """
     # 优先使用调用方传入的 custom_prompt，其次从配置文件读取
     if not custom_prompt:
-        from ..config import config
+        from ....config import config
         llm_config = getattr(config, 'LLM_JUDGE', {})
         custom_prompt = llm_config.get('prompt_template', '')
 
@@ -235,7 +235,7 @@ def _call_llm_api(model, prompt, max_tokens, temperature, audio_paths=None):
 
     当 audio_paths 非空时，构建多模态消息（text + audio）。
     """
-    from ..config import config
+    from ....config import config
 
     llm_config = getattr(config, 'LLM_JUDGE', {})
     api_base = llm_config.get('api_base_url', '')

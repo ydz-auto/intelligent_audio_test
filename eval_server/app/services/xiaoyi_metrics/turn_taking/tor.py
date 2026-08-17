@@ -114,7 +114,8 @@ def compute_tor(user_chunks, ai_chunks,
         )
 
     # 3. 统一计算命中词的 duration 和 n_words
-    n_words = len(hit_words)
+    #    n_words = 所有命中词去标点后的总字符数（而非 chunk/句段数）
+    n_words = sum(len(_strip_punctuation(w['text'])) for w in hit_words)
     if n_words == 0:
         duration = 0.0
     else:

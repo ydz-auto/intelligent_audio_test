@@ -126,7 +126,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
     caller_task_id 为调用方的任务 ID（可选）。
     eval_task_id 可由调用方预先生成（如 create_task_upload 需要先存文件）。
     """
-    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'xiaoyi_metrics', 'interruption_metrics', 'takeover']
+    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'turn_taking', 'interruption_metrics']
     if task_type not in SUPPORTED_TASK_TYPES:
         return error_response(f"Unsupported task type: {task_type}. Supported types: {SUPPORTED_TASK_TYPES}", code=CODE_BUSINESS_ERROR)
 

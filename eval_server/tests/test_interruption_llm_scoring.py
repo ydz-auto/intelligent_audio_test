@@ -12,7 +12,7 @@
 原始话题：推荐一部适合周末看的电影
 """
 import json
-from app.services.xiaoyi_metrics import calculate_interruption_metrics
+from app.services.xiaoyi_metrics.turn_taking import calculate_interruption_metrics
 
 ORIGINAL_TOPIC = '推荐一部适合周末看的电影'
 
