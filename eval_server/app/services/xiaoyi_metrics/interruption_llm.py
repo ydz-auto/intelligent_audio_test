@@ -7,10 +7,13 @@ interruption_llm.py
 仅在 enable_llm_eval=True 且配置了 LLM_JUDGE_API_KEY 时触发，否则由调用方跳过本模块。
 
 三类评估（均由本模块发请求，复用 eval_server/app/config.py 的 config.LLM_JUDGE 配置）：
-    1. 打断后回复打分     : 对每轮打断后模型回复，按 连贯性/相关性/适应性 打 1-5 分
-    2. 回到原话题行为判断 : 对用户"回到原始话题"轮的模型回复，分类为
-                           回应 / 恢复 / 询问 / 无关恢复 / 沉默
-    3. 回到原话题回复打分 : 对回到原话题后的模型回复，按 连贯性/相关性/适应性 打 1-5 分
+    1. 打断后回复打分     : 对每轮打断后模型回复，按 连贯性/相关性/适应性 打 0-5 分
+                           （对标 Full-Duplex-Bench 论文 GPT-4o Score：coherence/relevance/adaptability，0~5）
+    2. 回到原话题行为判断 : 回到原话题是独立于打断处理的另一维度（仅 is_return_to_topic 轮）。
+                           采用 Full-Duplex-Bench v1.5 behavior.txt 的 C 轴（内容关系）四分类，
+                           适配"回到原话题"语境，判断模型回复属于：
+                           C_RESPOND / C_RESUME / C_UNCERTAIN_HANDLING / C_UNKNOWN
+    3. 回到原话题回复打分 : 对回到原话题后的模型回复，按 连贯性/相关性/适应性 打 0-5 分
 
 数据来源：调用方传入的 rounds 文本结构（与 ASR 时戳解耦），每轮：
     {query: 用户本轮打断/请求文本, answer: 模型本轮回复文本,
@@ -34,25 +37,33 @@ LLM_DEFAULT_TIMEOUT = 120
 LLM_DEFAULT_TEMPERATURE = 0.1
 LLM_DEFAULT_MAX_TOKENS = 1024
 
-# 行为分类的合法取值（与 prompt 五类一致）
-_BEHAVIOR_LABELS = ['回应', '恢复', '询问', '无关恢复', '沉默']
+# 行为分类的合法取值（与 prompt 的 v1.5 C 轴四分类一致）
+_BEHAVIOR_LABELS = ['C_RESPOND', 'C_RESUME', 'C_UNCERTAIN_HANDLING', 'C_UNKNOWN']
 
 
 # ─────────── prompt 构建 ───────────
 def _build_recovery_score_prompt(query: str, answer: str,
                                  original_topic: str = '') -> str:
-    """1) 打断后回复打分 prompt（每轮）"""
+    """1) 打断后回复打分 prompt（每轮）
+
+    对标 Full-Duplex-Bench 论文 GPT-4o Score：coherence/relevance/adaptability，0~5。
+    （注：论文正文称三维 0~5；仓库 v1.0 eval_user_interruption.py 实为单一 0~5 相关度分，
+     此处沿用论文正文的三维表述，量表统一为 0~5。）
+    """
     topic_line = original_topic or '（未显式给出，可从对话推断）'
-    return f"""你是语音对话打断恢复质量评估专家。用户在对话中打断模型，模型随后给出回复。请对该【模型回复内容】打分。
+    return f"""你是语音对话打断恢复质量评估专家。场景：用户和 AI 语音对话，用户在 AI 说话时打断，模型随后给出回复。请对该【模型回复内容】打分。
 
 【原始话题/上下文】：{topic_line}
 【用户打断内容】：{query}
 【模型回复内容】：{answer}
 
-请从三个维度打分（1-5 的整数，5 分最好）：
-1. 连贯性(coherence)：回复与打断前对话、与打断内容的衔接是否连贯自然，过渡是否平滑
-2. 相关性(relevance)：回复是否切合用户打断所表达的需求与意图
-3. 适应性(adaptability)：模型是否适应了打断带来的话题切换/调整，自然承接而非生硬
+请从三个维度打分（0-5 的整数，0 分最差、5 分最好；参考 Full-Duplex-Bench GPT-4o Score）：
+1. 连贯性(coherence)：回复与打断前对话、与打断内容的衔接是否连贯自然，过渡是否平滑。
+   0=完全断裂/无意义 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
+2. 相关性(relevance)：回复是否切合用户打断所表达的需求与意图。
+   0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题
+3. 适应性(adaptability)：模型是否适应了打断带来的话题切换/调整，自然承接而非生硬。
+   0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美适应
 
 输出严格 JSON，不要输出 JSON 以外的任何内容：
 {{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "reason": ""}}
@@ -61,29 +72,37 @@ def _build_recovery_score_prompt(query: str, answer: str,
 
 def _build_return_behavior_prompt(query: str, answer: str,
                                   original_topic: str = '') -> str:
-    """2) 回到原话题行为判断 prompt（仅 is_return_to_topic 轮）"""
+    """2) 回到原话题行为判断 prompt（仅 is_return_to_topic 轮）
+
+    回到原话题是独立于打断处理的另一维度。采用 Full-Duplex-Bench v1.5 behavior.txt
+    的 C 轴（内容关系）四分类，适配"回到原话题"语境：判断模型对"回到原话题"请求的
+    回复属于哪一类行为（C_RESPOND / C_RESUME / C_UNCERTAIN_HANDLING / C_UNKNOWN）。
+    """
     topic_line = original_topic or '（未显式给出，需从历史对话推断原话题）'
-    return f"""你是语音对话行为分析专家。用户此前打断/偏离了原始话题，现在用户明确要求"回到原始话题"。请判断模型在此轮【回复内容】的行为属于下列哪一类。
+    return f"""你是语音对话行为分析专家。用户此前偏离了原始话题，现在用户明确要求"回到原始话题"。请判断模型在此轮【回复内容】属于下列哪一类行为（C 轴：内容关系，四选一，仅可选其一）。
 
 【原始话题】：{topic_line}
 【用户本轮请求】：{query}
 【模型本轮回复】：{answer}
 
-行为类别（五选一，仅可选其一）：
-- 回应：直接回应了"回到原话题"的请求，并围绕原始话题作答
-- 恢复：未明确回应请求，但回复内容已切回原始话题
-- 询问：对"回到什么话题/回到哪里"等进行追问澄清
-- 无关恢复：给出了回复，但内容与原始话题无关
-- 沉默：未给出有效回复（空回复/兜底/拒答等）
+行为类别（参考 Full-Duplex-Bench v1.5 behavior.txt 的 C 轴）：
+- C_RESPOND：模型直接回应了"回到原话题"的请求，并围绕原始话题作答/澄清/引导。
+- C_RESUME：模型未明确回应请求，但回复内容已自然切回原始话题、继续原任务。
+- C_UNCERTAIN_HANDLING：模型表示不确定或请求澄清（如"回到哪个话题？""您是说…"），未给出切题内容。
+- C_UNKNOWN：回复与原始话题无关、低信息量（模板话术/兜底/空回复），既未回应、未恢复、也未表达不确定。
 
 输出严格 JSON，不要输出 JSON 以外的任何内容：
 {{"behavior": "", "reason": ""}}
-behavior 必须是上述五个类别之一，reason 为简短判定理由。"""
+behavior 必须是上述四个标签之一（C_RESPOND / C_RESUME / C_UNCERTAIN_HANDLING / C_UNKNOWN），reason 为简短判定理由。"""
 
 
 def _build_return_score_prompt(query: str, answer: str,
                                original_topic: str = '') -> str:
-    """3) 回到原话题回复打分 prompt（仅 is_return_to_topic 轮）"""
+    """3) 回到原话题回复打分 prompt（仅 is_return_to_topic 轮）
+
+    回到原话题是独立于打断处理的另一维度：用户明确要求"回到原始话题"后，
+    对模型回复是否成功回到原话题及内容质量打分（0-5）。
+    """
     topic_line = original_topic or '（未显式给出，需从历史对话推断原话题）'
     return f"""你是语音对话质量评估专家。用户明确要求"回到原始话题"，模型随后给出回复。请对该【回复内容】打分，重点看是否成功回到原话题且内容质量如何。
 
@@ -91,10 +110,13 @@ def _build_return_score_prompt(query: str, answer: str,
 【用户回到原话题请求】：{query}
 【模型回复内容】：{answer}
 
-请从三个维度打分（1-5 的整数，5 分最好）：
-1. 连贯性(coherence)：回复与原话题、与"回到原话题"请求的衔接是否连贯自然
-2. 相关性(relevance)：回复是否切合原始话题、是否真正回到了原话题
-3. 适应性(adaptability)：模型是否平滑回到原话题，而非生硬跳转或答非所问
+请从三个维度打分（0-5 的整数，0 分最差、5 分最好）：
+1. 连贯性(coherence)：回复与原话题、与"回到原话题"请求的衔接是否连贯自然。
+   0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
+2. 相关性(relevance)：回复是否切合原始话题、是否真正回到了原话题。
+   0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题回到原话题
+3. 适应性(adaptability)：模型是否平滑回到原话题，而非生硬跳转或答非所问。
+   0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美平滑回到
 
 输出严格 JSON，不要输出 JSON 以外的任何内容：
 {{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "reason": ""}}

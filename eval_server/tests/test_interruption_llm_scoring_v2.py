@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """打断 LLM 评估评分效果夹具 v2（伪造数据，跑路线 B：直接调 eval_server）
 
-新场景：原始话题=「帮我规划北京周末两日游」。5 轮打断对话，带评分梯度：
+新场景：原始话题=「帮我规划北京周末两日游」。5 轮打断对话，带评分梯度（0-5，对标 Full-Duplex-Bench GPT-4o Score）：
   R1 打断(优秀:切题+衔接+主动引导) → 期望高分 5
   R2 打断(中等:简短无衔接)        → 期望中分 3-4
-  R3 打断(低分:答非所问+兜底话术)   → 期望 1-2
-  R4 回原话题(成功恢复)            → 行为=回应/恢复, 高分
-  R5 回原话题(简短形同沉默)         → 行为=沉默/无关恢复, 低分
+  R3 打断(低分:答非所问+兜底话术)   → 期望 0-2
+  R4 回原话题(成功恢复)            → 行为=C_RESPOND/C_RESUME, 高分
+  R5 回原话题(简短形同沉默)         → 行为=C_UNKNOWN, 低分
 
+行为分类采用 v1.5 behavior.txt 的 C 轴四分类（C_RESPOND/C_RESUME/C_UNCERTAIN_HANDLING/C_UNKNOWN）。
 用法: cd eval_server && python tests/test_interruption_llm_scoring_v2.py
 """
 import json
@@ -32,19 +33,19 @@ ROUNDS = [
         'query': '你会做饭吗',
         'answer': '抱歉，我是个语音助手，听不懂您的问题，请重新说一遍。',
         'is_return_to_topic': False,
-        '_expect': 'R3 打断·低分(答非所问+兜底话术，未满足需求) → 期望 1-2',
+        '_expect': 'R3 打断·低分(答非所问+兜底话术，未满足需求) → 期望 0-2',
     },
     {
         'query': '我们还是接着说北京行程吧',
         'answer': '好的，继续给你介绍：第一天上午故宫和景山，下午北海公园；第二天颐和园加圆明园。需要我排一下时间表吗。',
         'is_return_to_topic': True,
-        '_expect': 'R4 回原话题·成功(直接回应+围绕原话题+切题) → 行为=回应, 高分',
+        '_expect': 'R4 回原话题·成功(直接回应+围绕原话题+切题) → 行为=C_RESPOND, 高分',
     },
     {
         'query': '回到旅游计划',
         'answer': '好的，没问题。',
         'is_return_to_topic': True,
-        '_expect': 'R5 回原话题·失败(简短形同沉默，未真正回到原话题) → 行为=沉默/无关恢复, 低分',
+        '_expect': 'R5 回原话题·失败(简短形同沉默，未真正回到原话题) → 行为=C_UNKNOWN, 低分',
     },
 ]
 
