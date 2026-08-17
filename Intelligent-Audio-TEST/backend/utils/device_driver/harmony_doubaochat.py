@@ -323,17 +323,10 @@ class DoubaoChat(Xiaoyilivechat):
         driver.wait(3)
         try:
             # 第1步: 点击右上角菜单/设置按钮(打开侧边栏或菜单面板)
-            menu_btn = None
-            try:
-                menu_btn = driver.find_component(BY.type('SymbolGlyph'))
-            except Exception:
-                pass
-            if menu_btn:
-                menu_btn.click()
-            else:
-                driver.touch((1161, 234))
-                driver.wait(1)
-                driver.touch((1175,234))
+
+            driver.touch((1161, 234))
+            driver.wait(1)
+            driver.touch((1175,234))
             driver.wait(1)
 
             # 第2步: 点击"删除聊天记录"(或"删除对话记录",豆包不同版本文案可能不同)
@@ -416,16 +409,6 @@ class DoubaoChat(Xiaoyilivechat):
                           task_id=task_id, test_case_id=test_case_id)
                 return False
 
-        try:
-            if driver.find_component(By.text("选择情景")):
-                self._log(level='DEBUG', content="成功进行通话", task_id=task_id, test_case_id=test_case_id)
-            else:
-                self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
-                return False
-        except Exception:
-            self._log(level='ERROR', content="通话失败", task_id=task_id, test_case_id=test_case_id)
-            return False
-
         # 开启录屏
         if record_mode == 'case':
             # 整用例一个文件，不带轮次后缀
@@ -437,6 +420,21 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='ERROR', content=f"启动录屏失败,服务未运行: {self._record_file_name}",
                       task_id=task_id, test_case_id=test_case_id)
             return False
+        # 首帧为 None(录屏未真正启动):先 force-stop 清残留态,再重试一次 aa start
+        # 豆包场景下 aa start 有时未真正开始捕获,blind toggle 会导致"停变开",
+        # 故在 pre_process 阶段就保证拿到首帧,避免 post_process 时无 mp4 产生
+        if getattr(self, '_recorder_first_frame_ms', None) is None:
+            self._log(level='WARNING',
+                      content=(f"首帧为 None,录屏未真正启动,force-stop 清残留后重试一次: "
+                               f"{self._record_file_name}"),
+                      task_id=task_id, test_case_id=test_case_id)
+            self._force_stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id)
+            time.sleep(1)
+            if not self._start_recorder(device_sn, file_name=self._record_file_name):
+                self._log(level='ERROR',
+                          content=f"重试启动录屏失败,服务未运行: {self._record_file_name}",
+                          task_id=task_id, test_case_id=test_case_id)
+                return False
         self._recording = True
         self._log(level='INFO',
                   content=(f"启动录屏成功: {self._record_file_name} "
