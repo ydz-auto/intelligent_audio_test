@@ -1,0 +1,35 @@
+Intelligent-Audio-TEST/backend/controllers/audio_controller.py
+  h_f411275616c284 1130-1131,1228,1458,1913-1929,1931-1947,1949,2018-2057,2124-2125,2132-2145,2541-2550,2664-2665,2670-2683
+  s_28d6d43827e941::t_e9b46e70c00253 1684,1908-1912,1930,2176-2179
+Intelligent-Audio-TEST/frontend/src/components/common/modal/FolderImportModal.vue
+  h_f411275616c284 572-575,578,582-586,598-601
+Intelligent-Audio-TEST/frontend/src/views/AudioImportLogic/audioImport.ts
+  h_f411275616c284 1242-1247
+Intelligent-Audio-TEST/doc/voice_llm/样例/环境音理解/环境音理解.json
+  h_f411275616c284 2-9,26
+Intelligent-Audio-TEST/frontend/src/components/algorithm/AlgorithmConfigModal.vue
+  h_f411275616c284 780-781,939-959,969
+Intelligent-Audio-TEST/backend/services/audio/playback_config_builder.py
+  h_f411275616c284 86-90,94-95,97,100,103-109,111,115-116,118,120-125,135-142,146-147,150-156,158-163,165-171,173-175,343-348,508,510-511,513-523,529,531-537,552-560
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "11f156e5b704b90c538665ebed147183361896f6",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_28d6d43827e941": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a830329e88248d08ea2c04f",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
