@@ -82,6 +82,14 @@ class E2EExecutor(BaseExecutor):
                 case_field_values, rounds, test_case_id
             )
 
+            # ── 阶段 1.5：启动全局背景噪声（跨所有轮次持续播放） ──
+            # 必须在 _prepare_rounds 之后（设备已初始化）、_run_rounds_loop 之前启动；
+            # play_round 检测到全局背景噪声存在时会跳过轮次级背景噪声
+            bg_started = playback_orchestrator.start_background_noise(case_config, task_id)
+            if not bg_started:
+                self._log(level='WARNING', content='全局背景噪声启动失败，继续执行轮次（轮次级背景噪声仍可生效）',
+                          task_id=task_id, test_case_id=test_case_id)
+
             # ── 阶段二：多轮循环 ──
             all_round_results, rounds_data, execution_success, last_adjusted_ref_params = \
                 self._run_rounds_loop(
@@ -113,6 +121,17 @@ class E2EExecutor(BaseExecutor):
             self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
             return False
         finally:
+            # ── 阶段 3.5：停止全局背景噪声 ──
+            # 必须在设备 teardown 之前停止，避免设备流已关闭后仍持有 stop_event
+            try:
+                playback_orchestrator.stop_background_noise(task_id)
+            except Exception as bg_stop_err:
+                self._log(
+                    level='WARNING',
+                    content=f"停止全局背景噪声异常（忽略）: {bg_stop_err}",
+                    task_id=task_id, test_case_id=getattr(self, 'current_test_case_id', None)
+                )
+
             # ── 阶段四：设备驱动 teardown（与 initialize 对称）──
             if device_info_list:
                 try:
