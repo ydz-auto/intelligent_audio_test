@@ -1,0 +1,18 @@
+Intelligent-Audio-TEST/backend/utils/device_driver/base_driver.py
+  h_f411275616c284 168-186
+Intelligent-Audio-TEST/backend/services/execution/e2e_executor.py
+  h_f411275616c284 103-104,511-563
+Intelligent-Audio-TEST/backend/controllers/audio_controller.py
+  h_f411275616c284 2,38-58,676-677
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "6277b277eb69a3569e45164024bd3f4cbdce76d3",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
