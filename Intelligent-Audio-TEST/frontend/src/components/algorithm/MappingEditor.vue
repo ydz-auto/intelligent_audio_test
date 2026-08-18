@@ -388,7 +388,7 @@ async function autoSaveMapping(record: any, index: number) {
 
   const mappingData = {
     algorithm_type: props.algorithmType,
-    source_type: record.source || props.componentType,
+    source_type: record.source,
     source: record.source,
     source_param: record.source_param,
     source_direction: record.source_direction || 'output',
@@ -397,7 +397,8 @@ async function autoSaveMapping(record: any, index: number) {
     transform_type: record.transform_type || 'none'
   }
 
-  if (!mappingData.source_param || !mappingData.target_param) {
+  // source 必须是合法值（case/reference/device/api），为空时不保存
+  if (!mappingData.source || !mappingData.source_param || !mappingData.target_param) {
     return
   }
 

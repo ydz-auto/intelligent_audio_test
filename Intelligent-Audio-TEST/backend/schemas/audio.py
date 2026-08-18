@@ -78,6 +78,8 @@ class TestCaseUploadConfig(APIModel):
     inherit_tags: Optional[bool] = Field(True, alias='inheritTags', validation_alias='inheritTags')
     # 算法参数：接受 list（标准 [{field_code, field_value}]）或 dict（{field_code: field_value}），由 controller 归一化
     algorithm_params: Optional[Any] = Field(None, alias='algorithmParams', validation_alias='algorithmParams')
+    # case 级背景噪声（rounds 外层），优先级高于轮次级 background_noise
+    background_noise: Optional[Any] = Field(None, alias='backgroundNoise', validation_alias='backgroundNoise')
 
 
 class MergeChunksRequest(APIModel):

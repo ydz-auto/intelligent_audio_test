@@ -12,6 +12,9 @@ if TYPE_CHECKING:
 
 
 class TestCaseAudioConfigItem(APIModel):
+    # extra='allow' 保留前端传入的 interferers、background_noise 等额外字段
+    model_config = ConfigDict(extra='allow')
+
     id: Optional[int] = Field(None, alias='id', validation_alias='id')
     audio_id: Optional[Union[int, str]] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
     audio_name: Optional[str] = Field(None, alias='audio_name', validation_alias=AliasChoices('audio_name', 'audioName'))
@@ -19,6 +22,10 @@ class TestCaseAudioConfigItem(APIModel):
     playback_device_id: Optional[Union[int, str]] = Field(None, alias='playback_device_id', validation_alias=AliasChoices('playback_device_id', 'playbackDeviceId'))
     playback_device_name: Optional[str] = Field(None, alias='playback_device_name', validation_alias=AliasChoices('playback_device_name', 'playbackDeviceName'))
     play_order: Optional[int] = Field(None, alias='play_order', validation_alias=AliasChoices('play_order', 'playOrder'))
+    # 轮次级背景噪声（segment 级，case 级存在时不播放）
+    background_noise: Optional[Dict[str, Any]] = Field(None, alias='background_noise', validation_alias=AliasChoices('background_noise', 'backgroundNoise'))
+    # 干扰人（segment 级）
+    interferers: Optional[List[Dict[str, Any]]] = Field(None, alias='interferers', validation_alias='interferers')
 
     @field_validator('spl', mode='before')
     @classmethod
@@ -32,9 +39,19 @@ class TestCaseAudioConfigItem(APIModel):
 
 
 class TestCaseBackgroundNoiseItem(APIModel):
+    # extra='allow' 保留 audio(文件名)、playback_device_names(设备名数组)、playback_device_name(单个设备名) 等
+    model_config = ConfigDict(extra='allow')
+
     audio_id: Optional[Union[int, str]] = Field(None, alias='audio_id', validation_alias=AliasChoices('audio_id', 'audioId'))
+    audio: Optional[str] = Field(None, alias='audio', validation_alias='audio')
+    audio_name: Optional[str] = Field(None, alias='audio_name', validation_alias=AliasChoices('audio_name', 'audioName'))
     spl: Optional[float] = Field(None, alias='spl', validation_alias='spl')
     device_ids: Optional[List[Union[int, str]]] = Field(None, alias='device_ids', validation_alias=AliasChoices('device_ids', 'deviceIds'))
+    # 设备名数组（多设备同时播放）
+    playback_device_names: Optional[List[str]] = Field(None, alias='playback_device_names', validation_alias=AliasChoices('playback_device_names', 'playbackDeviceNames'))
+    # 单设备名（兼容旧格式）
+    playback_device_name: Optional[str] = Field(None, alias='playback_device_name', validation_alias=AliasChoices('playback_device_name', 'playbackDeviceName'))
+    device_names: Optional[List[str]] = Field(None, alias='device_names', validation_alias=AliasChoices('device_names', 'deviceNames'))
     loop: Optional[bool] = Field(True, alias='loop', validation_alias='loop')
 
 

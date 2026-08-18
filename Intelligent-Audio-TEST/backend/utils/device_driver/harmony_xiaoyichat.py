@@ -407,16 +407,16 @@ class Xiaoyilivechat(HarmonyDriver):
         #     time.sleep(2)
         # 清除上下文
         # 进入设置界面
+
         # 根据条件点击控件
-        driver.touch(By.isAfter(By.key('title_bar.broadcastType.icon')).isBefore(By.key('water_mark.build.stack')).type('SymbolGlyph'))
-        # 根据条件点击控件
+        driver.touch((1154, 234))
         driver.wait(2)
         clear_text = driver.find_component(By.text('清除上下文'))
         if clear_text:
             clear_text.click()
             time.sleep(2)
         # 进入设置界面删除对话记录
-        driver.touch(By.isAfter(By.key('title_bar.broadcastType.icon')).isBefore(By.key('water_mark.build.stack')).type('SymbolGlyph'))
+        driver.touch((1154, 234))
         driver.wait(2)
         clear_chat = driver.find_component(By.text("删除对话记录"))
         if clear_chat:

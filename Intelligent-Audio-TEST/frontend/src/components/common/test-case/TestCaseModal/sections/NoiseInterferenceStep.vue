@@ -13,7 +13,7 @@
           <i class="fas fa-volume-up"></i> 背景噪声
         </span>
         <button
-          v-if="!round.backgroundNoise?.audioId"
+          v-if="!hasNoiseAudio"
           type="button"
           class="btn btn-sm btn-outline-primary"
           @click="addNoise"
@@ -30,7 +30,7 @@
         </button>
       </div>
 
-      <div v-if="round.backgroundNoise?.audioId" class="rce-noise-body">
+      <div v-if="hasNoiseAudio" class="rce-noise-body">
         <!-- 噪声音频卡片 -->
         <div class="rce-field">
           <label class="rce-field-label">噪声音频</label>
@@ -38,14 +38,14 @@
             <div class="rce-noise-card-info">
               <div class="rce-noise-card-row">
                 <i class="fas fa-music rce-noise-card-icon"></i>
-                <span class="rce-noise-card-name" :title="getAudioName(round.backgroundNoise.audioId)">
-                  {{ getAudioName(round.backgroundNoise.audioId) }}
+                <span class="rce-noise-card-name" :title="noiseAudioDisplayName">
+                  {{ noiseAudioDisplayName }}
                 </span>
-                <span class="rce-noise-card-duration" v-if="getAudioDuration(round.backgroundNoise.audioId) > 0">
+                <span class="rce-noise-card-duration" v-if="round.backgroundNoise?.audioId && getAudioDuration(round.backgroundNoise.audioId) > 0">
                   <i class="fas fa-clock"></i> {{ formatDuration(getAudioDuration(round.backgroundNoise.audioId)) }}
                 </span>
               </div>
-              <div class="rce-noise-card-tags" v-if="getAudioTags(round.backgroundNoise.audioId)">
+              <div class="rce-noise-card-tags" v-if="round.backgroundNoise?.audioId && getAudioTags(round.backgroundNoise.audioId)">
                 <span class="rce-noise-tag" v-for="tag in getNormalizedTags(getAudioTags(round.backgroundNoise.audioId))" :key="tag">{{ tag }}</span>
               </div>
             </div>
@@ -53,7 +53,7 @@
               <button type="button" class="btn btn-sm btn-outline-primary" @click="openNoiseAudioModal">
                 <i class="fas fa-exchange-alt"></i> 更换
               </button>
-              <button type="button" class="btn btn-sm btn-outline-info" @click="previewNoise">
+              <button type="button" class="btn btn-sm btn-outline-info" v-if="round.backgroundNoise?.audioId" @click="previewNoise">
                 <i class="fas fa-play"></i> 试听
               </button>
             </div>
@@ -84,15 +84,22 @@
           </div>
         </div>
         <div class="rce-field">
-          <label class="rce-field-label">播放设备</label>
-          <select
-            class="form-control form-control-sm"
-            :value="(round.backgroundNoise?.deviceIds || [])[0] || ''"
-            @change="updateNoiseDeviceIds(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">请选择...</option>
-            <option v-for="dev in playbackDevices" :key="dev.id" :value="String(dev.id)">{{ dev.name }}</option>
-          </select>
+          <label class="rce-field-label">播放设备（可多选）</label>
+          <div class="rce-noise-devices">
+            <label v-for="dev in playbackDevices" :key="dev.id" class="rce-noise-device-chip">
+              <input
+                type="checkbox"
+                :value="String(dev.id)"
+                :checked="isNoiseDeviceSelected(String(dev.id))"
+                @change="toggleNoiseDevice(String(dev.id), ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ dev.name }}</span>
+            </label>
+            <!-- 兜底显示：设备名存在但未匹配到 ID 的设备 -->
+            <span v-for="name in unmatchedNoiseDeviceNames" :key="name" class="rce-noise-device-unmatched" :title="`未匹配到播放设备ID：${name}`">
+              <i class="fas fa-exclamation-triangle"></i> {{ name }}
+            </span>
+          </div>
         </div>
       </div>
       <div v-else class="rce-noise-empty">
@@ -250,6 +257,60 @@ function openNoiseAudioModal() {
     }
   })
 }
+
+// ---- 兼容文件名/设备名格式的显示 ----
+// 是否有噪声音频（audioId 或 audioName 或 audio 文件名）
+const hasNoiseAudio = computed(() => {
+  const bg = props.round.backgroundNoise
+  if (!bg) return false
+  return !!(bg as any).audioId || !!(bg as any).audioName || !!(bg as any).audio
+})
+
+// 噪声音频显示名：优先 audioId 反查，其次 audioName，最后 audio 文件名
+const noiseAudioDisplayName = computed(() => {
+  const bg = props.round.backgroundNoise as any
+  if (!bg) return ''
+  if (bg.audioId) {
+    const name = getAudioName(bg.audioId)
+    if (name && name !== bg.audioId) return name
+  }
+  return bg.audioName || bg.audio || '(未选择音频)'
+})
+
+// 当前选中的设备 ID 集合（含从设备名反查的）
+const noiseDeviceIdSet = computed<Set<string>>(() => {
+  const bg = props.round.backgroundNoise as any
+  if (!bg) return new Set()
+  const ids: string[] = Array.isArray(bg.deviceIds) ? bg.deviceIds.map(String) : []
+  // 从设备名反查 ID：deviceNames → playbackDevices.name → id
+  const names: string[] = Array.isArray(bg.deviceNames) ? bg.deviceNames : []
+  for (const name of names) {
+    const dev = props.playbackDevices.find((d: PlaybackDevice) => d.name === name)
+    if (dev && !ids.includes(String(dev.id))) ids.push(String(dev.id))
+  }
+  return new Set(ids)
+})
+
+// 未匹配到 ID 的设备名（提示用户）
+const unmatchedNoiseDeviceNames = computed<string[]>(() => {
+  const bg = props.round.backgroundNoise as any
+  if (!bg || !Array.isArray(bg.deviceNames) || bg.deviceNames.length === 0) return []
+  return bg.deviceNames.filter((name: string) =>
+    !props.playbackDevices.some((d: PlaybackDevice) => d.name === name)
+  )
+})
+
+function isNoiseDeviceSelected(deviceId: string): boolean {
+  return noiseDeviceIdSet.value.has(deviceId)
+}
+
+function toggleNoiseDevice(deviceId: string, checked: boolean) {
+  const bg = props.round.backgroundNoise as any
+  const current = new Set(noiseDeviceIdSet.value)
+  if (checked) current.add(deviceId)
+  else current.delete(deviceId)
+  updateNoise('deviceIds', Array.from(current))
+}
 </script>
 
 <style scoped>
@@ -337,6 +398,44 @@ function openNoiseAudioModal() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* 播放设备多选 */
+.rce-noise-devices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rce-noise-device-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 16px;
+  background: #f6f8fa;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.rce-noise-device-chip input {
+  margin: 0;
+}
+.rce-noise-device-chip:has(input:checked) {
+  background: #e6f4ff;
+  border-color: #4096ff;
+  color: #1677ff;
+}
+.rce-noise-device-unmatched {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #ffd591;
+  border-radius: 16px;
+  background: #fffbe6;
+  color: #d48806;
+  font-size: 12px;
 }
 
 /* 噪声音频卡片 */

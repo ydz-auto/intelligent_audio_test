@@ -569,12 +569,21 @@ const handleImport = async () => {
                 if (Array.isArray(seg.interferers) && seg.interferers.length > 0) {
                   cfg.interferers = seg.interferers
                 }
+                // 保留轮次级背景噪声（case 级存在时不播放）
+                if (seg.background_noise) {
+                  cfg.background_noise = seg.background_noise
+                }
                 return cfg
               })
-            return {
+            const roundObj: any = {
               roundNumber: round.round_number || round.roundNumber || ri + 1,
               audios
             }
+            // 保留轮次级背景噪声
+            if (round.background_noise) {
+              roundObj.background_noise = round.background_noise
+            }
+            return roundObj
           }).filter((r: any) => r !== null)
 
           // 推断该标注文件对应的分组键（最子级文件夹名）：
@@ -586,6 +595,10 @@ const handleImport = async () => {
             ? annPathParts[annPathParts.length - 1]
             : ''
           if (groupKey && groupRounds.length > 0) {
+            // 保留 case 级背景噪声（rounds 外层）
+            if (rawJson.background_noise) {
+              groupRounds._caseBackgroundNoise = rawJson.background_noise
+            }
             unifiedRoundsByGroup.set(groupKey, groupRounds)
           }
           const annotationCode = parsedData.code || uploadConfig.algorithmType || determineAnnotationName(annFile.name, format)

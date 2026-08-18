@@ -161,6 +161,8 @@ export interface InterfererConfigItem {
   audioId?: string;
   audioName?: string;
   playbackDeviceId?: string;
+  /** 设备名（统一标注文件导入时无 ID，仅设备名） */
+  playbackDeviceName?: string;
   spl: number;
   startDelay: number;
   loop: boolean;

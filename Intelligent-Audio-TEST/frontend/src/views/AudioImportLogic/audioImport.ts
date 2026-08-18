@@ -1239,7 +1239,12 @@ export function useAudioImport() {
         })
         // 用该分组的统一标注文件（如 9.json）的 rounds 覆盖 folderParser 自动推断的 rounds
         if (unifiedRoundsByGroup && unifiedRoundsByGroup[groupKey] && unifiedRoundsByGroup[groupKey].length > 0) {
-          groupConfig.rounds = unifiedRoundsByGroup[groupKey]
+          const groupRounds = unifiedRoundsByGroup[groupKey] as any
+          groupConfig.rounds = groupRounds
+          // case 级背景噪声（rounds 外层），优先级高于轮次级
+          if (groupRounds._caseBackgroundNoise) {
+            groupConfig.backgroundNoise = groupRounds._caseBackgroundNoise
+          }
         }
         groupTestCaseConfigs.set(groupKey, groupConfig.rounds && groupConfig.rounds.length > 0 ? groupConfig : undefined)
       })

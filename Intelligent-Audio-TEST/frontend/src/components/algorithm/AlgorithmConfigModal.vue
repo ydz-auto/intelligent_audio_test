@@ -777,7 +777,8 @@ const availableDimensions = ref<Dimension[]>([])
 const { fetchAllDimensions } = useDimensions()
 
 const mainDimensions = computed(() => {
-  return availableDimensions.value.filter(d => d.dimensionType === 'main' || !d.dimensionType)
+  // 评估参数映射可指向任意维度（含子维度），不再过滤 dimensionType
+  return availableDimensions.value
 })
 
 const formState = reactive({
@@ -935,17 +936,37 @@ watch(() => props.visible, (visible) => {
 function normalizeMappings(raw: any): { device: any[]; api: any[]; evaluation: any[] } {
   const empty = { device: [], api: [], evaluation: [] }
   if (!raw) return empty
-  const convert = (arr: any[]) => (arr || []).map((m: any) => ({
-    id: m.id,
-    source: m.source,
-    source_param: m.sourceParam ?? m.source_param ?? '',
-    param_name: m.paramName ?? m.param_name ?? '',
-    dimension_id: m.dimensionId ?? m.dimension_id ?? null,
-    dimension_name: m.dimensionName ?? m.dimension_name ?? '',
-    target_param: m.targetParam ?? m.target_param ?? '',
-    transform_type: m.transformType ?? m.transform_type ?? 'none',
-    source_direction: m.sourceDirection ?? m.source_direction ?? 'output'
-  }))
+  // 合法来源值
+  const VALID_SOURCES = ['case', 'reference', 'device', 'api']
+  const convert = (arr: any[]) => (arr || []).map((m: any) => {
+    let source = m.source
+    // 修复历史脏数据：source='evaluation' 或其他非法值时，根据 source_param 反推真实来源
+    if (!VALID_SOURCES.includes(source)) {
+      const sp = m.sourceParam ?? m.source_param ?? ''
+      if (formState.case_params.some((p: any) => p.param_code === sp)) {
+        source = 'case'
+      } else if (formState.reference_params.some((p: any) => p.code === sp)) {
+        source = 'reference'
+      } else if (formState.device_params.some((p: any) => p.param_code === sp)) {
+        source = 'device'
+      } else if (formState.api_params.some((p: any) => p.param_code === sp)) {
+        source = 'api'
+      } else {
+        source = 'case'
+      }
+    }
+    return {
+      id: m.id,
+      source,
+      source_param: m.sourceParam ?? m.source_param ?? '',
+      param_name: m.paramName ?? m.param_name ?? '',
+      dimension_id: m.dimensionId ?? m.dimension_id ?? null,
+      dimension_name: m.dimensionName ?? m.dimension_name ?? '',
+      target_param: m.targetParam ?? m.target_param ?? '',
+      transform_type: m.transformType ?? m.transform_type ?? 'none',
+      source_direction: m.sourceDirection ?? m.source_direction ?? 'output'
+    }
+  })
   return {
     device: convert(raw.device),
     api: convert(raw.api),

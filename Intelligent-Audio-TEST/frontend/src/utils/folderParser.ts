@@ -38,6 +38,7 @@ export interface TestCaseConfig {
   group_name?: string
   inherit_tags?: boolean
   algorithm_params?: any[]
+  background_noise?: any
 }
 
 /**
