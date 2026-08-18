@@ -156,7 +156,7 @@ class AudioService:
         Returns:
             dict: 选中的设备 dict，或 None
         """
-        priority_apis = ["Windows WASAPI", "Windows WDM-KS", "Windows DirectSound", "MME"]
+        priority_apis = ["Windows WDM-KS", "Windows DirectSound", "Windows WASAPI", "MME"]
 
         for api in priority_apis:
             api_matches = [dev for dev in matches if dev['host_api'] == api]
