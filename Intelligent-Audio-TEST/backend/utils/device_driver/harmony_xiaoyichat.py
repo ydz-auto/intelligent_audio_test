@@ -289,11 +289,33 @@ class Xiaoyilivechat(HarmonyDriver):
             return []
         return [line.strip() for line in (r.stdout or '').splitlines() if line.strip()]
 
-    def _pick_pcm(self, files, suffix, exclude=None):
-        """从文件列表中按后缀匹配一个 pcm 路径，多个匹配时取最后一个，无匹配返回 None"""
+    def _pick_pcm(self, device_sn, files, suffix, exclude=None,
+                  task_id=None, test_case_id=None):
+        """从文件列表中按后缀匹配一个 pcm 路径，多个匹配时【取文件最大者】。
+
+        cap_client 在一次会话里可能写多个同名后缀流：真麦克风采集流(有声、
+        时长最长、size 最大) + 若干探针/回声流(静音、size 小)。若按文件名排序
+        取最后一个，可能恰好选中静音探针流(如 *_1_1_cap_client_out.pcm)，
+        导致转出的 user_wav 无声。故改为按设备上实际文件 size 取最大。
+
+        size 全部取不到(stat 失败/全 0)时退回按文件名排序取最后一个,保持旧行为。
+        """
         matches = [f for f in files if f.endswith(suffix) and f != exclude]
         if not matches:
             return None
+        sized = []
+        for f in matches:
+            sz = self._get_device_file_size(device_sn, f)
+            sized.append((sz, f))
+        # 仅当至少一个 size>0 时按 size 降序取最大;否则退回按名取最后(旧行为)
+        if any(sz > 0 for sz, _ in sized):
+            sized.sort(key=lambda t: t[0], reverse=True)
+            picked = sized[0][1]
+            self._log(level='DEBUG',
+                      content=f"pick_pcm 按size取最大: suffix={suffix} picked={picked} "
+                              f"candidates={[(s, os.path.basename(f)) for s, f in sized]}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return picked
         matches.sort()
         return matches[-1]
 
@@ -351,8 +373,10 @@ class Xiaoyilivechat(HarmonyDriver):
             return result
 
         # 用户输入与 AI 回复按后缀区分；ai 排除已选中的用户文件避免后缀包含导致误匹配
-        user_remote = self._pick_pcm(files, user_suffix)
-        ai_remote = self._pick_pcm(files, ai_suffix, exclude=user_remote)
+        user_remote = self._pick_pcm(device_sn, files, user_suffix,
+                                     task_id=task_id, test_case_id=test_case_id)
+        ai_remote = self._pick_pcm(device_sn, files, ai_suffix, exclude=user_remote,
+                                   task_id=task_id, test_case_id=test_case_id)
 
         for role, remote in (('user', user_remote), ('ai', ai_remote)):
             if not remote:
