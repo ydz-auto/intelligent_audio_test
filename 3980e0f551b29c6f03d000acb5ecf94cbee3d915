@@ -1,0 +1,38 @@
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/sections/AlgoParamsStep.vue
+  s_f51d988f3daa37::t_9dd1190d54c6dd 5,9,12
+Intelligent-Audio-TEST/backend/controllers/evaluation_controller.py
+  s_f51d988f3daa37::t_9dd1190d54c6dd 96-111,118-119,161,167,543-544,592,728-729,770
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/CaseForm.vue
+  s_f51d988f3daa37::t_9dd1190d54c6dd 339-349,363
+Intelligent-Audio-TEST/doc/voice_llm/样例/样例.json
+  s_f51d988f3daa37::t_9dd1190d54c6dd 7-12,14-15,17-46,55-59,61-62,64-68,76-79,81,83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "3980e0f551b29c6f03d000acb5ecf94cbee3d915",
+  "prompts": {},
+  "sessions": {
+    "s_f51d988f3daa37": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a7d2da77414668c4c23875a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a7d2da77414668c4c23875a",
+        "dedupe_key": "6a7d2da77414668c4c23875a:6a7d64d97414668c4c238af2:afterEdit:b839b6a2",
+        "tool_type": "builtin",
+        "edit_kind": "file_edit",
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a7d64d97414668c4c238af2",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "source_scene": "agent",
+        "external_session_id": "6a7d2da77414668c4c23875a",
+        "client_type": "ide",
+        "tool_use_id": "6a7d64d97414668c4c238af2"
+      }
+    }
+  }
+}

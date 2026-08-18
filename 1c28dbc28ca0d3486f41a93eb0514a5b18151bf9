@@ -1,0 +1,24 @@
+Intelligent-Audio-TEST/frontend/src/components/common/form/OutputFieldsEditor.vue
+  h_f411275616c284 20,64-66,75-81,122-127,145,160-162,256,258,265-266,279,293-298
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  h_f411275616c284 119-120,136,140-141,169,173-174,204,374-375,389,396,406,411,418
+Intelligent-Audio-TEST/backend/controllers/evaluation_controller.py
+  h_f411275616c284 586,765
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  h_f411275616c284 382-386,389-395
+Intelligent-Audio-TEST/backend/utils/report/aggregation_strategies.py
+  h_f411275616c284 135-207,215
+Intelligent-Audio-TEST/backend/models/algorithm_models.py
+  h_f411275616c284 261,266,296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "1c28dbc28ca0d3486f41a93eb0514a5b18151bf9",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}

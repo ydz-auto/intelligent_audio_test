@@ -1,0 +1,38 @@
+Intelligent-Audio-TEST/backend/services/audio/playback_orchestrator.py
+  s_ac23b5e4d2104c::t_551bcd562099eb 56-57
+  s_ac23b5e4d2104c::t_1f7d7732cd55bc 177-178
+  s_ac23b5e4d2104c::t_7276e5d9b44a9d 214-341
+  s_ac23b5e4d2104c::t_217bbf6d6dbd7c 94-101
+Intelligent-Audio-TEST/backend/services/execution/e2e_executor.py
+  s_ac23b5e4d2104c::t_a0d8573c074993 124-134
+  s_ac23b5e4d2104c::t_a62a0f1febdb64 85-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "a9710dd33f4c2c8e347ecdeaf158da0cf55e89d6",
+  "prompts": {},
+  "sessions": {
+    "s_ac23b5e4d2104c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a7ec17f02804909c2c1c94c",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_type": "builtin",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "dedupe_key": "6a7ec17f02804909c2c1c94c:6a83c2ea02804909c2c1d3db:afterEdit:05ea3b92",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "session_id": "6a7ec17f02804909c2c1c94c",
+        "tool_use_id": "6a83c2ea02804909c2c1d3db",
+        "external_session_id": "6a7ec17f02804909c2c1c94c",
+        "operation_id": "6a83c2ea02804909c2c1d3db",
+        "edit_kind": "file_edit"
+      }
+    }
+  }
+}

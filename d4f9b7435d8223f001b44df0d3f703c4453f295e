@@ -1,0 +1,18 @@
+Intelligent-Audio-TEST/frontend/src/components/common/modal/FolderImportModal.vue
+  h_f411275616c284 508-510,555-557,575-586,726
+Intelligent-Audio-TEST/frontend/src/views/AudioImportLogic/audioImport.ts
+  h_f411275616c284 1169,1210,1222,1228-1230,1232,1240-1242,1244,1283-1290,1302,1353-1365,1370,1375-1383,1394,1406,1419,1432,2278
+Intelligent-Audio-TEST/backend/controllers/audio_controller.py
+  h_f411275616c284 1180-1194,1292-1293,1817-1818,1820-1822,1824,1836-1838,1841-1842,1854,1857-1861,1863,1866-1874
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "d4f9b7435d8223f001b44df0d3f703c4453f295e",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
