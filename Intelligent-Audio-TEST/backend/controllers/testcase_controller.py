@@ -273,8 +273,10 @@ class TestCaseController:
         """比较两个 config 中的音频配置是否发生变化"""
         old_audios = TestCaseController._collect_audios(old_config)
         new_audios = TestCaseController._collect_audios(new_config)
-        old_ids = sorted([a.get('audio_id') for a in old_audios if isinstance(a, dict) and a.get('audio_id')])
-        new_ids = sorted([a.get('audio_id') for a in new_audios if isinstance(a, dict) and a.get('audio_id')])
+        # 统一转为字符串再排序，避免 audio_id 为 int/str 混合类型时
+        # 触发 "'<' not supported between instances of 'str' and 'int'"
+        old_ids = sorted([str(a.get('audio_id')) for a in old_audios if isinstance(a, dict) and a.get('audio_id')])
+        new_ids = sorted([str(a.get('audio_id')) for a in new_audios if isinstance(a, dict) and a.get('audio_id')])
         return old_ids != new_ids
 
     @staticmethod
