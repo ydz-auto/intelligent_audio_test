@@ -9,7 +9,7 @@ sys.path.insert(0, current_dir)
 
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
-from config.config import config
+from config.config import config, Config
 from backend.models.database import db
 
 import logging
@@ -25,11 +25,11 @@ def _get_allowed_origins():
 
 def _configure_pydub_ffmpeg():
     from pydub import AudioSegment
-    ffmpeg_path = config.get('FFMPEG_PATH', 'ffmpeg')
-    ffprobe_path = config.get('FFPROBE_PATH', 'ffprobe')
-    if os.path.isfile(ffmpeg_path):
+    ffmpeg_path = Config.FFMPEG_PATH
+    ffprobe_path = Config.FFPROBE_PATH
+    if ffmpeg_path and os.path.isfile(ffmpeg_path):
         AudioSegment.converter = ffmpeg_path
-    if os.path.isfile(ffprobe_path):
+    if ffprobe_path and os.path.isfile(ffprobe_path):
         AudioSegment.ffprobe = ffprobe_path
 
 _configure_pydub_ffmpeg()
