@@ -1,0 +1,55 @@
+Intelligent-Audio-TEST/backend/controllers/evaluation_controller.py
+  s_81ce5bf1dd5b07::t_3c72b2519e3df9 586,765
+Intelligent-Audio-TEST/backend/controllers/report_controller_base.py
+  s_81ce5bf1dd5b07::t_c055c08c64821f 671,692,825-838,996,1017
+Intelligent-Audio-TEST/backend/controllers/report_controller_compare.py
+  s_81ce5bf1dd5b07::t_23ec6e6e6412a1 400
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_81ce5bf1dd5b07::t_10d9b3bfa97675 382-387,389-395
+Intelligent-Audio-TEST/backend/models/models.py
+  s_81ce5bf1dd5b07::t_3273c8426df25c 735
+Intelligent-Audio-TEST/backend/schemas/algorithm.py
+  s_81ce5bf1dd5b07::t_c35388e51754cb 461,464,481,502
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_llm_judge_dimension.py
+  s_81ce5bf1dd5b07::t_d8a0ed30d11a5a 173-174,189,194,200-201
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_a1ab6769d80641::t_c114ac90ec6729 119-120,136,140-141,169,173-174,204,374-375,389,396-397,406,411,418-419
+Intelligent-Audio-TEST/backend/scripts/migrations/202608/add_pass_threshold_to_eval_params.py
+  s_81ce5bf1dd5b07::t_0bc6c8d7cfa20a 1-85
+Intelligent-Audio-TEST/backend/utils/report/aggregation_strategies.py
+  s_81ce5bf1dd5b07::t_e78fa969ea8ee6 135-207,215
+Intelligent-Audio-TEST/backend/utils/report/report_utils.py
+  s_81ce5bf1dd5b07::t_86f4531c6ab004 204-205
+Intelligent-Audio-TEST/frontend/src/components/common/TestCaseReportDetail.vue
+  s_81ce5bf1dd5b07::t_c718b81a08697b 602
+Intelligent-Audio-TEST/frontend/src/components/common/form/OutputFieldsEditor.vue
+  s_81ce5bf1dd5b07::t_b6f59581add542 20,64-66,75-83,122-127,145,160-163,256,258,265-266,279,293-299
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_81ce5bf1dd5b07::t_02a457700a1b23 705-707,711,733-736
+Intelligent-Audio-TEST/frontend/src/utils/reportDataUtils.ts
+  s_81ce5bf1dd5b07::t_ca7af4d46fa35f 58-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "1c28dbc28ca0d3486f41a93eb0514a5b18151bf9",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
