@@ -1,0 +1,19 @@
+Intelligent-Audio-TEST/backend/services/audio/audio_driver.py
+  s_a1ab6769d80641::t_643c73c5932e8b 1-499
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "1e45d1c9a5500e620d330ce49047f3d16a5da5c7",
+  "prompts": {},
+  "sessions": {
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
