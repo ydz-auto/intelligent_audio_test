@@ -665,7 +665,7 @@ async function saveCaseParams() {
 }
 
 interface AlgorithmGroup {
-  id: number
+  id?: number
   name: string
   description?: string
   icon?: string
@@ -685,17 +685,27 @@ interface AlgorithmRecord {
   type: string
   name: string
   group_id?: number
+  groupId?: number
   group_name?: string
   description?: string
   status: string
   icon?: string
   display_order: number
+  displayOrder?: number
   device_params?: any[]
+  deviceParams?: any[]
   api_params?: any[]
+  apiParams?: any[]
   case_params?: any[]
+  caseParams?: any[]
   params?: any[]
   mappings?: any
   associated_dimensions?: { dimension_id: number | null; weight: number; is_default: boolean }[]
+  associatedDimensions?: { dimension_id: number | null; weight: number; is_default: boolean }[]
+  reference_params?: any[]
+  referenceParams?: any[]
+  referenceConfig?: any[]
+  reference_config?: any[]
 }
 
 interface ModalProps {
@@ -777,6 +787,27 @@ const mainDimensions = computed(() => {
   return availableDimensions.value
 })
 
+interface ReferenceParam {
+  id?: number
+  tempId?: string
+  code: string
+  name: string
+  type: string
+  annotation_code: string
+  annotation_format: string
+  field_path: string
+  merge_mode: string
+  help_text: string
+}
+
+interface AssociatedDimension {
+  id?: number
+  tempId?: string
+  dimension_id: number | null
+  weight: number
+  is_default: boolean
+}
+
 const formState = reactive({
   type: '',
   name: '',
@@ -794,8 +825,8 @@ const formState = reactive({
     api: [] as any[],
     evaluation: [] as any[]
   },
-  associated_dimensions: [] as { dimension_id: number | null; weight: number; is_default: boolean }[],
-  reference_params: [] as { code: string; name: string; type: string; annotation_code: string; annotation_format: string; field_path: string; merge_mode: string; help_text: string }[]
+  associated_dimensions: [] as AssociatedDimension[],
+  reference_params: [] as ReferenceParam[]
 })
 
 // 新建分组支持：选择「+ 新建分组」后展示输入框，保存算法时先创建分组再回填 group_id
@@ -1014,29 +1045,30 @@ function normalizeCaseParamFields(param: any) {
   return normalized
 }
 
-watch(() => [props.mode, props.editData], ([mode, editData]) => {
+watch(() => [props.mode, props.editData] as const, ([mode, editData]) => {
   console.log('watch mode:', mode, 'editData:', editData)
   if (mode === 'edit' && editData) {
-    const deviceParams = ((editData.deviceParams ?? editData.device_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-    const apiParams = ((editData.apiParams ?? editData.api_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-    const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(normalizeCaseParamFields).map(p => ({ ...p }))
-    const refConfig = editData.reference_params ?? editData.referenceConfig ?? editData.reference_config ?? editData.referenceParams
+    const data = editData as AlgorithmRecord
+    const deviceParams = ((data.deviceParams ?? data.device_params) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+    const apiParams = ((data.apiParams ?? data.api_params) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+    const caseParams = ((data.caseParams ?? data.case_params) || []).map(normalizeCaseParamFields).map((p: any) => ({ ...p }))
+    const refConfig = data.reference_params ?? data.referenceConfig ?? data.reference_config ?? data.referenceParams
     
     Object.assign(formState, {
-      type: editData.type,
-      name: editData.name,
-      group_id: editData.groupId ?? editData.group_id ?? null,
-      description: editData.description || '',
-      status: editData.status as 'online' | 'offline',
-      statusSwitch: editData.status === 'online',
-      icon: editData.icon || '',
-      display_order: (editData.displayOrder ?? editData.display_order) || 0,
+      type: data.type,
+      name: data.name,
+      group_id: data.groupId ?? data.group_id ?? null,
+      description: data.description || '',
+      status: data.status as 'online' | 'offline',
+      statusSwitch: data.status === 'online',
+      icon: data.icon || '',
+      display_order: (data.displayOrder ?? data.display_order) || 0,
       device_params: deviceParams,
       api_params: apiParams,
       case_params: caseParams,
-      params: editData.params || [],
-      mappings: normalizeMappings(editData.mappings),
-      associated_dimensions: ((editData.associatedDimensions ?? editData.associated_dimensions) || []).map((d: any) => ({
+      params: data.params || [],
+      mappings: normalizeMappings(data.mappings),
+      associated_dimensions: ((data.associatedDimensions ?? data.associated_dimensions) || []).map((d: any) => ({
         dimension_id: d.dimensionId ?? d.dimension_id,
         weight: d.weight ?? 1.0,
         is_default: d.isDefault ?? d.is_default ?? false
@@ -1195,10 +1227,10 @@ async function handleEdit(record: AlgorithmRecord) {
   try {
     const result = await algorithmApi.getDefinition(record.type)
     if (result) {
-      const editData = result
-      const deviceParams = ((editData.deviceParams ?? editData.device_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-      const apiParams = ((editData.apiParams ?? editData.api_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-      const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(normalizeCaseParamFields).map(p => ({ ...p }))
+      const editData = result as any
+      const deviceParams = ((editData.deviceParams ?? editData.device_params) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+      const apiParams = ((editData.apiParams ?? editData.api_params) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+      const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(normalizeCaseParamFields).map((p: any) => ({ ...p }))
       const refConfig = editData.reference_params ?? editData.referenceConfig ?? editData.reference_config ?? editData.referenceParams
       
       Object.assign(formState, {
@@ -1572,12 +1604,12 @@ function handleRemoveParam(index: number) {
   }
 }
 
-function updateMappings(componentType: string, mappings: any[]) {
+function updateMappings(componentType: 'device' | 'api' | 'evaluation', mappings: any[]) {
   formState.mappings[componentType] = mappings
   console.log('更新映射:', componentType, mappings)
 }
 
-function toggleMapping(key: string) {
+function toggleMapping(key: 'device' | 'api' | 'evaluation') {
   mappingExpanded.value[key] = !mappingExpanded.value[key]
 }
 
@@ -1651,7 +1683,7 @@ async function handleDimensionBlur(index: number) {
         await algorithmApi.updateDimensionRelation(dim.id, {
           weight: dim.weight,
           is_default: dim.is_default,
-          dimension_id: dim.dimension_id
+          dimension_id: dim.dimension_id ?? undefined
         })
       } else if (dim.dimension_id) {
         const result = await algorithmApi.createDimensionRelation({
