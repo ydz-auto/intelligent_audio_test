@@ -1,0 +1,21 @@
+eval_server/app/config.py
+  s_a1ab6769d80641::t_a0a14eedfc450c 23-24
+eval_server/start_multiple_servers.py
+  s_a1ab6769d80641::t_8925ac61282a05 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "bc57e9af08e8f644fd9817acc6c5a316480a38db",
+  "prompts": {},
+  "sessions": {
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
