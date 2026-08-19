@@ -1,0 +1,293 @@
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/VoiceprintConfigEditor.vue
+  s_91d3f2bc89359e::t_ade57428246d52 103
+  s_1109bdd4027772::t_f7c72ed1656db9 161
+  s_91d3f2bc89359e::t_501d13868a8af9 89
+  s_1109bdd4027772::t_4e1605678cff8d 187-194,196-199
+  s_91d3f2bc89359e::t_6b9a8dcaf768ac 160,162-168,171,173-175,177,179,185,195,202,206-207,212,223
+  s_91d3f2bc89359e::t_978be45547e1ee 68
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/RoundConfigEditor.vue
+  s_91d3f2bc89359e::t_cf3b31172fc221 216
+Intelligent-Audio-TEST/backend/services/audio/audio_driver.py
+  s_1109bdd4027772::t_f6faf497a0f950 438-439,450,475-476,480-485,487-490
+  s_1109bdd4027772::t_17dd3bd9927bf4 477
+  s_1109bdd4027772::t_766560c46d6a00 495-498
+Intelligent-Audio-TEST/frontend/src/utils/folderParser.ts
+  s_02ae8eb9f9b472::t_241d9389033827 42-43
+Intelligent-Audio-TEST/backend/controllers/task_controller.py
+  s_bd95ef41f1d753::t_bd871be7b48f0a 3
+  s_bd95ef41f1d753::t_4d14da240049f8 908
+Intelligent-Audio-TEST/backend/services/execution/execution_engine.py
+  s_1109bdd4027772::t_8a2d7a275d9240 91-92
+  h_eadf3f9b9a3d7b 94
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/sections/AlgoParamsStep.vue
+  s_91d3f2bc89359e::t_65b62b9f3a1054 45
+  s_91d3f2bc89359e::t_6de1e3d445f7e2 57
+  s_91d3f2bc89359e::t_c5cf6210ddd76b 173-195
+  s_91d3f2bc89359e::t_a4847ef9aecf34 56
+  s_91d3f2bc89359e::t_6441df4be46361 24-36
+.gitignore
+  s_4676fad3c96390::t_ab53a48aa89960 89,95-96
+  s_4676fad3c96390::t_5008e2c9e8e1c7 27,97
+Intelligent-Audio-TEST/backend/services/execution/e2e_executor.py
+  s_91d3f2bc89359e::t_ed3b5ce8335ee3 204-227
+Intelligent-Audio-TEST/frontend/src/components/algorithm/AlgorithmConfigModal.vue
+  s_91d3f2bc89359e::t_11a982a8caa853 581
+  s_91d3f2bc89359e::t_77594237890410 569-570
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/index.vue
+  s_d7e9eb0c2485c5::t_be68747e1b392c 267-269
+  s_d7e9eb0c2485c5::t_f9a5cf9ea6e7c3 368-379
+  s_1109bdd4027772::t_47aed43310e50b 595-611
+Intelligent-Audio-TEST/frontend/src/components/common/UploadOptions.vue
+  s_a875205cbb00cf::t_e355657cdf21c1 377-379,382,385-387,390
+Intelligent-Audio-TEST/frontend/src/utils/audioUtils.ts
+  s_02ae8eb9f9b472::t_fc6e0b7cc5eee6 686-688
+Intelligent-Audio-TEST/frontend/src/composables/useTestCaseConfig.ts
+  s_a875205cbb00cf::t_83ae36aec2fcef 64-65
+  s_02ae8eb9f9b472::t_fdcfa061304ecf 174
+Intelligent-Audio-TEST/backend/controllers/playback_controller.py
+  s_e0a709eeb06f00::t_c2201ce9356d44 7
+Intelligent-Audio-TEST/backend/services/audio/audio_engine.py
+  s_1109bdd4027772::t_5276163ca95440 43,45,55-58,66-67
+  s_1109bdd4027772::t_6f26b3692db3e9 77
+  s_1109bdd4027772::t_32891edc673492 87
+  s_1109bdd4027772::t_e1bbb4bd402bd5 379
+  s_1109bdd4027772::t_4742e9356a9394 44,53-54,59-65
+  s_1109bdd4027772::t_3377779bbaf5ea 424
+Intelligent-Audio-TEST/frontend/src/views/AudioImportLogic/audioImport.ts
+  s_a875205cbb00cf::t_f2866fb910c72c 168
+  s_02ae8eb9f9b472::t_efb5f0aa2b3f97 12
+  s_02ae8eb9f9b472::t_e8491a747f7f1f 2299
+  s_02ae8eb9f9b472::t_dad713438f37bc 1300-1301,1303-1310
+  s_a875205cbb00cf::t_df7ccd360ce051 1068-1071,1079-1082,1084,1086-1093,1095-1098,1103-1104,1106-1111,1113
+  s_02ae8eb9f9b472::t_1a117bd2fbfbd6 1211,1223-1224,1227-1241,1252-1253
+  s_a875205cbb00cf::t_03c0035a9a90b8 2201-2204,2212-2215,2217,2219-2226,2228-2231,2236-2237,2239-2244,2246
+  s_02ae8eb9f9b472::t_66eb7cb725a40c 1170
+  s_a875205cbb00cf::t_d1d523c41a4770 200
+Intelligent-Audio-TEST/backend/controllers/audio_controller.py
+  s_91d3f2bc89359e::t_9f3604e3a3700f 1834-1835,1837-1867,1871-1872
+  s_91d3f2bc89359e::t_1d9abd0ba73baa 1141-1144
+  s_02ae8eb9f9b472::t_0750920184736e 1957,1960-1962,1968-1977,1988-1990,1992
+  s_91d3f2bc89359e::t_8934c534f2cb4c 1145-1148
+  s_91d3f2bc89359e::t_2057f4ccd3e76a 2209,2223-2231
+  s_91d3f2bc89359e::t_1f7246ffe855a0 2130-2131,2156-2158
+  s_02ae8eb9f9b472::t_fd071442a8bcde 974-975,977-982,2159
+  s_91d3f2bc89359e::t_5cad2d2e6f212c 1956,1958-1959,1963-1967,1978-1987,1991
+Intelligent-Audio-TEST/doc/voice_llm/样例/环境音理解/环境音理解.json
+  h_eadf3f9b9a3d7b 38-42,44
+Intelligent-Audio-TEST/backend/app.py
+  s_1109bdd4027772::t_905ce51ac80c3b 431-438
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/AudioSelectEditor.vue
+  s_91d3f2bc89359e::t_cc56a2b1707743 1-198
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/CaseForm.vue
+  s_d7e9eb0c2485c5::t_f29ffafe7a2454 143-242
+  s_d7e9eb0c2485c5::t_fe2dc83144de7b 265
+  s_d7e9eb0c2485c5::t_86e6d77493d386 1145-1272
+  s_91d3f2bc89359e::t_e52732bea757c6 613-615,617-621,623-624,638-639,641
+  s_d7e9eb0c2485c5::t_b05c9d0838e2f5 406-503
+  s_d7e9eb0c2485c5::t_e460702282bbe6 556-560
+Intelligent-Audio-TEST/backend/services/audio/playback_orchestrator.py
+  s_1109bdd4027772::t_fa2d43506e1ce8 284-287,289-291,296-297,301,309-311
+  s_1109bdd4027772::t_d8d0467a14fae6 125-140
+  s_1109bdd4027772::t_09753cc24bafb2 322-337
+Intelligent-Audio-TEST/doc/voice_llm/样例/2026144010.json
+  h_eadf3f9b9a3d7b 14,19
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseModal/types.ts
+  s_d7e9eb0c2485c5::t_706cbb1721dbda 210-211
+Intelligent-Audio-TEST/frontend/src/utils/testCaseStrategy.ts
+  s_02ae8eb9f9b472::t_26d9f9f4678a9e 133,136
+  s_02ae8eb9f9b472::t_49fa2a3418962f 65-66,68-74
+  s_02ae8eb9f9b472::t_6ce9421814a813 1-58,61-63,75-82,86-89,96-120,122,124-128,130-132,144-149,151-174,177-179,191-192,199-365
+  s_02ae8eb9f9b472::t_6acf222f8b284d 59-60,64,67
+  s_02ae8eb9f9b472::t_65d4af2903d348 181-182,184-190,193-198
+  s_02ae8eb9f9b472::t_caf9e437e5aa50 129
+  s_02ae8eb9f9b472::t_38b537b2d08498 175-176,180,183
+  s_02ae8eb9f9b472::t_894ad8ec9414fc 83-85,90-95
+  s_02ae8eb9f9b472::t_e81b2dcd9eb069 121,123,134-135,137-143,150
+Intelligent-Audio-TEST/frontend/src/components/common/modal/FolderImportModal.vue
+  s_02ae8eb9f9b472::t_1aea70c5f2f733 775
+  s_02ae8eb9f9b472::t_f9e1247c4018e6 134
+  s_02ae8eb9f9b472::t_23f486fc4fe256 564,588
+  s_02ae8eb9f9b472::t_8f702c096e6d55 168
+  s_02ae8eb9f9b472::t_88ec8ef795af6c 510-524,535,544-546,554,559,565-587,589-608,611-613,634,637-638,643-685,688
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "97a295f2bee5cb92299c6bfe33aa129880fea32d",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_02ae8eb9f9b472": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a83c2dc02804909c2c1d3cc",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "operation_id": "6a8415df73ad3a08262ad5dc",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "dedupe_key": "6a83c2dc02804909c2c1d3cc:6a8415df73ad3a08262ad5dc:afterEdit:f55cdf46",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "external_session_id": "6a83c2dc02804909c2c1d3cc",
+        "tool_use_id": "6a8415df73ad3a08262ad5dc",
+        "session_id": "6a83c2dc02804909c2c1d3cc",
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai"
+      }
+    },
+    "s_1109bdd4027772": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a84241f73ad3a08262ada14",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "tool_use_id": "6a8504f773ad3a08262ae295",
+        "dedupe_key": "6a84241f73ad3a08262ada14:6a8504f773ad3a08262ae295:afterEdit:ae2f4af2",
+        "operation_id": "6a8504f773ad3a08262ae295",
+        "source_scene": "agent",
+        "external_session_id": "6a84241f73ad3a08262ada14",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "session_id": "6a84241f73ad3a08262ada14",
+        "tool_type": "builtin"
+      }
+    },
+    "s_4676fad3c96390": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a85048a73ad3a08262ae248",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a85048a73ad3a08262ae248",
+        "tool_type": "builtin",
+        "source_scene": "agent",
+        "client_type": "ide",
+        "tool_use_id": "6a8506f173ad3a08262ae30f",
+        "session_id": "6a85048a73ad3a08262ae248",
+        "dedupe_key": "6a85048a73ad3a08262ae248:6a8506f173ad3a08262ae30f:afterEdit:77c84f1d",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a8506f173ad3a08262ae30f",
+        "edit_kind": "file_edit"
+      }
+    },
+    "s_91d3f2bc89359e": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a84211d73ad3a08262ad633",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a84211d73ad3a08262ad633:6a84419473ad3a08262add93:afterEdit:a17322f9",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "runtime_client": "trae-tob-git-ai",
+        "external_session_id": "6a84211d73ad3a08262ad633",
+        "tool_type": "builtin",
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "operation_id": "6a84419473ad3a08262add93",
+        "session_id": "6a84211d73ad3a08262ad633",
+        "source_scene": "agent",
+        "tool_use_id": "6a84419473ad3a08262add93"
+      }
+    },
+    "s_a875205cbb00cf": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a84229773ad3a08262ad901",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_type": "builtin",
+        "session_id": "6a84229773ad3a08262ad901",
+        "tool_use_id": "6a8423aa73ad3a08262ada0a",
+        "operation_id": "6a8423aa73ad3a08262ada0a",
+        "client_type": "ide",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "external_session_id": "6a84229773ad3a08262ad901",
+        "dedupe_key": "6a84229773ad3a08262ad901:6a8423aa73ad3a08262ada0a:afterEdit:9ce1df25",
+        "edit_kind": "file_edit",
+        "source_scene": "agent"
+      }
+    },
+    "s_bd95ef41f1d753": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a84478573ad3a08262adec6",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a84478573ad3a08262adec6",
+        "tool_use_id": "6a84485b73ad3a08262adf51",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "builtin",
+        "client_type": "ide",
+        "external_session_id": "6a84478573ad3a08262adec6",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "source_scene": "agent",
+        "edit_kind": "file_edit",
+        "dedupe_key": "6a84478573ad3a08262adec6:6a84485b73ad3a08262adf51:afterEdit:927f847d",
+        "operation_id": "6a84485b73ad3a08262adf51"
+      }
+    },
+    "s_d7e9eb0c2485c5": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a844e1073ad3a08262ae0cd",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "operation_id": "6a844fb373ad3a08262ae1a8",
+        "source_scene": "agent",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a844fb373ad3a08262ae1a8",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a844e1073ad3a08262ae0cd:6a844fb373ad3a08262ae1a8:afterEdit:982f1330",
+        "session_id": "6a844e1073ad3a08262ae0cd",
+        "tool_type": "builtin",
+        "external_session_id": "6a844e1073ad3a08262ae0cd",
+        "edit_kind": "file_edit"
+      }
+    },
+    "s_e0a709eeb06f00": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a844a7173ad3a08262adfe2",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "session_id": "6a844a7173ad3a08262adfe2",
+        "external_session_id": "6a844a7173ad3a08262adfe2",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "dedupe_key": "6a844a7173ad3a08262adfe2:6a844b1573ad3a08262ae049:afterEdit:eb72ab95",
+        "tool_use_id": "6a844b1573ad3a08262ae049",
+        "operation_id": "6a844b1573ad3a08262ae049",
+        "tool_type": "builtin"
+      }
+    }
+  }
+}
