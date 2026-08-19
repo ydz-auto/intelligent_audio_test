@@ -4,9 +4,11 @@ turn_taking 包
 小艺评估指标统一入口：调一次 ASR，多个维度共享结果
 
 维度:
-    - tor (正确回复率)       : tor.compute_tor
-    - false_takeover (误接管率) : false_takeover.compute_false_takeover
-    - takeover_latency (接管时延) : takeover_latency.compute_takeover_latency_from_raw
+    - tor (正确回复率)              : tor.compute_tor
+    - false_takeover (误接管率)       : false_takeover.compute_false_takeover
+    - takeover_latency (接管时延)     : takeover_latency.compute_takeover_latency_from_raw
+    - high_freq_turn_taking (高频轮换) : high_freq_turn_taking.compute_high_freq_turn_taking
+    - high_freq_llm_judge (高频LLM裁判): high_freq_llm_judge.evaluate_high_freq_llm
 """
 import os
 import logging
@@ -16,6 +18,8 @@ from .tor import compute_tor
 from .false_takeover import compute_false_takeover
 from .takeover_latency import compute_takeover_latency_from_raw
 from .input_asr import compute_input_asr_match
+from .high_freq_turn_taking import compute_high_freq_turn_taking
+from .high_freq_llm_judge import evaluate_high_freq_llm
 from ..interruptbility.interruption import compute_interruption_metrics
 from ..rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency
 
@@ -727,3 +731,234 @@ def calculate_interruption_metrics(task_params):
         logger.info(f"[interruption_metrics] LLM 评估跳过：{reason}")
 
     return result
+
+
+def calculate_high_freq_turn_taking_metrics(task_params):
+    """高频轮换场景：计算每轮回复时延（飞花令 / 成语接龙 / 快问快答等）
+
+    user_wav 有多段用户讲话，ai_wav 有多段模型回复。
+    逐轮匹配用户段与 AI 回复段，计算每轮回复时延 = AI段起点 - 用户段终点。
+
+    Args:
+        task_params (dict): 包含以下字段（可通过 rounds[0] 传同等效字段）
+            - user_wav (str|None): 用户通道 wav 路径
+            - ai_wav   (str|None): AI 回复通道 wav 路径
+            - rounds (list): 多轮数据，从中提取上述字段
+            - seg_merge_gap_s (float, 可选): 词合并为段的间隙阈值(秒)，默认 0.7
+
+    Returns:
+        dict: {
+            'n_rounds': int,                      轮数（用户段总数）
+            'per_round': list,                    每轮结果
+            'avg_response_latency_s': float|None, 平均回复时延（秒）
+            'min_response_latency_s': float|None, 最小回复时延（秒）
+            'max_response_latency_s': float|None, 最大回复时延（秒）
+            'avg_response_latency_ms': float|None, 平均回复时延（毫秒）
+            'n_user_segments': int,               用户段总数
+            'n_ai_segments': int,                 AI段总数
+            'n_matched_rounds': int,              成功匹配的轮数
+            'n_missed_rounds': int,               未匹配的轮数
+            'n_unmatched_ai_segments': int,       未消费的AI段数
+            'message': str,
+        }
+    """
+    import json as _json
+
+    logger.info(f"[high_freq_turn_taking] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
+
+    rounds = task_params.get('rounds', [])
+    round0 = rounds[0] if (isinstance(rounds, list) and rounds and isinstance(rounds[0], dict)) else {}
+
+    user_wav = task_params.get('user_wav') or round0.get('user_wav')
+    ai_wav = task_params.get('ai_wav') or round0.get('ai_wav')
+    merge_gap = task_params.get('seg_merge_gap_s') or round0.get('seg_merge_gap_s')
+
+    print(
+        "\n==================== high_freq_turn_taking 收到数据 ====================\n"
+        f"  用户通道音频(user_wav) : {_short(user_wav)}\n"
+        f"  AI回复音频(ai_wav)     : {_short(ai_wav)}\n"
+        f"  合并间隙(seg_merge_gap_s): {merge_gap or 0.7}\n"
+        "========================================================================"
+    )
+
+    kwargs = {}
+    if merge_gap is not None:
+        kwargs['seg_merge_gap_s'] = float(merge_gap)
+
+    user_chunks = _get_asr_chunks(user_wav) if user_wav else None
+    ai_chunks = _get_asr_chunks(ai_wav) if ai_wav else None
+
+    results = compute_high_freq_turn_taking(
+        user_chunks=user_chunks or [],
+        ai_chunks=ai_chunks or [],
+        **kwargs,
+    )
+
+    _print_high_freq_results(results)
+    return results
+
+
+def _print_high_freq_results(results):
+    """打印高频轮换指标（中英文对照）"""
+    def _x(v):
+        return v if v is not None else 'None'
+
+    per_round = results.get('per_round', [])
+
+    lines = [
+        "\n==================== high_freq_turn_taking 评估结果 / Evaluation Result ====================\n"
+        f"  高频轮换 High-Frequency Turn-Taking\n"
+        f"     总轮数 n_rounds                    : {_x(results.get('n_rounds'))}\n"
+        f"     用户段数 n_user_segments            : {_x(results.get('n_user_segments'))}\n"
+        f"     AI段数 n_ai_segments                : {_x(results.get('n_ai_segments'))}\n"
+        f"     匹配轮数 n_matched_rounds           : {_x(results.get('n_matched_rounds'))}\n"
+        f"     未匹配轮数 n_missed_rounds          : {_x(results.get('n_missed_rounds'))}\n"
+        f"     未消费AI段 n_unmatched_ai_segments   : {_x(results.get('n_unmatched_ai_segments'))}\n"
+        f"     平均回复时延 avg_latency_ms         : {_x(results.get('avg_response_latency_ms'))}\n"
+        f"     最小回复时延 min_latency_s          : {_x(results.get('min_response_latency_s'))}\n"
+        f"     最大回复时延 max_latency_s          : {_x(results.get('max_response_latency_s'))}\n"
+        f"     说明 message                        : {_x(results.get('message'))}\n"
+    ]
+
+    if per_round:
+        lines.append("  ── 每轮明细 Per-Round Detail ──\n")
+        for rd in per_round:
+            us = rd.get('user_segment') or []
+            ai = rd.get('ai_segment')
+            latency = rd.get('response_latency_ms')
+            gap = rd.get('inter_round_gap_s')
+            u_text = us[2][:40] if len(us) > 2 else ''
+            if ai:
+                ai_text = ai[2][:40] if len(ai) > 2 else ''
+                lines.append(
+                    f"     轮{rd['round_index']}: "
+                    f"用户[{us[0]:.2f}-{us[1]:.2f}] '{u_text}' "
+                    f"→ AI[{ai[0]:.2f}-{ai[1]:.2f}] '{ai_text}' "
+                    f"时延={latency:.0f}ms"
+                )
+                if gap is not None:
+                    lines[-1] += f"  间隔={gap:.2f}s"
+            else:
+                lines.append(
+                    f"     轮{rd['round_index']}: "
+                    f"用户[{us[0]:.2f}-{us[1]:.2f}] '{u_text}' "
+                    f"→ 未匹配 ({rd.get('message', '')})"
+                )
+
+    lines.append("=========================================================================================")
+    print(''.join(lines))
+
+
+def calculate_high_freq_llm_judge(task_params):
+    """高频轮换场景 LLM 裁判：传输录屏文件，逐轮判断问答内容是否符合预期
+
+    将录屏文件发送给多模态 LLM，结合 rounds 文本上下文
+    （用户提问/模型回复/预期答案），逐轮判断模型回复是否符合预期，
+    返回 pass/fail + reason。
+
+    Args:
+        task_params (dict): 包含以下字段
+            - record_file (str): 录屏/音频文件路径
+            - rounds (list): 多轮文本数据，每轮 {query, answer, expected_answer}
+            - scenario_type (str): 场景类型（飞花令/成语接龙/快问快答/自定义）
+            - scenario_rules (str): 自定义场景规则
+            - llm_model (str): LLM 模型名，缺省读 config.LLM_JUDGE.default_model
+            - max_tokens (int): 最大输出 token，默认 4096
+            - temperature (float): 采样温度，默认 0.1
+
+    Returns:
+        dict: {
+            'enabled': bool,
+            'model': str,
+            'scenario_type': str,
+            'n_rounds': int,
+            'per_round': [{round, pass, reason}, ...],
+            'overall_pass_rate': float|None,
+            'n_passed': int,
+            'n_failed': int,
+            'summary': str,
+            'tokens_used': int,
+            'message': str,
+        }
+    """
+    import json as _json
+
+    logger.info(f"[high_freq_llm_judge] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
+
+    record_file = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path') or ''
+    rounds = task_params.get('rounds') or []
+    scenario_type = task_params.get('scenario_type') or ''
+    scenario_rules = task_params.get('scenario_rules') or ''
+    model = task_params.get('llm_model') or ''
+    max_tokens = task_params.get('max_tokens', 4096)
+    temperature = task_params.get('temperature', 0.1)
+
+    print(
+        "\n==================== high_freq_llm_judge 收到数据 ====================\n"
+        f"  录屏文件(record_file)  : {_short(record_file)}\n"
+        f"  场景类型(scenario_type): {scenario_type or 'N/A'}\n"
+        f"  轮次数(n_rounds)       : {_len_of(rounds)}\n"
+        f"  模型(llm_model)        : {model or '(default)'}\n"
+        "======================================================================"
+    )
+
+    try:
+        result = evaluate_high_freq_llm(
+            video_path=record_file,
+            rounds=rounds,
+            scenario_type=scenario_type,
+            scenario_rules=scenario_rules,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+    except Exception as e:
+        logger.error(f"[high_freq_llm_judge] 评估失败: {e}")
+        result = {
+            'enabled': False,
+            'model': model,
+            'scenario_type': scenario_type,
+            'video_path': record_file,
+            'n_rounds': _len_of(rounds),
+            'per_round': [],
+            'message': f'评估失败: {e}',
+        }
+
+    _print_high_freq_llm_results(result)
+    return result
+
+
+def _print_high_freq_llm_results(results):
+    """打印高频轮换 LLM 裁判结果（中英文对照）"""
+    def _x(v):
+        return v if v is not None else 'None'
+
+    per_round = results.get('per_round', [])
+
+    lines = [
+        "\n==================== high_freq_llm_judge 评估结果 / Evaluation Result ====================\n"
+        f"  高频轮换 LLM 裁判 High-Frequency LLM Judge\n"
+        f"     模型 model                      : {_x(results.get('model'))}\n"
+        f"     场景 scenario_type              : {_x(results.get('scenario_type'))}\n"
+        f"     总轮数 n_rounds                 : {_x(results.get('n_rounds'))}\n"
+        f"     通过轮数 n_passed                : {_x(results.get('n_passed'))}\n"
+        f"     未通过轮数 n_failed             : {_x(results.get('n_failed'))}\n"
+        f"     通过率 overall_pass_rate        : {_x(results.get('overall_pass_rate'))}\n"
+        f"     tokens (in/out/total)           : {results.get('input_token', 0)}/{results.get('output_token', 0)}/{results.get('tokens_used', 0)}\n"
+        f"     说明 message                    : {_x(results.get('message'))}\n"
+    ]
+
+    if per_round:
+        lines.append("  ── 每轮明细 Per-Round Detail ──\n")
+        for rd in per_round:
+            status = 'PASS' if rd.get('pass') else 'FAIL'
+            lines.append(
+                f"     轮{rd['round']} [{status}]\n"
+                f"       理由: {rd.get('reason', '')}\n"
+            )
+
+    if results.get('summary'):
+        lines.append(f"  ── 总结 Summary ──\n     {results['summary']}\n")
+
+    lines.append("==========================================================================================")
+    print(''.join(lines))
