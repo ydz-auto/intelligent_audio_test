@@ -16,7 +16,7 @@ def main():
     num_threads = config.WSGI_THREADS or min(config.LOCAL_MAX_CONCURRENCY * 2 + 4, 32)
     server = create_server(app, host=args.host, port=args.port, threads=num_threads)
 
-    print(f"Starting WER Calculator Service on {args.host}:{args.port} (waitress, threads={num_threads})...")
+    print(f"Starting Eval Server on {args.host}:{args.port} (waitress, threads={num_threads})...")
     server.run()
 
 if __name__ == '__main__':

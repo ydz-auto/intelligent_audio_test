@@ -4,6 +4,7 @@ from .controllers.api import api_bp
 from .controllers.health import health_bp
 from .models.task import TaskModel
 from .services.task_service import TaskService
+from .services import calculators  # noqa: F401 触发所有 calculator 自动注册
 import os
 import logging
 

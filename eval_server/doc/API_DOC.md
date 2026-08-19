@@ -2,7 +2,7 @@
 
 ## 1. 服务概述
 
-音频评估维度计算服务，支持 WER、SER、CPWER、TCPWER、STM_WER、DER、LLM Judge、小艺指标(xiaoyi_metrics) 的计算。服务采用异步任务处理模式，支持并发控制、状态查询、分布式调度、文件上传和动态配置。
+音频评估维度计算服务，支持 WER、SER、CPWER、TCPWER、STM_WER、DER、LLM Judge、小艺指标（turn_taking / interruption_metrics / non_interactive_latency / noise_latency / env_judge）的计算。服务采用异步任务处理模式，支持并发控制、状态查询、分布式调度、文件上传和动态配置。
 
 ### 1.1 基础信息
 
@@ -16,15 +16,18 @@
 
 | task_type | 说明 | 必填字段 | 请求方式 |
 |-----------|------|---------|---------|
-| wer | 词错误率 | asr_ref, asr_result | JSON |
-| ser | 句错误率 | asr_ref, asr_result | JSON |
+| wer | 词错误率 | asr_ref, asr_hyp | JSON |
+| ser | 句错误率 | asr_ref, asr_hyp | JSON |
 | cpwer | 连接词错误率 | ref_stm, hyp_stm | JSON |
 | tcpwer | 时间约束词错误率 | ref_stm, hyp_stm | JSON |
 | stm_wer | 基于 STM 的 WER | ref_stm, hyp_stm | JSON |
 | der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_res, stm_res | JSON |
 | llm_judge | LLM 语义评分 | answer, correct_answer | JSON |
-| xiaoyi_metrics | 小艺指标(tor+false_takeover+takeover_latency) | record_path, pause, first_frame_ms, end_ms | multipart |
-| interruption_metrics | 打断指标(打断成功率+检查时延+恢复时延) | user_asr, model_asr | JSON |
+| turn_taking | 话轮接管（tor + false_takeover + takeover_latency + input_asr） | 无必填（record_file 可为空） | JSON / multipart |
+| interruption_metrics | 打断指标（打断成功率 + 检查时延 + 恢复时延） | user_asr, model_asr | JSON |
+| non_interactive_latency | 非交互意图时延 | user_asr, model_asr | JSON |
+| noise_latency | 噪声打断时延 | model_asr, start_ms, end_ms, pcm_first_ms | JSON |
+| env_judge | 环境音/打断能力录屏裁判 | video_path / record_file | JSON |
 
 ---
 
@@ -42,7 +45,7 @@
   "status": "healthy",
   "service": "wer-ser-calculator",
   "role": "master",
-  "supported_task_types": ["wer", "ser", "cpwer", "tcpwer", "stm_wer", "der", "llm_judge", "xiaoyi_metrics", "interruption_metrics"],
+  "supported_task_types": ["wer", "ser", "cpwer", "tcpwer", "stm_wer", "der", "llm_judge", "turn_taking", "interruption_metrics", "non_interactive_latency", "noise_latency", "env_judge"],
   "local": {
     "max_concurrency": 10,
     "current_concurrency": 2,
@@ -72,8 +75,17 @@
 {
   "task_type": "wer",
   "asr_ref": "今天天气不错",
-  "asr_result": "今天天气不措",
+  "asr_hyp": "今天天气不措",
   "source_lang": "zh"
+}
+```
+
+**CPWER/TCPWER/STM_WER 请求示例：**
+```json
+{
+  "task_type": "cpwer",
+  "ref_stm": "file1 1 speakerA 0.0 1.0 <o> hello world",
+  "hyp_stm": "file1 1 speakerA 0.0 1.0 <o> hello word"
 }
 ```
 
@@ -95,8 +107,47 @@
   "answer": "北京是中国的首都",
   "correct_answer": "中国的首都是北京",
   "query": "中国的首都是哪个城市？",
-  "model": "gpt-4",
+  "model": "deepseek-r1",
   "prompt": "评估回答的准确性和相关性"
+}
+```
+
+**interruption_metrics 请求示例：**
+```json
+{
+  "task_type": "interruption_metrics",
+  "user_asr": [{"text": "打断一下", "start": 1.0, "end": 2.0}],
+  "model_asr": [{"text": "好的", "start": 2.5, "end": 3.0}]
+}
+```
+
+**non_interactive_latency 请求示例：**
+```json
+{
+  "task_type": "non_interactive_latency",
+  "user_asr": [{"text": "你好", "start": 0.0, "end": 1.0}, {"text": "还有问题", "start": 3.0, "end": 4.0}],
+  "model_asr": [{"text": "你好有什么可以帮你", "start": 1.5, "end": 3.5}]
+}
+```
+
+**noise_latency 请求示例：**
+```json
+{
+  "task_type": "noise_latency",
+  "model_asr": [{"text": "你好", "start": 1.0, "end": 2.0}],
+  "start_ms": 500,
+  "end_ms": 1500,
+  "pcm_first_ms": 100
+}
+```
+
+**env_judge 请求示例：**
+```json
+{
+  "task_type": "env_judge",
+  "video_path": "/path/to/record.mp4",
+  "env_type": "noise",
+  "model": "qwen-omni"
 }
 ```
 
@@ -108,30 +159,22 @@
 - **URL**：`/api/create_task_upload`
 - **Content-Type**：multipart/form-data
 
-用于需要上传音频文件的任务（如 xiaoyi_metrics）。文件字段会被提取为 multipart 上传，payload 中对应路径替换为 `__MULTIPART__:field_name` 占位符，eval_server 收到后保存文件并替换为实际路径。
+用于需要上传音频/视频文件的任务（如 turn_taking、env_judge）。文件字段会被提取为 multipart 上传，payload 中对应路径替换为 `__MULTIPART__:field_name` 占位符，eval_server 收到后保存文件并替换为实际路径。
 
-**xiaoyi_metrics 请求示例：**
+**turn_taking 请求示例：**
 
 ```bash
 curl -X POST http://localhost:5001/api/create_task_upload \
-  -F "task_type=xiaoyi_metrics" \
-  -F "record_file=@audio.wav" \
-  -F "first_frame_ms=1700000000000" \
-  -F "end_ms=1700000005000" \
-  -F "offset_ms=40" \
-  -F 'pause=[{"text":"","timestamp":[1.0,2.0]}]'
+  -F "task_type=turn_taking" \
+  -F "record_file=@audio.wav"
 ```
 
-**xiaoyi_metrics 参数说明：**
+**turn_taking 参数说明：**
 
 | 参数名 | 类型 | 必填 | 描述 |
 |--------|------|------|------|
-| task_type | string | 是 | 固定为 `xiaoyi_metrics` |
-| record_file | file | 是 | wav 录音文件（multipart 上传） |
-| pause | json string | 是 | 停顿区间数据 `[{"text":"","timestamp":[start,end]}]` |
-| first_frame_ms | int | 是 | 录屏首帧时刻（毫秒 Unix 时间戳） |
-| end_ms | int | 是 | 音频播放结束时刻（毫秒 Unix 时间戳） |
-| offset_ms | int | 否 | 时延补偿，默认 40 |
+| task_type | string | 是 | 固定为 `turn_taking` |
+| record_file | file | 否 | wav 录音文件（multipart 上传），可为空 |
 
 ---
 
@@ -144,10 +187,11 @@ curl -X POST http://localhost:5001/api/create_task_upload \
   "code": 0,
   "msg": "success",
   "data": {
-    "task_id": "task_abc123",
+    "eval_task_id": "task_abc123",
+    "task_id": "caller_task_id",
     "status_url": "http://localhost:5001/api/get_status/task_abc123",
     "final_result_url": "http://localhost:5001/api/get_final_result/task_abc123",
-    "task_type": "xiaoyi_metrics",
+    "task_type": "wer",
     "msg": "任务已创建，正在本地处理"
   }
 }
@@ -168,7 +212,7 @@ curl -X POST http://localhost:5001/api/create_task_upload \
   "data": {
     "task_id": "task_1234567890",
     "status": "completed",
-    "task_type": "xiaoyi_metrics",
+    "task_type": "wer",
     "created_at": "2026-07-22 10:00:00",
     "started_at": "2026-07-22 10:00:01",
     "completed_at": "2026-07-22 10:00:30",
@@ -214,7 +258,7 @@ curl -X POST http://localhost:5001/api/create_task_upload \
 }
 ```
 
-**xiaoyi_metrics 响应示例：**
+**turn_taking 响应示例：**
 ```json
 {
   "code": 0,
@@ -222,32 +266,12 @@ curl -X POST http://localhost:5001/api/create_task_upload \
   "data": {
     "task_id": "task_456",
     "status": "completed",
-    "task_type": "xiaoyi_metrics",
+    "task_type": "turn_taking",
     "result": {
-      "tor": {
-        "per_pause": [0, 1],
-        "takeover_count": 1,
-        "total_pauses": 2,
-        "tor": 0.5
-      },
-      "false_takeover": {
-        "tor": 0,
-        "n_words": 0,
-        "duration": 0.0,
-        "total_pauses": 2,
-        "hit_words": [],
-        "details": [...]
-      },
-      "takeover_latency": {
-        "takeover_latency_ms": 350,
-        "first_frame_ms": 1700000000000,
-        "first_word_begin_ms": 150,
-        "model_first_word_ms": 1700000000150,
-        "end_ms": 1700000005000,
-        "offset_ms": 40,
-        "audio_end_with_offset_ms": 1700000005040,
-        "message": "OK"
-      }
+      "tor": {"tor": 1, "takeover_count": 1, "total_pauses": 1},
+      "false_takeover": {"tor": 0, "n_words": 0, "duration": 0.0},
+      "takeover_latency": {"takeover_latency_ms": 350, "message": "OK"},
+      "input_asr": {"match": true, "similarity": 0.95}
     },
     "completed_at": "2026-07-22 10:00:30"
   }
@@ -278,7 +302,7 @@ curl -X POST http://localhost:5001/api/endpoints \
 {
   "task_type": "wer",
   "asr_ref": "今天天气不错",
-  "asr_result": "今天天气不措",
+  "asr_hyp": "今天天气不措",
   "endpoints": [{"endpoint": "http://localhost:5002"}]
 }
 ```
@@ -313,12 +337,13 @@ curl http://localhost:5001/api/status
 
 ## 5. 版本信息
 
-- **版本**：2.0.0
-- **更新日期**：2026-07-22
+- **版本**：3.0.0
+- **更新日期**：2026-08-18
 - **更新内容**：
-  - 新增 llm_judge 任务类型（LLM 语义评分）
-  - 新增 xiaoyi_metrics 任务类型（tor + false_takeover + takeover_latency）
-  - 新增 interruption_metrics 任务类型（打断成功率 + 打断检查时延 + 打断恢复时延，入参 user_asr + model_asr 两路对齐 ASR）
+  - 重构为策略模式 + 注册表架构，`calculate()` 和 `api.py` 不再需要 if-elif 链
+  - 新增 `BaseCalculator` 基类，统一 `validate → prepare_params → calculate` 模板方法
+  - 按域分子包：wer / der / xiaoyi_metrics（turn_taking / interruptbility / rejection_scene_awareness / env_judge / llm_judge）
+  - 参数校验逻辑内聚到各自 Calculator 的 `validate()` 方法
+  - 新增 task_type：`turn_taking`（原 `xiaoyi_metrics`）、`non_interactive_latency`、`noise_latency`、`env_judge`
   - 新增 `/api/create_task_upload` 接口支持 multipart 文件上传
   - ASR 结果通过返回值传递，不读写中间 JSON 文件
-  - 三个小艺子指标共享一次 ASR 推理结果

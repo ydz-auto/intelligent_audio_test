@@ -1,4 +1,4 @@
-from app.services.wer_calculator import calculate_wer
+from app.services.calculators.wer.wer_calculator import calculate_wer
 from app.models.task import TaskModel
 from app.config import config
 import json

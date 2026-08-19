@@ -4,9 +4,10 @@
 
 ## 功能特性
 
-- **多维度评估**：WER、SER、CPWER、TCPWER、STM_WER、DER、LLM Judge、小艺指标(tor/false_takeover/takeover_latency)
+- **多维度评估**：WER、SER、CPWER、TCPWER、STM_WER、DER、LLM Judge、小艺指标（turn_taking / interruption_metrics / non_interactive_latency / noise_latency / env_judge）
+- **策略模式架构**：每种任务类型一个 Calculator 策略类，`validate → prepare_params → calculate` 模板方法，注册表自动注册
 - **异步任务模式**：创建任务 → 轮询状态 → 获取结果
-- **文件上传**：支持 multipart/form-data 上传音频文件
+- **文件上传**：支持 multipart/form-data 上传音频/视频文件
 - **本地/远程处理**：支持本地处理和分发到远程 Worker 节点
 - **两层并发控制**：本地并发 + 远程端点并发，支持动态调整
 - **ASR 远程调用**：小艺指标通过 HTTP 调用独立 ASR 主机推理，不占用本机 CPU
@@ -35,16 +36,14 @@ eval_server/
 │   ├── models/
 │   │   └── task.py             # 任务数据模型
 │   ├── services/
-│   │   ├── xiaoyi_metrics/     # 小艺指标
-│   │   │   ├── __init__.py     # 统一入口：调一次 ASR，三个子指标共享
-│   │   │   ├── tor.py          # 接话率
-│   │   │   ├── false_takeover.py   # 误接管率
-│   │   │   └── takeover_latency.py # 接管时延
-│   │   ├── wer_calculator.py   # WER/SER/CPWER/TCPWER/STM_WER
-│   │   ├── der_calculator.py   # DER
-│   │   ├── llm_judge_calculator.py # LLM 语义评分
+│   │   ├── calculators/        # 计算器包（策略模式 + 注册表）
+│   │   │   ├── __init__.py     #   自动注册全部 calculator
+│   │   │   ├── base.py         #   BaseCalculator 基类（模板方法）
+│   │   │   ├── wer/            #   WER 系列域（strategies.py + wer_calculator.py）
+│   │   │   ├── der/            #   DER 域（strategy.py + der_calculator.py）
+│   │   │   └── xiaoyi_metrics/ #  小艺指标域（含 turn_taking / interruptbility / rejection_scene_awareness / env_judge / llm_judge）
 │   │   ├── remote_service.py   # 远程端点调用
-│   │   └── task_service.py     # 任务调度入口
+│   │   └── task_service.py     # 任务调度入口（注册表查找 + worker 线程）
 │   └── utils/
 │       ├── asr_adapator.py     # ASR 适配层（HTTP 调用远程 asr_server）
 │       ├── concurrency.py      # 并发控制
@@ -80,15 +79,18 @@ python app.py
 
 | task_type | 说明 | 必填字段 |
 |-----------|------|---------|
-| wer | 词错误率 | asr_ref, asr_result |
-| ser | 句错误率 | asr_ref, asr_result |
+| wer | 词错误率 | asr_ref, asr_hyp |
+| ser | 句错误率 | asr_ref, asr_hyp |
 | cpwer | 连接词错误率 | ref_stm, hyp_stm |
 | tcpwer | 时间约束词错误率 | ref_stm, hyp_stm |
 | stm_wer | 基于 STM 的 WER | ref_stm, hyp_stm |
 | der | 说话人分离错误率 | rttm_ref, stm_ref, rttm_res, stm_res |
 | llm_judge | LLM 语义评分 | answer, correct_answer |
-| xiaoyi_metrics | 小艺指标(tor+false_takeover+takeover_latency) | record_path, pause, first_frame_ms, end_ms |
-| interruption_metrics | 打断指标(打断成功率+检查时延+恢复时延) | user_asr, model_asr |
+| turn_taking | 话轮接管（tor + false_takeover + takeover_latency + input_asr） | 无必填（record_file 可为空） |
+| interruption_metrics | 打断指标（打断成功率 + 检查时延 + 恢复时延） | user_asr, model_asr |
+| non_interactive_latency | 非交互意图时延 | user_asr, model_asr |
+| noise_latency | 噪声打断时延 | model_asr, start_ms, end_ms, pcm_first_ms |
+| env_judge | 环境音/打断能力录屏裁判 | video_path / record_file |
 
 ## 快速开始
 
@@ -103,18 +105,15 @@ curl http://localhost:5001/health
 ```bash
 curl -X POST http://localhost:5001/api/create_task \
   -H "Content-Type: application/json" \
-  -d '{"task_type":"wer","asr_ref":"今天天气不错","asr_result":"今天天气不措"}'
+  -d '{"task_type":"wer","asr_ref":"今天天气不错","asr_hyp":"今天天气不措"}'
 ```
 
 ### 3. 上传文件创建任务（multipart）
 
 ```bash
 curl -X POST http://localhost:5001/api/create_task_upload \
-  -F "task_type=xiaoyi_metrics" \
-  -F "record_file=@audio.wav" \
-  -F "first_frame_ms=1700000000000" \
-  -F "end_ms=1700000005000" \
-  -F 'pause=[{"text":"","timestamp":[1.0,2.0]}]'
+  -F "task_type=turn_taking" \
+  -F "record_file=@audio.wav"
 ```
 
 ### 4. 查询任务
@@ -127,10 +126,25 @@ curl http://localhost:5001/api/get_status/{task_id}
 curl http://localhost:5001/api/get_final_result/{task_id}
 ```
 
+## 架构设计
+
+采用 **策略模式 + 注册表** 组合，辅以 **模板方法** 处理参数提取：
+
+- **策略模式**：每种 task_type 封装成独立的 Calculator 类，实现同一接口（`BaseCalculator`）
+- **注册表**：`TaskService.CALCULATORS` dict，`calculators/__init__.py` import 时自动注册全部策略类
+- **模板方法**：`BaseCalculator.run()` 调 `prepare_params → calculate`，子类可覆写 `prepare_params`
+
+新增任务类型只需两步，无需改 `calculate()` 或 `api.py`：
+
+1. 在对应域子包新建 `strategy.py`，实现 `validate` + `prepare_params` + `calculate`
+2. 在 `calculators/__init__.py` 加一行注册
+
+详见 [ARCHITECTURE.md](ARCHITECTURE.md)。
+
 ## 文档
 
 | 文档 | 内容 |
 |------|------|
 | [README.md](README.md) | 项目简介、安装、快速开始 |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 架构设计、调用流程、xiaoyi_metrics 设计 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 架构设计、策略模式、调用流程、xiaoyi_metrics 设计 |
 | [API_DOC.md](API_DOC.md) | 完整 API 接口规范、请求/响应示例、错误码 |

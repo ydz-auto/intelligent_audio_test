@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-PAUSE_JSON.py
+pause_json.py
 流程：本地 wav → 调用 ASR_JSON.transcribe_and_dump 拿词级时间戳
       → 扫描相邻词间隔，筛出 [MIN_GAP, MAX_GAP] 范围内的停顿
       → 生成 {wav 同名}.pause.json
