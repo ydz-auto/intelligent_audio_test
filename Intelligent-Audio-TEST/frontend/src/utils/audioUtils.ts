@@ -683,7 +683,9 @@ export const extractParamsFromAnnotations = (
             };
             const collected = arr
               .filter((seg: any) => seg && typeof seg === 'object' && getField(seg, fieldKey) !== undefined && getField(seg, fieldKey) !== null)
-              .map((seg: any) => getField(seg, fieldKey));
+              .map((seg: any) => getField(seg, fieldKey))
+              // 过滤掉空数组/空字符串/空对象（如 interferers: [] 不应算作有效值）
+              .filter((c: any) => !(c && typeof c === 'object' && typeof c.length === 'number' && c.length === 0) && !(typeof c === 'string' && c.length === 0));
             if (collected.length > 0) {
               value = collected.length === 1 ? collected[0] : collected;
               break;

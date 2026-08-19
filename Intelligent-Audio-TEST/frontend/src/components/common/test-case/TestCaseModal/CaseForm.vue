@@ -140,6 +140,106 @@
       />
     </div>
 
+    <!-- ===== 全局背景噪声（case 级 config.background_noise，跨所有轮次持续播放）===== -->
+    <div class="form-section global-noise-section">
+      <div class="global-noise-header">
+        <span class="global-noise-title">
+          <i class="fas fa-volume-up"></i> 全局背景噪声
+        </span>
+        <span class="global-noise-hint">配置后跨所有轮次持续播放，优先于轮次级噪声</span>
+        <button
+          v-if="!hasGlobalNoise"
+          type="button"
+          class="btn btn-sm btn-outline-primary"
+          @click="addGlobalNoise"
+        >
+          <i class="fas fa-plus"></i> 添加全局噪声
+        </button>
+        <button
+          v-else
+          type="button"
+          class="global-noise-remove-btn"
+          @click="clearGlobalNoise"
+        >
+          <i class="fas fa-trash-alt"></i> 移除
+        </button>
+      </div>
+
+      <div v-if="hasGlobalNoise" class="global-noise-body">
+        <!-- 噪声音频卡片 -->
+        <div class="global-noise-field">
+          <label class="global-noise-field-label">噪声音频</label>
+          <div class="global-noise-card">
+            <div class="global-noise-card-info">
+              <div class="global-noise-card-row">
+                <i class="fas fa-music global-noise-card-icon"></i>
+                <span class="global-noise-card-name" :title="globalNoiseAudioDisplayName">
+                  {{ globalNoiseAudioDisplayName }}
+                </span>
+                <span class="global-noise-card-duration" v-if="globalNoiseAudioId && getAudioDuration(globalNoiseAudioId) > 0">
+                  <i class="fas fa-clock"></i> {{ formatDuration(getAudioDuration(globalNoiseAudioId)) }}
+                </span>
+              </div>
+              <div class="global-noise-card-tags" v-if="globalNoiseAudioId && getAudioTags(globalNoiseAudioId)">
+                <span class="global-noise-tag" v-for="tag in getNormalizedTags(getAudioTags(globalNoiseAudioId))" :key="tag">{{ tag }}</span>
+              </div>
+            </div>
+            <div class="global-noise-card-actions">
+              <button type="button" class="btn btn-sm btn-outline-primary" @click="openGlobalNoiseAudioModal">
+                <i class="fas fa-exchange-alt"></i> 更换
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-info" v-if="globalNoiseAudioId" @click="previewGlobalNoise">
+                <i class="fas fa-play"></i> 试听
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="global-noise-field-row">
+          <div class="global-noise-field" style="flex:1">
+            <label class="global-noise-field-label">声压级 (dB)</label>
+            <input
+              type="number"
+              class="form-control form-control-sm"
+              :value="globalNoiseConfig?.spl ?? 0"
+              min="0" max="120" step="1"
+              @input="updateGlobalNoise('spl', Number(($event.target as HTMLInputElement).value))"
+            />
+          </div>
+          <div class="global-noise-field" style="flex:1">
+            <label class="global-noise-field-label">循环播放</label>
+            <label class="global-noise-switch">
+              <input
+                type="checkbox"
+                :checked="globalNoiseConfig?.loop ?? true"
+                @change="updateGlobalNoise('loop', ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ globalNoiseConfig?.loop ? '是' : '否' }}</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="global-noise-field">
+          <label class="global-noise-field-label">播放设备（可多选）</label>
+          <div class="global-noise-devices">
+            <label v-for="dev in playbackDevices" :key="dev.id" class="global-noise-device-chip">
+              <input
+                type="checkbox"
+                :value="String(dev.id)"
+                :checked="isGlobalNoiseDeviceSelected(String(dev.id))"
+                @change="toggleGlobalNoiseDevice(String(dev.id), ($event.target as HTMLInputElement).checked)"
+              />
+              <span>{{ dev.name }}</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div v-else class="global-noise-empty">
+        <i class="fas fa-info-circle"></i>
+        未配置全局背景噪声，点击"添加全局噪声"开始配置
+      </div>
+    </div>
+
     <!-- ===== 整体评估维度（config.dimensions）===== -->
     <div v-if="localFormData.config.rounds && localFormData.config.rounds.length > 1" class="form-section overall-eval-section">
       <OverallEvaluationEditor
@@ -162,7 +262,7 @@ import OverallEvaluationEditor from './OverallEvaluationEditor.vue';
 import { useAlgorithmConfig } from '../../../../composables/useAlgorithmConfig';
 import { useAlgorithmLabels } from '../../../../composables/useAlgorithmLabels';
 import { tagsApi, algorithmApi } from '../../../../utils/api';
-import type { TestCaseFormData, RoundConfigItem, PlaybackDevice } from './types';
+import type { TestCaseFormData, RoundConfigItem, PlaybackDevice, BackgroundNoiseConfig } from './types';
 
 const props = defineProps<{
   formData: Partial<TestCaseFormData>;
@@ -303,6 +403,104 @@ const playbackDevices = computed<PlaybackDevice[]>(() => {
   return audioConfig?.playbackDevices?.value || [];
 });
 
+// ---- 全局背景噪声（case 级 config.background_noise）----
+const globalNoiseConfig = computed(() => localFormData.value.config?.background_noise as BackgroundNoiseConfig | undefined);
+
+const hasGlobalNoise = computed(() => {
+  const bg = globalNoiseConfig.value;
+  return !!(bg && (bg.audioId || (bg as any).audioName || (bg as any).audio));
+});
+
+const globalNoiseAudioId = computed(() => globalNoiseConfig.value?.audioId || '');
+
+const globalNoiseAudioDisplayName = computed(() => {
+  const bg = globalNoiseConfig.value as any;
+  if (!bg) return '';
+  if (bg.audioId) {
+    const name = audioConfig?.getAudioName?.(bg.audioId);
+    if (name && name !== bg.audioId) return name;
+  }
+  return bg.audioName || bg.audio || '(未选择音频)';
+});
+
+const globalNoiseDeviceIdSet = computed<Set<string>>(() => {
+  const bg = globalNoiseConfig.value as any;
+  if (!bg) return new Set();
+  const ids: string[] = Array.isArray(bg.deviceIds) ? bg.deviceIds.map(String) : [];
+  const names: string[] = Array.isArray(bg.deviceNames) ? bg.deviceNames : [];
+  for (const name of names) {
+    const dev = playbackDevices.value.find((d: PlaybackDevice) => d.name === name);
+    if (dev && !ids.includes(String(dev.id))) ids.push(String(dev.id));
+  }
+  return new Set(ids);
+});
+
+function isGlobalNoiseDeviceSelected(deviceId: string): boolean {
+  return globalNoiseDeviceIdSet.value.has(deviceId);
+}
+
+function toggleGlobalNoiseDevice(deviceId: string, checked: boolean) {
+  const current = new Set(globalNoiseDeviceIdSet.value);
+  if (checked) current.add(deviceId);
+  else current.delete(deviceId);
+  updateGlobalNoise('deviceIds', Array.from(current));
+}
+
+function updateGlobalNoise(key: string, value: unknown) {
+  if (!localFormData.value.config) return;
+  const existing = (localFormData.value.config.background_noise || { audioId: '', deviceIds: [], spl: 0, loop: true }) as BackgroundNoiseConfig;
+  localFormData.value.config.background_noise = { ...existing, [key]: value } as BackgroundNoiseConfig;
+  emitFormData();
+}
+
+function clearGlobalNoise() {
+  if (localFormData.value.config) {
+    delete localFormData.value.config.background_noise;
+    emitFormData();
+  }
+}
+
+function addGlobalNoise() {
+  // 初始化一个空的全局噪声配置，然后触发音频选择
+  if (!localFormData.value.config) return;
+  localFormData.value.config.background_noise = { audioId: '', deviceIds: [], spl: 60, loop: true };
+  emitFormData();
+  // 立即打开音频选择弹窗
+  openGlobalNoiseAudioModal();
+}
+
+function openGlobalNoiseAudioModal() {
+  emit('openAudioModal', 'noise', undefined, (audios: { id: string; name?: string }[]) => {
+    if (audios.length > 0) {
+      updateGlobalNoise('audioId', audios[0].id);
+    }
+  });
+}
+
+function previewGlobalNoise() {
+  const audioId = globalNoiseAudioId.value;
+  if (audioId) {
+    emit('previewAudio', audioId, 'noise');
+  }
+}
+
+// 从 audioConfig 获取音频信息的代理方法（模板中使用）
+function getAudioName(audioId: string): string {
+  return audioConfig?.getAudioName?.(audioId) || audioId;
+}
+function getAudioTags(audioId: string): string {
+  return audioConfig?.getAudioTags?.(audioId) || '';
+}
+function getAudioDuration(audioId: string): number {
+  return audioConfig?.getAudioDuration?.(audioId) || 0;
+}
+function formatDuration(seconds: number): string {
+  return audioConfig?.formatDuration?.(seconds) || '0s';
+}
+function getNormalizedTags(tagsStr: string): string[] {
+  return audioConfig?.getNormalizedTags?.(tagsStr) || [];
+}
+
 // ---- 旧版音频相关 computed 已迁移到 RoundConfigEditor ----
 
 async function loadAlgorithmOptions() {
@@ -355,7 +553,11 @@ function initFormData() {
     tags: raw.tags || [],
     algorithmType: raw.algorithmType || raw.algorithm_type || '',
     test_type: forcedTestType || raw.test_type || 'api',
-    config: raw.config?.rounds ? raw.config : {
+    config: raw.config?.rounds ? {
+      ...raw.config,
+      // 归一化全局背景噪声：camelCase → snake_case
+      background_noise: (raw.config as any).background_noise ?? (raw.config as any).backgroundNoise,
+    } : {
       rounds: [{ roundNumber: 1, audios: [] }],
       dimensions: [],
     },
@@ -408,20 +610,18 @@ function syncStructuredFields() {
     };
 
     // ---- 声纹注册 → config.voiceprint_config ----
-    const vpEnabled = getParam('voiceprintEnabled');
-    const vpAudioId = getParam('voiceprintAudioId');
-    const vpDeviceId = getParam('voiceprintPlaybackDeviceId');
-    const vpSpl = getParam('voiceprintSpl');
-    const vpWaitTime = getParam('voiceprintWaitTime');
-
-    if (vpEnabled !== undefined || vpAudioId !== undefined) {
+    // voiceprint 是单个对象 { audio_id, spl, playback_device_id, voiceprint_wait_time }
+    const vpObj = getParam('voiceprint');
+    if (vpObj && typeof vpObj === 'object' && !Array.isArray(vpObj)) {
       config.voiceprint_config = {
-        enabled: vpEnabled === true || vpEnabled === 'true',
-        audio: vpAudioId ? { id: String(vpAudioId) } : {},
-        device: vpDeviceId ? { id: String(vpDeviceId) } : {},
-        spl: vpSpl !== undefined ? Number(vpSpl) : undefined,
-        waitTime: vpWaitTime !== undefined ? Number(vpWaitTime) * 1000 : undefined, // 秒→毫秒
+        enabled: true,
+        audio: vpObj.audio_id ? { id: String(vpObj.audio_id) } : {},
+        device: vpObj.playback_device_id ? { id: String(vpObj.playback_device_id) } : {},
+        spl: vpObj.spl !== undefined ? Number(vpObj.spl) : undefined,
+        waitTime: vpObj.voiceprint_wait_time !== undefined ? Number(vpObj.voiceprint_wait_time) * 1000 : undefined, // 秒→毫秒
       };
+    } else {
+      delete config.voiceprint_config;
     }
 
     // ---- 干扰人 → round.interferers ----
@@ -435,10 +635,10 @@ function syncStructuredFields() {
       }
       // 转换为后端期望的嵌套结构
       round.interferers = interfererList.map((item: any) => ({
-        audio: item.audioId ? { id: String(item.audioId), name: item.audioName || '' } : {},
-        device: item.playbackDeviceId ? { id: String(item.playbackDeviceId) } : {},
+        audio: (item.audio_id || item.audioId) ? { id: String(item.audio_id || item.audioId), name: item.audio_name || item.audioName || '' } : {},
+        device: (item.playback_device_id || item.playbackDeviceId) ? { id: String(item.playback_device_id || item.playbackDeviceId) } : {},
         spl: item.spl !== undefined ? Number(item.spl) : undefined,
-        startDelay: item.startDelay !== undefined ? Number(item.startDelay) * 1000 : 0, // 秒→毫秒
+        startDelay: (item.start_delay ?? item.startDelay) !== undefined ? Number(item.start_delay ?? item.startDelay) * 1000 : 0, // 秒→毫秒
         loop: item.loop ?? false,
       }));
     } else {
@@ -941,5 +1141,133 @@ async function loadAlgorithmParamsForLockedMode(algoType: string) {
   padding: 0 !important;
   background: transparent !important;
   border: none !important;
+}
+
+/* ===== 全局背景噪声 ===== */
+.global-noise-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--background-secondary, #f5f5f5);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px 8px 0 0;
+  border-bottom: none;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.global-noise-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.global-noise-title i { font-size: 12px; color: var(--text-light, #999); }
+.global-noise-hint {
+  font-size: 11px;
+  color: var(--text-light, #999);
+  flex: 1;
+  min-width: 120px;
+}
+.global-noise-remove-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid var(--danger-color, #f44336);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--danger-color, #f44336);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+.global-noise-remove-btn:hover {
+  background: var(--danger-color, #f44336);
+  color: #fff;
+}
+.global-noise-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  border: 1px dashed #ccc;
+  border-radius: 0 0 8px 8px;
+  color: #999;
+  font-size: 13px;
+}
+.global-noise-body {
+  background: var(--background-primary, #fff);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 0 0 8px 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.global-noise-field { display: flex; flex-direction: column; gap: 3px; }
+.global-noise-field-row { display: flex; gap: 12px; }
+.global-noise-field-label { font-size: 12px; font-weight: 500; color: var(--text-secondary, #666); }
+.global-noise-devices { display: flex; flex-wrap: wrap; gap: 8px; }
+.global-noise-device-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid #d0d7de;
+  border-radius: 16px;
+  background: #f6f8fa;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.global-noise-device-chip input { margin: 0; }
+.global-noise-device-chip:has(input:checked) {
+  background: #e6f4ff;
+  border-color: #4096ff;
+  color: #1677ff;
+}
+.global-noise-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid #e0e7ff;
+  border-radius: 6px;
+  background: #f8f9ff;
+}
+.global-noise-card-info { flex: 1; min-width: 0; }
+.global-noise-card-row { display: flex; align-items: center; gap: 6px; }
+.global-noise-card-icon { color: #6366f1; font-size: 12px; }
+.global-noise-card-name {
+  font-size: 13px; font-weight: 500; color: #333;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;
+}
+.global-noise-card-duration {
+  font-size: 11px; color: #999;
+  display: flex; align-items: center; gap: 3px; white-space: nowrap;
+}
+.global-noise-card-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.global-noise-tag {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  background: #e0e7ff; color: #4f46e5;
+}
+.global-noise-card-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.global-noise-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+.global-noise-switch input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary-color, #ff6a00);
 }
 </style>

@@ -131,6 +131,7 @@ import type { PropType } from 'vue'
 import { useTestCaseConfig, createDefaultUploadConfig } from '../../../composables/useTestCaseConfig'
 import { useAlgorithmConfig } from '../../../composables/useAlgorithmConfig'
 import UploadOptions from '../../common/UploadOptions.vue'
+import { buildTestCaseGroups } from '../../../utils/testCaseStrategy'
 
 const algorithmConfig = useAlgorithmConfig()
 const getAlgorithmOptions = () => algorithmConfig.getAlgorithmOptions()
@@ -164,6 +165,7 @@ interface ImportConfirmData {
   files: FileWithMetadata[]
   folderGroupMappings: Record<string, string>
   selectedFolders: string[]
+  testCaseGroups?: Record<string, any>
   onProgressUpdate: (progress: number) => void
   onImportComplete: () => void
   onImportError: (error: Error) => void
@@ -505,9 +507,21 @@ const handleImport = async () => {
 
     const txtDataMap = new Map<string, { asrText: string; translations: Array<{ text: string; direction: string }> }>()
     const annotationDataMap = new Map<string, any[]>()
-    // 统一标注文件（如 9.json）里的 rounds 结构，按标注文件所在分组（最子级文件夹名）分发
-    // 每个分组可有自己的统一标注文件，该分组的 rounds 覆盖 folderParser 自动推断的 rounds
-    const unifiedRoundsByGroup = new Map<string, any[]>()
+    // 用策略模式解析 JSON 标注文件，每个 JSON 产生一个独立的测试用例分组
+    // 分组键 = JSON 文件名去扩展名（如 9.json → "9"，环境音理解.json → "环境音理解"）
+    // 支持 rounds 多轮 / flat 单轮 / txt 数组单轮 三种 JSON 格式
+    // 未被任何 JSON 引用的音频回退到 folderParser 按文件名分组
+    const jsonTestCaseFiles = annotationFiles.filter(f => f.name.toLowerCase().endsWith('.json'))
+    const testCaseGroups = await buildTestCaseGroups(jsonTestCaseFiles)
+    // 转为 unifiedRoundsByGroup 格式（兼容 audioImport.ts 的消费方式）
+    const unifiedRoundsByGroup = new Map<string, any>()
+    for (const [groupKey, group] of testCaseGroups) {
+      const roundsWithMeta: any = group.rounds
+      if (group.backgroundNoise) {
+        roundsWithMeta._caseBackgroundNoise = group.backgroundNoise
+      }
+      unifiedRoundsByGroup.set(groupKey, roundsWithMeta)
+    }
 
     for (const txtFile of txtFiles) {
       try {
@@ -518,7 +532,7 @@ const handleImport = async () => {
           reader.readAsText(txtFile)
         })
         const parsedData = parseAudioTxtFile(content)
-        
+
         const key = (txtFile as any).webkitRelativePath || txtFile.name
         const baseKey = key.substring(0, key.lastIndexOf('.'))
         txtDataMap.set(baseKey, parsedData)
@@ -527,7 +541,9 @@ const handleImport = async () => {
       }
     }
 
-    for (const annFile of annotationFiles) {
+    // 非用例 JSON（rttm/stm/jsonl/annotations 格式）仍走标注附加路径
+    const nonTestCaseAnnotationFiles = annotationFiles.filter(f => !f.name.toLowerCase().endsWith('.json'))
+    for (const annFile of nonTestCaseAnnotationFiles) {
       try {
         const content = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
@@ -535,106 +551,18 @@ const handleImport = async () => {
           reader.onerror = reject
           reader.readAsText(annFile)
         })
-        
+
         let format = 'json'
         if (annFile.name.toLowerCase().endsWith('.rttm')) format = 'rttm'
         else if (annFile.name.toLowerCase().endsWith('.stm')) format = 'stm'
         else if (annFile.name.toLowerCase().endsWith('.jsonl')) format = 'jsonl'
-        
+
         const parsedData = parseAnnotationFormat(content, format)
 
         const key = (annFile as any).webkitRelativePath || annFile.name
         const baseKey = key.substring(0, key.lastIndexOf('.'))
-        // 标注文件所在目录路径（用于拼接 segment.audio 相对路径）
-        const annDir = baseKey.includes('/') ? baseKey.substring(0, baseKey.lastIndexOf('/')) : ''
 
-        // 统一标注文件：JSON 里有 rounds 数组，每个 round 的 segments 里带 audio 字段
-        // 按 segment.audio 匹配音频文件，把对应 segment 分发到音频的 annotationDataMap
-        const rawJson = format === 'json' ? JSON.parse(content) : null
-        if (rawJson && Array.isArray(rawJson.rounds)) {
-          // 提取统一标注文件的 rounds 结构，按标注文件所在分组（最子级文件夹名）分发
-          // 该分组的 rounds 将覆盖 folderParser 自动推断的 rounds
-          const groupRounds = rawJson.rounds.map((round: any, ri: number) => {
-            if (!round || !Array.isArray(round.segments)) return null
-            const audios = round.segments
-              .filter((seg: any) => seg && typeof seg === 'object')
-              .map((seg: any, idx: number) => {
-                const audioName = seg.audio || seg.audio_name || seg.audioName || ''
-                const cfg: any = { audio_name: audioName, play_order: idx }
-                if (seg.spl != null && seg.spl !== '') cfg.spl = Number(seg.spl)
-                if (seg.playback_device_name || seg.playbackDeviceName) {
-                  cfg.playback_device_name = seg.playback_device_name || seg.playbackDeviceName
-                }
-                // 保留干扰人配置（interferers），后端导入时解析 audio→audio_id、playback_device_name→playback_device_id
-                if (Array.isArray(seg.interferers) && seg.interferers.length > 0) {
-                  cfg.interferers = seg.interferers
-                }
-                // 保留轮次级背景噪声（case 级存在时不播放）
-                if (seg.background_noise) {
-                  cfg.background_noise = seg.background_noise
-                }
-                return cfg
-              })
-            const roundObj: any = {
-              roundNumber: round.round_number || round.roundNumber || ri + 1,
-              audios
-            }
-            // 保留轮次级背景噪声
-            if (round.background_noise) {
-              roundObj.background_noise = round.background_noise
-            }
-            return roundObj
-          }).filter((r: any) => r !== null)
-
-          // 推断该标注文件对应的分组键（最子级文件夹名）：
-          // 标注文件通常与其所在子文件夹同名（如 9/9.json → 分组键 "9"），
-          // 或与音频同级（如 folder1/a.json 与 folder1/a.wav 同级 → 分组键 "folder1"）。
-          // 这里用标注文件所在目录的最后一段作为分组键。
-          const annPathParts = baseKey.split('/').filter(Boolean)
-          const groupKey = annPathParts.length >= 1
-            ? annPathParts[annPathParts.length - 1]
-            : ''
-          if (groupKey && groupRounds.length > 0) {
-            // 保留 case 级背景噪声（rounds 外层）
-            if (rawJson.background_noise) {
-              groupRounds._caseBackgroundNoise = rawJson.background_noise
-            }
-            unifiedRoundsByGroup.set(groupKey, groupRounds)
-          }
-          const annotationCode = parsedData.code || uploadConfig.algorithmType || determineAnnotationName(annFile.name, format)
-          for (const round of rawJson.rounds) {
-            if (!round || !Array.isArray(round.segments)) continue
-            // 按 segment.audio 字段分组
-            const segsByAudio = new Map<string, any[]>()
-            for (const seg of round.segments) {
-              if (!seg || typeof seg !== 'object') continue
-              const audioPath = seg.audio || seg.audio_name || seg.audioName || ''
-              if (audioPath) {
-                const segs = segsByAudio.get(audioPath) || []
-                segs.push(seg)
-                segsByAudio.set(audioPath, segs)
-              }
-            }
-            for (const [audioPath, segs] of segsByAudio) {
-              // 构造匹配 baseKey：标注目录 + audio 相对路径，去扩展名
-              let matchKey = audioPath.replace(/\.[^.]+$/, '')
-              if (annDir) {
-                matchKey = `${annDir}/${matchKey}`
-              }
-              // 也尝试不带目录前缀的文件名匹配
-              const fileNameOnly = audioPath.split('/').pop()!.replace(/\.[^.]+$/, '')
-              const existing = annotationDataMap.get(matchKey) || annotationDataMap.get(fileNameOnly) || []
-              existing.push({
-                format: format,
-                code: annotationCode,
-                data: { segments: segs, round_number: round.round_number || round.roundNumber || 1 },
-                source_language: parsedData.source_language || '',
-                target_language: parsedData.target_language || ''
-              })
-              annotationDataMap.set(matchKey, existing)
-            }
-          }
-        } else if (parsedData.annotations && parsedData.annotations.length > 0) {
+        if (parsedData.annotations && parsedData.annotations.length > 0) {
           const annotationsList = parsedData.annotations.map(ann => ({
             format: format,
             code: ann.code || 'asr',
@@ -655,6 +583,109 @@ const handleImport = async () => {
         }
       } catch (e) {
         console.error(`解析标注文件 ${annFile.name} 失败:`, e)
+      }
+    }
+
+    // 用例 JSON 也需要为引用的音频附加标注（segments 里的非 audio 字段如 query/correctAnswer 等）
+    for (const [groupKey, group] of testCaseGroups) {
+      const annFile = jsonTestCaseFiles.find(f => {
+        const key = (f as any).webkitRelativePath || f.name
+        const baseKey = key.substring(0, key.lastIndexOf('.'))
+        const fileName = baseKey.split('/').pop() || baseKey
+        return fileName.replace(/\.[^.]+$/, '') === groupKey
+      })
+      if (!annFile) continue
+
+      try {
+        const content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = (e) => resolve(e.target?.result as string)
+          reader.onerror = reject
+          reader.readAsText(annFile)
+        })
+        const rawJson = JSON.parse(content)
+        const key = (annFile as any).webkitRelativePath || annFile.name
+        const baseKey = key.substring(0, key.lastIndexOf('.'))
+        const annDir = baseKey.includes('/') ? baseKey.substring(0, baseKey.lastIndexOf('/')) : ''
+
+        // 从 rounds JSON 的 segments 提取标注，按 audio 分发到 annotationDataMap
+        if (Array.isArray(rawJson.rounds)) {
+          const annotationCode = rawJson.code || uploadConfig.algorithmType || determineAnnotationName(annFile.name, 'json')
+          for (const round of rawJson.rounds) {
+            if (!round || !Array.isArray(round.segments)) continue
+            const segsByAudio = new Map<string, any[]>()
+            for (const seg of round.segments) {
+              if (!seg || typeof seg !== 'object') continue
+              const audioPath = seg.audio || seg.audio_name || seg.audioName || ''
+              if (audioPath) {
+                const segs = segsByAudio.get(audioPath) || []
+                segs.push(seg)
+                segsByAudio.set(audioPath, segs)
+              }
+            }
+            for (const [audioPath, segs] of segsByAudio) {
+              let matchKey = audioPath.replace(/\.[^.]+$/, '')
+              if (annDir) {
+                matchKey = `${annDir}/${matchKey}`
+              }
+              const fileNameOnly = audioPath.split('/').pop()!.replace(/\.[^.]+$/, '')
+              const existing = annotationDataMap.get(matchKey) || annotationDataMap.get(fileNameOnly) || []
+              existing.push({
+                format: 'json',
+                code: annotationCode,
+                data: { segments: segs, round_number: round.round_number || round.roundNumber || 1 },
+                source_language: rawJson.source_language || '',
+                target_language: rawJson.target_language || ''
+              })
+              annotationDataMap.set(matchKey, existing)
+            }
+          }
+        } else if (Array.isArray(rawJson.txt)) {
+          // txt 数组 JSON：按 segment.audio 分发
+          const annotationCode = rawJson.code || uploadConfig.algorithmType || determineAnnotationName(annFile.name, 'json')
+          for (const item of rawJson.txt) {
+            if (!item || typeof item !== 'object') continue
+            const audioPath = item.audio || item.audio_name || item.audioName || ''
+            if (audioPath) {
+              let matchKey = audioPath.replace(/\.[^.]+$/, '')
+              if (annDir) {
+                matchKey = `${annDir}/${matchKey}`
+              }
+              const fileNameOnly = audioPath.split('/').pop()!.replace(/\.[^.]+$/, '')
+              const existing = annotationDataMap.get(matchKey) || annotationDataMap.get(fileNameOnly) || []
+              existing.push({
+                format: 'json',
+                code: annotationCode,
+                data: { segments: [item] },
+                source_language: rawJson.source_language || '',
+                target_language: rawJson.target_language || ''
+              })
+              annotationDataMap.set(matchKey, existing)
+            }
+          }
+        } else {
+          // flat JSON：标注就是顶层字段，按 audio 分发
+          const audioPath = rawJson.audio || rawJson.audio_name || rawJson.audioName || ''
+          if (audioPath) {
+            const annotationCode = rawJson.code || uploadConfig.algorithmType || determineAnnotationName(annFile.name, 'json')
+            let matchKey = audioPath.replace(/\.[^.]+$/, '')
+            if (annDir) {
+              matchKey = `${annDir}/${matchKey}`
+            }
+            const fileNameOnly = audioPath.split('/').pop()!.replace(/\.[^.]+$/, '')
+            const existing = annotationDataMap.get(matchKey) || annotationDataMap.get(fileNameOnly) || []
+            existing.push({
+              format: 'json',
+              code: annotationCode,
+              data: { segments: [rawJson] },
+              source_language: rawJson.source_language || '',
+              target_language: rawJson.target_language || ''
+            })
+            annotationDataMap.set(matchKey, existing)
+          }
+        }
+      } catch (e) {
+        console.error(`解析用例 JSON 标注 ${annFile.name} 失败:`, e)
       }
     }
 
@@ -741,6 +772,7 @@ const handleImport = async () => {
       selectedFolders: selectedFolders.value,
       algorithmParams: algorithmParams.value,
       unifiedRoundsByGroup: unifiedRoundsByGroup.size > 0 ? Object.fromEntries(unifiedRoundsByGroup) : undefined,
+      testCaseGroups: testCaseGroups.size > 0 ? Object.fromEntries(testCaseGroups) : undefined,
       onProgressUpdate: (progress: number) => {
       },
       onImportComplete: () => {

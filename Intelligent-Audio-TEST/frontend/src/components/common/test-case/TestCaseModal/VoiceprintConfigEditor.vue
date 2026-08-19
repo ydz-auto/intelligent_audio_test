@@ -65,7 +65,7 @@
         <select
           class="form-control form-control-sm"
           :value="voiceprintPlaybackDeviceId"
-          @change="setParam('voiceprintPlaybackDeviceId', ($event.target as HTMLSelectElement).value)"
+          @change="updateVoiceprint({ playback_device_id: ($event.target as HTMLSelectElement).value })"
         >
           <option value="">请选择设备...</option>
           <option
@@ -86,7 +86,7 @@
           min="40"
           max="100"
           step="1"
-          @input="setParam('voiceprintSpl', Number(($event.target as HTMLInputElement).value))"
+          @input="updateVoiceprint({ spl: Number(($event.target as HTMLInputElement).value) })"
         />
       </div>
 
@@ -100,7 +100,7 @@
           min="0"
           max="60"
           step="1"
-          @input="setParam('voiceprintWaitTime', Number(($event.target as HTMLInputElement).value))"
+          @input="updateVoiceprint({ voiceprint_wait_time: Number(($event.target as HTMLInputElement).value) })"
         />
         <span class="vp-hint">声纹注册完成后等待设备处理的时间</span>
       </div>
@@ -157,72 +157,59 @@ function getNormalizedTags(tagsStr: string): string[] {
   return []
 }
 
-// ---- algorithmParams 读写 ----
-function getParam(fieldCode: string, defaultValue: unknown = ''): unknown {
-  const item = props.modelValue?.find((p) => p.field_code === fieldCode)
-  return item?.field_value ?? defaultValue
+// ---- voiceprint 单对象读写 ----
+// voiceprint 是单个对象，兼容 camelCase 和 snake_case 字段名
+const VOICEPRINT_CODE = 'voiceprint'
+
+function getVoiceprintObj(): Record<string, any> {
+  const item = props.modelValue?.find((p) => p.field_code === VOICEPRINT_CODE)
+  const v = item?.field_value
+  if (v && typeof v === 'object' && !Array.isArray(v)) return v
+  return {}
 }
 
-function setParam(fieldCode: string, value: unknown) {
+function updateVoiceprint(patch: Record<string, any>) {
   const params = [...(props.modelValue ?? [])]
-  const idx = params.findIndex((p) => p.field_code === fieldCode)
+  const idx = params.findIndex((p) => p.field_code === VOICEPRINT_CODE)
+  const current = idx >= 0 ? { ...params[idx].field_value } : {}
+  const updated = { ...current, ...patch }
   if (idx >= 0) {
-    params[idx] = { field_code: fieldCode, field_value: value }
+    params[idx] = { field_code: VOICEPRINT_CODE, field_value: updated }
   } else {
-    params.push({ field_code: fieldCode, field_value: value })
+    params.push({ field_code: VOICEPRINT_CODE, field_value: updated })
   }
   emit('update:modelValue', params)
 }
 
 // ---- 计算属性 ----
-const enabled = computed({
-  get: () => {
-    const v = getParam('voiceprintEnabled', false)
-    return v === true || v === 'true'
-  },
-  set: (val: boolean) => setParam('voiceprintEnabled', val),
+const enabled = computed(() => Object.keys(getVoiceprintObj()).length > 0)
+
+const voiceprintAudioId = computed(() => {
+  const obj = getVoiceprintObj()
+  return String(obj.audio_id || obj.audioId || obj.audio || '')
+})
+const voiceprintPlaybackDeviceId = computed(() => {
+  const obj = getVoiceprintObj()
+  return String(obj.playback_device_id || obj.playbackDeviceId || obj.playback_device_name || obj.playbackDeviceName || '')
+})
+const voiceprintSpl = computed(() => Number(getVoiceprintObj().spl ?? 70))
+const voiceprintWaitTime = computed(() => {
+  const obj = getVoiceprintObj()
+  return Number(obj.voiceprint_wait_time ?? obj.voiceprintWaitTime ?? 5)
 })
 
-const voiceprintAudioId = computed(() => String(getParam('voiceprintAudioId', '') || ''))
-const voiceprintPlaybackDeviceId = computed(() => String(getParam('voiceprintPlaybackDeviceId', '') || ''))
-const voiceprintSpl = computed(() => Number(getParam('voiceprintSpl', 70)))
-const voiceprintWaitTime = computed(() => Number(getParam('voiceprintWaitTime', 5)))
-
-// 在本地副本上批量设置多个参数后一次性 emit（避免连续 setParam 时 props 未异步更新导致互相覆盖）
-function setParamsBatch(updates: Record<string, unknown>) {
-  const params = [...(props.modelValue ?? [])]
-  for (const [fieldCode, value] of Object.entries(updates)) {
-    const idx = params.findIndex((p) => p.field_code === fieldCode)
-    if (idx >= 0) {
-      params[idx] = { field_code: fieldCode, field_value: value }
-    } else {
-      params.push({ field_code: fieldCode, field_value: value })
-    }
-  }
-  emit('update:modelValue', params)
-}
-
 function addVoiceprint() {
-  setParamsBatch({
-    voiceprintEnabled: true,
-    voiceprintSpl: 70,
-    voiceprintWaitTime: 5,
-  })
+  updateVoiceprint({ spl: 70, voiceprint_wait_time: 5 })
 }
 
 function removeVoiceprint() {
-  setParamsBatch({
-    voiceprintEnabled: false,
-    voiceprintAudioId: '',
-    voiceprintPlaybackDeviceId: '',
-    voiceprintSpl: '',
-    voiceprintWaitTime: '',
-  })
+  const params = (props.modelValue ?? []).filter((p) => p.field_code !== VOICEPRINT_CODE)
+  emit('update:modelValue', params)
 }
 
 function openAudioModal() {
   emit('openAudioModal', (audioId: string) => {
-    setParam('voiceprintAudioId', audioId)
+    updateVoiceprint({ audio_id: audioId })
   })
 }
 
@@ -233,7 +220,7 @@ function previewAudio() {
 }
 
 function clearAudio() {
-  setParam('voiceprintAudioId', '')
+  updateVoiceprint({ audio_id: '' })
 }
 </script>
 

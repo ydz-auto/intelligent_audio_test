@@ -971,9 +971,15 @@ class AudioController:
         try:
             # 获取分片信息
             file_id = request.form.get('file_id')
-            chunk_index = request.form.get('chunk_index', type=int)
-            total_chunks = request.form.get('total_chunks', type=int)
+            chunk_index_raw = request.form.get('chunk_index')
+            total_chunks_raw = request.form.get('total_chunks')
             task_id = request.form.get('task_id')
+
+            try:
+                chunk_index = int(chunk_index_raw) if chunk_index_raw is not None else None
+                total_chunks = int(total_chunks_raw) if total_chunks_raw is not None else None
+            except (ValueError, TypeError):
+                return error_response("分片索引或总数不是有效整数")
             
             if not file_id or chunk_index is None or not total_chunks or not task_id:
                 return error_response("缺少分片信息")
@@ -1132,9 +1138,14 @@ class AudioController:
             # test_case_config 优先级高于顶层 test_case_group_name / inherit_tags
             if tc_group_name:
                 test_case_group_name = tc_group_name
-            # 如果 tc_config 有 algorithm_params 且顶层没有，则用 tc_config 的
-            if tc_config and tc_config.algorithm_params and not algorithm_params_dict:
-                algorithm_params_dict = _normalize_algorithm_params_to_list(tc_config.algorithm_params)
+            # tc_config.algorithm_params（按轮分组 [{round_number, params}]）优先于顶层 algorithm_params
+            # 前端 dispatchParamsToRounds 把参数按轮分发到 tc_config.algorithm_params，
+            # 顶层 algorithm_params 是扁平列表（不分轮），只有 tc_config 没有时才用顶层兜底
+            if tc_config and tc_config.algorithm_params:
+                # tc_config.algorithm_params 是按轮分组格式 [{round_number, params}]，
+                # 不能走 _normalize_algorithm_params_to_list（它只处理扁平 [{field_code, field_value}]），
+                # 直接传原始值给 _create_test_case_from_audio 的兜底逻辑处理
+                algorithm_params_dict = tc_config.algorithm_params
             # 如果 tc_config 有 dimensions 且顶层没有，则用 tc_config 的
             if tc_config and tc_config.dimensions and not dimensions_data:
                 dimensions_data = tc_config.dimensions
@@ -1820,22 +1831,45 @@ class AudioController:
                 log_not_emit('INFO', 'audio_controller', f'[DEBUG_STRIP] rounds_resolved after strip: {_json.dumps(rounds_resolved, ensure_ascii=False)[:500]}', category='audio')
                 log_not_emit('INFO', 'audio_controller', f'[DEBUG_STRIP] algo_params_col: {_json.dumps(algo_params_col, ensure_ascii=False)[:500]}', category='audio')
 
-                # 兜底：前端传了平面 algorithm_params 但没 rounds_config 时
+                # 兜底：前端传了按轮分组的 algorithm_params（[{round_number, params}]）时直接用
+                # 否则用扁平 algorithm_params（[{field_code, field_value}]）放到 round 1
                 if not algo_params_col and algorithm_params:
-                    round_algorithm_params = []
-                    if isinstance(algorithm_params, dict):
+                    # algorithm_params 可能是按轮分组的 [{round_number, params}] 格式
+                    if isinstance(algorithm_params, list):
+                        _is_grouped = all(
+                            isinstance(p, dict) and 'round_number' in p and 'params' in p
+                            for p in algorithm_params
+                        )
+                        if _is_grouped:
+                            algo_params_col = []
+                            for p in algorithm_params:
+                                rn = p.get('round_number', 1)
+                                ps = p.get('params', [])
+                                params_list = []
+                                for item in ps:
+                                    if isinstance(item, dict):
+                                        fc = item.get('field_code') or item.get('fieldCode')
+                                        fv = item.get('field_value', item.get('fieldValue'))
+                                        if fc:
+                                            params_list.append({'field_code': fc, 'field_value': fv})
+                                if params_list:
+                                    algo_params_col.append({'round_number': rn, 'params': params_list})
+                        else:
+                            round_algorithm_params = []
+                            for p in algorithm_params:
+                                if isinstance(p, dict):
+                                    fc = p.get('field_code') or p.get('fieldCode')
+                                    fv = p.get('field_value', p.get('fieldValue'))
+                                    if fc:
+                                        round_algorithm_params.append({'field_code': fc, 'field_value': fv})
+                            if round_algorithm_params:
+                                algo_params_col = [{'round_number': 1, 'params': round_algorithm_params}]
+                    elif isinstance(algorithm_params, dict):
                         round_algorithm_params = [
                             {'field_code': fc, 'field_value': fv} for fc, fv in algorithm_params.items()
                         ]
-                    elif isinstance(algorithm_params, list):
-                        for p in algorithm_params:
-                            if isinstance(p, dict):
-                                fc = p.get('field_code') or p.get('fieldCode')
-                                fv = p.get('field_value', p.get('fieldValue'))
-                                if fc:
-                                    round_algorithm_params.append({'field_code': fc, 'field_value': fv})
-                    if round_algorithm_params:
-                        algo_params_col = [{'round_number': 1, 'params': round_algorithm_params}]
+                        if round_algorithm_params:
+                            algo_params_col = [{'round_number': 1, 'params': round_algorithm_params}]
 
                 # 把 audio_name 替换为真实的 audio_id
                 # 前端构建 rounds 时音频还没上传完，只能用文件名占位；
@@ -1918,6 +1952,43 @@ class AudioController:
                     audio_name_to_id_map.setdefault(_a.name, _a.id)
                     if _a.original_filename:
                         audio_name_to_id_map.setdefault(_a.original_filename, _a.id)
+
+                # 对前端传来的 algo_params_col 中已有的 interferers/voiceprint 做 ID 解析
+                # （前端提取时只取值不做 ID 转换，后端需要补全）
+                def _resolve_ids_in_params(params_list):
+                    """对 params 列表中的 interferers/voiceprint 字段做 audio/device ID 解析"""
+                    for p in params_list:
+                        if not isinstance(p, dict):
+                            continue
+                        fc = p.get('field_code')
+                        fv = p.get('field_value')
+                        # interferers 是数组
+                        if fc == 'interferers' and isinstance(fv, list):
+                            for _itf in fv:
+                                if not isinstance(_itf, dict):
+                                    continue
+                                if not _itf.get('audio_id'):
+                                    _fn = _itf.get('audio') or _itf.get('audio_name')
+                                    if _fn and _fn in audio_name_to_id_map:
+                                        _itf['audio_id'] = audio_name_to_id_map[_fn]
+                                if not _itf.get('playback_device_id'):
+                                    _dn = _itf.get('playback_device_name')
+                                    if _dn and _dn in dev_name_to_id:
+                                        _itf['playback_device_id'] = dev_name_to_id[_dn]
+                        # voiceprint 是单个对象
+                        elif fc == 'voiceprint' and isinstance(fv, dict):
+                            if not fv.get('audio_id'):
+                                _fn = fv.get('audio') or fv.get('audio_name')
+                                if _fn and _fn in audio_name_to_id_map:
+                                    fv['audio_id'] = audio_name_to_id_map[_fn]
+                            if not fv.get('playback_device_id'):
+                                _dn = fv.get('playback_device_name')
+                                if _dn and _dn in dev_name_to_id:
+                                    fv['playback_device_id'] = dev_name_to_id[_dn]
+
+                for _entry in algo_params_col:
+                    if isinstance(_entry, dict) and isinstance(_entry.get('params'), list):
+                        _resolve_ids_in_params(_entry['params'])
 
                 def _resolve_audio_field(payload):
                     """把 payload 里的 audio(文件名)/audio_name 转成 audio_id。"""
@@ -2056,6 +2127,8 @@ class AudioController:
                     _resolve_device_fields(case_background_noise)
 
                 # 后端按 test_type + scope 从原始标注提取用例参数（不依赖前端提取）
+                # 注意：raw_annotations 只是当前 mergeChunks 文件的标注，
+                # 只能提取该文件所属 round 的参数，不能用于其他 round（否则跨轮误提取）
                 if algorithm_type and raw_annotations:
                     from backend.models.algorithm_models import CaseAlgorithmParam
                     case_params_list = CaseAlgorithmParam.query.filter_by(
@@ -2079,6 +2152,10 @@ class AudioController:
                                 if isinstance(a, dict) and a.get('audio_id')
                             ]
                             if not round_audio_ids:
+                                continue
+                            # 只处理当前音频（raw_annotations 来源）所属的 round，
+                            # 避免用当前文件的标注给其他 round 提取参数（跨轮误提取）
+                            if audio_id not in round_audio_ids:
                                 continue
                             # 从原始标注提取用例参数
                             extracted_params = []
@@ -2129,7 +2206,7 @@ class AudioController:
                                                 if value is not None:
                                                     break
                                 if value is not None:
-                                    # 如果是 interferers 字段，对提取出的每个干扰人做 ID 解析
+                                    # 对提取出的 interferers/voiceprint 字段做 ID 解析
                                     # （audio 文件名→audio_id, playback_device_name→playback_device_id）
                                     if param_code == 'interferers' and isinstance(value, list):
                                         for _itf in value:
@@ -2143,6 +2220,15 @@ class AudioController:
                                                 _dn = _itf.get('playback_device_name')
                                                 if _dn and _dn in dev_name_to_id:
                                                     _itf['playback_device_id'] = dev_name_to_id[_dn]
+                                    elif param_code == 'voiceprint' and isinstance(value, dict):
+                                        if not value.get('audio_id'):
+                                            _fn = value.get('audio') or value.get('audio_name')
+                                            if _fn and _fn in audio_name_to_id_map:
+                                                value['audio_id'] = audio_name_to_id_map[_fn]
+                                        if not value.get('playback_device_id'):
+                                            _dn = value.get('playback_device_name')
+                                            if _dn and _dn in dev_name_to_id:
+                                                value['playback_device_id'] = dev_name_to_id[_dn]
                                     extracted_params.append({
                                         'field_code': param_code,
                                         'field_value': value

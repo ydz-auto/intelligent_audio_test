@@ -201,14 +201,30 @@ class E2EExecutor(BaseExecutor):
         return device_info_list, result_id
 
     def _register_voiceprint(self, task_id, tc_rel_id, round_algo_params, test_case_id):
-        """从本轮 algorithm_params 提取声纹配置并执行注册"""
-        voiceprint_config = {
-            'enabled': round_algo_params.get('voiceprint_enabled', False),
-            'audio_id': round_algo_params.get('voiceprint_audio_id'),
-            'playback_device_id': round_algo_params.get('voiceprint_playback_device_id'),
-            'spl': round_algo_params.get('voiceprint_spl', 70.0),
-            'wait_time': round_algo_params.get('voiceprint_wait_time', 5.0),
-        }
+        """从本轮 algorithm_params 提取声纹配置并执行注册
+
+        voiceprint 是单个对象 { audio_id, spl, playback_device_id, voiceprint_wait_time }
+        存在即表示启用，不存在则未配置。
+        兼容旧格式（5个拆分字段）。
+        """
+        vp_obj = round_algo_params.get('voiceprint')
+        if vp_obj and isinstance(vp_obj, dict):
+            voiceprint_config = {
+                'enabled': True,
+                'audio_id': vp_obj.get('audio_id'),
+                'playback_device_id': vp_obj.get('playback_device_id'),
+                'spl': vp_obj.get('spl', 70.0),
+                'wait_time': vp_obj.get('voiceprint_wait_time', 5.0),
+            }
+        else:
+            # 兼容旧格式（5个拆分字段）
+            voiceprint_config = {
+                'enabled': round_algo_params.get('voiceprint_enabled', False),
+                'audio_id': round_algo_params.get('voiceprint_audio_id'),
+                'playback_device_id': round_algo_params.get('voiceprint_playback_device_id'),
+                'spl': round_algo_params.get('voiceprint_spl', 70.0),
+                'wait_time': round_algo_params.get('voiceprint_wait_time', 5.0),
+            }
         if voiceprint_config.get('enabled'):
             if not playback_orchestrator.play_voiceprint(voiceprint_config, task_id):
                 self._log(level='ERROR', content='声纹注册失败，中止测试', task_id=task_id, test_case_id=test_case_id)

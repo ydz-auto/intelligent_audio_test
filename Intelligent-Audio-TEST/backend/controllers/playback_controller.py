@@ -4,7 +4,7 @@ from backend.models.models import PlaybackDevice
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
 from backend.utils.web.log_handler import log_not_emit
-from backend.services.audio.audio_engine import AudioService
+from backend.services.audio.audio_engine import audio_service
 from backend.utils.common.task_utils import has_running_e2e_tasks
 from backend.schemas.common import IdData, StatusData
 from backend.schemas.playback import PlaybackDeviceItem, PlaybackDeviceListData, PlaybackScanItem, PlaybackStatusItem, PlaybackTestData
@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 from backend.app import app
 
 # 全局音频服务单例，确保驱动不被重复初始化
-audio_service = AudioService()
 # 用于存储测试播放的停止事件 {device_id: stop_event}
 test_stop_events = {}
 

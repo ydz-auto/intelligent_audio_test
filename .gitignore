@@ -24,6 +24,7 @@ wheels/
 venv/
 ENV/
 env/
+.venv/
 
 # IDE
 .idea/
@@ -85,10 +86,14 @@ CLAUDE.md
 eval_server/app/database/tasks/
 eval_server/app/database/uploads/
 eval_server/app/database/endpoints.json
+static/eval_server/
 
 # Runtime data - test results & ref params
 Intelligent-Audio-TEST/static/
 Intelligent-Audio-TEST/backend/static/case_result/
+
+# Log copies / backups
+log copy
 
 # Temp files
 Intelligent-Audio-TEST/tmp_hypium/

@@ -10,9 +10,13 @@
       "railDistance": 80,
       "volumeLevel": 60,
       "interferers": [],
-      "voiceprintEnabled": false,
-      "voiceprintSpl": 70.0,
-      "voiceprintWaitTime": 5.0,
+      "voiceprint": 
+                 
+            {
+              "audio": "B-EU-001_拒识与环境理解_环境音理解能力_环境音_门铃声.wav",
+              "spl": 55.0,
+              "playback_device_name": "设备背面（0.5m+180°）"
+            },
       "inputText": "请播放斐波那契数列前10项"
 
 }

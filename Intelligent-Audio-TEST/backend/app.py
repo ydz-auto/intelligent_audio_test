@@ -428,4 +428,12 @@ def create_app(config_name='default'):
             detail=str(e) if app.debug else None
         )), code
 
+    # 在主线程中预初始化 PyAudio 驱动
+    # Pa_Initialize() 非线程安全，必须在服务启动前完成，避免子线程调用时卡死/崩溃
+    try:
+        from backend.services.audio.audio_engine import audio_service
+        audio_service.init_driver()
+    except Exception as e:
+        app.logger.warning(f"PyAudio 驱动预初始化失败（音频功能可能不可用）: {e}")
+
     return app

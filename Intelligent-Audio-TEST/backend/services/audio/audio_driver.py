@@ -435,6 +435,8 @@ class PyAudioDriver(AudioDriver):
         stream = None
         try:
             dev_lock = self._get_device_lock(device_index)
+            # dev_lock 只保护 stream 的 open/close，不保护 while stream.is_active() 循环
+            # 否则背景噪声等长时间播放会持有锁，导致同设备的其他播放永久阻塞
             with dev_lock:
                 target_rate = default_sample_rate
                 needs_resample = any(file_rate != target_rate for file_rate in audio_file_rates)
@@ -445,7 +447,7 @@ class PyAudioDriver(AudioDriver):
                     )
                     original_rate = target_rate
 
-                # 5. 尝试打开流并播放
+                # 5. 尝试打开流
                 candidate_configs = {(max_channels, target_rate), (2, target_rate)}
                 configs = list(candidate_configs)
                 log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Trying {len(configs)} unique configurations: {configs}", category='audio')
@@ -470,25 +472,30 @@ class PyAudioDriver(AudioDriver):
                     device_index, configs, formats_to_try, callback_factory_kwargs
                 )
 
-                if not stream:
-                    log_and_emit('ERROR', 'audio_engine', f"Failed to open multi audio stream after all attempts: {last_err}", category='audio')
-                    return
-
-                log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Stream opened successfully, starting playback", category='audio')
-
+            if not stream:
+                log_and_emit('ERROR', 'audio_engine', f"Failed to open multi audio stream after all attempts: {last_err}", category='audio')
+                # 流打开失败时仍需设置 started 事件，否则 play_round 会永久等待
                 if playback_started_event:
                     playback_started_event.set()
+                return
 
-                while stream.is_active():
-                    if stop_event and stop_event.is_set():
-                        break
-                    threading.Event().wait(0.1)
+            log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Stream opened successfully, starting playback", category='audio')
+
+            if playback_started_event:
+                playback_started_event.set()
+
+            while stream.is_active():
+                if stop_event and stop_event.is_set():
+                    break
+                threading.Event().wait(0.1)
 
         finally:
             if stream:
                 try:
-                    stream.stop_stream()
-                    stream.close()
+                    dev_lock = self._get_device_lock(device_index)
+                    with dev_lock:
+                        stream.stop_stream()
+                        stream.close()
                 except:
                     pass
             # 通知播放已完成（无论正常结束还是被停止）

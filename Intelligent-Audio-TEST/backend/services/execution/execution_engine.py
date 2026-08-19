@@ -88,8 +88,10 @@ class ExecutionEngine:
                     thread_name_prefix='device_ctrl_'
                 )
                 # 音频播放线程池（高优先级，独立隔离）
+                # 全局背景噪声（最多4设备）+ 轮次内 play_round（主讲人/干扰人/噪声，最多4-6设备）
+                # 需要足够容量避免背景噪声占满线程池导致 play_round 任务排队死锁
                 cls._instance.audio_playback_pool = ThreadPoolExecutor(
-                    max_workers=3,
+                    max_workers=12,
                     thread_name_prefix='audio_play_'
                 )
         return cls._instance

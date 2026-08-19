@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from flask import request, current_app
 from backend.models.models import Task, Tag, TaskCase, TaskDevice, TaskAPI, TestCase, TestResult, TestResultDimension, Log, Dimension
 from backend.models.database import db
@@ -904,7 +905,7 @@ class TaskController:
             return success_response(
                 TaskStartData(
                     task_id=str(task.id),
-                    start_time=int(datetime.utcnow().timestamp() * 1000),
+                    start_time=int(time.time() * 1000),
                     status="queued" if "队列" in message else "running",
                     expected_total_time=time_estimate["expected_total_time"],
                     expected_complete_time=time_estimate["expected_complete_time"]

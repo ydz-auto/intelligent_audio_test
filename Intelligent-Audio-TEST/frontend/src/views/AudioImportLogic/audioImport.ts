@@ -9,6 +9,7 @@ import { useUploadState } from '../../composables/useUploadState';
 import { useTagFilter } from '../../composables/useTagFilter';
 import { useFolderSelection } from '../../composables/useFolderSelection';
 import { extractAudioFiles, buildTestCaseConfig, groupAudioFilesByLeafFolder, type TestCaseConfig } from '../../utils/folderParser';
+import { groupAudiosByTestCase, computeGroupKeyForAudio, type TestCaseGroup } from '../../utils/testCaseStrategy';
 import { stripAlgorithmParamSchema } from '../../utils/utils';
 import type { 
   AudioInfo, 
@@ -164,7 +165,7 @@ export function useAudioImport() {
     keepStructure: true,
     allowedExtensions: ['.wav', '.mp3', '.m4a', '.flac'],
     createTestCase: false,
-    testTypes: ['api'] as ('api' | 'e2e')[],
+    testTypes: ['e2e'] as ('api' | 'e2e')[],
     playbackDeviceId: null as string | number | null,
     spl: 65.0,
     groupNameType: 'root' as 'root' | 'folder' | 'custom',
@@ -196,7 +197,7 @@ export function useAudioImport() {
     createTestCase: false,
     tags: [],
     description: '',
-    testTypes: ['api'],
+    testTypes: ['e2e'],
     // playbackDeviceId / spl / noiseAudioId / noiseSpl 已移到 CaseForm 的 RoundConfigEditor
     inheritTags: true,
     dimensions: [],
@@ -1064,10 +1065,10 @@ export function useAudioImport() {
           label: '测试类型', 
           type: 'checkbox', 
           options: [
-            { label: 'API测试', value: 'api' },
-            { label: 'E2E测试', value: 'e2e' }
-          ], 
-          defaultValue: uploadOptions.testTypes 
+            { label: 'E2E测试', value: 'e2e' },
+            { label: 'API测试', value: 'api' }
+          ],
+          defaultValue: uploadOptions.testTypes
         },
         {
           key: 'dimensions',
@@ -1075,41 +1076,41 @@ export function useAudioImport() {
           type: 'dimensions',
           defaultValue: uploadOptions.dimensions
         },
-        { 
-          key: 'playbackDeviceId', 
-          label: '播放设备', 
-          type: 'select', 
+        {
+          key: 'playbackDeviceId',
+          label: '播放设备',
+          type: 'select',
           options: (Array.isArray(playbackDevices.value) ? playbackDevices.value : []).map(d => ({ label: d.name, value: d.id })),
-          defaultValue: uploadOptions.playbackDeviceId 
+          defaultValue: uploadOptions.playbackDeviceId
         },
-        { 
-          key: 'defaultSpl', 
-          label: '默认声压级(SPL)', 
-          type: 'number', 
-          min: 30, 
-          max: 120, 
-          step: 0.1, 
-          defaultValue: uploadOptions.spl 
+        {
+          key: 'defaultSpl',
+          label: '默认声压级(SPL)',
+          type: 'number',
+          min: 30,
+          max: 120,
+          step: 0.1,
+          defaultValue: uploadOptions.spl
         },
-        { 
-          key: 'groupNameType', 
-          label: '用例分组', 
-          type: 'radio', 
+        {
+          key: 'groupNameType',
+          label: '用例分组',
+          type: 'radio',
           options: [
             { label: '根目录', value: 'root' },
             { label: '文件夹名', value: 'folder' },
             { label: '自定义', value: 'custom' }
-          ], 
-          defaultValue: uploadOptions.groupNameType 
+          ],
+          defaultValue: uploadOptions.groupNameType
         },
-        { 
-          key: 'customGroupName', 
-          label: '自定义分组名称', 
-          type: 'text', 
-          placeholder: '请输入分组名称', 
-          defaultValue: uploadOptions.customGroupName 
+        {
+          key: 'customGroupName',
+          label: '自定义分组名称',
+          type: 'text',
+          placeholder: '请输入分组名称',
+          defaultValue: uploadOptions.customGroupName
         },
-        { 
+        {
           key: 'inheritTags',
           label: '继承音频标签',
           type: 'boolean',
@@ -1166,7 +1167,7 @@ export function useAudioImport() {
           if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
           
           selectedFilesForUpload.value = data.files;
-          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup);
+          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup, data.testCaseGroups);
         }
       }
     });
@@ -1207,7 +1208,7 @@ export function useAudioImport() {
     }
   }
 
-  async function startUploadProcess(files: any[], folderGroupMappings?: Record<string, string>, unifiedRoundsByGroup?: Record<string, any[]>) {
+  async function startUploadProcess(files: any[], folderGroupMappings?: Record<string, string>, unifiedRoundsByGroup?: Record<string, any>, testCaseGroupsData?: Record<string, any>) {
     if (files.length === 0) return;
 
     uploadStatus.value = 'preparing';
@@ -1219,14 +1220,25 @@ export function useAudioImport() {
       await new Promise(resolve => requestAnimationFrame(resolve));
     }
 
-    // 构建测试用例配置：按最子级文件夹分组，每个分组独立一个测试用例
-    // 从 files 中提取所有原始 File 对象，用于文件夹解析
+    // 构建测试用例配置：按 JSON 用例分组，每个 JSON 各自一个独立用例
+    // 未被 JSON 引用的音频回退到 folderParser 按文件名分组
     const allRawFiles: File[] = files.map((f: any) => f.file || f)
     const audioFileInfos = extractAudioFiles(allRawFiles)
-    // 按最子级文件夹分组
-    const audioGroups = groupAudioFilesByLeafFolder(audioFileInfos)
-    // 为每个分组构建独立的 testCaseConfig（分组键 = 最子级文件夹名）
-    // 每个分组最后一个文件 mergeChunks 时才创建用例
+
+    // 将 testCaseGroupsData 转为 Map
+    const testCaseGroups = new Map<string, TestCaseGroup>()
+    if (testCaseGroupsData) {
+      for (const [key, val] of Object.entries(testCaseGroupsData)) {
+        testCaseGroups.set(key, val as TestCaseGroup)
+      }
+    }
+
+    // 按测试用例分组音频：被 JSON 引用的归入对应 JSON groupKey，未引用的回退文件名分组
+    const audioGroups = testCaseGroups.size > 0
+      ? groupAudiosByTestCase(audioFileInfos, testCaseGroups)
+      : groupAudioFilesByLeafFolder(audioFileInfos)
+
+    // 为每个分组构建独立的 testCaseConfig
     const groupTestCaseConfigs = new Map<string, TestCaseConfig | undefined>()
     if (audioFileInfos.length > 0 && uploadOptions.createTestCase) {
       audioGroups.forEach((groupFiles, groupKey) => {
@@ -1237,8 +1249,8 @@ export function useAudioImport() {
           inheritTags: uploadOptions.inheritTags,
           algorithmParams: uploadOptions.algorithmParams
         })
-        // 用该分组的统一标注文件（如 9.json）的 rounds 覆盖 folderParser 自动推断的 rounds
-        if (unifiedRoundsByGroup && unifiedRoundsByGroup[groupKey] && unifiedRoundsByGroup[groupKey].length > 0) {
+        // 用该分组的 JSON rounds 覆盖 folderParser 自动推断的 rounds
+        if (unifiedRoundsByGroup && unifiedRoundsByGroup[groupKey] && (unifiedRoundsByGroup[groupKey] as any).length > 0) {
           const groupRounds = unifiedRoundsByGroup[groupKey] as any
           groupConfig.rounds = groupRounds
           // case 级背景噪声（rounds 外层），优先级高于轮次级
@@ -1285,13 +1297,17 @@ export function useAudioImport() {
           }
         }
 
-        // 计算该文件所属分组键（最子级文件夹名）
-        // 与 folderParser.groupAudioFilesByLeafFolder 的分组逻辑一致
+        // 计算该文件所属分组键
+        // 有 JSON 用例时按 JSON 引用匹配，否则回退文件夹名/文件名
         const relativePath = (file as any).webkitRelativePath || ''
-        const pathParts = relativePath.split('/').filter(Boolean)
-        const groupKey = pathParts.length >= 2
-          ? pathParts[pathParts.length - 2]
-          : file.name.replace(/\.[^.]+$/, '')
+        const groupKey = testCaseGroups.size > 0
+          ? computeGroupKeyForAudio(file.name, relativePath, testCaseGroups)
+          : (() => {
+              const pathParts = relativePath.split('/').filter(Boolean)
+              return pathParts.length >= 2
+                ? pathParts[pathParts.length - 2]
+                : file.name.replace(/\.[^.]+$/, '')
+            })()
 
         preparedFiles.push({
           id: fileId,
@@ -2182,10 +2198,10 @@ export function useAudioImport() {
           label: '测试类型', 
           type: 'checkbox', 
           options: [
-            { label: 'API测试', value: 'api' },
-            { label: 'E2E测试', value: 'e2e' }
-          ], 
-          defaultValue: uploadOptions.testTypes 
+            { label: 'E2E测试', value: 'e2e' },
+            { label: 'API测试', value: 'api' }
+          ],
+          defaultValue: uploadOptions.testTypes
         },
         {
           key: 'dimensions',
@@ -2193,41 +2209,41 @@ export function useAudioImport() {
           type: 'dimensions',
           defaultValue: uploadOptions.dimensions
         },
-        { 
-          key: 'playbackDeviceId', 
-          label: '播放设备', 
-          type: 'select', 
+        {
+          key: 'playbackDeviceId',
+          label: '播放设备',
+          type: 'select',
           options: (Array.isArray(playbackDevices.value) ? playbackDevices.value : []).map(d => ({ label: d.name, value: d.id })),
-          defaultValue: uploadOptions.playbackDeviceId 
+          defaultValue: uploadOptions.playbackDeviceId
         },
-        { 
-          key: 'defaultSpl', 
-          label: '默认声压级(SPL)', 
-          type: 'number', 
-          min: 30, 
-          max: 120, 
-          step: 0.1, 
-          defaultValue: uploadOptions.spl 
+        {
+          key: 'defaultSpl',
+          label: '默认声压级(SPL)',
+          type: 'number',
+          min: 30,
+          max: 120,
+          step: 0.1,
+          defaultValue: uploadOptions.spl
         },
-        { 
-          key: 'groupNameType', 
-          label: '用例分组', 
-          type: 'radio', 
+        {
+          key: 'groupNameType',
+          label: '用例分组',
+          type: 'radio',
           options: [
             { label: '根目录', value: 'root' },
             { label: '文件夹名', value: 'folder' },
             { label: '自定义', value: 'custom' }
-          ], 
-          defaultValue: uploadOptions.groupNameType 
+          ],
+          defaultValue: uploadOptions.groupNameType
         },
-        { 
-          key: 'customGroupName', 
-          label: '自定义分组名称', 
-          type: 'text', 
-          placeholder: '请输入分组名称', 
-          defaultValue: uploadOptions.customGroupName 
+        {
+          key: 'customGroupName',
+          label: '自定义分组名称',
+          type: 'text',
+          placeholder: '请输入分组名称',
+          defaultValue: uploadOptions.customGroupName
         },
-        { 
+        {
           key: 'inheritTags',
           label: '继承音频标签',
           type: 'boolean',
@@ -2280,7 +2296,7 @@ export function useAudioImport() {
           if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
           
           selectedFilesForUpload.value = data.files;
-          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup);
+          await startUploadProcess(data.files, data.folderGroupMappings, data.unifiedRoundsByGroup, data.testCaseGroups);
         }
       }
     });

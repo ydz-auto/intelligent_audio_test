@@ -18,7 +18,10 @@ class Xiaoyilivechat(HarmonyDriver):
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
 
-
+    def __init__(self):
+        super().__init__()
+        # 仅覆盖与父类不同的属性
+        self.app_icon_key = 'AppIcon_Image_com.huawei.hmos.vassistant.launcherVoiceAbilityentry0_undefined_0'
     # 是否启用录屏(小艺=True 保留录屏 wav 作为评估音频源)。
     # Doubao/ChatGPT 在各自子类置 False:无录屏,get_results 跳过录屏拉取,
     # 改把 ai_wav 塞进 wav_path 复用 wav_path→record_file 映射喂评估。

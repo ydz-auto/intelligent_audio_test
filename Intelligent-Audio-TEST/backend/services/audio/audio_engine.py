@@ -40,13 +40,30 @@ from backend.services.audio.audio_driver import (
 class AudioService:
     """音频管理服务：支持多通道播放控制"""
     def __init__(self):
-        self.driver = PyAudioDriver()
+        # 延迟初始化 PyAudio 驱动，避免模块导入时调用 pyaudio.PyAudio() 导致启动卡死
+        # 注意：Pa_Initialize() 非线程安全，必须由 init_driver() 在主线程预初始化
+        self.driver = None
         self.active_players = {} # taskId -> {player_type: thread}
         self._device_cache = None
         self._cache_time = 0
         self._cache_duration = 5.0 # 缓存5秒
         self._lock = threading.Lock()
         self._audio_pool = None
+
+    def init_driver(self):
+        """在主线程中预初始化 PyAudio 驱动（Pa_Initialize 非线程安全）"""
+        if self.driver is None:
+            with self._lock:
+                if self.driver is None:
+                    self.driver = PyAudioDriver()
+                    log_and_emit('INFO', 'audio_engine', "PyAudio 驱动已在主线程预初始化", category='audio')
+        return self.driver
+
+    def _get_driver(self):
+        """获取 PyAudio 驱动实例（应在主线程预初始化后调用）"""
+        if self.driver is None:
+            self.init_driver()
+        return self.driver
 
     def _get_audio_pool(self):
         """获取音频播放专用线程池（延迟初始化，避免循环导入）"""
@@ -57,7 +74,7 @@ class AudioService:
             except Exception as e:
                 log_and_emit('WARNING', 'audio_engine', f"无法获取音频线程池，使用本地线程池: {e}", category='audio')
                 from concurrent.futures import ThreadPoolExecutor
-                self._audio_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix='audio_play_')
+                self._audio_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix='audio_play_')
         return self._audio_pool
 
     def _get_cached_devices(self):
@@ -67,7 +84,7 @@ class AudioService:
             current_time = time.time()
             if self._device_cache is None or (current_time - self._cache_time) > self._cache_duration:
                 log_and_emit('DEBUG', 'audio_engine', "Cache expired or empty, scanning devices...", category='audio')
-                self._device_cache = self.driver.get_devices()
+                self._device_cache = self._get_driver().get_devices()
                 self._cache_time = current_time
             else:
                 log_and_emit('DEBUG', 'audio_engine', f"Using cached device list (age: {round(current_time - self._cache_time, 2)}s)", category='audio')
@@ -156,7 +173,7 @@ class AudioService:
         Returns:
             dict: 选中的设备 dict，或 None
         """
-        priority_apis = ["Windows WDM-KS", "Windows DirectSound", "Windows WASAPI", "MME"]
+        priority_apis = ["Windows DirectSound", "Windows WDM-KS",  "Windows WASAPI", "MME"]
 
         for api in priority_apis:
             api_matches = [dev for dev in matches if dev['host_api'] == api]
@@ -359,7 +376,7 @@ class AudioService:
         
         pool = self._get_audio_pool()
         future = pool.submit(
-            self.driver.play_multi,
+            self._get_driver().play_multi,
             audio_configs, device_index, stop_event, offset, loop
         )
         
@@ -404,7 +421,7 @@ class AudioService:
                 })
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Before play_multi: configs count={len(multi_configs)}, delays={[c.get('delay') for c in multi_configs]}, files={[c.get('file', '').split('\\\\')[-1] for c in multi_configs]}", category='audio')
-            self.driver.play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event)
+            self._get_driver().play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event)
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Device {device_index} done")
         except Exception as e:

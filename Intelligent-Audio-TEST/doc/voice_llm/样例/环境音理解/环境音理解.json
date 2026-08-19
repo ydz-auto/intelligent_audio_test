@@ -3,7 +3,6 @@
     "audio": "B-EU-001_拒识与环境理解_环境音理解能力_环境音_门铃声.wav",
     "spl": 55.0,
     "playback_device_names": [
-      "设备背面（0.5m+180°）",
       "设备左面（0.5m+90°）"
     ]
   },
@@ -36,9 +35,13 @@
               "playback_device_name": "设备背面（0.5m+180°）"
             }
           ],
-          "voiceprint_enabled": false,
-          "voiceprint_spl": 70.0,
-          "voiceprint_wait_time": 5.0,
+      "voiceprint": 
+            {
+              "audio": "B-EU-001_拒识与环境理解_环境音理解能力_目标人_男_年轻_发起交互_推荐好书.wav",
+              "spl": 55.0,
+              "playback_device_name": "设备正面（0.5m+0°）",
+              "voiceprint_wait_time": 5.0
+            },
           "input_text": "给我推荐几本好看的书吧。"
         }
       ]
@@ -58,8 +61,6 @@
           "volume_level": 60,
           "interferers": [],
           "voiceprint_enabled": false,
-          "voiceprint_spl": 70.0,
-          "voiceprint_wait_time": 5.0,
           "input_text": "刚才是不是有人敲门？"
         }
       ]

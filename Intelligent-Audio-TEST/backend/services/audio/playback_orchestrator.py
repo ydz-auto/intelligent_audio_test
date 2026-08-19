@@ -122,6 +122,22 @@ class PlaybackOrchestrator:
                 task_id, interferers, self.audio_service
             )
 
+            # 5.1 跳过与全局背景噪声使用相同设备的干扰人音频
+            # 同一设备无法同时打开两个 PortAudio 输出流，会导致 dev_lock 死锁
+            bg_noise_devices = self._get_background_noise_device_indices(task_id)
+            if bg_noise_devices and interferer_configs:
+                original_count = len(interferer_configs)
+                interferer_configs = [
+                    c for c in interferer_configs
+                    if c.get('device_index') not in bg_noise_devices
+                ]
+                skipped = original_count - len(interferer_configs)
+                if skipped > 0:
+                    self._log('WARNING',
+                              f'[play_round {round_tag}] 跳过 {skipped} 个与全局背景噪声设备冲突的干扰人音频 '
+                              f'(bg_devices={bg_noise_devices})',
+                              task_id=task_id)
+
             # 6. 构建时间轴（主讲人 + speaker 感知）
             app = self._get_flask_app()
             speakers_map = build_speakers_map_from_dry_audios(dry_audios_info, app=app)
@@ -265,17 +281,24 @@ class PlaybackOrchestrator:
             if task_id_key not in self.audio_service.active_players:
                 self.audio_service.active_players[task_id_key] = {}
 
+            # 按设备分组：同一设备的多个 channel 合并为一个 play_multi 调用
+            # PortAudio 不允许同一设备同时打开多个输出流，必须合并
+            from collections import defaultdict
+            device_configs_map = defaultdict(list)
             for cfg in noise_configs:
+                device_configs_map[cfg['device_index']].append((cfg, 0))
+
+            for device_index, audio_list_with_delays in device_configs_map.items():
                 stop_event = threading.Event()
                 playback_started_event = threading.Event()
                 future = pool.submit(
                     self.audio_service._play_device_audios,
-                    cfg['device_index'],
-                    [(cfg, 0)],
+                    device_index,
+                    audio_list_with_delays,
                     0, 0, True, stop_event, False, None,
                     playback_started_event, None,
                 )
-                player_key = f'{self._bg_noise_player_type}_{cfg["device_index"]}'
+                player_key = f'{self._bg_noise_player_type}_{device_index}'
                 self.audio_service.active_players[task_id_key][player_key] = {
                     "future": future,
                     "stop_event": stop_event,
@@ -283,9 +306,9 @@ class PlaybackOrchestrator:
                     "playback_finished_event": None,
                 }
 
-            # 等待真正开始播放
-            for cfg in noise_configs:
-                player_key = f'{self._bg_noise_player_type}_{cfg["device_index"]}'
+            # 等待真正开始播放（每个设备一个事件）
+            for device_index in device_configs_map:
+                player_key = f'{self._bg_noise_player_type}_{device_index}'
                 evt = self.audio_service.active_players[task_id_key].get(player_key, {}).get('playback_started_event')
                 if evt:
                     evt.wait(timeout=60)
@@ -295,6 +318,22 @@ class PlaybackOrchestrator:
         except Exception as e:
             self._log('ERROR', f'启动全局背景噪声失败: {e}', task_id=task_id)
             return False
+
+    def _get_background_noise_device_indices(self, task_id):
+        """获取全局背景噪声占用的设备索引集合"""
+        task_id_key = str(task_id)
+        players = self.audio_service.active_players.get(task_id_key, {})
+        devices = set()
+        for k, v in players.items():
+            if k.startswith(self._bg_noise_player_type):
+                # player_key 格式: bg_noise_<device_index>
+                parts = k.rsplit('_', 1)
+                if len(parts) == 2:
+                    try:
+                        devices.add(int(parts[1]))
+                    except ValueError:
+                        pass
+        return devices
 
     def stop_background_noise(self, task_id):
         """停止用例级全局背景噪声。

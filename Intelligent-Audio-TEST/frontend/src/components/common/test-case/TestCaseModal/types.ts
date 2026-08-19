@@ -207,8 +207,8 @@ export interface TestCaseConfig {
     spl?: number;
     waitTime?: number;
   };
-  /** 背景噪声音频路径 */
-  background_noise?: string;
+  /** case 级全局背景噪声（跨所有轮次持续播放，优先于 round 级） */
+  background_noise?: BackgroundNoiseConfig;
   /** 源音频路径 */
   source_audio?: string;
   /** 是否自动生成 */
