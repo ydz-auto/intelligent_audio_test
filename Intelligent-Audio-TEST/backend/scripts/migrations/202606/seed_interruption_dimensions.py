@@ -14,9 +14,10 @@
    - 入口：calculate_interruption_metrics(task_params)
    - task_type：interruption_metrics
 
-输入（由调用方直接传两路已对齐的 ASR 词级时间戳，不内部调 ASR）：
-   - user_asr  : 用户提问/打断 ASR（chunks 或 {text, chunks}）
-   - model_asr : 模型恢复 ASR（同上，与 user_asr 等长、同一时间轴）
+输入（两路 wav，由 eval_server 内部调 asr_server 转 ASR 词级时间戳，平台 driver 产出）：
+   - user_wav : 用户打断语音 wav
+   - ai_wav   : 模型恢复语音 wav（与 user_wav 各调一次 ASR 后对齐算打断）
+   （向后兼容：调用方也可直接传 user_asr/model_asr 已对齐 chunks，此时不内部调 ASR）
 
 输出子指标：
    - 打断成功率    (interruption_success_rate)
@@ -44,8 +45,8 @@ POSTGRES_URI = os.environ.get(
     'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
 )
 
-# eval_server 微服务地址
-API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:5000')
+# eval_server 微服务地址（本机 5002，见 eval_server/app/config.py PORT=5002）
+API_URL = os.environ.get('EVAL_SERVER_URL', 'http://localhost:5002')
 
 # ============================================================
 # 维度定义
@@ -59,7 +60,7 @@ DIMENSIONS = [
         'keywords': '打断,interruption,stop,recovery,打断成功率,打断检查时延,打断恢复时延,barge-in',
         'description': (
             '用户打断小艺时衡量停得下、恢复得来。'
-            '入参为两路已对齐的 ASR 词级时间戳（user_asr + model_asr），'
+            '入参为两路 wav（user_wav + ai_wav），eval_server 内部调 asr_server 转成 ASR 词级时间戳后，'
             '计算打断成功率、打断检查时延、打断恢复时延。'
             '参考 Full-Duplex-Bench v1.5 get_timing.py 与 v1.0 eval_user_interruption.py'
         ),
@@ -69,17 +70,17 @@ DIMENSIONS = [
         'result_max': 1.0,
         'decimal_places': 3,
         'weight': 1,
-        'estimated_exec_time': 10,  # 纯计算，不调 ASR
+        'estimated_exec_time': 30,  # 含两次 ASR 调用 + 打断计算
         'score_unit': '',
         'statistic_method': 'average',
         'params': [
-            # ─── 输入参数 ───
-            ('user_asr', '用户打断ASR', '用户提问/打断 ASR', 'json', 'input',
+            # ─── 输入参数：两路 wav（eval_server 内部调 asr_server 转 chunks）───
+            ('user_wav', '用户打断音频', '用户打断语音 wav', 'audio', 'input',
              None, None, None, True,
-             False, None, '用户打断语音的 ASR 词级时间戳(chunks 或 {text, chunks})', 5),
-            ('model_asr', '模型恢复ASR', '模型恢复 ASR', 'json', 'input',
+             False, None, '用户打断语音 wav 路径；eval_server 内部调 asr_server 转 ASR 词级时间戳', 5),
+            ('ai_wav', '模型恢复音频', '模型恢复语音 wav', 'audio', 'input',
              None, None, None, True,
-             False, None, '模型恢复语音的 ASR 词级时间戳(与 user_asr 等长、同一时间轴)', 6),
+             False, None, '模型恢复语音 wav 路径；与 user_wav 各调一次 ASR 后对齐算打断', 6),
             ('seg_merge_gap_s', '词合并间隙', '词合并为段的间隙阈值(秒)', 'number', 'input',
              None, None, None, False,
              False, '0.3', '相邻词时间戳间隙小于该值则合并为同一段(秒)', 11),
@@ -89,7 +90,7 @@ DIMENSIONS = [
              None, None, None, False,
              False, None,
              '多轮文本结构 [{query, answer, is_return_to_topic}]，'
-             '与 user_asr/model_asr 解耦；enable_llm_eval=True 时才使用', 12),
+             '与 user_wav/ai_wav 解耦；enable_llm_eval=True 时才使用', 12),
             ('enable_llm_eval', '启用LLM评估', '是否启用大模型评估', 'boolean', 'input',
              None, None, None, False,
              False, 'false', '为 true 时对每轮打断后回复与回到原话题行为做 LLM 评估'
@@ -119,7 +120,7 @@ DIMENSIONS = [
              False, None, '用户语音段总数', 64),
             ('interruption_n_recovery_only', '退化事件数', '退化事件数', 'number', 'output',
              'n_recovery_only', None, 'aux', False,
-             False, None, '只算到恢复时延的事件数(model_asr 可能只含恢复段)', 65),
+             False, None, '只算到恢复时延的事件数(ai_wav 可能只含恢复段)', 65),
             ('interruption_n_no_model_speech', '无模型语音段数', '无模型语音段数', 'number', 'output',
              'n_no_model_speech', None, 'aux', False,
              False, None, '模型全程未说话的用户段数', 66),
@@ -180,15 +181,15 @@ DIMENSIONS = [
              'llm_eval', None, 'aux', False,
              False, None, 'LLM 评估完整结果(含 enabled/message/model 及明细)', 113),
         ],
-        # user_asr / model_asr 由调用方（主服务/用例）直接提供，来源待主服务侧确认
-        # 这里给出默认映射：reference 用例输出 → 入参，可按主服务实际来源调整
-        # rounds（多轮文本结构，含 is_return_to_topic 打标）同样来自用例 reference 输出
-        # is_return_to_topic 走 reference_params 体系（seed_voice_llm 注册，从 segments[].is_return_to_topic 派生），
-        # 经 source='reference' 映射：_build_rounds_list 按轮读入 rounds_list[i].is_return_to_topic
+        # user_wav / ai_wav 来自 device driver 的 get_results 输出（source='device'），
+        # _build_rounds_list 从 algorithm_result.rounds[].output 按 target_param 取值；
+        # 与 turn_taking 维度（seed_xiaoyi_dimensions.py）的 user_wav/ai_wav 映射完全一致。
+        # rounds（多轮文本结构，含 is_return_to_topic 打标）走 reference_params 体系
+        # （seed_voice_llm 注册，从 segments[].is_return_to_topic 派生），供 LLM 评估分支用。
         # original_topic（用例级纯文本，无标注来源）不走 reference，由 evaluate_case 从 config 注入 kwargs → payload
         'param_mappings': [
-            ('reference', 'output', 'user_asr', 'user_asr', 'none'),
-            ('reference', 'output', 'model_asr', 'model_asr', 'none'),
+            ('device', 'output', 'user_wav', 'user_wav', 'none'),
+            ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
             ('reference', 'output', 'rounds', 'rounds', 'none'),
             ('reference', 'output', 'is_return_to_topic', 'is_return_to_topic', 'none'),
         ],
@@ -226,8 +227,8 @@ def seed_interruption_dimensions():
                     'original_topic': '{{original_topic}}',
                     'rounds': [
                         {
-                            'user_asr': '{{user_asr}}',
-                            'model_asr': '{{model_asr}}',
+                            'user_wav': '{{user_wav}}',
+                            'ai_wav': '{{ai_wav}}',
                         }
                     ],
                 },
@@ -433,7 +434,7 @@ if __name__ == '__main__':
     print()
     print("此脚本将注册：")
     print("1. interruption_metrics 维度 — 打断指标（用户打断小艺）")
-    print("   入参: user_asr(用户打断ASR), model_asr(模型恢复ASR), seg_merge_gap_s")
+    print("   入参: user_wav(用户打断wav), ai_wav(模型恢复wav), seg_merge_gap_s")
     print()
     print("   子指标1: 打断成功率 (interruption_success_rate)")
     print("   子指标2: 打断检查时延 (avg_stop_latency_s)")

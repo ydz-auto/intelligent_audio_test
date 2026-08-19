@@ -599,12 +599,19 @@ def _empty_non_interactive_latency(message):
 def calculate_interruption_metrics(task_params):
     """打断指标统一入口：用户流 + 模型恢复流 ASR 词级时间戳，直接算三项指标
 
-    与 calculate_xiaoyi_metrics 不同：不内部调 ASR，由调用方直接传两路已对齐的 ASR 结果。
+    与 calculate_xiaoyi_metrics 不同：本入口只算打断，不计算 tor/false_takeover/takeover_latency。
+    支持两种入参形式（优先 wav，向后兼容已对齐 chunks）：
+      A. 传两路 wav 路径（user_wav / ai_wav）：内部调远程 asr_server 转成 ASR chunks 再算
+         （与 calculate_xiaoyi_metrics 打断段一致），平台 driver 只产 wav，走这条。
+      B. 直接传两路已对齐 ASR 结果（user_asr / model_asr，chunks 或 {text, chunks}）：
+         不内部调 ASR，适用于调用方已自行对齐的高级用法。
 
     Args:
         task_params (dict): 包含以下字段
-            - user_asr  (list|dict): 用户提问/打断 ASR（chunks 或 {text, chunks}）
-            - model_asr (list|dict): 模型恢复 ASR（同上，与 user_asr 等长、同一时间轴）
+            - user_wav  (str|None): 用户打断语音 wav 路径（走 A 时必填）
+            - ai_wav    (str|None): 模型恢复语音 wav 路径（走 A 时必填；别名 model_wav）
+            - user_asr  (list|dict|None): 用户提问/打断 ASR（走 B 时必填）
+            - model_asr (list|dict|None): 模型恢复 ASR（走 B 时必填）
             - seg_merge_gap_s  (float, 可选): 词合并为段的间隙阈值(秒)，默认 0.3
 
     Returns:
@@ -622,6 +629,7 @@ def calculate_interruption_metrics(task_params):
         }
     """
     import json as _json
+    from app.utils.asr_adapator import call_modelscope_asr, parse_result
 
     logger.info(f"[interruption_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
 
@@ -629,13 +637,38 @@ def calculate_interruption_metrics(task_params):
     _rounds = task_params.get('rounds') or []
     _r0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
 
+    # 优先走 wav：平台 driver 只产 user_wav/ai_wav，由本入口内部调 asr_server 转 chunks
+    user_wav = task_params.get('user_wav') or _r0.get('user_wav')
+    ai_wav = task_params.get('ai_wav') or task_params.get('model_wav') or _r0.get('ai_wav') or _r0.get('model_wav')
+
+    # 向后兼容：调用方直接传已对齐 ASR 结果
     user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or task_params.get('input_asr') or _r0.get('user_asr') or _r0.get('user_chunks')
     model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or task_params.get('recovery_asr') or _r0.get('model_asr') or _r0.get('model_chunks')
 
+    def _wav_to_asr(wav_path, label):
+        """wav → {text, chunks}，调远程 asr_server；失败抛 ValueError 使任务 failed。"""
+        if not wav_path:
+            return None
+        try:
+            raw = call_modelscope_asr(wav_path)
+            asr_result = parse_result(raw)  # {text, chunks}
+            if not asr_result.get('chunks'):
+                logger.warning(f"[interruption_metrics] {label} ASR chunks 为空: {wav_path}")
+            logger.info(f"[interruption_metrics] {label} ASR 完成 chunks={len(asr_result.get('chunks', []))} wav={wav_path}")
+            return asr_result
+        except Exception as e:
+            raise ValueError(f"interruption_metrics: {label} ASR 调用失败 ({wav_path}): {e}") from e
+
+    # 有 wav 则内部 ASR 转 chunks（不覆盖调用方已传的 asr 结果）
+    if user_asr is None and user_wav:
+        user_asr = _wav_to_asr(user_wav, 'user_wav')
+    if model_asr is None and ai_wav:
+        model_asr = _wav_to_asr(ai_wav, 'ai_wav')
+
     if user_asr is None:
-        raise ValueError("interruption_metrics: 缺少 user_asr（用户提问/打断 ASR）")
+        raise ValueError("interruption_metrics: 缺少 user_wav 或 user_asr（用户提问/打断 wav 或 ASR）")
     if model_asr is None:
-        raise ValueError("interruption_metrics: 缺少 model_asr（模型恢复 ASR）")
+        raise ValueError("interruption_metrics: 缺少 ai_wav 或 model_asr（模型恢复 wav 或 ASR）")
 
     stop_tol = task_params.get('stop_tolerance_s')
     merge_gap = task_params.get('seg_merge_gap_s') or _r0.get('seg_merge_gap_s')
@@ -645,7 +678,11 @@ def calculate_interruption_metrics(task_params):
         # 兼容旧入参；当前 success 不再被容差门控，该值仅保留不报错
         logger.info("[interruption_metrics] stop_tolerance_s 已废弃（success 改为让出+恢复），忽略")
     if merge_gap is not None:
-        kwargs['seg_merge_gap_s'] = merge_gap
+        # multipart 上传时标量字段是字符串('0.3')，需转 float；非法值则回退默认
+        try:
+            kwargs['seg_merge_gap_s'] = float(merge_gap)
+        except (TypeError, ValueError):
+            logger.warning(f"[interruption_metrics] seg_merge_gap_s 非数值({merge_gap!r})，用默认 0.3")
 
     result = compute_interruption_metrics(user_asr, model_asr, **kwargs)
     logger.info(
@@ -658,7 +695,8 @@ def calculate_interruption_metrics(task_params):
     # ── 可选：大模型评估（打断后回复打分 / 回到原话题行为判断 / 回到原话题回复打分）──
     # 触发条件：enable_llm_eval=True 且 task_params 携带 rounds 文本结构
     # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，不影响时序指标
-    enable_llm = bool(task_params.get('enable_llm_eval'))
+    # multipart 上传时 enable_llm_eval 是字符串('False'/'true')，bool('False')=True 会误判，用白名单
+    enable_llm = task_params.get('enable_llm_eval') in (True, 'true', '1', 1)
     rounds = task_params.get('rounds')
     if enable_llm and rounds:
         try:

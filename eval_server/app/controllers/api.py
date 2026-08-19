@@ -152,10 +152,12 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
                 return error_response(f"Missing required fields for llm_judge: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
     # xiaoyi_metrics: record_file 可为空，无录音时跳过 ASR 相关指标
     elif task_type == 'interruption_metrics':
-        if not task_params.get('user_asr') and not task_params.get('user_chunks'):
-            return error_response("Missing required field for interruption_metrics: user_asr (用户提问/打断 ASR)", code=CODE_VALIDATION_ERROR)
-        if not task_params.get('model_asr') and not task_params.get('model_chunks'):
-            return error_response("Missing required field for interruption_metrics: model_asr (模型恢复 ASR)", code=CODE_VALIDATION_ERROR)
+        # 走 wav：平台 driver 产 user_wav/ai_wav，由 calculate_interruption_metrics 内部调 asr_server 转 chunks
+        # 兼容老调用方直接传已对齐 ASR 结果（user_asr/model_asr 或 *_chunks 别名）
+        if not (task_params.get('user_wav') or task_params.get('user_asr') or task_params.get('user_chunks')):
+            return error_response("Missing required field for interruption_metrics: user_wav (或 user_asr，用户打断 wav/ASR)", code=CODE_VALIDATION_ERROR)
+        if not (task_params.get('ai_wav') or task_params.get('model_wav') or task_params.get('model_asr') or task_params.get('model_chunks')):
+            return error_response("Missing required field for interruption_metrics: ai_wav (或 model_asr，模型恢复 wav/ASR)", code=CODE_VALIDATION_ERROR)
     elif task_type == 'non_interactive_latency':
         if not task_params.get('user_asr') and not task_params.get('user_chunks'):
             return error_response("Missing required field for non_interactive_latency: user_asr (用户 ASR)", code=CODE_VALIDATION_ERROR)
@@ -396,9 +398,10 @@ def create_task_upload():
         except (json.JSONDecodeError, TypeError):
             pass  # rounds 不是合法 JSON，保持原样
 
-    # xiaoyi_metrics / takeover：单轮时把 rounds[0] 里的字段提到顶层，供校验和计算使用
-    # （record_file / user_wav / ai_wav 已作为文件上传保存，这里补充其他标量字段）
-    if task_type in ('xiaoyi_metrics', 'takeover'):
+    # xiaoyi_metrics / takeover / interruption_metrics：单轮时把 rounds[0] 里的字段提到顶层，供校验和计算使用
+    # （record_file / user_wav / ai_wav 已作为文件上传保存，这里补充其他标量字段；
+    #   interruption_metrics 走 wav 路径，user_wav/ai_wav 同样需提顶层供 calculate_interruption_metrics 取值）
+    if task_type in ('xiaoyi_metrics', 'takeover', 'interruption_metrics'):
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) == 1 and isinstance(rounds_list[0], dict):
             rd = rounds_list[0]
