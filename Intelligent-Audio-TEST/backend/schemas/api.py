@@ -22,7 +22,7 @@ class ApiItem(APIModel):
     id: int = Field(..., alias='id', validation_alias='id')
     name: str = Field(..., alias='name', validation_alias='name')
     vendor: Optional[str] = Field(None, alias='vendor', validation_alias='vendor')
-    api_url: str = Field(..., alias='apiUrl', validation_alias='apiUrl')
+    api_url: Optional[str] = Field(None, alias='apiUrl', validation_alias='apiUrl')
     description: Optional[str] = Field(None, alias='description', validation_alias='description')
     status: Optional[str] = Field(None, alias='status', validation_alias='status')
     meta: Dict[str, Any] = Field(default_factory=dict, alias='meta', validation_alias='meta')

@@ -12,6 +12,7 @@ import time
 import numpy as np
 import os
 import traceback
+import ctypes
 from abc import ABC, abstractmethod
 from pydub import AudioSegment
 from backend.utils.web.log_handler import log_and_emit
@@ -407,6 +408,17 @@ class PyAudioDriver(AudioDriver):
         if not audio_configs or len(audio_configs) < 1:
             return
 
+        # WASAPI 需要线程内 COM 初始化，线程池工作线程默认不初始化
+        _com_initialized = False
+        try:
+            ole32 = ctypes.windll.ole32
+            hr = ole32.CoInitializeEx(None, 0x0)  # COINIT_MULTITHREADED
+            # S_OK=0x00000000, S_FALSE=0x00000001（已初始化也算成功）
+            if hr in (0, 1):
+                _com_initialized = True
+        except Exception:
+            pass
+
         caller_info = traceback.format_stack()[-3].strip() if len(traceback.format_stack()) > 2 else 'unknown'
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] ENTRY: device={device_index}, configs={len(audio_configs)}, caller={caller_info}", category='audio')
 
@@ -514,3 +526,9 @@ class PyAudioDriver(AudioDriver):
                 except Exception as e:
                     log_and_emit('WARNING', 'audio_engine', f"[play_multi] Failed to delete temp file {temp_file}: {e}", category='audio')
             log_and_emit('DEBUG', 'audio_engine', "Multi audio playback resources released", category='audio')
+            # 释放 COM
+            if _com_initialized:
+                try:
+                    ctypes.windll.ole32.CoUninitialize()
+                except Exception:
+                    pass
