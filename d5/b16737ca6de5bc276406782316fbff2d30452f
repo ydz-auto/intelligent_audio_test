@@ -1,0 +1,19 @@
+Intelligent-Audio-TEST/backend/models/models.py
+  s_81ce5bf1dd5b07::t_3f00d66b5b0286 429-434
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "d5b16737ca6de5bc276406782316fbff2d30452f",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
