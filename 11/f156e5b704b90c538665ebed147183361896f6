@@ -1,0 +1,21 @@
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  s_a1ab6769d80641::t_db7a5a3744b044 410,412,419
+Intelligent-Audio-TEST/doc/voice_llm/样例/环境音理解/环境音理解.json
+  s_a1ab6769d80641::t_5755b2b22b655e 2-9,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "11f156e5b704b90c538665ebed147183361896f6",
+  "prompts": {},
+  "sessions": {
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
