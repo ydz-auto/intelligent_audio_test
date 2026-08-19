@@ -17,7 +17,8 @@
           "voiceprint_enabled": false,
           "voiceprint_spl": 70.0,
           "voiceprint_wait_time": 5.0,
-          "input_text": "我最近想学一门新乐器，你有什么好的建议吗？"
+          "input_text": "我最近想学一门新乐器，你有什么好的建议吗？",
+
         }
       ]
     },

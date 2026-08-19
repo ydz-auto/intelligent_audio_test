@@ -216,7 +216,18 @@ class PyAudioDriver(AudioDriver):
                 try:
                     wf.rewind()
                     audio_data = wf.readframes(wf.getnframes())
-                    audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+                    sampwidth = wf.getsampwidth()
+                    # 根据采样宽度选择 dtype，统一归一化到 int16 幅度范围 [-32768, 32767]
+                    if sampwidth == 1:
+                        audio_np = np.frombuffer(audio_data, dtype=np.uint8).astype(np.float32)
+                        audio_np = (audio_np - 128.0) * 256.0  # uint8 中心在128，转到 int16 范围
+                    elif sampwidth == 2:
+                        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+                    elif sampwidth == 4:
+                        audio_np = np.frombuffer(audio_data, dtype=np.int32).astype(np.float32)
+                        audio_np = audio_np / 65536.0  # int32 -> int16 范围
+                    else:
+                        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
 
                     resampled_np = self.resample_audio_data(audio_np, file_rate, target_rate)
                     resampled_np = np.clip(resampled_np, -32768, 32767).astype(np.int16)
@@ -261,6 +272,14 @@ class PyAudioDriver(AudioDriver):
         dry_finished_list = [False] * len(wave_files)
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] dry_finished_list initialized with length: {len(wave_files)}, wave_files: {len(wave_files)}, audio_is_noise_list: {audio_is_noise_list}, audio_is_noise_list_len: {len(audio_is_noise_list) if audio_is_noise_list else 'None'}, audio_delays: {audio_delays}", category='audio')
 
+        # 预取每个文件的采样宽度，用于正确解析原始字节数据
+        file_sampwidths = []
+        for wf in wave_files:
+            try:
+                file_sampwidths.append(wf.getsampwidth())
+            except Exception:
+                file_sampwidths.append(2)
+
         def callback(in_data, frame_count, time_info, status):
             try:
                 if parent_stop_event and parent_stop_event.is_set():
@@ -283,8 +302,9 @@ class PyAudioDriver(AudioDriver):
                         audio_delays[i] = max(0, delay - elapsed_time)
 
                     current_delay = audio_delays[i] if i < len(audio_delays) else 0
+                    sampwidth = file_sampwidths[i] if i < len(file_sampwidths) else 2
                     if current_delay > 0:
-                        data = bytes(frame_count * 2)
+                        data = bytes(frame_count * sampwidth * file_channels_list[i])
                     else:
                         data = wf.readframes(frame_count)
 
@@ -296,16 +316,26 @@ class PyAudioDriver(AudioDriver):
                                 continue
                         elif not use_loop:
                             if dry_finished_list[i]:
-                                data = bytes(frame_count * 2)
+                                data = bytes(frame_count * sampwidth * file_channels_list[i])
                                 continue
                             dry_finished_list[i] = True
-                            data = bytes(frame_count * 2)
+                            data = bytes(frame_count * sampwidth * file_channels_list[i])
                             continue
 
                     if not is_noise and not use_loop:
                         all_empty = False
 
-                    audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                    # 根据采样宽度正确解析字节数据，统一归一化到 int16 幅度范围
+                    if sampwidth == 1:
+                        audio_data = np.frombuffer(data, dtype=np.uint8).astype(np.float32)
+                        audio_data = (audio_data - 128.0) * 256.0
+                    elif sampwidth == 2:
+                        audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                    elif sampwidth == 4:
+                        audio_data = np.frombuffer(data, dtype=np.int32).astype(np.float32)
+                        audio_data = audio_data / 65536.0  # int32 -> int16 范围
+                    else:
+                        audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
                     file_ch = file_channels_list[i]
                     actual_frames = len(audio_data) // file_ch
 

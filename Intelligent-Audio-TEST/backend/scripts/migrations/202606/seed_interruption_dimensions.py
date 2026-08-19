@@ -46,7 +46,7 @@ POSTGRES_URI = os.environ.get(
 )
 
 # eval_server 微服务地址（本机 5002，见 eval_server/app/config.py PORT=5002）
-API_URL = os.environ.get('EVAL_SERVER_URL', 'http://localhost:5002')
+API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:5000')
 
 # ============================================================
 # 维度定义

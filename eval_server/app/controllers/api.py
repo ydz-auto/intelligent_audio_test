@@ -126,7 +126,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
     caller_task_id 为调用方的任务 ID（可选）。
     eval_task_id 可由调用方预先生成（如 create_task_upload 需要先存文件）。
     """
-    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'turn_taking', 'interruption_metrics', 'non_interactive_latency', 'noise_latency', 'env_judge']
+    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'turn_taking', 'interruption_metrics', 'non_interactive_latency', 'noise_latency', 'env_judge', 'high_freq_turn_taking', 'high_freq_llm_judge']
     if task_type not in SUPPORTED_TASK_TYPES:
         return error_response(f"Unsupported task type: {task_type}. Supported types: {SUPPORTED_TASK_TYPES}", code=CODE_BUSINESS_ERROR)
 
@@ -174,6 +174,20 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
     elif task_type == 'env_judge':
         if not task_params.get('video_path') and not task_params.get('record_file'):
             return error_response("Missing required field for env_judge: video_path (录屏文件路径)", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'high_freq_turn_taking':
+        # 高频轮换：user_wav + ai_wav 双路音频（从顶层或 rounds[0] 取）
+        _rounds_hftt = task_params.get('rounds') or []
+        _r0_hftt = _rounds_hftt[0] if (isinstance(_rounds_hftt, list) and _rounds_hftt and isinstance(_rounds_hftt[0], dict)) else {}
+        if not (task_params.get('user_wav') or _r0_hftt.get('user_wav')):
+            return error_response("Missing required field for high_freq_turn_taking: user_wav (用户通道音频)", code=CODE_VALIDATION_ERROR)
+        if not (task_params.get('ai_wav') or _r0_hftt.get('ai_wav')):
+            return error_response("Missing required field for high_freq_turn_taking: ai_wav (AI回复通道音频)", code=CODE_VALIDATION_ERROR)
+    elif task_type == 'high_freq_llm_judge':
+        # 高频LLM裁判：录屏文件 + rounds 多轮文本
+        if not task_params.get('record_file') and not task_params.get('video_path') and not task_params.get('record_path'):
+            return error_response("Missing required field for high_freq_llm_judge: record_file (录屏/音频文件路径)", code=CODE_VALIDATION_ERROR)
+        if not task_params.get('rounds'):
+            return error_response("Missing required field for high_freq_llm_judge: rounds (多轮文本数据)", code=CODE_VALIDATION_ERROR)
 
     if eval_task_id is None:
         eval_task_id = f"task_{uuid.uuid4().hex}"
