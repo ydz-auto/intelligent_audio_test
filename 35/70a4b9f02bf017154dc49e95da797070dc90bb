@@ -1,20 +1,11 @@
-eval_server/app/controllers/api.py
-  h_f411275616c284 129,159-174
-eval_server/app/services/task_service.py
-  h_f411275616c284 212-245
 eval_server/app/services/xiaoyi_metrics/turn_taking/__init__.py
-  s_81ce5bf1dd5b07::t_5eb68e7f7fe0bd 19-20,661
+  s_81ce5bf1dd5b07::t_2a4e6cb784a8f3 19-20,661
 ---
 {
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.6.2",
   "base_commit_sha": "3570a4b9f02bf017154dc49e95da797070dc90bb",
   "prompts": {},
-  "humans": {
-    "h_f411275616c284": {
-      "author": "lijiahao <lijiahao69@huawei.com>"
-    }
-  },
   "sessions": {
     "s_81ce5bf1dd5b07": {
       "agent_id": {
