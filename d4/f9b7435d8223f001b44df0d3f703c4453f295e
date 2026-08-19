@@ -1,0 +1,19 @@
+Intelligent-Audio-TEST/frontend/src/shared/types/businessTypes.ts
+  s_a1ab6769d80641::t_524deaf896b895 68-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "d4f9b7435d8223f001b44df0d3f703c4453f295e",
+  "prompts": {},
+  "sessions": {
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
