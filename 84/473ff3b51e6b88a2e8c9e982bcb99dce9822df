@@ -1,0 +1,19 @@
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_service.py
+  s_6fa8df7c7d8f8c::t_5f05470cb1fc9e 425-460,465-478,482
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "84473ff3b51e6b88a2e8c9e982bcb99dce9822df",
+  "prompts": {},
+  "sessions": {
+    "s_6fa8df7c7d8f8c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82840de88248d08ea2a75e",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
