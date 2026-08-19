@@ -1,0 +1,46 @@
+Intelligent-Audio-TEST/frontend/src/components/algorithm/AlgorithmConfigModal.vue
+  s_1642054cb61aac::t_dadf23eecf918a 688,694,696,698,700,704-708
+  s_1642054cb61aac::t_908b5f0eea6d75 1612
+  s_1642054cb61aac::t_d448874b88a96f 790-810,828-829
+  s_1642054cb61aac::t_85a9992906d11d 1607
+  s_1642054cb61aac::t_70f55003af744a 1686
+  s_1642054cb61aac::t_b61d704aef9cc1 1230-1233
+  s_1642054cb61aac::t_cf7f5e08820eed 1052-1054
+  s_1642054cb61aac::t_261c39c772c9a3 668
+  s_1642054cb61aac::t_1d9c8bce2205aa 1048,1051,1055
+  s_1642054cb61aac::t_46edfcefaa55d0 1058-1065,1069-1071
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "cfc68bd738775b9f59dbefece44b1e72b0b13c34",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_1642054cb61aac": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8506d673ad3a08262ae2f2",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "dedupe_key": "6a8506d673ad3a08262ae2f2:6a850af573ad3a08262ae383:afterEdit:3261593e",
+        "tool_type": "builtin",
+        "source_scene": "agent",
+        "tool_use_id": "6a850af573ad3a08262ae383",
+        "session_id": "6a8506d673ad3a08262ae2f2",
+        "external_session_id": "6a8506d673ad3a08262ae2f2",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a850af573ad3a08262ae383"
+      }
+    }
+  }
+}
