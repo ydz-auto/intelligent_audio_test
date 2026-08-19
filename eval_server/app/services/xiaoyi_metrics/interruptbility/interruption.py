@@ -25,7 +25,8 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # ─────────── 阈值 ───────────
-SEG_MERGE_GAP_S = 0.3          # 合并相邻词为语音段的间隙阈值（秒），参考 v1.5 USER_MERGE_GAP
+SEG_MERGE_GAP_S = 0.5          # 合并相邻词为语音段的间隙阈值（秒），参考 v1.5 USER_MERGE_GAP
+                                  # 0.3 太严：句内短暂停顿 0.3~0.4s 会被拆成多段，导致同一句打断被重复计数
 # 让出宽限：模型语音段结尾比用户打断结尾晚 YIELD_GRACE_S 以内，仍视为"让出"（模型把当前词说完的自然过延）；
 # 超过则视为"说穿"（模型无视打断继续说）。0.05 太严会把词尾过延误判成说穿。
 YIELD_GRACE_S = 0.5
@@ -169,23 +170,21 @@ def _evaluate_one_event(u: Tuple[float, float],
         result['overlap_s'] = round((ov[1] - ov[0]), 3) if ov else 0.0
 
         stop_latency = m_e - u_s
-        # 模型是否"说穿"：语音段结尾比用户打断结尾晚 YIELD_GRACE_S 以上 → 无视打断继续说
-        talked_through = m_e > u_e + YIELD_GRACE_S
-        # stopped = 模型让出（没说穿）；与 stop_latency 解耦，后者作为连续量单独报
-        stopped = not talked_through
-        result['stopped'] = stopped
-        # 仅当模型真在打断期间停下时，stop_latency 才有意义；
-        # 说穿（没让出）时模型根本没"停止"，记 None，避免把"段尾=轮次结束"误当停止时延
-        result['stop_latency_s'] = round(stop_latency, 3) if stopped else None
 
-        # 下一段模型语音（恢复）
+        # 下一段模型语音（恢复）：m_next 存在说明模型当前段结束后停了下来，之后又恢复
         m_next: Optional[Tuple[float, float]] = None
         for ms, me in m_segs:
             if ms > m_e:
                 m_next = (ms, me)
                 break
         resumed = m_next is not None
+
+        # 模型是否停下：有后续恢复段 = 停下了（可能有时延，正是要测量的）
+        # 无后续段 = 模型说完就没再恢复 = 完全无视打断，一直说完才结束
+        stopped = resumed
+        result['stopped'] = stopped
         result['resumed'] = resumed
+        result['stop_latency_s'] = round(stop_latency, 3) if stopped else None
         if m_next is not None:
             result['recovery_latency_s'] = round(m_next[0] - u_e, 3)
             result['silence_gap_s'] = round(m_next[0] - m_e, 3)
@@ -283,6 +282,11 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         result['message'] = 'user_asr 无有效时间戳，无法提取打断段'
         logger.warning(result['message'])
         return result
+
+    # 过滤模型开场白：用户第一句之前的模型语音段是问候语，不作为打断判定依据
+    if u_segs and m_segs:
+        first_u_start = u_segs[0][0]
+        m_segs = [(ms, me) for ms, me in m_segs if ms >= first_u_start]
 
     if not m_segs:
         # 模型全程没说话：所有用户段都是 no_model_speech

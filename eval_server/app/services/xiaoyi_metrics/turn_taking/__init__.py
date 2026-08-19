@@ -161,6 +161,8 @@ def calculate_xiaoyi_metrics(task_params):
             'input_asr': {...},        输入识别准确率结果
             'interruption': {...},     打断指标结果（无双路 wav 时为空结构）
             'non_interactive_latency': {...}, 非交互意图时延结果（无双路 wav 时为空结构）
+            'high_freq_turn_taking': {...},  高频轮换每轮回复时延结果
+            'high_freq_llm_judge': {...},    高频轮换 LLM 裁判结果
         }
     """
     import json as _json
@@ -329,6 +331,37 @@ def calculate_xiaoyi_metrics(task_params):
         logger.info("[interruption] 无双路音频(user_wav/ai_wav)，跳过打断指标")
         results['interruption'] = _empty_interruption('无双路音频，跳过打断')
         results['non_interactive_latency'] = _empty_non_interactive_latency('无双路音频，跳过')
+
+    # 6. 高频轮换：每轮回复时延（飞花令/成语接龙/快问快答等），复用已算好的双路 ASR chunks
+    try:
+        _merge_gap = task_params.get('seg_merge_gap_s') or round0.get('seg_merge_gap_s')
+        _hf_kwargs = {}
+        if _merge_gap is not None:
+            _hf_kwargs['seg_merge_gap_s'] = float(_merge_gap)
+        results['high_freq_turn_taking'] = compute_high_freq_turn_taking(
+            user_chunks=user_chunks or [],
+            ai_chunks=ai_chunks or [],
+            **_hf_kwargs,
+        )
+        _print_high_freq_results(results['high_freq_turn_taking'])
+        logger.info(
+            f"[high_freq_turn_taking] "
+            f"n_rounds={results['high_freq_turn_taking'].get('n_rounds')} "
+            f"matched={results['high_freq_turn_taking'].get('n_matched_rounds')} "
+            f"missed={results['high_freq_turn_taking'].get('n_missed_rounds')} "
+            f"avg_latency={results['high_freq_turn_taking'].get('avg_response_latency_s')}s "
+            f"msg={results['high_freq_turn_taking'].get('message')}"
+        )
+    except Exception as e:
+        logger.warning(f"[high_freq_turn_taking] 计算失败，跳过: {e}")
+        results['high_freq_turn_taking'] = {'n_rounds': 0, 'per_round': [], 'message': f'计算失败: {e}'}
+
+    # 7. 高频轮换 LLM 裁判：传输录屏，逐轮判断问答内容是否符合预期
+    try:
+        results['high_freq_llm_judge'] = calculate_high_freq_llm_judge(task_params)
+    except Exception as e:
+        logger.warning(f"[high_freq_llm_judge] 计算失败，跳过: {e}")
+        results['high_freq_llm_judge'] = {'enabled': False, 'message': f'计算失败: {e}'}
 
     # ── 控制台打印最终评估结果（中英文对照），便于直观核对 ──
     _print_results_bilingual(results)
@@ -684,9 +717,14 @@ def calculate_interruption_metrics(task_params):
     if merge_gap is not None:
         # multipart 上传时标量字段是字符串('0.3')，需转 float；非法值则回退默认
         try:
-            kwargs['seg_merge_gap_s'] = float(merge_gap)
+            gap_val = float(merge_gap)
+            # 0.3 太严会拆段，强制最小 0.5
+            if gap_val < 0.5:
+                logger.info(f"[interruption_metrics] seg_merge_gap_s={gap_val} < 0.5，强制提升到 0.5")
+                gap_val = 0.5
+            kwargs['seg_merge_gap_s'] = gap_val
         except (TypeError, ValueError):
-            logger.warning(f"[interruption_metrics] seg_merge_gap_s 非数值({merge_gap!r})，用默认 0.3")
+            logger.warning(f"[interruption_metrics] seg_merge_gap_s 非数值({merge_gap!r})，用默认 0.5")
 
     result = compute_interruption_metrics(user_asr, model_asr, **kwargs)
     logger.info(

@@ -259,13 +259,6 @@ class TaskService:
                 max_tokens=max_tokens,
                 temperature=temperature,
             )
-        elif task_type == 'high_freq_turn_taking':
-            from .xiaoyi_metrics.turn_taking import calculate_high_freq_turn_taking_metrics
-            return calculate_high_freq_turn_taking_metrics(task_params)
-        elif task_type == 'high_freq_llm_judge':
-            from .xiaoyi_metrics.turn_taking import calculate_high_freq_llm_judge
-            return calculate_high_freq_llm_judge(task_params)
-
         else:
             raise ValueError(f"Unknown task type: {task_type}")
 
