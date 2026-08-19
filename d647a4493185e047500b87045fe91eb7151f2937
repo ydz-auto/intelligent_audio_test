@@ -1,0 +1,38 @@
+Intelligent-Audio-TEST/backend/app.py
+  s_af67e94cea3a04::t_bd26dc15026f1b 28-30,32
+  s_af67e94cea3a04::t_809396475791f2 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "d647a4493185e047500b87045fe91eb7151f2937",
+  "prompts": {},
+  "humans": {
+    "h_43ceb0cd3b7df0": {
+      "author": "Zhangbecool <1766260321@qq.com>"
+    }
+  },
+  "sessions": {
+    "s_af67e94cea3a04": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a83be315c16396330694432",
+        "model": "glm-5.2"
+      },
+      "human_author": "Zhangbecool <1766260321@qq.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a83bf7f5c16396330694498",
+        "operation_id": "6a83bf7f5c16396330694498",
+        "client_type": "ide",
+        "external_session_id": "6a83be315c16396330694432",
+        "session_id": "6a83be315c16396330694432",
+        "edit_kind": "file_edit",
+        "tool_id": "icube:streaming",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a83be315c16396330694432:6a83bf7f5c16396330694498:afterEdit:9d25cb50",
+        "tool_type": "builtin",
+        "source_scene": "agent"
+      }
+    }
+  }
+}

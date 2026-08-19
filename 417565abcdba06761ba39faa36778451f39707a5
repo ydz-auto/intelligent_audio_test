@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "417565abcdba06761ba39faa36778451f39707a5",
+  "prompts": {},
+  "humans": {
+    "h_43ceb0cd3b7df0": {
+      "author": "Zhangbecool <1766260321@qq.com>"
+    }
+  }
+}

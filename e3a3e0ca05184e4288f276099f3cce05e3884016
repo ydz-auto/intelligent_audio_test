@@ -1,0 +1,37 @@
+Intelligent-Audio-TEST/backend/controllers/testcase_controller.py
+  s_81851194bcbe05::t_56d464aabd69d1 276-279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "e3a3e0ca05184e4288f276099f3cce05e3884016",
+  "prompts": {},
+  "humans": {
+    "h_43ceb0cd3b7df0": {
+      "author": "Zhangbecool <1766260321@qq.com>"
+    }
+  },
+  "sessions": {
+    "s_81851194bcbe05": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a83cb315c163963306946d7",
+        "model": "glm-5.2"
+      },
+      "human_author": "Zhangbecool <1766260321@qq.com>",
+      "custom_attributes": {
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a83cb7c5c1639633069471e",
+        "external_session_id": "6a83cb315c163963306946d7",
+        "dedupe_key": "6a83cb315c163963306946d7:6a83cb7c5c1639633069471e:afterEdit:ab227d51",
+        "runtime_client": "trae-tob-git-ai",
+        "edit_kind": "file_edit",
+        "operation_id": "6a83cb7c5c1639633069471e",
+        "source_scene": "agent",
+        "tool_type": "builtin",
+        "client_type": "ide",
+        "session_id": "6a83cb315c163963306946d7"
+      }
+    }
+  }
+}
