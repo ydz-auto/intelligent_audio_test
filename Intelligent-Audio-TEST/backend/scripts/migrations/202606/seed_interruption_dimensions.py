@@ -184,13 +184,15 @@ DIMENSIONS = [
         # user_wav / ai_wav 来自 device driver 的 get_results 输出（source='device'），
         # _build_rounds_list 从 algorithm_result.rounds[].output 按 target_param 取值；
         # 与 turn_taking 维度（seed_xiaoyi_dimensions.py）的 user_wav/ai_wav 映射完全一致。
-        # rounds（多轮文本结构，含 is_return_to_topic 打标）走 reference_params 体系
-        # （seed_voice_llm 注册，从 segments[].is_return_to_topic 派生），供 LLM 评估分支用。
+        # LLM 评估所需文本：query（用户提问，reference 标注）+ answer（模型回复，device driver 产）
+        # + is_return_to_topic（每轮回原话题打标，reference 标注，seed_voice_llm 注册）。
+        # payload_builder 按 body_template.rounds[0] 的占位逐轮渲染，三者缺一则该轮 LLM 跳过打分。
         # original_topic（用例级纯文本，无标注来源）不走 reference，由 evaluate_case 从 config 注入 kwargs → payload
         'param_mappings': [
             ('device', 'output', 'user_wav', 'user_wav', 'none'),
             ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
-            ('reference', 'output', 'rounds', 'rounds', 'none'),
+            ('reference', 'output', 'query', 'query', 'none'),
+            ('device', 'output', 'answer', 'answer', 'none'),
             ('reference', 'output', 'is_return_to_topic', 'is_return_to_topic', 'none'),
         ],
     },
@@ -229,6 +231,9 @@ def seed_interruption_dimensions():
                         {
                             'user_wav': '{{user_wav}}',
                             'ai_wav': '{{ai_wav}}',
+                            'query': '{{query}}',
+                            'answer': '{{answer}}',
+                            'is_return_to_topic': '{{is_return_to_topic}}',
                         }
                     ],
                 },
