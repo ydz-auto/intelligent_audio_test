@@ -485,6 +485,17 @@ class DoubaoChat(Xiaoyilivechat):
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
 
+        # case 模式打断轮非末轮：延迟 5s 再进下一轮播放（可被停止/暂停打断）
+        if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
+                and record_mode == 'case' and not is_last):
+            self._log(level='INFO',
+                      content=f"[post_process] 打断轮结束,等待5s后进入下一轮播放: r{round_number}/{total_rounds}",
+                      task_id=task_id, test_case_id=test_case_id)
+            for _ in range(10):  # 10 * 0.5s = 5s
+                if self._check_stop('轮间延迟5s'):
+                    return True
+                time.sleep(0.5)
+
         if record_mode == 'case':
             # case 模式：一次连续语音通话 / 一个录屏 / 一个连续 PCM,【全程不挂断】。
             # 中间轮：不停录屏、不挂断、不提取,直接返回(通话与录屏继续进行)。

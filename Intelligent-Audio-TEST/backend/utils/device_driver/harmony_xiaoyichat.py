@@ -551,6 +551,17 @@ class Xiaoyilivechat(HarmonyDriver):
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
 
+        # case 模式打断轮非末轮：延迟 5s 再进下一轮播放（可被停止/暂停打断）
+        if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
+                and record_mode == 'case' and not is_last):
+            self._log(level='INFO',
+                      content=f"打断轮结束,等待5s后进入下一轮播放: r{round_number}/{total_rounds}",
+                      task_id=task_id, test_case_id=test_case_id)
+            for _ in range(10):  # 10 * 0.5s = 5s
+                if self._check_stop('轮间延迟5s'):
+                    return True
+                time.sleep(0.5)
+
         if record_mode == 'case':
             # case 模式：中间轮不停录屏、不挂断（保持通话与录屏连续）；
             # 仅末轮停止录屏，以便 get_results 拉取完整文件；全程不在此挂断，交给 teardown 兜底
@@ -580,6 +591,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
             driver.wait(5)
         if not replied:
+            driver.wait(5)
             return True
         # 提取聊天文本，取最后一条（本轮），未识别到则返回 None
         question_components = driver.find_all_components(By.xpath(
@@ -649,13 +661,19 @@ class Xiaoyilivechat(HarmonyDriver):
         recv_result = None
         user_wav = None
         ai_wav = None
-        # case 模式且录屏仍在进行（非末轮）：不拉取半截文件，只返回本轮问答文本
+        # case 模式且录屏仍在进行（非末轮）：录屏 mp4 是整段文件，中途拉是半截，留到末轮；
+        # 但对话 pcm（user_wav/ai_wav）每轮都要拉并传给评估系统（打断/话轮等指标需要逐轮音频），
+        # 不能因录屏未结束就给空串，否则 interruption_metrics 报 missing user_wav。
         if getattr(self, '_record_mode', 'round') == 'case' and getattr(self, '_recording', False):
-            self._log(level='DEBUG', content="case模式录屏进行中,跳过拉取半截文件",
+            pcm_app = getattr(self, '_pcm_app', 'xiaoyi')
+            user_wav, ai_wav = self._pull_pcm_wav(
+                device_sn, app=pcm_app, task_id=task_id, test_case_id=test_case_id)
+            self._log(level='DEBUG',
+                      content=f"case模式录屏进行中,跳过录屏mp4,仍拉对话pcm: user_wav={user_wav} ai_wav={ai_wav}",
                       task_id=task_id, test_case_id=test_case_id)
             return [{
                 'success': True,
-                'message': 'recording in progress',
+                'message': 'recording in progress (pcm pulled, mp4 deferred to final round)',
                 'record_path': '',
                 'wav_path': '',
                 'start_ms': ts['start_ms'],
@@ -663,8 +681,8 @@ class Xiaoyilivechat(HarmonyDriver):
                 'first_frame_ms': first_frame_ms,
                 'question': question_text or '',
                 'answer': answer_text or '',
-                'user_wav': '',
-                'ai_wav': ''
+                'user_wav': user_wav or '',
+                'ai_wav': ai_wav or ''
             }]
         # 拉取对话 pcm 并转 wav（用户输入 + AI 回复），抓取目标 app 由 _pcm_app 指定
         pcm_app = getattr(self, '_pcm_app', 'xiaoyi')
