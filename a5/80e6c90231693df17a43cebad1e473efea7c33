@@ -1,0 +1,46 @@
+eval_server/app/app.py
+  s_dacd2793eae7bb::t_615a9e7b973b4c 7
+eval_server/app.py
+  s_dacd2793eae7bb::t_615a9e7b973b4c 19
+eval_server/tests/test_interruption_llm_scoring.py
+  s_dacd2793eae7bb::t_615a9e7b973b4c 15
+eval_server/app/services/task_service.py
+  s_dacd2793eae7bb::t_615a9e7b973b4c 143-144,146
+eval_server/doc/API_DOC.md
+  s_dacd2793eae7bb::t_615a9e7b973b4c 5,19-20,26-30,48,78,83-91,110,115-153,162,164,168-169,172,176-177,190-191,194,215,261,269,271-274,305,340-341,343-347
+eval_server/tests/test_flow.py
+  s_dacd2793eae7bb::t_615a9e7b973b4c 1
+eval_server/doc/README.md
+  s_dacd2793eae7bb::t_615a9e7b973b4c 7-8,10,39-44,46,82-83,89-93,108,115-116,129-143,149
+eval_server/app/utils/PAUSE_JSON.py
+  s_dacd2793eae7bb::t_615a9e7b973b4c 3
+eval_server/tests/test_interruption_llm_scoring_v2.py
+  s_dacd2793eae7bb::t_615a9e7b973b4c 15
+eval_server/doc/ARCHITECTURE.md
+  s_dacd2793eae7bb::t_615a9e7b973b4c 25-53,55,75-88,90,92-150,166,175-218,221,224-250,273,275-281,283,302
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "a580e6c90231693df17a43cebad1e473efea7c33",
+  "prompts": {},
+  "sessions": {
+    "s_dacd2793eae7bb": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a84080a73ad3a08262ad2db",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "operation_id": "6a85242373ad3a08262ae9bd",
+        "session_id": "6a84080a73ad3a08262ad2db",
+        "tool_use_id": "6a85242373ad3a08262ae9bd",
+        "edit_kind": "bash",
+        "tool_name": "RunCommand",
+        "display_model_name": "glm-5.2",
+        "external_session_id": "6a84080a73ad3a08262ad2db"
+      }
+    }
+  }
+}
