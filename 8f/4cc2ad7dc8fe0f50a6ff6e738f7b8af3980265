@@ -1,0 +1,19 @@
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_81ce5bf1dd5b07::t_61ca4e3e153eaf 1453-1468,1478-1479
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "8f4cc2ad7dc8fe0f50a6ff6e738f7b8af3980265",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
