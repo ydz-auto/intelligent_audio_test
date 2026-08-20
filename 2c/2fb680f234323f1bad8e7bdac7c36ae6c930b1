@@ -1,0 +1,29 @@
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_llm_judge_dimension.py
+  s_81ce5bf1dd5b07::t_848ad8b7053657 20,23
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_a1ab6769d80641::t_4be7dc19428f3b 3,6-17,20-21,23-24,26,30-31,39-89,91-141,145-183,185-284,286-293,295-298,300-304,306-310,312-339,341-348,350,355-377,379-382,385,388-389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "2c2fb680f234323f1bad8e7bdac7c36ae6c930b1",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}

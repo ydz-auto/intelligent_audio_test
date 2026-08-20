@@ -1,0 +1,31 @@
+Intelligent-Audio-TEST/doc/voice_llm/样例/多轮样例/9.json
+  s_a1ab6769d80641::t_448ea3273fb52e 1-67
+eval_server/app/services/xiaoyi_metrics/README.md
+  s_81ce5bf1dd5b07::t_257518be1117df 13-15,148,153
+eval_server/app/services/xiaoyi_metrics/turn_taking/__init__.py
+  s_81ce5bf1dd5b07::t_13f4215de83c0c 628-633,641
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "bac7093738e72f0e6fc4629370a43e3e9f9ff137",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}

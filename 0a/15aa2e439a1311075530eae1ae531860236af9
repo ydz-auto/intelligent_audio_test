@@ -1,0 +1,27 @@
+Intelligent-Audio-TEST/backend/controllers/report_controller_base.py
+  s_81ce5bf1dd5b07::t_ea1653abb75044 2,458,471-474,476,479,482-484,488-505,508-509,511-512,660,664-667,669,672,676-686,695-712,715-716,718-719
+Intelligent-Audio-TEST/backend/controllers/report_controller_compare.py
+  s_81ce5bf1dd5b07::t_9416053a3daa5a 2,165,427-443,637-655
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_81ce5bf1dd5b07::t_6e8a0021c2d269 2,231,501,553-574,587,590,846,852
+Intelligent-Audio-TEST/backend/models/models.py
+  s_81ce5bf1dd5b07::t_f466c7827ac69f 596,665,667-669,674-675,678-690
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_81ce5bf1dd5b07::t_1d51f534a3f7c5 264,1248-1252,1290-1293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "0a15aa2e439a1311075530eae1ae531860236af9",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}

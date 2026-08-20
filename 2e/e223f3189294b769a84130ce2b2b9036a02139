@@ -1,0 +1,43 @@
+Intelligent-Audio-TEST/backend/controllers/report_controller_base.py
+  s_81ce5bf1dd5b07::t_3b5f6ad8b57984 103-107,110-119
+Intelligent-Audio-TEST/backend/controllers/report_controller_compare.py
+  s_81ce5bf1dd5b07::t_a6170084bb27be 234,249,251-254,256,259,262-266,288-306
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_81ce5bf1dd5b07::t_5dafbcdef8a3e1 321,331,419
+Intelligent-Audio-TEST/backend/models/models.py
+  s_81ce5bf1dd5b07::t_76e0298703ec74 146-147
+Intelligent-Audio-TEST/frontend/src/components/common/TestCaseReportDetail.vue
+  s_81ce5bf1dd5b07::t_68865754f47c2d 63-71,74-75,78-82,97,99-101,133,135-145,147-166,171,296-298,300-305,331,576,792-813
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_81ce5bf1dd5b07::t_90b7111858c1ce 792-793,800-801,817-819,1586-1587,1589-1596,1598
+Intelligent-Audio-TEST/frontend/src/shared/types/businessTypes.ts
+  s_a1ab6769d80641::t_58011b89da48ce 130,145
+eval_server/app/config.py
+  s_a1ab6769d80641::t_fd57236e638126 1-23
+eval_server/start_multiple_servers.py
+  s_a1ab6769d80641::t_ff8b4ca72f7208 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "2ee223f3189294b769a84130ce2b2b9036a02139",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}

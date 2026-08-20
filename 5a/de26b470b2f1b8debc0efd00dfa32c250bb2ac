@@ -1,0 +1,25 @@
+Intelligent-Audio-TEST/backend/controllers/evaluation_controller.py
+  s_81ce5bf1dd5b07::t_01cd8a6bec21d2 1,35,234,738,755,808,1126
+Intelligent-Audio-TEST/backend/controllers/report_controller_base.py
+  s_81ce5bf1dd5b07::t_e534bb79a479b9 6,17-191
+Intelligent-Audio-TEST/backend/controllers/report_controller_compare.py
+  s_81ce5bf1dd5b07::t_09c406c8aa4f71 13,180,223,351,488
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_81ce5bf1dd5b07::t_c7fcf5f0e824b0 13,181,259,602
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "5ade26b470b2f1b8debc0efd00dfa32c250bb2ac",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}

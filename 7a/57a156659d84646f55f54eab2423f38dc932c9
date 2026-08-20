@@ -1,0 +1,33 @@
+Intelligent-Audio-TEST/backend/controllers/evaluation_controller.py
+  s_81ce5bf1dd5b07::t_bd049aede7dd41 281-294,304-305
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_a1ab6769d80641::t_79e45a0930e55d 132
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  s_a1ab6769d80641::t_05497f50b20ec2 258-262,312-327,330-334,339-340
+Intelligent-Audio-TEST/frontend/src/shared/types/businessTypes.ts
+  s_a1ab6769d80641::t_c7af49ad7d15b9 240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "7a57a156659d84646f55f54eab2423f38dc932c9",
+  "prompts": {},
+  "sessions": {
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
