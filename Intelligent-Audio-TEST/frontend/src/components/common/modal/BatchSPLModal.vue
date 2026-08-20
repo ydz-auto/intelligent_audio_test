@@ -2,7 +2,7 @@
   <div class="batch-spl-modal">
     <div class="modal-header">
       <h3>{{ title }}</h3>
-      <p class="case-count">将为 {{ caseCount }} 个用例设置声压级</p>
+      <p class="case-count">{{ selectionMode === 'selected' ? '您勾选了' : '将对' }} {{ caseCount }} 个用例设置声压级</p>
     </div>
     
     <div class="modal-body">
@@ -86,6 +86,7 @@ interface Props {
   caseCount?: number
   initialValue?: number
   maxRoundNumbers?: number
+  selectionMode?: string
 }
 
 interface Emits {
@@ -98,7 +99,8 @@ const props = withDefaults(defineProps<Props>(), {
   title: '批量设置声压级',
   caseCount: 0,
   initialValue: 94,
-  maxRoundNumbers: 3
+  maxRoundNumbers: 3,
+  selectionMode: 'all'
 })
 
 const emit = defineEmits<Emits>()

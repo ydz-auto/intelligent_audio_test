@@ -2,7 +2,7 @@
   <div class="batch-refresh-reference-modal">
     <div class="modal-header">
       <h3>{{ title }}</h3>
-      <p class="case-count">确定要刷新 {{ caseCount }} 个用例的参考参数吗？</p>
+      <p class="case-count">{{ selectionMode === 'selected' ? '您勾选了' : '将对' }} {{ caseCount }} 个用例刷新参考参数吗？</p>
     </div>
     
     <div class="modal-body">
@@ -43,6 +43,7 @@ interface Props {
   title?: string
   caseCount?: number
   maxRoundNumbers?: number
+  selectionMode?: string
 }
 
 interface Emits {
@@ -54,7 +55,8 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   title: '用例参考更新',
   caseCount: 0,
-  maxRoundNumbers: 3
+  maxRoundNumbers: 3,
+  selectionMode: 'all'
 })
 
 const emit = defineEmits<Emits>()

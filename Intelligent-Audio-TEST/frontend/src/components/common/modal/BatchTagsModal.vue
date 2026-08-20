@@ -153,6 +153,7 @@ interface Props {
   modalId: string
   title?: string
   caseCount?: number
+  selectionMode?: string
 }
 
 interface Emits {
@@ -163,7 +164,8 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   title: '批量管理标签',
-  caseCount: 0
+  caseCount: 0,
+  selectionMode: 'all'
 })
 
 const emit = defineEmits<Emits>()
@@ -180,7 +182,7 @@ const currentTagPage = ref(1)
 const currentRenameTagPage = ref(1)
 
 const headerDescription = computed(() => {
-  return `将为 ${props.caseCount} 个用例${actionText.value}标签`
+  return `${props.selectionMode === 'selected' ? '您勾选了' : '将对'} ${props.caseCount} 个用例${actionText.value}标签`
 })
 
 const actionText = computed(() => {

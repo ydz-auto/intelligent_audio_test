@@ -2,7 +2,7 @@
   <div class="batch-playback-device-modal">
     <div class="modal-header">
       <h3>{{ title }}</h3>
-      <p class="case-count">将为 {{ caseCount }} 个用例设置播放设备</p>
+      <p class="case-count">{{ selectionMode === 'selected' ? '您勾选了' : '将对' }} {{ caseCount }} 个用例设置播放设备</p>
     </div>
     
     <div class="modal-body">
@@ -112,6 +112,7 @@ interface Props {
   title?: string
   caseCount?: number
   maxRoundNumbers?: number
+  selectionMode?: string
 }
 
 interface Emits {
@@ -123,7 +124,8 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   title: '批量设置播放设备',
   caseCount: 0,
-  maxRoundNumbers: 3
+  maxRoundNumbers: 3,
+  selectionMode: 'all'
 })
 
 const emit = defineEmits<Emits>()

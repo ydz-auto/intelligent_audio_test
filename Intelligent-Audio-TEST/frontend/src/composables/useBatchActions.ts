@@ -161,7 +161,7 @@ export function useBatchActions() {
     filteredCases: any[],
     viewMode: 'group' | 'tag' = 'group'
   ) => {
-    const { ids, isEmpty, emptyMsg } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
+    const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
     if (isEmpty) {
       alert(emptyMsg)
       return
@@ -170,11 +170,15 @@ export function useBatchActions() {
     const result = await modalControl.open(MODAL_TYPES.BATCH_ALGORITHM_PARAMS, {
       title: '批量设置用例专属参数',
       caseCount: ids.length,
+      selectionMode,
       algorithmType: filteredCases[0]?.algorithmType || ''
     })
 
     if (result?.algorithmType && result?.params) {
-      const success = await store.batchUpdateAlgorithmParams(ids, result.params)
+      const success = await store.batchUpdateAlgorithmParams(ids, result.params, {
+        roundMode: result.roundMode,
+        roundNumbers: result.roundNumbers,
+      })
       if (success) {
         alert(`已成功更新 ${ids.length} 个用例的专属参数`)
       }
@@ -190,7 +194,7 @@ export function useBatchActions() {
     filteredCases: any[],
     viewMode: 'group' | 'tag' = 'group'
   ) => {
-    const { ids, isEmpty, emptyMsg } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
+    const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
     if (isEmpty) {
       alert(emptyMsg)
       return
@@ -199,6 +203,7 @@ export function useBatchActions() {
     const result = await modalControl.open(MODAL_TYPES.BATCH_DIMENSION, {
       title: '批量设置评价维度',
       caseCount: ids.length,
+      selectionMode,
       testType: filteredCases[0]?.testType || 'e2e',
       algorithmType: filteredCases[0]?.algorithmType || ''
     })
@@ -223,7 +228,7 @@ export function useBatchActions() {
     filteredCases: any[],
     viewMode: 'group' | 'tag' = 'group'
   ) => {
-    const { ids, isEmpty, emptyMsg } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
+    const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
     if (isEmpty) {
       alert(emptyMsg)
       return
@@ -232,6 +237,7 @@ export function useBatchActions() {
     const result = await modalControl.open(MODAL_TYPES.BATCH_ADJUST_GROUP, {
       title: '批量调整分组',
       caseCount: ids.length,
+      selectionMode,
       currentGroupId: ''
     })
 
@@ -257,15 +263,16 @@ export function useBatchActions() {
     filteredCases: any[],
     viewMode: 'group' | 'tag' = 'group'
   ) => {
-    const { ids, isEmpty, emptyMsg } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
+    const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
     if (isEmpty) {
       alert(emptyMsg)
       return
     }
 
+    const selectionText = selectionMode === 'selected' ? `您勾选了 ${ids.length} 个用例` : `将对 ${ids.length} 个用例`
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '批量通过标签自动生成用例名',
-      content: `将为 ${ids.length} 个用例自动生成名称（按标签长度排序，用"-"连接）\n\n是否继续？`,
+      content: `${selectionText}自动生成名称（按标签长度排序，用"-"连接）\n\n是否继续？`,
       confirmText: '确定',
       cancelText: '取消',
       danger: false
@@ -288,7 +295,7 @@ export function useBatchActions() {
     filteredCases: any[],
     viewMode: 'group' | 'tag' = 'group'
   ) => {
-    const { ids, isEmpty, emptyMsg } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
+    const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
     if (isEmpty) {
       alert(emptyMsg)
       return
@@ -296,7 +303,8 @@ export function useBatchActions() {
 
     const result = await modalControl.open(MODAL_TYPES.BATCH_TAGS, {
       title: '批量管理用例标签',
-      caseCount: ids.length
+      caseCount: ids.length,
+      selectionMode
     })
 
     if (result) {
@@ -324,21 +332,20 @@ export function useBatchActions() {
     filteredCases: any[],
     viewMode: 'group' | 'tag' = 'group'
   ) => {
-    const { ids, isEmpty, emptyMsg } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
+    const { ids, isEmpty, emptyMsg, selectionMode } = await resolveCaseIds(group, selectedCases, filteredCases, viewMode)
     if (isEmpty) {
       alert(emptyMsg)
       return
     }
 
-    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    const selectionText = selectionMode === 'selected' ? `您勾选了 ${ids.length} 个用例` : `将对 ${ids.length} 个用例`
+    const confirmed = await modalControl.open(MODAL_TYPES.BATCH_REFRESH_REFERENCE, {
       title: '用例参考更新',
-      content: `确定要刷新 ${ids.length} 个用例的参考参数吗？\n\n这将从关联音频的标注数据重新生成参考参数。`,
-      confirmText: '确定刷新',
-      cancelText: '取消',
-      danger: false
+      caseCount: ids.length,
+      selectionMode
     })
 
-    if (confirmed?.confirmed) {
+    if (confirmed?.roundMode) {
       const result = await store.batchRefreshReference(ids)
 
       if (result && typeof result === 'object' && 'taskId' in result) {

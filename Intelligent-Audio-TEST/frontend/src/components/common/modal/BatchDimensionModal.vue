@@ -96,6 +96,7 @@ interface Props {
   algorithmType?: string
   testType?: string
   maxRoundNumbers?: number
+  selectionMode?: string
 }
 
 interface Emits {
@@ -109,7 +110,8 @@ const props = withDefaults(defineProps<Props>(), {
   caseCount: 0,
   algorithmType: '',
   testType: 'e2e',
-  maxRoundNumbers: 3
+  maxRoundNumbers: 3,
+  selectionMode: 'all'
 })
 
 const emit = defineEmits<Emits>()
