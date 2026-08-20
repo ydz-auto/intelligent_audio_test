@@ -1,0 +1,62 @@
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_interruption_dimensions.py
+  s_9706dcbd1270a7::t_54fde46b641131 3,6-23,26,28,54,56-202,204-207,209,211,214-215,218,220,222-239,241,254-572,577-620,623-627,633,638-649,651-653,655,657-662,666-669
+eval_server/app/controllers/api.py
+  s_9706dcbd1270a7::t_54fde46b641131 162-164,166-168
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_9706dcbd1270a7::t_54fde46b641131 223-225,228,231,242,244,247,250,253,256,259,262,265,268,271,276-278,281,284,295,297,300,303,306,309,312,315,327,331,333-354
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_chatgpt.py
+  s_9706dcbd1270a7::t_54fde46b641131 6,154-173,235,319,325-331,333-336,349,421,438-441,488,508-509,520-521,558,616-618
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_translation_driver.py
+  s_9706dcbd1270a7::t_54fde46b641131 6,16,68,93,104,115,131,156,193,210
+Intelligent-Audio-TEST/backend/utils/device_driver/utils.py
+  s_9706dcbd1270a7::t_54fde46b641131 21-96
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/noise_latency.py
+  s_9706dcbd1270a7::t_54fde46b641131 14,28,32,39,43,49,53,58-64,95-98,148-149,163
+eval_server/app/services/xiaoyi_metrics/turn_taking/__init__.py
+  s_9706dcbd1270a7::t_54fde46b641131 24,318,320
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/non_interactive_latency.py
+  s_9706dcbd1270a7::t_54fde46b641131 12-14,18,25-33,117-120,238-255,263-266,273,275
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_doubaochat.py
+  s_9706dcbd1270a7::t_54fde46b641131 10,50-51,263,372,389-392,453,623-626,635
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyihuiji_driver.py
+  s_9706dcbd1270a7::t_54fde46b641131 7,62,102,123
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_asr_driver.py
+  s_9706dcbd1270a7::t_54fde46b641131 10,70,107,127
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_noise_latency.py
+  s_9706dcbd1270a7::t_54fde46b641131 14,18,75,77,152,188,413
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_non_interactive_latency.py
+  s_9706dcbd1270a7::t_54fde46b641131 14,17-19,60,74,76-77,79,125-126,160-161,367,372
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_driver.py
+  s_9706dcbd1270a7::t_54fde46b641131 6,37-51,200
+Intelligent-Audio-TEST/frontend/src/utils/testCaseStrategy.ts
+  s_9706dcbd1270a7::t_54fde46b641131 87-100,159-167,171,223-237,241
+eval_server/app/services/xiaoyi_metrics/turn_taking/high_freq_llm_judge.py
+  s_9706dcbd1270a7::t_54fde46b641131 60,62,172-173
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  s_9706dcbd1270a7::t_54fde46b641131 13,20-22,146-152,155,231-255,447,461,497,504-506,550,685,720,770,790,825,888-891
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "b135c226a75ee150b56e9c62587f1ba91536000a",
+  "prompts": {},
+  "sessions": {
+    "s_9706dcbd1270a7": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a86bdce73ad3a08262b014f",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a86beff73ad3a08262b025e",
+        "external_session_id": "6a86bdce73ad3a08262b014f",
+        "operation_id": "6a86beff73ad3a08262b025e",
+        "display_model_name": "glm-5.2",
+        "session_id": "6a86bdce73ad3a08262b014f",
+        "edit_kind": "bash",
+        "tool_name": "RunCommand"
+      }
+    }
+  }
+}

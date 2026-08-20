@@ -1,0 +1,74 @@
+Intelligent-Audio-TEST/doc/voice_llm/样例/单轮样例/B-TA-001_话轮接管_接管准确率_男_年轻_今天天气怎么样.json
+  s_923ac1b1a7eb2d::t_512e2edf5cc650 8-767
+eval_server/app/services/xiaoyi_metrics/turn_taking/__init__.py
+  s_923ac1b1a7eb2d::t_512e2edf5cc650 164-165,267,335-365,474,720-725,727
+eval_server/app/services/calculators/xiaoyi_metrics/interruptbility/interruption.py
+  s_923ac1b1a7eb2d::t_58fecf644f406f 1-374
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  s_923ac1b1a7eb2d::t_512e2edf5cc650 697-699,709-712
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/__init__.py
+  s_923ac1b1a7eb2d::t_3f4791bf1cbc47 1-1002
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/strategy.py
+  s_923ac1b1a7eb2d::t_d6ee2c0849c432 21-26
+  s_923ac1b1a7eb2d::t_20e34fc89b3b58 18-20
+  s_923ac1b1a7eb2d::t_b7173a9522b9a5 27-29
+Intelligent-Audio-TEST/backend/utils/algorithm/field_mapper.py
+  s_923ac1b1a7eb2d::t_512e2edf5cc650 689-701
+eval_server/app/controllers/api.py
+  s_923ac1b1a7eb2d::t_512e2edf5cc650 415,418,421-422
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/high_freq_llm_judge.py
+  s_923ac1b1a7eb2d::t_4aa9cdeb836ad9 1-608
+eval_server/tests/test_high_freq_integration.py
+  s_923ac1b1a7eb2d::t_c1597193e7ec7c 19
+  s_923ac1b1a7eb2d::t_8c1bb8521675ac 1-18,20-47,49-97,100-146,148,150-182
+  s_923ac1b1a7eb2d::t_f70da4ce3c26e1 48
+  s_923ac1b1a7eb2d::t_38b2bd8778f8a1 147,149
+  s_923ac1b1a7eb2d::t_8babf66f97b7e8 98-99
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/high_freq_turn_taking.py
+  s_923ac1b1a7eb2d::t_4aa9cdeb836ad9 1-327
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_interruption_dimensions.py
+  s_923ac1b1a7eb2d::t_512e2edf5cc650 86
+eval_server/app/services/calculators/der/__init__.py
+  s_02ae8eb9f9b472::t_82948fd6656d9c 1
+eval_server/app/services/calculators/wer/__init__.py
+  s_02ae8eb9f9b472::t_3f1f2d183d1fbe 1
+eval_server/app/services/calculators/xiaoyi_metrics/README.md
+  s_02ae8eb9f9b472::t_48e15287325506 1-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "7c1515e109be0f6ced63bb4ce99e757a166b83e5",
+  "prompts": {},
+  "sessions": {
+    "s_02ae8eb9f9b472": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a83c2dc02804909c2c1d3cc",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    },
+    "s_923ac1b1a7eb2d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a86793673ad3a08262af744",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "edit_kind": "file_edit",
+        "tool_type": "builtin",
+        "source_scene": "agent",
+        "dedupe_key": "6a86793673ad3a08262af744:6a867d3673ad3a08262af8ab:afterEdit:11676b83",
+        "external_session_id": "6a86793673ad3a08262af744",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a867d3673ad3a08262af8ab",
+        "operation_id": "6a867d3673ad3a08262af8ab",
+        "session_id": "6a86793673ad3a08262af744"
+      }
+    }
+  }
+}
