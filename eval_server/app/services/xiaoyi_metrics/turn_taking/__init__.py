@@ -264,7 +264,7 @@ def calculate_xiaoyi_metrics(task_params):
     logger.info(f"[tor] {results['tor']}")
 
     # false_takeover: 用 ai_wav + Paraformer 词级 ASR，时间戳裁剪到 pause 区间
-    ai_word_chunks = _get_asr_word_chunks(ai_wav) if ai_wav else []
+    ai_word_chunks = (_get_asr_word_chunks(ai_wav) or []) if ai_wav else []
     logger.info(
         f"[false_takeover] 输入数据: "
         f"pause_intervals({len(pause_intervals)}条)={pause_intervals}, "
@@ -471,7 +471,7 @@ def calculate_takeover_metrics(task_params):
     logger.info(f"[tor] {results['tor']}")
 
     # 误接管率：用 ai_wav 词级时间戳 + pause 区间
-    ai_word_chunks = _get_asr_word_chunks(ai_wav) if ai_wav else []
+    ai_word_chunks = (_get_asr_word_chunks(ai_wav) or []) if ai_wav else []
     results['false_takeover'] = compute_false_takeover(ai_word_chunks or [], pause_intervals)
     logger.info(f"[false_takeover] {results['false_takeover']}")
 
