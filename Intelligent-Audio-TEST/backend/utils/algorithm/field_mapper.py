@@ -686,8 +686,19 @@ class FieldMapper:
         result = {}
 
         if not success:
-            for field_def in orig_output_fields:
-                result[field_def.get('code')] = message or 'Error'
+            # 失败时保留设备驱动返回的实际字段值（如 user_wav/ai_wav 可能已成功拉取），
+            # 仅对缺失的字段填空字符串，避免错误消息覆盖有效路径
+            # orig_output_fields 可能是 list[dict] 或 dict[str, dict]，统一提取 code
+            if isinstance(orig_output_fields, list):
+                field_codes = [f.get('code') for f in orig_output_fields if isinstance(f, dict)]
+            else:
+                field_codes = list(orig_output_fields.keys())
+            for code in field_codes:
+                if code and code in device_result and device_result[code]:
+                    result[code] = device_result[code]
+                else:
+                    result[code] = ''
+            result['message'] = message or 'Error'
         elif mapped_output_fields:
             for field_def in mapped_output_fields:
                 target_key = field_def.get('code')

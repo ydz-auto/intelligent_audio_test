@@ -694,6 +694,9 @@ class Xiaoyilivechat(HarmonyDriver):
             device_path = getattr(self, '_record_device_path', None) or ''
             query = None
             if not device_path:
+                self._log(level='WARNING',
+                          content=f"_record_device_path 为空（录屏启动时未发现新 mp4），回退 mediatool query: {record_file_name}",
+                          task_id=task_id, test_case_id=test_case_id)
                 query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
                 lines = query.stdout.strip().split('\n')
                 device_path = lines[1].strip() if len(lines) > 1 else ''
@@ -703,6 +706,10 @@ class Xiaoyilivechat(HarmonyDriver):
                         check=False, capture_output=True, text=True, timeout=120
                     )
                     device_path = f'/data/local/tmp/{record_file_name}'
+            if not device_path:
+                self._log(level='ERROR',
+                          content=f"录屏文件设备路径为空，无法拉取: record_file_name={record_file_name}, mediatool stdout={query.stdout if query else 'N/A'}",
+                          task_id=task_id, test_case_id=test_case_id)
             local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_result',
                                      str(task_id) if task_id else 'default_task_id',
                                      str(test_case_id) if test_case_id else 'default_id', device_sn)
