@@ -3,7 +3,7 @@ import subprocess
 
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .harmony_driver import HarmonyDriver
-from .utils import By, log_and_emit
+from .utils import By, log_and_emit, with_rpc_retry
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 
 
@@ -346,6 +346,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
     # ------------------------------------------------------------------
     # 生命周期
     # ------------------------------------------------------------------
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化：解锁→清弹窗→回桌面→停 ChatGPT→aa start 启动 ChatGPT→清残留 PCM。
 
@@ -417,6 +418,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         return True
 
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """预处理：进入语音通话 + 开启录屏。
 
@@ -483,6 +485,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         time.sleep(2)
         return True
 
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """后处理：等 AI 回复结束 → 按模式收尾 → 提取气泡文本(best-effort)。
 

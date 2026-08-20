@@ -7,7 +7,7 @@ import subprocess
 from hypium import BY
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 
@@ -260,6 +260,7 @@ class DoubaoChat(Xiaoyilivechat):
     # ------------------------------------------------------------------
     # 生命周期
     # ------------------------------------------------------------------
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """打开豆包 app(纯命令行拉起，不调用 HarmonyDriver.initialize，避免基类点小艺图标):
         解锁/关弹窗/回桌面 → 停豆包 → aa start 拉起豆包 → 清 pcm → 重置录屏状态 → 清聊天记录
@@ -368,6 +369,7 @@ class DoubaoChat(Xiaoyilivechat):
                       task_id=task_id, test_case_id=test_case_id)
         return True
 
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """预处理：进入语音通话 + 开启录屏。
 
@@ -448,6 +450,7 @@ class DoubaoChat(Xiaoyilivechat):
         time.sleep(2)
         return True
 
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """后处理：等 AI 回复结束 → 按模式收尾 → (round 模式) 提取问答文本。
 

@@ -84,6 +84,20 @@ class RoundsJsonStrategy implements TestCaseStrategy {
           const roundBgAudio = round.background_noise?.audio || round.background_noise?.audio_name || round.background_noise?.audioName || '';
           if (roundBgAudio) audioNames.push(roundBgAudio);
         }
+        // segment 级执行控制字段提升到 round 级别（单 segment 时直接取值，多 segment 时取最后一个非空值）
+        // is_interruption / record_mode 是 config.rounds 结构字段，后端 RoundConfigItem extra='allow' 保留
+        const execControlFields = ['is_interruption', 'record_mode'];
+        for (const field of execControlFields) {
+          let v: any = undefined;
+          for (const seg of round.segments) {
+            if (seg && typeof seg === 'object' && seg[field] !== undefined && seg[field] !== null && seg[field] !== '') {
+              v = seg[field];
+            }
+          }
+          if (v !== undefined) {
+            roundObj[field] = v;
+          }
+        }
         return roundObj;
       })
       .filter((r: any) => r !== null);
@@ -142,10 +156,19 @@ class FlatJsonStrategy implements TestCaseStrategy {
       }
     }
 
+    const roundObj: any = { roundNumber: 1, audios: [cfg] };
+    // 顶层执行控制字段直接放到 round 级别
+    const execControlFields = ['is_interruption', 'record_mode'];
+    for (const field of execControlFields) {
+      if (rawJson[field] !== undefined && rawJson[field] !== null && rawJson[field] !== '') {
+        roundObj[field] = rawJson[field];
+      }
+    }
+
     const groupKey = extractFileNameWithoutExt(annFileBaseKey);
     return {
       groupKey,
-      rounds: [{ roundNumber: 1, audios: [cfg] }],
+      rounds: [roundObj],
       backgroundNoise: undefined,
       audioNames,
     };
@@ -197,10 +220,25 @@ class TxtArrayJsonStrategy implements TestCaseStrategy {
       if (caseBgAudio) audioNames.push(caseBgAudio);
     }
 
+    const roundObj: any = { roundNumber: 1, audios };
+    // txt 项级执行控制字段提升到 round 级别（取最后一个非空值）
+    const execControlFields = ['is_interruption', 'record_mode'];
+    for (const field of execControlFields) {
+      let v: any = undefined;
+      for (const item of rawJson.txt) {
+        if (item && typeof item === 'object' && item[field] !== undefined && item[field] !== null && item[field] !== '') {
+          v = item[field];
+        }
+      }
+      if (v !== undefined) {
+        roundObj[field] = v;
+      }
+    }
+
     const groupKey = extractFileNameWithoutExt(annFileBaseKey);
     return {
       groupKey,
-      rounds: [{ roundNumber: 1, audios }],
+      rounds: [roundObj],
       backgroundNoise: rawJson.background_noise,
       audioNames,
     };

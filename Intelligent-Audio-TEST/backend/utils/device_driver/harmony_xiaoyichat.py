@@ -10,7 +10,7 @@ except Exception:
     UiParam = None
 
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 
@@ -143,10 +143,16 @@ class Xiaoyilivechat(HarmonyDriver):
         )
 
     def _list_device_mp4_set(self, device_sn):
-        """获取设备录屏目录下所有 mp4 文件路径集合（用于区分新增文件）"""
+        """获取设备录屏目录下最近 20 分钟内新增的 mp4 文件路径集合。
+
+        设备 Photo 目录有 16 个子目录、近千个历史 mp4, find 全量返回会被
+        hdc shell 输出截断, 导致 _start_recorder 的 before/after diff 漏掉
+        新文件。改用 -mmin -20 只返回最近 20 分钟内修改过的文件, 量级可控
+        且覆盖 case 模式多轮对话的时长(单用例最长约 10 分钟)。
+        """
         r = self._hdc_shell(
             device_sn, 'find', '/storage/media/100/local/files/Photo',
-            '-name', '*.mp4', '-type', 'f'
+            '-name', '*.mp4', '-type', 'f', '-mmin', '-20'
         )
         if r.returncode != 0:
             return set()
@@ -438,6 +444,7 @@ class Xiaoyilivechat(HarmonyDriver):
 
 
 
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         if not super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs):
             return False
@@ -451,6 +458,7 @@ class Xiaoyilivechat(HarmonyDriver):
         self._round_number = 0
         self._record_file_name = None
         self._record_pulled = False
+        self._record_device_path = None  # 重置: 避免上个用例的 VID 路径残留
         # pcm 抓取目标 app（当前驱动默认只抓小艺；可通过 kwargs.pcm_app 切换 doubao/chatgpt）
         self._pcm_app = kwargs.get('pcm_app', 'xiaoyi')
         # 用例开始前清理设备上目标 app 的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
@@ -486,6 +494,7 @@ class Xiaoyilivechat(HarmonyDriver):
 
         return True
 
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
         # 打印 kwargs 参数用于调试
@@ -538,6 +547,7 @@ class Xiaoyilivechat(HarmonyDriver):
         time.sleep(2)
         return True
 
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
         # 打印接收到的播放时间戳（验证链路）
@@ -672,6 +682,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 'success': True,
                 'message': 'Success (no recording, ai_wav as record_file)',
                 'record_path': '',
+                'record_device_path': '',
                 'wav_path': ai_wav or '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
@@ -706,6 +717,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 'success': True,
                 'message': 'recording in progress (pcm pulled, mp4 deferred to final round)',
                 'record_path': '',
+                'record_device_path': getattr(self, '_record_device_path', '') or '',
                 'wav_path': '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
@@ -755,6 +767,7 @@ class Xiaoyilivechat(HarmonyDriver):
                     'success': False,
                     'message': f'录屏文件拉取失败: {recv_result.stderr}',
                     'record_path': '',
+                    'record_device_path': device_path or '',
                     'wav_path': '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
@@ -774,6 +787,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 'success': True,
                 'message': 'Success',
                 'record_path': local_path,
+                'record_device_path': device_path or '',
                 'wav_path': wav_path or '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
@@ -808,6 +822,7 @@ class Xiaoyilivechat(HarmonyDriver):
                             f"query_stdout={query_out!r} | "
                             f"recv_stderr={recv_err!r}"),
                 'record_path': local_path,
+                'record_device_path': device_path or '',
                 'wav_path': '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],

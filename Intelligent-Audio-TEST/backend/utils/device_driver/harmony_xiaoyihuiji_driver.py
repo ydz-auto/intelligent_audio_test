@@ -4,7 +4,7 @@ import os
 import re
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from config.config import Config
 
 # 日志目录路径
@@ -59,6 +59,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
         time.sleep(1)
 
     @check_stop("initialize")
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化小艺慧记设备"""
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...", task_id=task_id, test_case_id=test_case_id)
@@ -98,6 +99,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             return False
 
     @check_stop("pre_process")
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开始处理：进入前台等准备动作"""
         self._log(level='INFO', content=f"--- Starting pre-process for {device_sn} ---", task_id=task_id, test_case_id=test_case_id)
@@ -118,6 +120,7 @@ class HarmonyHardenXiaoyiHuiJiDriver(HarmonyDriver):
             return False
 
     @check_stop("post_process")
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """结束处理：清理或日志记录"""
         self._log(level='INFO', content=f"--- Finished post-process for {device_sn} ---", task_id=task_id, test_case_id=test_case_id)

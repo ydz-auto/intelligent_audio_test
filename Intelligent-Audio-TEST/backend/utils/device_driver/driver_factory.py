@@ -13,7 +13,6 @@ try:
     )
     from .harmony_xiaoyihuiji_driver import HarmonyHardenXiaoyiHuiJiDriver
     from .harmony_xiaoyichat import Xiaoyilivechat
-    from .harmony_xiaoyilivechat import XiaoyilivechatV2
     from .harmony_chatgpt import ChatGptVoiceChat
     from .harmony_doubaochat import DoubaoChat
     from .harmony_asr_driver import HarmonyHardenXiaoyi_Input_MethodDriver
@@ -123,13 +122,6 @@ class DeviceDriverFactory:
                 ['xiaoyilivechat', '小艺通话', 'livechat'],
                 'HarmonyOS',
                 '小艺通话聊天专用驱动'
-            )
-
-            self.register_specialized_driver(
-                XiaoyilivechatV2(),
-                ['xiaoyilivechatv2', '小艺通话live', 'livechatv2'],
-                'HarmonyOS',
-                '小艺通话live专用驱动(V2)'
             )
 
             self.register_specialized_driver(
