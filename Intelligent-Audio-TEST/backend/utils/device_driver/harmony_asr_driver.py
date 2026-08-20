@@ -7,7 +7,7 @@ from nacl.pwhash import PASSWD_MAX
 
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 try:
     from hypium import UiDriver, BY
 except Exception:
@@ -67,6 +67,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
         time.sleep(1)
 
     @check_stop("initialize")
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """打开备忘录"""
         package_name = 'com.huawei.hmos.notepad'
@@ -103,6 +104,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
             return False
 
     @check_stop("pre_process")
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
         # 创建备忘录
@@ -122,6 +124,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
         return True
 
     @check_stop("get_results")
+    @with_rpc_retry()
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_sn)
         if driver:

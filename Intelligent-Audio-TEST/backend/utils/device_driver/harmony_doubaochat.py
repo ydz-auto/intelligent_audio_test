@@ -7,7 +7,7 @@ import subprocess
 from hypium import BY
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from config.config import Config
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 
@@ -47,8 +47,8 @@ class DoubaoChat(Xiaoyilivechat):
     AI_PCM_SUFFIX = 'client_in..pcm'   # 模型回复音频采集流(与用户输入 cap_client_out 对应)
     RMS_THRESHOLD = 300                       # RMS 阈值，低于此值视为静音
     RMS_SILENCE_SECONDS = 8                   # 连续静默秒数（实测回复中停顿≤6s，8s 不误触发）
-    RMS_START_TIMEOUT = 60                    # 等 AI 开始说话的超时
-    RMS_END_TIMEOUT = 120                     # 等 AI 说完的超时
+    RMS_START_TIMEOUT = 25                    # 等 AI 开始说话的超时(平台流 AI 几秒开说,超时走兜底扫 15s 历史)
+    RMS_END_TIMEOUT = 60                      # 等 AI 说完的超时(单轮回复+8s静默够,超时视为已回复可能截断)
     RMS_SCAN_SECONDS = 15                     # 阶段A超时后扫最后 N 秒历史
     RMS_SAMPLE_RATE = 48000
     RMS_CHANNELS = 2
@@ -260,6 +260,7 @@ class DoubaoChat(Xiaoyilivechat):
     # ------------------------------------------------------------------
     # 生命周期
     # ------------------------------------------------------------------
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """打开豆包 app(纯命令行拉起，不调用 HarmonyDriver.initialize，避免基类点小艺图标):
         解锁/关弹窗/回桌面 → 停豆包 → aa start 拉起豆包 → 清 pcm → 重置录屏状态 → 清聊天记录
@@ -368,6 +369,7 @@ class DoubaoChat(Xiaoyilivechat):
                       task_id=task_id, test_case_id=test_case_id)
         return True
 
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """预处理：进入语音通话 + 开启录屏。
 
@@ -383,6 +385,10 @@ class DoubaoChat(Xiaoyilivechat):
         self._total_rounds = total_rounds
         self._round_number = round_number
         is_first = not getattr(self, '_recording', False)
+
+        # 开局清掉可能残留的华为音乐(上轮/上个用例误识别"播放音乐"拉起的),
+        # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。方法继承自父类。
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
 
         # case 模式非首轮：通话与录屏已在进行，无需重复启动
         if record_mode == 'case' and not is_first:
@@ -444,6 +450,7 @@ class DoubaoChat(Xiaoyilivechat):
         time.sleep(2)
         return True
 
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """后处理：等 AI 回复结束 → 按模式收尾 → (round 模式) 提取问答文本。
 
@@ -613,7 +620,10 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        # 5. 停止豆包 APP（彻底释放）
+        # 5. 兜底清掉华为音乐(本轮中途可能误识别"播放音乐"拉起的,防跨用例残留)
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
+
+        # 6. 停止豆包 APP（彻底释放）
         try:
             driver.stop_app(self.DOUBAO_BUNDLE)
             self._log(level='DEBUG', content="teardown: 已停止豆包 APP",
@@ -622,7 +632,7 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='WARNING', content=f"teardown: 停止豆包 APP 失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        # 6. 无条件硬停 screenrecorder 兜底(幂等):无论前面 _recording 标志真假,
+        # 7. 无条件硬停 screenrecorder 兜底(幂等):无论前面 _recording 标志真假,
         #    保证"录屏不停止"残留不可能跨用例存活(豆包录屏 bug 的核心修复兜底)。
         self._force_stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id)
 

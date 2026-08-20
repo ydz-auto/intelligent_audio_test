@@ -3,7 +3,7 @@ import subprocess
 import os
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 try:
     from hypium.model import UiParam
 except Exception:
@@ -13,6 +13,7 @@ except Exception:
 class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
     """鸿蒙 Next 专用驱动示例"""
 
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         initialize_success = super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
@@ -64,6 +65,7 @@ class HarmonyXiaoyiTranslationDriver(HarmonyDriver):
 
 
 class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         initialize_success = super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
@@ -88,6 +90,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             self._log(level='ERROR', content=f"Failed to get mode for device {device_sn}: {e}", task_id=task_id, test_case_id=test_case_id)
             return False
 
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_sn)
@@ -98,6 +101,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             driver.touch((336, 2624))
         self._log(level='INFO', content=f"成功进行面对面翻译pre_process步骤", task_id=task_id, test_case_id=test_case_id)
 
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_sn)
@@ -108,6 +112,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
             driver.touch((336, 2624))
         self._log(level='INFO', content=f"成功进行面对面翻译post_process步骤", task_id=task_id, test_case_id=test_case_id)
 
+    @with_rpc_retry()
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_sn)
         ori_text_list = driver.find_all_component(By.id("conv_item_input_text"))
@@ -123,6 +128,7 @@ class XiaoyiFace2FaceDriver(HarmonyXiaoyiTranslationDriver):
 
 
 class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         initialize_success = super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs)
         if not initialize_success:
@@ -147,6 +153,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
             self._log(level='ERROR', content=f"Failed to get mode for device {device_sn}: {e}", task_id=task_id, test_case_id=test_case_id)
             return False
 
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_sn)
@@ -183,6 +190,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
         self._log(level='INFO', content=f"打开同传失败", task_id=task_id, test_case_id=test_case_id)
         return False
 
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开启面对面翻译"""
         driver = self._get_driver(device_sn)
@@ -199,6 +207,7 @@ class XiaoyiSimultaneousInterpretationDriver(HarmonyXiaoyiTranslationDriver):
             return True
         return False
 
+    @with_rpc_retry()
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_sn)
         if not driver:

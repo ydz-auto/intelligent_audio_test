@@ -220,15 +220,15 @@ SUB_DIMENSIONS = [
         ],
     },
     # ────────────────────────────────────────────────────────────
-    # 高频轮换子维度：task_type_code='high_freq_turn_taking'
-    # eval_server 路由到 calculate_high_freq_turn_taking_metrics
-    # 返回 flat dict（非嵌套），output field_path 直接取顶层键
+    # 高频轮换子维度：task_type_code='turn_taking'（与主维度同）
+    # 由 calculate_xiaoyi_metrics 统一入口返回，嵌套在 results['high_freq_turn_taking']
+    # output field_path 前缀为 high_freq_turn_taking.<key>
     # ────────────────────────────────────────────────────────────
     {
-        'task_type_code': 'high_freq_turn_taking',
+        'task_type_code': 'turn_taking',
         'name': '高频轮换时延',
         'keywords': 'high_freq,高频轮换,飞花令,成语接龙,快问快答,时延',
-        'description': '子维度：高频轮换场景每轮回复时延（飞花令/成语接龙/快问快答）。eval_server 返回 flat dict，field_path 直接取顶层键。',
+        'description': '子维度：高频轮换场景每轮回复时延（飞花令/成语接龙/快问快答）。由 calculate_xiaoyi_metrics 统一入口返回，field_path 前缀 high_freq_turn_taking.',
         'type': 'auto',
         'result_type': 1,
         'result_min': 0.0,
@@ -239,49 +239,49 @@ SUB_DIMENSIONS = [
         'score_unit': 'ms',
         'statistic_method': 'average',
         'params': [
-            # ─── output 参数（flat dict 顶层键）───
+            # ─── output 参数（嵌套在 results['high_freq_turn_taking'] 下）───
             ('avg_response_latency_ms', '平均回复时延', '平均回复时延', 'number', 'output',
-             'avg_response_latency_ms', 'value', 'main', True,
+             'high_freq_turn_taking.avg_response_latency_ms', 'value', 'main', True,
              False, None, '平均回复时延(毫秒)', 90),
             ('avg_response_latency_s', '平均回复时延(秒)', '平均回复时延(秒)', 'number', 'output',
-             'avg_response_latency_s', None, 'aux', False,
+             'high_freq_turn_taking.avg_response_latency_s', None, 'aux', False,
              False, None, '平均回复时延(秒)', 91),
             ('min_response_latency_s', '最小回复时延', '最小回复时延', 'number', 'output',
-             'min_response_latency_s', None, 'aux', False,
+             'high_freq_turn_taking.min_response_latency_s', None, 'aux', False,
              False, None, '最小回复时延(秒)', 92),
             ('max_response_latency_s', '最大回复时延', '最大回复时延', 'number', 'output',
-             'max_response_latency_s', None, 'aux', False,
+             'high_freq_turn_taking.max_response_latency_s', None, 'aux', False,
              False, None, '最大回复时延(秒)', 93),
             ('n_rounds', '总轮数', '总轮数', 'number', 'output',
-             'n_rounds', None, 'aux', False,
+             'high_freq_turn_taking.n_rounds', None, 'aux', False,
              False, None, '用户段总数(=轮数)', 94),
             ('n_matched_rounds', '匹配轮数', '匹配轮数', 'number', 'output',
-             'n_matched_rounds', None, 'aux', False,
+             'high_freq_turn_taking.n_matched_rounds', None, 'aux', False,
              False, None, '成功匹配到AI回复的轮数', 95),
             ('n_missed_rounds', '未匹配轮数', '未匹配轮数', 'number', 'output',
-             'n_missed_rounds', None, 'aux', False,
+             'high_freq_turn_taking.n_missed_rounds', None, 'aux', False,
              False, None, '未匹配到AI回复的轮数', 96),
             ('n_unmatched_ai_segments', '未消费AI段', '未消费AI段', 'number', 'output',
-             'n_unmatched_ai_segments', None, 'aux', False,
+             'high_freq_turn_taking.n_unmatched_ai_segments', None, 'aux', False,
              False, None, '未被消费的AI段数(开场白/结束语等)', 97),
             ('per_round', '每轮明细', '每轮明细', 'json', 'output',
-             'per_round', None, 'aux', False,
+             'high_freq_turn_taking.per_round', None, 'aux', False,
              False, None, '每轮匹配结果(轮次/用户段/AI段/时延)', 98),
             ('hftt_message', '说明', '说明', 'text', 'output',
-             'message', None, 'aux', False,
+             'high_freq_turn_taking.message', None, 'aux', False,
              False, None, '错误/成功说明', 99),
         ],
     },
     # ────────────────────────────────────────────────────────────
-    # 高频LLM裁判子维度：task_type_code='high_freq_llm_judge'
-    # eval_server 路由到 calculate_high_freq_llm_judge
-    # 返回 flat dict（非嵌套），output field_path 直接取顶层键
+    # 高频LLM裁判子维度：task_type_code='turn_taking'（与主维度同）
+    # 由 calculate_xiaoyi_metrics 统一入口返回，嵌套在 results['high_freq_llm_judge']
+    # output field_path 前缀为 high_freq_llm_judge.<key>
     # ────────────────────────────────────────────────────────────
     {
-        'task_type_code': 'high_freq_llm_judge',
+        'task_type_code': 'turn_taking',
         'name': '高频LLM裁判',
         'keywords': 'high_freq,高频轮换,llm,judge,裁判,飞花令,成语接龙,快问快答',
-        'description': '子维度：高频轮换场景 LLM 逐轮裁判问答内容是否符合预期。eval_server 返回 flat dict，field_path 直接取顶层键。',
+        'description': '子维度：高频轮换场景 LLM 逐轮裁判问答内容是否符合预期。由 calculate_xiaoyi_metrics 统一入口返回，field_path 前缀 high_freq_llm_judge.',
         'type': 'auto',
         'result_type': 1,
         'result_min': 0.0,
@@ -292,27 +292,27 @@ SUB_DIMENSIONS = [
         'score_unit': '',
         'statistic_method': 'average',
         'params': [
-            # ─── output 参数（flat dict 顶层键）───
+            # ─── output 参数（嵌套在 results['high_freq_llm_judge'] 下）───
             ('overall_pass_rate', '通过率', '通过率', 'number', 'output',
-             'overall_pass_rate', 'value', 'main', True,
+             'high_freq_llm_judge.overall_pass_rate', 'value', 'main', True,
              False, None, '通过轮数/总轮数(0.0-1.0)', 100),
             ('n_passed', '通过轮数', '通过轮数', 'number', 'output',
-             'n_passed', None, 'aux', False,
+             'high_freq_llm_judge.n_passed', None, 'aux', False,
              False, None, '符合预期的轮数', 101),
             ('n_failed', '未通过轮数', '未通过轮数', 'number', 'output',
-             'n_failed', None, 'aux', False,
+             'high_freq_llm_judge.n_failed', None, 'aux', False,
              False, None, '不符合预期的轮数', 102),
             ('n_rounds', '总轮数', '总轮数', 'number', 'output',
-             'n_rounds', None, 'aux', False,
+             'high_freq_llm_judge.n_rounds', None, 'aux', False,
              False, None, '评估的总轮数', 103),
             ('per_round', '每轮裁判', '每轮裁判', 'json', 'output',
-             'per_round', None, 'aux', False,
+             'high_freq_llm_judge.per_round', None, 'aux', False,
              False, None, '每轮 pass/fail + reason', 104),
             ('summary', '总结', '总结', 'text', 'output',
-             'summary', None, 'aux', False,
+             'high_freq_llm_judge.summary', None, 'aux', False,
              False, None, '自然语言总结', 105),
             ('hflj_message', '说明', '说明', 'text', 'output',
-             'message', None, 'aux', False,
+             'high_freq_llm_judge.message', None, 'aux', False,
              False, None, '错误/成功说明', 106),
         ],
     },
@@ -324,13 +324,34 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
     task_code = dim_def['task_type_code']
     name = dim_def['name']
 
-    # 子维度用 name 做唯一性匹配（同 task_type_code 下多个子维度）
+    # 子维度用 name 做唯一性匹配（不限定 task_type_code，保证改名后能复用旧记录）
     if dimension_type == 'sub':
         existing = conn.execute(text(
             "SELECT id FROM dimensions "
-            "WHERE task_type_code = :tc AND name = :name "
+            "WHERE name = :name "
             "AND dimension_type = 'sub' AND deleted = FALSE"
-        ), {'tc': task_code, 'name': name}).fetchone()
+        ), {'name': name}).fetchone()
+        if existing:
+            # 如果旧记录 task_type_code 与当前定义不一致，说明是改名场景，
+            # 软删旧记录的从属数据（params/mappings/relations），避免新旧并存
+            old_tc = conn.execute(text(
+                "SELECT task_type_code FROM dimensions WHERE id = :did"
+            ), {'did': existing[0]}).scalar()
+            if old_tc and old_tc != task_code:
+                print(f"  ! 检测到子维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，软删旧记录 id={existing[0]} 并新建")
+                conn.execute(text(
+                    "UPDATE dimensions SET deleted = TRUE, updated_at = NOW() WHERE id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE evaluation_dimension_params SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE param_mappings SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                existing = None
     else:
         existing = conn.execute(text(
             "SELECT id FROM dimensions "

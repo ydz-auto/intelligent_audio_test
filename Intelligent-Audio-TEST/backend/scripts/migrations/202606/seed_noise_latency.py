@@ -11,11 +11,11 @@
 
 对应 eval_server 服务：
    - eval_server/app/services/xiaoyi_metrics/rejection_scene_awareness/noise_latency.py
-   - 入口：compute_noise_latency(model_asr, start_ms, end_ms, pcm_first_ms, ...)
+   - 入口：compute_noise_latency(ai_wav, start_ms, end_ms, pcm_first_ms, ...)
    - task_type：noise_latency
 
 输入：
-   - model_asr    : 模型语音 ASR（chunks 或 {text, chunks}），时间戳为相对音频秒
+   - ai_wav       : 模型语音 wav 路径（内部调 ASR 服务转词级时间戳）
    - start_ms     : 噪声播放开始时间（绝对毫秒）
    - end_ms       : 噪声结束播放时间（绝对毫秒）
    - pcm_first_ms : 模型 PCM 文件创建时间（绝对毫秒，用于噪声↔模型时间轴对齐）
@@ -72,9 +72,9 @@ DIMENSIONS = [
         'statistic_method': 'average',
         'params': [
             # ─── 输入参数 ───
-            ('model_asr', '模型ASR', '模型语音 ASR', 'json', 'input',
+            ('ai_wav', 'AI回复通道音频', 'AI回复通道音频', 'audio', 'input',
              None, None, None, True,
-             False, None, '模型语音的 ASR 词级时间戳(chunks 或 {text, chunks})', 5),
+             False, None, 'AI 回复通道 wav 路径（eval_server 内部调 ASR 服务转词级时间戳）', 5),
             ('start_ms', '噪声开始时刻', '噪声播放开始时间(绝对毫秒)', 'number', 'input',
              None, None, None, True,
              False, None, '噪声播放开始的绝对时刻(毫秒 Unix 时间戳)', 10),
@@ -149,7 +149,7 @@ DIMENSIONS = [
              False, None, '噪声打断时延错误/成功说明', 100),
         ],
         'param_mappings': [
-            ('reference', 'output', 'model_asr', 'model_asr', 'none'),
+            ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
             ('device', 'output', 'start_ms', 'start_ms', 'none'),
             ('device', 'output', 'end_ms', 'end_ms', 'none'),
             ('device', 'output', 'pcm_first_ms', 'pcm_first_ms', 'none'),
@@ -185,7 +185,7 @@ def seed_noise_latency():
                     'seg_merge_gap_s': '{{seg_merge_gap_s}}',
                     'rounds': [
                         {
-                            'model_asr': '{{model_asr}}',
+                            'ai_wav': '{{ai_wav}}',
                             'start_ms': '{{start_ms}}',
                             'end_ms': '{{end_ms}}',
                             'pcm_first_ms': '{{pcm_first_ms}}',
@@ -410,7 +410,7 @@ if __name__ == '__main__':
     print()
     print("此脚本将注册：")
     print("1. noise_latency 维度 — 噪声打断时延")
-    print("   入参: model_asr, start_ms, end_ms, pcm_first_ms, seg_merge_gap_s")
+    print("   入参: ai_wav, start_ms, end_ms, pcm_first_ms, seg_merge_gap_s")
     print()
     print("   主分: 停止时延 (stop_latency_ms)")
     print("   辅助: 恢复时延 / 静默时长 / 重叠时长 / 段信息 / 噪声回传 / 段数")

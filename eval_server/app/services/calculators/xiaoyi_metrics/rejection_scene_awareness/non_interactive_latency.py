@@ -9,17 +9,27 @@ non_interactive_latency.py
         1. stop_latency_s     : 用户开始讲话 → 模型停止回复
         2. recovery_latency_s  : 用户讲完 → 模型开始回复
 
-输入: 两路 ASR 词级时间戳（同一时间轴）
-    - user_asr : 用户语音 ASR 结果（{text, chunks} 或 chunks 列表），第 2 段为目标讲话
-    - model_asr: 模型语音 ASR 结果（同上），含被打断时正在说的段 + 停顿 + 再次回复
+输入: 两路 wav 音频路径（内部自动调 ASR 服务）
+    - user_wav : 用户语音 wav 路径
+    - ai_wav   : 模型语音 wav 路径
 
 时间单位: 秒（timestamp=[start, end]）
 """
+import os
 import re
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
+
+
+def _get_asr(wav_path: str) -> Dict[str, Any]:
+    """调用远程 ASR 服务获取词级时间戳，返回 {text, chunks} 结构"""
+    if not wav_path or not os.path.isfile(wav_path):
+        raise FileNotFoundError(f"wav 文件不存在: {wav_path}")
+    from app.utils.asr_adapator import call_modelscope_asr, parse_result
+    raw = call_modelscope_asr(wav_path)
+    return parse_result(raw)
 
 # ─────────── 阈值 ───────────
 SEG_MERGE_GAP_S = 0.7  # 合并相邻词为语音段的间隙阈值（秒），0.7s 适配句内最大停顿 ~0.5s
@@ -104,10 +114,10 @@ def _to_segments(chunks: List[Dict[str, Any]], gap: float = SEG_MERGE_GAP_S
 
 
 # ─────────── 主逻辑 ───────────
-def compute_non_interactive_latency(user_asr: Any, model_asr: Any,
-                                    seg_merge_gap_s: float = SEG_MERGE_GAP_S,
-                                    target_segment_index: int = 1) -> Dict[str, Any]:
-    """计算用户在模型回复期间说话的时延
+def _compute_from_asr(user_asr: Any, model_asr: Any,
+                      seg_merge_gap_s: float = SEG_MERGE_GAP_S,
+                      target_segment_index: int = 1) -> Dict[str, Any]:
+    """从已就绪的 ASR 结果计算时延（内部函数，不调 ASR 服务）
 
     Args:
         user_asr: 用户语音 ASR 结果（chunks 列表 或 {text, chunks}）
@@ -225,6 +235,24 @@ def compute_non_interactive_latency(user_asr: Any, model_asr: Any,
     return result
 
 
+def compute_non_interactive_latency(user_wav: str, ai_wav: str,
+                                    seg_merge_gap_s: float = SEG_MERGE_GAP_S,
+                                    target_segment_index: int = 1) -> Dict[str, Any]:
+    """计算用户在模型回复期间说话的时延（内部自动调 ASR 服务）
+
+    Args:
+        user_wav: 用户语音 wav 路径
+        ai_wav: 模型语音 wav 路径
+        seg_merge_gap_s: 词合并为段的间隙阈值（秒），默认 0.7
+        target_segment_index: 目标用户段索引（0-based，默认 1=第 2 段）
+    """
+    user_asr = _get_asr(user_wav)
+    model_asr = _get_asr(ai_wav)
+    return _compute_from_asr(user_asr, model_asr,
+                             seg_merge_gap_s=seg_merge_gap_s,
+                             target_segment_index=target_segment_index)
+
+
 if __name__ == '__main__':
     import argparse
     import json
@@ -232,39 +260,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='计算用户在模型回复期间说话的时延'
     )
-    parser.add_argument('--user_asr', required=True,
-                        help='用户 ASR JSON 路径')
-    parser.add_argument('--model_asr', required=True,
-                        help='模型 ASR JSON 路径')
+    parser.add_argument('--user_wav', required=True,
+                        help='用户 wav 路径')
+    parser.add_argument('--ai_wav', required=True,
+                        help='模型 wav 路径')
     parser.add_argument('--merge_gap', type=float, default=SEG_MERGE_GAP_S,
                         help=f'词合并为段的间隙阈值(秒)，默认 {SEG_MERGE_GAP_S}')
     parser.add_argument('--target_index', type=int, default=1,
                         help='目标用户段索引（0-based，默认 1=第 2 段）')
     args = parser.parse_args()
 
-    def _load(p):
-        with open(p, 'r', encoding='utf-8') as f:
-            return json.load(f)
-
-    user_data = _load(args.user_asr)
-    model_data = _load(args.model_asr)
-
-    # 先展示所有段
-    u_segs = _to_segments(_to_chunks(user_data), gap=args.merge_gap)
-    m_segs = _to_segments(_to_chunks(model_data), gap=args.merge_gap)
-
-    print('── 用户每段讲话 ──')
-    for i, (s, e, t) in enumerate(u_segs):
-        tag = ' ← 目标段' if i == args.target_index else ''
-        print(f'  U{i}: [{s:.1f}-{e:.1f}] {t[:40]}{tag}')
-
-    print('\n── 模型每段回复 ──')
-    for i, (s, e, t) in enumerate(m_segs):
-        print(f'  M{i}: [{s:.1f}-{e:.1f}] {t[:40]}')
-
-    # 计算
+    # 计算（内部自动调 ASR）
     r = compute_non_interactive_latency(
-        user_data, model_data,
+        args.user_wav, args.ai_wav,
         seg_merge_gap_s=args.merge_gap,
         target_segment_index=args.target_index,
     )

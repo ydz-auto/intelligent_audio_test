@@ -159,18 +159,13 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         if not (task_params.get('ai_wav') or task_params.get('model_wav') or task_params.get('model_asr') or task_params.get('model_chunks')):
             return error_response("Missing required field for interruption_metrics: ai_wav (或 model_asr，模型恢复 wav/ASR)", code=CODE_VALIDATION_ERROR)
     elif task_type == 'non_interactive_latency':
-        if not task_params.get('user_asr') and not task_params.get('user_chunks'):
-            return error_response("Missing required field for non_interactive_latency: user_asr (用户 ASR)", code=CODE_VALIDATION_ERROR)
-        if not task_params.get('model_asr') and not task_params.get('model_chunks'):
-            return error_response("Missing required field for non_interactive_latency: model_asr (模型 ASR)", code=CODE_VALIDATION_ERROR)
+        # user_asr / model_asr / user_wav / ai_wav 可能为空（body_template 未包含），
+        # 不在此拦截，交给 calculate 层返回带说明的空结果
+        pass
     elif task_type == 'noise_latency':
-        required_fields = ['model_asr', 'start_ms', 'end_ms', 'pcm_first_ms']
-        # model_asr 也接受 model_chunks 别名
-        if not task_params.get('model_asr') and not task_params.get('model_chunks'):
-            return error_response("Missing required field for noise_latency: model_asr (模型 ASR)", code=CODE_VALIDATION_ERROR)
-        missing = [f for f in ['start_ms', 'end_ms', 'pcm_first_ms'] if task_params.get(f) is None]
-        if missing:
-            return error_response(f"Missing required fields for noise_latency: {', '.join(missing)}", code=CODE_VALIDATION_ERROR)
+        # model_asr / ai_wav / pcm_first_ms 可能为空（body_template 未包含或驱动未输出），
+        # 不在此拦截，交给 calculate 层返回带说明的空结果
+        pass
     elif task_type == 'env_judge':
         if not task_params.get('video_path') and not task_params.get('record_file'):
             return error_response("Missing required field for env_judge: video_path (录屏文件路径)", code=CODE_VALIDATION_ERROR)

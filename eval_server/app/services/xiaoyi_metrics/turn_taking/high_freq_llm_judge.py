@@ -57,10 +57,9 @@ def _is_audio(file_path: str) -> bool:
 
 
 def _encode_file_to_data(file_path: str) -> str:
-    """将文件编码为 base64 data 字符串（不带 MIME 前缀，用于 input_audio）"""
+    """将文件编码为纯 base64 字符串（用于 input_audio 的 data 字段）"""
     with open(file_path, 'rb') as f:
-        encoded = base64.b64encode(f.read()).decode()
-    return f'data:;base64,{encoded}'
+        return base64.b64encode(f.read()).decode()
 
 
 def _encode_video_to_data_uri(file_path: str) -> str:
@@ -162,17 +161,16 @@ def _call_llm_api(model: str, prompt: str,
     if is_omni:
         payload['stream'] = True
         payload['stream_options'] = {'include_usage': True}
-        payload['timeout'] = 300
     else:
         payload['response_format'] = {'type': 'json_object'}
 
     url = f'{api_base.rstrip("/")}/chat/completions'
     max_retries = llm_config.get('max_retries', LLM_MAX_RETRIES)
 
-    last_exc = None
     for attempt in range(max_retries + 1):
         try:
-            with httpx.Client(trust_env=False, timeout=timeout) as client:
+            client_timeout = 300 if is_omni else timeout
+            with httpx.Client(trust_env=False, timeout=client_timeout) as client:
                 response = client.post(url, headers=headers, json=payload)
 
             response.raise_for_status()
@@ -205,7 +203,6 @@ def _call_llm_api(model: str, prompt: str,
                 data = response.json()
             break
         except httpx.HTTPStatusError as e:
-            last_exc = e
             status_code = e.response.status_code
             if 500 <= status_code < 600:
                 try:
@@ -232,7 +229,6 @@ def _call_llm_api(model: str, prompt: str,
             )
             time.sleep(delay)
         except httpx.RequestError as e:
-            last_exc = e
             if attempt >= max_retries:
                 logger.error(f'LLM API 请求失败，已达最大重试次数 {max_retries}')
                 raise
@@ -242,8 +238,6 @@ def _call_llm_api(model: str, prompt: str,
                 f'(attempt {attempt + 1}/{max_retries})'
             )
             time.sleep(delay)
-    else:
-        raise last_exc
 
     return {
         'content': data['choices'][0]['message']['content'],

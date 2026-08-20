@@ -3,7 +3,7 @@ import subprocess
 
 from .harmony_xiaoyichat import Xiaoyilivechat
 from .harmony_driver import HarmonyDriver
-from .utils import By, log_and_emit
+from .utils import By, log_and_emit, with_rpc_retry
 from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 
 
@@ -147,45 +147,30 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                   content=f"转写提取 user={self.question_text!r} ai={self.answer_text!r} (共{len(items)}条)",
                   task_id=task_id, test_case_id=test_case_id)
 
-    def _wait_reply_end(self, driver, task_id=None, test_case_id=None,
-                        timeout=90, stable_seconds=3, interval=1.0):
-        """等待 AI 回复结束：转写文本总长度连续 stable_seconds 秒不变视为结束。"""
-        last_len = -1
-        stable_since = None
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if self._check_stop("post_process_等待回复结束"):
-                return False
-            items = self._get_transcript(driver)
-            cur_len = sum(len(t) for (t, _) in items)
-            now = time.time()
-            if cur_len != last_len:
-                last_len = cur_len
-                stable_since = now
-            elif stable_since and (now - stable_since) >= stable_seconds and cur_len > 0:
-                self._log(level='INFO', content=f"回复结束(转写稳定 {stable_seconds}s, len={cur_len})",
-                          task_id=task_id, test_case_id=test_case_id)
-                return True
-            time.sleep(interval)
-        self._log(level='WARNING', content=f"等待回复结束超时 {timeout}s", task_id=task_id, test_case_id=test_case_id)
-        return False
-
     # ------------------------------------------------------------------
     # AI 回复完成检测（基于 cap_client client_in 尾部 RMS 能量,不依赖 Compose 转写文本）
     # ------------------------------------------------------------------
     def _find_ai_pcm_remote(self, device_sn, task_id=None, test_case_id=None):
-        """在 /data/local/tmp 找 AI 回复 PCM(client_in),排除 dump_process 文件。
-        多个匹配取最后一个(最新流)。无匹配返回 None。"""
-        r = self._hdc_shell(device_sn, 'find', '/data/local/tmp',
-                            '-name', '*.pcm', '-type', 'f')
-        files = [line.strip() for line in (r.stdout or '').splitlines() if line.strip()]
+        """找 AI 回复 PCM,返回设备上路径(无匹配返回 None)。
 
-        # AI 回复文件名含 client_in,排除 dump_process_client_play_audio
-        ai_files = [f for f in files if 'client_in' in f and 'dump_process' not in f]
-        if not ai_files:
-            return None
-        ai_files.sort()
-        return ai_files[-1]
+        与 _pull_pcm 用【同一后缀 + 同一选法】,确保回复检测监控的文件 == 后续转 ai_wav
+        的文件,避免两者选到不同流导致"检测判未回复、但 wav 其实有声"或反之的错配。
+
+        旧实现用子串 'client_in' + 文件名排序取 [-1]:子串同时命中 capturer_client_in.pcm
+        与 client_in..pcm 等多个流,且名字排序取最后会选中静音探针(如实测 311KB 的
+        100368_..._client_in..pcm 探针,tail RMS≈149 近静默),导致 _wait_ai_reply_end_via_pcm
+        误判"ChatGPT 未回复"。改为复用父类 _pick_pcm:按设备文件 size 取最大、自动排除
+        小尺寸探针(size 全 0 退回名字排序取最后,保持旧行为)。与 08-18 的 user_wav 静音
+        修复同一类病,此处补上 AI 侧回复检测路径。
+        """
+        cfg = self.PCM_APP_CONFIG.get(getattr(self, '_pcm_app', 'chatgpt'), {})
+        cache_dirs = cfg.get('cache_dirs', ['/data/local/tmp'])
+        ai_suffix = cfg.get('ai_suffix', 'client_in..pcm')
+        files = []
+        for d in cache_dirs:
+            files.extend(self._list_dir_pcm(device_sn, d))
+        return self._pick_pcm(device_sn, files, ai_suffix,
+                              task_id=task_id, test_case_id=test_case_id)
 
     def _read_tail_rms(self, device_sn, remote, tail_bytes=192000,
                        task_id=None, test_case_id=None):
@@ -247,7 +232,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         return False
 
     def _wait_ai_reply_end_via_pcm(self, device_sn, task_id=None, test_case_id=None,
-                                   start_timeout=60, end_timeout=120,
+                                   start_timeout=25, end_timeout=60,
                                    energy_thr=300, silence_seconds=8, interval=1.0):
         """等 AI 回复完成: 基于 client_in 尾部 RMS 能量判定(不依赖 Compose 转写文本)。
 
@@ -331,24 +316,24 @@ class ChatGptVoiceChat(Xiaoyilivechat):
              语法，确认非语法问题，是 App 行为）。
           2. idle 语音态无“结束通话”按钮节点暴露（clickable 全 false、无 accessibility 描述）；
              结束按钮很可能只在通话进行中才出现，本驱动无法在 post_process 的 idle 态点中。
-        故退出策略：先试返回键若干次（顺带可关闭弹层），仍退不出则 press_home 回桌面
+        故退出策略：先试返回键一次（顺带可关闭弹层），仍退不出则 press_home 回桌面
         （气泡页丢失，本轮 _extract_qa 读不到文本，问答文本交由 ASR）。
 
         注：case 模式（新默认）全程不调用本方法，仅在 teardown force-stop；round 模式才会走到
         这里，而 round+ChatGPT 多轮重入语音本就不可靠，建议用 case 模式。
         """
-        for attempt in (1, 2, 3):
-            self._back(device_sn)
-            time.sleep(2)
-            try:
-                if driver.find_component(By.type('android.widget.EditText')):
-                    self._log(level='DEBUG',
-                              content=f"返回键已退出语音,落回聊天首页(第{attempt}次)",
-                              task_id=task_id, test_case_id=test_case_id)
-                    return
-            except Exception as e:
-                self._log(level='DEBUG', content=f"退出语音校验异常(第{attempt}次): {e}",
+        # 返回键 best-effort 试一次（顺带关闭弹层）；实测对 ChatGPT 语音态不生效（App 吞），
+        # 多次重试+长等待属无效空转，故只试一次即转 press_home 兜底。
+        self._back(device_sn)
+        time.sleep(0.5)
+        try:
+            if driver.find_component(By.type('android.widget.EditText')):
+                self._log(level='DEBUG', content="返回键已退出语音,落回聊天首页",
                           task_id=task_id, test_case_id=test_case_id)
+                return
+        except Exception as e:
+            self._log(level='DEBUG', content=f"退出语音校验异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
         self._log(level='INFO',
                   content="返回键未退出 ChatGPT 语音(被App吞掉),press_home 回桌面(气泡不可读,文本交ASR)",
                   task_id=task_id, test_case_id=test_case_id)
@@ -361,6 +346,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
     # ------------------------------------------------------------------
     # 生命周期
     # ------------------------------------------------------------------
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化：解锁→清弹窗→回桌面→停 ChatGPT→aa start 启动 ChatGPT→清残留 PCM。
 
@@ -432,6 +418,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         return True
 
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """预处理：进入语音通话 + 开启录屏。
 
@@ -447,6 +434,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self._total_rounds = total_rounds
         self._round_number = round_number
         is_first = not getattr(self, '_recording', False)
+
+        # 开局清掉可能残留的华为音乐(上轮/上个用例误识别"播放音乐"拉起的),
+        # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。方法继承自父类。
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
 
         # case 模式非首轮：通话与录屏已在进行，无需重复启动
         if record_mode == 'case' and not is_first:
@@ -494,6 +485,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         time.sleep(2)
         return True
 
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """后处理：等 AI 回复结束 → 按模式收尾 → 提取气泡文本(best-effort)。
 
@@ -513,7 +505,8 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                           f"(start_ms={ts['start_ms']} end_ms={ts['end_ms']})",
                   task_id=task_id, test_case_id=test_case_id)
 
-        # 等 AI 回复完成：client_in PCM 尾部 RMS(平台流:音频紧接 pre_process 后播,start_timeout=60 够;
+        # 等 AI 回复完成：client_in PCM 尾部 RMS(平台流:音频紧接 pre_process 后播,AI 几秒内开说,
+        # start_timeout=25 够;超时则兜底扫 15s 历史救"已说完"场景,不必等 60s。
         # 手动测试:用户随时播,可经 kwargs 传更大 ai_start_timeout 防提前超时)
         # 打断轮(is_interruption=True):不等 AI 回复完成,直接进入下一轮 pre_process
         if kwargs.get('is_interruption') in (True, 'true', '1', 1):
@@ -524,8 +517,8 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         else:
             replied = self._wait_ai_reply_end_via_pcm(
                 device_sn, task_id=task_id, test_case_id=test_case_id,
-                start_timeout=kwargs.get('ai_start_timeout', 60),
-                end_timeout=kwargs.get('ai_end_timeout', 120))
+                start_timeout=kwargs.get('ai_start_timeout', 25),
+                end_timeout=kwargs.get('ai_end_timeout', 60))
             if not replied:
                 self.question_text = 'ChatGPT识别为空'
                 self.answer_text = 'ChatGPT回复为空'
@@ -562,7 +555,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                 else:
                     self._log(level='INFO', content="末轮停止录屏成功", task_id=task_id, test_case_id=test_case_id)
                 self._recording = False
-                time.sleep(5)
+                time.sleep(2)  # 给录屏落盘 finalizes mp4 的时间(参考 doubao 2s)
         else:
             # round 模式：每轮独立——停录屏 + 退出语音回聊天首页(返回键 best-effort) + 提取气泡。
             # 注:返回键对 ChatGPT 语音态常不生效(press_home 兜底回桌面),round 模式多轮重入语音
@@ -574,7 +567,6 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             self._recording = False
             time.sleep(2)
             self._exit_voice(device_sn, driver, task_id=task_id, test_case_id=test_case_id)
-            driver.wait(3)
 
         if not replied:
             return True
@@ -620,6 +612,9 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             except Exception as e:
                 self._log(level='DEBUG', content=f"teardown: 退出语音失败: {e}",
                           task_id=task_id, test_case_id=test_case_id)
+
+        # 2.5 兜底清掉华为音乐(本轮中途可能误识别"播放音乐"拉起的,防跨用例残留)
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
 
         # 3. 停止 ChatGPT APP（彻底释放）
         try:

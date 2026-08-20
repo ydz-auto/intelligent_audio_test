@@ -18,6 +18,82 @@ except Exception as e:
     By = None
     MatchPattern = None
 
+
+def restart_uitest_daemon(device_sn):
+    """重启设备端 uitest RPC 服务（RpcNotRunningError 恢复用）
+
+    通过 hdc 执行: 先 kill 旧进程, 再 start-daemon singleness 启动新进程。
+    """
+    try:
+        # 先清理旧进程
+        subprocess.run(['hdc', '-t', device_sn, 'shell',
+                        'pkill', '-f', 'uitest'],
+                       check=False, timeout=10)
+        time.sleep(1)
+        # 启动新 daemon
+        subprocess.run(['hdc', '-t', device_sn, 'shell',
+                        'uitest', 'start-daemon', 'singleness'],
+                       check=False, timeout=30)
+        time.sleep(2)
+        log_and_emit(level='INFO', module='DeviceDriver',
+                     content=f"uitest daemon restarted for device {device_sn}")
+        return True
+    except Exception as e:
+        log_and_emit(level='ERROR', module='DeviceDriver',
+                     content=f"Failed to restart uitest daemon for {device_sn}: {e}")
+        return False
+
+
+def is_rpc_not_running_error(exc):
+    """判断异常是否为 RPC 服务未运行（RpcNotRunningError）"""
+    msg = str(exc).lower()
+    return 'rpc' in msg and ('not running' in msg or 'not found' in msg or 'listening port' in msg)
+
+
+def with_rpc_retry(max_retries=1):
+    """装饰器: 捕获 RpcNotRunningError 时自动重启 uitest daemon 并重连重试
+
+    Args:
+        max_retries: RPC 恢复后最大重试次数, 默认 1 次
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            last_exc = None
+            for attempt in range(max_retries + 1):
+                try:
+                    return func(self, *args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    if not is_rpc_not_running_error(e):
+                        raise
+                    if attempt >= max_retries:
+                        raise
+                    # 从 args 提取 device_sn (通常是第一个位置参数)
+                    device_sn = None
+                    if args:
+                        device_sn = args[0]
+                    elif 'device_sn' in kwargs:
+                        device_sn = kwargs['device_sn']
+                    if not device_sn:
+                        raise
+                    _task_id = getattr(self, '_task_id', None)
+                    _test_case_id = getattr(self, '_test_case_id', None)
+                    log_and_emit(level='WARNING', module='DeviceDriver',
+                                 content=f"RpcNotRunningError detected in {func.__name__}, "
+                                         f"restarting uitest daemon for {device_sn} "
+                                         f"(attempt {attempt + 1}/{max_retries + 1})",
+                                 task_id=_task_id, test_case_id=_test_case_id)
+                    # 重启 daemon
+                    if not restart_uitest_daemon(device_sn):
+                        raise
+                    # 重连 driver
+                    if hasattr(self, '_reconnect_driver'):
+                        self._reconnect_driver(device_sn)
+            raise last_exc
+        return wrapper
+    return decorator
+
 try:
     import uiautomator2 as u2
 except Exception as e:
