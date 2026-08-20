@@ -1,0 +1,47 @@
+Intelligent-Audio-TEST/backend/controllers/evaluation_controller.py
+  s_81ce5bf1dd5b07::t_48c167f0e2e43b 9,95-156,314-315,354-355,433-434,500-502,514-549,624,659-660,675,683-725
+Intelligent-Audio-TEST/backend/controllers/report_controller_compare.py
+  s_81ce5bf1dd5b07::t_3b9f5bd5badc15 51-70
+Intelligent-Audio-TEST/backend/models/models.py
+  s_81ce5bf1dd5b07::t_418733a4f109e7 732
+Intelligent-Audio-TEST/backend/schemas/algorithm.py
+  s_81ce5bf1dd5b07::t_d1f32fe8bc600f 459-461,475-477,495-497
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_service.py
+  s_6fa8df7c7d8f8c::t_0caeeeb39554db 541-561,563-566,577-579
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  s_a1ab6769d80641::t_2193dc12520e76 1-161
+Intelligent-Audio-TEST/backend/utils/report/report_utils.py
+  s_81ce5bf1dd5b07::t_71b62dbd3ee75a 173,176,178-211,293,299,304-319,323-333,338,365-393,398,402,407
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "335de360e2da9a1d53a78ac8f3bef36ed5957a97",
+  "prompts": {},
+  "sessions": {
+    "s_6fa8df7c7d8f8c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82840de88248d08ea2a75e",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}

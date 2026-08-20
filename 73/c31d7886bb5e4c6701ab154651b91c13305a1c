@@ -1,0 +1,19 @@
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_doubaochat.py
+  s_a1ab6769d80641::t_691addfa7e4529 326-329,423-437
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "73c31d7886bb5e4c6701ab154651b91c13305a1c",
+  "prompts": {},
+  "sessions": {
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}

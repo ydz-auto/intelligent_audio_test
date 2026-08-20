@@ -1,0 +1,57 @@
+Intelligent-Audio-TEST/backend/controllers/evaluation_controller.py
+  s_81ce5bf1dd5b07::t_8b299f773b056e 12-13,378,529,581,757,947
+Intelligent-Audio-TEST/backend/controllers/report_controller_base.py
+  s_81ce5bf1dd5b07::t_b43232efdae359 4-7,521,587-589
+Intelligent-Audio-TEST/backend/controllers/report_controller_compare.py
+  s_81ce5bf1dd5b07::t_a7d4efae693519 5-10,200-201,232-236,261-264,267-275,278-279,281,285-329,331-333,335-342,344-351,353-366,372
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_81ce5bf1dd5b07::t_8e799a26e58b75 4-10,147-148,159-160,204-210,259-260,289-294,297-309,312,314,319-371,373-375,377-384,386-393,395-408,414,421-425
+Intelligent-Audio-TEST/backend/models/models.py
+  s_81ce5bf1dd5b07::t_bfbf72c6f76625 522-523,534-536,541
+Intelligent-Audio-TEST/backend/schemas/algorithm.py
+  s_81ce5bf1dd5b07::t_b1f5af534b12b0 425,443,663,681
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_service.py
+  s_6fa8df7c7d8f8c::t_e9791a1363531e 11-13,206-224,319,321-324,391,582-584,589,649,653,658-664,742-745,778-800,813-875,886,945-947
+Intelligent-Audio-TEST/backend/utils/report/report_utils.py
+  s_81ce5bf1dd5b07::t_cf174ca38d18e8 3,33-37,622-626
+Intelligent-Audio-TEST/frontend/src/components/common/TestCaseReportDetail.vue
+  s_81ce5bf1dd5b07::t_3b317d56ac5584 63-130,252,279-370,1229-1359
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_81ce5bf1dd5b07::t_785e336c10e05b 257,406,1087-1131,1533,1536-1539,1541,1543,1545,1547-1562,1938-1949
+Intelligent-Audio-TEST/frontend/src/shared/types/businessTypes.ts
+  s_a1ab6769d80641::t_562e6e936b2a84 1-2,148-150,203-209,237
+eval_server/app/config.py
+  s_a1ab6769d80641::t_0e3215e78d9d98 19-24,28-35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "ec3065ea8596a86657d67cc4744ff9c9524773d9",
+  "prompts": {},
+  "sessions": {
+    "s_6fa8df7c7d8f8c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82840de88248d08ea2a75e",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_81ce5bf1dd5b07": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82cd17e88248d08ea2b111",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    },
+    "s_a1ab6769d80641": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a826e2fe88248d08ea2a54b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
