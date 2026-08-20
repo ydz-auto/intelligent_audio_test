@@ -47,11 +47,16 @@ export function useApiTest() {
     testCaseGroups,
     tags,
     isLoading,
-    paginationInfo
+    paginationInfo,
+    tagViewData,
+    tagViewPagination,
+    tagViewLoading
   } = storeToRefs(testCaseStore)
 
   const {
     fetchTestCases,
+    fetchTagView,
+    loadMoreTagView,
     deleteGroup,
     deleteTestCase
   } = testCaseStore
@@ -693,6 +698,9 @@ export function useApiTest() {
     apiResources,
     testCaseGroups,
     tags,
+    tagViewData,
+    tagViewPagination,
+    tagViewLoading,
     isLoading,
     casePaginationInfo: paginationInfo,
     formData,
@@ -752,6 +760,8 @@ export function useApiTest() {
     algorithmEditData,
     editingAlgorithm,
     isVoiceLLM,
-    stepHints
+    stepHints,
+    fetchTagView,
+    loadMoreTagView
   }
 }

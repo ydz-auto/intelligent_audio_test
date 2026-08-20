@@ -208,10 +208,32 @@ export function useBatchActions() {
       algorithmType: filteredCases[0]?.algorithmType || ''
     })
 
-    if (result?.dimensions) {
-      const success = await store.batchUpdateDimensions(ids, result.dimensions, result.testType, {
+    if (result?.roundMode === 'per_round' && result.roundDimensions) {
+      const success = await store.batchUpdateDimensions(ids, [], result.testType, {
         roundMode: result.roundMode,
         roundNumbers: result.roundNumbers,
+        roundDimensions: result.roundDimensions,
+        multiDimensions: result.multiDimensions || [],
+      })
+      if (success) {
+        alert(`已成功更新 ${ids.length} 个用例的评价维度`)
+      }
+    } else if (result?.roundMode === 'per_round' && result?.multiDimensions) {
+      // 逐轮模式下只设置了多轮整体评估维度（含空数组=清空）
+      const success = await store.batchUpdateDimensions(ids, [], result.testType, {
+        roundMode: result.roundMode,
+        roundNumbers: result.roundNumbers,
+        multiDimensions: result.multiDimensions,
+      })
+      if (success) {
+        alert(`已成功更新 ${ids.length} 个用例的评价维度`)
+      }
+    } else {
+      // 统一模式：允许空 dimensions（清空所有轮次维度）
+      const success = await store.batchUpdateDimensions(ids, result?.dimensions || [], result.testType, {
+        roundMode: result?.roundMode || 'all',
+        roundNumbers: result?.roundNumbers || [],
+        multiDimensions: result?.multiDimensions || [],
       })
       if (success) {
         alert(`已成功更新 ${ids.length} 个用例的评价维度`)

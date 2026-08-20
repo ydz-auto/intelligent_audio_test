@@ -14,6 +14,8 @@
       :test-case-groups="testCaseGroups"
       :tag-view-data="tagViewData"
       :tags="tags"
+      :tag-view-pagination="tagViewPagination"
+      :tag-view-loading="tagViewLoading"
       :pagination-info="paginationInfo"
       :is-loading="isLoading"
       v-model:view-mode="viewMode"
@@ -26,6 +28,7 @@
       @open-import-modal="openImportTestCaseModal"
       @open-export-modal="openExportTestCaseModal"
       @tag-filter-change="handleTagFilterChange"
+      @load-more-tags="loadMoreTagView"
     />
   </div>
 </template>
@@ -39,6 +42,8 @@ const {
   tagViewData,
   tags,
   paginationInfo,
+  tagViewPagination,
+  tagViewLoading,
   isLoading,
   viewMode,
   handleDeleteGroup,
@@ -50,7 +55,8 @@ const {
   openEditGroupModal,
   openImportTestCaseModal,
   openExportTestCaseModal,
-  handleTagFilterChange
+  handleTagFilterChange,
+  loadMoreTagView
 } = useTestCaseManager();
 </script>
 

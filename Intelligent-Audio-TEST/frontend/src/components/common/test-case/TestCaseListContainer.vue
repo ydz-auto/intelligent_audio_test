@@ -209,12 +209,16 @@
       <!-- ===== 标签视图 ===== -->
       <template v-else>
         <div
-          v-for="tagName in paginatedTags"
+          v-for="tagName in sortedTags"
           :key="tagName"
           class="category-card"
         >
           <div class="category-header" @click="() => toggleTagCategory(tagName)">
             <div class="category-info">
+              <input type="checkbox" class="group-checkbox"
+                     @change="() => toggleTagSelection(tagName)"
+                     @click.stop
+                     :checked="tagSelectionStates[tagName]">
               <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedTagCategories[tagName] }"></i>
               <i class="fas fa-tag" style="color: var(--primary-color, #4a90e2); margin-right: 6px;"></i>
               <h4 class="category-title">{{ tagName }}</h4>
@@ -255,26 +259,26 @@
           </div>
         </div>
 
-        <div v-if="paginatedTags.length === 0" class="empty-state">
+        <div v-if="sortedTags.length === 0" class="empty-state">
           <i class="fas fa-tags"></i>
           <p>没有找到标签分组的测试用例</p>
           <p class="empty-state-hint">请为测试用例添加标签</p>
         </div>
 
-        <div v-if="isLoadingMore" class="loading-more">
+        <div v-if="tagViewLoading" class="loading-more">
           <i class="fas fa-spinner fa-spin"></i>
           <span>加载更多标签...</span>
         </div>
 
-        <div v-if="hasMoreTags && !isLoadingMore && paginatedTags.length > 0" class="load-more-trigger" ref="loadMoreTriggerRef">
-          <span class="load-more-hint">已显示 {{ paginatedTags.length }} / {{ sortedTags.length }} 个标签</span>
-          <button class="btn btn-secondary btn-sm" @click="loadMoreGroups">
+        <div v-if="hasMoreTagsFromBackend && !tagViewLoading && sortedTags.length > 0" class="load-more-trigger" ref="loadMoreTriggerRef">
+          <span class="load-more-hint">已加载 {{ sortedTags.length }} / {{ props.tagViewPagination?.total || sortedTags.length }} 个标签</span>
+          <button class="btn btn-secondary btn-sm" @click="emit('loadMoreTags')">
             <i class="fas fa-chevron-down"></i> 加载更多
           </button>
         </div>
 
-        <div v-if="!hasMoreTags && paginatedTags.length > 0" class="all-loaded">
-          <span>已加载全部 {{ sortedTags.length }} 个标签</span>
+        <div v-if="!hasMoreTagsFromBackend && sortedTags.length > 0" class="all-loaded">
+          <span>已加载全部 {{ props.tagViewPagination?.total || sortedTags.length }} 个标签</span>
         </div>
       </template>
     </div>
@@ -375,6 +379,8 @@ const props = defineProps<{
   tagViewData?: Record<string, TestCase[]>;
   tags?: string[];
   paginationInfo?: PaginationInfo;
+  tagViewPagination?: { page: number; pages: number; perPage: number; total: number };
+  tagViewLoading?: boolean;
   isLoading?: boolean;
   algorithmTypeFilter?: string;
   testTypeFilter?: string;
@@ -393,6 +399,7 @@ const emit = defineEmits<{
   (e: 'updateSelectedCases', selectedCases: (string | number)[]): void;
   (e: 'update:viewMode', mode: 'group' | 'tag'): void;
   (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string }): void;
+  (e: 'loadMoreTags'): void;
 }>();
 
 const expandedCategories = ref<Record<string, boolean>>({});
@@ -412,7 +419,10 @@ const innerViewMode = ref<'group' | 'tag'>(props.viewMode || 'group');
 const updateViewMode = (mode: 'group' | 'tag') => {
   innerViewMode.value = mode;
   emit('update:viewMode', mode);
-  // 切换视图时重置展开状态
+  // 切换视图时重置展开状态和选中状态
+  selectedCases.value = [];
+  // 重置前端分页（分组视图使用）
+  currentPage.value = 1;
   if (mode === 'tag') {
     expandedCategories.value = {};
   } else {
@@ -749,6 +759,26 @@ const groupSelectionStates = computed(() => {
   return result;
 });
 
+const tagSelectionStates = computed(() => {
+  const result: Record<string, boolean> = {};
+  const filteredValue = filteredTagCases.value;
+
+  Object.keys(filteredValue).forEach((tagName: string) => {
+    const tagCases = filteredValue[tagName];
+    if (tagCases.length === 0) {
+      result[tagName] = false;
+    } else {
+      result[tagName] = tagCases
+        .filter((caseItem: TestCase) => caseItem && caseItem.id)
+        .every((caseItem: TestCase) =>
+          selectedCases.value.includes(caseItem.id)
+        );
+    }
+  });
+
+  return result;
+});
+
 const getGroupDurationStats = (group: string) => {
   const cases = filteredTestCases.value[group] || [];
   let totalDuration = 0;
@@ -912,17 +942,14 @@ const sortedTags = computed(() => {
   });
 });
 
-const paginatedTags = computed(() => {
-  const allTags = sortedTags.value;
-  const endIndex = currentPage.value * itemsPerPage.value;
-  return allTags.slice(0, endIndex);
+// 标签视图是否还有更多未从后端加载的标签（基于后端分页信息）
+const hasMoreTagsFromBackend = computed(() => {
+  const pagination = props.tagViewPagination;
+  if (!pagination) return false;
+  return pagination.page < pagination.pages;
 });
-
-// 标签视图是否还有更多未展示的标签
-const hasMoreTags = computed(() => paginatedTags.value.length < sortedTags.value.length);
-// 当前视图是否还有更多：分组视图看 hasMoreGroups，标签视图看 hasMoreTags。
-// 滚动加载/IntersectionObserver/loadMoreGroups 共用此判断，避免标签视图永远加载不出第 6 个起标签。
-const hasMore = computed(() => innerViewMode.value === 'tag' ? hasMoreTags.value : hasMoreGroups.value);
+// 当前视图是否还有更多：分组视图看 hasMoreGroups（前端切片），标签视图看 hasMoreTagsFromBackend（后端分页）。
+const hasMore = computed(() => innerViewMode.value === 'tag' ? hasMoreTagsFromBackend.value : hasMoreGroups.value);
 
 const toggleTagCategory = (tagName: string) => {
   expandedTagCategories.value = {
@@ -996,8 +1023,22 @@ const toggleTestCaseSelection = (caseId: string | number) => {
 const toggleGroupSelection = (group: string) => {
   const groupCases = filteredTestCases.value[group] || [];
   const allSelected = groupSelectionStates.value[group];
-  
+
   groupCases.forEach((testCase: TestCase) => {
+    const index = selectedCases.value.indexOf(testCase.id);
+    if (allSelected) {
+      if (index > -1) selectedCases.value.splice(index, 1);
+    } else {
+      if (index === -1) selectedCases.value.push(testCase.id);
+    }
+  });
+};
+
+const toggleTagSelection = (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || [];
+  const allSelected = tagSelectionStates.value[tagName];
+
+  tagCases.forEach((testCase: TestCase) => {
     const index = selectedCases.value.indexOf(testCase.id);
     if (allSelected) {
       if (index > -1) selectedCases.value.splice(index, 1);
@@ -1030,8 +1071,12 @@ const loadMoreGroups = () => {
 const handleScroll = (event: Event) => {
   const target = event.target as HTMLElement;
   const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-  if (scrollBottom < 100 && hasMore.value && !isLoadingMore.value) {
-    loadMoreGroups();
+  if (scrollBottom < 100 && hasMore.value && !isLoadingMore.value && !props.tagViewLoading) {
+    if (innerViewMode.value === 'tag') {
+      emit('loadMoreTags');
+    } else {
+      loadMoreGroups();
+    }
   }
 };
 
@@ -1044,8 +1089,12 @@ const setupLoadMoreObserver = () => {
   if (loadMoreObserver) loadMoreObserver.disconnect();
   loadMoreObserver = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
-      if (entry.isIntersecting && hasMore.value && !isLoadingMore.value) {
-        loadMoreGroups();
+      if (entry.isIntersecting && hasMore.value && !isLoadingMore.value && !props.tagViewLoading) {
+        if (innerViewMode.value === 'tag') {
+          emit('loadMoreTags');
+        } else {
+          loadMoreGroups();
+        }
       }
     });
   }, { rootMargin: '100px' });
@@ -1055,7 +1104,7 @@ const setupLoadMoreObserver = () => {
 };
 // 哨兵是 v-if 元素，每次加载后会重新挂载，需重新观察；
 // 分组/标签视图切换时哨兵也会换元素，需一并重新观察。
-watch([hasMore, isLoadingMore, () => paginatedGroups.value.length, () => paginatedTags.value.length, innerViewMode], () => {
+watch([hasMore, isLoadingMore, () => paginatedGroups.value.length, () => sortedTags.value.length, innerViewMode, () => props.tagViewLoading], () => {
   nextTick(setupLoadMoreObserver);
 });
 

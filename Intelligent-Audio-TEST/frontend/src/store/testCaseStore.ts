@@ -237,14 +237,20 @@ export const useTestCaseStore = defineStore('testCase', () => {
     }
   };
 
-  // 标签视图：调用 GET /testcases?view=tag，返回按标签聚合的数据
+  // 标签视图：调用 GET /testcases?view=tag，返回按标签聚合的数据。
+  // 后端按 Tag 分页，前端通过 fetchTagView（重置）+ loadMoreTagView（追加）实现滚动加载。
+  const tagViewLoading = ref(false);
+  const tagViewLastParams = ref<Record<string, any>>({});
+
   const fetchTagView = async (params: Record<string, any> = {}) => {
     try {
+      tagViewLoading.value = true;
       isLoading.value = true;
       error.value = null;
 
       const page = params.page || 1;
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
+      tagViewLastParams.value = { ...params };
 
       const response = await testcasesApi.getAll({
         page,
@@ -267,6 +273,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           : [];
       });
 
+      // 重置时替换全部数据
       tagViewData.value = groups;
       tagViewPagination.value = {
         page: (response as any)?.page || 1,
@@ -280,15 +287,73 @@ export const useTestCaseStore = defineStore('testCase', () => {
       items.forEach(item => {
         if (item.tag) tagSet.add(item.tag);
       });
-      if (tagSet.size > 0) {
-        tags.value = Array.from(tagSet);
-      }
+      tags.value = Array.from(tagSet);
     } catch (err: any) {
       console.error('获取标签视图数据失败:', err);
       error.value = err.message || '获取标签视图数据失败';
       tagViewData.value = {};
     } finally {
+      tagViewLoading.value = false;
       isLoading.value = false;
+    }
+  };
+
+  const loadMoreTagView = async () => {
+    const pagination = tagViewPagination.value;
+    if (tagViewLoading.value || pagination.page >= pagination.pages) return;
+
+    try {
+      tagViewLoading.value = true;
+      const nextPage = pagination.page + 1;
+      const params = tagViewLastParams.value;
+      const perPage = pagination.perPage || DEFAULT_FETCH_PAGE_SIZE;
+
+      const response = await testcasesApi.getAll({
+        page: nextPage,
+        perPage,
+        view: 'tag',
+        keyword: params.keyword,
+        type: params.testType,
+        algorithm_type: params.algorithmType,
+        include_deleted: params.includeDeleted || false
+      });
+
+      const items: Array<{ tag: string; testCases: TestCase[] }> =
+        response && Array.isArray((response as any).items) ? (response as any).items : [];
+
+      // 追加到已有数据
+      const merged = { ...tagViewData.value };
+      items.forEach(item => {
+        const tagName = item.tag || '未分类';
+        const newCases = Array.isArray(item.testCases)
+          ? item.testCases.map((tc: any) => snakeToCamelObject(tc))
+          : [];
+        if (merged[tagName]) {
+          merged[tagName] = [...merged[tagName], ...newCases];
+        } else {
+          merged[tagName] = newCases;
+        }
+      });
+      tagViewData.value = merged;
+
+      tagViewPagination.value = {
+        page: (response as any)?.page || nextPage,
+        pages: (response as any)?.pages || pagination.pages,
+        perPage: (response as any)?.perPage || perPage,
+        total: typeof (response as any)?.total === 'number' ? (response as any).total : pagination.total
+      };
+
+      // 累积标签列表
+      const tagSet = new Set<string>(tags.value);
+      items.forEach(item => {
+        if (item.tag) tagSet.add(item.tag);
+      });
+      tags.value = Array.from(tagSet);
+    } catch (err: any) {
+      console.error('加载更多标签视图数据失败:', err);
+      error.value = err.message || '加载更多标签视图数据失败';
+    } finally {
+      tagViewLoading.value = false;
     }
   };
 
@@ -728,30 +793,75 @@ export const useTestCaseStore = defineStore('testCase', () => {
     ids: (string | number)[],
     dimensions: any[],
     testType: string,
-    options?: { roundMode?: string; roundNumbers?: number[] }
+    options?: { roundMode?: string; roundNumbers?: number[]; roundDimensions?: Record<number, any[]>; multiDimensions?: any[] }
   ) => {
     try {
       error.value = null;
       const payload: Record<string, any> = { dimensions, test_type: testType };
       if (options?.roundMode) payload.round_mode = options.roundMode;
       if (options?.roundNumbers) payload.round_numbers = options.roundNumbers;
+      if (options?.roundDimensions) payload.round_dimensions = options.roundDimensions;
+      if (options?.multiDimensions) payload.multi_dimensions = options.multiDimensions;
       await testcasesApi.batchAction('update_dimensions', ids, payload);
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id);
         if (tc && tc.config) {
           const config = { ...tc.config };
-          // Both rounds and legacy formats store dimensions at top level
-          config.dimensions = dimensions;
-          // For rounds format, also update evaluation within each round
-          if (config.rounds && Array.isArray(config.rounds)) {
-            config.rounds = config.rounds.map((round: any) => ({
-              ...round,
-              evaluation: round.evaluation
-                ? { ...round.evaluation, dimensions: dimensions }
-                : { dimensions: dimensions }
-            }));
+          const hasMulti = !!(options?.multiDimensions && options.multiDimensions.length > 0);
+
+          if (options?.roundMode === 'per_round' && options.roundDimensions) {
+            // 逐轮设置模式：每个轮次独立设置维度
+            if (config.rounds && Array.isArray(config.rounds)) {
+              const lastRn = config.rounds.length;
+              config.rounds = config.rounds.map((round: any) => {
+                const rn = round.roundNumber || round.round_number;
+                // 先查精确轮次，-1 代表最后一轮，按实际轮次数解析
+                let roundDims = options.roundDimensions![rn] || [];
+                if (rn === lastRn && options.roundDimensions![-1]) {
+                  // 最后一轮的维度叠加到该轮
+                  const lastDims = options.roundDimensions![-1] || [];
+                  // 合并去重：以 last_round 的配置为准补充
+                  const existingIds = new Set(roundDims.map((d: any) => d.id));
+                  for (const d of lastDims) {
+                    if (!existingIds.has(d.id)) roundDims = [...roundDims, d];
+                  }
+                }
+                return {
+                  ...round,
+                  evaluation: round.evaluation
+                    ? { ...round.evaluation, dimensions: roundDims }
+                    : { dimensions: roundDims }
+                };
+              });
+            }
+          } else if (dimensions && dimensions.length > 0) {
+            // 统一模式
+            if (config.rounds && Array.isArray(config.rounds)) {
+              const lastRn = config.rounds.length;
+              config.rounds = config.rounds.map((round: any) => {
+                const rn = round.roundNumber || round.round_number;
+                // 指定轮次模式下只更新选中的轮次（含 -1 = 最后一轮）
+                if (options?.roundMode === 'specific' && options.roundNumbers) {
+                  const isSelected = options.roundNumbers.includes(rn) ||
+                    (rn === lastRn && options.roundNumbers.includes(-1));
+                  if (!isSelected) return round;
+                }
+                return {
+                  ...round,
+                  evaluation: round.evaluation
+                    ? { ...round.evaluation, dimensions: dimensions }
+                    : { dimensions: dimensions }
+                };
+              });
+            }
           }
+
+          // 多轮整体评估维度：有 multiDimensions 字段就写入（空数组=清空）
+          if (options?.multiDimensions !== undefined) {
+            config.dimensions = options.multiDimensions;
+          }
+
           tc.config = config;
         }
       });
@@ -1095,8 +1205,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
     groupPagination,
     tagViewData,
     tagViewPagination,
+    tagViewLoading,
     fetchTestCases,
     fetchTagView,
+    loadMoreTagView,
     fetchGroupsList,
     fetchCasesByGroup,
     loadMoreGroupCases,

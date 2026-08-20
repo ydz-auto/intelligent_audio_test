@@ -1590,45 +1590,105 @@ class TestCaseController:
         dimensions_data = req_data.dimensions
         logger.info(f"[update_dimensions] 开始处理, ids: {ids}, dimensions: {dimensions_data}")
 
-        if dimensions_data is None:
-            logger.error("[update_dimensions] 缺少 dimensions 参数")
-            return error_response("更新评价维度需要 'dimensions'")
-
         # 获取轮次范围
         round_mode = getattr(req_data, 'round_mode', None) or 'all'
         round_numbers = getattr(req_data, 'round_numbers', None) or []
+        # 逐轮设置模式：round_dimensions = {1: [...], 2: [...], "-1": [...]}
+        # -1 代表"最后一轮"，按用例实际轮次数动态解析
+        round_dimensions = getattr(req_data, 'round_dimensions', None) or {}
+        # 多轮整体评估维度（config.dimensions）
+        multi_dimensions = getattr(req_data, 'multi_dimensions', None)
+
+        # 逐轮设置模式不需要 dimensions 参数（可能只需要 round_dimensions 和/或 multi_dimensions）
+        # 允许空 dimensions（用于清空所有轮次维度）
+        has_single_dims = dimensions_data is not None and len(dimensions_data) > 0
+        has_round_dims = round_dimensions and len(round_dimensions) > 0
+        has_multi_dims = multi_dimensions is not None
+
+        # 统一模式：dimensions 可以是空列表（清空），但不能是 None 且没有 multi_dimensions
+        if round_mode != 'per_round' and dimensions_data is None and not has_multi_dims:
+            logger.error("[update_dimensions] 缺少 dimensions 参数")
+            return error_response("更新评价维度需要 'dimensions' 或 'multi_dimensions'")
+
+        # 逐轮模式：round_dimensions 至少要有数据（即使是空列表也需要有 key）
+        if round_mode == 'per_round' and not has_round_dims and not has_multi_dims:
+            logger.error("[update_dimensions] 逐轮设置模式缺少 round_dimensions 和 multi_dimensions")
+            return error_response("逐轮设置模式需要 'round_dimensions' 或 'multi_dimensions'")
 
         test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
         logger.info(f"[update_dimensions] 查询到 {len(test_cases)} 个用例")
+
+        def _build_dim_list(dim_data):
+            """从维度数据构建标准化的维度列表"""
+            result = []
+            for dim in dim_data:
+                result.append({
+                    'id': dim.get('id'),
+                    'name': dim.get('name', ''),
+                    'weight': dim.get('weight', 50),
+                    'threshold': dim.get('threshold', 60)
+                })
+            return result
+
+        def _get_round_dims(rn, last_rn):
+            """获取轮次对应的维度列表，支持 -1 = 最后一轮"""
+            rn_key = str(rn) if isinstance(round_dimensions, dict) else rn
+            dims = round_dimensions.get(rn_key) or round_dimensions.get(rn) or []
+            # 如果是最后一轮，叠加 -1 的维度
+            if rn == last_rn and round_dimensions:
+                last_key = '-1' if isinstance(round_dimensions, dict) else -1
+                last_dims = round_dimensions.get(last_key) or round_dimensions.get(-1) or []
+                if last_dims:
+                    existing_ids = {d.get('id') for d in dims}
+                    for d in last_dims:
+                        if d.get('id') not in existing_ids:
+                            dims = list(dims) + [d]
+            return dims
 
         updated_count = 0
         for tc in test_cases:
             if tc.config:
                 config = tc.config.copy()
-                new_dim_list = []
-                for dim in dimensions_data:
-                    dim_id = dim.get('id')
-                    dim_name = dim.get('name', '')
-                    dim_weight = dim.get('weight', 50)
-                    dim_threshold = dim.get('threshold', 60)
-                    new_dim_list.append({
-                        'id': dim_id,
-                        'name': dim_name,
-                        'weight': dim_weight,
-                        'threshold': dim_threshold
-                    })
-                    logger.debug(f"[update_dimensions] 用例 {tc.id} 设置维度 {dim_id}")
+                rounds = config.get('rounds', [])
+                last_rn = len(rounds) if rounds else 0
 
-                for round_item in config.get('rounds', []):
-                    if not isinstance(round_item, dict):
-                        continue
-                    # 轮次过滤
-                    rn = round_item.get('round_number') or round_item.get('roundNumber')
-                    if round_mode == 'specific' and rn not in round_numbers:
-                        continue
-                    if 'evaluation' not in round_item:
-                        round_item['evaluation'] = {}
-                    round_item['evaluation']['dimensions'] = new_dim_list
+                if round_mode == 'per_round':
+                    # 逐轮设置模式：每个轮次独立设置维度
+                    for round_item in rounds:
+                        if not isinstance(round_item, dict):
+                            continue
+                        rn = round_item.get('round_number') or round_item.get('roundNumber')
+                        round_dim_data = _get_round_dims(rn, last_rn)
+                        new_dim_list = _build_dim_list(round_dim_data)
+                        if 'evaluation' not in round_item:
+                            round_item['evaluation'] = {}
+                        round_item['evaluation']['dimensions'] = new_dim_list
+                        logger.debug(f"[update_dimensions] 用例 {tc.id} 轮次 {rn} 设置维度 {len(new_dim_list)} 个")
+                elif dimensions_data is not None:
+                    # 统一模式：所有/指定轮次共用同一套维度（含空列表=清空）
+                    new_dim_list = _build_dim_list(dimensions_data)
+                    for dim in dimensions_data:
+                        logger.debug(f"[update_dimensions] 用例 {tc.id} 设置维度 {dim.get('id')}")
+
+                    for round_item in rounds:
+                        if not isinstance(round_item, dict):
+                            continue
+                        # 轮次过滤
+                        rn = round_item.get('round_number') or round_item.get('roundNumber')
+                        if round_mode == 'specific' and round_numbers:
+                            is_selected = rn in round_numbers or \
+                                (rn == last_rn and -1 in round_numbers)
+                            if not is_selected:
+                                continue
+                        if 'evaluation' not in round_item:
+                            round_item['evaluation'] = {}
+                        round_item['evaluation']['dimensions'] = new_dim_list
+
+                # 多轮整体评估维度（config.dimensions）：非 None 就写入（空列表=清空）
+                if multi_dimensions is not None:
+                    config['dimensions'] = _build_dim_list(multi_dimensions)
+                    logger.debug(f"[update_dimensions] 用例 {tc.id} 设置整体评估维度 {len(multi_dimensions)} 个")
+
                 tc.config = config
                 sqlalchemy.orm.attributes.flag_modified(tc, 'config')
             tc.updated_at = now_cst()

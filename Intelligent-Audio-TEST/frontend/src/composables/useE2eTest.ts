@@ -14,12 +14,15 @@ export function useE2eTest() {
     tags,
     isLoading,
     paginationInfo,
-    tagViewData
+    tagViewData,
+    tagViewPagination,
+    tagViewLoading
   } = storeToRefs(testCaseStore);
 
   const {
     fetchTestCases,
     fetchTagView,
+    loadMoreTagView,
     addTestCase,
     updateTestCase,
     deleteTestCase,
@@ -169,6 +172,8 @@ export function useE2eTest() {
     e2eTestCaseGroups,
     tags,
     tagViewData,
+    tagViewPagination,
+    tagViewLoading,
     paginationInfo,
     initializeE2eTests,
     openAddE2eTestCaseModal,
@@ -184,6 +189,7 @@ export function useE2eTest() {
     copyE2eTestCase,
     deleteGroup,
     handleE2eTestCaseSave,
-    fetchTagView
+    fetchTagView,
+    loadMoreTagView
   };
 }

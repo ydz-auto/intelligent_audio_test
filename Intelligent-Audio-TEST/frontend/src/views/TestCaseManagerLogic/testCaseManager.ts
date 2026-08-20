@@ -22,8 +22,8 @@ export function useTestCaseManager() {
   } = useTestCaseCard();
 
   const store = useTestCaseStore();
-  const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination } = storeToRefs(store);
-  const { fetchTestCases, fetchTagView, deleteGroup: deleteGroupFromStore, deleteTestCase } = store;
+  const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination, tagViewLoading } = storeToRefs(store);
+  const { fetchTestCases, fetchTagView, loadMoreTagView, deleteGroup: deleteGroupFromStore, deleteTestCase } = store;
 
   // 视图模式：'group' 分组视图 | 'tag' 标签视图
   const viewMode = ref<'group' | 'tag'>('group');
@@ -124,6 +124,7 @@ export function useTestCaseManager() {
     tags,
     paginationInfo,
     tagViewPagination,
+    tagViewLoading,
     isLoading,
     viewMode,
     handleDeleteGroup,
@@ -138,6 +139,7 @@ export function useTestCaseManager() {
     handleSaveModal,
     handleTestCaseAction,
     refreshCurrentView,
-    handleTagFilterChange
+    handleTagFilterChange,
+    loadMoreTagView
   };
 }

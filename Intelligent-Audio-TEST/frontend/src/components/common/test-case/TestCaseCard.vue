@@ -66,6 +66,11 @@
             <div v-if="testCase.totalDuration" class="case-duration-info">
               <span class="duration-tag">{{ formatDuration(testCase.totalDuration) }}</span>
             </div>
+            <div v-if="roundCount > 0" class="case-duration-info">
+              <span class="round-count-tag" title="用例轮次数量">
+                <i class="fas fa-layer-group"></i> {{ roundCount }} 轮
+              </span>
+            </div>
             <div class="case-tags-container" v-if="testCase.tags && testCase.tags.length > 0">
               <template v-if="!isTagsExpanded">
                 <span v-for="(tag, index) in visibleTags" :key="index" class="tag">{{ tag }}</span>
@@ -165,6 +170,16 @@ const isTagsExpanded = ref(false);
 const isConfigExpanded = ref(true);
 const idCopied = ref(false);
 let idCopiedTimer = null;
+
+const roundCount = computed(() => {
+  const tc = props.testCase;
+  if (!tc) return 0;
+  if (tc.config?.rounds && Array.isArray(tc.config.rounds)) return tc.config.rounds.length;
+  if (tc.rounds && Array.isArray(tc.rounds)) return tc.rounds.length;
+  if (tc.algorithm_params && Array.isArray(tc.algorithm_params)) return tc.algorithm_params.length;
+  if (tc.reference_params && Array.isArray(tc.reference_params)) return tc.reference_params.length;
+  return 0;
+});
 
 const truncatedName = computed(() => {
   const name = props.testCase.name;
@@ -403,6 +418,19 @@ const handleResize = () => {
   border-radius: 12px;
   min-width: 20px;
   text-align: center;
+}
+
+.round-count-tag {
+  display: inline-block;
+  background-color: #6366f1;
+  color: white;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* 用例ID徽章 - 点击可复制 */

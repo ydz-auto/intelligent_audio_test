@@ -66,6 +66,8 @@
           :test-case-groups="testCaseGroups"
           :tag-view-data="tagViewData"
           :tags="tags"
+          :tag-view-pagination="tagViewPagination"
+          :tag-view-loading="tagViewLoading"
           :algorithm-type-filter="selectedAlgorithmType || 'all'"
           :test-type-filter="'api'"
           :is-loading="isLoading || false"
@@ -79,6 +81,7 @@
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
           @tag-filter-change="handleTagFilterChange"
+          @load-more-tags="loadMoreTagView"
         />
       </TestStepContainer>
 
@@ -364,6 +367,8 @@ const {
   testCaseGroups,
   tags,
   tagViewData,
+  tagViewPagination,
+  tagViewLoading,
   isLoading,
   
   formData,
@@ -411,7 +416,8 @@ const {
   // voice_llm 适配
   isVoiceLLM,
   stepHints,
-  fetchTagView
+  fetchTagView,
+  loadMoreTagView
 } = useApiTest()
 
 // 标签视图筛选变化时重新请求数据（固定 testType=api）

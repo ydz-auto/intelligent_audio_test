@@ -491,6 +491,8 @@ class TestCaseBatchActionRequest(APIModel):
     group_name: Optional[str] = Field(None, alias='group_name', validation_alias=AliasChoices('group_name', 'groupName'))
     tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
     dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='dimensions', validation_alias='dimensions')
+    round_dimensions: Optional[Dict[str, Any]] = Field(None, alias='round_dimensions', validation_alias=AliasChoices('round_dimensions', 'roundDimensions'))
+    multi_dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='multi_dimensions', validation_alias=AliasChoices('multi_dimensions', 'multiDimensions'))
     old_tag_name: Optional[str] = Field(None, alias='old_tag_name', validation_alias=AliasChoices('old_tag_name', 'oldTagName'))
     new_tag_name: Optional[str] = Field(None, alias='new_tag_name', validation_alias=AliasChoices('new_tag_name', 'newTagName'))
     # 批量操作轮次范围
