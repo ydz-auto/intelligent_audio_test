@@ -47,8 +47,8 @@ class DoubaoChat(Xiaoyilivechat):
     AI_PCM_SUFFIX = 'client_in..pcm'   # 模型回复音频采集流(与用户输入 cap_client_out 对应)
     RMS_THRESHOLD = 300                       # RMS 阈值，低于此值视为静音
     RMS_SILENCE_SECONDS = 8                   # 连续静默秒数（实测回复中停顿≤6s，8s 不误触发）
-    RMS_START_TIMEOUT = 60                    # 等 AI 开始说话的超时
-    RMS_END_TIMEOUT = 120                     # 等 AI 说完的超时
+    RMS_START_TIMEOUT = 25                    # 等 AI 开始说话的超时(平台流 AI 几秒开说,超时走兜底扫 15s 历史)
+    RMS_END_TIMEOUT = 60                      # 等 AI 说完的超时(单轮回复+8s静默够,超时视为已回复可能截断)
     RMS_SCAN_SECONDS = 15                     # 阶段A超时后扫最后 N 秒历史
     RMS_SAMPLE_RATE = 48000
     RMS_CHANNELS = 2
