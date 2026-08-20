@@ -301,11 +301,21 @@ export function useE2eView() {
         throw new Error('请选择至少一个测试设备')
       }
 
-      const selectedCaseIds = selectedTestCaseIds.value.length > 0 ? selectedTestCaseIds.value : e2eTestCases.value.map((c: any) => c.id)
+      let selectedCaseIds: (string | number)[] = []
+      if (selectedTestCaseIds.value.length > 0) {
+        selectedCaseIds = selectedTestCaseIds.value
+      } else {
+        // 没勾选 → 从后端按筛选条件拉取全量ID
+        const store = useTestCaseStore()
+        selectedCaseIds = await store.fetchCaseIdsByFilter({
+          testType: 'e2e',
+          algorithmType: selectedAlgorithmType.value || undefined,
+        })
+      }
       console.log('[startTest] selectedCaseIds数量:', selectedCaseIds.length, 'selectedTestCaseIds:', selectedTestCaseIds.value.length, 'e2eTestCases:', e2eTestCases.value.length)
       if (selectedCaseIds.length === 0) {
         console.log('[startTest] 没有可用的E2E测试用例')
-        throw new Error('没有可用的E2E测试用例')
+        throw new Error('当前筛选条件下没有可用的E2E测试用例，请选择用例或调整筛选条件')
       }
 
       const nonOnlineDevices = associatedDevices.value.filter((d: any) => d.status !== 'online')

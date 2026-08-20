@@ -20,6 +20,7 @@ import BatchAdjustGroupModal from '../components/common/modal/BatchAdjustGroupMo
 import BatchDimensionModal from '../components/common/modal/BatchDimensionModal.vue';
 import BatchNoiseModal from '../components/common/modal/BatchNoiseModal.vue';
 import BatchTagsModal from '../components/common/modal/BatchTagsModal.vue';
+import BatchRefreshReferenceModal from '../components/common/modal/BatchRefreshReferenceModal.vue';
 import TagCategoryModal from '../components/common/modal/TagCategoryModal.vue';
 import TagEditModal from '../components/common/modal/TagEditModal.vue';
 import TestCaseDetailModal from '../components/common/modal/TestCaseDetailModal.vue';
@@ -253,6 +254,14 @@ export function registerGlobalModals() {
     component: BatchTagsModal,
     defaultConfig: {
       title: '批量管理标签',
+      caseCount: 0
+    }
+  });
+
+  manager.registerModal(MODAL_TYPES.BATCH_REFRESH_REFERENCE, {
+    component: BatchRefreshReferenceModal,
+    defaultConfig: {
+      title: '用例参考更新',
       caseCount: 0
     }
   });

@@ -493,6 +493,11 @@ class TestCaseBatchActionRequest(APIModel):
     dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='dimensions', validation_alias='dimensions')
     old_tag_name: Optional[str] = Field(None, alias='old_tag_name', validation_alias=AliasChoices('old_tag_name', 'oldTagName'))
     new_tag_name: Optional[str] = Field(None, alias='new_tag_name', validation_alias=AliasChoices('new_tag_name', 'newTagName'))
+    # 批量操作轮次范围
+    round_mode: Optional[str] = Field('all', alias='round_mode', validation_alias=AliasChoices('round_mode', 'roundMode'))
+    round_numbers: Optional[List[int]] = Field(None, alias='round_numbers', validation_alias=AliasChoices('round_numbers', 'roundNumbers'))
+    # 批量操作应用层级（声压/设备/噪声用）
+    targets: Optional[List[str]] = Field(None, alias='targets', validation_alias='targets')
 
 
 class TestCaseExportRequest(APIModel):

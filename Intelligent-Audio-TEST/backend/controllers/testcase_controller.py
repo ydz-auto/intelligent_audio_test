@@ -1353,6 +1353,11 @@ class TestCaseController:
         algorithm_params = req_data.algorithm_params
         if algorithm_params is None:
             return error_response("更新用例专属参数需要 'algorithm_params'")
+        
+        # 获取轮次范围
+        round_mode = getattr(req_data, 'round_mode', None) or 'all'
+        round_numbers = getattr(req_data, 'round_numbers', None) or []
+        
         test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
         updated_count = 0
         for tc in test_cases:
@@ -1368,7 +1373,34 @@ class TestCaseController:
             elif isinstance(algorithm_params, dict):
                 ap_dict = algorithm_params
             tc_config = tc_config.copy()
-            tc.algorithm_params = [{'round_number': 1, 'params': [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]}]
+            
+            new_params = [{'field_code': k, 'field_value': v} for k, v in ap_dict.items()]
+            
+            if round_mode == 'all':
+                # 所有轮次统一设为同一组参数
+                existing = tc.algorithm_params or []
+                max_round = max([r.get('round_number', 1) for r in existing if isinstance(r, dict)] or [1])
+                tc.algorithm_params = [
+                    {'round_number': rn, 'params': new_params}
+                    for rn in range(1, max_round + 1)
+                ]
+            else:
+                # 只更新指定轮次，保留其他轮次原有参数
+                existing = tc.algorithm_params or []
+                updated_map = {rn: False for rn in round_numbers}
+                for item in existing:
+                    if not isinstance(item, dict):
+                        continue
+                    rn = item.get('round_number', 1)
+                    if rn in round_numbers:
+                        item['params'] = new_params
+                        updated_map[rn] = True
+                # 追加不存在的轮次
+                for rn in round_numbers:
+                    if not updated_map.get(rn):
+                        existing.append({'round_number': rn, 'params': new_params})
+                tc.algorithm_params = existing
+            
             tc.config = tc_config
             tc.updated_at = now_cst()
             updated_count += 1
@@ -1386,6 +1418,13 @@ class TestCaseController:
             logger.error("[update_playback_devices] 缺少 playback_devices 参数")
             return error_response("更新播放设备需要 'playback_devices'")
 
+        # 获取轮次范围和层级目标
+        round_mode = getattr(req_data, 'round_mode', None) or 'all'
+        round_numbers = getattr(req_data, 'round_numbers', None) or []
+        targets = getattr(req_data, 'targets', None) or ['audio']
+        
+        device_id = playback_devices.get('deviceId') or playback_devices.get('device_id')
+
         test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
         logger.info(f"[update_playback_devices] 查询到 {len(test_cases)} 个用例")
 
@@ -1393,16 +1432,59 @@ class TestCaseController:
         for tc in test_cases:
             if (tc.test_type or 'api') != 'e2e':
                 continue
-            logger.debug(f"[update_playback_devices] 处理用例 {tc.id}, config: {tc.config}")
             if tc.config:
                 config = tc.config.copy()
-                device_id = playback_devices.get('deviceId') or playback_devices.get('device_id')
+                
                 for round_item in config.get('rounds', []):
-                    if isinstance(round_item, dict):
-                        for idx, audio_config in enumerate(round_item.get('audios', [])):
-                            logger.debug(f"[update_playback_devices] 更新用例 {tc.id} round audio[{idx}] 的 playback_device_id 为 {device_id}")
-                            if device_id is not None:
-                                audio_config['playback_device_id'] = device_id
+                    if not isinstance(round_item, dict):
+                        continue
+                    # 轮次过滤
+                    rn = round_item.get('round_number') or round_item.get('roundNumber')
+                    if round_mode == 'specific' and rn not in round_numbers:
+                        continue
+                    
+                    # 1. 目标人音频
+                    if 'audio' in targets and device_id is not None:
+                        for audio_config in round_item.get('audios', []):
+                            audio_config['playback_device_id'] = device_id
+                    
+                    # 2-5. segment 级背景噪声/干扰人/声纹
+                    for audio_config in round_item.get('audios', []):
+                        if 'segmentBackgroundNoise' in targets and device_id is not None:
+                            bn = audio_config.get('background_noise') or audio_config.get('backgroundNoise')
+                            if bn and isinstance(bn, dict):
+                                bn['playback_device_id'] = device_id
+                        if 'interferers' in targets and device_id is not None:
+                            for inf in audio_config.get('interferers', []):
+                                if isinstance(inf, dict):
+                                    inf['playback_device_id'] = device_id
+                        if 'voiceprint' in targets and device_id is not None:
+                            vp = audio_config.get('voiceprint')
+                            if vp and isinstance(vp, dict):
+                                vp['playback_device_id'] = device_id
+                    
+                    # 4. case 级 / round 级背景噪声
+                    if 'caseBackgroundNoise' in targets and device_id is not None:
+                        rbn = round_item.get('background_noise') or round_item.get('backgroundNoise')
+                        if rbn and isinstance(rbn, dict):
+                            if 'playback_device_ids' in rbn:
+                                rbn['playback_device_ids'] = [device_id]
+                            elif 'device_ids' in rbn:
+                                rbn['device_ids'] = [device_id]
+                            else:
+                                rbn['playback_device_id'] = device_id
+                
+                # config 级背景噪声
+                if 'caseBackgroundNoise' in targets and device_id is not None:
+                    cbn = config.get('background_noise')
+                    if cbn and isinstance(cbn, dict):
+                        if 'playback_device_ids' in cbn:
+                            cbn['playback_device_ids'] = [device_id]
+                        elif 'device_ids' in cbn:
+                            cbn['device_ids'] = [device_id]
+                        else:
+                            cbn['playback_device_id'] = device_id
+                
                 tc.config = config
                 sqlalchemy.orm.attributes.flag_modified(tc, 'config')
                 logger.debug(f"[update_playback_devices] 更新后 config: {tc.config}")
@@ -1425,6 +1507,17 @@ class TestCaseController:
             logger.error("[update_spl] 缺少 spl 参数")
             return error_response("更新声压需要 'spl'")
 
+        # 获取轮次范围和层级目标
+        round_mode = getattr(req_data, 'round_mode', None) or 'all'
+        round_numbers = getattr(req_data, 'round_numbers', None) or []
+        targets = getattr(req_data, 'targets', None) or ['audio']
+        
+        # 兼容 spl 为 float 或 dict
+        if isinstance(spl_data, (int, float)):
+            spl_value = float(spl_data)
+        else:
+            spl_value = spl_data.get('value')
+
         test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
         logger.info(f"[update_spl] 查询到 {len(test_cases)} 个用例")
 
@@ -1432,15 +1525,54 @@ class TestCaseController:
         for tc in test_cases:
             if (tc.test_type or 'api') != 'e2e':
                 continue
-            logger.debug(f"[update_spl] 处理用例 {tc.id}, config: {tc.config}")
             if tc.config:
                 config = tc.config.copy()
+                
                 for round_item in config.get('rounds', []):
-                    if isinstance(round_item, dict):
+                    if not isinstance(round_item, dict):
+                        continue
+                    # 轮次过滤
+                    rn = round_item.get('round_number') or round_item.get('roundNumber')
+                    if round_mode == 'specific' and rn not in round_numbers:
+                        continue
+                    
+                    # 1. 目标人音频
+                    if 'audio' in targets:
                         for audio_config in round_item.get('audios', []):
-                            if spl_data.get('value') is not None:
-                                audio_config['spl'] = spl_data['value']
-                                logger.debug(f"[update_spl] 更新用例 {tc.id} 的 spl 为 {spl_data['value']}")
+                            if spl_value is not None:
+                                audio_config['spl'] = spl_value
+                    
+                    # 2 & 3. segment 级背景噪声 / 干扰人 / 声纹（在 audio 内部）
+                    for audio_config in round_item.get('audios', []):
+                        # segment 级背景噪声
+                        if 'segmentBackgroundNoise' in targets:
+                            bn = audio_config.get('background_noise') or audio_config.get('backgroundNoise')
+                            if bn and isinstance(bn, dict):
+                                if spl_value is not None:
+                                    bn['spl'] = spl_value
+                        # 干扰人
+                        if 'interferers' in targets:
+                            for inf in audio_config.get('interferers', []):
+                                if isinstance(inf, dict) and spl_value is not None:
+                                    inf['spl'] = spl_value
+                        # 声纹
+                        if 'voiceprint' in targets:
+                            vp = audio_config.get('voiceprint')
+                            if vp and isinstance(vp, dict) and spl_value is not None:
+                                vp['spl'] = spl_value
+                    
+                    # 4. case 级 / round 级背景噪声
+                    if 'caseBackgroundNoise' in targets:
+                        rbn = round_item.get('background_noise') or round_item.get('backgroundNoise')
+                        if rbn and isinstance(rbn, dict) and spl_value is not None:
+                            rbn['spl'] = spl_value
+                
+                # config 级背景噪声
+                if 'caseBackgroundNoise' in targets:
+                    cbn = config.get('background_noise')
+                    if cbn and isinstance(cbn, dict) and spl_value is not None:
+                        cbn['spl'] = spl_value
+                
                 tc.config = config
                 sqlalchemy.orm.attributes.flag_modified(tc, 'config')
             tc.updated_at = now_cst()
@@ -1461,6 +1593,10 @@ class TestCaseController:
         if dimensions_data is None:
             logger.error("[update_dimensions] 缺少 dimensions 参数")
             return error_response("更新评价维度需要 'dimensions'")
+
+        # 获取轮次范围
+        round_mode = getattr(req_data, 'round_mode', None) or 'all'
+        round_numbers = getattr(req_data, 'round_numbers', None) or []
 
         test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
         logger.info(f"[update_dimensions] 查询到 {len(test_cases)} 个用例")
@@ -1484,10 +1620,15 @@ class TestCaseController:
                     logger.debug(f"[update_dimensions] 用例 {tc.id} 设置维度 {dim_id}")
 
                 for round_item in config.get('rounds', []):
-                    if isinstance(round_item, dict):
-                        if 'evaluation' not in round_item:
-                            round_item['evaluation'] = {}
-                        round_item['evaluation']['dimensions'] = new_dim_list
+                    if not isinstance(round_item, dict):
+                        continue
+                    # 轮次过滤
+                    rn = round_item.get('round_number') or round_item.get('roundNumber')
+                    if round_mode == 'specific' and rn not in round_numbers:
+                        continue
+                    if 'evaluation' not in round_item:
+                        round_item['evaluation'] = {}
+                    round_item['evaluation']['dimensions'] = new_dim_list
                 tc.config = config
                 sqlalchemy.orm.attributes.flag_modified(tc, 'config')
             tc.updated_at = now_cst()
@@ -1508,7 +1649,12 @@ class TestCaseController:
         spl = req_data.noise_spl
         device_ids = req_data.noise_device_ids or []
 
-        logger.info(f"[update_noise] audio_id: {audio_id}, spl: {spl}, device_ids: {device_ids}")
+        # 获取轮次范围和层级目标
+        round_mode = getattr(req_data, 'round_mode', None) or 'all'
+        round_numbers = getattr(req_data, 'round_numbers', None) or []
+        targets = getattr(req_data, 'targets', None) or ['caseBackgroundNoise', 'segmentBackgroundNoise']
+
+        logger.info(f"[update_noise] audio_id: {audio_id}, spl: {spl}, device_ids: {device_ids}, targets: {targets}")
 
         test_cases = TestCase.query.filter(TestCase.id.in_(ids), TestCase.deleted == False).all()
         logger.info(f"[update_noise] 查询到 {len(test_cases)} 个用例")
@@ -1517,22 +1663,72 @@ class TestCaseController:
         for tc in test_cases:
             if (tc.test_type or 'api') != 'e2e':
                 continue
-            logger.info(f"[update_noise] 处理用例 {tc.id}, 当前 config: {tc.config}")
             if tc.config is None:
                 config = {}
             else:
                 config = tc.config.copy()
 
             for round_item in config.get('rounds', []):
-                if isinstance(round_item, dict):
+                if not isinstance(round_item, dict):
+                    continue
+                # 轮次过滤
+                rn = round_item.get('round_number') or round_item.get('roundNumber')
+                if round_mode == 'specific' and rn not in round_numbers:
+                    continue
+
+                noise_config = {
+                    'audio_id': audio_id if audio_id is not None else '',
+                    'spl': spl if spl is not None else 0,
+                    'device_ids': device_ids if device_ids is not None else [],
+                }
+
+                # round 级 / case 级背景噪声
+                if 'caseBackgroundNoise' in targets:
                     if 'backgroundNoise' not in round_item:
-                        round_item['backgroundNoise'] = {'audio_id': '', 'spl': 0, 'device_ids': []}
+                        round_item['backgroundNoise'] = {}
                     if audio_id is not None:
                         round_item['backgroundNoise']['audio_id'] = audio_id
                     if spl is not None:
                         round_item['backgroundNoise']['spl'] = spl
                     if device_ids is not None:
                         round_item['backgroundNoise']['device_ids'] = device_ids
+
+                # segment 级背景噪声 + 干扰人
+                if 'segmentBackgroundNoise' in targets or 'interferers' in targets:
+                    for audio_config in round_item.get('audios', []):
+                        if 'segmentBackgroundNoise' in targets:
+                            bn = audio_config.get('background_noise') or audio_config.get('backgroundNoise')
+                            if bn is None:
+                                bn = {}
+                                audio_config['background_noise'] = bn
+                            if audio_id is not None:
+                                bn['audio_id'] = audio_id
+                            if spl is not None:
+                                bn['spl'] = spl
+                            if device_ids is not None:
+                                bn['device_ids'] = device_ids
+                        if 'interferers' in targets:
+                            for inf in audio_config.get('interferers', []):
+                                if isinstance(inf, dict):
+                                    if audio_id is not None:
+                                        inf['audio_id'] = audio_id
+                                    if spl is not None:
+                                        inf['spl'] = spl
+                                    if device_ids is not None:
+                                        inf['playback_device_id'] = device_ids[0] if device_ids else ''
+
+            # config 级背景噪声
+            if 'caseBackgroundNoise' in targets:
+                cbn = config.get('background_noise')
+                if cbn is None:
+                    cbn = {}
+                    config['background_noise'] = cbn
+                if audio_id is not None:
+                    cbn['audio_id'] = audio_id
+                if spl is not None:
+                    cbn['spl'] = spl
+                if device_ids is not None:
+                    cbn['device_ids'] = device_ids
 
             tc.config = config
             sqlalchemy.orm.attributes.flag_modified(tc, 'config')
@@ -1653,7 +1849,9 @@ class TestCaseController:
     def _batch_refresh_reference(req_data):
         """刷新参考参数"""
         ids = req_data.ids
-        logger.info(f"[refresh_reference] 开始处理, ids: {ids}")
+        round_mode = getattr(req_data, 'round_mode', None) or 'all'
+        round_numbers = getattr(req_data, 'round_numbers', None) or []
+        logger.info(f"[refresh_reference] 开始处理, ids: {ids}, round_mode: {round_mode}, round_numbers: {round_numbers}")
 
         test_cases = TestCase.query.filter(
             TestCase.id.in_(ids),
@@ -1685,6 +1883,41 @@ class TestCaseController:
             db.session.commit()
             logger.info(f"[refresh_reference] 更新完成，共更新 {updated_count} 个用例")
             return f"已成功刷新 {updated_count} 个用例的参考参数"
+
+    @staticmethod
+    def fetch_case_ids():
+        """按筛选条件返回全量用例ID（不分页）"""
+        from flask import request, jsonify
+        try:
+            data = request.get_json() or {}
+            query = TestCase.query.filter(TestCase.deleted == False)
+
+            if data.get('group'):
+                # 通过 group_name 查找 group_id
+                group = TestCaseGroup.query.filter_by(name=data['group']).first()
+                if group:
+                    query = query.filter(TestCase.group_id == group.id)
+                else:
+                    # 未找到分组则返回空
+                    return jsonify({'ids': []})
+
+            if data.get('test_type'):
+                query = query.filter(TestCase.test_type == data['test_type'])
+
+            if data.get('search'):
+                keyword = f"%{data['search']}%"
+                query = query.filter(TestCase.name.like(keyword))
+
+            if data.get('tag'):
+                # 按标签筛选
+                query = query.join(TestCase.tags).filter(Tag.name == data['tag'])
+
+            ids = [row[0] for row in query.with_entities(TestCase.id).all()]
+            return jsonify({'ids': ids})
+        except Exception as e:
+            logger.error(f"[fetch_case_ids] 查询失败: {e}")
+            from backend.utils.web.response import error_response
+            return error_response(str(e))
 
     # 获取统计信息
     @staticmethod

@@ -43,6 +43,10 @@ def stop_preview_hyphen(tc_id):
 def batch_action():
     return TestCaseController.batch_action()
 
+@testcase_bp.route('/ids', methods=['POST'])
+def fetch_case_ids():
+    return TestCaseController.fetch_case_ids()
+
 @testcase_bp.route('/stats', methods=['GET'])
 def get_stats():
     return TestCaseController.get_stats()

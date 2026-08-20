@@ -849,6 +849,10 @@ export const testcasesApi = {
 
   async getRefreshTaskStatus(taskId: string) {
     return request<any>('GET', `/testcases/refresh_task/${taskId}`);
+  },
+
+  async getIdsByFilter(filters: Record<string, any> = {}) {
+    return request<{ ids: (string | number)[] }>('POST', '/testcases/ids', filters);
   }
 };
 

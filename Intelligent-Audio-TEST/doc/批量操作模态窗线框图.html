@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>批量操作模态窗线框图 — 改造前后对比</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    padding: 40px 20px;
+  }
+  h1 { text-align: center; margin-bottom: 8px; font-size: 24px; }
+  .subtitle { text-align: center; color: #666; margin-bottom: 40px; font-size: 14px; }
+  .modal-section { margin: 0 auto 60px; max-width: 520px; }
+  .modal-section h2 {
+    font-size: 16px; color: #1677ff; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .modal-section h2 .badge {
+    background: #1677ff; color: #fff; font-size: 11px;
+    padding: 2px 8px; border-radius: 10px; font-weight: normal;
+  }
+  .modal-section h2 .change {
+    background: #fff3cd; color: #856404; font-size: 11px;
+    padding: 2px 8px; border-radius: 10px; font-weight: normal;
+  }
+  .modal-card {
+    background: #fff; border-radius: 12px; overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+  }
+  .modal-header {
+    padding: 20px 24px 12px; border-bottom: 1px solid #f0f0f0;
+  }
+  .modal-header h3 { font-size: 18px; margin-bottom: 4px; }
+  .modal-header .case-count { color: #666; font-size: 13px; }
+  .modal-body { padding: 20px 24px; max-height: 500px; overflow-y: auto; }
+  .modal-footer {
+    display: flex; justify-content: flex-end; gap: 12px;
+    padding: 16px 24px; border-top: 1px solid #f0f0f0;
+  }
+  .form-group { margin-bottom: 20px; }
+  .form-group > label {
+    display: block; margin-bottom: 8px;
+    font-weight: 600; font-size: 14px; color: #333;
+  }
+  .form-input {
+    width: 100%; padding: 10px 14px; border: 1px solid #d1d5db;
+    border-radius: 8px; font-size: 14px; background: #fff;
+  }
+  .form-hint { margin-top: 6px; font-size: 12px; color: #999; }
+  .required { color: #dc3545; }
+
+  /* 新增的轮次/层级选择区域 */
+  .scope-section {
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 8px; padding: 16px; margin-bottom: 16px;
+  }
+  .scope-section > label {
+    display: block; margin-bottom: 12px;
+    font-weight: 600; font-size: 13px; color: #333;
+  }
+  .scope-section > label::before {
+    content: '▸'; margin-right: 6px; color: #1677ff;
+  }
+  .radio-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+  .radio-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; cursor: pointer;
+  }
+  .radio-label input[type="radio"] { accent-color: #1677ff; }
+  .round-checkboxs {
+    display: flex; flex-wrap: wrap; gap: 12px;
+    padding-left: 24px; margin-top: 4px;
+  }
+  .round-checkboxs label {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 13px; cursor: pointer;
+    padding: 4px 12px; border: 1px solid #d1d5db;
+    border-radius: 20px; background: #fff;
+  }
+  .round-checkboxs label.checked {
+    border-color: #1677ff; background: #e6f4ff; color: #1677ff;
+  }
+  .level-checkboxs { display: flex; flex-direction: column; gap: 8px; }
+  .level-checkboxs label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; cursor: pointer;
+  }
+  .level-checkboxs input[type="checkbox"] { accent-color: #1677ff; }
+  .level-hint {
+    font-size: 11px; color: #999; margin-left: 20px;
+  }
+
+  /* 按钮 */
+  .btn {
+    padding: 10px 24px; border-radius: 8px;
+    font-size: 14px; border: none; cursor: pointer;
+  }
+  .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+  .btn-primary {
+    background: linear-gradient(135deg, #1677ff, #4096ff);
+    color: #fff; box-shadow: 0 2px 8px rgba(22,119,255,0.25);
+  }
+  .btn-primary:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; }
+
+  /* 特殊控件 */
+  .selector-placeholder {
+    padding: 12px; background: #f8fafc; border: 1px dashed #cbd5e1;
+    border-radius: 8px; text-align: center; color: #999; font-size: 14px;
+    min-height: 44px; display: flex; align-items: center; justify-content: center;
+  }
+  .dimension-tag {
+    display: inline-block; padding: 6px 14px; margin: 4px;
+    border: 1px solid #d1d5db; border-radius: 20px;
+    font-size: 13px; cursor: pointer; background: #fff;
+  }
+  .dimension-tag.selected {
+    border-color: #1677ff; background: #e6f4ff; color: #1677ff;
+  }
+  .dim-config-item {
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 8px; padding: 12px; margin-bottom: 8px;
+  }
+  .dim-config-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 8px;
+  }
+  .dim-config-name { font-weight: 600; font-size: 13px; }
+  .dim-config-fields { display: flex; gap: 12px; }
+  .dim-config-fields .form-group { flex: 1; margin-bottom: 0; }
+
+  .highlight-box {
+    border: 2px dashed #ff6a00; border-radius: 8px;
+    padding: 12px; margin: 8px 0; background: #fff8f0;
+  }
+  .highlight-label {
+    font-size: 11px; color: #ff6a00; font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .compare-row {
+    display: flex; gap: 20px; align-items: flex-start;
+  }
+  .compare-col { flex: 1; }
+  .compare-label {
+    text-align: center; font-size: 13px; font-weight: 600;
+    margin-bottom: 12px; padding: 4px 12px; border-radius: 20px;
+  }
+  .compare-label.before { background: #fee; color: #c33; }
+  .compare-label.after { background: #e6f4ff; color: #1677ff; }
+
+  .legend {
+    max-width: 520px; margin: 0 auto 40px; padding: 16px;
+    background: #fff; border-radius: 8px; font-size: 13px; color: #666;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .legend ul { list-style: none; padding-left: 0; }
+  .legend li { margin-bottom: 6px; padding-left: 20px; position: relative; }
+  .legend li::before {
+    content: '▸'; position: absolute; left: 0; color: #1677ff;
+  }
+  .legend .new-tag {
+    background: #fff3cd; color: #856404; font-size: 10px;
+    padding: 1px 6px; border-radius: 8px; margin-left: 6px;
+  }
+</style>
+</head>
+<body>
+
+<h1>批量操作模态窗线框图</h1>
+<p class="subtitle">改造前后对比 — 6 个与轮次相关的批量操作</p>
+
+<div class="legend">
+  <ul>
+    <li><span class="new-tag">新增</span> 轮次范围选择：所有轮次 / 指定轮次</li>
+    <li><span class="new-tag">新增</span> 应用层级选择（声压/设备/噪声）：目标人/背景噪声/干扰人/声纹</li>
+    <li>橙色虚线框 = 本次改造新增的区域</li>
+    <li>3 项与轮次无关的操作（调整分组、标签生成名称、管理标签）保持不变，不展示</li>
+  </ul>
+</div>
+
+<!-- ========== 1. 批量设置声压级 ========== -->
+<div class="modal-section">
+  <h2><i class="fas fa-wave-square"></i> ① 批量设置声压级 <span class="badge">轮次 + 层级</span> <span class="change">改造</span></h2>
+  <div class="compare-row">
+    <div class="compare-col">
+      <div class="compare-label before">改造前</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置声压级</h3>
+          <p class="case-count">将为 N 个用例设置声压级</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>声压级 (dB) <span class="required">*</span></label>
+            <input type="number" class="form-input" value="65" min="0" max="140" />
+            <p class="form-hint">建议值：65 dB</p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-label after">改造后</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置声压级</h3>
+          <p class="case-count">将为 N 个用例设置声压级</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>声压级 (dB) <span class="required">*</span></label>
+            <input type="number" class="form-input" value="65" min="0" max="140" />
+            <p class="form-hint">建议值：65 dB</p>
+          </div>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：轮次范围</div>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="spl-round" checked />
+                <span>所有轮次</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="spl-round" />
+                <span>指定轮次</span>
+              </label>
+            </div>
+            <div class="round-checkboxs">
+              <label class="checked">☑ 第1轮</label>
+              <label>☐ 第2轮</label>
+              <label>☐ 第3轮</label>
+            </div>
+          </div>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：应用层级（可多选）</div>
+            <div class="level-checkboxs">
+              <label><input type="checkbox" checked /> 目标人音频 (rounds[].audios[].spl)</label>
+              <label><input type="checkbox" /> case 级背景噪声 (config.background_noise.spl)</label>
+              <label><input type="checkbox" /> segment 级背景噪声 (audios[].background_noise.spl)</label>
+              <label><input type="checkbox" /> 干扰人 (audios[].interferers[].spl)</label>
+              <label><input type="checkbox" /> 声纹 (audios[].voiceprint.spl)</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 2. 批量设置播放设备 ========== -->
+<div class="modal-section">
+  <h2><i class="fas fa-volume-up"></i> ② 批量设置播放设备 <span class="badge">轮次 + 层级</span> <span class="change">改造</span></h2>
+  <div class="compare-row">
+    <div class="compare-col">
+      <div class="compare-label before">改造前</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置播放设备</h3>
+          <p class="case-count">将为 N 个用例设置播放设备</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>播放设备 <span class="required">*</span></label>
+            <select class="form-input"><option>请选择设备</option></select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-label after">改造后</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置播放设备</h3>
+          <p class="case-count">将为 N 个用例设置播放设备</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>播放设备 <span class="required">*</span></label>
+            <select class="form-input"><option>请选择设备</option></select>
+          </div>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：轮次范围</div>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="dev-round" checked />
+                <span>所有轮次</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="dev-round" />
+                <span>指定轮次</span>
+              </label>
+            </div>
+            <div class="round-checkboxs">
+              <label class="checked">☑ 第1轮</label>
+              <label>☐ 第2轮</label>
+              <label>☐ 第3轮</label>
+            </div>
+          </div>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：应用层级（可多选）</div>
+            <div class="level-checkboxs">
+              <label><input type="checkbox" checked /> 目标人音频 (rounds[].audios[].playback_device_id)</label>
+              <label><input type="checkbox" /> case 级背景噪声 (config.background_noise.playback_device_ids)</label>
+              <label><input type="checkbox" /> segment 级背景噪声 (audios[].background_noise.playback_device_ids)</label>
+              <label><input type="checkbox" /> 干扰人 (audios[].interferers[].playback_device_id)</label>
+              <label><input type="checkbox" /> 声纹 (audios[].voiceprint.playback_device_id)</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 3. 批量设置噪声 ========== -->
+<div class="modal-section">
+  <h2><i class="fas fa-volume-up"></i> ③ 批量设置噪声 <span class="badge">轮次 + 层级</span> <span class="change">改造</span></h2>
+  <div class="compare-row">
+    <div class="compare-col">
+      <div class="compare-label before">改造前</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置噪声</h3>
+          <p class="case-count">将为 N 个用例设置噪声配置</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>噪声音频</label>
+            <div class="selector-placeholder">点击选择噪声音频</div>
+          </div>
+          <div class="form-group">
+            <label>噪声声压级 (dB)</label>
+            <input type="number" class="form-input" value="55" />
+          </div>
+          <div class="form-group">
+            <label>播放设备</label>
+            <div class="selector-placeholder">点击选择播放设备</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-label after">改造后</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置噪声</h3>
+          <p class="case-count">将为 N 个用例设置噪声配置</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>噪声音频</label>
+            <div class="selector-placeholder">点击选择噪声音频</div>
+          </div>
+          <div class="form-group">
+            <label>噪声声压级 (dB)</label>
+            <input type="number" class="form-input" value="55" />
+          </div>
+          <div class="form-group">
+            <label>播放设备</label>
+            <div class="selector-placeholder">点击选择播放设备</div>
+          </div>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：轮次范围</div>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="noise-round" checked />
+                <span>所有轮次</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="noise-round" />
+                <span>指定轮次</span>
+              </label>
+            </div>
+            <div class="round-checkboxs">
+              <label class="checked">☑ 第1轮</label>
+              <label>☐ 第2轮</label>
+              <label>☐ 第3轮</label>
+            </div>
+          </div>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：应用层级（可多选）</div>
+            <div class="level-checkboxs">
+              <label><input type="checkbox" /> case 级背景噪声 (config.background_noise)</label>
+              <label><input type="checkbox" checked /> segment 级背景噪声 (audios[].background_noise)</label>
+              <label><input type="checkbox" checked /> 干扰人 (audios[].interferers[])</label>
+              <p class="level-hint">注：噪声无"目标人音频"和"声纹"层级</p>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 4. 批量设置用例专属参数 ========== -->
+<div class="modal-section">
+  <h2><i class="fas fa-sliders-h"></i> ④ 批量设置用例专属参数 <span class="badge">仅轮次</span> <span class="change">改造</span></h2>
+  <div class="compare-row">
+    <div class="compare-col">
+      <div class="compare-label before">改造前</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置用例专属参数</h3>
+          <p class="case-count">将为 N 个用例设置专属参数</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>算法类型 <span class="required">*</span></label>
+            <select class="form-input"><option>请选择算法</option></select>
+          </div>
+          <div class="form-group">
+            <label>参数配置</label>
+            <div style="padding:20px;background:#f8fafc;border-radius:8px;color:#999;text-align:center;">
+              [DynamicForm 动态参数表单]
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-label after">改造后</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置用例专属参数</h3>
+          <p class="case-count">将为 N 个用例设置专属参数</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>算法类型 <span class="required">*</span></label>
+            <select class="form-input"><option>请选择算法</option></select>
+          </div>
+          <div class="form-group">
+            <label>参数配置</label>
+            <div style="padding:20px;background:#f8fafc;border-radius:8px;color:#999;text-align:center;">
+              [DynamicForm 动态参数表单]
+            </div>
+          </div>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：轮次范围</div>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="algo-round" checked />
+                <span>所有轮次（所有轮统一设为同一组参数）</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="algo-round" />
+                <span>指定轮次（只改选中轮次，保留其他轮次原有参数）</span>
+              </label>
+            </div>
+            <div class="round-checkboxs">
+              <label class="checked">☑ 第1轮</label>
+              <label>☐ 第2轮</label>
+              <label>☐ 第3轮</label>
+            </div>
+            <p class="form-hint" style="margin-top:8px;">
+              ⚠ 改造前后端写死 round_number=1，多轮用例的第2/3轮参数被覆盖丢失
+            </p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 5. 批量设置评价维度 ========== -->
+<div class="modal-section">
+  <h2><i class="fas fa-chart-pie"></i> ⑤ 批量设置评价维度 <span class="badge">仅轮次</span> <span class="change">改造</span></h2>
+  <div class="compare-row">
+    <div class="compare-col">
+      <div class="compare-label before">改造前</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置评价维度</h3>
+          <p class="case-count">将为 N 个用例设置评价维度</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>测试类型</label>
+            <div style="display:flex;gap:16px;">
+              <label><input type="radio" checked /> API测试</label>
+              <label><input type="radio" /> E2E测试</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>评价维度</label>
+            <span class="dimension-tag selected">准确率</span>
+            <span class="dimension-tag">流畅度</span>
+            <span class="dimension-tag">完整性</span>
+          </div>
+          <div class="dim-config-item">
+            <div class="dim-config-header">
+              <span class="dim-config-name">准确率</span>
+            </div>
+            <div class="dim-config-fields">
+              <div class="form-group">
+                <label style="font-size:12px;">权重（0-100）</label>
+                <input type="number" class="form-input" value="50" />
+              </div>
+              <div class="form-group">
+                <label style="font-size:12px;">阈值（0-100）</label>
+                <input type="number" class="form-input" value="60" />
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-label after">改造后</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>批量设置评价维度</h3>
+          <p class="case-count">将为 N 个用例设置评价维度</p>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>测试类型</label>
+            <div style="display:flex;gap:16px;">
+              <label><input type="radio" checked /> API测试</label>
+              <label><input type="radio" /> E2E测试</label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>评价维度</label>
+            <span class="dimension-tag selected">准确率</span>
+            <span class="dimension-tag">流畅度</span>
+            <span class="dimension-tag">完整性</span>
+          </div>
+          <div class="dim-config-item">
+            <div class="dim-config-header">
+              <span class="dim-config-name">准确率</span>
+            </div>
+            <div class="dim-config-fields">
+              <div class="form-group">
+                <label style="font-size:12px;">权重（0-100）</label>
+                <input type="number" class="form-input" value="50" />
+              </div>
+              <div class="form-group">
+                <label style="font-size:12px;">阈值（0-100）</label>
+                <input type="number" class="form-input" value="60" />
+              </div>
+            </div>
+          </div>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：轮次范围</div>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="dim-round" checked />
+                <span>所有轮次</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="dim-round" />
+                <span>指定轮次</span>
+              </label>
+            </div>
+            <div class="round-checkboxs">
+              <label class="checked">☑ 第1轮</label>
+              <label>☐ 第2轮</label>
+              <label>☐ 第3轮</label>
+            </div>
+            <p class="form-hint" style="margin-top:8px;">
+              改造前遍历所有轮次统一改，但不让用户选轮次
+            </p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 6. 用例参考更新 ========== -->
+<div class="modal-section">
+  <h2><i class="fas fa-sync-alt"></i> ⑥ 用例参考更新 <span class="badge">仅轮次</span> <span class="change">改造</span></h2>
+  <div class="compare-row">
+    <div class="compare-col">
+      <div class="compare-label before">改造前</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>用例参考更新</h3>
+        </div>
+        <div class="modal-body">
+          <p style="color:#666;font-size:14px;line-height:1.8;">
+            确定要刷新 N 个用例的参考参数吗？<br><br>
+            这将从关联音频的标注数据重新生成参考参数。
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定刷新</button>
+        </div>
+      </div>
+    </div>
+    <div class="compare-col">
+      <div class="compare-label after">改造后</div>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3>用例参考更新</h3>
+        </div>
+        <div class="modal-body">
+          <p style="color:#666;font-size:14px;line-height:1.8;margin-bottom:16px;">
+            确定要刷新 N 个用例的参考参数吗？<br><br>
+            这将从关联音频的标注数据重新生成参考参数。
+          </p>
+          <div class="highlight-box">
+            <div class="highlight-label">新增：轮次范围</div>
+            <div class="radio-group">
+              <label class="radio-label">
+                <input type="radio" name="ref-round" checked />
+                <span>所有轮次</span>
+              </label>
+              <label class="radio-label">
+                <input type="radio" name="ref-round" />
+                <span>指定轮次</span>
+              </label>
+            </div>
+            <div class="round-checkboxs">
+              <label class="checked">☑ 第1轮</label>
+              <label>☐ 第2轮</label>
+              <label>☐ 第3轮</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary">取消</button>
+          <button class="btn btn-primary">确定刷新</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 总结表格 ========== -->
+<div class="modal-section">
+  <h2>改造总结</h2>
+  <div class="modal-card">
+    <div class="modal-body">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f8fafc;">
+            <th style="padding:10px;border:1px solid #e2e8f0;text-align:left;">操作</th>
+            <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">轮次选择</th>
+            <th style="padding:10px;border:1px solid #e2e8f0;text-align:center;">层级选择</th>
+            <th style="padding:10px;border:1px solid #e2e8f0;text-align:left;">改造内容</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:10px;border:1px solid #e2e8f0;">① 声压</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅ 5层级</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;">原只改 audios[].spl，现覆盖5个层级</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;border:1px solid #e2e8f0;">② 播放设备</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅ 5层级</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;">原只改 audios[].playback_device_id</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;border:1px solid #e2e8f0;">③ 噪声</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅ 3层级</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;">原只改 round 级，现覆盖3个层级</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;border:1px solid #e2e8f0;">④ 用例专属参数</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">❌</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;color:#dc3545;">原写死 round_number=1，多轮参数丢失</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;border:1px solid #e2e8f0;">⑤ 评价维度</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">❌</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;">原遍历所有轮次，现让用户选</td>
+          </tr>
+          <tr>
+            <td style="padding:10px;border:1px solid #e2e8f0;">⑥ 参考更新</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">✅</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;">❌</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;">按选中轮次重新生成 reference_params</td>
+          </tr>
+          <tr style="background:#f8fafc;">
+            <td style="padding:10px;border:1px solid #e2e8f0;color:#999;">⑦ 调整分组</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;color:#999;">—</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;color:#999;">—</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;color:#999;">与轮次无关，不变</td>
+          </tr>
+          <tr style="background:#f8fafc;">
+            <td style="padding:10px;border:1px solid #e2e8f0;color:#999;">⑧ 标签生成名称</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;color:#999;">—</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;color:#999;">—</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;color:#999;">与轮次无关，不变</td>
+          </tr>
+          <tr style="background:#f8fafc;">
+            <td style="padding:10px;border:1px solid #e2e8f0;color:#999;">⑨ 管理标签</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;color:#999;">—</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;text-align:center;color:#999;">—</td>
+            <td style="padding:10px;border:1px solid #e2e8f0;color:#999;">与轮次无关，不变</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -391,8 +391,18 @@ export function useApiTest() {
   const nextStep = async () => {
     if (currentStep.value === 2) {
       try {
-        if (selectedTestCaseIds.value.length === 0) {
-          alert('请至少选择一个测试用例')
+        let caseIds: (string | number)[] = []
+        if (selectedTestCaseIds.value.length > 0) {
+          caseIds = selectedTestCaseIds.value
+        } else {
+          // 没勾选 → 从后端按筛选条件拉取全量ID
+          caseIds = await testCaseStore.fetchCaseIdsByFilter({
+            testType: 'api',
+            algorithmType: selectedAlgorithmType.value || undefined,
+          })
+        }
+        if (caseIds.length === 0) {
+          alert('当前筛选条件下没有可用的测试用例，请选择用例或调整筛选条件')
           return
         }
 
@@ -413,21 +423,21 @@ export function useApiTest() {
           alert(`以下API处于离线状态，无法执行测试：${nonOnlineApis.map((a) => a.name).join(', ')}`)
           return
         }
-        
-        const taskData = { 
-          name: taskName.value || 'API测试任务', 
-          description: '通过API测试任务', 
-          type: 'api', 
-          caseIds: selectedTestCaseIds.value, 
-          apiIds: selectedAPIIds.value, 
-          tags: [] 
+
+        const taskData = {
+          name: taskName.value || 'API测试任务',
+          description: '通过API测试任务',
+          type: 'api',
+          caseIds: caseIds,
+          apiIds: selectedAPIIds.value,
+          tags: []
         }
         
         const taskResponse = await tasksApi.create(taskData)
         const taskId = taskResponse.id
         currentTaskId.value = taskId
         
-        associatedCases.value = selectedTestCaseIds.value
+        associatedCases.value = caseIds
           .map(id => {
             const allCases = Object.values(testCaseGroups.value as Record<string, TestCase[]>).flat()
             const testCase = allCases.find(tc => String(tc.id) === String(id))

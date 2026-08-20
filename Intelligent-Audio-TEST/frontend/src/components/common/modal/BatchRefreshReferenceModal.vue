@@ -1,25 +1,11 @@
 <template>
-  <div class="batch-spl-modal">
+  <div class="batch-refresh-reference-modal">
     <div class="modal-header">
       <h3>{{ title }}</h3>
-      <p class="case-count">将为 {{ caseCount }} 个用例设置声压级</p>
+      <p class="case-count">确定要刷新 {{ caseCount }} 个用例的参考参数吗？</p>
     </div>
     
     <div class="modal-body">
-      <div class="form-group">
-        <label>声压级 (dB) <span class="required">*</span></label>
-        <input 
-          type="number" 
-          v-model.number="splValue" 
-          class="form-input" 
-          min="0" 
-          max="140" 
-          step="1"
-          placeholder="请输入声压级，例如：65"
-        />
-        <p class="form-hint">建议值：65 dB</p>
-      </div>
-
       <div class="scope-section">
         <label>轮次范围</label>
         <div class="radio-group">
@@ -40,39 +26,11 @@
           </label>
         </div>
       </div>
-
-      <div class="scope-section">
-        <label>应用层级（可多选）</label>
-        <div class="level-checkboxs">
-          <label class="level-label">
-            <input type="checkbox" value="audio" v-model="targets" />
-            <span>目标人音频</span>
-          </label>
-          <label class="level-label">
-            <input type="checkbox" value="caseBackgroundNoise" v-model="targets" />
-            <span>case级背景噪声</span>
-          </label>
-          <label class="level-label">
-            <input type="checkbox" value="segmentBackgroundNoise" v-model="targets" />
-            <span>segment级背景噪声</span>
-          </label>
-          <label class="level-label">
-            <input type="checkbox" value="interferer" v-model="targets" />
-            <span>干扰人</span>
-          </label>
-          <label class="level-label">
-            <input type="checkbox" value="voiceprint" v-model="targets" />
-            <span>声纹</span>
-          </label>
-        </div>
-      </div>
     </div>
     
     <div class="modal-footer">
       <button type="button" class="btn btn-secondary" @click="handleCancel">取消</button>
-      <button type="button" class="btn btn-primary" @click="handleConfirm" :disabled="!isValid">
-        确定
-      </button>
+      <button type="button" class="btn btn-primary" @click="handleConfirm">确定</button>
     </div>
   </div>
 </template>
@@ -84,29 +42,25 @@ interface Props {
   modalId: string
   title?: string
   caseCount?: number
-  initialValue?: number
   maxRoundNumbers?: number
 }
 
 interface Emits {
   (e: 'close'): void
-  (e: 'confirm', data: { value: number; targets: string[]; roundMode: string; roundNumbers: number[] }): void
+  (e: 'confirm', data: { roundMode: string; roundNumbers: number[] }): void
   (e: 'cancel'): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  title: '批量设置声压级',
+  title: '用例参考更新',
   caseCount: 0,
-  initialValue: 94,
   maxRoundNumbers: 3
 })
 
 const emit = defineEmits<Emits>()
 
-const splValue = ref(props.initialValue)
 const roundMode = ref<'all' | 'specific'>('all')
 const roundNumbers = ref<number[]>([])
-const targets = ref<string[]>(['audio'])
 
 const availableRoundNumbers = computed(() => {
   return Array.from({ length: props.maxRoundNumbers }, (_, i) => i + 1)
@@ -121,17 +75,8 @@ function toggleRoundNumber(rn: number) {
   }
 }
 
-const isValid = computed(() => {
-  return splValue.value >= 0 && splValue.value <= 140
-})
-
 function handleConfirm() {
-  if (!isValid.value) {
-    return
-  }
   emit('confirm', {
-    value: splValue.value,
-    targets: targets.value,
     roundMode: roundMode.value,
     roundNumbers: roundNumbers.value
   })
@@ -143,7 +88,7 @@ function handleCancel() {
 </script>
 
 <style scoped>
-.batch-spl-modal {
+.batch-refresh-reference-modal {
   padding: 20px;
 }
 
@@ -165,41 +110,6 @@ function handleCancel() {
 
 .modal-body {
   padding: 10px 0;
-}
-
-.form-group {
-  margin-bottom: 16px;
-}
-
-.form-group label {
-  display: block;
-  margin-bottom: 6px;
-  font-weight: 500;
-  color: #333;
-}
-
-.required {
-  color: #dc3545;
-}
-
-.form-input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  font-size: 14px;
-}
-
-.form-input:focus {
-  outline: none;
-  border-color: #1677ff;
-  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
-}
-
-.form-hint {
-  margin: 6px 0 0 0;
-  font-size: 12px;
-  color: #999;
 }
 
 .modal-footer {
@@ -235,11 +145,6 @@ function handleCancel() {
 
 .btn-primary:hover {
   background: #4096ff;
-}
-
-.btn-primary:disabled {
-  background: #ccc;
-  cursor: not-allowed;
 }
 
 .scope-section {

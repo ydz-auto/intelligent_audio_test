@@ -223,6 +223,24 @@
                 <span class="duration-tag">{{ formatGroupDuration(getTagDurationStats(tagName).totalDuration) }}</span>
               </span>
             </div>
+            <TestCaseGroupActions
+              @click.stop
+              @edit="() => handleTagEdit(tagName)"
+              @delete="() => handleTagDelete(tagName)"
+              @addCase="() => handleTagAddCase(tagName)"
+              @copyGroup="() => handleTagCopyGroup(tagName)"
+              @updateAlgorithmParams="() => handleTagUpdateAlgorithmParams(tagName)"
+              @updatePlaybackDevice="() => handleTagUpdatePlaybackDevice(tagName)"
+              @updateSPL="() => handleTagUpdateSPL(tagName)"
+              @adjustGroup="() => handleTagAdjustGroup(tagName)"
+              @updateDimensions="() => handleTagUpdateDimensions(tagName)"
+              @updateNoise="() => handleTagUpdateNoise(tagName)"
+              @autoGenerateName="() => handleTagAutoGenerateName(tagName)"
+              @updateTags="() => handleTagUpdateTags(tagName)"
+              @refreshReference="() => handleTagRefreshReference(tagName)"
+              @toggleBatchMenu="() => toggleBatchMenuTag(tagName)"
+              :showBatchMenu="openBatchMenuTag === tagName"
+            />
           </div>
           <div class="category-content" :class="{ expanded: expandedTagCategories[tagName] }">
             <TestCaseListWithPagination
@@ -329,9 +347,11 @@ import AudioPlayerModal from '../AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import CRUDFormModal from '../modal/CRUDFormModal.vue';
 import { playbackApi, algorithmApi } from '../../../utils/api';
+import api from '../../../utils/api';
 import { useTestCaseStore } from '../../../store/testCaseStore';
 import { normalizeTestCaseConfig } from '../../../utils/utils';
 import { useModalControl, MODAL_TYPES } from '../../../composables/useModal';
+import { useBatchActions } from '@/composables/useBatchActions';
 import type { TestCase, PaginationInfo, PlaybackDevice } from '../../../shared/types';
 
 function useDebounce<T>(value: Ref<T>, delay: number = 300): Ref<T> {
@@ -490,6 +510,19 @@ const loadPlaybackDevices = async () => {
 };
 
 const modalControl = useModalControl();
+
+const {
+  resolveCaseIds,
+  batchSetSPL,
+  batchSetPlaybackDevice,
+  batchSetNoise,
+  batchSetAlgorithmParams,
+  batchSetDimensions,
+  batchAdjustGroup,
+  batchGenerateName,
+  batchManageTags,
+  batchRefreshReference
+} = useBatchActions();
 
 let currentBatchGroup = '';
 let currentBatchCaseIds: (string | number)[] = [];
@@ -1109,374 +1142,192 @@ const handleCopyGroup = async (group: string) => {
 };
 
 const handleUpdateAlgorithmParams = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_ALGORITHM_PARAMS, {
-      title: '批量设置用例专属参数',
-      caseCount: currentBatchCaseIds.length,
-      algorithmType: groupCases[0]?.algorithmType || ''
-    });
-
-    if (result?.algorithmType && result?.params) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdateAlgorithmParams(currentBatchCaseIds, result.params);
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的专属参数`);
-      }
-    }
-  } catch (error) {
-    console.error('更新用例专属参数失败:', error);
-  }
-};
+  const groupCases = filteredTestCases.value[group] || []
+  await batchSetAlgorithmParams(group, selectedCases.value, groupCases, 'group')
+}
 
 const handleUpdatePlaybackDevice = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_PLAYBACK_DEVICE, {
-      title: '批量设置播放设备',
-      caseCount: currentBatchCaseIds.length
-    });
-
-    if (result?.deviceId) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdatePlaybackDevices(currentBatchCaseIds, { deviceId: result.deviceId });
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的播放设备`);
-      }
-    }
-  } catch (error) {
-    console.error('更新播放设备失败:', error);
-  }
-};
+  const groupCases = filteredTestCases.value[group] || []
+  await batchSetPlaybackDevice(group, selectedCases.value, groupCases, 'group')
+}
 
 const handleUpdateSPL = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_SPL, {
-      title: '批量设置声压级',
-      caseCount: currentBatchCaseIds.length,
-      initialValue: 65
-    });
-
-    if (result?.value !== undefined) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdateSPL(currentBatchCaseIds, { value: result.value });
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的声压`);
-      }
-    }
-  } catch (error) {
-    console.error('更新声压失败:', error);
-  }
-};
+  const groupCases = filteredTestCases.value[group] || []
+  await batchSetSPL(group, selectedCases.value, groupCases, 'group')
+}
 
 const handleAdjustGroup = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_ADJUST_GROUP, {
-      title: '批量调整分组',
-      caseCount: currentBatchCaseIds.length,
-      currentGroupId: ''
-    });
-
-    if (result?.groupId) {
-      const store = useTestCaseStore();
-      let updateResult = false;
-      if (result.isCopy) {
-        updateResult = await store.batchCopyCases(currentBatchCaseIds, result.groupId);
-      } else {
-        updateResult = await store.batchMoveCases(currentBatchCaseIds, result.groupId);
-      }
-      if (updateResult) {
-        alert(`已成功将 ${currentBatchCaseIds.length} 个用例${result.isCopy ? '复制' : '移动'}到目标分组`);
-      }
-    }
-  } catch (error) {
-    console.error('调整分组失败:', error);
-  }
-};
+  const groupCases = filteredTestCases.value[group] || []
+  await batchAdjustGroup(group, selectedCases.value, groupCases, 'group')
+}
 
 const handleUpdateDimensions = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_DIMENSION, {
-      title: '批量设置评价维度',
-      caseCount: currentBatchCaseIds.length,
-      algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : ''
-    });
-
-    if (result?.dimensions) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdateDimensions(currentBatchCaseIds, result.dimensions, result.testType);
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的评价维度`);
-      }
-    }
-  } catch (error) {
-    console.error('更新评价维度失败:', error);
-  }
-};
+  const groupCases = filteredTestCases.value[group] || []
+  await batchSetDimensions(group, selectedCases.value, groupCases, 'group')
+}
 
 const handleUpdateNoise = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
-
-  try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_NOISE, {
-      title: '批量设置噪声',
-      caseCount: currentBatchCaseIds.length
-    });
-
-    if (result) {
-      const store = useTestCaseStore();
-      const updateResult = await store.batchUpdateNoise(
-        currentBatchCaseIds,
-        result.audioId || '',
-        result.spl || 0,
-        result.deviceIds || []
-      );
-      if (updateResult) {
-        alert(`已成功更新 ${currentBatchCaseIds.length} 个用例的噪声配置`);
-      }
-    }
-  } catch (error) {
-    console.error('更新噪声配置失败:', error);
-  }
-};
+  const groupCases = filteredTestCases.value[group] || []
+  await batchSetNoise(group, selectedCases.value, groupCases, 'group')
+}
 
 const handleAutoGenerateName = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
+  const groupCases = filteredTestCases.value[group] || []
+  await batchGenerateName(group, selectedCases.value, groupCases, 'group')
+}
 
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
+const handleUpdateTags = async (group: string) => {
+  const groupCases = filteredTestCases.value[group] || []
+  await batchManageTags(group, selectedCases.value, groupCases, 'group')
+}
 
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
+const handleRefreshReference = async (group: string) => {
+  const groupCases = filteredTestCases.value[group] || []
+  await batchRefreshReference(group, selectedCases.value, groupCases, 'group')
+}
 
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
+const openBatchMenuTag = ref<string | null>(null)
+const toggleBatchMenuTag = (tagName: string) => {
+  openBatchMenuTag.value = openBatchMenuTag.value === tagName ? null : tagName
+}
 
+const handleTagDelete = async (tagName: string) => {
   try {
+    // 先通过标签名查找标签对象
+    const res = await api.tags.getTags({ search: tagName });
+    const tagItem = res.items?.find((t: any) => t.name === tagName);
+    if (!tagItem) {
+      alert(`未找到标签"${tagName}"`);
+      return;
+    }
+
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '批量通过标签自动生成用例名',
-      content: `将为 ${currentBatchCaseIds.length} 个用例自动生成名称（按标签长度排序，用"-"连接）\n\n是否继续？`,
-      confirmText: '确定',
+      title: '删除标签',
+      content: `确定删除标签「${tagName}」吗？\n\n注意：这只会删除标签本身，不会删除用例。`,
+      confirmText: '确定删除',
       cancelText: '取消',
-      danger: false
+      danger: true
     });
 
     if (confirmed?.confirmed) {
+      await api.tags.deleteTag(tagItem.id);
+      alert(`标签"${tagName}"已删除`);
+      // 刷新数据
       const store = useTestCaseStore();
-      const updateResult = await store.batchAutoGenerateName(currentBatchCaseIds);
-      if (updateResult) {
-        alert(`已成功为 ${currentBatchCaseIds.length} 个用例自动生成名称`);
-      }
+      await store.fetchTestCases();
     }
   } catch (error) {
-    console.error('自动生成用例名失败:', error);
+    console.error('删除标签失败:', error);
+    alert('删除标签失败: ' + (error instanceof Error ? error.message : '未知错误'));
   }
 };
 
-const handleUpdateTags = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
-    return;
-  }
-
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
-
+const handleTagEdit = async (tagName: string) => {
   try {
-    const result = await modalControl.open(MODAL_TYPES.BATCH_TAGS, {
-      title: '批量管理用例标签',
-      caseCount: currentBatchCaseIds.length
+    // 先通过标签名查找标签对象
+    const res = await api.tags.getTags({ search: tagName });
+    const tagItem = res.items?.find((t: any) => t.name === tagName);
+    if (!tagItem) {
+      alert(`未找到标签"${tagName}"`);
+      return;
+    }
+
+    const result = await modalControl.open(MODAL_TYPES.TAG_EDIT, {
+      tag: tagItem,
+      categoryId: tagItem.categoryId || null,
+      categories: []
     });
 
     if (result) {
+      alert(`标签已更新`);
       const store = useTestCaseStore();
-      let updateResult = false;
-      if (result.action === 'add' && result.tags) {
-        updateResult = await store.batchAddTags(currentBatchCaseIds, result.tags);
-      } else if (result.action === 'remove' && result.tags) {
-        updateResult = await store.batchRemoveTags(currentBatchCaseIds, result.tags);
-      } else if (result.action === 'rename' && result.oldTagName && result.newTagName) {
-        updateResult = await store.batchRenameTag(result.oldTagName, result.newTagName);
-      }
-      if (updateResult) {
-        const actionText = result.action === 'add' ? '添加' : result.action === 'remove' ? '移除' : '重命名';
-        alert(`已成功${actionText}标签`);
-      }
+      await store.fetchTestCases();
     }
   } catch (error) {
-    console.error('更新标签失败:', error);
+    console.error('编辑标签失败:', error);
   }
 };
 
-const handleRefreshReference = async (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
-  if (groupCases.length === 0) {
-    alert('该分组下没有用例');
+const handleTagAddCase = (tagName: string) => {
+  // 新增用例时传入标签作为预设
+  emit('openAddModal', undefined, { algorithmType: algorithmTypeFilter === 'all' ? '' : algorithmTypeFilter, testType: testTypeFilter.value === 'all' ? undefined : testTypeFilter.value as 'api' | 'e2e' });
+};
+
+const handleTagCopyGroup = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || [];
+  if (tagCases.length === 0) {
+    alert('该标签下没有用例');
     return;
   }
 
-  const groupCaseIds = new Set(groupCases.map((tc: TestCase) => tc.id));
-  const selectedInGroup = selectedCases.value.filter(id => groupCaseIds.has(id as string));
-
-  currentBatchGroup = group;
-  currentBatchCaseIds = selectedInGroup.length > 0 ? selectedInGroup : groupCaseIds.size > 0 ? Array.from(groupCaseIds) : [];
-
-  if (currentBatchCaseIds.length === 0) {
-    alert('该分组下没有勾选用例');
-    return;
-  }
+  currentBatchGroup = tagName;
+  currentBatchCaseIds = tagCases.map((tc: TestCase) => tc.id);
 
   try {
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '用例参考更新',
-      content: `确定要刷新 ${currentBatchCaseIds.length} 个用例的参考参数吗？\n\n这将从关联音频的标注数据重新生成参考参数。`,
-      confirmText: '确定刷新',
+      title: '复制标签下用例',
+      content: `确定要复制标签 "${tagName}" 下的 ${tagCases.length} 个用例吗？\n\n复制后将成为新分组：${tagName}_copy`,
+      confirmText: '复制',
       cancelText: '取消',
       danger: false
     });
 
     if (confirmed?.confirmed) {
       const store = useTestCaseStore();
-      const result = await store.batchRefreshReference(currentBatchCaseIds);
-
-      if (result && typeof result === 'object' && 'taskId' in result) {
-        console.log(`[handleRefreshReference] 异步任务已提交: ${result.taskId}，开始轮询进度...`);
-
-        const pollAndNotify = async () => {
-          const status = await store.pollRefreshTaskStatus(result.taskId);
-
-          if (status.success) {
-            console.log(`[handleRefreshReference] 任务完成: 成功 ${status.updated} 个，失败 ${status.failed} 个`);
-            await store.fetchTestCases();
-            alert(`用例参考更新完成！\n\n成功刷新: ${status.updated} 个\n失败: ${status.failed} 个`);
-          } else {
-            console.error('[handleRefreshReference] 任务查询失败或任务不存在');
-            alert('用例参考更新任务执行失败，请稍后重试');
-          }
-        };
-
-        pollAndNotify();
-      } else if (result === true) {
-        alert(`已成功刷新 ${currentBatchCaseIds.length} 个用例的参考参数`);
+      const result = await store.copyGroupCases(tagName);
+      if (result) {
+        alert(`标签用例复制成功！\n\n原标签：${tagName}\n新分组：${tagName}_copy`);
       }
     }
   } catch (error) {
-    console.error('刷新用例参考失败:', error);
+    console.error('复制标签用例失败:', error);
   }
 };
+
+const handleTagUpdateSPL = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchSetSPL(tagName, selectedCases.value, tagCases, 'tag')
+}
+
+const handleTagUpdatePlaybackDevice = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchSetPlaybackDevice(tagName, selectedCases.value, tagCases, 'tag')
+}
+
+const handleTagUpdateNoise = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchSetNoise(tagName, selectedCases.value, tagCases, 'tag')
+}
+
+const handleTagUpdateAlgorithmParams = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchSetAlgorithmParams(tagName, selectedCases.value, tagCases, 'tag')
+}
+
+const handleTagUpdateDimensions = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchSetDimensions(tagName, selectedCases.value, tagCases, 'tag')
+}
+
+const handleTagAdjustGroup = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchAdjustGroup(tagName, selectedCases.value, tagCases, 'tag')
+}
+
+const handleTagAutoGenerateName = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchGenerateName(tagName, selectedCases.value, tagCases, 'tag')
+}
+
+const handleTagUpdateTags = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchManageTags(tagName, selectedCases.value, tagCases, 'tag')
+}
+
+const handleTagRefreshReference = async (tagName: string) => {
+  const tagCases = filteredTagCases.value[tagName] || []
+  await batchRefreshReference(tagName, selectedCases.value, tagCases, 'tag')
+}
 
 const handleAction = async (actionEvent: { action: { id: string }; testCase: TestCase }, group: string) => {
   const testCase = actionEvent.testCase;
