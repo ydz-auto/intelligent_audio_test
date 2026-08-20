@@ -11,7 +11,7 @@ noise_latency.py
         2. recovery_latency  : 噪声结束 → 模型再次回复(恢复时延)
 
 输入:
-    model_asr       模型语音 ASR 结果({text, chunks} 或 chunks 列表)，时间戳为相对音频秒数
+    ai_wav          模型语音 wav 路径（内部自动调 ASR 服务）
     start_ms        噪声播放开始时间(世界毫秒)
     end_ms          噪声结束播放时间(世界毫秒)
     pcm_first_ms    模型 PCM 文件创建时间(世界毫秒，绝对基准，用于噪声↔模型时间轴对齐)
@@ -25,35 +25,42 @@ noise_latency.py
     随后与 non_interactive_latency 同流程(同秒级时间轴)。
 
 用法:
-    python noise_latency.py --model_asr m.json --start_ms 5000 --end_ms 8000 \\
+    python noise_latency.py --ai_wav ai.wav --start_ms 5000 --end_ms 8000 \\
         --pcm_first_ms 2000 [--merge_gap 0.7] [-o out.json]
 
     from noise_latency import compute_noise_latency
-    res = compute_noise_latency(model_asr, start_ms, end_ms, pcm_first_ms)
+    res = compute_noise_latency(ai_wav, start_ms, end_ms, pcm_first_ms)
 """
 import logging
 from typing import Any, Dict
 
 try:
     from .non_interactive_latency import (
-        SEG_MERGE_GAP_S, compute_non_interactive_latency,
+        SEG_MERGE_GAP_S, _compute_from_asr, _get_asr,
     )
 except ImportError:  # 直接作为脚本运行
     from non_interactive_latency import (
-        SEG_MERGE_GAP_S, compute_non_interactive_latency,
+        SEG_MERGE_GAP_S, _compute_from_asr, _get_asr,
     )
 
 logger = logging.getLogger(__name__)
 
 
-def compute_noise_latency(model_asr: Any, start_ms: float, end_ms: float,
+def compute_noise_latency(ai_wav: str, start_ms: float, end_ms: float,
                           pcm_first_ms: float,
                           seg_merge_gap_s: float = SEG_MERGE_GAP_S
                           ) -> Dict[str, Any]:
-    """计算噪声打断模型的时延(与 non_interactive_latency 对称)
+    """计算噪声打断模型的时延(与 non_interactive 对称)
 
     把噪声 [start_ms, end_ms] 用 pcm_first_ms 换算到模型音频相对秒，
     作为"打断事件段"喂给 non_interactive_latency 的同套逻辑，再补充绝对毫秒输出。
+
+    Args:
+        ai_wav: 模型语音 wav 路径（内部自动调 ASR 服务）
+        start_ms: 噪声播放开始时间(绝对毫秒)
+        end_ms: 噪声结束播放时间(绝对毫秒)
+        pcm_first_ms: 模型 PCM 文件创建时间(绝对毫秒)
+        seg_merge_gap_s: 词合并为段的间隙阈值(秒)，默认 0.7
 
     Returns dict(non_interactive 原字段 + 绝对毫秒):
         stop_latency_s / stop_latency_ms          噪声开始→模型当前回复结束(秒/毫秒)
@@ -85,7 +92,10 @@ def compute_noise_latency(model_asr: Any, start_ms: float, end_ms: float,
         {"text": "noise", "timestamp": [n_s, n_e]},
     ]}
 
-    r = compute_non_interactive_latency(
+    # 内部调 ASR 服务，把 ai_wav 路径转成词级时间戳
+    model_asr = _get_asr(ai_wav)
+
+    r = _compute_from_asr(
         noise_asr, model_asr,
         seg_merge_gap_s=seg_merge_gap_s,
         target_segment_index=1,  # 噪声是第 2 段(index=1)
@@ -135,8 +145,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='计算噪声打断模型的时延(与 non_interactive 对称)'
     )
-    parser.add_argument('--model_asr', required=True,
-                        help='模型端 ASR 结果 JSON 路径')
+    parser.add_argument('--ai_wav', required=True,
+                        help='模型端 wav 路径')
     parser.add_argument('--start_ms', type=float, required=True,
                         help='噪声播放开始时间(绝对毫秒)')
     parser.add_argument('--end_ms', type=float, required=True,
@@ -149,13 +159,8 @@ if __name__ == '__main__':
                         help='结果写入的 JSON 路径(可选，不传则只打印)')
     args = parser.parse_args()
 
-    def _load(p):
-        with open(p, 'r', encoding='utf-8') as f:
-            return json.load(f)
-
-    model_data = _load(args.model_asr)
     r = compute_noise_latency(
-        model_data, args.start_ms, args.end_ms, args.pcm_first_ms,
+        args.ai_wav, args.start_ms, args.end_ms, args.pcm_first_ms,
         seg_merge_gap_s=args.merge_gap)
 
     print('=' * 56)

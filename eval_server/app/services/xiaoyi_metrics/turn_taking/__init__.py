@@ -21,7 +21,7 @@ from .input_asr import compute_input_asr_match
 from .high_freq_turn_taking import compute_high_freq_turn_taking
 from .high_freq_llm_judge import evaluate_high_freq_llm
 from ..interruptbility.interruption import compute_interruption_metrics
-from ..rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency
+from ..rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency, _compute_from_asr
 
 logger = logging.getLogger(__name__)
 
@@ -315,8 +315,9 @@ def calculate_xiaoyi_metrics(task_params):
             results['interruption'] = _empty_interruption(f"打断计算失败: {e}")
 
         # 5. 非交互意图时延：用户在模型回复期间说话的 stop / recovery 时延
+        #    复用第 4 步已算好的双路 ASR（避免重复调 ASR 服务）
         try:
-            results['non_interactive_latency'] = compute_non_interactive_latency(user_asr, model_asr)
+            results['non_interactive_latency'] = _compute_from_asr(user_asr, model_asr)
             logger.info(
                 f"[non_interactive_latency] stop={results['non_interactive_latency'].get('stop_latency_s')}s "
                 f"recovery={results['non_interactive_latency'].get('recovery_latency_s')}s "

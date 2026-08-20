@@ -213,8 +213,8 @@ class TaskService:
             from .xiaoyi_metrics.rejection_scene_awareness.non_interactive_latency import compute_non_interactive_latency
             _rounds = task_params.get('rounds') or []
             _r0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
-            user_asr = task_params.get('user_asr') or task_params.get('user_chunks') or _r0.get('user_asr') or _r0.get('user_chunks')
-            model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or _r0.get('model_asr') or _r0.get('model_chunks')
+            user_wav = task_params.get('user_wav') or _r0.get('user_wav')
+            ai_wav = task_params.get('ai_wav') or _r0.get('ai_wav')
             kwargs = {}
             gap = task_params.get('seg_merge_gap_s') or _r0.get('seg_merge_gap_s')
             if gap is not None:
@@ -222,27 +222,16 @@ class TaskService:
             tsi = task_params.get('target_segment_index') or _r0.get('target_segment_index')
             if tsi is not None:
                 kwargs['target_segment_index'] = tsi
-            # 回退：user_asr/model_asr 为空时用 user_wav/ai_wav 调 ASR
-            if not user_asr:
-                user_wav = task_params.get('user_wav') or _r0.get('user_wav')
-                if user_wav:
-                    from .xiaoyi_metrics.turn_taking import _get_asr_chunks
-                    user_asr = _get_asr_chunks(user_wav)
-            if not model_asr:
-                ai_wav = task_params.get('ai_wav') or _r0.get('ai_wav')
-                if ai_wav:
-                    from .xiaoyi_metrics.turn_taking import _get_asr_chunks
-                    model_asr = _get_asr_chunks(ai_wav)
-            # 两者都为空时返回带说明的空结果
-            if not user_asr and not model_asr:
+            # wav 为空时返回带说明的空结果
+            if not user_wav and not ai_wav:
                 return {
                     'score': 0,
-                    'message': 'user_asr 和 model_asr 均为空（body_template 未包含 wav/asr 字段），跳过非交互意图时延计算',
+                    'message': 'user_wav 和 ai_wav 均为空，跳过非交互意图时延计算',
                     'n_rounds': 0,
                     'per_round': [],
                     'avg_latency_s': None,
                 }
-            _nil_result = compute_non_interactive_latency(user_asr, model_asr, **kwargs)
+            _nil_result = compute_non_interactive_latency(user_wav, ai_wav, **kwargs)
             return {
                 'stop_latency_s': _nil_result.get('stop_latency_s'),
                 'recovery_latency_s': _nil_result.get('recovery_latency_s'),
@@ -257,7 +246,7 @@ class TaskService:
             _r0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
             # 多组噪声时取第二轮的 start_ms/end_ms（第一轮为初始交互）
             _r_noise = _rounds[1] if (isinstance(_rounds, list) and len(_rounds) > 1 and isinstance(_rounds[1], dict)) else _r0
-            model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or _r0.get('model_asr') or _r0.get('model_chunks')
+            ai_wav = task_params.get('ai_wav') or _r0.get('ai_wav')
             start_ms = _r_noise.get('start_ms')
             end_ms = _r_noise.get('end_ms')
             pcm_first_ms = task_params.get('pcm_first_ms') or _r0.get('pcm_first_ms') or _r_noise.get('pcm_first_ms')
@@ -265,14 +254,6 @@ class TaskService:
             gap = task_params.get('seg_merge_gap_s') or _r0.get('seg_merge_gap_s')
             if gap is not None:
                 kwargs['seg_merge_gap_s'] = gap
-            # 回退：model_asr 为空时用 ai_wav 调 ASR
-            if not model_asr:
-                ai_wav = task_params.get('ai_wav') or _r0.get('ai_wav')
-                if ai_wav:
-                    from .xiaoyi_metrics.turn_taking import _get_asr_chunks
-                    model_asr = _get_asr_chunks(ai_wav)
-                    if model_asr is None:
-                        model_asr = {'text': '', 'chunks': []}
             # pcm_first_ms 为空时返回带说明的空结果（驱动未输出，无法做时间对齐）
             if not pcm_first_ms:
                 return {
@@ -284,7 +265,7 @@ class TaskService:
                     'recovery_latency_s': None,
                 }
             _nl_result = compute_noise_latency(
-                model_asr,
+                ai_wav,
                 start_ms,
                 end_ms,
                 pcm_first_ms,

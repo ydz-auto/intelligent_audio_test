@@ -11,12 +11,12 @@
 
 对应 eval_server 服务：
    - eval_server/app/services/xiaoyi_metrics/rejection_scene_awareness/non_interactive_latency.py
-   - 入口：compute_non_interactive_latency(user_asr, model_asr, ...)
+   - 入口：compute_non_interactive_latency(user_wav, ai_wav, ...)
    - task_type：non_interactive_latency
 
-输入（由调用方直接传两路已对齐的 ASR 词级时间戳）：
-   - user_asr  : 用户语音 ASR（chunks 或 {text, chunks}）
-   - model_asr : 模型语音 ASR（同上，与 user_asr 等长、同一时间轴）
+输入（eval_server 内部调 ASR 服务转词级时间戳）：
+   - user_wav  : 用户语音 wav 路径
+   - ai_wav    : 模型语音 wav 路径
 
 输出子指标：
    - 停止时延      (stop_latency_s)       用户开始讲话 → 模型停止回复
@@ -57,7 +57,7 @@ DIMENSIONS = [
         'keywords': 'non_interactive,非交互,意图,时延,stop_latency,recovery_latency,停止时延,恢复时延',
         'description': (
             '用户在模型回复期间说话（非交互意图），衡量模型停得下、恢复得来。'
-            '入参为两路已对齐的 ASR 词级时间戳（user_asr + model_asr），'
+            '入参为两路 wav（user_wav + ai_wav），eval_server 内部调 ASR 服务转词级时间戳，'
             '计算停止时延（用户开始讲话→模型停止）和恢复时延（用户讲完→模型开始回复）。'
         ),
         'type': 'auto',
@@ -71,12 +71,12 @@ DIMENSIONS = [
         'statistic_method': 'average',
         'params': [
             # ─── 输入参数 ───
-            ('user_asr', '用户ASR', '用户语音 ASR', 'json', 'input',
+            ('user_wav', '用户通道音频', '用户通道音频', 'audio', 'input',
              None, None, None, True,
-             False, None, '用户语音的 ASR 词级时间戳(chunks 或 {text, chunks})', 5),
-            ('model_asr', '模型ASR', '模型语音 ASR', 'json', 'input',
+             False, None, '用户通道 wav 路径（eval_server 内部调 ASR 服务转词级时间戳）', 5),
+            ('ai_wav', 'AI回复通道音频', 'AI回复通道音频', 'audio', 'input',
              None, None, None, True,
-             False, None, '模型语音的 ASR 词级时间戳(与 user_asr 等长、同一时间轴)', 6),
+             False, None, 'AI 回复通道 wav 路径（eval_server 内部调 ASR 服务转词级时间戳）', 6),
             ('seg_merge_gap_s', '词合并间隙', '词合并为段的间隙阈值(秒)', 'number', 'input',
              None, None, None, False,
              False, '0.7', '相邻词时间戳间隙小于该值则合并为同一段(秒)', 11),
@@ -122,8 +122,8 @@ DIMENSIONS = [
              False, None, '非交互意图时延错误/成功说明', 99),
         ],
         'param_mappings': [
-            ('reference', 'output', 'user_asr', 'user_asr', 'none'),
-            ('reference', 'output', 'model_asr', 'model_asr', 'none'),
+            ('device', 'output', 'user_wav', 'user_wav', 'none'),
+            ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
         ],
     },
 ]
@@ -157,8 +157,8 @@ def seed_non_interactive_latency():
                     'target_segment_index': '{{target_segment_index}}',
                     'rounds': [
                         {
-                            'user_asr': '{{user_asr}}',
-                            'model_asr': '{{model_asr}}',
+                            'user_wav': '{{user_wav}}',
+                            'ai_wav': '{{ai_wav}}',
                         }
                     ],
                 },
@@ -364,12 +364,12 @@ if __name__ == '__main__':
     print()
     print("此脚本将注册：")
     print("1. non_interactive_latency 维度 — 非交互意图时延")
-    print("   入参: user_asr(用户ASR), model_asr(模型ASR), seg_merge_gap_s, target_segment_index")
+    print("   入参: user_wav(用户音频), ai_wav(模型音频), seg_merge_gap_s, target_segment_index")
     print()
     print("   主分: 停止时延 (stop_latency_s)")
     print("   辅助: 恢复时延 / 静默时长 / 重叠时长 / 段信息 / 段数")
     print()
-    print("   两路 ASR 由调用方直接传入（不内部调 ASR），需等长、同一时间轴")
+    print("   两路 wav 由 eval_server 内部调 ASR 服务转词级时间戳")
     print()
     print("脚本可重复执行（幂等）")
     print()
