@@ -1,0 +1,72 @@
+Intelligent-Audio-TEST/frontend/src/components/common/modal/BatchAlgorithmParamsModal.vue
+  s_90542d78d2b02f::t_ae2eafb41f3996 77
+  s_90542d78d2b02f::t_5624524c364fce 5
+  s_9706dcbd1270a7::t_54fde46b641131 90-91
+Intelligent-Audio-TEST/frontend/src/components/common/modal/BatchDimensionModal.vue
+  s_90542d78d2b02f::t_af2b461cc4e69c 113-114
+  s_90542d78d2b02f::t_4fd0a5197f4a53 99
+Intelligent-Audio-TEST/frontend/src/components/common/modal/BatchTagsModal.vue
+  s_90542d78d2b02f::t_bac6331c26a9df 156
+  s_90542d78d2b02f::t_ce1a35a18b67a0 167-168
+  s_90542d78d2b02f::t_6e4000319aedd7 185
+Intelligent-Audio-TEST/frontend/src/components/common/modal/BatchPlaybackDeviceModal.vue
+  s_9706dcbd1270a7::t_e7470208dc8876 5,115,127-128
+Intelligent-Audio-TEST/frontend/src/components/common/modal/BatchRefreshReferenceModal.vue
+  s_90542d78d2b02f::t_acde03f087350b 58-59
+  s_90542d78d2b02f::t_208905cf234920 5
+  s_90542d78d2b02f::t_274e72fc8d8634 46
+Intelligent-Audio-TEST/frontend/src/components/common/modal/BatchNoiseModal.vue
+  s_9706dcbd1270a7::t_e7470208dc8876 5,120,132-133
+Intelligent-Audio-TEST/frontend/src/components/common/modal/BatchSPLModal.vue
+  s_9706dcbd1270a7::t_e7470208dc8876 5,89,102-103
+Intelligent-Audio-TEST/frontend/src/composables/useBatchActions.ts
+  s_9706dcbd1270a7::t_e7470208dc8876 164,173,178-181,197,206,231,240,266,272,275,298,306-307,335,341-342,344-345,348
+Intelligent-Audio-TEST/frontend/src/components/common/modal/BatchAdjustGroupModal.vue
+  s_90542d78d2b02f::t_10b5708bc492e8 81-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "8aee25a7a260812ccc89023fd818f2e9bfccc1c9",
+  "prompts": {},
+  "sessions": {
+    "s_90542d78d2b02f": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a86bb8d73ad3a08262afe33",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_type": "builtin",
+        "session_id": "6a86bb8d73ad3a08262afe33",
+        "client_type": "ide",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a86bb8d73ad3a08262afe33:6a86bedd73ad3a08262b024b:afterEdit:887e3bde",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "external_session_id": "6a86bb8d73ad3a08262afe33",
+        "tool_use_id": "6a86bedd73ad3a08262b024b",
+        "edit_kind": "file_edit",
+        "operation_id": "6a86bedd73ad3a08262b024b",
+        "source_scene": "agent"
+      }
+    },
+    "s_9706dcbd1270a7": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a86bdce73ad3a08262b014f",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "operation_id": "6a86beff73ad3a08262b025e",
+        "display_model_name": "glm-5.2",
+        "external_session_id": "6a86bdce73ad3a08262b014f",
+        "session_id": "6a86bdce73ad3a08262b014f",
+        "edit_kind": "bash",
+        "tool_name": "RunCommand",
+        "tool_use_id": "6a86beff73ad3a08262b025e"
+      }
+    }
+  }
+}
