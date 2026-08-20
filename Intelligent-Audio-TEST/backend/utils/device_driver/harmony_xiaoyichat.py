@@ -464,10 +464,17 @@ class Xiaoyilivechat(HarmonyDriver):
         # 用例开始前清理设备上目标 app 的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
         self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         # 点开小艺聊天窗口
-        # user_center = driver.find_component(By.text("小艺"))
-        # if user_center:
-        #     user_center.click()
-        #     time.sleep(2)
+        # 注:08-17 fdb087a43 曾注掉此段(假设窗口已开只点通话按钮),
+        # 但实测窗口常不在前台→pre_process 通话 SymbolGlyph 找不到→小艺没打开,故解回。
+        user_center = driver.find_component(By.text("小艺"))
+        if user_center:
+            user_center.click()
+            time.sleep(2)
+            self._log(level='DEBUG', content="initialize: 已点开小艺聊天窗口",
+                      task_id=task_id, test_case_id=test_case_id)
+        else:
+            self._log(level='WARNING', content="initialize: 未找到'小艺'入口,聊天窗口可能未打开(后续 pre_process 点通话按钮可能失败)",
+                      task_id=task_id, test_case_id=test_case_id)
         # 清除上下文
         # 进入设置界面
 

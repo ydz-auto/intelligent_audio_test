@@ -889,15 +889,16 @@ def _print_high_freq_results(results):
 
 
 def calculate_high_freq_llm_judge(task_params):
-    """高频轮换场景 LLM 裁判：传输录屏文件，逐轮判断问答内容是否符合预期
+    """高频轮换场景 LLM 裁判：以模型回复音频(ai_wav)为主输入，逐轮判断问答内容是否符合预期
 
-    将录屏文件发送给多模态 LLM，结合 rounds 文本上下文
-    （用户提问/模型回复/预期答案），逐轮判断模型回复是否符合预期，
-    返回 pass/fail + reason。
+    录屏不再可用：改为发送【模型回复音频 ai_wav】给多模态 LLM（直接听回复，不过小 ASR），
+    结合 rounds 文本上下文（用户提问/预期答案），逐轮判断模型回复是否符合预期，
+    返回 pass/fail + reason。ai_wav 缺失时回退 record_file（legacy 录屏）。
 
     Args:
         task_params (dict): 包含以下字段
-            - record_file (str): 录屏/音频文件路径
+            - ai_wav (str): 模型回复音频路径（主输入，被判定对象）
+            - record_file (str): legacy 录屏/音频文件路径（ai_wav 缺失时回退用）
             - rounds (list): 多轮文本数据，每轮 {query, answer, expected_answer}
             - scenario_type (str): 场景类型（飞花令/成语接龙/快问快答/自定义）
             - scenario_rules (str): 自定义场景规则
@@ -926,6 +927,9 @@ def calculate_high_freq_llm_judge(task_params):
 
     record_file = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path') or ''
     rounds = task_params.get('rounds') or []
+    _r0 = rounds[0] if (isinstance(rounds, list) and rounds and isinstance(rounds[0], dict)) else {}
+    # 模型回复音频（主输入）：优先 ai_wav，回退 record_file（legacy 录屏）
+    ai_wav = task_params.get('ai_wav') or _r0.get('ai_wav') or ''
     scenario_type = task_params.get('scenario_type') or ''
     scenario_rules = task_params.get('scenario_rules') or ''
     model = task_params.get('llm_model') or ''
@@ -934,6 +938,7 @@ def calculate_high_freq_llm_judge(task_params):
 
     print(
         "\n==================== high_freq_llm_judge 收到数据 ====================\n"
+        f"  模型回复音频(ai_wav)   : {_short(ai_wav)}\n"
         f"  录屏文件(record_file)  : {_short(record_file)}\n"
         f"  场景类型(scenario_type): {scenario_type or 'N/A'}\n"
         f"  轮次数(n_rounds)       : {_len_of(rounds)}\n"
@@ -950,6 +955,7 @@ def calculate_high_freq_llm_judge(task_params):
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
+            ai_wav=ai_wav,
         )
     except Exception as e:
         logger.error(f"[high_freq_llm_judge] 评估失败: {e}")
@@ -957,6 +963,7 @@ def calculate_high_freq_llm_judge(task_params):
             'enabled': False,
             'model': model,
             'scenario_type': scenario_type,
+            'ai_wav': ai_wav,
             'video_path': record_file,
             'n_rounds': _len_of(rounds),
             'per_round': [],

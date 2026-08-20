@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 high_freq_llm_judge.py
-高频轮换场景 LLM 裁判：传输录屏文件，逐轮评估问答内容是否符合预期
+高频轮换场景 LLM 裁判：以模型回复音频(ai_wav)为主输入，逐轮评估问答内容是否符合预期
 
 场景: 飞花令 / 成语接龙 / 快问快答等高频多轮对话。
-将录屏文件发送给多模态 LLM，结合 rounds 文本上下文（用户提问/模型回复/预期答案），
-逐轮判断模型回复是否符合预期，返回 pass/fail + reason。
+录屏不再可用：改为发送【模型回复音频 ai_wav】给多模态 LLM（直接听回复，不过小 ASR，
+避免字面内容被糊掉），结合 rounds 文本上下文（用户提问/预期答案），逐轮判断模型回复
+是否符合预期，返回 pass/fail + reason。不合并两路音频；video_path 保留为 legacy 回退。
 
 参考 env_judge.py 的多模态请求格式（音频 input_audio / 视频 image_url），
 复用 config.LLM_JUDGE 配置（api_base_url / api_key / default_model）。
@@ -295,7 +296,7 @@ def _build_prompt(rounds: List[Dict[str, Any]],
             lines.append('  预期答案: （未指定，请根据场景规则判断）')
         round_blocks.append('\n'.join(lines))
 
-    rounds_text = '\n\n'.join(round_blocks) if round_blocks else '（未提供文本轮次信息，请从录屏中自行识别）'
+    rounds_text = '\n\n'.join(round_blocks) if round_blocks else '（未提供文本轮次信息，请从回复音频中自行识别）'
 
     # 构建 JSON 输出模板
     n = len(rounds)
@@ -310,7 +311,7 @@ def _build_prompt(rounds: List[Dict[str, Any]],
         )
     eval_text = ',\n'.join(round_items)
 
-    return f"""你是语音对话质量评估专家。你将收到一段录屏/音频文件，记录了用户与语音大模型的高频轮换对话过程。请结合录屏内容和下方对话信息，逐轮判断模型回复是否符合预期。
+    return f"""你是语音对话质量评估专家。你将收到【模型回复音频】以及下方【对话轮次信息】（用户提问/预期答案为文本，模型回复以随附音频为准，不过小 ASR，直接听）。请结合回复音频内容与下方对话信息，逐轮判断模型回复是否符合预期。
 
 ═══════════════════════════════════════
 【测试场景】{scenario_type or '高频轮换'}
@@ -329,7 +330,7 @@ def _build_prompt(rounds: List[Dict[str, Any]],
 - 快问快答：答案是否准确
 - 若提供了预期答案，回复应与预期答案一致或等价
 - pass 为 true 表示符合预期，false 表示不符合
-- reason 需简述判定依据（从录屏中听到了什么、模型回复了什么、为何符合/不符合）
+- reason 需简述判定依据（从回复音频中听到了什么、模型回复了什么、为何符合/不符合）
 
 ═══════════════════════════════════════
 【输出格式】
@@ -396,35 +397,40 @@ def _build_summary(per_round: List[Dict[str, Any]]) -> str:
 
 # ─────────── 主入口 ───────────
 def evaluate_high_freq_llm(
-    video_path: str,
-    rounds: List[Dict[str, Any]],
+    video_path: str = '',
+    rounds: List[Dict[str, Any]] = None,
     scenario_type: str = '',
     scenario_rules: str = '',
     model: str = '',
     max_tokens: int = 4096,
     temperature: float = 0.1,
+    ai_wav: str = '',
     **kwargs,
 ) -> Dict[str, Any]:
     """高频轮换场景 LLM 裁判主入口
 
-    将录屏文件发送给多模态 LLM，结合 rounds 文本上下文，
-    逐轮判断模型回复是否符合预期，返回 pass/fail + reason。
+    录屏不再可用时的新方案：以【模型回复音频 ai_wav】为主输入（裁判模型直接听回复，
+    不过小 ASR，避免飞花令/成语接龙等场景的字面内容被小 ASR 糊掉），结合 rounds 文本
+    上下文（用户提问/预期答案），逐轮判断模型回复是否符合预期，返回 pass/fail + reason。
+    不合并两路音频；video_path 保留为 legacy 回退（仅当 ai_wav 缺失时用录屏/音频）。
 
     Args:
-        video_path: 录屏/音频文件路径
+        video_path: legacy 录屏/音频文件路径（ai_wav 缺失时回退用）
         rounds: 多轮文本数据，每轮 {query, answer, expected_answer}（字段名兼容）
         scenario_type: 场景类型（飞花令/成语接龙/快问快答/自定义）
         scenario_rules: 自定义场景规则（scenario_type='自定义' 时使用）
         model: LLM 模型名，缺省读 config.LLM_JUDGE.default_model
         max_tokens: 最大输出 token 数
         temperature: 采样温度，评判场景建议低温 0.1
-        **kwargs: 额外录屏文件路径
+        ai_wav: 模型回复音频路径（主输入，被判定对象）
+        **kwargs: 额外录屏/音频文件路径（legacy）
 
     Returns:
         dict: {
             'enabled': bool,
             'model': str,
             'scenario_type': str,
+            'ai_wav': str,
             'video_path': str,
             'n_rounds': int,
             'per_round': [{round, pass, reason}, ...],
@@ -444,8 +450,10 @@ def evaluate_high_freq_llm(
     if not model:
         model = llm_config.get('default_model', 'gpt-4o')
 
-    # 收集录屏文件路径
+    # 主音频：优先 ai_wav（模型回复，被判定对象），缺失时回退 video_path（legacy 录屏）
     file_paths: List[str] = []
+    if ai_wav and os.path.isfile(ai_wav):
+        file_paths.append(ai_wav)
     if video_path and os.path.isfile(video_path):
         file_paths.append(video_path)
     for value in kwargs.values():
@@ -455,7 +463,10 @@ def evaluate_high_freq_llm(
                 file_paths.append(value)
 
     if not file_paths:
-        raise FileNotFoundError(f'录屏文件不存在或路径无效: {video_path}')
+        raise FileNotFoundError(
+            f'模型回复音频(ai_wav)与录屏(video_path)均不存在或路径无效: '
+            f'ai_wav={ai_wav!r} video_path={video_path!r}'
+        )
 
     # 过滤无效轮次
     valid_rounds = [rd for rd in rounds if isinstance(rd, dict)]
@@ -466,6 +477,7 @@ def evaluate_high_freq_llm(
         'enabled': True,
         'model': model,
         'scenario_type': scenario_type,
+        'ai_wav': ai_wav or '',
         'video_path': video_path,
         'n_rounds': len(valid_rounds),
         'per_round': [],
