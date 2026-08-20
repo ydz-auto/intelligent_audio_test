@@ -248,13 +248,13 @@ def _is_audio(file_path: str) -> bool:
 
 
 def _encode_file_to_data(file_path: str) -> str:
-    """将文件编码为 base64 data 字符串（不带 MIME 前缀）。
+    """将音频文件编码为纯 base64 字符串（不带 data URI 前缀）。
 
-    用于 input_audio 格式: data:;base64,xxxx
+    用于 OpenAI input_audio 格式的 data 字段——该字段要求纯 base64，
+    不能带 `data:;base64,` 前缀，否则部分代理/模型会静默忽略音频。
     """
     with open(file_path, 'rb') as f:
-        encoded = base64.b64encode(f.read()).decode()
-    return f'data:;base64,{encoded}'
+        return base64.b64encode(f.read()).decode()
 
 
 def _encode_video_to_data_uri(file_path: str) -> str:
@@ -425,8 +425,10 @@ def _call_llm_api(model: str, prompt: str,
     else:
         user_content = [{'type': 'text', 'text': prompt}]
 
-    # 判断是否为 omni 模型（需要 stream + 无 response_format）
-    is_omni = 'omni' in model.lower()
+    # 判断模型类型：omni(需 stream) / 其他音频模型(如 gpt-audio，不支持 response_format) / 普通文本模型
+    m_low = model.lower()
+    is_omni = 'omni' in m_low
+    is_audio = is_omni or ('audio' in m_low)
 
     payload: Dict[str, Any] = {
         'model': model,
@@ -442,8 +444,8 @@ def _call_llm_api(model: str, prompt: str,
         payload['stream'] = True
         payload['stream_options'] = {'include_usage': True}
         payload['timeout'] = 300
-    else:
-        # 非 omni 模型可使用 response_format
+    elif not is_audio:
+        # 普通文本模型用 response_format 强制 JSON；gpt-audio 等音频模型不支持 response_format，不设
         payload['response_format'] = {'type': 'json_object'}
 
     url = f'{api_base.rstrip("/")}/chat/completions'
