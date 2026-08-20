@@ -384,6 +384,10 @@ class DoubaoChat(Xiaoyilivechat):
         self._round_number = round_number
         is_first = not getattr(self, '_recording', False)
 
+        # 开局清掉可能残留的华为音乐(上轮/上个用例误识别"播放音乐"拉起的),
+        # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。方法继承自父类。
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
+
         # case 模式非首轮：通话与录屏已在进行，无需重复启动
         if record_mode == 'case' and not is_first:
             self._log(level='DEBUG',
@@ -613,7 +617,10 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        # 5. 停止豆包 APP（彻底释放）
+        # 5. 兜底清掉华为音乐(本轮中途可能误识别"播放音乐"拉起的,防跨用例残留)
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
+
+        # 6. 停止豆包 APP（彻底释放）
         try:
             driver.stop_app(self.DOUBAO_BUNDLE)
             self._log(level='DEBUG', content="teardown: 已停止豆包 APP",
@@ -622,7 +629,7 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='WARNING', content=f"teardown: 停止豆包 APP 失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
-        # 6. 无条件硬停 screenrecorder 兜底(幂等):无论前面 _recording 标志真假,
+        # 7. 无条件硬停 screenrecorder 兜底(幂等):无论前面 _recording 标志真假,
         #    保证"录屏不停止"残留不可能跨用例存活(豆包录屏 bug 的核心修复兜底)。
         self._force_stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id)
 

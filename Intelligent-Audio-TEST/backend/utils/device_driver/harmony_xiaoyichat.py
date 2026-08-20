@@ -17,6 +17,9 @@ from backend.utils.common.time_utils import ms_to_utc8_str, MS_FMT
 class Xiaoyilivechat(HarmonyDriver):
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
+    # 华为音乐 bundle:测试中小艺有时会把播放的音频误识别为"播放音乐"指令而拉起音乐,
+    # 污染录屏/pcm。pre_process 开局与 teardown 兜底各 force-stop 一次兜住。
+    MUSIC_BUNDLE = 'com.huawei.hmsapp.music'
 
     def __init__(self):
         super().__init__()
@@ -218,6 +221,31 @@ class Xiaoyilivechat(HarmonyDriver):
         """
         self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
         return True
+
+    def _stop_music_app(self, device_sn, task_id=None, test_case_id=None):
+        """停止华为音乐 app。
+
+        测试中小艺有时会把播放的音频误识别为"播放音乐"指令而拉起音乐,
+        其播放声会污染本轮录屏/pcm。开局与收尾各清一次保证音乐不残留。
+        用 hypium 的 driver.stop_app(bundle) 停 app——实测裸 hdc aa force-stop
+        未能停止音乐 app,改走 hypium 接口(与 teardown 停小艺 app 同一套)。
+        包 try/except: 失败时退化成 WARNING 日志,绝不阻断 pre_process/teardown
+        主流程——音乐防护是锦上添花,不能反过来把整个用例拖垮。
+        """
+        driver = self._get_driver(device_sn)
+        if not driver:
+            self._log(level='WARNING',
+                      content=f"stop_music: 无 UiDriver,跳过 {self.MUSIC_BUNDLE}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return
+        try:
+            driver.stop_app(self.MUSIC_BUNDLE)
+            self._log(level='DEBUG', content=f"stop_app {self.MUSIC_BUNDLE} 完成",
+                      task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            self._log(level='WARNING',
+                      content=f"stop_app {self.MUSIC_BUNDLE} 失败(忽略,不阻断用例): {e}",
+                      task_id=task_id, test_case_id=test_case_id)
 
     def _pull_record_file(self, device_sn, task_id=None, test_case_id=None):
         """从设备拉取录屏文件到本地并转 wav，返回 local_path（失败返回 None）。teardown 兜底用。"""
@@ -464,6 +492,9 @@ class Xiaoyilivechat(HarmonyDriver):
         self._log(level='DEBUG',
                   content=f"pre_process kwargs: {kwargs}",
                   task_id=task_id, test_case_id=test_case_id)
+        # 开局清掉可能残留的华为音乐(上轮/上个用例小艺误识别"播放音乐"拉起的),
+        # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 录屏模式: round=每轮一段（默认）; case=整用例一段
         record_mode = kwargs.get('record_mode', 'round')
         total_rounds = kwargs.get('total_rounds', 1)
@@ -839,7 +870,10 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception as e:
             self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
-        # 4. 停止小艺 APP（彻底释放）
+        # 4. 兜底清掉华为音乐(本轮中途小艺可能误识别"播放音乐"拉起的,防跨用例残留)
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
+
+        # 5. 停止小艺 APP（彻底释放）
         try:
             driver.stop_app(self.app_name)
             self._log(level='DEBUG', content="teardown: 已停止小艺 APP", task_id=task_id, test_case_id=test_case_id)
