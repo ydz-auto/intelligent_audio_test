@@ -1,0 +1,33 @@
+eval_server/app/services/calculators/xiaoyi_metrics/llm_judge/llm_judge_calculator.py
+  s_c70b21da2d25eb::t_2c3336adfeab3e 1-366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "d0ad7d67cda539a744fc98c1b7a3029df52c32d8",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_c70b21da2d25eb": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87ba5773ad3a08262b1d96",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "display_model_name": "glm-5.2",
+        "external_session_id": "6a87ba5773ad3a08262b1d96",
+        "tool_use_id": "6a87bdf473ad3a08262b1e83",
+        "session_id": "6a87ba5773ad3a08262b1d96",
+        "tool_name": "RunCommand",
+        "operation_id": "6a87bdf473ad3a08262b1e83",
+        "edit_kind": "bash"
+      }
+    }
+  }
+}
