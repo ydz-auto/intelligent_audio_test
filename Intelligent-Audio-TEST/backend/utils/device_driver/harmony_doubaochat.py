@@ -389,6 +389,10 @@ class DoubaoChat(Xiaoyilivechat):
         # 开局清掉可能残留的华为音乐(上轮/上个用例误识别"播放音乐"拉起的),
         # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。方法继承自父类。
         self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
+        # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长
+        self._ai_first_frame_ms = None
+        self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
+            device_sn, app=getattr(self, '_pcm_app', 'doubao'))
 
         # case 模式非首轮：通话与录屏已在进行，无需重复启动
         if record_mode == 'case' and not is_first:
@@ -482,6 +486,10 @@ class DoubaoChat(Xiaoyilivechat):
                       task_id=task_id, test_case_id=test_case_id)
             replied = True
         else:
+            # 检测 ai PCM 首帧(模型回复起始时刻,替代录屏 first_frame)
+            self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
+                device_sn, app=getattr(self, '_pcm_app', 'doubao'),
+                task_id=task_id, test_case_id=test_case_id)
             replied = self._wait_ai_reply_end_via_pcm(device_sn, task_id=task_id, test_case_id=test_case_id)
             if not replied:
                 self.question_text = '豆包识别为空'

@@ -25,6 +25,9 @@ class Xiaoyilivechat(HarmonyDriver):
         super().__init__()
         # 仅覆盖与父类不同的属性
         self.app_icon_key = 'AppIcon_Image_com.huawei.hmos.vassistant.launcherVoiceAbilityentry0_undefined_0'
+        # ai PCM 首帧时间戳(替代录屏 first_frame 作为模型回复起始基准) + 本轮基线快照
+        self._ai_first_frame_ms = None
+        self._ai_pcm_size_base = None
     # 是否启用录屏(小艺=True 保留录屏 wav 作为评估音频源)。
     # Doubao/ChatGPT 在各自子类置 False:无录屏,get_results 跳过录屏拉取,
     # 改把 ai_wav 塞进 wav_path 复用 wav_path→record_file 映射喂评估。
@@ -326,6 +329,58 @@ class Xiaoyilivechat(HarmonyDriver):
             return []
         return [line.strip() for line in (r.stdout or '').splitlines() if line.strip()]
 
+    def _snapshot_ai_pcm_sizes(self, device_sn, app='xiaoyi'):
+        """快照当前 ai 后缀 PCM 文件及其 size（{remote_path: size}），作为本轮首帧检测基线。
+
+        在 pre_process 轮首调用（用户语音播放/AI 回复前建立基线），post_process
+        的 _detect_ai_pcm_first_frame 据此判断 size 增长=模型开始写回复。
+        """
+        cfg = self.PCM_APP_CONFIG.get(app)
+        if not cfg:
+            return {}
+        ai_suffix = cfg['ai_suffix']
+        files = []
+        for d in cfg['cache_dirs']:
+            files.extend(self._list_dir_pcm(device_sn, d))
+        return {f: self._get_device_file_size(device_sn, f)
+                for f in files if f.endswith(ai_suffix)}
+
+    def _detect_ai_pcm_first_frame(self, device_sn, app='xiaoyi',
+                                   task_id=None, test_case_id=None, timeout_ms=15000):
+        """轮询 ai PCM 首帧写入（相对基线 size 增长/新文件出现），返回墙钟毫秒或 None。
+
+        替代录屏 first_frame 作为模型回复起始基准（first_frame_ms）。基线
+        _ai_pcm_size_base 由 pre_process 轮首快照。任一 ai 后缀文件 size>0 且
+        >基线即视为首帧，记 int(time.time()*1000)。打断轮不调用（留 None 走 fallback）。
+        """
+        base = getattr(self, '_ai_pcm_size_base', None) or {}
+        cfg = self.PCM_APP_CONFIG.get(app)
+        if not cfg:
+            return None
+        ai_suffix = cfg['ai_suffix']
+        deadline = int(time.time() * 1000) + timeout_ms
+        while int(time.time() * 1000) < deadline:
+            if self._check_stop('ai_pcm首帧检测'):
+                return None
+            files = []
+            for d in cfg['cache_dirs']:
+                files.extend(self._list_dir_pcm(device_sn, d))
+            for f in files:
+                if not f.endswith(ai_suffix):
+                    continue
+                sz = self._get_device_file_size(device_sn, f)
+                if sz > 0 and sz > base.get(f, 0):
+                    ts = int(time.time() * 1000)
+                    self._log(level='INFO',
+                              content=f"ai PCM 首帧: {f} size={sz} base={base.get(f, 0)} ts={ts}",
+                              task_id=task_id, test_case_id=test_case_id)
+                    return ts
+            time.sleep(0.1)
+        self._log(level='WARNING',
+                  content=f"ai PCM 首帧检测超时({timeout_ms}ms), first_frame 将走录屏 fallback",
+                  task_id=task_id, test_case_id=test_case_id)
+        return None
+
     def _pick_pcm(self, device_sn, files, suffix, exclude=None,
                   task_id=None, test_case_id=None):
         """从文件列表中按后缀匹配一个 pcm 路径，多个匹配时【取文件最大者】。
@@ -508,6 +563,10 @@ class Xiaoyilivechat(HarmonyDriver):
         self._log(level='DEBUG',
                   content=f"pre_process kwargs: {kwargs}",
                   task_id=task_id, test_case_id=test_case_id)
+        # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长
+        self._ai_first_frame_ms = None
+        self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
+            device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'))
         # 开局清掉可能残留的华为音乐(上轮/上个用例小艺误识别"播放音乐"拉起的),
         # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。
         self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
@@ -573,6 +632,10 @@ class Xiaoyilivechat(HarmonyDriver):
                       task_id=task_id, test_case_id=test_case_id)
             replied = True
         else:
+            # 检测 ai PCM 首帧(模型回复起始时刻,替代录屏 first_frame)
+            self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
+                device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
+                task_id=task_id, test_case_id=test_case_id)
             replied=self._wait_for_condition(
                 lambda:driver.find_component(By.text("说话可打断"))  is None,
                 timeout=60,interval=1,
@@ -693,7 +756,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 'wav_path': ai_wav or '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
-                'first_frame_ms': None,
+                'first_frame_ms': getattr(self, '_ai_first_frame_ms', None),
                 'question': question_text or '',
                 'answer': answer_text or '',
                 'user_wav': user_wav or '',
@@ -702,7 +765,8 @@ class Xiaoyilivechat(HarmonyDriver):
         record_file_name = getattr(self, '_record_file_name', 'record.mp4')
         question_text = getattr(self, 'question_text', None)
         answer_text = getattr(self, 'answer_text', None)
-        first_frame_ms = getattr(self, '_recorder_first_frame_ms', None)
+        # first_frame_ms 优先用 ai PCM 首帧(模型回复起始时刻)，缺失则回退录屏 first_frame
+        first_frame_ms = getattr(self, '_ai_first_frame_ms', None) or getattr(self, '_recorder_first_frame_ms', None)
         wav_path = None
         query = None
         device_path = ''
