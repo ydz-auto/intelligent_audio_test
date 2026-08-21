@@ -75,8 +75,10 @@ class APIConcurrencyManager:
             self.api_waiting_counts[api_id] = current - 1
             return self.api_waiting_counts[api_id]
 
-    def acquire(self, api_id, task_id, current_test_case_id, max_process=5, timeout=None):
+    def acquire(self, api_id, task_id, current_test_case_id, max_process=None, timeout=None):
         """获取 API 执行权"""
+        if max_process is None:
+            max_process = config_manager.get_value('api_executor', 'default_max_process', 5)
         wait_timeout = timeout or self.max_wait_time
         self._log(
             level='DEBUG',

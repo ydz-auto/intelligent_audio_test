@@ -53,6 +53,10 @@ def call_modelscope_asr(wav_path, language=None):
 
         为兼容老调用方，本函数返回 [result] 形式（长度 1 的列表），让 parse_result 能继续工作。
     """
+    if not os.path.isfile(wav_path):
+        logger.error(f"wav 文件不存在: {wav_path}")
+        return [{'text': '', 'chunks': []}]
+
     url = f"{ASR_SERVER_URL}/asr"
     logger.info(f"调用远程 ASR: {url}  wav={wav_path}")
 
@@ -89,6 +93,10 @@ def call_modelscope_asr_word(wav_path, language=None):
     Returns:
         [result] 形式，result = {"text": "...", "chunks": [{"text": "字", "timestamp": [start_s, end_s]}, ...]}
     """
+    if not os.path.isfile(wav_path):
+        logger.error(f"wav 文件不存在: {wav_path}")
+        return [{'text': '', 'chunks': []}]
+
     url = f"{ASR_SERVER_URL}/asr_word"
     logger.info(f"调用远程 ASR(词级): {url}  wav={wav_path}")
 

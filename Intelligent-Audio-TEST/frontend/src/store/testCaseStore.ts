@@ -25,6 +25,8 @@ interface GroupPaginationInfo {
   perPage: number;
   total: number;
   algorithmType?: string;
+  keyword?: string;
+  dimensionId?: number;
 }
 
 export const useTestCaseStore = defineStore('testCase', () => {
@@ -163,7 +165,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
       
       const [groupsResponse, testCasesResponse] = await Promise.all([
-        testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType }),
+        testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType, keyword: params.keyword, type: params.testType, dimension_id: params.dimensionId }),
         testcasesApi.getAll({
           page,
           perPage,
@@ -172,6 +174,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           group_id: params.groupId,
           type: params.testType,
           algorithm_type: params.algorithmType,
+          dimension_id: params.dimensionId,
           include_deleted: params.includeDeleted || false
         })
       ]);
@@ -259,6 +262,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
         keyword: params.keyword,
         type: params.testType,
         algorithm_type: params.algorithmType,
+        dimension_id: params.dimensionId,
         include_deleted: params.includeDeleted || false
       });
 
@@ -425,6 +429,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
         keyword: params.keyword,
         tag: params.tag,
         algorithm_type: params.algorithmType,
+        dimension_id: params.dimensionId,
         include_deleted: params.includeDeleted || false
       });
       
@@ -454,7 +459,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
         pages: response?.pages || 1,
         perPage: response?.perPage || perPage,
         total: response?.total || 0,
-        algorithmType: params.algorithmType
+        algorithmType: params.algorithmType,
+        keyword: params.keyword,
+        dimensionId: params.dimensionId
       };
       
       const group = fullGroupsMap.value[groupKey];
@@ -496,7 +503,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
 
     return fetchCasesByGroup(groupId, {
       page: currentPagination.page + 1,
-      algorithmType: currentPagination.algorithmType
+      algorithmType: currentPagination.algorithmType,
+      keyword: currentPagination.keyword,
+      dimensionId: currentPagination.dimensionId
     });
   };
 
@@ -1180,6 +1189,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     search?: string;
     tag?: string;
     algorithmType?: string;
+    dimensionId?: number;
   }): Promise<(string | number)[]> => {
     try {
       const result: any = await testcasesApi.getIdsByFilter(filters);

@@ -435,7 +435,8 @@ class BaseExecutor:
         eval_params = CaseParameterExtractor.get_evaluation_params(
             case_config=full_case_params,
             algorithm_result=algo_result,
-            test_type=test_type
+            test_type=test_type,
+            round_number=round_number
         )
         
         eval_params['algorithm_type'] = algorithm_type

@@ -31,6 +31,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         # 从统一配置文件加载并发配置
         self.max_queue_size = config_manager.get_value('evaluation_service', 'max_queue_size', 100)  # 每个端点的最大队列长度
         self.max_wait_time = config_manager.get_value('evaluation_service', 'max_wait_time', 30)  # 任务在队列中的最大等待时间（秒）
+        self.default_max_concurrent = config_manager.get_value('evaluation_service', 'default_max_concurrent', 10)  # 端点未配置时的默认并发数
 
     def load_endpoint_configs(self, dimensions):
         """
@@ -48,7 +49,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                     if endpoint_url:
                         # 如果端点已经存在配置，不覆盖，确保配置的一致性
                         if endpoint_url not in self.endpoint_configs:
-                            max_process = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', 1)
+                            max_process = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', self.default_max_concurrent)
                             self.endpoint_configs[endpoint_url] = max_process
                             self._log(
                                 level='debug',
@@ -132,7 +133,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
         with self.global_lock:
             if endpoint not in self.endpoint_configs:
-                self.endpoint_configs[endpoint] = 1
+                self.endpoint_configs[endpoint] = self.default_max_concurrent
 
         max_process = self.endpoint_configs[endpoint]
         semaphore = self._get_or_create_semaphore(endpoint, max_process)
@@ -182,10 +183,10 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
     def _execute_async_api_flow(self, selected_url, payload, dim_info, endpoints, api_url,
                                 task_id, test_case_id, api_id, dim_names, audio_field_names=None):
         """
-        执行异步任务API流程：创建任务 -> 释放槽位 -> 轮询等待 -> 获取结果
+        执行异步任务API流程：创建任务 -> 轮询等待 -> 获取结果
 
         Returns:
-            (resp_data, slot_released) 元组
+            dict: 响应数据
         """
         # 1. 创建任务
         create_task_payload = payload.copy() if isinstance(payload, dict) else {}
@@ -208,7 +209,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         )
 
         # 如果有endpoints且使用api_url，添加endpoints参数用于分布式调度
-        if endpoints and api_url:
+        # 注意：当 api_url 就是评估服务自身时，不传 endpoints，避免远程分发到自身形成循环
+        if endpoints and api_url and api_url != selected_url:
             formatted_endpoints = []
             for endpoint_item in endpoints:
                 endpoint_url = get_endpoint_url(endpoint_item)
@@ -229,12 +231,10 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         else:
             create_response = self.create_task(selected_url, create_task_payload, task_id=task_id)
 
-        # 创建任务后立即释放端点槽位，轮询等待不需要占用并发槽位
-        self.release_endpoint_slot(selected_url)
         self._log(
             level='DEBUG',
             category='execution',
-            content=f"任务已创建，释放端点 {selected_url} 并发槽位，开始轮询结果",
+            content=f"任务已创建，开始轮询结果",
             task_id=task_id,
             test_case_id=test_case_id,
             api_id=api_id
@@ -339,93 +339,46 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         resp_data = None
 
         try:
-            # 尝试获取端点并发槽位，支持排队等待
             self._log(
-                level='DEBUG',
+                level='INFO',
                 category='execution',
-                content=f"尝试获取端点 {selected_url} 的并发槽位",
+                content=f"调用API端点评估: {selected_url} | 维度: {dim_names} | 有效载荷: {str(payload)}",
                 task_id=task_id,
                 test_case_id=test_case_id,
                 api_id=api_id
             )
 
-            # 使用带超时的acquire_endpoint_slot方法，支持排队等待
-            if not self.acquire_endpoint_slot(selected_url):
-                stack_trace = traceback.format_exc()
+            # 所有评测任务都需要使用异步任务
+            is_async_api = True
+
+            if is_async_api:
+                # 使用异步任务API流程
                 self._log(
-                    level='ERROR',
+                    level='INFO',
                     category='execution',
-                    content=f"端点 {selected_url} 并发数已满，排队超时，无法获取槽位，跳过评估\n堆栈信息: {stack_trace}",
+                    content=f"使用异步任务API评估 {dim_names} 维度",
                     task_id=task_id,
                     test_case_id=test_case_id,
                     api_id=api_id
                 )
-                return None, None
+
+                resp_data = self._execute_async_api_flow(
+                    selected_url, payload, dim_info, endpoints, api_url,
+                    task_id, test_case_id, api_id, dim_names,
+                    audio_field_names=audio_field_names
+                )
+            else:
+                # 使用传统同步API
+                resp_data = self.make_api_request(selected_url, method, headers, payload)
 
             self._log(
-                level='DEBUG',
+                level='INFO',
                 category='execution',
-                content=f"成功获取端点 {selected_url} 的并发槽位",
+                content=f"端点 {selected_url} 调用成功，响应：{str(resp_data)}，获取评估结果",
                 task_id=task_id,
                 test_case_id=test_case_id,
                 api_id=api_id
             )
-
-            slot_released = False
-            try:
-                self._log(
-                    level='INFO',
-                    category='execution',
-                    content=f"调用API端点评估: {selected_url} | 维度: {dim_names} | 有效载荷: {str(payload)}",
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    api_id=api_id
-                )
-
-                # 所有评测任务都需要使用异步任务
-                is_async_api = True
-
-                if is_async_api:
-                    # 使用异步任务API流程
-                    self._log(
-                        level='INFO',
-                        category='execution',
-                        content=f"使用异步任务API评估 {dim_names} 维度",
-                        task_id=task_id,
-                        test_case_id=test_case_id,
-                        api_id=api_id
-                    )
-
-                    resp_data = self._execute_async_api_flow(
-                        selected_url, payload, dim_info, endpoints, api_url,
-                        task_id, test_case_id, api_id, dim_names,
-                        audio_field_names=audio_field_names
-                    )
-                    slot_released = True
-                else:
-                    # 使用传统同步API
-                    resp_data = self.make_api_request(selected_url, method, headers, payload)
-
-                self._log(
-                    level='INFO',
-                    category='execution',
-                    content=f"端点 {selected_url} 调用成功，响应：{str(resp_data)}，获取评估结果",
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    api_id=api_id
-                )
-            finally:
-                # 释放端点并发槽位（如果尚未释放）
-                if not slot_released:
-                    self.release_endpoint_slot(selected_url)
-                    self._log(
-                        level='DEBUG',
-                        category='execution',
-                        content=f"释放端点 {selected_url} 并发槽位",
-                        task_id=task_id,
-                        test_case_id=test_case_id,
-                        api_id=api_id
-                    )
         except Exception as e:
             self._log(
                 level='WARNING',
@@ -472,83 +425,47 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 continue
 
             try:
-                # 尝试获取备用端点的并发槽位，支持排队等待
-                self._log(
-                    level='DEBUG',
-                    category='execution',
-                    content=f"尝试获取备用端点 {fallback_url} 的并发槽位",
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    api_id=api_id
-                )
+                # 所有评测任务都需要使用异步任务
+                is_async_api = True
 
-                if not self.acquire_endpoint_slot(fallback_url):
-                    self._log(
-                        level='WARNING',
-                        category='execution',
-                        content=f"备用端点 {fallback_url} 并发数已满，排队超时，跳过该端点",
-                        task_id=task_id,
-                        test_case_id=test_case_id,
-                        api_id=api_id
+                if is_async_api:
+                    resp_data = self._execute_async_api_flow(
+                        fallback_url, payload, dim_info, endpoints, None,
+                        task_id, test_case_id, api_id, dim_names,
+                        audio_field_names=audio_field_names
                     )
-                    continue
 
-                self._log(
-                    level='DEBUG',
-                    category='execution',
-                    content=f"成功获取备用端点 {fallback_url} 的并发槽位",
-                    task_id=task_id,
-                    test_case_id=test_case_id,
-                    api_id=api_id
-                )
-
-                fallback_slot_released = False
-                try:
-                    # 所有评测任务都需要使用异步任务
-                    is_async_api = True
-
-                    if is_async_api:
-                        resp_data = self._execute_async_api_flow(
-                            fallback_url, payload, dim_info, endpoints, None,
-                            task_id, test_case_id, api_id, dim_names,
-                            audio_field_names=audio_field_names
-                        )
-                        fallback_slot_released = True
-
-                        if resp_data and '__error__' not in resp_data:
-                            selected_url = fallback_url
-                            self._log(
-                                level='INFO',
-                                content=f"切换到备用端点 {fallback_url} 成功，异步任务完成",
-                                task_id=task_id,
-                                test_case_id=test_case_id,
-                                api_id=api_id
-                            )
-                            break
-                        else:
-                            error_msg = resp_data.get('__error__', 'Unknown error') if isinstance(resp_data, dict) else 'Unknown error'
-                            self._log(
-                                level='WARNING',
-                                content=f"备用端点 {fallback_url} 异步任务失败: {error_msg}",
-                                task_id=task_id,
-                                test_case_id=test_case_id,
-                                api_id=api_id
-                            )
-                    else:
-                        # 使用传统同步API
-                        resp_data = self.make_api_request(fallback_url, method, headers, payload)
+                    if resp_data and '__error__' not in resp_data:
                         selected_url = fallback_url
                         self._log(
                             level='INFO',
-                            content=f"切换到备用端点 {fallback_url} 成功",
+                            content=f"切换到备用端点 {fallback_url} 成功，异步任务完成",
                             task_id=task_id,
                             test_case_id=test_case_id,
                             api_id=api_id
                         )
                         break
-                finally:
-                    if not fallback_slot_released:
-                        self.release_endpoint_slot(fallback_url)
+                    else:
+                        error_msg = resp_data.get('__error__', 'Unknown error') if isinstance(resp_data, dict) else 'Unknown error'
+                        self._log(
+                            level='WARNING',
+                            content=f"备用端点 {fallback_url} 异步任务失败: {error_msg}",
+                            task_id=task_id,
+                            test_case_id=test_case_id,
+                            api_id=api_id
+                        )
+                else:
+                    # 使用传统同步API
+                    resp_data = self.make_api_request(fallback_url, method, headers, payload)
+                    selected_url = fallback_url
+                    self._log(
+                        level='INFO',
+                        content=f"切换到备用端点 {fallback_url} 成功",
+                        task_id=task_id,
+                        test_case_id=test_case_id,
+                        api_id=api_id
+                    )
+                    break
             except Exception as fallback_e:
                 self._log(
                     level='WARNING',

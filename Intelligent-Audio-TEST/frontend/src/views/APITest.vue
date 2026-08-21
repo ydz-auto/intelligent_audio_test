@@ -81,6 +81,7 @@
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
           @tag-filter-change="handleTagFilterChange"
+          @group-filter-change="handleGroupFilterChange"
           @load-more-tags="loadMoreTagView"
         />
       </TestStepContainer>
@@ -417,15 +418,17 @@ const {
   isVoiceLLM,
   stepHints,
   fetchTagView,
-  loadMoreTagView
+  loadMoreTagView,
+  handleGroupFilterChange
 } = useApiTest()
 
 // 标签视图筛选变化时重新请求数据（固定 testType=api）
-const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string }) => {
+const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
   fetchTagView({
     keyword: filters.keyword,
     testType: 'api',
     algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
+    dimensionId: filters.dimensionId,
   });
 };
 

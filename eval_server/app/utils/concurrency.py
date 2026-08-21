@@ -17,6 +17,9 @@ class ConcurrencyManager:
             all_types = [
                 'wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer',
                 'llm_judge',
+                'turn_taking', 'interruption_metrics', 'non_interactive_latency',
+                'noise_latency', 'env_judge',
+                'high_freq_turn_taking', 'high_freq_llm_judge',
             ]
             limits = getattr(config, 'CONCURRENCY_LIMITS', {})
             default_max = getattr(config, 'DEFAULT_MAX_CONCURRENCY', 2)
@@ -30,8 +33,10 @@ class ConcurrencyManager:
             cls._initialized = True
 
     @classmethod
-    def register_task_type(cls, task_type: str, max_concurrency: int = 2):
+    def register_task_type(cls, task_type: str, max_concurrency: int = None):
         """Dynamically register a new task type."""
+        if max_concurrency is None:
+            max_concurrency = getattr(config, 'DEFAULT_MAX_CONCURRENCY', 3)
         with cls._lock:
             if task_type not in cls._stats:
                 cls._stats[task_type] = {
@@ -53,7 +58,7 @@ class ConcurrencyManager:
             if stats is None:
                 cls._stats[task_type] = {
                     'current': 0,
-                    'max': getattr(config, 'DEFAULT_MAX_CONCURRENCY', 2),
+                    'max': getattr(config, 'DEFAULT_MAX_CONCURRENCY', 3),
                 }
                 stats = cls._stats[task_type]
             return stats['current'] < stats['max']

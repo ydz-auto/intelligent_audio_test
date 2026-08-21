@@ -277,6 +277,37 @@ export function useEvaluation() {
            selectedDimensions.value.length === filteredDimensions.value.length;
   });
 
+  const hierarchicalDimensions = computed(() => {
+    const filtered = filteredDimensions.value;
+    const mainDims = filtered.filter(d => !d.parentDimensionId && d.dimensionType !== 'sub');
+    const subDims = filtered.filter(d => d.parentDimensionId || d.dimensionType === 'sub');
+
+    const result: any[] = [];
+    const placedIds = new Set<number | string>();
+
+    for (const main of mainDims) {
+      result.push({ ...main, _level: 0, _isMain: true, _parentName: '' });
+      placedIds.add(main.id);
+
+      const children = subDims.filter(s => s.parentDimensionId === main.id);
+      for (const child of children) {
+        result.push({ ...child, _level: 1, _isMain: false, _parentName: main.name });
+        placedIds.add(child.id);
+      }
+    }
+
+    // Orphan sub-dimensions whose parent is not in the filtered set
+    for (const sub of subDims) {
+      if (!placedIds.has(sub.id)) {
+        const parent = dimensions.value.find(d => d.id === sub.parentDimensionId);
+        result.push({ ...sub, _level: 1, _isMain: false, _parentName: parent?.name || '' });
+        placedIds.add(sub.id);
+      }
+    }
+
+    return result;
+  });
+
   const evaluationFields = computed(() => [
     { key: 'id', type: 'hidden' },
     { key: 'name', label: '维度名称', type: 'text', required: true, placeholder: '请输入维度名称', group: '基本信息' },
@@ -1438,8 +1469,9 @@ export function useEvaluation() {
     showImportPreview, 
     importPreview, 
     newCategory, 
-    filteredDimensions, 
-    isAllSelected, 
+    filteredDimensions,
+    hierarchicalDimensions,
+    isAllSelected,
     fetchData, 
     initEvaluation, 
     cleanupEvaluation, 

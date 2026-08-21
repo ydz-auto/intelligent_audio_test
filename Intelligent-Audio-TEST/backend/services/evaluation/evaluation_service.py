@@ -85,10 +85,10 @@ class EvaluationService(EvaluationLoggerMixin):
                 max_timeout = self._get_timeout_from_dim_config(dim_data, 30)
                 # 从端点配置获取 max_process（并发消费线程数）
                 endpoints = dim_data.get('api_endpoints', [])
-                max_concurrent = 1
+                max_concurrent = self.api_client.default_max_concurrent
                 if endpoints and isinstance(endpoints, list) and len(endpoints) > 0:
                     endpoint_item = endpoints[0]
-                    max_concurrent = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', 1)
+                    max_concurrent = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', self.api_client.default_max_concurrent)
                 # 也从 api_client.endpoint_configs 获取
                 if endpoint_url in self.api_client.endpoint_configs:
                     max_concurrent = self.api_client.endpoint_configs[endpoint_url]
@@ -118,13 +118,14 @@ class EvaluationService(EvaluationLoggerMixin):
                                     endpoint_url = get_endpoint_url(endpoint_item)
                                     if endpoint_url:
                                         timeout = get_endpoint_field(endpoint_item, 'max_timeout', 'maxTimeout', 30)
+                                        max_concurrent = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', self.api_client.default_max_concurrent)
                                         if endpoint_url not in self.endpoint_workers:
-                                            worker = EndpointWorker(endpoint_url, self, max_timeout=timeout)
+                                            worker = EndpointWorker(endpoint_url, self, max_timeout=timeout, max_concurrent=max_concurrent)
                                             self.endpoint_workers[endpoint_url] = worker
                                             worker.start()
                                             self._log(
                                                 level='INFO',
-                                                content=f"预创建端点Worker: {endpoint_url}, 超时: {timeout}秒"
+                                                content=f"预创建端点Worker: {endpoint_url}, 超时: {timeout}秒, 并发: {max_concurrent}"
                                             )
                     finally:
                         local_db_session.close()
@@ -217,7 +218,10 @@ class EvaluationService(EvaluationLoggerMixin):
 
                 if source in ('device', 'api'):
                     # output 的 key 是 target_param 名（build_algorithm_result 已映射）
-                    value = output.get(target_param, '')
+                    # 用 None 而非 '' 作为默认值，避免空串覆盖维度级默认值
+                    raw_val = output.get(target_param)
+                    if raw_val is not None and raw_val != '':
+                        value = raw_val
                 elif source == 'reference':
                     # 从按轮加载的 reference 取
                     ref_item = round_ref_data.get(source_param)
@@ -534,9 +538,19 @@ class EvaluationService(EvaluationLoggerMixin):
                     # 子维度继承父维度的API配置和 input_params（output_params 不继承，各子维度自己挂）
                     if getattr(dim, 'dimension_type', 'main') == 'sub':
                         parent_dim = getattr(dim, 'parent_dimension', None)
+                        if not parent_dim and getattr(dim, 'parent_dimension_id', None):
+                            parent_dim = local_db_session.query(Dimension).get(dim.parent_dimension_id)
                         if parent_dim:
                             # API 配置：仅当子维度缺 api_endpoints/api_url 时继承
-                            if not dim_dict.get('api_endpoints') and not dim_dict.get('api_url'):
+                            # 注意 api_endpoints 可能为空列表 [] 或包含空URL的列表
+                            sub_endpoints = dim_dict.get('api_endpoints')
+                            has_valid_endpoint = False
+                            if sub_endpoints and isinstance(sub_endpoints, list):
+                                for ep in sub_endpoints:
+                                    if isinstance(ep, dict) and (ep.get('url') or ep.get('endpoint')):
+                                        has_valid_endpoint = True
+                                        break
+                            if not has_valid_endpoint and not dim_dict.get('api_url'):
                                 for k in ['api_endpoints', 'api_url', 'api_settings', 'task_type_code']:
                                     if not dim_dict.get(k):
                                         dim_dict[k] = getattr(parent_dim, k, None)
@@ -576,6 +590,7 @@ class EvaluationService(EvaluationLoggerMixin):
     def _create_dimension_results(self, dimension_data_list, result_id, task_id, test_case_id, algorithm_type, kwargs):
         """为每个维度创建 TestResultDimension 记录"""
         dimension_result_map = {}
+        round_number = kwargs.get('round_number')
         for dim_data in dimension_data_list:
             dim_id = dim_data['id']
             dim_name = dim_data['name']
@@ -585,6 +600,48 @@ class EvaluationService(EvaluationLoggerMixin):
             with current_app.app_context():
                 local_db_session = db.session()
                 try:
+                    # 检查是否已存在同一 result_id + dim_id + round_number 的记录
+                    existing_query = local_db_session.query(TestResultDimension).filter(
+                        TestResultDimension.test_result_id == result_id,
+                        TestResultDimension.dimension_id == dim_id,
+                    )
+                    if round_number is not None:
+                        existing_query = existing_query.filter(
+                            TestResultDimension.round_number == round_number
+                        )
+                    else:
+                        existing_query = existing_query.filter(
+                            TestResultDimension.round_number.is_(None)
+                        )
+                    existing = existing_query.first()
+
+                    if existing:
+                        # 已存在记录：如果是 pending 状态则复用，否则也复用（避免重复创建）
+                        dimension_result_id = existing.id
+                        if existing.evaluation_status == 'pending':
+                            self._log(
+                                level='DEBUG',
+                                content=f"复用已有 pending 维度记录: dim_name={dim_name}, dim_id={dim_id}, dr_id={dimension_result_id}",
+                                task_id=task_id,
+                                test_case_id=test_case_id
+                            )
+                        else:
+                            # 重置为 pending 以便重新评估
+                            existing.evaluation_status = 'pending'
+                            existing.score = None
+                            existing.error_message = None
+                            existing.api_request_body = None
+                            existing.api_raw_response = None
+                            local_db_session.commit()
+                            self._log(
+                                level='DEBUG',
+                                content=f"重置已有维度记录为 pending: dim_name={dim_name}, dim_id={dim_id}, dr_id={dimension_result_id}",
+                                task_id=task_id,
+                                test_case_id=test_case_id
+                            )
+                        dimension_result_map[dim_id] = dimension_result_id
+                        continue
+
                     # DEBUG: 记录创建 TestResultDimension 时的 result_id 值和类型
                     self._log(
                         level='DEBUG',
@@ -802,19 +859,28 @@ class EvaluationService(EvaluationLoggerMixin):
         algo_results = {}
         if isinstance(algorithm_result, dict):
             # 多轮结构：output 字段在 rounds[].output 里（key 是 target_param 名）
+            # 单轮评估(round_number有值)取 rounds[round_number]，多轮整体(round_number=None)取 rounds[-1]
             rounds_data = algorithm_result.get('rounds', [])
-            first_output = rounds_data[0].get('output', {}) if rounds_data and isinstance(rounds_data[0], dict) else {}
+            if rounds_data:
+                idx = round_number if round_number is not None else -1
+                if 0 <= idx < len(rounds_data) and isinstance(rounds_data[idx], dict):
+                    ref_output = rounds_data[idx].get('output', {})
+                else:
+                    ref_output = {}
+            else:
+                ref_output = {}
             for key in output_field_keys:
                 val = algorithm_result.get(key)
-                if val is None and first_output:
-                    val = first_output.get(key)
+                if val is None and ref_output:
+                    val = ref_output.get(key)
                 self._log(
                     level='DEBUG',
                     content=f"[task_data algo_results] key={key}, value={val}",
                     task_id=task_id,
                     test_case_id=test_case_id
                 )
-                algo_results[key] = val if val is not None else ''
+                # 保留 None 而非转为空串，让维度级默认值有机会覆盖
+                algo_results[key] = val
 
         for key, value in algo_results.items():
             if key not in task_data:

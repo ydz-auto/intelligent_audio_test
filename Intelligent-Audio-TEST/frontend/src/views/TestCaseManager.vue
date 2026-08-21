@@ -28,6 +28,7 @@
       @open-import-modal="openImportTestCaseModal"
       @open-export-modal="openExportTestCaseModal"
       @tag-filter-change="handleTagFilterChange"
+      @group-filter-change="handleGroupFilterChange"
       @load-more-tags="loadMoreTagView"
     />
   </div>
@@ -56,6 +57,7 @@ const {
   openImportTestCaseModal,
   openExportTestCaseModal,
   handleTagFilterChange,
+  handleGroupFilterChange,
   loadMoreTagView
 } = useTestCaseManager();
 </script>

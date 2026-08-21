@@ -143,8 +143,8 @@ export function useE2eTest() {
     openEditGroupModal(groupName);
   };
 
-  const initializeE2eTests = async (algorithmType?: string) => {
-    await fetchTestCases({ algorithmType });
+  const initializeE2eTests = async (algorithmType?: string, keyword?: string, dimensionId?: number) => {
+    await fetchTestCases({ algorithmType, keyword, testType: 'e2e', dimensionId });
   };
 
   const handleE2eTestCaseSave = async (data: TestCaseFormData & { id?: string }) => {

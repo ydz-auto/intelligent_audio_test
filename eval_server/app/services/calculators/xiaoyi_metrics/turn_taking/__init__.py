@@ -861,8 +861,8 @@ def calculate_high_freq_llm_judge(task_params):
     scenario_type = task_params.get('scenario_type') or ''
     scenario_rules = task_params.get('scenario_rules') or ''
     model = task_params.get('llm_model') or ''
-    max_tokens = task_params.get('max_tokens', 4096)
-    temperature = task_params.get('temperature', 0.1)
+    max_tokens = int(task_params.get('max_tokens', 4096) or 4096)
+    temperature = float(task_params.get('temperature', 0.1) or 0.1)
 
     print(
         "\n==================== high_freq_llm_judge 收到数据 ====================\n"

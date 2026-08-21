@@ -1,4 +1,4 @@
-﻿from flask import request
+from flask import request
 from backend.models.models import TestCaseGroup, TestCase
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response
@@ -15,21 +15,38 @@ class GroupController:
         page = request.args.get('page', 1, type=int)
         per_page = request.args.get('per_page', None, type=int) or request.args.get('page_size', 100, type=int)
         algorithm_type = request.args.get('algorithm_type')
-        
+        keyword = request.args.get('keyword')
+        test_type = request.args.get('type')
+        dimension_id = request.args.get('dimension_id', type=int)
+
         query = TestCaseGroup.query
 
-        case_counts = {}
+        # 构建用例计数过滤条件
+        case_filters = [TestCase.deleted == False]
         if algorithm_type:
-            # 按用例级 algorithm_type 统计:分组自身 algorithm_type 可能为空,
-            # 不能用它过滤,否则会漏掉含该算法用例的分组(导致数量徽标恒为 0)。
-            # 只返回含该算法用例的分组,计数为该算法下的用例数。
+            case_filters.append(TestCase.algorithm_type == algorithm_type)
+        if test_type and test_type in ['api', 'e2e']:
+            case_filters.append(TestCase.test_type == test_type)
+        if dimension_id:
+            dim_str = str(dimension_id)
+            case_filters.append(
+                TestCase.config.cast(db.Text).like(f'"id": {dim_str}') |
+                TestCase.config.cast(db.Text).like(f'"id":{dim_str}')
+            )
+        if keyword:
+            case_filters.append(
+                (TestCase.id.like(f'%{keyword}%')) |
+                (TestCase.name.like(f'%{keyword}%')) |
+                (TestCase.description.like(f'%{keyword}%'))
+            )
+
+        case_counts = {}
+        if algorithm_type or test_type or keyword or dimension_id:
+            # 按筛选条件统计各分组下匹配的用例数
             counts_query = db.session.query(
                 TestCase.group_id,
                 func.count(TestCase.id)
-            ).filter(
-                TestCase.deleted == False,
-                TestCase.algorithm_type == algorithm_type
-            ).group_by(TestCase.group_id).all()
+            ).filter(*case_filters).group_by(TestCase.group_id).all()
 
             case_counts = {str(gid): count for gid, count in counts_query}
             query = query.filter(TestCaseGroup.id.in_(list(case_counts.keys())))
@@ -39,7 +56,7 @@ class GroupController:
         groups = query.order_by(TestCaseGroup.created_at.desc())
         groups = groups.paginate(page=page, per_page=per_page, error_out=False)
 
-        if not algorithm_type:
+        if not (algorithm_type or test_type or keyword or dimension_id):
             group_ids = [g.id for g in groups.items]
             if group_ids:
                 counts_query = db.session.query(
@@ -51,7 +68,7 @@ class GroupController:
                 ).group_by(TestCase.group_id).all()
 
                 case_counts = {str(gid): count for gid, count in counts_query}
-        
+
         data = []
         for group in groups.items:
             data.append(
@@ -65,7 +82,7 @@ class GroupController:
                     test_case_count=case_counts.get(str(group.id), 0),
                 )
             )
-        
+
         return success_response(
             GroupListData(
                 items=data,

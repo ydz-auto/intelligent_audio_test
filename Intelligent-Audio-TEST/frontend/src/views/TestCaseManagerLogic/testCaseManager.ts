@@ -29,7 +29,7 @@ export function useTestCaseManager() {
   const viewMode = ref<'group' | 'tag'>('group');
 
   // 当前筛选条件（由 TestCaseListContainer 上报）
-  const currentFilters = ref<{ keyword?: string; testType?: string; algorithmType?: string }>({});
+  const currentFilters = ref<{ keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }>({});
 
   const refreshCurrentView = async () => {
     if (viewMode.value === 'tag') {
@@ -37,12 +37,14 @@ export function useTestCaseManager() {
         keyword: currentFilters.value.keyword,
         testType: currentFilters.value.testType,
         algorithmType: currentFilters.value.algorithmType,
+        dimensionId: currentFilters.value.dimensionId,
       });
     } else {
       await fetchTestCases({
         keyword: currentFilters.value.keyword,
         testType: currentFilters.value.testType,
         algorithmType: currentFilters.value.algorithmType,
+        dimensionId: currentFilters.value.dimensionId,
       });
     }
   };
@@ -52,14 +54,28 @@ export function useTestCaseManager() {
     await refreshCurrentView();
   });
 
-  // 由 TestCaseListContainer 上报筛选条件变化
-  const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string }) => {
+  // 由 TestCaseListContainer 上报筛选条件变化（标签视图）
+  const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     currentFilters.value = filters;
     if (viewMode.value === 'tag') {
       fetchTagView({
         keyword: filters.keyword,
         testType: filters.testType,
         algorithmType: filters.algorithmType,
+        dimensionId: filters.dimensionId,
+      });
+    }
+  };
+
+  // 由 TestCaseListContainer 上报筛选条件变化（分组视图）
+  const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
+    currentFilters.value = filters;
+    if (viewMode.value === 'group') {
+      fetchTestCases({
+        keyword: filters.keyword,
+        testType: filters.testType,
+        algorithmType: filters.algorithmType,
+        dimensionId: filters.dimensionId,
       });
     }
   };
@@ -140,6 +156,7 @@ export function useTestCaseManager() {
     handleTestCaseAction,
     refreshCurrentView,
     handleTagFilterChange,
+    handleGroupFilterChange,
     loadMoreTagView
   };
 }

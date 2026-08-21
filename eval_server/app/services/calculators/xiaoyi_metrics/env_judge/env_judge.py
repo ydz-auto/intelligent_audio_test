@@ -665,7 +665,7 @@ def evaluate_env_judge(
     user_chunks: Optional[List[Dict[str, Any]]] = None
     if user_wav and os.path.isfile(user_wav):
         try:
-            from app.services.xiaoyi_metrics.turn_taking import _get_asr_chunks
+            from app.services.calculators.xiaoyi_metrics.turn_taking import _get_asr_chunks
             user_chunks = _get_asr_chunks(user_wav)
         except Exception as e:
             logger.warning(f'[env_judge] 用户侧 ASR 失败，时间线将缺用户段: {e}')

@@ -73,6 +73,15 @@
             </div>
           </div>
           <div class="filter-section">
+            <label for="dimensionFilter">评估维度:</label>
+            <div class="filter-select">
+              <select id="dimensionFilter" class="form-input" v-model="dimensionFilter">
+                <option value="all">所有维度</option>
+                <option v-for="dim in dimensionOptions" :key="dim.id" :value="dim.id">{{ dim.name }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-section">
             <label for="groupFilter">用例分组:</label>
             <div class="filter-select">
               <select id="groupFilter" class="form-input" v-model="groupFilter">
@@ -350,7 +359,7 @@ import TestCaseGroupActions from './TestCaseGroupActions.vue';
 import AudioPlayerModal from '../AudioPlayerModal.vue';
 import AudioPreviewModal from '../modal/AudioPreviewModal.vue';
 import CRUDFormModal from '../modal/CRUDFormModal.vue';
-import { playbackApi, algorithmApi } from '../../../utils/api';
+import { playbackApi, algorithmApi, evaluationApi } from '../../../utils/api';
 import api from '../../../utils/api';
 import { useTestCaseStore } from '../../../store/testCaseStore';
 import { normalizeTestCaseConfig } from '../../../utils/utils';
@@ -398,7 +407,8 @@ const emit = defineEmits<{
   (e: 'openExportModal'): void;
   (e: 'updateSelectedCases', selectedCases: (string | number)[]): void;
   (e: 'update:viewMode', mode: 'group' | 'tag'): void;
-  (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string }): void;
+  (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
+  (e: 'groupFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
   (e: 'loadMoreTags'): void;
 }>();
 
@@ -413,6 +423,8 @@ const groupFilter = ref('all');
 const tagFilter = ref('all');
 const sortBy = ref('count');
 const sortOrder = ref('desc');
+const dimensionFilter = ref<number | 'all'>('all');
+const dimensionOptions = ref<{ id: number; name: string }[]>([]);
 
 // 视图模式：'group' 分组视图 | 'tag' 标签视图
 const innerViewMode = ref<'group' | 'tag'>(props.viewMode || 'group');
@@ -478,6 +490,18 @@ async function loadAlgorithmOptions() {
   }
 }
 
+async function loadDimensionOptions() {
+  try {
+    const data = await evaluationApi.getOptions();
+    dimensionOptions.value = (data?.dimensions || [])
+      .filter((d: any) => d.dimension_type !== 'sub')
+      .map((d: any) => ({ id: d.id, name: d.name }));
+  } catch (error) {
+    console.error('加载评估维度选项失败:', error);
+    dimensionOptions.value = [];
+  }
+}
+
 watch(selectedCases, (newValue) => {
   emit('updateSelectedCases', newValue);
 }, { deep: true });
@@ -498,14 +522,20 @@ watch([searchQuery, testTypeFilter, algorithmTypeFilter, groupFilter, tagFilter,
   currentPage.value = 1;
 });
 
-// 标签视图模式下，筛选条件变化时通知父组件重新请求后端
-watch([debouncedSearchQuery, testTypeFilter, algorithmTypeFilter, innerViewMode], () => {
+// 筛选条件变化时通知父组件重新请求后端（分组视图和标签视图都触发）
+let suppressFilterEmit = false;
+watch([debouncedSearchQuery, testTypeFilter, algorithmTypeFilter, dimensionFilter, innerViewMode], () => {
+  if (suppressFilterEmit) return;
+  const filters = {
+    keyword: debouncedSearchQuery.value || undefined,
+    testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
+    algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
+    dimensionId: dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined,
+  };
   if (innerViewMode.value === 'tag') {
-    emit('tagFilterChange', {
-      keyword: debouncedSearchQuery.value || undefined,
-      testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
-      algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
-    });
+    emit('tagFilterChange', filters);
+  } else {
+    emit('groupFilterChange', filters);
   }
 });
 
@@ -607,7 +637,8 @@ onMounted(async () => {
   setupLoadMoreObserver();
   await Promise.all([
     loadPlaybackDevices(),
-    loadAlgorithmOptions()
+    loadAlgorithmOptions(),
+    loadDimensionOptions()
   ]);
 });
 
@@ -742,37 +773,47 @@ const formattedTestCases = computed(() => {
 const groupSelectionStates = computed(() => {
   const result: Record<string, boolean> = {};
   const filteredValue = filteredTestCases.value;
-  
+  const selectedSet = new Set(selectedCases.value.map(id => String(id)));
+
   Object.keys(filteredValue).forEach((group: string) => {
     const groupCases = filteredValue[group];
-    if (groupCases.length === 0) {
+    // 用后端总数判断全选状态，而非已加载的用例数
+    const totalCount = getGroupTotalCount(group);
+    if (totalCount === 0) {
       result[group] = false;
     } else {
-      result[group] = groupCases
+      // 统计该分组下已选中的用例数
+      const selectedInGroup = groupCases.filter((tc: TestCase) => tc && tc.id && selectedSet.has(String(tc.id))).length;
+      // 如果已加载数 < 总数，只能判断部分选中；只有全部加载且全选才算全选
+      // 但 toggleGroupSelection 会从后端拉全量ID，所以已加载的用例数可能 < 选中数
+      // 此处用 totalCount === selectedInGroup 判断不够准确（selectedInGroup 只数已加载的）
+      // 改为：如果 selectedCases 长度 >= totalCount 且已加载的全部选中，则全选
+      result[group] = groupCases.length > 0 && groupCases
         .filter((caseItem: TestCase) => caseItem && caseItem.id)
-        .every((caseItem: TestCase) => 
-          selectedCases.value.includes(caseItem.id)
-        );
+        .every((caseItem: TestCase) => selectedSet.has(String(caseItem.id)))
+        && selectedInGroup >= totalCount;
     }
   });
-  
+
   return result;
 });
 
 const tagSelectionStates = computed(() => {
   const result: Record<string, boolean> = {};
   const filteredValue = filteredTagCases.value;
+  const selectedSet = new Set(selectedCases.value.map(id => String(id)));
 
   Object.keys(filteredValue).forEach((tagName: string) => {
     const tagCases = filteredValue[tagName];
-    if (tagCases.length === 0) {
+    const tagCaseCount = tagCases.length;
+    if (tagCaseCount === 0) {
       result[tagName] = false;
     } else {
+      const selectedInTag = tagCases.filter((tc: TestCase) => tc && tc.id && selectedSet.has(String(tc.id))).length;
       result[tagName] = tagCases
         .filter((caseItem: TestCase) => caseItem && caseItem.id)
-        .every((caseItem: TestCase) =>
-          selectedCases.value.includes(caseItem.id)
-        );
+        .every((caseItem: TestCase) => selectedSet.has(String(caseItem.id)))
+        && selectedInTag >= tagCaseCount;
     }
   });
 
@@ -975,10 +1016,10 @@ const toggleCategory = async (group: string) => {
     const store = useTestCaseStore();
     const groupInfo = store.groupsList.find(g => g.name === group);
     if (groupInfo && (!store.loadedGroupCases[groupInfo.id] || store.loadedGroupCases[groupInfo.id].length === 0)) {
-      // 传当前算法过滤值,使拉取的用例与徽标计数(按算法统计)及 filteredTestCases 过滤一致,
-      // 否则拉取的是分组下所有算法用例,经算法过滤后可能为空(显示"已加载 0/N 条")。
       const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
-      await store.fetchCasesByGroup(groupInfo.id, { algorithmType });
+      const keyword = debouncedSearchQuery.value || undefined;
+      const dimensionId = dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
+      await store.fetchCasesByGroup(groupInfo.id, { algorithmType, keyword, dimensionId });
     }
   }
 };
@@ -1020,43 +1061,96 @@ const toggleTestCaseSelection = (caseId: string | number) => {
   }
 };
 
-const toggleGroupSelection = (group: string) => {
-  const groupCases = filteredTestCases.value[group] || [];
+const toggleGroupSelection = async (group: string) => {
   const allSelected = groupSelectionStates.value[group];
+  const store = useTestCaseStore();
+  const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
+  const keyword = debouncedSearchQuery.value || undefined;
+  const testType = testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined;
+  const dimensionId = dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
 
-  groupCases.forEach((testCase: TestCase) => {
-    const index = selectedCases.value.indexOf(testCase.id);
-    if (allSelected) {
-      if (index > -1) selectedCases.value.splice(index, 1);
-    } else {
-      if (index === -1) selectedCases.value.push(testCase.id);
-    }
+  // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例
+  const allIds = await store.fetchCaseIdsByFilter({
+    group,
+    testType,
+    search: keyword,
+    algorithmType,
+    dimensionId,
   });
+
+  if (allSelected) {
+    // 取消全选：移除该分组下全量用例ID
+    const idSet = new Set(allIds);
+    selectedCases.value = selectedCases.value.filter(id => !idSet.has(id));
+  } else {
+    // 全选：添加该分组下全量用例ID
+    allIds.forEach((id: string | number) => {
+      if (!selectedCases.value.includes(id)) {
+        selectedCases.value.push(id);
+      }
+    });
+  }
 };
 
-const toggleTagSelection = (tagName: string) => {
-  const tagCases = filteredTagCases.value[tagName] || [];
+const toggleTagSelection = async (tagName: string) => {
   const allSelected = tagSelectionStates.value[tagName];
+  const store = useTestCaseStore();
+  const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
+  const keyword = debouncedSearchQuery.value || undefined;
+  const testType = testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined;
+  const dimensionId = dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
 
-  tagCases.forEach((testCase: TestCase) => {
-    const index = selectedCases.value.indexOf(testCase.id);
-    if (allSelected) {
-      if (index > -1) selectedCases.value.splice(index, 1);
-    } else {
-      if (index === -1) selectedCases.value.push(testCase.id);
-    }
+  // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例
+  const allIds = await store.fetchCaseIdsByFilter({
+    tag: tagName,
+    testType,
+    search: keyword,
+    algorithmType,
+    dimensionId,
   });
+
+  if (allSelected) {
+    // 取消全选：移除该标签下全量用例ID
+    const idSet = new Set(allIds);
+    selectedCases.value = selectedCases.value.filter(id => !idSet.has(id));
+  } else {
+    // 全选：添加该标签下全量用例ID
+    allIds.forEach((id: string | number) => {
+      if (!selectedCases.value.includes(id)) {
+        selectedCases.value.push(id);
+      }
+    });
+  }
 };
 
 const resetFilters = () => {
+  // 抑制防抖 watch 的重复触发（searchQuery 清空后 300ms 防抖会再次触发）
+  suppressFilterEmit = true;
   searchQuery.value = '';
-  testTypeFilter.value = 'all';
-  algorithmTypeFilter.value = 'all';
+  // testTypeFilter 和 algorithmTypeFilter 由 props 控制（E2E/APITest 固定 e2e/api），
+  // resetFilters 不重置它们，避免被 props watch 立即覆盖导致抖动。
   groupFilter.value = 'all';
   tagFilter.value = 'all';
+  dimensionFilter.value = 'all';
   sortBy.value = 'count';
   sortOrder.value = 'desc';
-  currentPage.value = 1; // Reset to first page
+  currentPage.value = 1;
+
+  // 立即触发后端刷新（不等防抖），用当前实际有效的筛选条件
+  const filters = {
+    keyword: undefined,
+    testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
+    algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
+    dimensionId: undefined,
+  };
+  if (innerViewMode.value === 'tag') {
+    emit('tagFilterChange', filters);
+  } else {
+    emit('groupFilterChange', filters);
+  }
+
+  // 防抖延迟过后恢复 watch 响应
+  setTimeout(() => { suppressFilterEmit = false; }, 350);
 };
 
 const loadMoreGroups = () => {

@@ -234,8 +234,8 @@ def evaluate_interruption_llm(rounds: List[Dict[str, Any]],
     llm_config = getattr(config, 'LLM_JUDGE', {})
     default_model = llm_config.get('default_model', 'gpt-4')
     model = task_params.get('llm_model') or default_model
-    max_tokens = task_params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS)
-    temperature = task_params.get('temperature', LLM_DEFAULT_TEMPERATURE)
+    max_tokens = int(task_params.get('max_tokens', LLM_DEFAULT_MAX_TOKENS) or LLM_DEFAULT_MAX_TOKENS)
+    temperature = float(task_params.get('temperature', LLM_DEFAULT_TEMPERATURE) or LLM_DEFAULT_TEMPERATURE)
     original_topic = _unwrap_value(task_params.get('original_topic', '')) or ''
 
     # 预检：未配置 API 则整体跳过，避免每轮都重复报错

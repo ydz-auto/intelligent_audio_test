@@ -186,11 +186,15 @@ class ReevaluationExecutor:
                                                 dim_val = remapped.get(dim_key)
                                                 if dim_val is not None:
                                                     round_output[dim_key] = dim_val
-                                            # 通用 key
+                                            # 通用 key：重新评估时无条件用 raw_results_list 的值覆盖
                                             val = remapped.get(target)
                                             if val is not None:
-                                                if target not in round_output or not round_output[target]:
-                                                    round_output[target] = val
+                                                round_output[target] = val
+
+                        # 写回数据库：raw_results_list 重新映射后的 algo_result 需要持久化
+                        # JSON 字段应直接存 dict，避免双重序列化
+                        result.algorithm_result = algo_result if isinstance(algo_result, dict) else {}
+                        db.session.commit()
 
                         tc_rel = db.session.query(TaskCase).filter_by(
                             task_id=task_id,
@@ -275,11 +279,10 @@ class ReevaluationExecutor:
                                                 dim_val = remapped.get(dim_key)
                                                 if dim_val is not None:
                                                     round_output[dim_key] = dim_val
-                                            # 通用 key
+                                            # 通用 key：重新评估时无条件用 raw_results_list 的值覆盖
                                             val = remapped.get(target)
                                             if val is not None:
-                                                if target not in round_output or not round_output[target]:
-                                                    round_output[target] = val
+                                                round_output[target] = val
                         result_type = full_data.get(
                             'result_type', 'unknown'
                         ) if full_data else 'unknown'

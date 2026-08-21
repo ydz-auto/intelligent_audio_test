@@ -77,6 +77,7 @@
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
           @tag-filter-change="handleTagFilterChange"
+          @group-filter-change="handleGroupFilterChange"
           @load-more-tags="loadMoreTagView"
         />
       </TestStepContainer>
@@ -408,16 +409,27 @@ const {
   algorithmSearchQuery,
   searchAlgorithms,
   fetchTagView,
-  loadMoreTagView
+  loadMoreTagView,
+  initializeE2eTests
 } = useE2eView()
 
 // 标签视图筛选变化时重新请求数据（固定 testType=e2e）
-const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string }) => {
+const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
   fetchTagView({
     keyword: filters.keyword,
     testType: 'e2e',
     algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
+    dimensionId: filters.dimensionId,
   });
+};
+
+// 分组视图筛选变化时重新请求数据（固定 testType=e2e）
+const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
+  initializeE2eTests(
+    filters.algorithmType || selectedAlgorithmType.value || undefined,
+    filters.keyword,
+    filters.dimensionId
+  );
 };
 
 // 处理开始任务按钮点击

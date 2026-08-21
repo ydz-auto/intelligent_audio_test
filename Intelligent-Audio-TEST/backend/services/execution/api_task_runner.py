@@ -6,6 +6,7 @@ import random
 
 from backend.utils.clients.api_driver import APIDriver
 from backend.utils.algorithm.field_mapper import get_field_mapper
+from backend.utils.common.config_manager import config_manager
 
 
 class APITaskRunner:
@@ -143,7 +144,7 @@ class APITaskRunner:
             if hasattr(api_config, 'api_endpoints') and api_config.api_endpoints:
                 endpoints = [ep for ep in api_config.api_endpoints if ep.get('endpoint')]
 
-            max_process = getattr(api_config, 'default_max_process', 5) or 5
+            max_process = getattr(api_config, 'default_max_process', None) or config_manager.get_value('api_executor', 'default_max_process', 5)
             max_timeout = getattr(api_config, 'max_timeout', 30) or 30
 
             field_mapper = get_field_mapper()

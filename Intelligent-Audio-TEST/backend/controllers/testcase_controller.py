@@ -315,6 +315,7 @@ class TestCaseController:
         group_id = request.args.get('group_id')
         test_type = request.args.get('type')
         algorithm_type = request.args.get('algorithm_type')
+        dimension_id = request.args.get('dimension_id', type=int)
         view = request.args.get('view')
         include_deleted_raw = request.args.get('include_deleted', 'false')
         include_deleted = str(include_deleted_raw).lower() in ('true', '1', 'yes')
@@ -324,7 +325,7 @@ class TestCaseController:
             return TestCaseController._get_tag_view(
                 page=page, per_page=per_page, keyword=keyword,
                 test_type=test_type, algorithm_type=algorithm_type,
-                include_deleted=include_deleted,
+                include_deleted=include_deleted, dimension_id=dimension_id,
             )
 
         query = TestCase.query.options(
@@ -336,6 +337,7 @@ class TestCaseController:
 
         if keyword:
             query = query.filter(
+                (TestCase.id.like(f'%{keyword}%')) |
                 (TestCase.name.like(f'%{keyword}%')) |
                 (TestCase.description.like(f'%{keyword}%'))
             )
@@ -352,6 +354,15 @@ class TestCaseController:
         # 按 test_type 列过滤（新双记录架构）
         if test_type and test_type in ['api', 'e2e']:
             query = query.filter(TestCase.test_type == test_type)
+
+        # 按评估维度过滤：搜索 config JSON 中包含该 dimension_id 的用例
+        if dimension_id:
+            dim_str = str(dimension_id)
+            # config.rounds[].evaluation.dimensions[].id 和 config.dimensions[].id
+            query = query.filter(
+                TestCase.config.cast(db.Text).like(f'"id": {dim_str}') |
+                TestCase.config.cast(db.Text).like(f'"id":{dim_str}')
+            )
 
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
         test_cases = pagination.items
@@ -414,7 +425,7 @@ class TestCaseController:
         )
 
     @staticmethod
-    def _get_tag_view(page=1, per_page=10, keyword=None, test_type=None, algorithm_type=None, include_deleted=False):
+    def _get_tag_view(page=1, per_page=10, keyword=None, test_type=None, algorithm_type=None, include_deleted=False, dimension_id=None):
         """标签视图：按标签聚合用例，分页返回标签维度。
 
         返回结构：
@@ -455,6 +466,7 @@ class TestCaseController:
             tc_query = tc_query.filter(TestCase.deleted == False)
         if keyword:
             tc_query = tc_query.filter(
+                (TestCase.id.like(f'%{keyword}%')) |
                 (TestCase.name.like(f'%{keyword}%')) |
                 (TestCase.description.like(f'%{keyword}%'))
             )
@@ -462,6 +474,14 @@ class TestCaseController:
             tc_query = tc_query.filter(TestCase.test_type == test_type)
         if algorithm_type:
             tc_query = tc_query.filter(TestCase.algorithm_type == algorithm_type)
+
+        # 按评估维度过滤
+        if dimension_id:
+            dim_str = str(dimension_id)
+            tc_query = tc_query.filter(
+                TestCase.config.cast(db.Text).like(f'"id": {dim_str}') |
+                TestCase.config.cast(db.Text).like(f'"id":{dim_str}')
+            )
 
         test_cases = tc_query.all()
 
@@ -1964,9 +1984,23 @@ class TestCaseController:
             if data.get('test_type'):
                 query = query.filter(TestCase.test_type == data['test_type'])
 
+            if data.get('algorithm_type'):
+                query = query.filter(TestCase.algorithm_type == data['algorithm_type'])
+
+            if data.get('dimension_id'):
+                dim_str = str(data['dimension_id'])
+                query = query.filter(
+                    TestCase.config.cast(db.Text).like(f'"id": {dim_str}') |
+                    TestCase.config.cast(db.Text).like(f'"id":{dim_str}')
+                )
+
             if data.get('search'):
                 keyword = f"%{data['search']}%"
-                query = query.filter(TestCase.name.like(keyword))
+                query = query.filter(
+                    (TestCase.id.like(keyword)) |
+                    (TestCase.name.like(keyword)) |
+                    (TestCase.description.like(keyword))
+                )
 
             if data.get('tag'):
                 # 按标签筛选

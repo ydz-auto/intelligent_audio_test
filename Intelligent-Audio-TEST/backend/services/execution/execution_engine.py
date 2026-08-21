@@ -79,19 +79,19 @@ class ExecutionEngine:
                 # 独立线程池隔离 - 解决前端刷新导致音频播放卡顿问题
                 # API任务线程池（限制最大并发数，避免线程资源耗尽）
                 cls._instance.api_task_pool = ThreadPoolExecutor(
-                    max_workers=10,
+                    max_workers=config_manager.get_value('execution_engine', 'api_task_max_workers', 10),
                     thread_name_prefix='api_task_'
                 )
                 # 设备控制线程池（专用于设备驱动操作）
                 cls._instance.device_control_pool = ThreadPoolExecutor(
-                    max_workers=5,
+                    max_workers=config_manager.get_value('execution_engine', 'device_control_max_workers', 5),
                     thread_name_prefix='device_ctrl_'
                 )
                 # 音频播放线程池（高优先级，独立隔离）
                 # 全局背景噪声（最多4设备）+ 轮次内 play_round（主讲人/干扰人/噪声，最多4-6设备）
                 # 需要足够容量避免背景噪声占满线程池导致 play_round 任务排队死锁
                 cls._instance.audio_playback_pool = ThreadPoolExecutor(
-                    max_workers=12,
+                    max_workers=config_manager.get_value('execution_engine', 'audio_playback_max_workers', 12),
                     thread_name_prefix='audio_play_'
                 )
         return cls._instance
@@ -763,13 +763,14 @@ class ExecutionEngine:
                                 available_endpoints.sort(key=lambda x: x.get('priority', 0), reverse=True)
                             
                             # 确定最大工作线程数
+                            default_max_process = config_manager.get_value('api_executor', 'default_max_process', 5)
                             if available_endpoints:
                                 # 计算所有可用端点的最大进程数之和
-                                max_workers = sum(ep.get('max_process', 5) for ep in available_endpoints)
+                                max_workers = sum(ep.get('max_process', default_max_process) for ep in available_endpoints)
                             elif api_config:
-                                max_workers = api_config.default_max_process
+                                max_workers = api_config.default_max_process or default_max_process
                             else:
-                                max_workers = 5
+                                max_workers = default_max_process
                             
                             # 保存API配置和可用端点到任务对象
                             task._api_config = api_config

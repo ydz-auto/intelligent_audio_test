@@ -103,9 +103,18 @@
                   </tr>
                 </thead>
                 <tbody id="dimensionsTable">
-                  <tr v-for="dimension in filteredDimensions" :key="dimension.id" @click="toggleDimensionSelection(dimension.id)">
+                  <tr v-for="dimension in hierarchicalDimensions" :key="dimension.id" :class="{ 'sub-dimension-row': dimension._level === 1 }" @click="toggleDimensionSelection(dimension.id)">
                     <td class="checkbox-column"><input type="checkbox" class="dimension-checkbox" v-model="selectedDimensions" :value="dimension.id" @click.stop></td>
-                    <td class="dimension-name-col" @click.stop="openEditModal(dimension.id)">{{ dimension.name }}</td>
+                    <td class="dimension-name-col" @click.stop="openEditModal(dimension.id)">
+                      <div class="dimension-name-cell" :style="{ paddingLeft: dimension._level === 1 ? '28px' : '0' }">
+                        <span v-if="dimension._level === 1" class="tree-branch">└</span>
+                        <span class="dimension-type-badge" :class="dimension._isMain ? 'main-dim-badge' : 'sub-dim-badge'">
+                          {{ dimension._isMain ? '主' : '子' }}
+                        </span>
+                        <span class="dimension-name-text">{{ dimension.name }}</span>
+                        <span v-if="dimension._level === 1 && dimension._parentName" class="parent-name-hint">（{{ dimension._parentName }}）</span>
+                      </div>
+                    </td>
                     <td class="dimension-description-col text-truncate" :title="dimension.description">{{ dimension.description || '-' }}</td>
                     <td class="dimension-category-col">{{ dimension.category || dimension.type }}</td>
                     <td class="dimension-algorithms-col">
@@ -207,6 +216,7 @@ const {
   editingCategory,
   editingDimension,
   filteredDimensions,
+  hierarchicalDimensions,
   totalPages,
   totalItems,
   isAllSelected,
@@ -565,5 +575,71 @@ select.form-input.filter-select:focus {
 
 .api-status.llm-judge i {
   font-size: 11px;
+}
+
+/* === 层级展示样式 === */
+
+/* 子维度行背景微调 */
+.sub-dimension-row {
+  background-color: var(--background-secondary, #fafafa);
+}
+
+.sub-dimension-row:hover {
+  background-color: var(--background-tertiary, #f5f5f5);
+}
+
+/* 维度名称单元格容器 */
+.dimension-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+/* 树形分支符号 */
+.tree-branch {
+  color: var(--text-light, #999);
+  font-size: 16px;
+  font-family: monospace;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+/* 主维度/子维度类型标签 */
+.dimension-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.main-dim-badge {
+  background-color: var(--primary-light, #fff3e0);
+  color: var(--primary-color, #ff6a00);
+  border: 1px solid var(--primary-color, #ff6a00);
+}
+
+.sub-dim-badge {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #2e7d32;
+}
+
+/* 维度名称文字 */
+.dimension-name-text {
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--text-primary);
+}
+
+/* 父维度提示文字 */
+.parent-name-hint {
+  font-size: 12px;
+  color: var(--text-light, #999);
+  white-space: nowrap;
 }
 </style>

@@ -550,6 +550,16 @@ export function useApiTest() {
     }
   };
 
+  // 分组视图筛选变化时重新请求数据（固定 testType=api）
+  const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
+    fetchTestCases({
+      keyword: filters.keyword,
+      testType: 'api',
+      algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
+      dimensionId: filters.dimensionId,
+    });
+  };
+
   const toggleAPISelection = (apiId: string | number) => {
     const api = apis.value.find((a) => String(a?.id) === String(apiId))
     if (!api || api.status !== 'online') {
@@ -762,6 +772,7 @@ export function useApiTest() {
     isVoiceLLM,
     stepHints,
     fetchTagView,
-    loadMoreTagView
+    loadMoreTagView,
+    handleGroupFilterChange
   }
 }

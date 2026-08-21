@@ -759,6 +759,7 @@ export function useE2eView() {
     algorithmSearchQuery,
     filteredAlgorithmList,
     fetchTagView,
-    loadMoreTagView
+    loadMoreTagView,
+    initializeE2eTests
   }
 }

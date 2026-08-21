@@ -467,6 +467,15 @@ class TaskController:
                 })
 
             full_result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+            # 兼容历史双重序列化数据：algorithm_result 可能是 str
+            algo_result = result.algorithm_result
+            while isinstance(algo_result, str):
+                try:
+                    algo_result = json.loads(algo_result)
+                except (json.JSONDecodeError, TypeError):
+                    algo_result = {}
+            if not isinstance(algo_result, dict):
+                algo_result = {}
             processed_results.append({
                 "id": result.id,
                 "device_id": result.device_id,
@@ -475,9 +484,9 @@ class TaskController:
                 "api_name": api_name,
                 "execution_status": result.execution_status,
                 "response_time": result.response_time,
-                "algorithm_result": result.algorithm_result,
-                "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
-                "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
+                "algorithm_result": algo_result,
+                "asr_result": algo_result.get('asr_result'),
+                "translation_result": algo_result.get('translation_result'),
                 "result_data": full_result_data,
                 "error_message": result.error_message,
                 "dimensions": dim_data,
@@ -705,6 +714,15 @@ class TaskController:
                     "round_number": getattr(dim, 'round_number', None)
                 })
 
+            # 兼容历史双重序列化数据：algorithm_result 可能是 str
+            algo_result = result.algorithm_result
+            while isinstance(algo_result, str):
+                try:
+                    algo_result = json.loads(algo_result)
+                except (json.JSONDecodeError, TypeError):
+                    algo_result = {}
+            if not isinstance(algo_result, dict):
+                algo_result = {}
             processed_results.append({
                 "id": result.id,
                 "device_id": result.device_id,
@@ -713,9 +731,9 @@ class TaskController:
                 "api_name": api_name,
                 "execution_status": result.execution_status,
                 "response_time": result.response_time,
-                "algorithm_result": result.algorithm_result,
-                "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
-                "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
+                "algorithm_result": algo_result,
+                "asr_result": algo_result.get('asr_result'),
+                "translation_result": algo_result.get('translation_result'),
                 "result_data": load_full_result_data(result.result_data, getattr(result, 'result_data_path', None)),
                 "error_message": result.error_message,
                 "dimensions": dim_data,

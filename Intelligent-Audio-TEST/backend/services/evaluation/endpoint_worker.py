@@ -25,7 +25,7 @@ class EndpointWorker(EvaluationLoggerMixin):
     端点Worker，负责消费端点任务队列并执行评估
     """
 
-    def __init__(self, endpoint_url, eval_service, max_timeout=30, max_concurrent=1):
+    def __init__(self, endpoint_url, eval_service, max_timeout=30, max_concurrent=10):
         self.endpoint_url = endpoint_url
         self.eval_service = eval_service
         self.max_timeout = max_timeout
@@ -183,12 +183,17 @@ class EndpointWorker(EvaluationLoggerMixin):
                     task_id=task_id,
                     test_case_id=test_case_id
                 )
-                algo_results[key] = val if val is not None else ''
+                # 保留 None 而非转为空串，让维度级默认值有机会覆盖
+                algo_results[key] = val
 
         context = {
             "algorithm_result": algorithm_result,
             "algorithm_type": algorithm_type
         }
+
+        # rounds_list from kwargs takes priority over algo_results['rounds']
+        # because _build_rounds_list already mapped the fields properly for evaluation
+        rounds_list_override = kwargs.pop('rounds', None)
 
         for key, value in algo_results.items():
             if key not in context:
@@ -212,19 +217,28 @@ class EndpointWorker(EvaluationLoggerMixin):
             if key not in context:
                 context[key] = value
 
+        # Override rounds with the properly built rounds_list
+        if rounds_list_override:
+            context['rounds'] = rounds_list_override
+
         # 从维度 input_params 加载维度级配置（model/prompt 等）
         for inp in representative_dim_data.get('input_params', []):
             param_code = inp.get('param_code')
             default_val = inp.get('default_value')
-            if param_code and default_val is not None and param_code not in context:
-                # default_value 是 JSON 格式的字符串，解析后放入 context
-                import json as _json
-                try:
-                    context[param_code] = _json.loads(default_val)
-                except (ValueError, TypeError):
-                    context[param_code] = default_val
+            if param_code and default_val is not None:
+                # 当 context 中没有该字段，或字段值为空字符串/None 时，用维度默认值覆盖
+                existing_val = context.get(param_code)
+                if existing_val is None or existing_val == '':
+                    import json as _json
+                    try:
+                        context[param_code] = _json.loads(default_val)
+                    except (ValueError, TypeError):
+                        context[param_code] = default_val
 
         endpoints = representative_dim_data.get('api_endpoints', [])
+        # Filter out endpoints with empty URLs
+        if isinstance(endpoints, list):
+            endpoints = [ep for ep in endpoints if isinstance(ep, dict) and (ep.get('url') or ep.get('endpoint'))]
         if not endpoints and representative_dim_data.get('api_url'):
             endpoints = [{"url": representative_dim_data.get('api_url'), "name": "Master"}]
 
