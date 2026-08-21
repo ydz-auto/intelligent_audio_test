@@ -10,14 +10,21 @@
 4. 注册 voice_llm → 该维度的参数映射（param_mappings）
 
 对应 eval_server 服务：
-   - eval_server/app/services/xiaoyi_metrics/env_judge/env_judge.py
-   - 入口：evaluate_env_judge(video_path, task_type, env_type, ...)
+   - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/env_judge.py
+   - 入口：evaluate_env_judge(ai_wav, task_type, env_type, user_wav, env_events, ...)
    - task_type：env_judge
 
+录屏不再可用后的方案：以模型回复音频 ai_wav 为主输入（裁判直接听回复，不过小 ASR），
+用户侧 ASR 转写 + 环境声事件(start_ms/end_ms/pcm_first_ms 换算到模型音频相对秒)作
+文本时间线上下文，不合并两路音频。
+
 输入：
-   - video_path : 录屏/视频文件路径（LLM 直接看视频做裁判）
-   - env_type   : 环境子场景类型（如'旁人交谈''环境噪声''环境回溯'等）
-   - model      : LLM 模型名（可选，缺省读 config.LLM_JUDGE.default_model）
+   - ai_wav       : 模型回复音频路径（主输入，被判定对象）
+   - env_type     : 环境子场景类型（如'旁人交谈''环境噪声''环境回溯'等）
+   - user_wav     : 用户通道音频（可选，走小 ASR 生成时间线）
+   - start_ms/end_ms/pcm_first_ms : 环境声播放绝对毫秒 + 模型音频起点毫秒
+   - model        : LLM 模型名（可选，缺省读 config.LLM_JUDGE.default_model；
+                    注意默认 gpt-4o-mini 不支持音频，音频裁判需指定 gpt-audio/omni 等）
 
 输出：
    - evaluations : LLM 裁判结果列表 [{scene, behavior, reason}, ...]
@@ -70,21 +77,33 @@ DIMENSIONS = [
         'statistic_method': 'none',
         'params': [
             # ─── 输入参数 ───
-            ('video_path', '录屏文件', '录屏文件路径', 'text', 'input',
+            ('ai_wav', '模型回复音频', '模型回复音频路径(被判定对象)', 'audio', 'input',
              None, None, None, True,
-             False, None, '录屏/视频文件路径，LLM 直接看视频做裁判', 5),
+             False, None, '模型回复音频路径，裁判模型直接听回复(不过小ASR)；录屏没了的主输入', 5),
             ('env_type', '环境子场景', '环境子场景类型', 'text', 'input',
              None, None, None, False,
              False, None, '环境子场景类型(如 旁人交谈/环境噪声/环境回溯 等)', 10),
             ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
              None, None, None, False,
-             False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认', 15),
+             False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频，音频裁判需指定gpt-audio/omni等)', 15),
             ('max_tokens', '最大token', '最大输出 token 数', 'number', 'input',
              None, None, None, False,
              False, '4096', 'LLM 最大输出 token 数', 20),
             ('temperature', '采样温度', '采样温度', 'number', 'input',
              None, None, None, False,
              False, '0.1', '采样温度，评判场景建议低温 0.1', 25),
+            ('user_wav', '用户通道音频', '用户通道音频路径', 'audio', 'input',
+             None, None, None, False,
+             False, None, '用户通道音频(可选)，走小ASR生成时间线上下文', 26),
+            ('start_ms', '环境声起点', '环境声播放起点(绝对毫秒)', 'number', 'input',
+             None, None, None, False,
+             False, None, '环境声播放起点毫秒(与pcm_first_ms同时间轴)，换算成相对秒作时间窗事件', 27),
+            ('end_ms', '环境声终点', '环境声播放终点(绝对毫秒)', 'number', 'input',
+             None, None, None, False,
+             False, None, '环境声播放终点毫秒', 28),
+            ('pcm_first_ms', '模型音频起点', '模型音频起点(绝对毫秒)', 'number', 'input',
+             None, None, None, False,
+             False, None, '模型音频(ai_wav)起点毫秒，把环境声绝对毫秒换算到模型音频相对秒', 29),
 
             # ─── 输出参数 ───
             ('evaluations', '裁判结果', 'LLM 裁判结果', 'text', 'output',
@@ -113,7 +132,11 @@ DIMENSIONS = [
              False, None, '裁判错误/成功说明', 99),
         ],
         'param_mappings': [
-            ('device', 'output', 'video_path', 'video_path', 'none'),
+            ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
+            ('device', 'output', 'user_wav', 'user_wav', 'none'),
+            ('device', 'output', 'start_ms', 'start_ms', 'none'),
+            ('device', 'output', 'end_ms', 'end_ms', 'none'),
+            ('device', 'output', 'pcm_first_ms', 'pcm_first_ms', 'none'),
             ('reference', 'output', 'env_type', 'env_type', 'none'),
         ],
     },
@@ -187,8 +210,12 @@ def seed_env_sound_judge():
                     'temperature': '{{temperature}}',
                     'rounds': [
                         {
-                            'video_path': '{{video_path}}',
+                            'ai_wav': '{{ai_wav}}',
+                            'user_wav': '{{user_wav}}',
                             'env_type': '{{env_type}}',
+                            'start_ms': '{{start_ms}}',
+                            'end_ms': '{{end_ms}}',
+                            'pcm_first_ms': '{{pcm_first_ms}}',
                         }
                     ],
                 },
@@ -410,7 +437,7 @@ if __name__ == '__main__':
     print()
     print("此脚本将注册：")
     print("1. env_judge 维度 — 环境音/拒识场景裁判")
-    print("   入参: video_path(录屏文件), env_type(环境子场景), model, max_tokens, temperature")
+    print("   入参: ai_wav(模型回复音频), env_type(环境子场景), user_wav, start_ms/end_ms/pcm_first_ms, model, max_tokens, temperature")
     print()
     print("   主分: 裁判结果 (evaluations)")
     print("   辅助: 模型名 / 裁判类型 / 环境场景 / token 用量 / 说明")

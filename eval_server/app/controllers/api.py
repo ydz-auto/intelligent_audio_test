@@ -167,8 +167,15 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         # 不在此拦截，交给 calculate 层返回带说明的空结果
         pass
     elif task_type == 'env_judge':
-        if not task_params.get('video_path') and not task_params.get('record_file'):
-            return error_response("Missing required field for env_judge: video_path (录屏文件路径)", code=CODE_VALIDATION_ERROR)
+        # 录屏(video_path/record_file)没了时，用模型回复音频 ai_wav 作为主输入
+        _r0_ej = (task_params.get('rounds') or [{}])[0] if isinstance(task_params.get('rounds'), list) and task_params.get('rounds') else {}
+        has_audio = (
+            task_params.get('ai_wav') or _r0_ej.get('ai_wav')
+            or task_params.get('video_path') or task_params.get('record_file')
+            or _r0_ej.get('video_path') or _r0_ej.get('record_file')
+        )
+        if not has_audio:
+            return error_response("Missing required field for env_judge: ai_wav (模型回复音频) 或 video_path (录屏)，至少需要一个", code=CODE_VALIDATION_ERROR)
     elif task_type == 'high_freq_turn_taking':
         # 高频轮换：user_wav + ai_wav 双路音频（从顶层或 rounds[0] 取）
         _rounds_hftt = task_params.get('rounds') or []
@@ -178,9 +185,14 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         if not (task_params.get('ai_wav') or _r0_hftt.get('ai_wav')):
             return error_response("Missing required field for high_freq_turn_taking: ai_wav (AI回复通道音频)", code=CODE_VALIDATION_ERROR)
     elif task_type == 'high_freq_llm_judge':
-        # 高频LLM裁判：录屏文件 + rounds 多轮文本
-        if not task_params.get('record_file') and not task_params.get('video_path') and not task_params.get('record_path'):
-            return error_response("Missing required field for high_freq_llm_judge: record_file (录屏/音频文件路径)", code=CODE_VALIDATION_ERROR)
+        # 高频LLM裁判：模型回复音频(ai_wav) 或 录屏(record_file/video_path/record_path) + rounds 多轮文本
+        _r0_hflj = (task_params.get('rounds') or [{}])[0] if isinstance(task_params.get('rounds'), list) and task_params.get('rounds') else {}
+        has_audio = (
+            task_params.get('ai_wav') or _r0_hflj.get('ai_wav')
+            or task_params.get('record_file') or task_params.get('video_path') or task_params.get('record_path')
+        )
+        if not has_audio:
+            return error_response("Missing required field for high_freq_llm_judge: ai_wav (模型回复音频) 或 record_file/video_path (录屏/音频)，至少需要一个", code=CODE_VALIDATION_ERROR)
         if not task_params.get('rounds'):
             return error_response("Missing required field for high_freq_llm_judge: rounds (多轮文本数据)", code=CODE_VALIDATION_ERROR)
 
