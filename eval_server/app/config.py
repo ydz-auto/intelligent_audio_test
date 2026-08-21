@@ -36,7 +36,7 @@ class Config:
 
     # Flask settings
     DEBUG = False
-    PORT = 5000
+    PORT = 8888
     HOST = '0.0.0.0'
 
     # Local concurrency control

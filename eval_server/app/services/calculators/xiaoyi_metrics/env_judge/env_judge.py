@@ -118,20 +118,28 @@ _TASK_TYPE_BEHAVIORS = {
 }
 
 
-def _build_prompt(task_type: str, env_type: str = '',
+def _build_prompt(env_type: str = '',
                   timeline_text: str = '') -> str:
-    """根据 task_type 和 env_type 动态构建 prompt。
+    """根据 env_type 动态构建 prompt。
 
-    - env_type 为空：包含所有场景，输出 evaluations 数组
+    env_type 决定使用哪组场景（拒识环境音 / 打断能力）：
+    - env_type 在 _ENV_SOUND_SCENES 中 → 使用环境音场景 + env_judge 行为
+    - env_type 在 _INTERRUPTION_SCENES 中 → 使用打断场景 + interruption_judge 行为
+    - env_type 为空 → 默认使用环境音场景全部输出
     - env_type 指定：只包含对应场景，输出单个 {scene, behavior, reason}
     - timeline_text: 用户侧 ASR 转写 + 环境声事件时间线，替代原录屏作为上下文；
       模型回复本身以随附的 ai_wav 音频为准（裁判模型直接听，不过小 ASR）。
     """
-    scenes = _TASK_TYPE_SCENES.get(task_type, {})
-    behaviors = _TASK_TYPE_BEHAVIORS.get(task_type, '')
+    # 根据 env_type 自动推断场景集和行为定义
+    if env_type and env_type in _INTERRUPTION_SCENES:
+        scenes = _INTERRUPTION_SCENES
+        behaviors = _BEHAVIOR_DEFS['interruption_judge']
+    else:
+        scenes = _ENV_SOUND_SCENES
+        behaviors = _BEHAVIOR_DEFS['env_judge']
 
     if not scenes:
-        raise ValueError(f'不支持的 task_type: {task_type}')
+        raise ValueError(f'无法确定场景集，env_type={env_type!r}')
 
     timeline_block = ''
     if timeline_text:
@@ -594,8 +602,6 @@ def _parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
 
 # ─────────── 主入口 ───────────
 def evaluate_env_judge(
-    video_path: str = '',
-    task_type: str = 'env_judge',
     env_type: str = '',
     model: str = '',
     max_tokens: int = 4096,
@@ -611,20 +617,13 @@ def evaluate_env_judge(
 ) -> Dict[str, Any]:
     """语音对话能力 — 模型回复音频 + 时间线 LLM 裁判主入口
 
-    录屏文件不再可用时的新方案：以【模型回复音频 ai_wav】为主输入（裁判模型直接
-    听回复，不过小 ASR，避免语义意图被小 ASR 糊掉），用户侧 ASR 转写 + 环境声事件
-    作为文本时间线上下文（用户侧走小 ASR 可接受；环境声不可 ASR，只给时间窗）。
-    不合并两路音频。video_path 保留为 legacy 回退（仅当 ai_wav 缺失时用录屏/音频）。
-
-    根据 task_type 选择对应 prompt 进行评判。
+    以【模型回复音频 ai_wav】为主输入（裁判模型直接听回复，不过小 ASR，
+    避免语义意图被小 ASR 糊掉），用户侧 ASR 转写 + 环境声事件
+    作为文本时间线上下文。
 
     Args:
-        video_path: legacy 录屏/音频文件路径（ai_wav 缺失时回退用）
-        task_type: 测试类型，支持：
-            - 'env_judge' 或 '拒识与环境理解' → 拒识环境音 prompt
-            - 'interruption_judge' 或 '打断能力' → 打断能力 prompt
         env_type: 环境子场景类型（如 '环境回溯' '旁人交谈' '环境噪声' 等），
-                  用于标识本次音频实际测试的具体场景
+                  用于标识本次音频实际测试的具体场景，同时决定使用哪个 prompt
         model: LLM 模型名，缺省读 config.LLM_JUDGE.default_model
         max_tokens: 最大输出 token 数
         temperature: 采样温度，评判场景建议低温 0.1
@@ -634,16 +633,13 @@ def evaluate_env_judge(
         start_ms / end_ms / pcm_first_ms: 环境声播放的绝对毫秒 + 模型音频起点毫秒，
                   未提供 env_events 时按 noise_latency 同款公式换算成相对秒
         rounds: 多轮文本数据（可作额外上下文）
-        **kwargs: 额外音频/录屏文件路径（legacy）
 
     Returns:
         dict: {
             'enabled': True,
             'model': str,
-            'task_type': str,
             'env_type': str,
             'ai_wav': str,
-            'video_path': str,
             'evaluations': [{scene, behavior, reason}, ...],
             'tokens_used': int,
             'input_token': int,
@@ -657,19 +653,13 @@ def evaluate_env_judge(
     if not model:
         model = llm_config.get('default_model', 'gpt-4o')
 
-    # 主音频：优先 ai_wav（模型回复，被判定对象），缺失时回退 video_path（legacy 录屏）
-    primary_audio = ai_wav if (ai_wav and os.path.isfile(ai_wav)) else video_path
-    file_paths: List[str] = []
-    if primary_audio and os.path.isfile(primary_audio):
-        file_paths.append(primary_audio)
-    # legacy：额外录屏/音频文件
-    file_paths.extend(_extract_video_paths(kwargs))
-
-    if not file_paths:
+    # 主音频：ai_wav（模型回复，被判定对象）
+    if not ai_wav or not os.path.isfile(ai_wav):
         raise FileNotFoundError(
-            f'模型回复音频(ai_wav)与录屏(video_path)均不存在或路径无效: '
-            f'ai_wav={ai_wav!r} video_path={video_path!r}'
+            f'模型回复音频(ai_wav)不存在或路径无效: ai_wav={ai_wav!r}'
         )
+
+    file_paths: List[str] = [ai_wav]
 
     # ── 构建文本时间线（用户侧 ASR + 环境声事件） ──
     user_chunks: Optional[List[Dict[str, Any]]] = None
@@ -685,15 +675,13 @@ def evaluate_env_judge(
         events = _env_events_from_ms(start_ms, end_ms, pcm_first_ms)
 
     timeline_text = _build_timeline_text(user_chunks, events)
-    prompt = _build_prompt(task_type, env_type, timeline_text)
+    prompt = _build_prompt(env_type, timeline_text)
 
     result: Dict[str, Any] = {
         'enabled': True,
         'model': model,
-        'task_type': task_type,
         'env_type': env_type,
-        'ai_wav': ai_wav or '',
-        'video_path': video_path,
+        'ai_wav': ai_wav,
         'evaluations': [],
         'tokens_used': 0,
         'input_token': 0,
@@ -712,7 +700,7 @@ def evaluate_env_judge(
     except Exception as e:
         result['message'] = f'LLM 调用失败: {e}'
         result['enabled'] = False
-        logger.error(f'[{task_type}] LLM 调用失败: {e}')
+        logger.error(f'[env_judge] LLM 调用失败: {e}')
         return result
 
     result['tokens_used'] = response.get('tokens_used', 0)
@@ -723,7 +711,7 @@ def evaluate_env_judge(
     if not parsed:
         result['message'] = 'LLM 输出解析失败'
         logger.error(
-            f'[{task_type}] LLM 输出解析失败: '
+            f'[env_judge] LLM 输出解析失败: '
             f'{response["content"][:200]}'
         )
         return result
@@ -733,8 +721,8 @@ def evaluate_env_judge(
     result['message'] = 'OK'
 
     logger.info(
-        f'[{task_type}] env_type={env_type or "N/A"} '
-        f'model={model} video={video_path} '
+        f'[env_judge] env_type={env_type or "N/A"} '
+        f'model={model} ai_wav={ai_wav} '
         f'n_evaluations={len(evaluations)} '
         f'tokens={result["tokens_used"]}'
     )
@@ -756,24 +744,20 @@ if __name__ == '__main__':
                     os.environ.setdefault(k.strip(), v.strip())
 
     parser = argparse.ArgumentParser(
-        description='语音对话能力 — 录屏文件 LLM 裁判'
+        description='语音对话能力 — 模型回复音频 LLM 裁判'
     )
-    parser.add_argument('video', help='录屏文件路径')
-    parser.add_argument('--task_type', default='env_judge',
-                        choices=['env_judge', '拒识与环境理解',
-                                 'interruption_judge', '打断能力'],
-                        help='测试类型: env_judge(拒识与环境理解) '
-                             '或 interruption_judge(打断能力)')
+    parser.add_argument('ai_wav', help='模型回复音频文件路径')
     parser.add_argument('--env_type', default='',
-                        help='环境子场景类型（如 环境回溯/旁人交谈/环境噪声等）')
+                        help='环境子场景类型（如 环境回溯/旁人交谈/环境噪声/插话打断等）')
+    parser.add_argument('--user_wav', default='', help='用户通道音频路径')
     parser.add_argument('--model', default='', help='LLM 模型名')
     parser.add_argument('--max_tokens', type=int, default=4096)
     parser.add_argument('--temperature', type=float, default=0.1)
     args = parser.parse_args()
 
     r = evaluate_env_judge(
-        video_path=args.video,
-        task_type=args.task_type,
+        ai_wav=args.ai_wav,
+        user_wav=args.user_wav,
         env_type=args.env_type,
         model=args.model,
         max_tokens=args.max_tokens,
@@ -782,9 +766,8 @@ if __name__ == '__main__':
 
     print('=' * 60)
     print(f'模型: {r["model"]}')
-    print(f'测试类型: {r.get("task_type", "")}')
     print(f'环境类型: {r.get("env_type", "") or "N/A"}')
-    print(f'录屏: {r["video_path"]}')
+    print(f'ai_wav: {r["ai_wav"]}')
     print(f'tokens: {r["tokens_used"]} (in={r["input_token"]}, out={r["output_token"]})')
     print(f'message: {r["message"]}')
     print('-' * 60)

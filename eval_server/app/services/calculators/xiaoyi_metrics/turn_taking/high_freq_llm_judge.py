@@ -410,7 +410,6 @@ def _build_summary(per_round: List[Dict[str, Any]]) -> str:
 
 # ─────────── 主入口 ───────────
 def evaluate_high_freq_llm(
-    video_path: str = '',
     rounds: List[Dict[str, Any]] = None,
     scenario_type: str = '',
     scenario_rules: str = '',
@@ -422,13 +421,11 @@ def evaluate_high_freq_llm(
 ) -> Dict[str, Any]:
     """高频轮换场景 LLM 裁判主入口
 
-    录屏不再可用时的新方案：以【模型回复音频 ai_wav】为主输入（裁判模型直接听回复，
-    不过小 ASR，避免飞花令/成语接龙等场景的字面内容被小 ASR 糊掉），结合 rounds 文本
+    以【模型回复音频 ai_wav】为主输入（裁判模型直接听回复，不过小 ASR，
+    避免飞花令/成语接龙等场景的字面内容被小 ASR 糊掉），结合 rounds 文本
     上下文（用户提问/预期答案），逐轮判断模型回复是否符合预期，返回 pass/fail + reason。
-    不合并两路音频；video_path 保留为 legacy 回退（仅当 ai_wav 缺失时用录屏/音频）。
 
     Args:
-        video_path: legacy 录屏/音频文件路径（ai_wav 缺失时回退用）
         rounds: 多轮文本数据，每轮 {query, answer, expected_answer}（字段名兼容）
         scenario_type: 场景类型（飞花令/成语接龙/快问快答/自定义）
         scenario_rules: 自定义场景规则（scenario_type='自定义' 时使用）
@@ -436,7 +433,6 @@ def evaluate_high_freq_llm(
         max_tokens: 最大输出 token 数
         temperature: 采样温度，评判场景建议低温 0.1
         ai_wav: 模型回复音频路径（主输入，被判定对象）
-        **kwargs: 额外录屏/音频文件路径（legacy）
 
     Returns:
         dict: {
@@ -444,7 +440,6 @@ def evaluate_high_freq_llm(
             'model': str,
             'scenario_type': str,
             'ai_wav': str,
-            'video_path': str,
             'n_rounds': int,
             'per_round': [{round, pass, reason}, ...],
             'overall_pass_rate': float|None,
@@ -463,22 +458,14 @@ def evaluate_high_freq_llm(
     if not model:
         model = llm_config.get('default_model', 'gpt-4o')
 
-    # 主音频：优先 ai_wav（模型回复，被判定对象），缺失时回退 video_path（legacy 录屏）
+    # 主音频：ai_wav（模型回复，被判定对象）
     file_paths: List[str] = []
     if ai_wav and os.path.isfile(ai_wav):
         file_paths.append(ai_wav)
-    if video_path and os.path.isfile(video_path):
-        file_paths.append(video_path)
-    for value in kwargs.values():
-        if isinstance(value, str) and value and os.path.isfile(value):
-            ext = os.path.splitext(value)[1].lower()
-            if ext in (_VIDEO_EXTS | _AUDIO_EXTS):
-                file_paths.append(value)
 
     if not file_paths:
         raise FileNotFoundError(
-            f'模型回复音频(ai_wav)与录屏(video_path)均不存在或路径无效: '
-            f'ai_wav={ai_wav!r} video_path={video_path!r}'
+            f'模型回复音频(ai_wav)不存在或路径无效: ai_wav={ai_wav!r}'
         )
 
     # 过滤无效轮次
@@ -491,7 +478,6 @@ def evaluate_high_freq_llm(
         'model': model,
         'scenario_type': scenario_type,
         'ai_wav': ai_wav or '',
-        'video_path': video_path,
         'n_rounds': len(valid_rounds),
         'per_round': [],
         'overall_pass_rate': None,

@@ -38,8 +38,8 @@
           v-for="dim in filteredDimensions"
           :key="dim.id"
           class="eval-chip"
-          :class="{ active: isDimSelected(dim), disabled: (dim as any).requiresAudio }"
-          :title="(dim as any).requiresAudio ? '该维度需要音频文件，不支持多轮聚合评估' : ''"
+          :class="{ active: isDimSelected(dim) }"
+          :title="(dim as any).requiresAudio ? '该维度需要音频文件，将随多轮音频一起上传' : ''"
           @click="toggleDim(dim)"
         >
           <i :class="isDimSelected(dim) ? 'fas fa-check' : 'fas fa-plus'"></i>
@@ -187,10 +187,6 @@ function isDimSelected(dim: Dimension): boolean {
 }
 
 function toggleDim(dim: Dimension) {
-  // 多轮聚合评估不支持需要音频文件的维度
-  if ((dim as any).requiresAudio) {
-    return
-  }
   const idx = localDimensions.value.findIndex(
     (d) => d.id === dim.id || d.name === dim.name
   )

@@ -138,27 +138,19 @@ def _len_of(val):
 
 def calculate_xiaoyi_metrics(task_params):
     """
-    统一入口：调一次 ASR，三个维度共享结果
+    统一入口：调一次 ASR，多个维度共享结果
 
     Args:
         task_params (dict): 包含以下字段
-            - record_file (str): wav 录音文件路径
-            - pause (list): 停顿区间数据
-            - first_frame_ms (int|None): 录屏首帧时刻
-            - start_ms (int|None): 音频开始播放时刻
-            - input (list): 主服务下发的 input 词级时间戳
-            - offset_ms (int): 时延补偿，默认 40
-            - query (str): 参考参数 JSON 中的 query 文本（与 pause 同源）
-            - question (str): get_results() 返回的设备识别用户提问文本
-            - user_wav (str|None): 用户打断语音 wav 路径（打断指标用；两路 wav 齐全才算）
-            - ai_wav (str|None): 模型恢复语音 wav 路径（打断指标用；两路 wav 齐全才算）
+            - user_wav (str|None): 用户语音 wav 路径
+            - ai_wav (str|None): 模型语音 wav 路径
+            - rounds (list|None): 多轮文本上下文，整体保留传给 high_freq_llm_judge 逐轮处理
 
     Returns:
         dict: {
             'tor': {...},              接话率结果
             'false_takeover': {...},   误接管率结果
             'takeover_latency': {...}, 接管时延结果
-            'input_asr': {...},        输入识别准确率结果
             'interruption': {...},     打断指标结果（无双路 wav 时为空结构）
             'non_interactive_latency': {...}, 非交互意图时延结果（无双路 wav 时为空结构）
             'high_freq_turn_taking': {...},  高频轮换每轮回复时延结果
@@ -170,82 +162,31 @@ def calculate_xiaoyi_metrics(task_params):
 
     logger.info(f"[xiaoyi_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
 
-    # ── 控制台打印收到的关键数据（带中文说明），便于确认 user_wav/ai_wav 等是否送达 ──
+    # ── 控制台打印收到的关键数据 ──
     _rounds = task_params.get('rounds') or []
     _round0 = _rounds[0] if (isinstance(_rounds, list) and _rounds and isinstance(_rounds[0], dict)) else {}
     _user_wav = task_params.get('user_wav') or _round0.get('user_wav')
     _ai_wav = task_params.get('ai_wav') or _round0.get('ai_wav')
-    _pause_val = task_params.get('pause') or _round0.get('pause')
-    _input_val = task_params.get('input') or task_params.get('input_lastword') or _round0.get('input') or _round0.get('input_lastword')
-    _first_frame = task_params.get('first_frame_ms') or _round0.get('first_frame_ms')
-    _start_ms = task_params.get('start_ms') or _round0.get('start_ms')
-    _end_ms = task_params.get('end_ms') or _round0.get('end_ms')
-    _offset_ms = task_params.get('offset_ms') or _round0.get('offset_ms')
-    _query = task_params.get('query') or _round0.get('query')
-    _question = task_params.get('question') or _round0.get('question')
     print(
         "\n==================== xiaoyi_metrics 收到数据 ====================\n"
-        f"  录音文件(record_file)        : {_short(task_params.get('record_file') or task_params.get('wav_path'))}\n"
-        f"  用户打断音频(user_wav)       : {_short(_user_wav)}\n"
-        f"  模型恢复音频(ai_wav)         : {_short(_ai_wav)}\n"
-        f"  录屏首帧时刻(first_frame_ms) : {_first_frame}\n"
-        f"  音频开始(start_ms) / 结束(end_ms): {_start_ms} / {_end_ms}\n"
-        f"  停顿区间(pause)             : {_len_of(_pause_val)} 条\n"
-        f"  输入末词(input_lastword)     : {_len_of(_input_val)} 个\n"
-        f"  用例问题(query) / 模型识别(question): {(_query or '')!r} / {(_question or '')!r}\n"
-        f"  时延补偿(offset_ms)          : {_offset_ms}\n"
-        f"  双路音频是否齐全             : {'是 → 将计算打断指标' if (_user_wav and _ai_wav) else '否 → 跳过打断指标'}\n"
+        f"  用户音频(user_wav)       : {_short(_user_wav)}\n"
+        f"  模型音频(ai_wav)         : {_short(_ai_wav)}\n"
+        f"  双路音频是否齐全         : {'是 → 将计算打断指标' if (_user_wav and _ai_wav) else '否 → 跳过打断指标'}\n"
         "================================================================"
     )
 
-    wav_path = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path')
-    if wav_path:
-        # 1. 调一次 ASR，三个维度共享（不写文件，通过返回值传递）
-        raw = call_modelscope_asr(wav_path)
-        asr_hyp = parse_result(raw)
-        chunks = asr_hyp.get("chunks", [])
-        logger.info(f"ASR 完成，chunks={len(chunks)}，开始计算三个维度")
-    else:
-        asr_hyp = {'text': '', 'chunks': []}
-        logger.info("record_file 为空，跳过主录音 ASR，takeover_latency 将无法计算")
-
-    # 2. pause 数据（兼容 JSON 和 Python repr 格式）
-    pause_intervals = task_params.get('pause', [])
-    if isinstance(pause_intervals, str):
-        import ast
-        try:
-            pause_intervals = _json.loads(pause_intervals)
-        except _json.JSONDecodeError:
-            try:
-                pause_intervals = ast.literal_eval(pause_intervals)
-                logger.info(f"[xiaoyi_metrics] pause 非合法JSON，用 ast.literal_eval 解析成功: {pause_intervals}")
-            except (ValueError, SyntaxError):
-                logger.warning(f"[xiaoyi_metrics] pause 解析失败，使用空列表: {pause_intervals!r}")
-                pause_intervals = []
-
-    # 3. 三个维度共享 asr_hyp
     results = {}
 
-    # tor / takeover_latency 共用：user_wav + ai_wav 双路 ASR，各调一次
+    # 双路 ASR：user_wav + ai_wav 各调一次
     rounds = task_params.get('rounds', [])
     round0 = rounds[0] if rounds else {}
-    input_words = (
-        task_params.get('input')
-        or task_params.get('input_lastword')
-        or round0.get('input')
-        or round0.get('input_lastword')
-        or []
-    )
     user_wav = task_params.get('user_wav') or round0.get('user_wav')
     ai_wav = task_params.get('ai_wav') or round0.get('ai_wav')
-    start_ms = task_params.get('start_ms') or round0.get('start_ms')
-    offset_ms = task_params.get('offset_ms') or round0.get('offset_ms') or 40
 
     user_chunks = _get_asr_chunks(user_wav) if user_wav else None
     ai_chunks = _get_asr_chunks(ai_wav) if ai_wav else None
 
-    # pause 数据：始终从 user_wav ASR 结果（用户通道）计算停顿区间
-    #    detect_pauses 逻辑：相邻 chunk 间隔在 0.2s~3.0s 之间视为停顿
+    # pause 数据：从 user_wav ASR 结果（用户通道）自动计算停顿区间
     if user_chunks:
         pause_intervals = []
         for i in range(len(user_chunks) - 1):
@@ -273,31 +214,22 @@ def calculate_xiaoyi_metrics(task_params):
     results['false_takeover'] = compute_false_takeover(ai_word_chunks or [], pause_intervals)
     logger.info(f"[false_takeover] {results['false_takeover']}")
 
-    # takeover_latency: 优先使用双路 ASR chunks，回退到旧逻辑
+    # takeover_latency: 使用双路 ASR chunks 计算接管时延
     results['takeover_latency'] = compute_takeover_latency_from_raw(
-        first_frame_ms=task_params.get('first_frame_ms'),
-        asr_hyp=asr_hyp,
-        start_ms=start_ms,
-        input_words=input_words,
-        offset_ms=offset_ms,
+        first_frame_ms=None,
+        asr_hyp=None,
+        start_ms=None,
+        input_words=[],
+        offset_ms=40,
         user_chunks=user_chunks,
         ai_chunks=ai_chunks,
     )
     logger.info(f"[takeover_latency] {_format_takeover_latency(results['takeover_latency'])}")
 
-    # input_asr: 对比参考 query 与设备识别 question
-    results['input_asr'] = compute_input_asr_match(
-        task_params=task_params,
-    )
-    logger.info(f"[input_asr] {_format_input_asr(results['input_asr'])}")
-
-    # 4. 打断指标：两路 wav（user_wav 用户打断 + ai_wav 模型恢复）各 ASR 一次，共享打断计算
-    #    字段可能放顶层 task_params 或 rounds[0]（取决于 body_template），多级回退取值
-    user_wav = task_params.get('user_wav') or round0.get('user_wav')
-    ai_wav = task_params.get('ai_wav') or round0.get('ai_wav')
+    # 打断指标：两路 wav（user_wav 用户打断 + ai_wav 模型恢复）各 ASR 一次，共享打断计算
     if user_wav and ai_wav:
         try:
-            user_asr = parse_result(call_modelscope_asr(user_wav))   # {text, chunks}
+            user_asr = parse_result(call_modelscope_asr(user_wav))
             model_asr = parse_result(call_modelscope_asr(ai_wav))
             results['interruption'] = compute_interruption_metrics(user_asr, model_asr)
             logger.info(
@@ -310,11 +242,10 @@ def calculate_xiaoyi_metrics(task_params):
                 f"msg={results['interruption'].get('message')}"
             )
         except Exception as e:
-            # 打断失败不阻断 xiaoyi 主指标，记录空结构
             logger.warning(f"[interruption] 打断指标计算失败，跳过: {e}")
             results['interruption'] = _empty_interruption(f"打断计算失败: {e}")
 
-        # 5. 非交互意图时延：用户在模型回复期间说话的 stop / recovery 时延
+        # 非交互意图时延：用户在模型回复期间说话的 stop / recovery 时延
         try:
             results['non_interactive_latency'] = compute_non_interactive_latency(user_asr, model_asr)
             logger.info(
@@ -332,7 +263,7 @@ def calculate_xiaoyi_metrics(task_params):
         results['interruption'] = _empty_interruption('无双路音频，跳过打断')
         results['non_interactive_latency'] = _empty_non_interactive_latency('无双路音频，跳过')
 
-    # 6. 高频轮换：每轮回复时延（飞花令/成语接龙/快问快答等），复用已算好的双路 ASR chunks
+    # 高频轮换：每轮回复时延，复用已算好的双路 ASR chunks
     try:
         _merge_gap = task_params.get('seg_merge_gap_s') or round0.get('seg_merge_gap_s')
         _hf_kwargs = {}
@@ -356,7 +287,7 @@ def calculate_xiaoyi_metrics(task_params):
         logger.warning(f"[high_freq_turn_taking] 计算失败，跳过: {e}")
         results['high_freq_turn_taking'] = {'n_rounds': 0, 'per_round': [], 'message': f'计算失败: {e}'}
 
-    # 7. 高频轮换 LLM 裁判：传输录屏，逐轮判断问答内容是否符合预期
+    # 高频轮换 LLM 裁判：发送模型回复音频(ai_wav)给多模态 LLM，逐轮判断问答内容是否符合预期
     try:
         results['high_freq_llm_judge'] = calculate_high_freq_llm_judge(task_params)
     except Exception as e:
@@ -890,14 +821,13 @@ def _print_high_freq_results(results):
 def calculate_high_freq_llm_judge(task_params):
     """高频轮换场景 LLM 裁判：以模型回复音频(ai_wav)为主输入，逐轮判断问答内容是否符合预期
 
-    录屏不再可用：改为发送【模型回复音频 ai_wav】给多模态 LLM（直接听回复，不过小 ASR），
+    发送【模型回复音频 ai_wav】给多模态 LLM（直接听回复，不过小 ASR），
     结合 rounds 文本上下文（用户提问/预期答案），逐轮判断模型回复是否符合预期，
-    返回 pass/fail + reason。ai_wav 缺失时回退 record_file（legacy 录屏）。
+    返回 pass/fail + reason。
 
     Args:
         task_params (dict): 包含以下字段
             - ai_wav (str): 模型回复音频路径（主输入，被判定对象）
-            - record_file (str): legacy 录屏/音频文件路径（ai_wav 缺失时回退用）
             - rounds (list): 多轮文本数据，每轮 {query, answer, expected_answer}
             - scenario_type (str): 场景类型（飞花令/成语接龙/快问快答/自定义）
             - scenario_rules (str): 自定义场景规则
@@ -924,10 +854,9 @@ def calculate_high_freq_llm_judge(task_params):
 
     logger.info(f"[high_freq_llm_judge] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
 
-    record_file = task_params.get('record_file') or task_params.get('record_path') or task_params.get('wav_path') or ''
     rounds = task_params.get('rounds') or []
     _r0 = rounds[0] if (isinstance(rounds, list) and rounds and isinstance(rounds[0], dict)) else {}
-    # 模型回复音频（主输入）：优先 ai_wav，回退 record_file（legacy 录屏）
+    # 模型回复音频（主输入）
     ai_wav = task_params.get('ai_wav') or _r0.get('ai_wav') or ''
     scenario_type = task_params.get('scenario_type') or ''
     scenario_rules = task_params.get('scenario_rules') or ''
@@ -938,7 +867,6 @@ def calculate_high_freq_llm_judge(task_params):
     print(
         "\n==================== high_freq_llm_judge 收到数据 ====================\n"
         f"  模型回复音频(ai_wav)   : {_short(ai_wav)}\n"
-        f"  录屏文件(record_file)  : {_short(record_file)}\n"
         f"  场景类型(scenario_type): {scenario_type or 'N/A'}\n"
         f"  轮次数(n_rounds)       : {_len_of(rounds)}\n"
         f"  模型(llm_model)        : {model or '(default)'}\n"
@@ -947,7 +875,6 @@ def calculate_high_freq_llm_judge(task_params):
 
     try:
         result = evaluate_high_freq_llm(
-            video_path=record_file,
             rounds=rounds,
             scenario_type=scenario_type,
             scenario_rules=scenario_rules,
@@ -963,7 +890,6 @@ def calculate_high_freq_llm_judge(task_params):
             'model': model,
             'scenario_type': scenario_type,
             'ai_wav': ai_wav,
-            'video_path': record_file,
             'n_rounds': _len_of(rounds),
             'per_round': [],
             'message': f'评估失败: {e}',

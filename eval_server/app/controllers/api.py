@@ -31,7 +31,6 @@ from ..utils.responses import (
 )
 from datetime import datetime
 from ..config import config  # 配置信息
-from ..services.wer_calculator import calculate_wer, calculate_ser, calculate_cpwer, calculate_tcpwer, calculate_stm_wer  # WER/SER 计算函数
 from ..services.task_service import calculate_in_process  # 线程池计算包装函数
 from ..utils.concurrency import ConcurrencyManager  # 并发管理器
 

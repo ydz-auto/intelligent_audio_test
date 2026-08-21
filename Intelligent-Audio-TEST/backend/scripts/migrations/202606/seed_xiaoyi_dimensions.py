@@ -52,7 +52,7 @@ MAIN_DIMENSION = {
     'task_type_code': 'turn_taking',
     'name': '话轮接管',
     'keywords': 'turn_taking,话轮,接管,tor,接话,误接管,抢话,接管时延,延迟',
-    'description': '话轮接管主维度：调双路 ASR 一次，共享结果给三个子维度（tor/false_takeover/takeover_latency）。主维度只配 input 和映射，不配 output。',
+    'description': '话轮接管主维度：调双路 ASR（user_wav + ai_wav）一次，共享结果给子维度（tor/false_takeover/takeover_latency/高频轮换/高频LLM裁判）。主维度只配 input 和映射，不配 output。',
     'type': 'auto',
     'result_type': 0,
     'result_min': 0.0,
@@ -67,11 +67,6 @@ MAIN_DIMENSION = {
             {
                 'user_wav': '{{user_wav}}',
                 'ai_wav': '{{ai_wav}}',
-                'pause': '{{pause}}',
-                'first_frame_ms': '{{first_frame_ms}}',
-                'start_ms': '{{start_ms}}',
-                'input_lastword': '{{input_lastword}}',
-                'offset_ms': '{{offset_ms}}',
             }
         ]
     },
@@ -83,30 +78,11 @@ MAIN_DIMENSION = {
         ('ai_wav', 'AI回复通道音频', 'AI回复通道音频', 'audio', 'input',
          None, None, None, True,
          False, None, 'AI 回复通道 wav 路径（cap_client_ec_out.wav）', 2),
-        ('pause', '停顿区间', '停顿区间', 'json', 'input',
-         None, None, None, True,
-         False, None, '停顿区间数据(主服务用例参数传递)', 10),
-        ('first_frame_ms', '录屏首帧时刻', '录屏首帧时刻', 'number', 'input',
-         None, None, None, True,
-         False, None, '录屏首帧写入的绝对时刻(毫秒 Unix 时间戳)，legacy 回退用', 20),
-        ('start_ms', '音频开启时刻', '音频开启时刻', 'number', 'input',
-         None, None, None, True,
-         False, None, '本轮音频播放开始的绝对时刻(毫秒 Unix 时间戳)，legacy 回退用', 30),
-        ('input_lastword', '输入末词时间戳', '输入末词时间戳', 'json', 'input',
-         None, None, None, True,
-         False, None, '输入音频最后一词时间戳（主服务参数传递），legacy 回退用', 40),
-        ('offset_ms', '时延补偿', '时延补偿', 'number', 'input',
-         None, None, None, True,
-         False, '40', '音响结束播放与音频最后内容词的时延补偿(毫秒)', 50),
         # 主维度不配 output 参数
     ],
     'param_mappings': [
         ('device', 'output', 'user_wav', 'user_wav', 'none'),
         ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
-        ('reference', 'output', 'pause', 'pause', 'none'),
-        ('device', 'output', 'first_frame_ms', 'first_frame_ms', 'none'),
-        ('device', 'output', 'start_ms', 'start_ms', 'none'),
-        ('reference', 'output', 'input_lastword', 'input_lastword', 'none'),
     ],
 }
 
@@ -365,11 +341,6 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
             {
                 'user_wav': '{{user_wav}}',
                 'ai_wav': '{{ai_wav}}',
-                'pause': '{{pause}}',
-                'first_frame_ms': '{{first_frame_ms}}',
-                'start_ms': '{{start_ms}}',
-                'input_lastword': '{{input_lastword}}',
-                'offset_ms': '{{offset_ms}}',
             }
         ]
     })

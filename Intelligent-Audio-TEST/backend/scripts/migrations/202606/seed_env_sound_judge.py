@@ -4,7 +4,7 @@
 
 功能：
 1. 注册一个评估维度（dimension）：
-   - env_judge (录屏文件 LLM 裁判：拒识与环境理解)
+   - env_judge (模型回复音频 LLM 裁判：拒识与环境理解)
 2. 注册该维度的输入/输出参数（evaluation_dimension_params）
 3. 注册 voice_llm 算法与该维度的关联（algorithm_dimension_relations）
 4. 注册 voice_llm → 该维度的参数映射（param_mappings）
@@ -62,7 +62,9 @@ DIMENSIONS = [
         'name': '环境音裁判',
         'keywords': 'env_sound,judge,环境音,拒识,场景理解,裁判,旁人交谈,环境噪声,反馈词,生理声,环境事件回溯',
         'description': (
-            '录屏文件 LLM 裁判：拒识与环境理解。'
+            '模型回复音频 LLM 裁判：拒识与环境理解。'
+            '以模型回复音频(ai_wav)为主输入，裁判模型直接听回复，'
+            '用户侧 ASR + 环境声事件作为文本时间线上下文。'
             '场景包括旁人交谈静默/环境噪声/反馈词/生理声/环境事件回溯，'
             '由裁判模型对语音大模型的行为进行评判（回应/恢复/询问/无关回复/沉默）。'
         ),
@@ -82,7 +84,7 @@ DIMENSIONS = [
              False, None, '模型回复音频路径，裁判模型直接听回复(不过小ASR)；录屏没了的主输入', 5),
             ('env_type', '环境子场景', '环境子场景类型', 'text', 'input',
              None, None, None, False,
-             False, None, '环境子场景类型(如 旁人交谈/环境噪声/环境回溯 等)', 10),
+             False, None, '环境子场景类型(如 旁人交谈/环境噪声/环境回溯 等)，同时决定使用哪组 prompt', 10),
             ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
              None, None, None, False,
              False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频，音频裁判需指定gpt-audio/omni等)', 15),
@@ -112,9 +114,6 @@ DIMENSIONS = [
             ('esj_model', '裁判模型', '使用的 LLM 模型', 'text', 'output',
              'model', None, 'aux', False,
              False, None, '本次裁判使用的 LLM 模型名', 61),
-            ('esj_task_type', '裁判类型', '裁判任务类型', 'text', 'output',
-             'task_type', None, 'aux', False,
-             False, None, '裁判任务类型(env_judge/interruption_judge)', 62),
             ('esj_env_type', '环境场景', '环境子场景类型', 'text', 'output',
              'env_type', None, 'aux', False,
              False, None, '环境子场景类型', 63),

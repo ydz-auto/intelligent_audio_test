@@ -178,7 +178,7 @@ def _compute_from_asr(user_asr: Any, model_asr: Any,
     result['user_segment'] = [round(u_s, 3), round(u_e, 3), u_t]
 
     # ── 1. 定位被插话的模型回复段 ──
-    # 用目标段的前一段（提问段）结束时间，找模型在该时间之后的第一段回复
+    # 用目标段的前一段（提问段）结束时间，找模型在该时间之后、且与用户目标段有重叠或紧邻的回复段
     prev_idx = target_segment_index - 1
     if prev_idx < 0:
         result['message'] = '目标段为第 1 段，无前一段提问可定位模型回复'
@@ -186,18 +186,26 @@ def _compute_from_asr(user_asr: Any, model_asr: Any,
         return result
 
     u_prev_end = u_segs[prev_idx][1]  # 前一段提问的结束时间
+
+    # 找在用户提问后开始的模型段中，在用户目标段开始时正在说话（或刚说完）的段
     m_active: Optional[Tuple[float, float, str]] = None
     for ms, me, mt in m_segs:
         if ms >= u_prev_end:  # 在用户提问之后开始的模型段
-            m_active = (ms, me, mt)
-            break
+            # 优先找与用户目标段有时间重叠的模型段
+            if me > u_s:  # 模型在用户开始讲话时还没说完
+                m_active = (ms, me, mt)
+                break
+            # 记录最后一个在用户开始之前结束的段（作为候选）
+            if m_active is None:
+                m_active = (ms, me, mt)
 
     if m_active is not None:
         m_s, m_e, m_t = m_active
         result['model_active_segment'] = [round(m_s, 3), round(m_e, 3), m_t]
 
-        # 用户开始讲话 → 模型停止回复
-        result['stop_latency_s'] = round(m_e - u_s, 3)
+        # 用户开始讲话 → 模型停止回复（模型在用户说话时还在继续，持续了多久才停）
+        # 如果模型在用户开始前就已结束，说明没有被打断，stop_latency=0
+        result['stop_latency_s'] = round(max(0.0, m_e - u_s), 3)
 
         # 重叠时长
         ov_s = max(0.0, min(m_e, u_e) - max(m_s, u_s))
