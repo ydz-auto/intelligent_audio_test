@@ -382,7 +382,7 @@ def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
 def get_asr_chunks(user_wav: str) -> Optional[List[Dict[str, Any]]]:
     """调用 ASR 获取用户侧 chunks（用于构建时间线上下文）"""
     try:
-        from app.services.xiaoyi_metrics.turn_taking import _get_asr_chunks
+        from app.services.calculators.xiaoyi_metrics.turn_taking import _get_asr_chunks
         return _get_asr_chunks(user_wav)
     except Exception as e:
         logger.warning(f'[env_judge] 用户侧 ASR 失败，时间线将缺用户段: {e}')
