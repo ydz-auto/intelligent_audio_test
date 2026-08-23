@@ -322,6 +322,16 @@ class Xiaoyilivechat(HarmonyDriver):
                   content=f"清理 {app} pcm 完成: rc={result.returncode}",
                   task_id=task_id, test_case_id=test_case_id)
 
+        # 清除后检测：若仍有残留 .pcm 文件，仅日志告警（不改行为，便于排查）
+        # 可能原因：文件被采集进程占用/权限不足/路径不存在
+        remaining = []
+        for d in dirs:
+            remaining.extend(self._list_dir_pcm(device_sn, d))
+        if remaining:
+            self._log(level='WARNING',
+                      content=f"pcm清除失败: 残留 {len(remaining)} 个文件: {remaining}",
+                      task_id=task_id, test_case_id=test_case_id)
+
     def _list_dir_pcm(self, device_sn, remote_dir):
         """列出设备指定目录下所有 pcm 文件路径（用于按后缀匹配区分用户输入/AI回复）"""
         r = self._hdc_shell(device_sn, 'find', remote_dir, '-name', '*.pcm', '-type', 'f')

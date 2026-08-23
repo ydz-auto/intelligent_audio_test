@@ -8,17 +8,17 @@
    - 配置全部 input params、api_settings、body_template、param_mappings
    - 配置打断成功率 output params（interruption_success_rate 等）
    - 包含 LLM 评估 output params
-3. 注册/更新两个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
+3. 注册/更新5个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
    - 打断检查时延 → output field_path = avg_stop_latency_s
    - 打断恢复时延 → output field_path = avg_recovery_latency_s
    - 子维度不重复 input params / param_mappings，由 evaluation_service._load_dimension_data
      的继承逻辑从父维度合并 input_params；param_mappings 不按 dimension_id 过滤
      （主调用路径 dimension_ids=None），挂在主维度 id 下即可被子维度共用
-4. 注册 voice_llm 算法与主维度 + 两个子维度的关联（algorithm_dimension_relations）
+4. 注册 voice_llm 算法与主维度 + 5个子维度的关联（algorithm_dimension_relations）
 5. 注册 voice_llm → 主维度的参数映射（param_mappings.dimension_id = 主维度id）
 
 执行链路：
-   用例选主维度 + 两个子维度 → 三者继承父维度 task_type_code/api 配置 → 被
+   用例选主维度 + 5个子维度 → 继承父维度 task_type_code/api 配置 → 被
    (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server
    → process_group_dimension_results 把同一份响应按各自 output field_path 分发提取
 
@@ -158,7 +158,13 @@ MAIN_DIMENSION = {
          False, None, '每轮打断后回复适应性打分均值(0-5)', 102),
         ('llm_return_behavior_summary', '回原话题行为分布', '回到原话题行为分类计数', 'json', 'output',
          'llm_return_behavior_summary', None, 'aux', False,
-         False, None, '回到原话题后模型回复行为计数{C_RESPOND/C_RESUME/C_UNCERTAIN_HANDLING/C_UNKNOWN}（参考 v1.5 behavior.txt C 轴）', 103),
+         False, None, '回到原话题后模型回复行为计数{回应/恢复/询问/无关回复/沉默或无视}（5 类，与 env_judge 同量表）', 103),
+        ('llm_interaction_behavior_summary', '交互行为分布', '交互过程行为分类计数', 'json', 'output',
+         'llm_interaction_behavior_summary', None, 'aux', False,
+         False, None, '每轮模型收到指令后的回复行为计数{回应/恢复/询问/无关回复/沉默或无视}（5 类，每例每轮判一次）', 107),
+        ('llm_interaction_per_round', '交互逐轮行为', '交互过程逐轮行为', 'json', 'output',
+         'llm_interaction_per_round', None, 'aux', False,
+         False, None, '每轮交互行为判断明细列表[{round,query,answer,behavior,reason}]', 108),
         ('llm_return_avg_coherence', '回原话题连贯性均分', '回到原话题回复连贯性均分', 'number', 'output',
          'llm_return_avg_coherence', None, 'aux', False,
          False, None, '回到原话题后回复连贯性打分均值(0-5)', 104),
@@ -191,7 +197,7 @@ MAIN_DIMENSION = {
 }
 
 # ============================================================
-# 两个子维度定义：各自只配自己的 output 参数
+# 子维度定义：各自只配自己的 output 参数（2 时延 + 3 LLM 三维均分）
 # ============================================================
 # params 元组顺序：
 # (param_code, param_name, label, field_type, param_direction,
@@ -246,6 +252,67 @@ SUB_DIMENSIONS = [
             ('avg_silence_gap_s', '静默时长', '静默时长(秒)', 'number', 'output',
              'avg_silence_gap_s', None, 'aux', False,
              False, None, '平均模型停下到恢复的静默时长(秒)', 82),
+        ],
+    },
+    # ─── LLM 评估子维度：打断后回复质量三维均分(0-5) ───
+    {
+        'task_type_code': 'interruption_metrics',
+        'name': '平均连贯性',
+        'keywords': 'interruption,coherence,连贯性,平均连贯性,llm_coherence',
+        'description': '子维度：打断后回复连贯性均分(0-5)。output field_path = llm_recovery_avg_coherence',
+        'type': 'auto',
+        'result_type': 1,
+        'result_min': 0.0,
+        'result_max': 5.0,
+        'decimal_places': 3,
+        'weight': 1,
+        'estimated_exec_time': 30,
+        'score_unit': '分',
+        'statistic_method': 'average',
+        'params': [
+            ('llm_recovery_avg_coherence', '平均连贯性', '打断后回复连贯性均分(0-5)', 'number', 'output',
+             'llm_recovery_avg_coherence', 'value', 'main', True,
+             False, None, '每轮打断后回复连贯性打分均值(0-5，对标 Full-Duplex-Bench GPT-4o Score)', 100),
+        ],
+    },
+    {
+        'task_type_code': 'interruption_metrics',
+        'name': '平均相关性',
+        'keywords': 'interruption,relevance,相关性,平均相关性,llm_relevance',
+        'description': '子维度：打断后回复相关性均分(0-5)。output field_path = llm_recovery_avg_relevance',
+        'type': 'auto',
+        'result_type': 1,
+        'result_min': 0.0,
+        'result_max': 5.0,
+        'decimal_places': 3,
+        'weight': 1,
+        'estimated_exec_time': 30,
+        'score_unit': '分',
+        'statistic_method': 'average',
+        'params': [
+            ('llm_recovery_avg_relevance', '平均相关性', '打断后回复相关性均分(0-5)', 'number', 'output',
+             'llm_recovery_avg_relevance', 'value', 'main', True,
+             False, None, '每轮打断后回复相关性打分均值(0-5)', 101),
+        ],
+    },
+    {
+        'task_type_code': 'interruption_metrics',
+        'name': '平均适应性',
+        'keywords': 'interruption,adaptability,适应性,平均适应性,llm_adaptability',
+        'description': '子维度：打断后回复适应性均分(0-5)。output field_path = llm_recovery_avg_adaptability',
+        'type': 'auto',
+        'result_type': 1,
+        'result_min': 0.0,
+        'result_max': 5.0,
+        'decimal_places': 3,
+        'weight': 1,
+        'estimated_exec_time': 30,
+        'score_unit': '分',
+        'statistic_method': 'average',
+        'params': [
+            ('llm_recovery_avg_adaptability', '平均适应性', '打断后回复适应性均分(0-5)', 'number', 'output',
+             'llm_recovery_avg_adaptability', 'value', 'main', True,
+             False, None, '每轮打断后回复适应性打分均值(0-5)', 102),
         ],
     },
 ]
@@ -606,10 +673,10 @@ def seed_interruption_dimensions():
         _upsert_param_mappings(conn, main_id, MAIN_DIMENSION)
 
         # ============================================================
-        # Step 2: 注册两个子维度
+        # Step 2: 注册5个子维度
         # ============================================================
         print(f"\n{'=' * 60}")
-        print(f"  Step 2: 注册两个子维度（parent_dimension_id={main_id}）")
+        print(f"  Step 2: 注册5个子维度（parent_dimension_id={main_id}）")
         print(f"{'=' * 60}")
         for sub_def in SUB_DIMENSIONS:
             print(f"\n  -- 子维度: {sub_def['name']} --")
@@ -622,7 +689,7 @@ def seed_interruption_dimensions():
         print(f"\n{'=' * 60}")
         print(f"  打断指标维度种子数据注册完成")
         print(f"  主维度 打断成功率 id={main_id}")
-        print(f"  两个子维度（各自 output field_path）:")
+        print(f"  5个子维度（各自 output field_path）:")
         print(f"    - 打断检查时延 → avg_stop_latency_s")
         print(f"    - 打断恢复时延 → avg_recovery_latency_s")
         print(f"{'=' * 60}")
@@ -640,15 +707,15 @@ if __name__ == '__main__':
     print("2. 注册/更新打断成功率主维度（dimension_type=main）")
     print("   配置 input params + 打断成功率 output params + LLM 评估 output params")
     print("   + api_settings + param_mappings")
-    print("3. 注册/更新两个子维度（dimension_type=sub，parent_dimension_id=主维度id）：")
+    print("3. 注册/更新5个子维度（dimension_type=sub，parent_dimension_id=主维度id）：")
     print("   - 打断检查时延 → output field_path = avg_stop_latency_s")
     print("   - 打断恢复时延 → output field_path = avg_recovery_latency_s")
     print("4. 子维度不重复 input params / param_mappings：")
     print("   - input_params 通过 evaluation_service._load_dimension_data 继承父维度")
     print("   - param_mappings 挂主维度 id 下，子维度共用（dimension_ids=None 不过滤）")
-    print("5. 注册 voice_llm → 主维度 + 两个子维度的关联")
+    print("5. 注册 voice_llm → 主维度 + 5个子维度的关联")
     print()
-    print("执行链路：用例选主维度 + 两个子维度 → 继承父维度 task_type_code/api 配置")
+    print("执行链路：用例选主维度 + 5个子维度 → 继承父维度 task_type_code/api 配置")
     print("→ 按 (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server")
     print("→ process_group_dimension_results 按各自 output field_path 分发提取")
     print()

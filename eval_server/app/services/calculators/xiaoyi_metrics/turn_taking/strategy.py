@@ -433,38 +433,9 @@ class InterruptionMetricsCalculator(TurnTakingBase):
                 'task_params': task_params}
 
     def calculate(self, params):
-        from app.services.calculators.xiaoyi_metrics.interruptbility.interruption import compute_interruption_metrics
-
-        user_asr = params.get('user_asr')
-        model_asr = params.get('model_asr')
-
-        if user_asr is None and params.get('user_wav'):
-            from app.utils.asr_adapator import call_modelscope_asr, parse_result
-            try:
-                user_asr = parse_result(call_modelscope_asr(params['user_wav']))
-            except (FileNotFoundError, OSError) as e:
-                logger.warning(f"[interruption_metrics] user_wav ASR 失败: {e}")
-                user_asr = None
-        if model_asr is None and params.get('ai_wav'):
-            from app.utils.asr_adapator import call_modelscope_asr, parse_result
-            try:
-                model_asr = parse_result(call_modelscope_asr(params['ai_wav']))
-            except (FileNotFoundError, OSError) as e:
-                logger.warning(f"[interruption_metrics] ai_wav ASR 失败: {e}")
-                model_asr = None
-
-        if user_asr is None or model_asr is None:
-            return {'message': '缺少 user_wav/ai_wav 或 ASR 结果（文件不存在或 ASR 服务不可用）'}
-
-        merge_gap = params.get('task_params', {}).get('seg_merge_gap_s')
-        kwargs = {}
-        if merge_gap is not None:
-            try:
-                gap_val = float(merge_gap)
-                if gap_val < 0.5:
-                    gap_val = 0.5
-                kwargs['seg_merge_gap_s'] = gap_val
-            except (TypeError, ValueError):
-                pass
-
-        return compute_interruption_metrics(user_asr, model_asr, **kwargs)
+        # 委托给 turn_taking.calculate_interruption_metrics 统一入口：
+        # 该入口内部完成 wav→ASR、时序指标(compute_interruption_metrics)、
+        # 可选 LLM 评估(enable_llm_eval)、以及 n_events=0 时的 success 兜底。
+        # 直接调 compute_interruption_metrics 会跳过 LLM/兜底（refactor 回归），此处修正。
+        from app.services.calculators.xiaoyi_metrics.turn_taking import calculate_interruption_metrics
+        return calculate_interruption_metrics(params.get('task_params') or {})

@@ -536,20 +536,12 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                           f"(start_ms={ts['start_ms']} end_ms={ts['end_ms']})",
                   task_id=task_id, test_case_id=test_case_id)
 
-        # 等 AI 回复完成(或仅等开始回复,取决于下一轮是否打断)：
-        # - 打断轮(is_interruption=True): 不等回复完成,直接收尾
-        # - 下一轮是打断轮(next_is_interruption 且非末轮): 只等 AI 开始回复(phase A)即返回,
-        #   让下一轮打断音频在 AI 回复期间播出(真 barge-in),不等 AI 说完
+        # 等 AI 回复：
+        # - 打断轮(is_interruption=True): 只等 AI 开始回复(phase A)即放下一轮,
+        #   不等 AI 说完(phase B)→ 让下一轮打断音频在 AI 回复期间播出(真 barge-in)
         # - 其它: 等 AI 回复完成(phase A+B)
         if kwargs.get('is_interruption') in (True, 'true', '1', 1):
-            self._log(level='INFO',
-                      content=f"[post_process] is_interruption=True,跳过等待 AI 回复完成,直接收尾",
-                      task_id=task_id, test_case_id=test_case_id)
-            replied = True
-        elif (kwargs.get('next_is_interruption') in (True, 'true', '1', 1)
-              and not (getattr(self, '_total_rounds', 1)
-                       and getattr(self, '_round_number', 0) == getattr(self, '_total_rounds', 1) - 1)):
-            # 下一轮是打断轮：只等 AI 开始回复(phase A)即放下一轮，让打断发生在 AI 回复期间
+            # 打断轮：只等 AI 开始回复(phase A)即放下一轮，让打断发生在 AI 回复期间(真 barge-in)
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
                 device_sn, app=getattr(self, '_pcm_app', 'chatgpt'),
                 task_id=task_id, test_case_id=test_case_id)
@@ -558,7 +550,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                 start_timeout=kwargs.get('ai_start_timeout', 25))
             replied = _status in ('fresh', 'ended')
             self._log(level='INFO',
-                      content=f"[post_process] next_is_interruption,等AI开始回复后即放下一轮: status={_status}",
+                      content=f"[post_process] is_interruption,等AI开始回复后即放下一轮(barge-in): status={_status}",
                       task_id=task_id, test_case_id=test_case_id)
             if not replied:
                 self.question_text = 'ChatGPT识别为空'
@@ -580,17 +572,6 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         round_number = getattr(self, '_round_number', 0)
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
-
-        # case 模式打断轮非末轮：延迟 5s 再进下一轮播放（可被停止/暂停打断）
-        if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
-                and record_mode == 'case' and not is_last):
-            self._log(level='INFO',
-                      content=f"[post_process] 打断轮结束,等待5s后进入下一轮播放: r{round_number}/{total_rounds}",
-                      task_id=task_id, test_case_id=test_case_id)
-            for _ in range(10):  # 10 * 0.5s = 5s
-                if self._check_stop('轮间延迟5s'):
-                    return True
-                time.sleep(0.5)
 
         if record_mode == 'case':
             # case 模式：一次连续语音通话 / 一个录屏 / 一个连续 PCM,对话间不退出语音。

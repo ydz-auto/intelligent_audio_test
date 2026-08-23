@@ -267,6 +267,8 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         'llm_recovery_per_round': [],
         'llm_return_per_round': [],
         'llm_return_scores_per_round': [],
+        'llm_interaction_per_round': [],
+        'llm_interaction_behavior_summary': {},
     }
 
     if not user_chunks:

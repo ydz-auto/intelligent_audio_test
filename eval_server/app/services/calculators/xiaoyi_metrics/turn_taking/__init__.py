@@ -734,6 +734,7 @@ def calculate_interruption_metrics(task_params):
                 'llm_return_avg_coherence', 'llm_return_avg_relevance',
                 'llm_return_avg_adaptability', 'llm_recovery_per_round',
                 'llm_return_per_round', 'llm_return_scores_per_round',
+                'llm_interaction_per_round', 'llm_interaction_behavior_summary',
             ):
                 result[k] = llm_result.get(k)
             logger.info(
