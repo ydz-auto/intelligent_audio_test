@@ -33,8 +33,8 @@ _VIDEO_EXTS = {
     '.wmv', '.m4v', '.ts', '.3gp',
 }
 
-# 行为分类的合法取值（五选一）
-BEHAVIOR_LABELS = ['回应', '恢复', '询问', '无关回复', '沉默']
+# 行为分类的合法取值（四选一）
+BEHAVIOR_LABELS = ['回应', '恢复', '不确定询问', '未知']
 
 
 # ─────────── 文件编码 ───────────
@@ -370,7 +370,7 @@ def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         behavior = str(item.get('behavior', '')).strip()
-        if behavior and behavior not in BEHAVIOR_LABELS and behavior != '无法判断':
+        if behavior and behavior not in BEHAVIOR_LABELS:
             matched = next(
                 (label for label in BEHAVIOR_LABELS if label in behavior),
                 None,
