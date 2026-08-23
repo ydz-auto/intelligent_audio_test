@@ -1,0 +1,82 @@
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_d984c166b54640::t_b5e2d22cbe17af 164
+  s_d984c166b54640::t_58c0aba4f378d1 152,155,158,161
+  s_d984c166b54640::t_6b9074524f5e81 166-168
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_env_sound_judge.py
+  s_d984c166b54640::t_b5e460d36438a2 3,6-11,14-17,25,479
+  s_d984c166b54640::t_c513f4e2905d65 60-129,132-135,137,140,144,152-177
+  s_d984c166b54640::t_b094feb2a34acd 463
+  s_d984c166b54640::t_4e8a15d70ef9a0 475-478,480,483
+  s_c70b21da2d25eb::t_c28f6e2f5aeb87 251
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  s_f67ee922aa5a49::t_03840000b05564 1000
+  s_f67ee922aa5a49::t_733bf625888619 23-25
+  s_f67ee922aa5a49::t_709a4bb8a84e42 262-282
+  s_f67ee922aa5a49::t_5cc5c8dc6ce0d1 949
+  s_f67ee922aa5a49::t_234c5c272ef143 551-552
+  s_f67ee922aa5a49::t_0388757a6cb9b1 997-999
+  s_f67ee922aa5a49::t_1d919cd58024d5 605-606
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "e1ea91023bcab313e68207080d92304c8e3f097a",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_c70b21da2d25eb": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87ba5773ad3a08262b1d96",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    },
+    "s_d984c166b54640": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87fd7e73ad3a08262b32ff",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a87fd7e73ad3a08262b32ff:6a8ab32441f59cf15668423a:afterEdit:7efacd82",
+        "external_session_id": "6a87fd7e73ad3a08262b32ff",
+        "tool_type": "builtin",
+        "tool_use_id": "6a8ab32441f59cf15668423a",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "source_scene": "agent",
+        "session_id": "6a87fd7e73ad3a08262b32ff",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "operation_id": "6a8ab32441f59cf15668423a"
+      }
+    },
+    "s_f67ee922aa5a49": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8aadd141f59cf1566840eb",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "edit_kind": "file_edit",
+        "source_scene": "agent",
+        "session_id": "6a8aadd141f59cf1566840eb",
+        "tool_type": "builtin",
+        "external_session_id": "6a8aadd141f59cf1566840eb",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "dedupe_key": "6a8aadd141f59cf1566840eb:6a8ab26841f59cf1566841ce:afterEdit:fee9c306",
+        "client_type": "ide",
+        "operation_id": "6a8ab26841f59cf1566841ce",
+        "tool_use_id": "6a8ab26841f59cf1566841ce"
+      }
+    }
+  }
+}
