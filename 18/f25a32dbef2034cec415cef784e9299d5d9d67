@@ -1,0 +1,30 @@
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/_common.py
+  s_556e5e4f1dfac1::t_97de368e73cf90 385
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_556e5e4f1dfac1::t_97de368e73cf90 166-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "18f25a32dbef2034cec415cef784e9299d5d9d67",
+  "prompts": {},
+  "sessions": {
+    "s_556e5e4f1dfac1": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8a6bd973ad3a08262b501a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a8a6bd973ad3a08262b501a",
+        "tool_name": "RunCommand",
+        "session_id": "6a8a6bd973ad3a08262b501a",
+        "tool_use_id": "6a8ab45541f59cf156684335",
+        "edit_kind": "bash",
+        "operation_id": "6a8ab45541f59cf156684335",
+        "display_model_name": "glm-5.2"
+      }
+    }
+  }
+}
