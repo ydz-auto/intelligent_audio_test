@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 """env_judge 策略类
 
+从原 env_judge 拆分为两个独立子维度：
+  - rejection_judge   拒识场景评估
+  - interruption_judge 打断场景评估
+
 单轮 vs 多轮区分：
   - round_number 有值（0/1/2...）→ 单轮评估，取 rounds[round_number]
   - round_number 不存在 → 多轮整体评估
@@ -12,7 +16,7 @@
   - 主音频：ai_wav（模型回复，被判定对象）
   - 用户侧：user_wav（用户通道音频，生成 ASR 时间线）
   - 时间线：env_events / start_ms / end_ms / pcm_first_ms
-  - LLM 配置：model / max_tokens / temperature / env_type
+  - LLM 配置：model / max_tokens / temperature / scene
 """
 import logging
 from app.services.calculators.base import BaseCalculator
@@ -20,9 +24,8 @@ from app.services.calculators.base import BaseCalculator
 logger = logging.getLogger(__name__)
 
 
-class EnvJudgeCalculator(BaseCalculator):
-    """环境感知裁判：发送模型回复音频+环境时间线给多模态 LLM 判断"""
-    task_type = 'env_judge'
+class _BaseEnvJudgeCalculator(BaseCalculator):
+    """拒识/打断裁判公共基类"""
 
     # ─── 单轮/多轮公共方法 ───
 
@@ -129,18 +132,29 @@ class EnvJudgeCalculator(BaseCalculator):
 
     @staticmethod
     def _extract_llm_config(task_params, rd):
-        """提取 LLM 配置参数"""
+        """提取 LLM 配置参数
+
+        scene 为新参数名，兼容旧 env_type 字段回退。
+        """
+        scene = task_params.get('scene') or rd.get('scene') or ''
+        if not scene:
+            scene = task_params.get('env_type') or rd.get('env_type') or ''
         return {
-            'env_type': task_params.get('env_type') or rd.get('env_type') or '',
+            'scene': scene,
             'model': task_params.get('model') or rd.get('model') or '',
             'max_tokens': int(task_params.get('max_tokens') or rd.get('max_tokens') or 4096),
             'temperature': float(task_params.get('temperature') or rd.get('temperature') or 0.1),
         }
 
-    def calculate(self, params):
-        from app.services.calculators.xiaoyi_metrics.env_judge.env_judge import evaluate_env_judge
 
-        return evaluate_env_judge(
+class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
+    """拒识场景裁判：发送模型回复音频+环境时间线给多模态 LLM 判断"""
+    task_type = 'rejection_judge'
+
+    def calculate(self, params):
+        from app.services.calculators.xiaoyi_metrics.env_judge.rejection_judge import evaluate_rejection_judge
+
+        return evaluate_rejection_judge(
             ai_wav=params['ai_wav'],
             user_wav=params['user_wav'],
             env_events=params['env_events'],
@@ -148,7 +162,29 @@ class EnvJudgeCalculator(BaseCalculator):
             end_ms=params['end_ms'],
             pcm_first_ms=params['pcm_first_ms'],
             rounds=params.get('rounds', []),
-            env_type=params['env_type'],
+            scene=params['scene'],
+            model=params['model'],
+            max_tokens=params['max_tokens'],
+            temperature=params['temperature'],
+        )
+
+
+class InterruptionJudgeCalculator(_BaseEnvJudgeCalculator):
+    """打断场景裁判：发送模型回复音频+环境时间线给多模态 LLM 判断"""
+    task_type = 'interruption_judge'
+
+    def calculate(self, params):
+        from app.services.calculators.xiaoyi_metrics.env_judge.interruption_judge import evaluate_interruption_judge
+
+        return evaluate_interruption_judge(
+            ai_wav=params['ai_wav'],
+            user_wav=params['user_wav'],
+            env_events=params['env_events'],
+            start_ms=params['start_ms'],
+            end_ms=params['end_ms'],
+            pcm_first_ms=params['pcm_first_ms'],
+            rounds=params.get('rounds', []),
+            scene=params['scene'],
             model=params['model'],
             max_tokens=params['max_tokens'],
             temperature=params['temperature'],

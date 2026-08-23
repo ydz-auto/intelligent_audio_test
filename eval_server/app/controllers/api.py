@@ -125,7 +125,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
     caller_task_id 为调用方的任务 ID（可选）。
     eval_task_id 可由调用方预先生成（如 create_task_upload 需要先存文件）。
     """
-    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'turn_taking', 'interruption_metrics', 'non_interactive_latency', 'noise_latency', 'env_judge', 'high_freq_turn_taking', 'high_freq_llm_judge']
+    SUPPORTED_TASK_TYPES = ['wer', 'ser', 'der', 'cpwer', 'tcpwer', 'stm_wer', 'llm_judge', 'turn_taking', 'interruption_metrics', 'non_interactive_latency', 'noise_latency', 'rejection_judge', 'interruption_judge', 'high_freq_turn_taking', 'high_freq_llm_judge']
     if task_type not in SUPPORTED_TASK_TYPES:
         return error_response(f"Unsupported task type: {task_type}. Supported types: {SUPPORTED_TASK_TYPES}", code=CODE_BUSINESS_ERROR)
 
@@ -165,8 +165,8 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
         # model_asr / ai_wav / pcm_first_ms 可能为空（body_template 未包含或驱动未输出），
         # 不在此拦截，交给 calculate 层返回带说明的空结果
         pass
-    elif task_type == 'env_judge':
-        # 录屏(video_path/record_file)没了时，用模型回复音频 ai_wav 作为主输入
+    elif task_type in ('rejection_judge', 'interruption_judge'):
+        # 模型回复音频(ai_wav)为主输入，录屏(video_path/record_file)为 legacy 回退
         _r0_ej = (task_params.get('rounds') or [{}])[0] if isinstance(task_params.get('rounds'), list) and task_params.get('rounds') else {}
         has_audio = (
             task_params.get('ai_wav') or _r0_ej.get('ai_wav')
@@ -174,7 +174,7 @@ def _validate_and_dispatch_task(task_type, task_params, endpoints, caller_task_i
             or _r0_ej.get('video_path') or _r0_ej.get('record_file')
         )
         if not has_audio:
-            return error_response("Missing required field for env_judge: ai_wav (模型回复音频) 或 video_path (录屏)，至少需要一个", code=CODE_VALIDATION_ERROR)
+            return error_response(f"Missing required field for {task_type}: ai_wav (模型回复音频) 或 video_path (录屏)，至少需要一个", code=CODE_VALIDATION_ERROR)
     elif task_type == 'high_freq_turn_taking':
         # 高频轮换：user_wav + ai_wav 双路音频（从顶层或 rounds[0] 取）
         _rounds_hftt = task_params.get('rounds') or []

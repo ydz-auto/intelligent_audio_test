@@ -9,7 +9,7 @@ import 本包即自动完成所有内置 calculator 的注册。
       turn_taking/   turn_taking(主) / tor / false_takeover / takeover_latency /
                      high_freq_turn_taking / high_freq_llm_judge / interruption_metrics
       rejection_scene_awareness/  non_interactive_latency / noise_latency
-      env_judge/     env_judge
+      env_judge/     rejection_judge / interruption_judge
       llm_judge/     llm_judge
 """
 from app.services.calculators.base import BaseCalculator
@@ -26,7 +26,9 @@ from app.services.calculators.xiaoyi_metrics.turn_taking.strategy import (
 from app.services.calculators.xiaoyi_metrics.rejection_scene_awareness.strategy import (
     NonInteractiveLatencyCalculator, NoiseLatencyCalculator,
 )
-from app.services.calculators.xiaoyi_metrics.env_judge.strategy import EnvJudgeCalculator
+from app.services.calculators.xiaoyi_metrics.env_judge.strategy import (
+    RejectionJudgeCalculator, InterruptionJudgeCalculator,
+)
 from app.services.calculators.xiaoyi_metrics.llm_judge.strategy import LlmJudgeCalculator
 
 # ── 自动注册 ──
@@ -50,5 +52,6 @@ TaskService.register_calculator('interruption_metrics', InterruptionMetricsCalcu
 # rejection_scene_awareness 域
 TaskService.register_calculator('non_interactive_latency', NonInteractiveLatencyCalculator())
 TaskService.register_calculator('noise_latency', NoiseLatencyCalculator())
-# env_judge 域
-TaskService.register_calculator('env_judge', EnvJudgeCalculator())
+# env_judge 域 → 拆分为两个独立子维度
+TaskService.register_calculator('rejection_judge', RejectionJudgeCalculator())
+TaskService.register_calculator('interruption_judge', InterruptionJudgeCalculator())
