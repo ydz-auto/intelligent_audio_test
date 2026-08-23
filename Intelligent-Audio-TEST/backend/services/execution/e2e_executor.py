@@ -285,6 +285,10 @@ class E2EExecutor(BaseExecutor):
             device_info_list, task_id, test_case_id=test_case_id,
             extra_params={'round_number': round_idx,
                           'total_rounds': len(rounds),
+                          'is_interruption': bool(round_config.get('is_interruption')),
+                          'next_is_interruption': bool(
+                              rounds[round_idx + 1].get('is_interruption'))
+                          if round_idx + 1 < len(rounds) else False,
                           **round_algo_params},
         )
 
@@ -313,6 +317,10 @@ class E2EExecutor(BaseExecutor):
         round_end_ms = playback_ts.get('current_round_end_ms')
         post_extra_params = {'round_number': round_idx,
                              'total_rounds': len(rounds),
+                             'is_interruption': bool(round_config.get('is_interruption')),
+                             'next_is_interruption': bool(
+                                 rounds[round_idx + 1].get('is_interruption'))
+                             if round_idx + 1 < len(rounds) else False,
                              **round_algo_params}
         if round_start_ms is not None and round_end_ms is not None:
             post_extra_params['playback_start_time_ms'] = round_start_ms

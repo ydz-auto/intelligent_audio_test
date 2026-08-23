@@ -315,7 +315,11 @@ class DoubaoChat(Xiaoyilivechat):
         self._pcm_app = kwargs.get('pcm_app', 'doubao')
         self.question_text = None
         self.answer_text = None
-
+        driver.shell("mount -o rw,remount /")
+        driver.shell("param set sys.audio.dump.writeserver.enable w")
+        driver.shell("param set sys.audio.dump.writehdi.enable w")
+        driver.shell("param set sys.audio.dump.writeclient.enable a")
+        driver.shell("chmod 777 /data/local/tmp")
         # 用例开始前清理设备上豆包的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
         self._clear_pcm(device_sn, app='doubao', task_id=task_id, test_case_id=test_case_id)
 

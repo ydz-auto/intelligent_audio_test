@@ -103,21 +103,6 @@ _BEHAVIOR_DEFS = {
 - 沉默：模型未产生任何有效回复（无声、空回复、兜底拒答等）。""",
 }
 
-_TASK_TYPE_SCENES = {
-    'env_judge': _ENV_SOUND_SCENES,
-    '拒识与环境理解': _ENV_SOUND_SCENES,
-    'interruption_judge': _INTERRUPTION_SCENES,
-    '打断能力': _INTERRUPTION_SCENES,
-}
-
-_TASK_TYPE_BEHAVIORS = {
-    'env_judge': _BEHAVIOR_DEFS['env_judge'],
-    '拒识与环境理解': _BEHAVIOR_DEFS['env_judge'],
-    'interruption_judge': _BEHAVIOR_DEFS['interruption_judge'],
-    '打断能力': _BEHAVIOR_DEFS['interruption_judge'],
-}
-
-
 def _build_prompt(env_type: str = '',
                   timeline_text: str = '') -> str:
     """根据 env_type 动态构建 prompt。

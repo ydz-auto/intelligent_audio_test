@@ -367,3 +367,58 @@ def evaluate_interruption_llm(rounds: List[Dict[str, Any]],
         f"return_avg_coherence={result['llm_return_avg_coherence']}"
     )
     return result
+
+
+def evaluate_interruption_success_llm(user_text: str, model_text: str,
+                                       task_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """兜底：时序算不出 interruption_success_rate(n_events=0)时，
+    用 LLM 按对话语义判断模型是否成功处理了用户打断。
+
+    不依赖平台传 answer 文本，直接吃 ai_wav 的 ASR 文本(model_text)作模型回复。
+
+    Args:
+        user_text: 用户打断/提问文本(来自 user_asr.text)
+        model_text: 模型回复文本(来自 ai_wav ASR 的 model_asr.text)
+        task_params: 读 llm_model / LLM_JUDGE 配置
+
+    Returns:
+        {'success': bool, 'success_rate': 1.0|0.0, 'reason': str} 或 None(无法判定/未配置/无文本)
+    """
+    from app.config import config
+
+    llm_config = getattr(config, 'LLM_JUDGE', {})
+    if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
+        return None
+    if not user_text or not model_text:
+        return None
+
+    model = task_params.get('llm_model') or llm_config.get('default_model', 'gpt-4o')
+    prompt = (
+        '你是语音对话打断处理评估专家。用户在模型回复期间打断说话，请判断模型是否【成功处理了打断】'
+        '（即模型合理地让出/停下，并给出了与用户打断意图相符的恢复回复；'
+        '若模型回复直接回应了用户打断的新需求，或与打断前话题连贯承接恢复，都算成功；'
+        '若模型无视打断继续说穿、或回复与打断意图无关/混乱，算失败）。\n\n'
+        f'【用户打断内容】：{user_text}\n\n'
+        f'【模型回复内容】：{model_text}\n\n'
+        '输出严格 JSON，不要输出 JSON 以外的任何内容：\n'
+        '{"success": true, "reason": ""}\n'
+        'success 为布尔(true/false)，reason 为简短判定理由。'
+    )
+    try:
+        resp = _call_llm_json(prompt, model)
+        parsed = _parse_json(resp['content']) or {}
+        success = parsed.get('success')
+        if isinstance(success, str):
+            success = success.strip().lower() in ('true', '1', 'yes', '是', '成功')
+        if success is None:
+            return None
+        success = bool(success)
+        return {
+            'success': success,
+            'success_rate': 1.0 if success else 0.0,
+            'reason': str(parsed.get('reason', '')),
+            'model': model,
+        }
+    except Exception as e:
+        logger.warning(f"[interruption_llm] success 兜底调用失败: {e}")
+        return None

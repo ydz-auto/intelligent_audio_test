@@ -108,8 +108,8 @@ MAIN_DIMENSION = {
          '与 user_wav/ai_wav 解耦；enable_llm_eval=True 时才使用', 12),
         ('enable_llm_eval', '启用LLM评估', '是否启用大模型评估', 'boolean', 'input',
          None, None, None, False,
-         False, 'false', '为 true 时对每轮打断后回复与回到原话题行为做 LLM 评估'
-         '(需配置 LLM_JUDGE_API_KEY)', 13),
+         False, 'true', '默认开启：对每轮打断后回复与回到原话题行为做 LLM 评估；'
+         '显式传 false 才关闭(需配置 LLM_JUDGE_API_KEY)', 13),
         ('llm_model', 'LLM模型', 'LLM 模型名称(覆盖默认)', 'text', 'input',
          None, None, None, False,
          False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认', 14),

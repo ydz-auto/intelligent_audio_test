@@ -669,7 +669,8 @@ def calculate_interruption_metrics(task_params):
     # 触发条件：enable_llm_eval=True 且 task_params 携带 rounds 文本结构
     # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，不影响时序指标
     # multipart 上传时 enable_llm_eval 是字符串('False'/'true')，bool('False')=True 会误判，用白名单
-    enable_llm = task_params.get('enable_llm_eval') in (True, 'true', '1', 1)
+    # 默认开启(未传视为 True)；显式传 false/'false' 才关闭
+    enable_llm = task_params.get('enable_llm_eval', True) in (True, 'true', '1', 1)
     rounds = task_params.get('rounds')
     if enable_llm and rounds:
         try:
@@ -698,6 +699,30 @@ def calculate_interruption_metrics(task_params):
         reason = '未启用(enable_llm_eval=False)' if not enable_llm else '无 rounds 文本数据'
         result['llm_eval'] = {'enabled': False, 'message': reason}
         logger.info(f"[interruption_metrics] LLM 评估跳过：{reason}")
+
+    # ── 兜底：时序算不出 success_rate(n_events=0)时，用 LLM 按对话语义判定 ──
+    # 不依赖平台传 answer 文本，直接用 ai_wav 的 ASR 文本(model_asr.text)作模型回复
+    if enable_llm and result.get('n_events', 0) == 0 and not result.get('interruption_success_rate'):
+        result['timing_success_rate'] = result.get('interruption_success_rate', 0.0)
+        try:
+            from ..interruptbility.interruption_llm import evaluate_interruption_success_llm
+            _u_text = (user_asr.get('text') if isinstance(user_asr, dict) else '') or ''
+            _m_text = (model_asr.get('text') if isinstance(model_asr, dict) else '') or ''
+            _fb = evaluate_interruption_success_llm(_u_text, _m_text, task_params)
+            if _fb is not None:
+                result['interruption_success_rate'] = _fb['success_rate']
+                _le = result.get('llm_eval') or {}
+                _le['success_fallback'] = _fb
+                result['llm_eval'] = _le
+                result['llm_success_rate'] = _fb['success_rate']
+                logger.info(
+                    f"[interruption_metrics] success 兜底(LLM): success={_fb['success']} "
+                    f"reason={_fb['reason']!r}"
+                )
+            else:
+                logger.info("[interruption_metrics] success 兜底跳过：无 LLM 配置或无文本")
+        except Exception as e:
+            logger.warning(f"[interruption_metrics] success 兜底失败: {e}")
 
     return result
 

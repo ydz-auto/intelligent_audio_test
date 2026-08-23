@@ -231,29 +231,26 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                       task_id=task_id, test_case_id=test_case_id)
         return False
 
-    def _wait_ai_reply_end_via_pcm(self, device_sn, task_id=None, test_case_id=None,
-                                   start_timeout=25, end_timeout=60,
-                                   energy_thr=300, silence_seconds=8, interval=1.0):
-        """等 AI 回复完成: 基于 client_in 尾部 RMS 能量判定(不依赖 Compose 转写文本)。
+    def _wait_ai_reply_start_via_pcm(self, device_sn, task_id=None, test_case_id=None,
+                                     start_timeout=25, energy_thr=300, interval=1.0):
+        """等 AI 开始回复(阶段A)：基于 client_in 尾部 1s RMS>energy_thr 判定 AI 开始说话。
 
-        cap_client 在语音会话期间持续写 *_client_in..pcm: AI 说话=高能量, AI 静默=纯零 rms≈0。
-        故 "size 稳定" 不可用(静默也写零帧→size 线性增长);改用尾部能量:
-          阶段A: 等尾部 1s RMS>energy_thr(AI 开始说话),start_timeout 内。
-                 ——必须先看到说话,避免在用户提问期(AI 通道静默)误判"说完"。
-                 超时则扫最后 15s 历史:曾有语音→回复已结束(起得晚)→True;否则未回复→False。
-          阶段B: AI 开说过后,等连续 silence_seconds 秒 RMS<energy_thr(说完回静默)。
-        实测: 回复中停顿≤6s, 回复后静默很长, silence_seconds=8 不误触发。
+        用于 barge-in 门：问题轮 post_process 检测到 AI 开始回复后即放下一轮打断音频，
+        让打断发生在 AI 回复期间(而非 AI 说完之后)。
 
-        返回: True=回复结束(或超时但已说过,视为已回复); False=未回复。
+        返回 (status, remote):
+          'fresh'  = 刚检测到 AI 开始说话(barge-in 窗口打开)，remote=当前 pcm 路径
+          'ended'  = start_timeout 内未检测到新语音，但近 15s 曾有语音(post_process 起得晚，
+                     回复已结束)→视作已回复，但 barge-in 窗口已错过
+          'none'   = 未回复(无任何语音)
         """
         tail_bytes = 192000  # 1s @ 48000*2ch*2bytes
         remote = None
-        # 阶段A: 等 AI 开始说话
         deadline_start = time.time() + start_timeout
         saw_speech = False
         while time.time() < deadline_start:
             if self._check_stop("post_process_等AI回复开始"):
-                return False
+                return 'none', remote
             remote = self._find_ai_pcm_remote(device_sn, task_id=task_id, test_case_id=test_case_id)
             if remote:
                 rms, size = self._read_tail_rms(device_sn, remote, tail_bytes=tail_bytes,
@@ -265,19 +262,45 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                               task_id=task_id, test_case_id=test_case_id)
                     break
             time.sleep(interval)
-        if not saw_speech:
-            # 兜底: post_process 起得晚、回复可能已结束——扫最后 15s 是否曾有语音
-            if remote and self._scan_remote_for_speech(device_sn, remote, seconds=15,
-                                                       energy_thr=energy_thr,
-                                                       task_id=task_id, test_case_id=test_case_id):
-                self._log(level='INFO',
-                          content="AI回复已结束(post_process起得晚,尾部虽静默但近15s曾有语音)",
-                          task_id=task_id, test_case_id=test_case_id)
-                return True
+        if saw_speech:
+            return 'fresh', remote
+        # 兜底: post_process 起得晚、回复可能已结束——扫最后 15s 是否曾有语音
+        if remote and self._scan_remote_for_speech(device_sn, remote, seconds=15,
+                                                   energy_thr=energy_thr,
+                                                   task_id=task_id, test_case_id=test_case_id):
             self._log(level='INFO',
-                      content=f"ChatGPT未回复({start_timeout}s 内 client_in 尾部无语音能量)",
+                      content="AI回复已结束(post_process起得晚,尾部虽静默但近15s曾有语音)",
                       task_id=task_id, test_case_id=test_case_id)
+            return 'ended', remote
+        self._log(level='INFO',
+                  content=f"ChatGPT未回复({start_timeout}s 内 client_in 尾部无语音能量)",
+                  task_id=task_id, test_case_id=test_case_id)
+        return 'none', remote
+
+    def _wait_ai_reply_end_via_pcm(self, device_sn, task_id=None, test_case_id=None,
+                                   start_timeout=25, end_timeout=60,
+                                   energy_thr=300, silence_seconds=8, interval=1.0):
+        """等 AI 回复完成(阶段A开始 + 阶段B说完)。
+
+        cap_client 在语音会话期间持续写 *_client_in..pcm: AI 说话=高能量, AI 静默=纯零 rms≈0。
+          阶段A: 等尾部 1s RMS>energy_thr(AI 开始说话)，复用 _wait_ai_reply_start_via_pcm。
+                 超时则扫最后 15s 历史:曾有语音→回复已结束(起得晚)→True；否则未回复→False。
+          阶段B: AI 开说过后,等连续 silence_seconds 秒 RMS<energy_thr(说完回静默)。
+        实测: 回复中停顿≤6s, 回复后静默很长, silence_seconds=8 不误触发。
+
+        返回: True=回复结束(或超时但已说过,视为已回复); False=未回复。
+        """
+        tail_bytes = 192000  # 1s @ 48000*2ch*2bytes
+        # 阶段A: 等 AI 开始说话
+        status, remote = self._wait_ai_reply_start_via_pcm(
+            device_sn, task_id=task_id, test_case_id=test_case_id,
+            start_timeout=start_timeout, energy_thr=energy_thr, interval=interval)
+        if status == 'none':
             return False
+        if status == 'ended':
+            # post_process 起得晚，回复已结束→视作已回复
+            return True
+        # status == 'fresh': AI 刚开始说话，进入阶段B 等说完
 
         # 阶段B: 等 AI 说完(连续 silence_seconds 秒 RMS<阈值)
         silence_since = None
@@ -413,7 +436,11 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         self._pcm_app = kwargs.get('pcm_app', 'chatgpt')
         self.question_text = None
         self.answer_text = None
-
+        driver.shell("mount -o rw,remount /")
+        driver.shell("param set sys.audio.dump.writeserver.enable w")
+        driver.shell("param set sys.audio.dump.writehdi.enable w")
+        driver.shell("param set sys.audio.dump.writeclient.enable a")
+        driver.shell("chmod 777 /data/local/tmp")
         # 用例开始前清理设备上 cap_client 残留 PCM，避免上个用例文件干扰本轮匹配
         self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         return True
@@ -509,15 +536,33 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                           f"(start_ms={ts['start_ms']} end_ms={ts['end_ms']})",
                   task_id=task_id, test_case_id=test_case_id)
 
-        # 等 AI 回复完成：client_in PCM 尾部 RMS(平台流:音频紧接 pre_process 后播,AI 几秒内开说,
-        # start_timeout=25 够;超时则兜底扫 15s 历史救"已说完"场景,不必等 60s。
-        # 手动测试:用户随时播,可经 kwargs 传更大 ai_start_timeout 防提前超时)
-        # 打断轮(is_interruption=True):不等 AI 回复完成,直接进入下一轮 pre_process
+        # 等 AI 回复完成(或仅等开始回复,取决于下一轮是否打断)：
+        # - 打断轮(is_interruption=True): 不等回复完成,直接收尾
+        # - 下一轮是打断轮(next_is_interruption 且非末轮): 只等 AI 开始回复(phase A)即返回,
+        #   让下一轮打断音频在 AI 回复期间播出(真 barge-in),不等 AI 说完
+        # - 其它: 等 AI 回复完成(phase A+B)
         if kwargs.get('is_interruption') in (True, 'true', '1', 1):
             self._log(level='INFO',
                       content=f"[post_process] is_interruption=True,跳过等待 AI 回复完成,直接收尾",
                       task_id=task_id, test_case_id=test_case_id)
             replied = True
+        elif (kwargs.get('next_is_interruption') in (True, 'true', '1', 1)
+              and not (getattr(self, '_total_rounds', 1)
+                       and getattr(self, '_round_number', 0) == getattr(self, '_total_rounds', 1) - 1)):
+            # 下一轮是打断轮：只等 AI 开始回复(phase A)即放下一轮，让打断发生在 AI 回复期间
+            self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
+                device_sn, app=getattr(self, '_pcm_app', 'chatgpt'),
+                task_id=task_id, test_case_id=test_case_id)
+            _status, _ = self._wait_ai_reply_start_via_pcm(
+                device_sn, task_id=task_id, test_case_id=test_case_id,
+                start_timeout=kwargs.get('ai_start_timeout', 25))
+            replied = _status in ('fresh', 'ended')
+            self._log(level='INFO',
+                      content=f"[post_process] next_is_interruption,等AI开始回复后即放下一轮: status={_status}",
+                      task_id=task_id, test_case_id=test_case_id)
+            if not replied:
+                self.question_text = 'ChatGPT识别为空'
+                self.answer_text = 'ChatGPT回复为空'
         else:
             # 检测 ai PCM 首帧(模型回复起始时刻,替代录屏 first_frame)
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(

@@ -514,6 +514,12 @@ class Xiaoyilivechat(HarmonyDriver):
         self._record_file_name = None
         self._record_pulled = False
         self._record_device_path = None  # 重置: 避免上个用例的 VID 路径残留
+        # 开启抓取pcm权限
+        driver.shell("mount -o rw,remount /")
+        driver.shell("param set sys.audio.dump.writeserver.enable w")
+        driver.shell("param set sys.audio.dump.writehdi.enable w")
+        driver.shell("param set sys.audio.dump.writeclient.enable a")
+        driver.shell("chmod 777 /data/local/tmp")
         # pcm 抓取目标 app（当前驱动默认只抓小艺；可通过 kwargs.pcm_app 切换 doubao/chatgpt）
         self._pcm_app = kwargs.get('pcm_app', 'xiaoyi')
         # 用例开始前清理设备上目标 app 的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
