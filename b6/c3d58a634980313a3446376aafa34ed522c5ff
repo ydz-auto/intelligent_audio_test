@@ -1,0 +1,60 @@
+Intelligent-Audio-TEST/backend/utils/report/aggregation_strategies.py
+  s_90ea3f956c97e0::t_ab55b345f0e44b 161-164,169
+Intelligent-Audio-TEST/backend/controllers/testcase_controller.py
+  s_9939a54bd77038::t_a26e0e591427f0 2009-2011
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "b6c3d58a634980313a3446376aafa34ed522c5ff",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_90ea3f956c97e0": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8a9811c2b7c194d33576ca",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "tool_type": "builtin",
+        "session_id": "6a8a9811c2b7c194d33576ca",
+        "external_session_id": "6a8a9811c2b7c194d33576ca",
+        "tool_use_id": "6a8a9a5fc2b7c194d33577db",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "client_type": "ide",
+        "dedupe_key": "6a8a9811c2b7c194d33576ca:6a8a9a5fc2b7c194d33577db:afterEdit:1d1e1757",
+        "source_scene": "agent",
+        "operation_id": "6a8a9a5fc2b7c194d33577db",
+        "edit_kind": "file_edit"
+      }
+    },
+    "s_9939a54bd77038": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a86e35ac2b7c194d335707c",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a87a7d5c2b7c194d3357543",
+        "external_session_id": "6a86e35ac2b7c194d335707c",
+        "session_id": "6a86e35ac2b7c194d335707c",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a87a7d5c2b7c194d3357543",
+        "dedupe_key": "6a86e35ac2b7c194d335707c:6a87a7d5c2b7c194d3357543:afterEdit:0ad00826",
+        "tool_type": "builtin",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "source_scene": "agent"
+      }
+    }
+  }
+}
