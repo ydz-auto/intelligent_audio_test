@@ -72,6 +72,7 @@ export function normalizeReportSummary(summary: Record<string, any>): Record<str
     passRate: ['pass_rate', 'passRate', 'overall_success_rate', 'overallSuccessRate'],
     avgScore: ['avg_score', 'avgScore'],
     allMetrics: ['all_metrics', 'allMetrics'],
+    fieldMappings: ['field_mappings', 'fieldMappings'],
     detailedResults: ['detailed_results', 'detailedResults'],
     deviceStats: ['device_stats', 'deviceStats'],
     apiStats: ['api_stats', 'apiStats'],

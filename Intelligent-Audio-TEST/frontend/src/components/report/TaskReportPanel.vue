@@ -149,11 +149,11 @@
         </div>
 
         <div v-for="(table, idx) in tables" :key="idx" class="report-section">
-          <ComparisonTableComponent 
+          <ComparisonTableComponent
             :title="table.title"
             :columns="table.columns"
             :data="table.data"
-            :defaultCollapsed="table.defaultCollapsed !== false"
+            :defaultCollapsed="isExporting ? false : (table.defaultCollapsed !== false)"
           />
         </div>
 
@@ -192,13 +192,16 @@
 </template>
 
 <script setup>
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted, inject } from 'vue';
 import { sanitizeConclusion } from '../../utils/sanitize';
 import ComparisonTableComponent from './ComparisonTableComponent.vue'
 import CaseCategoryComparisonComponent from './CaseCategoryComparisonComponent.vue'
 import CaseTagComparisonComponent from './CaseTagComparisonComponent.vue'
 import SpecificCaseComparisonComponent from './SpecificCaseComparisonComponent.vue'
 import OverviewCardComponent from './OverviewCardComponent.vue'
+
+// 导出模式：导出时展开所有折叠区块
+const isExporting = inject('isExporting', ref(false))
 
 const props = defineProps({
   report: { type: Object, required: true },
@@ -216,6 +219,14 @@ const isAnalysisCollapsed = ref(false)
 const isDevicesCollapsed = ref(false)
 const activeSection = ref('section-overview')
 const progressHeight = ref('0%')
+
+// 导出时强制展开所有折叠区块
+watch(isExporting, (exporting) => {
+  if (exporting) {
+    isAnalysisCollapsed.value = false
+    isDevicesCollapsed.value = false
+  }
+}, { immediate: true })
 
 const toggleAnalysisCollapse = () => {
   isAnalysisCollapsed.value = !isAnalysisCollapsed.value

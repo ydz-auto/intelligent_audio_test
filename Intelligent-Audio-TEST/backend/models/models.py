@@ -596,6 +596,7 @@ class ReportSummaryMeta(db.Model):
     resources = Column(JSON, comment='资源列表')
     resource_headers = Column(JSON, comment='资源头信息')
     all_metrics = Column(JSON, comment='评估维度列表')
+    field_mappings = Column(JSON, comment='算法字段映射快照 {algorithm_type: {result: [...], reference: [...]}}')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')
     updated_at = Column(DateTime, default=utc8now, onupdate=utc8now, nullable=False, comment='更新时间')
 

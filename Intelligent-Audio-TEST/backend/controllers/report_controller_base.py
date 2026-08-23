@@ -25,6 +25,8 @@ class ReportControllerBase:
             return 'stm'
         if 'audio' in key_lower:
             return 'audio'
+        if 'time' in key_lower or 'timestamp' in key_lower:
+            return 'timestamp'
         return 'text'
 
     # 公共函数：构建报告音频列表（统一 task 和 compare 两种模式）
@@ -595,6 +597,7 @@ class ReportControllerBase:
             "resources": to_json(summary_meta.resources) if summary_meta else [],
             "resource_headers": to_json(summary_meta.resource_headers) if summary_meta else [],
             "all_metrics": to_json(summary_meta.all_metrics) if summary_meta else [],
+            "field_mappings": to_json_obj(summary_meta.field_mappings) if summary_meta else {},
             "device_stats": to_json(metric_stats.device_stats) if metric_stats else [],
             "api_stats": to_json(metric_stats.api_stats) if metric_stats else [],
             "case_type_stats": to_json(metric_stats.case_type_stats) if metric_stats else [],

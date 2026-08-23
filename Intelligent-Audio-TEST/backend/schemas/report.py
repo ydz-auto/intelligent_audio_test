@@ -176,6 +176,7 @@ class ReportSummarySimplified(APIModel):
     resources: List[Any] = Field(default_factory=list, alias='resources', validation_alias=AliasChoices('resources'))
     resource_headers: List[ReportResourceHeader] = Field(default_factory=list, alias='resourceHeaders', validation_alias=AliasChoices('resource_headers', 'resourceHeaders'))
     all_metrics: List[Any] = Field(default_factory=list, alias='allMetrics', validation_alias=AliasChoices('all_metrics', 'allMetrics'))
+    field_mappings: Any = Field(default_factory=dict, alias='fieldMappings', validation_alias=AliasChoices('field_mappings', 'fieldMappings'))
     device_stats: List[ReportDeviceStat] = Field(default_factory=list, alias='deviceStats', validation_alias=AliasChoices('device_stats', 'deviceStats'))
     api_stats: List[ReportApiStat] = Field(default_factory=list, alias='apiStats', validation_alias=AliasChoices('api_stats', 'apiStats'))
     case_type_stats: Any = Field(default_factory=dict, alias='caseTypeStats', validation_alias=AliasChoices('case_type_stats', 'caseTypeStats'))
@@ -218,7 +219,7 @@ class ReportBatchDeleteRequest(APIModel):
 
 class ReportExportRequest(APIModel):
     ids: List[int] = Field(..., alias='ids', validation_alias='ids')
-    format: str = Field('csv', alias='format', validation_alias='format')
+    format: str = Field('csv', alias='format', validation_alias='format')  # csv / excel / pdf / html
 
 
 class ReportUpdateSummaryField(APIModel):

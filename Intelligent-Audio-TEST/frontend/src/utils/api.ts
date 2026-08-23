@@ -56,7 +56,7 @@ export interface ParamMapping {
   algorithm_type: string;
   component_type: 'device' | 'api' | 'evaluation';
   direction?: 'input' | 'output';
-  field_type?: 'text' | 'audio' | 'number' | 'boolean' | 'json';
+  field_type?: 'text' | 'audio' | 'number' | 'boolean' | 'json' | 'timestamp';
   source_param: string;
   target_key: string;
   mapped_from?: string;
@@ -958,8 +958,21 @@ export const reportsApi = {
     return request<Blob>('POST', '/reports/export', { ids: reportIds, format }, { responseType: 'blob' });
   },
 
+  async exportHtml(reportId: string | number): Promise<Blob> {
+    return request<Blob>('POST', '/reports/export', { ids: [reportId], format: 'html' }, { responseType: 'blob' });
+  },
+
+  getExportHtmlUrl(reportId: string | number): string {
+    const base = apiBaseUrl.replace(/\/$/, '');
+    return `${base}/reports/export?ids=${reportId}&format=html`;
+  },
+
   async generateTaskReport(taskId: string | number, name: string | null = null) {
     return request('POST', '/reports/generate-task', { taskId: taskId, name });
+  },
+
+  async regenerateReport(reportId: string | number) {
+    return request('POST', `/reports/${reportId}/regenerate`);
   },
 
   async getTrendData(params: Record<string, any> = {}, options: RequestOptions = {}) {

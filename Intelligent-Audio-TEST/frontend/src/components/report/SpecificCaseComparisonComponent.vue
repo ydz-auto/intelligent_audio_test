@@ -302,6 +302,7 @@
             :algorithmResults="caseItem._preparedAlgorithmResults"
             :referenceParams="caseItem._preparedReferenceParams"
             :algorithmType="caseItem._preparedAlgorithmType"
+            :fieldMapping="caseItem._preparedFieldMapping"
             :results="caseItem.results || []"
           />
         </div>
@@ -343,6 +344,7 @@
             :algorithmResults="currentCaseDetailWithPreparedData._preparedAlgorithmResults"
             :referenceParams="currentCaseDetailWithPreparedData._preparedReferenceParams"
             :algorithmType="currentCaseDetailWithPreparedData._preparedAlgorithmType"
+            :fieldMapping="currentCaseDetailWithPreparedData._preparedFieldMapping"
             :results="currentCaseDetailWithPreparedData.results || []"
           />
 
@@ -396,7 +398,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, inject } from 'vue'
 import AudioPlayerModal from '../common/AudioPlayerModal.vue'
 import TestCaseReportDetail from '../common/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/PaginationComponent.vue'
@@ -404,6 +406,9 @@ import { reportsApi } from '../../utils/api'
 import { API_CONFIG } from '../../utils/config'
 import { useNotification } from '../../composables/useNotification'
 import '../../assets/styles/components/report-filter-card.css'
+
+// 导出模式：导出时展开所有用例、显示全部不分页
+const isExporting = inject('isExporting', ref(false))
 
 // Audio player state
 const showAudioModal = ref(false)
@@ -549,7 +554,8 @@ const currentCaseDetailWithPreparedData = computed(() => {
     _preparedReferenceTrans: caseItem.translation?.referenceText || caseItem.translation?.reference_text || '',
     _preparedAlgorithmResults: getAlgorithmResults(caseItem),
     _preparedReferenceParams: caseItem.referenceParams || caseItem.reference_params || {},
-    _preparedAlgorithmType: caseItem.algorithmType || caseItem.algorithm_type || ''
+    _preparedAlgorithmType: caseItem.algorithmType || caseItem.algorithm_type || '',
+    _preparedFieldMapping: getFieldMapping(caseItem)
   }
 })
 
@@ -1227,6 +1233,16 @@ const unpinnedFilteredCases = computed(() => {
   return (filteredCases.value || []).filter(c => c && !pinnedIds.has(c.id))
 })
 
+// 导出模式：展开本区块 + 显示全部用例 + 展开所有用例详情（克隆后再由 JS 隐藏）
+watch(isExporting, (exporting) => {
+  if (exporting) {
+    isCollapsed.value = false
+    // 展开所有用例详情，让 .case-details 渲染到 DOM 中
+    // 克隆后由 ReportView 的 generateExportZip 统一隐藏，JS 点击再展开
+    expandedCases.value = (unpinnedFilteredCases.value || []).map(c => c.id)
+  }
+}, { immediate: true })
+
 const pageSize = ref(10)
 const currentPage = ref(1)
 
@@ -1246,7 +1262,9 @@ const paginatedCases = computed(() => {
 })
 
 const paginatedCasesWithPreparedData = computed(() => {
-  return paginatedCases.value.map(caseItem => ({
+  // 导出模式：显示全部用例，不分页
+  const sourceCases = isExporting.value ? unpinnedFilteredCases.value : paginatedCases.value
+  return sourceCases.map(caseItem => ({
     ...caseItem,
     _preparedComparisonData: prepareComparisonData(caseItem),
     _preparedAudioList: prepareAudioList(caseItem),
@@ -1254,7 +1272,8 @@ const paginatedCasesWithPreparedData = computed(() => {
     _preparedReferenceTrans: caseItem.translation?.referenceText || caseItem.translation?.reference_text || '',
     _preparedAlgorithmResults: getAlgorithmResults(caseItem),
     _preparedReferenceParams: caseItem.referenceParams || caseItem.reference_params || {},
-    _preparedAlgorithmType: caseItem.algorithmType || caseItem.algorithm_type || ''
+    _preparedAlgorithmType: caseItem.algorithmType || caseItem.algorithm_type || '',
+    _preparedFieldMapping: getFieldMapping(caseItem)
   }))
 })
 
@@ -1588,6 +1607,16 @@ const _inferParamType = (paramKey) => {
   if (lower.includes('stm')) return 'stm';
   if (lower.includes('audio')) return 'audio';
   return 'text';
+};
+
+/**
+ * 从 reportData.summary.fieldMappings 中按 algorithmType 获取 field_mapping 快照
+ */
+const getFieldMapping = (caseItem) => {
+  const algoType = caseItem.algorithmType || caseItem.algorithm_type || '';
+  if (!algoType) return { result: [], reference: [] };
+  const fieldMappings = props.reportData?.summary?.fieldMappings || props.reportData?.summary?.field_mappings || {};
+  return fieldMappings[algoType] || { result: [], reference: [] };
 };
 
 const prepareAudioList = (caseItem) => {

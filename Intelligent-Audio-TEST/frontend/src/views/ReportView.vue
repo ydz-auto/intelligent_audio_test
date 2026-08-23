@@ -225,9 +225,21 @@
         <button class="action-btn" @click="copyLink" title="分享链接">
           <i class="fas fa-share-alt"></i>
         </button>
-        <button class="action-btn" @click="exportReport" title="导出">
-          <i class="fas fa-download"></i>
-        </button>
+        <div class="export-dropdown-wrapper">
+          <button class="action-btn" @click="toggleExportMenu" title="导出">
+            <i class="fas fa-download"></i>
+          </button>
+          <div class="export-dropdown" v-if="showExportMenu">
+            <button class="export-menu-item" @click="exportHtml">
+              <i class="fas fa-file-code"></i>
+              <span>导出 HTML</span>
+            </button>
+            <button class="export-menu-item" @click="exportReport">
+              <i class="fas fa-file-export"></i>
+              <span>导出 JSON</span>
+            </button>
+          </div>
+        </div>
       </div>
       <div v-if="copySuccess" class="copy-toast">
         <i class="fas fa-check"></i> 链接已复制
@@ -237,10 +249,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, provide, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { sanitizeConclusion } from '../utils/sanitize'
 import { normalizeReport } from '../utils/fieldNaming'
+import JSZip from 'jszip'
 import TaskReportPanel from '../components/report/TaskReportPanel.vue'
 import ComparisonTableComponent from '../components/report/ComparisonTableComponent.vue'
 import CaseCategoryComparisonComponent from '../components/report/CaseCategoryComparisonComponent.vue'
@@ -416,6 +429,361 @@ const exportReport = () => {
     URL.revokeObjectURL(url)
     showToast('success', '报告导出成功')
   }
+  showExportMenu.value = false
+}
+
+const showExportMenu = ref(false)
+
+const toggleExportMenu = () => {
+  showExportMenu.value = !showExportMenu.value
+}
+
+// 导出模式标记：子组件通过 inject 获取，导出时展开所有内容
+const isExporting = ref(false)
+provide('isExporting', isExporting)
+
+const exportHtml = async () => {
+  showExportMenu.value = false
+  if (!report.value) return
+  try {
+    showToast('info', '正在生成 HTML 报告包...')
+    // 1. 设置导出模式，触发子组件展开折叠区块、加载所有数据（用例不展开）
+    isExporting.value = true
+    await nextTick()
+    await new Promise(resolve => setTimeout(resolve, 500))
+    await nextTick()
+    // 2. 生成 ZIP 包
+    const zipBlob = await generateExportZip()
+    // 3. 恢复正常状态
+    isExporting.value = false
+    await nextTick()
+    // 4. 下载
+    const url = URL.createObjectURL(zipBlob)
+    const a = document.createElement('a')
+    a.href = url
+    const safeName = (report.value.name || 'report').replace(/[^a-zA-Z0-9\u4e00-\u9fa5\-_]/g, '').trim() || 'report'
+    a.download = `${safeName}.zip`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast('success', 'HTML 报告包导出成功')
+  } catch (e: any) {
+    console.error('HTML 导出失败:', e)
+    isExporting.value = false
+    showToast('error', 'HTML 导出失败: ' + (e.message || '未知错误'))
+  }
+}
+
+/**
+ * 生成导出 ZIP 包
+ * 结构：
+ *   report.html          — 报告 HTML（引用本地 CSS/JS/字体）
+ *   css/report.css       — 页面所有样式
+ *   js/report.js         — 交互脚本
+ *   webfonts/*.woff2     — FontAwesome 字体文件
+ */
+const generateExportZip = async (): Promise<Blob> => {
+  const zip = new JSZip()
+
+  // ---------- 1. 捕获 DOM ----------
+  const reportEl = document.querySelector('.task-report-panel') || document.querySelector('.comparison-report-container') || document.querySelector('.report-view-page')
+  if (!reportEl) throw new Error('未找到报告内容')
+
+  const clone = reportEl.cloneNode(true) as HTMLElement
+
+  // 移除不需要的元素
+  clone.querySelectorAll('.floating-actions, .export-dropdown-wrapper, .analysis-actions .btn, .edit-btn, .save-btn, .cancel-btn, .publish-btn, .download-log-btn, .unpin-btn').forEach(el => el.remove())
+  clone.querySelectorAll('.modal-overlay, .download-loading-overlay').forEach(el => el.remove())
+
+  // 用例详情默认折叠（移除 details 内容，保留 header 可点击展开）
+  // 由于 clone 后 v-if 的 details 已经渲染了，需要隐藏它们
+  clone.querySelectorAll('.case-details').forEach(el => { (el as HTMLElement).style.display = 'none' })
+  // 设置展开图标为折叠状态
+  clone.querySelectorAll('.case-card .expand-icon i').forEach(el => {
+    el.classList.remove('fa-chevron-up')
+    el.classList.add('fa-chevron-down')
+  })
+
+  // computed style
+  const computedStyle = window.getComputedStyle(reportEl)
+  const reportStyles: Record<string, string> = {
+    background: computedStyle.background || '#fff',
+    color: computedStyle.color || '#1e293b',
+    fontFamily: computedStyle.fontFamily || "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+    fontSize: computedStyle.fontSize || '14px',
+    lineHeight: computedStyle.lineHeight || '1.6',
+  }
+  Object.entries(reportStyles).forEach(([k, v]) => {
+    clone.style.setProperty(k, v)
+  })
+
+  const reportHtml = clone.outerHTML
+
+  // ---------- 2. 提取 CSS ----------
+  const styleSheets = document.styleSheets
+  let cssText = ''
+  for (let i = 0; i < styleSheets.length; i++) {
+    const sheet = styleSheets[i]
+    try {
+      const rules = sheet.cssRules || sheet.rules
+      if (!rules) continue
+      for (let j = 0; j < rules.length; j++) {
+        cssText += rules[j].cssText + '\n'
+      }
+    } catch {
+      // 跨域跳过
+    }
+  }
+  // 替换 FontAwesome 字体路径为本地 webfonts/
+  cssText = cssText.replace(/https?:\/\/[^/]+\/[^)]*\/(fa-[^/]+\.\w+)/g, 'webfonts/$1')
+  // 也处理 cdnjs 路径
+  cssText = cssText.replace(/url\(["']?[^"')]*\/([^/"')]+\.woff2)["']?\)/g, 'url(../webfonts/$1)')
+
+  // 添加导出专用样式
+  cssText = `/* Reset */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { background: #fff; }
+@media print {
+  .floating-actions, .export-dropdown-wrapper { display: none !important; }
+  .report-section, .task-report-panel { break-inside: avoid; }
+}
+body { padding: 0; }
+.report-view-page { margin: 0; padding: 0; width: 100% !important; }
+.task-report-panel, .comparison-report-container { max-width: 100% !important; }
+.report-layout { max-width: 1200px; margin: 0 auto; }
+canvas, svg { max-width: 100%; }
+.collapse-btn, .case-header, .section-header { cursor: pointer; }
+.tag-filter-item, .tag-filter-item-orange, .metric-filter-item { cursor: pointer; }
+.display-type-btn, .metric-collapse-btn { cursor: pointer; }
+.btn, .pagination-btn, .case-id-badge { cursor: pointer; }
+` + cssText
+
+  // ---------- 3. 生成 JS ----------
+  const jsContent = getExportJs()
+
+  // ---------- 4. 组装 HTML（JS 内联，避免 file:// 协议下外部脚本被阻止）----------
+  const htmlContent = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${report.value.name || report.value.id} - 报告导出</title>
+<link rel="stylesheet" href="css/report.css">
+</head>
+<body>
+${reportHtml}
+<div style="text-align:center; padding:24px; color:#94a3b8; font-size:12px; border-top:1px solid #e2e8f0; margin-top:24px;">
+  报告导出时间: ${new Date().toLocaleString('zh-CN')} | 导出自智能音频测试系统
+</div>
+<script>
+${jsContent}
+<\/script>
+</body>
+</html>`
+
+  // ---------- 5. 添加 FontAwesome 字体文件 ----------
+  // 使用 Vite 的 ?url 导入，在 dev 和 build 时都能获取正确的资源 URL
+  const fontBrandsUrl = new URL('@fortawesome/fontawesome-free/webfonts/fa-brands-400.woff2', import.meta.url).href
+  const fontRegularUrl = new URL('@fortawesome/fontawesome-free/webfonts/fa-regular-400.woff2', import.meta.url).href
+  const fontSolidUrl = new URL('@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2', import.meta.url).href
+  const webfontsFolder = zip.folder('webfonts')!
+  const fontUrls = [
+    { name: 'fa-brands-400.woff2', url: fontBrandsUrl },
+    { name: 'fa-regular-400.woff2', url: fontRegularUrl },
+    { name: 'fa-solid-900.woff2', url: fontSolidUrl },
+  ]
+
+  for (const { name, url } of fontUrls) {
+    try {
+      const response = await fetch(url)
+      if (response.ok) {
+        const buffer = await response.arrayBuffer()
+        webfontsFolder.file(name, buffer)
+      }
+    } catch {
+      // 字体加载失败不阻塞导出
+    }
+  }
+
+  // ---------- 6. 写入 ZIP ----------
+  zip.file('report.html', htmlContent)
+  zip.folder('css')!.file('report.css', cssText)
+  // JS 已内联到 HTML 中（file:// 协议不支持外部脚本加载）
+
+  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' })
+}
+
+/**
+ * 导出 HTML 的交互 JS 脚本
+ */
+const getExportJs = (): string => {
+  return `(function() {
+  'use strict';
+
+  // ========== 1. 区块折叠/展开 ==========
+  document.querySelectorAll('.section-header').forEach(function(header) {
+    header.addEventListener('click', function() {
+      var content = header.nextElementSibling;
+      if (!content) return;
+      var btn = header.querySelector('.collapse-btn');
+      var isCollapsed = content.style.display === 'none';
+      content.style.display = isCollapsed ? '' : 'none';
+      if (btn) btn.classList.toggle('collapsed', !isCollapsed);
+      var icon = btn ? btn.querySelector('i') : null;
+      if (icon) {
+        if (isCollapsed) { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
+        else { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); }
+      }
+    });
+  });
+
+  // ========== 2. 用例卡片展开/折叠 ==========
+  document.querySelectorAll('.case-header').forEach(function(header) {
+    header.addEventListener('click', function(e) {
+      if (e.target.closest('.case-id-badge')) return;
+      var card = header.closest('.case-card');
+      if (!card) return;
+      var details = card.querySelector('.case-details');
+      if (!details) return;
+      var icon = header.querySelector('.expand-icon i');
+      if (details.style.display === 'none') {
+        details.style.display = '';
+        if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); }
+      } else {
+        details.style.display = 'none';
+        if (icon) { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
+      }
+    });
+  });
+
+  // ========== 3. 维度卡片折叠/展开 ==========
+  document.querySelectorAll('.metric-collapse-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var container = btn.closest('.metric-comparison-card') || btn.closest('.metric-container');
+      if (!container) return;
+      var content = container.querySelector('.metric-container-content');
+      if (!content) return;
+      var isCollapsed = content.style.display === 'none';
+      content.style.display = isCollapsed ? '' : 'none';
+      btn.classList.toggle('collapsed', !isCollapsed);
+      var icon = btn.querySelector('i');
+      if (icon) {
+        if (isCollapsed) { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
+        else { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); }
+      }
+    });
+  });
+
+  // ========== 4. 显示类型切换 ==========
+  document.querySelectorAll('.display-type-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var container = btn.closest('.metric-comparison-card') || btn.closest('.metric-container');
+      if (!container) return;
+      container.querySelectorAll('.display-type-btn').forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      var type = btn.getAttribute('data-type') || btn.textContent.trim().toLowerCase();
+      var tableEl = container.querySelector('.table-container');
+      var chartEl = container.querySelector('.chart-container');
+      if (type === 'table') {
+        if (tableEl) tableEl.style.display = '';
+        if (chartEl) chartEl.style.display = 'none';
+      } else {
+        if (tableEl) tableEl.style.display = 'none';
+        if (chartEl) {
+          chartEl.style.display = '';
+          var canvas = chartEl.querySelector('canvas');
+          if (canvas) {
+            chartEl.innerHTML = '<div style="padding:40px;text-align:center;color:#94a3b8;"><i class="fas fa-chart-bar" style="font-size:48px;"></i><p style="margin-top:12px;">图表在导出的 HTML 中不可用，请切换到表格模式查看数据</p></div>';
+          }
+        }
+      }
+    });
+  });
+
+  // ========== 5. 用例搜索过滤 ==========
+  var caseSearchInput = document.querySelector('.filter-input[placeholder*="用例名称"]') || document.querySelector('.filter-input[placeholder*="关键词"]');
+  if (caseSearchInput) {
+    caseSearchInput.addEventListener('input', function() {
+      var query = caseSearchInput.value.toLowerCase().trim();
+      document.querySelectorAll('.case-card').forEach(function(card) {
+        var nameEl = card.querySelector('.case-name');
+        var name = nameEl ? nameEl.textContent.toLowerCase() : '';
+        card.style.display = (!query || name.includes(query)) ? '' : 'none';
+      });
+    });
+  }
+
+  // ========== 6. 标签/分组/维度筛选切换 ==========
+  document.querySelectorAll('.tag-filter-item, .tag-filter-item-orange, .metric-filter-item').forEach(function(tag) {
+    tag.addEventListener('click', function(e) {
+      e.stopPropagation();
+      tag.classList.toggle('active');
+    });
+  });
+
+  // ========== 7. 重置/应用筛选 ==========
+  document.querySelectorAll('.btn-secondary, .filter-buttons .btn').forEach(function(btn) {
+    if (btn.textContent.includes('重置')) {
+      btn.addEventListener('click', function() {
+        document.querySelectorAll('.filter-input').forEach(function(input) { input.value = ''; });
+        document.querySelectorAll('.tag-filter-item.active, .tag-filter-item-orange.active, .metric-filter-item.active').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.case-card').forEach(function(card) { card.style.display = ''; });
+      });
+    }
+    if (btn.textContent.includes('应用') || btn.textContent.includes('筛选')) {
+      btn.addEventListener('click', function() {
+        var query = caseSearchInput ? caseSearchInput.value.toLowerCase().trim() : '';
+        var activeCategories = Array.from(document.querySelectorAll('.tag-filter-item.active')).map(function(t) { return t.textContent.trim(); });
+        var activeTags = Array.from(document.querySelectorAll('.tag-filter-item-orange.active')).map(function(t) { return t.textContent.trim(); });
+        document.querySelectorAll('.case-card').forEach(function(card) {
+          var nameEl = card.querySelector('.case-name');
+          var name = nameEl ? nameEl.textContent.toLowerCase() : '';
+          var catEl = card.querySelector('.case-category');
+          var cat = catEl ? catEl.textContent.trim() : '';
+          var tagEls = card.querySelectorAll('.tag');
+          var tags = Array.from(tagEls).map(function(t) { return t.textContent.trim(); });
+          var nameMatch = !query || name.includes(query);
+          var catMatch = activeCategories.length === 0 || activeCategories.includes(cat);
+          var tagMatch = activeTags.length === 0 || activeTags.some(function(t) { return tags.includes(t); });
+          card.style.display = (nameMatch && catMatch && tagMatch) ? '' : 'none';
+        });
+      });
+    }
+  });
+
+  // ========== 8. 复制用例 ID ==========
+  document.querySelectorAll('.case-id-badge').forEach(function(badge) {
+    badge.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var text = badge.textContent.replace(/.*用例ID:\\s*/, '').trim();
+      // file:// 协议下 navigator.clipboard 不可用，使用 fallback
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          navigator.clipboard.writeText(text).then(function() {
+            badge.style.color = '#16a34a';
+            setTimeout(function() { badge.style.color = ''; }, 1500);
+          });
+        } else {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.style.position = 'fixed';
+          ta.style.left = '-9999px';
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          badge.style.color = '#16a34a';
+          setTimeout(function() { badge.style.color = ''; }, 1500);
+        }
+      } catch(err) {
+        console.log('复制失败:', err);
+      }
+    });
+  });
+
+  console.log('报告导出 HTML 交互脚本已加载');
+})();`
 }
 
 const copyLink = async () => {
@@ -439,11 +807,20 @@ onMounted(() => {
   } else {
     loading.value = false
   }
+  document.addEventListener('click', closeExportMenuOnOutsideClick)
 })
 
 onUnmounted(() => {
   reportService.resetReportState()
+  document.removeEventListener('click', closeExportMenuOnOutsideClick)
 })
+
+const closeExportMenuOnOutsideClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (showExportMenu.value && !target.closest('.export-dropdown-wrapper')) {
+    showExportMenu.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -865,36 +1242,82 @@ onUnmounted(() => {
 .floating-actions {
   position: fixed !important;
   right: 32px;
-  bottom: 32px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   z-index: 14000 !important;
 }
 
 .action-btn {
-  width: 52px;
-  height: 52px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #1677FF 0%, #0958D9 100%);
-  border: none;
-  box-shadow: 0 4px 16px rgba(22, 119, 255, 0.4);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 10px rgba(255, 106, 0, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  color: white;
+  font-size: 16px;
+  color: #FF6A00;
   cursor: pointer;
   transition: all 0.25s ease;
 }
 
 .action-btn:hover {
-  transform: scale(1.1);
-  box-shadow: 0 6px 24px rgba(22, 119, 255, 0.5);
+  transform: scale(1.06);
+  border-color: #ffb380;
+  box-shadow: 0 4px 14px rgba(255, 106, 0, 0.25);
+  color: #e55f00;
 }
 
 .action-btn:active {
   transform: scale(0.95);
+}
+
+.export-dropdown-wrapper {
+  position: relative;
+}
+
+.export-dropdown {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  min-width: 160px;
+  z-index: 15000;
+}
+
+.export-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: white;
+  color: #1e293b;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.export-menu-item:hover {
+  background: #fff4e6;
+}
+
+.export-menu-item i {
+  font-size: 15px;
+  color: #FF6A00;
+  width: 18px;
+  text-align: center;
 }
 
 .copy-toast {

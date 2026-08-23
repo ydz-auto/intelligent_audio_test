@@ -1,4 +1,4 @@
-﻿from flask import request, send_file, Response, stream_with_context, jsonify
+from flask import request, send_file, Response, stream_with_context, jsonify
 from backend.models.models import Report, ReportSummary, ReportSummaryMeta, ReportRawData, ReportCase, ReportMetricStats, Task, TestResult, TestResultDimension, Dimension, TestCase, Audio, Device, API, TaskCase, TaskDevice, TaskAPI, ReportStatus, ReportType
 from backend.models.database import db
 from backend.utils.web.response import success_response, error_response, format_response
@@ -49,6 +49,11 @@ class ReportController(ReportControllerBase):
     @staticmethod
     def generate_task_report():
         return ReportControllerTask.generate_task_report()
+
+    # 重新生成报告
+    @staticmethod
+    def regenerate_report(report_id):
+        return ReportControllerTask.regenerate_report(report_id)
 
     # 生成对比报告
     @staticmethod
@@ -183,6 +188,7 @@ class ReportController(ReportControllerBase):
                 "resources": to_json(summary_meta.resources) if summary_meta else [],
                 "resource_headers": to_json(summary_meta.resource_headers) if summary_meta else [],
                 "all_metrics": to_json(summary_meta.all_metrics) if summary_meta else [],
+                "field_mappings": json.loads(summary_meta.field_mappings) if summary_meta and summary_meta.field_mappings else {},
                 "device_stats": to_json(metric_stats_record.device_stats) if metric_stats_record else [],
                 "api_stats": to_json(metric_stats_record.api_stats) if metric_stats_record else [],
                 "case_type_stats": to_json(metric_stats_record.case_type_stats) if metric_stats_record else [],
@@ -310,6 +316,88 @@ class ReportController(ReportControllerBase):
                     "成功率": f"{pass_rate}%",
                     "分析结论": report.analysis or "无"
                 })
+
+            if format_type == 'html':
+                # HTML 导出：完整报告详情（所见即所得），仅支持单个报告
+                if len(report_ids) != 1:
+                    return error_response("HTML 导出仅支持单个报告，请选择一个报告")
+                report = reports[0]
+
+                # 复用 get_one 的完整数据获取逻辑
+                task = db.session.get(Task, report.task_id) if report.task_id else None
+                summary_info = ReportSummary.query.filter_by(report_id=report.id).first()
+                summary_meta = ReportSummaryMeta.query.filter_by(report_id=report.id).first()
+                raw_data_record = ReportRawData.query.filter_by(report_id=report.id).first()
+                metric_stats_record = ReportMetricStats.query.filter_by(report_id=report.id).first()
+
+                if not summary_info:
+                    return error_response("报告数据未迁移，请先运行迁移脚本", 500)
+
+                def to_json(val):
+                    if val is None:
+                        return []
+                    if isinstance(val, (list, dict)):
+                        return val
+                    if isinstance(val, str):
+                        return json.loads(val)
+                    return val if isinstance(val, list) else []
+
+                def to_json_obj(val):
+                    if val is None:
+                        return {}
+                    if isinstance(val, dict):
+                        return val
+                    if isinstance(val, str):
+                        return json.loads(val)
+                    return val if isinstance(val, dict) else {}
+
+                report_data = {
+                    "id": report.id,
+                    "name": report.name,
+                    "type": report.type,
+                    "task_id": report.task_id,
+                    "task_type": task.type if task else None,
+                    "task_name": task.name if task else "对比报告/趋势报告",
+                    "algorithm_type": task.algorithm_type if task else None,
+                    "summary": {
+                        "raw_data": to_json(raw_data_record.raw_data) if raw_data_record else [],
+                        "case_categories": to_json(summary_meta.case_categories) if summary_meta else [],
+                        "all_case_tags": to_json(summary_meta.all_case_tags) if summary_meta else [],
+                        "resources": to_json(summary_meta.resources) if summary_meta else [],
+                        "resource_headers": to_json(summary_meta.resource_headers) if summary_meta else [],
+                        "all_metrics": to_json(summary_meta.all_metrics) if summary_meta else [],
+                        "device_stats": to_json(metric_stats_record.device_stats) if metric_stats_record else [],
+                        "api_stats": to_json(metric_stats_record.api_stats) if metric_stats_record else [],
+                        "case_type_stats": to_json(metric_stats_record.case_type_stats) if metric_stats_record else [],
+                        "devices": to_json(summary_meta.devices) if summary_meta else [],
+                        "apis": to_json(summary_meta.apis) if summary_meta else [],
+                        "metric_data": to_json_obj(metric_stats_record.metric_data) if metric_stats_record else {},
+                        "tag_metric_data": to_json_obj(metric_stats_record.tag_metric_data) if metric_stats_record else {},
+                        "total_cases": summary_info.total_cases or 0,
+                        "completed_cases": summary_info.completed_cases or 0,
+                        "failed_cases": summary_info.failed_cases or 0,
+                    },
+                    "description": report.description,
+                    "status": report.status,
+                    "analysis": report.analysis,
+                    "created_at": report.created_at.isoformat() if report.created_at else None,
+                    "updated_at": report.updated_at.isoformat() if report.updated_at else None,
+                }
+
+                from backend.utils.report.html_report_renderer import HtmlReportRenderer
+                html_content = HtmlReportRenderer.render(report_data)
+
+                filename = f"report_{report.id}_{report.name}_{now_cst().strftime('%Y%m%d')}.html"
+                # 清理文件名中的非法字符
+                filename = filename.replace('/', '_').replace('\\', '_').replace(':', '_').replace('"', '_')
+                buf = io.BytesIO(html_content.encode('utf-8'))
+                buf.seek(0)
+                return send_file(
+                    buf,
+                    mimetype='text/html; charset=utf-8',
+                    as_attachment=True,
+                    download_name=filename
+                )
 
             if format_type == 'excel':
                 df = pd.DataFrame(export_data)

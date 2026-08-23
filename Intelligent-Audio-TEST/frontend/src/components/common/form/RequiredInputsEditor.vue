@@ -42,6 +42,7 @@
             <option value="audio">音频</option>
             <option value="boolean">布尔</option>
             <option value="json">JSON</option>
+            <option value="timestamp">时间戳</option>
           </select>
           <label class="checkbox-wrapper">
             <input

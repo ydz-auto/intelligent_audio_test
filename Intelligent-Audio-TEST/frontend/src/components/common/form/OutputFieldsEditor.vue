@@ -51,6 +51,7 @@
             <option value="text">文本</option>
             <option value="boolean">布尔</option>
             <option value="json">JSON</option>
+            <option value="timestamp">时间戳</option>
           </select>
           <select v-model="field.outputRole" @change="handleChange" class="role-select">
             <option value="main">主结果</option>

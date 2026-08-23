@@ -12,6 +12,7 @@ from backend.schemas.report import GenerateTaskReportRequest, ReportDetailData a
 from datetime import datetime, timedelta, timezone
 from backend.utils.common.query_utils import now_cst
 from backend.controllers.report_controller_base import ReportControllerBase
+from backend.services.evaluation.evaluation_utils import extract_by_path
 from backend.app import socketio
 import json
 import traceback
@@ -86,6 +87,7 @@ class ReportControllerTask(ReportControllerBase):
             TestResultDimension.test_result_id,
             TestResultDimension.dimension_id,
             TestResultDimension.dimension_value,
+            TestResultDimension.api_raw_response,
             Dimension.name.label('dimension_name')
         ).join(Dimension, TestResultDimension.dimension_id == Dimension.id)\
          .filter(TestResultDimension.test_result_id.in_(result_ids)).all()
@@ -164,13 +166,51 @@ class ReportControllerTask(ReportControllerBase):
             return 'default'
 
     @staticmethod
+    def _get_aux_params_batch(dim_ids):
+        """批量查询维度的 aux output 参数（visible_in_report=True）
+        返回 {dimension_id: [(param, dimension_name), ...]}
+        """
+        if not dim_ids:
+            return {}
+        from backend.models.algorithm_models import EvaluationDimensionParam
+        aux_params = db.session.query(
+            EvaluationDimensionParam,
+            Dimension.name.label('dimension_name')
+        ).join(Dimension, EvaluationDimensionParam.dimension_id == Dimension.id)\
+         .filter(
+            EvaluationDimensionParam.dimension_id.in_(dim_ids),
+            EvaluationDimensionParam.param_direction == 'output',
+            EvaluationDimensionParam.output_role == 'aux',
+            EvaluationDimensionParam.visible_in_report == True,
+            EvaluationDimensionParam.deleted == False
+        ).all()
+        aux_map = {}
+        for row in aux_params:
+            p = row[0]
+            dim_name = row[1]
+            if p.dimension_id not in aux_map:
+                aux_map[p.dimension_id] = []
+            aux_map[p.dimension_id].append({
+                'param': p,
+                'dimension_name': dim_name
+            })
+        return aux_map
+
+    @staticmethod
     def _build_case_data(test_cases, results, all_dimensions, dim_results_map, task):
         results_by_case = {}
         for result in results:
             if result.test_case_id not in results_by_case:
                 results_by_case[result.test_case_id] = []
             results_by_case[result.test_case_id].append(result)
-        
+
+        # 批量查询 aux 参数
+        all_dim_ids = set()
+        for drs in dim_results_map.values():
+            for dr in drs:
+                all_dim_ids.add(dr.dimension_id)
+        aux_params_map = ReportControllerTask._get_aux_params_batch(list(all_dim_ids))
+
         cases = []
         
         for test_case in test_cases:
@@ -252,17 +292,53 @@ class ReportControllerTask(ReportControllerBase):
                         combined_data.update(algo_res)
                     if result_data:
                         combined_data.update(result_data)
-                    
+                        # 展开 evaluation_data 中的 aux 辅助参数到顶层
+                        eval_data = result_data.get('evaluation_data')
+                        if isinstance(eval_data, dict):
+                            combined_data.update(eval_data)
+
+                    # 从 api_raw_response 提取 aux 值，按维度分组
+                    aux_by_dim = {}  # {dimension_name: {param_code: value}}
+                    result_dim_rows = dim_results_map.get(result.id, [])
+                    for dr in result_dim_rows:
+                        raw_resp = dr.api_raw_response
+                        if not raw_resp:
+                            continue
+                        if isinstance(raw_resp, str):
+                            try:
+                                raw_resp = json.loads(raw_resp)
+                            except Exception:
+                                continue
+                        for aux_info in aux_params_map.get(dr.dimension_id, []):
+                            p = aux_info['param']
+                            dim_name = aux_info['dimension_name']
+                            param_code = p.param_code
+                            value = extract_by_path(raw_resp, p.field_path)
+                            if value is not None:
+                                if dim_name not in aux_by_dim:
+                                    aux_by_dim[dim_name] = {}
+                                aux_by_dim[dim_name][param_code] = value
+                                # 同时放入 combined_data 供 fieldMapping 匹配
+                                if param_code not in combined_data:
+                                    combined_data[param_code] = value
+
                     # 扁平列表格式，与 task_controller.py 一致
                     for param_key, param_value in combined_data.items():
                         if param_key and param_value is not None:
                             param_type = ReportControllerBase._infer_param_type(param_key)
+                            # 查找该 param 属于哪个维度
+                            dim_name = None
+                            for dn, params in aux_by_dim.items():
+                                if param_key in params:
+                                    dim_name = dn
+                                    break
                             case_obj["algorithm_results"].append({
                                 'device': resource,
                                 'param_code': param_key,
                                 'param_type': param_type,
                                 'label': param_key,
-                                'value': param_value
+                                'value': param_value,
+                                'dimension_name': dim_name
                             })
             
             cases.append(case_obj)
@@ -434,7 +510,8 @@ class ReportControllerTask(ReportControllerBase):
             apis=json.dumps(summary.get('apis', []), ensure_ascii=False),
             resources=json.dumps(summary.get('resources', []), ensure_ascii=False),
             resource_headers=json.dumps(summary.get('resource_headers', []), ensure_ascii=False),
-            all_metrics=json.dumps(summary.get('all_metrics', []), ensure_ascii=False)
+            all_metrics=json.dumps(summary.get('all_metrics', []), ensure_ascii=False),
+            field_mappings=json.dumps(summary.get('field_mappings', {}), ensure_ascii=False)
         )
         db.session.add(summary_meta)
         
@@ -504,6 +581,7 @@ class ReportControllerTask(ReportControllerBase):
             resources=to_json(summary_meta.resources) if summary_meta else [],
             resource_headers=to_json(summary_meta.resource_headers) if summary_meta else [],
             all_metrics=to_json(summary_meta.all_metrics) if summary_meta else [],
+            field_mappings=to_json(summary_meta.field_mappings) if summary_meta else {},
             device_stats=to_json(metric_stats_record.device_stats) if metric_stats_record else [],
             api_stats=to_json(metric_stats_record.api_stats) if metric_stats_record else [],
             case_type_stats=to_json(metric_stats_record.case_type_stats) if metric_stats_record else [],
@@ -567,6 +645,51 @@ class ReportControllerTask(ReportControllerBase):
         log_and_emit('INFO', 'report', f'[generate_task_report] Async task submitted for task_id={task_id}', task_id=task_id)
 
         return success_response({"taskId": task_id, "status": "generating"}, "报告生成中，请稍后刷新", ErrorCode.SUCCESS)
+
+    @staticmethod
+    def regenerate_report(report_id):
+        """重新生成报告：删除旧报告数据，基于原 task_id 重新生成"""
+        report = db.session.get(Report, report_id)
+        if not report:
+            return error_response("未找到测试报告", 404)
+
+        if report.type != ReportType.TASK.value:
+            return error_response("仅支持任务报告重新生成")
+
+        task_id = report.task_id
+        if not task_id:
+            return error_response("报告未关联任务，无法重新生成")
+
+        # 获取原报告名称和描述
+        name = report.name
+        description = report.description
+
+        # 检查是否正在生成
+        with _generating_lock:
+            if task_id in _generating_tasks:
+                return success_response({"taskId": task_id, "status": "generating"}, "报告正在生成中", ErrorCode.SUCCESS)
+            _generating_tasks.add(task_id)
+
+        try:
+            # 删除旧报告（级联删除 summary_meta, raw_data, cases, metric_stats 等）
+            db.session.delete(report)
+            db.session.commit()
+            log_and_emit('INFO', 'report', f'[regenerate_report] Deleted old report {report_id}, regenerating for task_id={task_id}', task_id=task_id)
+        except Exception as e:
+            db.session.rollback()
+            with _generating_lock:
+                _generating_tasks.discard(task_id)
+            log_and_emit('ERROR', 'report', f'[regenerate_report] Failed to delete old report: {e}', task_id=task_id)
+            return error_response("删除旧报告失败，请稍后重试")
+
+        # 异步重新生成
+        _report_executor.submit(
+            ReportControllerTask._generate_task_report_async,
+            task_id, name, description
+        )
+        log_and_emit('INFO', 'report', f'[regenerate_report] Async task submitted for task_id={task_id}', task_id=task_id)
+
+        return success_response({"taskId": task_id, "status": "generating"}, "报告重新生成中，请稍后刷新", ErrorCode.SUCCESS)
 
     @staticmethod
     def _generate_task_report_async(task_id, name, description):
@@ -711,6 +834,17 @@ class ReportControllerTask(ReportControllerBase):
 
                 case_categories_list, case_tags_list = ReportQueryBuilder.extract_case_categories_and_tags(test_cases)
 
+                # 生成 field_mapping 快照（按 algorithm_type 分组）
+                field_mappings = {}
+                try:
+                    from backend.utils.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+                    for tc in test_cases:
+                        algo_type = getattr(tc, 'algorithm_type', None)
+                        if algo_type and algo_type not in field_mappings:
+                            field_mappings[algo_type] = AlgorithmResultFieldMapper.get_field_mapping(algo_type)
+                except Exception as e:
+                    log_and_emit('WARNING', 'report', f'[generate_task_report_async] 构建 field_mappings 失败: {e}', task_id=task_id)
+
                 summary = {
                     "total_cases": total_cases,
                     "completed_cases": completed_cases,
@@ -735,6 +869,7 @@ class ReportControllerTask(ReportControllerBase):
                     "api_stats": api_stats,
                     "case_type_stats": case_type_stats,
                     "cases": cases,
+                    "field_mappings": field_mappings,
                     "source_task_ids": source_task_ids,
                     "is_merged": bool(source_task_ids)
                 }

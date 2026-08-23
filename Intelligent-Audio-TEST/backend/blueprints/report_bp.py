@@ -44,8 +44,16 @@ def secondary_compare():
 def generate_task_report():
     return ReportController.generate_task_report()
 
+@report_bp.route('/<int:report_id>/regenerate', methods=['POST'])
+def regenerate_report(report_id):
+    return ReportController.regenerate_report(report_id)
+
 @report_bp.route('/export', methods=['POST'])
 def export():
+    return ReportController.export()
+
+@report_bp.route('/export', methods=['GET'])
+def export_get():
     return ReportController.export()
 
 @report_bp.route('/trend', methods=['GET'])

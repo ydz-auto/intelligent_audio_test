@@ -255,7 +255,7 @@ class EvaluationDimensionParam(db.Model):
     param_code = Column(String(50), nullable=False, comment='参数代码（评估API需要的字段名）')
     param_name = Column(String(100), comment='参数显示名称')
     label = Column(String(100), comment='字段显示名称')
-    field_type = Column(String(20), default='text', comment='字段类型：text, audio, number, boolean, json')
+    field_type = Column(String(20), default='text', comment='字段类型：text, audio, number, boolean, json, timestamp')
     param_direction = Column(String(10), nullable=False, default='input', comment='参数方向：input(输入参数), output(结果提取字段)')
     field_path = Column(String(200), nullable=True, comment='结果提取路径（output专用，如 wer 或 data.result.wer）')
     agg_role = Column(String(20), nullable=True, comment='聚合角色（output专用）：numerator(分子), denominator(分母), value(直接值), pass_le(≤阈值), pass_ge(≥阈值), pass_eq(==目标值)')

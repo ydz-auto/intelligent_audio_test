@@ -53,8 +53,11 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject, watch } from 'vue'
 import DataTable from '../common/DataTable.vue'
+
+// 导出模式：导出时展开
+const isExporting = inject('isExporting', ref(false))
 
 const props = defineProps({
   reportData: {
@@ -67,6 +70,11 @@ const isCollapsed = ref(false)
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
+
+// 导出模式：展开
+watch(isExporting, (exporting) => {
+  if (exporting) isCollapsed.value = false
+}, { immediate: true })
 
 // metricData 格式（后端 flatten_metric_data 输出）:
 //   [{resource: "xxx", metrics: [{id, metric, value}]}]（resource 级别全局平均）

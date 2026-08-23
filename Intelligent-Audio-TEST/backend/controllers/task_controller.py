@@ -528,6 +528,10 @@ class TaskController:
                     r_data = {}
                 
                 combined_data = {**algo_res, **r_data}
+                # 展开 evaluation_data 中的 aux 辅助参数到顶层
+                eval_data = r_data.get('evaluation_data')
+                if isinstance(eval_data, dict):
+                    combined_data.update(eval_data)
                 for field in output_fields:
                     param_key = field.get('target_param') or field.get('source_param')
                     if not param_key or not combined_data.get(param_key):

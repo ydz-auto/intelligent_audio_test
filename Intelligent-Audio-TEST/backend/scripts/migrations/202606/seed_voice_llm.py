@@ -115,9 +115,9 @@ def seed_voice_llm():
             print(f"  清理 {deleted_dev} 条旧设备输出字段（asr_text/asr_rttm/asr_stm/record_path/device_status）")
 
         device_params = [
-            ('voice_llm', 'start_ms', '输入音频开始播放时间', 'text', 'output', False, None, 0, False),
-            ('voice_llm', 'end_ms', '输入音频停止播放时间', 'text', 'output', False, None, 0, False),
-            ('voice_llm', 'first_frame_ms', '录屏开始世界时间', 'text', 'output', False, None, 0, False),
+            ('voice_llm', 'start_ms', '输入音频开始播放时间', 'timestamp', 'output', False, None, 0, False),
+            ('voice_llm', 'end_ms', '输入音频停止播放时间', 'timestamp', 'output', False, None, 0, False),
+            ('voice_llm', 'first_frame_ms', '录屏开始世界时间', 'timestamp', 'output', False, None, 0, False),
             ('voice_llm', 'wav_path', '录音文件', 'text', 'output', False, None, 0, False),
             ('voice_llm', 'input_text', '录屏文件', 'text', 'output', False, None, 10, False),
             ('voice_llm', 'question', '用户提问', 'text', 'output', False, None, 11, False),

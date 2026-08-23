@@ -177,6 +177,9 @@ export default {
     }
   },
   emits: ['export', 'sort', 'search'],
+  inject: {
+    isExporting: { default: false }
+  },
   data() {
     return {
       searchQuery: '',
@@ -185,6 +188,14 @@ export default {
       sortOrder: 'asc',
       isCollapsed: this.defaultCollapsed
     };
+  },
+  watch: {
+    defaultCollapsed(newVal) {
+      this.isCollapsed = newVal;
+    },
+    isExporting(newVal) {
+      if (newVal) this.isCollapsed = false;
+    }
   },
   computed: {
     totalItems() {
@@ -233,8 +244,8 @@ export default {
         });
       }
       
-      // 分页
-      if (this.showPagination) {
+      // 分页（导出模式不分页，显示全部数据）
+      if (this.showPagination && !this.isExporting) {
         const startIndex = (this.currentPage - 1) * this.pageSize;
         const endIndex = startIndex + this.pageSize;
         result = result.slice(startIndex, endIndex);

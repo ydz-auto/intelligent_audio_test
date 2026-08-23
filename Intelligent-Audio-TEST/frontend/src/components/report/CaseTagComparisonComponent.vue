@@ -253,11 +253,14 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, inject } from 'vue'
 import ChartComponent from './ChartComponent.vue'
 import DataTable from '../common/DataTable.vue'
 import { reportsApi } from '../../utils/api'
 import '../../assets/styles/components/report-filter-card.css'
+
+// 导出模式：导出时展开所有折叠区块
+const isExporting = inject('isExporting', ref(false))
 
 // Collapse state
 const isCollapsed = ref(false)
@@ -274,6 +277,14 @@ const collapsedMetrics = ref({})
 const toggleMetricCollapse = (metricName) => {
   collapsedMetrics.value[metricName] = !collapsedMetrics.value[metricName]
 }
+
+// 导出模式：展开本区块 + 展开所有维度卡片
+watch(isExporting, (exporting) => {
+  if (exporting) {
+    isCollapsed.value = false
+    collapsedMetrics.value = {}
+  }
+}, { immediate: true })
 
 // 表格引用
 const tableRefs = ref({})

@@ -153,7 +153,8 @@
                 <div class="result-label">{{ field.label || field.param_code }}</div>
                 <div class="text-card reference">
                   <div class="collapsible-text" :class="{ expanded: expandedTexts['ref_' + field.param_code] }">
-                    <div class="text-content">{{ field.text }}</div>
+                    <pre v-if="isJsonString(field.text)" class="text-content json-formatted">{{ formatJson(field.text) }}</pre>
+                    <div v-else class="text-content">{{ field.text }}</div>
                     <div v-if="(field.text || '').length > 100" class="expand-toggle" @click="toggleText('ref_' + field.param_code)">
                       {{ expandedTexts['ref_' + field.param_code] ? '收起' : '展开' }}
                     </div>
@@ -167,37 +168,50 @@
         <!-- 结果文本字段 -->
         <div v-if="resultTextFields.length > 0" class="result-subsection">
           <div v-if="referenceTextFields.length > 0" class="subsection-label">结果数据</div>
-          <div v-if="!isComparison" class="device-result-row">
-            <div class="text-comparison-grid">
-              <div class="text-item" v-for="field in resultTextFields" :key="'res_' + field.param_code">
-                <div class="result-label">{{ field.label || field.param_code }}</div>
-                <div class="text-card">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts['default_' + field.param_code] }">
-                    <div class="text-content">{{ field.getValue('default') }}</div>
-                    <div v-if="(field.getValue('default')).length > 100" class="expand-toggle" @click="toggleText('default_' + field.param_code)">
-                      {{ expandedTexts['default_' + field.param_code] ? '收起' : '展开' }}
+          <!-- 按维度分组展示 -->
+          <template v-if="!isComparison">
+            <div v-for="group in groupedResultTextFields" :key="group.key" class="dimension-group">
+              <div v-if="group.label" class="dimension-group-label">{{ group.label }}</div>
+              <div class="device-result-row">
+                <div class="text-comparison-grid">
+                  <div class="text-item" v-for="field in group.fields" :key="'res_' + field.param_code">
+                    <div class="result-label">{{ field.label || field.param_code }}</div>
+                    <div class="text-card">
+                      <div class="collapsible-text" :class="{ expanded: expandedTexts['default_' + field.param_code] }">
+                        <pre v-if="isJsonString(field.getValue('default'))" class="text-content json-formatted">{{ formatJson(field.getValue('default')) }}</pre>
+                        <div v-else class="text-content">{{ field.getValue('default') }}</div>
+                        <div v-if="(field.getValue('default')).length > 100" class="expand-toggle" @click="toggleText('default_' + field.param_code)">
+                          {{ expandedTexts['default_' + field.param_code] ? '收起' : '展开' }}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div v-else v-for="device in devices" :key="device" class="device-result-row">
-            <div class="device-row-title">{{ getDeviceName(device) }}</div>
-            <div class="text-comparison-grid">
-              <div class="text-item" v-for="field in resultTextFields" :key="device + '_' + field.param_code">
-                <div class="result-label">{{ field.label || field.param_code }}</div>
-                <div class="text-card">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts[device + '_' + field.param_code] }">
-                    <div class="text-content">{{ field.getValue(device) }}</div>
-                    <div v-if="(field.getValue(device)).length > 100" class="expand-toggle" @click="toggleText(device + '_' + field.param_code)">
-                      {{ expandedTexts[device + '_' + field.param_code] ? '收起' : '展开' }}
+          </template>
+          <template v-else>
+            <div v-for="device in devices" :key="device" class="device-result-row">
+              <div class="device-row-title">{{ getDeviceName(device) }}</div>
+              <div v-for="group in groupedResultTextFields" :key="device + '_' + group.key" class="dimension-group">
+                <div v-if="group.label" class="dimension-group-label">{{ group.label }}</div>
+                <div class="text-comparison-grid">
+                  <div class="text-item" v-for="field in group.fields" :key="device + '_' + field.param_code">
+                    <div class="result-label">{{ field.label || field.param_code }}</div>
+                    <div class="text-card">
+                      <div class="collapsible-text" :class="{ expanded: expandedTexts[device + '_' + field.param_code] }">
+                        <pre v-if="isJsonString(field.getValue(device))" class="text-content json-formatted">{{ formatJson(field.getValue(device)) }}</pre>
+                        <div v-else class="text-content">{{ field.getValue(device) }}</div>
+                        <div v-if="(field.getValue(device)).length > 100" class="expand-toggle" @click="toggleText(device + '_' + field.param_code)">
+                          {{ expandedTexts[device + '_' + field.param_code] ? '收起' : '展开' }}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </template>
         </div>
 
         <!-- 时间轴对比 -->
@@ -543,26 +557,27 @@ const resultTextFields = computed(() => {
   const seenCodes = new Set();
   for (const item of algoResults) {
     const code = item.param_code;
-    if (item.param_type === 'text' && code && !META_CODES.has(code) && !code.startsWith('rounds') && !seenCodes.has(code)) {
+    if ((item.param_type === 'text' || item.param_type === 'timestamp') && code && !META_CODES.has(code) && !code.startsWith('rounds') && !seenCodes.has(code)) {
       seenCodes.add(code);
       textItems.push({
         param_code: code,
         label: item.label || code,
-        param_type: 'text',
+        param_type: item.param_type,
         round_number: item.round_number,
+        dimension_name: item.dimension_name,
         getValue: (device) => getResultTextValue(device, code)
       });
     }
   }
 
-  // 2. 补充 fieldMapping 里定义的 text 字段（跳过 algorithmResults 已覆盖的）
+  // 2. 补充 fieldMapping 里定义的 text/timestamp 字段（跳过 algorithmResults 已覆盖的）
   const fmFields = (props.fieldMapping?.result || [])
     .map(f => ({
       ...f,
       param_code: f.param_code ?? f.paramCode,
       param_type: f.param_type ?? f.paramType ?? 'text',
     }))
-    .filter(f => f.param_type === 'text'
+    .filter(f => (f.param_type === 'text' || f.param_type === 'timestamp')
       && f.param_code && !META_CODES.has(f.param_code) && !f.param_code.startsWith('rounds'));
   for (const f of fmFields) {
     if (!seenCodes.has(f.param_code)) {
@@ -582,6 +597,41 @@ const resultTextFields = computed(() => {
     return (a.param_code || '').localeCompare(b.param_code || '');
   });
   return textItems;
+});
+
+// 按维度分组结果文本字段
+const groupedResultTextFields = computed(() => {
+  const groups = {};
+  const order = [];
+
+  for (const field of resultTextFields.value) {
+    const dimName = field.dimension_name || null;
+    if (!groups[dimName]) {
+      groups[dimName] = [];
+      order.push(dimName);
+    }
+    groups[dimName].push(field);
+  }
+
+  // 通用分组（dimension_name 为 null 的）放最后
+  const result = [];
+  for (const key of order) {
+    if (key !== null) {
+      result.push({
+        key: key,
+        label: key,
+        fields: groups[key]
+      });
+    }
+  }
+  if (groups[null]) {
+    result.push({
+      key: '_general',
+      label: null,
+      fields: groups[null]
+    });
+  }
+  return result;
 });
 
 // 是否有结果音频
@@ -835,15 +885,62 @@ const getResultTextValue = (device, paramCode) => {
   }
   if (!item || item.value === undefined || item.value === null) return '无数据';
   const data = item.value;
-  if (typeof data === 'string') return data;
+  // 时间戳类型：尝试格式化为可读时间
+  if (item.param_type === 'timestamp') {
+    const ts = typeof data === 'string' ? data : String(data);
+    // 纯数字时间戳（秒或毫秒）
+    if (/^\d{10,13}$/.test(ts.trim())) {
+      const ms = ts.trim().length === 10 ? Number(ts.trim()) * 1000 : Number(ts.trim());
+      const d = new Date(ms);
+      if (!isNaN(d.getTime())) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+    }
+    // ISO 格式字符串
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) {
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    return ts;
+  }
+  if (typeof data === 'string') {
+    // 尝试解析 JSON 字符串并格式化
+    try {
+      const parsed = JSON.parse(data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return JSON.stringify(parsed, null, 2);
+      }
+    } catch {}
+    return data;
+  }
   if (data.text) return data.text;
   if (data.value) return data.value;
-  return JSON.stringify(data);
+  return JSON.stringify(data, null, 2);
 };
 
 const expandedTexts = ref({});
 const toggleText = (key) => {
   expandedTexts.value[key] = !expandedTexts.value[key];
+};
+
+// JSON 格式化辅助
+const isJsonString = (val) => {
+  if (!val || typeof val !== 'string') return false;
+  const s = val.trim();
+  if (!s) return false;
+  return (s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'));
+};
+
+const formatJson = (val) => {
+  if (!val) return val;
+  try {
+    const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return val;
+  }
 };
 
 const showAudioModal = ref(false);
@@ -1292,6 +1389,21 @@ const closeAudioModal = () => {
   line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.json-formatted.text-content {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  background: #f8f9fa;
+  padding: 8px;
+  border-radius: 4px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .expanded .text-content {

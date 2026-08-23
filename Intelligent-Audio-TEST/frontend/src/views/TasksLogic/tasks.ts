@@ -1,6 +1,6 @@
 import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { tasksApi, logsApi, algorithmApi } from '../../utils/api';
+import { tasksApi, logsApi, algorithmApi, reportsApi } from '../../utils/api';
 import { reportService } from '../../services/reportService';
 import type { Task, Log } from '../../shared/types';
 import { createTaskTypeChart, createTaskTrendChart, createTaskStatusChart } from '../../utils/chartUtils';
@@ -330,6 +330,9 @@ export function useTasks() {
       case 'view-report':
         viewTaskReport(task);
         break;
+      case 'regenerate-report':
+        regenerateReport(task);
+        break;
       case 'retry':
         retryTask(task.id);
         break;
@@ -445,6 +448,68 @@ export function useTasks() {
     } catch (error) {
       console.error('Failed to view task report:', error);
       notification.error('报告生成失败');
+    } finally {
+      isGeneratingReport.value = false;
+    }
+  };
+
+  const regenerateReport = async (task: Task) => {
+    if (router.currentRoute.value.name === 'reportView') {
+      notification.info('当前已有报告打开，请先关闭当前报告');
+      return;
+    }
+    if (isGeneratingReport.value) {
+      notification.info('正在生成报告，请稍候...');
+      return;
+    }
+
+    // 先获取已有报告
+    isGeneratingReport.value = true;
+    notification.info('正在查找已有报告...');
+    let existingReportId: string | number | undefined;
+    try {
+      const result = await reportsApi.generateTaskReport(task.id, `${task.name} - 测试报告`);
+      if (result && result.id) {
+        existingReportId = result.id;
+      }
+    } catch {
+      // 没有已有报告，走正常生成流程
+    }
+
+    if (!existingReportId) {
+      notification.info('未找到已有报告，正在生成新报告...');
+      isGeneratingReport.value = false;
+      viewTaskReport(task);
+      return;
+    }
+
+    // 弹窗确认
+    isGeneratingReport.value = false;
+    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '重新生成报告',
+      content: '将删除当前报告并重新生成，旧报告数据将被覆盖。是否继续？',
+      confirmText: '重新生成',
+      cancelText: '查看旧报告'
+    });
+
+    if (!confirmed) {
+      // 查看旧报告
+      router.push({ name: 'reportView', params: { id: existingReportId } });
+      return;
+    }
+
+    // 确认重新生成
+    isGeneratingReport.value = true;
+    notification.info('正在重新生成报告，请稍候...');
+    try {
+      const result = await reportService.regenerateTaskReport(existingReportId, task);
+      if (result && result.id) {
+        notification.success('报告重新生成成功');
+        router.push({ name: 'reportView', params: { id: result.id } });
+      }
+    } catch (error: any) {
+      console.error('Failed to regenerate report:', error);
+      notification.error('报告重新生成失败');
     } finally {
       isGeneratingReport.value = false;
     }
@@ -1017,6 +1082,7 @@ export function useTasks() {
     handleTaskAction,
     viewTaskDetails,
     viewTaskReport,
+    regenerateReport,
     editTask,
     updateTaskName,
     retryTask,

@@ -425,7 +425,8 @@ const getDefaultByType = (fieldType: string) => {
     'boolean': false,
     'select': '',
     'multiselect': [],
-    'json': '{}'
+    'json': '{}',
+    'timestamp': ''
   }
   return defaults[fieldType] ?? ''
 }

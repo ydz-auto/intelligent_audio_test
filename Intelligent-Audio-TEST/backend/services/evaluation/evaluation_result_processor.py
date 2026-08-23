@@ -499,6 +499,44 @@ class EvaluationResultProcessor(RoundAggregator):
                     # 更新维度评估结果，传入session避免重复创建
                     self.update_dimension_result_completed(dimension_result_id, raw_value, score, task_id=task_id, test_case_id=test_case_id, api_raw_response=resp_data, api_request_body=api_request_body, session=local_db_session)
 
+                # 提取 aux 辅助参数值，写入 result_data.evaluation_data
+                try:
+                    aux_fields = {}
+                    for dim_data, _ in group_items:
+                        for p in dim_data.get('output_params') or []:
+                            if p.get('output_role') == 'aux' and p.get('visible_in_report', True) and p.get('field_path'):
+                                value = extract_by_path(resp_data, p.get('field_path'))
+                                if value is not None:
+                                    aux_fields[p['param_code']] = value
+
+                    if aux_fields and result_id:
+                        test_result = local_db_session.query(TestResult).get(result_id)
+                        if test_result:
+                            from backend.utils.common.result_data_store import load_full_result_data, write_result_data_file, split_result_data
+                            r_data = load_full_result_data(test_result.result_data, getattr(test_result, 'result_data_path', None))
+                            if not isinstance(r_data, dict):
+                                r_data = {}
+                            eval_data = r_data.setdefault('evaluation_data', {})
+                            if not isinstance(eval_data, dict):
+                                eval_data = {}
+                                r_data['evaluation_data'] = eval_data
+                            eval_data.update(aux_fields)
+
+                            # 写回：大字段存文件，轻量部分存 DB
+                            lightweight, has_heavy = split_result_data(r_data)
+                            test_result.result_data = lightweight
+                            if has_heavy:
+                                device_sn = str(device_id or api_id or test_result.id)
+                                rel_path = write_result_data_file(task_id, test_case_id, device_sn, r_data)
+                                test_result.result_data_path = rel_path
+                except Exception as e:
+                    self._log(
+                        level='WARNING',
+                        category='execution',
+                        content=f"提取 aux 辅助参数值失败: {e}",
+                        task_id=task_id, test_case_id=test_case_id, api_id=api_id
+                    )
+
                 # 循环结束后统一提交
                 local_db_session.commit()
 
