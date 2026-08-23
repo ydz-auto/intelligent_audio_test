@@ -354,11 +354,12 @@ def parse_json(content: str) -> Optional[dict]:
 def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
     """从 parsed 中提取 evaluations 列表，归一化 behavior 标签。
 
-    支持两种格式:
+    支持三种格式:
     - 多场景: {"evaluations": [{scene, behavior, reason}, ...]}
-    - 单场景: {"scene": "...", "behavior": "...", "reason": "..."}
+    - 单场景(含 scene): {"scene": "...", "behavior": "...", "reason": "..."}
+    - 单条(无 scene): {"behavior": "...", "reason": "..."}
     """
-    if 'behavior' in parsed and 'scene' in parsed:
+    if 'behavior' in parsed:
         evaluations = [parsed]
     else:
         evaluations = parsed.get('evaluations', [])

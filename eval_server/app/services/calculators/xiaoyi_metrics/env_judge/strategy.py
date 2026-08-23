@@ -135,15 +135,19 @@ class _BaseEnvJudgeCalculator(BaseCalculator):
         """提取 LLM 配置参数
 
         scene 为新参数名，兼容旧 env_type 字段回退。
+        model / max_tokens / temperature 缺省时回退到 config.LLM_JUDGE。
         """
+        from app.config import config
+        llm_config = getattr(config, 'LLM_JUDGE', {})
+
         scene = task_params.get('scene') or rd.get('scene') or ''
         if not scene:
             scene = task_params.get('env_type') or rd.get('env_type') or ''
         return {
             'scene': scene,
             'model': task_params.get('model') or rd.get('model') or '',
-            'max_tokens': int(task_params.get('max_tokens') or rd.get('max_tokens') or 4096),
-            'temperature': float(task_params.get('temperature') or rd.get('temperature') or 0.1),
+            'max_tokens': int(task_params.get('max_tokens') or rd.get('max_tokens') or llm_config.get('max_tokens', 4096)),
+            'temperature': float(task_params.get('temperature') or rd.get('temperature') or llm_config.get('temperature', 0.1)),
         }
 
 
@@ -157,15 +161,6 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         return evaluate_rejection_judge(
             ai_wav=params['ai_wav'],
             user_wav=params['user_wav'],
-            env_events=params['env_events'],
-            start_ms=params['start_ms'],
-            end_ms=params['end_ms'],
-            pcm_first_ms=params['pcm_first_ms'],
-            rounds=params.get('rounds', []),
-            scene=params['scene'],
-            model=params['model'],
-            max_tokens=params['max_tokens'],
-            temperature=params['temperature'],
         )
 
 
@@ -179,13 +174,4 @@ class InterruptionJudgeCalculator(_BaseEnvJudgeCalculator):
         return evaluate_interruption_judge(
             ai_wav=params['ai_wav'],
             user_wav=params['user_wav'],
-            env_events=params['env_events'],
-            start_ms=params['start_ms'],
-            end_ms=params['end_ms'],
-            pcm_first_ms=params['pcm_first_ms'],
-            rounds=params.get('rounds', []),
-            scene=params['scene'],
-            model=params['model'],
-            max_tokens=params['max_tokens'],
-            temperature=params['temperature'],
         )
