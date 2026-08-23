@@ -1,0 +1,429 @@
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/__init__.py
+  s_a5eb5bd1a11f03::t_c55bc8db912fe6 864-865
+Intelligent-Audio-TEST/backend/controllers/group_controller.py
+  s_5c43bd3fd91845::t_ba023afa7b384d 18-19,21,24-25,27-29,36-43,45,49,71,85
+  s_5c43bd3fd91845::t_0a4fbfd58b4859 20,30-35
+  s_5c43bd3fd91845::t_b2ab79ec454f46 59
+  s_5c43bd3fd91845::t_c201f6fc5a00f0 44
+  s_a5eb5bd1a11f03::t_445e4e01edf488 1
+Intelligent-Audio-TEST/frontend/src/views/E2ETest.vue
+  s_5c43bd3fd91845::t_6fb050a3f6b20f 426,428-429,432-434
+  s_5c43bd3fd91845::t_94e195903257e0 417,422,427,430-431
+  s_5c43bd3fd91845::t_afa3a4ca02fc9d 80
+  s_5c43bd3fd91845::t_9ffab456db5369 412-413
+Intelligent-Audio-TEST/backend/services/execution/api_task_runner.py
+  s_34f1047080d47d::t_b53a213a30598c 9
+  s_34f1047080d47d::t_cee9c8a098cabf 147
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_api_client.py
+  s_34f1047080d47d::t_c2cf8b99238fa1 136
+  s_d984c166b54640::t_86c250a0a62d23 212-213
+  s_34f1047080d47d::t_62e84a63a3255f 186,189
+  s_34f1047080d47d::t_0ef641a790efc6 428-429,431-435,438,442,448-468
+  s_34f1047080d47d::t_7023b0097e6150 34
+  s_34f1047080d47d::t_48e6d6b24db4dd 343,345,351-355,357,359,364-372,375,377
+  s_34f1047080d47d::t_38d66a11729673 52
+  s_34f1047080d47d::t_dfbe3fe5ea6fd0 237
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/strategy.py
+  s_0c066f0772b386::t_649d9cc942999d 91,95,97,100,102
+  s_0c066f0772b386::t_9f33d020fa0c0e 150
+  s_0c066f0772b386::t_82e7abb0cde07d 1,4-6,8-12,17,20-21,24,27-82,84-87,92,94,96,98-99,101,103-120,122-135,142
+  s_a5eb5bd1a11f03::t_9fa4339bd23c25 136-137
+eval_server/app/services/calculators/xiaoyi_metrics/llm_judge/strategy.py
+  s_a5eb5bd1a11f03::t_5a8adcc15f7a95 171-172
+  s_4bc18156587610::t_bc235dba265617 223-226
+  s_0c066f0772b386::t_2038aae1d399fe 1,5-12,23-27,30-91,93-108,112-170,173-175,191-198,204-219,221,228-234
+  s_4bc18156587610::t_8622a182f20b62 199-202
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_service.py
+  s_34f1047080d47d::t_b53ecee22a23b5 123,128
+  s_87bbc500695589::t_fd7050b2af0617 541-542,545-553
+  s_0c066f0772b386::t_5183dd97b43659 874-875
+  s_34f1047080d47d::t_1fc8f49fac016d 88,91
+  s_0c066f0772b386::t_f20a986ba83227 862,864-871
+  s_34f1047080d47d::t_91d2dacbc39f1b 121
+  s_87bbc500695589::t_84f544261ade2c 221-224
+  s_87bbc500695589::t_91e0783114bde8 882-883
+  s_87bbc500695589::t_b18926b44ce5bc 593,603-644
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseListContainer.vue
+  s_5c43bd3fd91845::t_07e25afecbcbc5 526,528
+  s_5c43bd3fd91845::t_15157aaa610c19 1064,1066,1081,1085,1087-1092,1095,1097,1112,1116,1118-1123
+  s_5c43bd3fd91845::t_435c6d9980ca9a 525,529-532,534,536-538
+  s_5c43bd3fd91845::t_389a96ee3ca003 362
+  s_5c43bd3fd91845::t_9644199c80dc58 1067-1069,1072-1077,1080,1082-1084,1086,1098-1100,1103-1108,1111,1113-1115,1117
+  s_5c43bd3fd91845::t_499a843da683f2 75,502-504,1071,1102
+  s_5c43bd3fd91845::t_46d2afc8b3bf20 76-83
+  s_5c43bd3fd91845::t_f0080a9315c302 527,533
+  s_5c43bd3fd91845::t_c2f9e3a5a86a58 1128,1151
+  s_5c43bd3fd91845::t_acf5971b6ad660 1130-1131,1137-1143,1145-1150
+  s_5c43bd3fd91845::t_14280fbcf67b91 1127,1152-1153
+  s_5c43bd3fd91845::t_de0f484c592505 410-411
+  s_5c43bd3fd91845::t_a7d66590530bb5 1020
+  s_5c43bd3fd91845::t_12ab1153ae6881 1134,1144
+  s_5c43bd3fd91845::t_9b6be1761684b0 493-501
+  s_5c43bd3fd91845::t_3246bfd0dbe3d6 1021-1022
+  s_5c43bd3fd91845::t_4aa58d4874927e 426-427
+  s_5c43bd3fd91845::t_850f0be2a0cf15 640-641
+  s_5c43bd3fd91845::t_40b542f60a1c27 1070,1078
+  s_5c43bd3fd91845::t_7ec4177a7354b0 776-777,780-782,785-791,793-794,797,804,808-809,812,815-816
+  s_970931d84d0a6a::t_dda0c5932babd0 1101,1109
+Intelligent-Audio-TEST/backend/services/execution/execution_engine.py
+  s_34f1047080d47d::t_96434088fd7b7d 82,87,94
+  s_34f1047080d47d::t_7d7ab0857b2ce1 766,769,771,773
+Intelligent-Audio-TEST/backend/utils/algorithm/case_parameter_extractor.py
+  s_0c066f0772b386::t_e3db695f5bc9f1 238-239,248,264-265
+  s_0c066f0772b386::t_cb7cefbcc1fd8f 278-279
+  s_0c066f0772b386::t_fcf71ee6d0d196 358-359,363-367
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/env_judge.py
+  s_d984c166b54640::t_17e2c657911dd2 668
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/strategy.py
+  s_970931d84d0a6a::t_1edcd7a33bbc02 355-356,365-368,372,375-376,378-381
+  s_0c066f0772b386::t_2d9d8fde3a52ea 278,290-292,297-303
+  s_970931d84d0a6a::t_76b99500070510 311-312,324,328
+  s_a5eb5bd1a11f03::t_7f570ce16a9562 389-390
+  s_0c066f0772b386::t_3b6ec4401be492 1-2,4-9,11-30,32,35-155,157-164,168-169,171,179,183-184,186-205,207-215,217-218,221-224,233-235,239-246,248-258,262-265,270-277,279-289,293-296,304-310,313-323,325-327,329-354,357-364,369-371,373-374,377,382-388,391-411,413-425,436-437
+  s_0c066f0772b386::t_8d947f4ba96e8b 412,426-433,438-442,448-449,455-456,458-470
+  s_4bc18156587610::t_2868e4d071e357 443-447,450-454,457
+  s_0c066f0772b386::t_021cd8c9cb4220 216,228-231,236-238
+  s_0c066f0772b386::t_b3c8d9a3a42ec7 247,259-261,266-269
+Intelligent-Audio-TEST/backend/controllers/testcase_controller.py
+  s_5c43bd3fd91845::t_e4a6d2cc9bb0ec 428
+  s_5c43bd3fd91845::t_739543fe4c1088 469
+  s_5c43bd3fd91845::t_f265022743f2a7 478-485
+  s_5c43bd3fd91845::t_09dc53dcce3752 340,358-366
+  s_5c43bd3fd91845::t_54f66dc465c644 1990-1996
+  s_5c43bd3fd91845::t_60fc51acf8b125 1987-1989,1999-2003
+  s_970931d84d0a6a::t_3114ee15141420 318,328
+eval_server/app/services/calculators/xiaoyi_metrics/rejection_scene_awareness/strategy.py
+  s_d984c166b54640::t_6fd95c99f65522 191-202,210-215,225-229
+  s_4bc18156587610::t_314e89e70d49fb 178,183,186
+  s_0c066f0772b386::t_1c8e51da405188 1,4-14,16,19-93,97-102,106-125,127,133,139,144-160,162,166-169,204-205,221-224,230-237,239,245,249
+  s_0c066f0772b386::t_a709c8a4f83631 161,170-177,179-182,184-185,187-188,206-209,216-220,251-252
+  s_a5eb5bd1a11f03::t_fb6a085799565b 129-132,135-138
+  s_a5eb5bd1a11f03::t_c1fdfc69ed8e72 241-244
+Intelligent-Audio-TEST/frontend/src/views/APITest.vue
+  s_5c43bd3fd91845::t_6666bd3035cd66 84
+  s_5c43bd3fd91845::t_787a9a7aeb5811 426,431
+  s_5c43bd3fd91845::t_b9ea4bddc33215 421-422
+eval_server/app.py
+  s_34f1047080d47d::t_1a69818f3ab5ae 16
+eval_server/app/services/calculators/__init__.py
+  s_0c066f0772b386::t_4c37400ed11171 10
+  s_0c066f0772b386::t_4e4c6abe682ba9 8-9,11-13,21-22,24,42,44-48,50,53
+  s_0c066f0772b386::t_e50a67231370ff 23
+Intelligent-Audio-TEST/backend/utils/common/config_manager.py
+  s_34f1047080d47d::t_2eff5cf1d35887 53-54,60-66,73-74,80-86
+  s_34f1047080d47d::t_9c4e501f8ca1fd 58-59,78-79
+Intelligent-Audio-TEST/backend/services/execution/api_concurrency_manager.py
+  s_34f1047080d47d::t_dd051fc76fdb04 78,80-81
+Intelligent-Audio-TEST/frontend/src/store/testCaseStore.ts
+  s_5c43bd3fd91845::t_cc7e07e2a65133 265
+  s_5c43bd3fd91845::t_007c4b691c6dac 29
+  s_5c43bd3fd91845::t_e699b965adfd7c 462
+  s_5c43bd3fd91845::t_a3d31506c75551 507-508
+  s_5c43bd3fd91845::t_43f24e50afb3b8 1192
+  s_5c43bd3fd91845::t_58ac7ff86ad17d 506
+  s_5c43bd3fd91845::t_bfb46732d3aa69 168,177
+  s_5c43bd3fd91845::t_3dedebf4df5cc1 432
+  s_5c43bd3fd91845::t_8c9c4bba8347bd 28
+  s_970931d84d0a6a::t_abb06315b0ce4b 463-464
+eval_server/app/config.py
+  s_34f1047080d47d::t_351c1eb1e4da5f 43,51-64,66
+Intelligent-Audio-TEST/backend/services/execution/api_executor.py
+  s_34f1047080d47d::t_6e9f277525b068 467
+  s_34f1047080d47d::t_1936331dfd226b 179
+  s_34f1047080d47d::t_d79e7aa3abd693 49-51
+  s_34f1047080d47d::t_ac02a312db6d77 17
+Intelligent-Audio-TEST/backend/services/evaluation/payload_builder.py
+  s_87bbc500695589::t_beb4cab34ee10f 144
+  s_87bbc500695589::t_67d9e42ed98f2f 109-121
+  s_87bbc500695589::t_f241480394ed7b 135
+  s_87bbc500695589::t_984c162765972b 139,141
+Intelligent-Audio-TEST/backend/controllers/task_controller.py
+  s_b6789330fc57b6::t_b7e583a225bfe2 717-725,734-736
+  s_b6789330fc57b6::t_772fe30a00043a 470-478,487-489
+Intelligent-Audio-TEST/backend/config/concurrency_config.json
+  s_34f1047080d47d::t_4c66b6e22b6e25 3-5,14-17
+  s_34f1047080d47d::t_b1b0d7d69b8cd8 8-10
+Intelligent-Audio-TEST/backend/services/execution/reevaluation_executor.py
+  s_a5eb5bd1a11f03::t_8fb0184c3521c5 194,197
+  s_b6789330fc57b6::t_2dfbe088546dd9 195-196
+  s_a5eb5bd1a11f03::t_ce5150bdc1e930 193
+  s_c66e730f5bccba::t_1aa43b6721a97b 189,192,282,285
+Intelligent-Audio-TEST/frontend/src/views/Evaluation.vue
+  s_e888402fcae2e1::t_03d78dbf1fab2e 579-644
+  s_e888402fcae2e1::t_826456b3172081 106,108-117
+  s_e888402fcae2e1::t_6bc555acb3bcf4 219
+Intelligent-Audio-TEST/backend/services/execution/base_executor.py
+  s_0c066f0772b386::t_e7f8aafab34cbc 438-439
+Intelligent-Audio-TEST/frontend/src/composables/useE2eView.ts
+  s_5c43bd3fd91845::t_28247cb9304e48 762-763
+Intelligent-Audio-TEST/frontend/src/views/APITestLogic/apiTest.ts
+  s_5c43bd3fd91845::t_d4e8a97cefe25a 553,555-558,560-562
+  s_5c43bd3fd91845::t_ce3689977b3036 554,559
+  s_5c43bd3fd91845::t_a82609cd2edcc6 775-776
+eval_server/app/services/calculators/xiaoyi_metrics/interruptbility/interruption_llm.py
+  s_a5eb5bd1a11f03::t_e608bfb0c6a312 237-238
+eval_server/app/utils/asr_adapator.py
+  s_4bc18156587610::t_5bf968b9c68690 96-99
+  s_4bc18156587610::t_80021ca1f711b7 56-59
+Intelligent-Audio-TEST/backend/services/evaluation/endpoint_worker.py
+  s_87bbc500695589::t_30c88b0278a883 228-236
+  s_87bbc500695589::t_4e47a4e519dbb6 186-187
+  s_34f1047080d47d::t_8def57d968bad2 28,223
+  s_87bbc500695589::t_dfc961be455799 194-197,220-222
+  s_87bbc500695589::t_65437d763ee70d 239-241
+Intelligent-Audio-TEST/frontend/src/views/TestCaseManagerLogic/testCaseManager.ts
+  s_5c43bd3fd91845::t_2b6fbbfe20fddf 159
+  s_5c43bd3fd91845::t_578561f81ee4d2 57,66-70,72-77
+  s_5c43bd3fd91845::t_1b9adb06642882 58,65,71,78
+  s_5c43bd3fd91845::t_7abbe84b988ed4 32,40,47
+Intelligent-Audio-TEST/frontend/src/composables/useE2eTest.ts
+  s_5c43bd3fd91845::t_82f89728c5bf70 146-147
+Intelligent-Audio-TEST/frontend/src/views/EvaluationLogic/evaluation.ts
+  s_e888402fcae2e1::t_98e29306dbb898 280-310
+  s_e888402fcae2e1::t_4ac8ac5d8eeb98 1472-1474
+Intelligent-Audio-TEST/backend/services/execution/api_session_executor.py
+  s_34f1047080d47d::t_20b4b79ad494b8 52
+eval_server/app/utils/concurrency.py
+  s_34f1047080d47d::t_190c20dd884435 61
+  s_34f1047080d47d::t_3161a834123e32 36,38-39
+  s_34f1047080d47d::t_935603770d09c1 20-22
+Intelligent-Audio-TEST/frontend/src/views/TestCaseManager.vue
+  s_5c43bd3fd91845::t_a227a23e6932fe 60
+  s_5c43bd3fd91845::t_c0aadd1254f403 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "5c03529736965c3a2eb5b22c3c4f2d515a3765d4",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_0c066f0772b386": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87bfaa73ad3a08262b1f1e",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a87bfaa73ad3a08262b1f1e",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "edit_kind": "file_edit",
+        "tool_use_id": "6a87f38d73ad3a08262b2946",
+        "tool_type": "builtin",
+        "dedupe_key": "6a87bfaa73ad3a08262b1f1e:6a87f38d73ad3a08262b2946:afterEdit:ab31b621",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "operation_id": "6a87f38d73ad3a08262b2946",
+        "client_type": "ide",
+        "external_session_id": "6a87bfaa73ad3a08262b1f1e"
+      }
+    },
+    "s_34f1047080d47d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87f33873ad3a08262b28e2",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a87f33873ad3a08262b28e2",
+        "tool_use_id": "6a87fbbb73ad3a08262b3157",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "session_id": "6a87f33873ad3a08262b28e2",
+        "dedupe_key": "6a87f33873ad3a08262b28e2:6a87fbbb73ad3a08262b3157:afterEdit:d1125a56",
+        "client_type": "ide",
+        "operation_id": "6a87fbbb73ad3a08262b3157",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "edit_kind": "file_edit"
+      }
+    },
+    "s_4bc18156587610": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8804f773ad3a08262b3ae8",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a8804f773ad3a08262b3ae8:6a880fcb73ad3a08262b3f18:afterEdit:a483a395",
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "builtin",
+        "edit_kind": "file_edit",
+        "session_id": "6a8804f773ad3a08262b3ae8",
+        "operation_id": "6a880fcb73ad3a08262b3f18",
+        "client_type": "ide",
+        "external_session_id": "6a8804f773ad3a08262b3ae8",
+        "tool_use_id": "6a880fcb73ad3a08262b3f18",
+        "tool_id": "icube:applyChatSnapshotPatch"
+      }
+    },
+    "s_5c43bd3fd91845": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87c92d73ad3a08262b229f",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a87ffd373ad3a08262b38d2",
+        "session_id": "6a87c92d73ad3a08262b229f",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "external_session_id": "6a87c92d73ad3a08262b229f",
+        "dedupe_key": "6a87c92d73ad3a08262b229f:6a87ffd373ad3a08262b38d2:afterEdit:e525b7ab",
+        "edit_kind": "file_edit",
+        "operation_id": "6a87ffd373ad3a08262b38d2",
+        "client_type": "ide",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "tool_type": "builtin"
+      }
+    },
+    "s_87bbc500695589": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87ffcc73ad3a08262b38c3",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "tool_use_id": "6a88072f73ad3a08262b3d1a",
+        "source_scene": "agent",
+        "session_id": "6a87ffcc73ad3a08262b38c3",
+        "operation_id": "6a88072f73ad3a08262b3d1a",
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "external_session_id": "6a87ffcc73ad3a08262b38c3",
+        "edit_kind": "file_edit",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "dedupe_key": "6a87ffcc73ad3a08262b38c3:6a88072f73ad3a08262b3d1a:afterEdit:20319afc"
+      }
+    },
+    "s_970931d84d0a6a": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87cb4073ad3a08262b2350",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a87cb4073ad3a08262b2350",
+        "session_id": "6a87cb4073ad3a08262b2350",
+        "edit_kind": "bash",
+        "tool_name": "RunCommand",
+        "display_model_name": "glm-5.2",
+        "operation_id": "6a87ee0973ad3a08262b2679",
+        "tool_use_id": "6a87ee0973ad3a08262b2679"
+      }
+    },
+    "s_a5eb5bd1a11f03": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87f7b973ad3a08262b2b12",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a87f7b973ad3a08262b2b12",
+        "external_session_id": "6a87f7b973ad3a08262b2b12",
+        "edit_kind": "bash",
+        "display_model_name": "glm-5.2",
+        "tool_name": "RunCommand",
+        "operation_id": "6a87fe8373ad3a08262b3746",
+        "tool_use_id": "6a87fe8373ad3a08262b3746"
+      }
+    },
+    "s_b6789330fc57b6": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87f7ab73ad3a08262b2b11",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a87f7ab73ad3a08262b2b11",
+        "dedupe_key": "6a87f7ab73ad3a08262b2b11:6a87fc8e73ad3a08262b3224:afterEdit:927f847d",
+        "runtime_client": "trae-tob-git-ai",
+        "session_id": "6a87f7ab73ad3a08262b2b11",
+        "tool_use_id": "6a87fc8e73ad3a08262b3224",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "source_scene": "agent",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "operation_id": "6a87fc8e73ad3a08262b3224",
+        "tool_type": "builtin"
+      }
+    },
+    "s_c66e730f5bccba": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87f87873ad3a08262b2d7e",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a87f87873ad3a08262b2d7e",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "session_id": "6a87f87873ad3a08262b2d7e",
+        "edit_kind": "file_edit",
+        "dedupe_key": "6a87f87873ad3a08262b2d7e:6a87f8d573ad3a08262b2ffa:afterEdit:c1f4e453",
+        "tool_use_id": "6a87f8d573ad3a08262b2ffa",
+        "runtime_client": "trae-tob-git-ai",
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "source_scene": "agent",
+        "operation_id": "6a87f8d573ad3a08262b2ffa"
+      }
+    },
+    "s_d984c166b54640": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87fd7e73ad3a08262b32ff",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a88137b73ad3a08262b3fb8",
+        "edit_kind": "file_edit",
+        "session_id": "6a87fd7e73ad3a08262b32ff",
+        "dedupe_key": "6a87fd7e73ad3a08262b32ff:6a88137b73ad3a08262b3fb8:afterEdit:c675fa03",
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "external_session_id": "6a87fd7e73ad3a08262b32ff",
+        "source_scene": "agent",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a88137b73ad3a08262b3fb8"
+      }
+    },
+    "s_e888402fcae2e1": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87fd3873ad3a08262b32aa",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a87fd3873ad3a08262b32aa:6a87feff73ad3a08262b37ee:afterEdit:303bdd4b",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "builtin",
+        "external_session_id": "6a87fd3873ad3a08262b32aa",
+        "session_id": "6a87fd3873ad3a08262b32aa",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "client_type": "ide",
+        "operation_id": "6a87feff73ad3a08262b37ee",
+        "edit_kind": "file_edit",
+        "tool_use_id": "6a87feff73ad3a08262b37ee",
+        "source_scene": "agent"
+      }
+    }
+  }
+}

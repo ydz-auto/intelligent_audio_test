@@ -1,0 +1,273 @@
+Intelligent-Audio-TEST/backend/scripts/migrations/202608/update_field_type_to_timestamp.py
+  s_8b193e89562e3a::t_535d3a46ef6173 1-42
+Intelligent-Audio-TEST/backend/controllers/report_controller_secondary.py
+  s_3d933104324f58::t_cf6806be84b8af 630-639
+  s_3d933104324f58::t_59578da3bef260 1,4,29-30,33-34,36-69,71-111,114-139,142-156,158-178,180-186,188-215,217-247,249-262,265-283,286-308,310-342,344-389,391-394,396-418,423,428-431,433-437,441,445-447,470-471,574-575,586-587,589-593,599,603-615,621,625-627,640-642,654,658-660
+Intelligent-Audio-TEST/backend/scripts/testcase_export/README_IMPORT.txt
+  s_6a7b086c101e3b::t_2a1389580b75c6 1-23
+Intelligent-Audio-TEST/frontend/src/utils/fieldNaming.ts
+  s_8b193e89562e3a::t_16b046d72948d4 75
+Intelligent-Audio-TEST/frontend/src/assets/styles/main.css
+  s_d9d5ababd0da63::t_0dd2995dde451e 107-108,111
+  s_d9d5ababd0da63::t_4718ce8fbfeffc 117-118,120-123,127-128,136-139
+Intelligent-Audio-TEST/backend/scripts/export_testcases.py
+  s_6a7b086c101e3b::t_a3372ecda79154 1-279
+Intelligent-Audio-TEST/frontend/src/components/common/TestCaseReportDetail.vue
+  s_8b193e89562e3a::t_d94c3831b1289c 1394-1406
+  s_8b193e89562e3a::t_5b20ef1caa61d2 888-907
+  s_8b193e89562e3a::t_1055eca2c170bb 171-186,192-208,214
+  s_8b193e89562e3a::t_f5e693555c5d06 567
+  s_8b193e89562e3a::t_1c73a28c16ddff 156-157
+  s_8b193e89562e3a::t_e81df73b183ca5 560,565,573,580
+  s_8b193e89562e3a::t_f5ffc3a8051c43 602-636
+  s_8b193e89562e3a::t_42890460cebcbc 908-917,920,1407-1408
+  s_8b193e89562e3a::t_97d384d2042a5f 928-945
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_env_sound_judge.py
+  s_8b193e89562e3a::t_0fc7f463a612f2 100,103,106
+Intelligent-Audio-TEST/backend/models/algorithm_models.py
+  s_8b193e89562e3a::t_01bd587004680f 258
+Intelligent-Audio-TEST/frontend/src/components/report/ComparisonTableComponent.vue
+  s_d8ad2abee5b8d9::t_53afe83eb8decd 192-194,198-199
+  s_d8ad2abee5b8d9::t_e6aed6b4203f1a 247-248
+  s_d8ad2abee5b8d9::t_4e5fe30bb544bb 195-197
+  s_d8ad2abee5b8d9::t_fe39c8220e6bd8 180-182
+Intelligent-Audio-TEST/backend/scripts/testcase_export/testcase_export_20260823_110443.sql
+  s_6a7b086c101e3b::t_2a1389580b75c6 1-1359
+Intelligent-Audio-TEST/backend/controllers/report_controller.py
+  s_8b193e89562e3a::t_469cf39c564297 191
+  s_d8ad2abee5b8d9::t_aa9a58faeb36ca 320-401
+  s_8b193e89562e3a::t_9328d06d06d2ae 53-57
+Intelligent-Audio-TEST/backend/models/models.py
+  s_8b193e89562e3a::t_d8fa9e97c73f63 599
+Intelligent-Audio-TEST/frontend/src/components/algorithm/DynamicForm.vue
+  s_8b193e89562e3a::t_d7f77797be4a97 428-429
+Intelligent-Audio-TEST/frontend/src/components/report/OverviewCardComponent.vue
+  s_d8ad2abee5b8d9::t_ee2de32da6f23e 56,59-61
+  s_d8ad2abee5b8d9::t_6d892294dc0837 74-78
+Intelligent-Audio-TEST/backend/controllers/report_controller_base.py
+  s_8b193e89562e3a::t_3fbd3167b4530f 28-29
+  s_8b193e89562e3a::t_96df38d13ebd48 600
+Intelligent-Audio-TEST/frontend/package.json
+  s_d8ad2abee5b8d9::t_a8e887138f21d1 20
+Intelligent-Audio-TEST/frontend/src/components/report/TaskReportPanel.vue
+  s_d8ad2abee5b8d9::t_51c935a6f34fa9 152,156
+  s_d8ad2abee5b8d9::t_56689316bbac4e 195,203-204
+  s_d8ad2abee5b8d9::t_73cf241a16718c 223-230
+  s_d8ad2abee5b8d9::t_86f3227073496a 205
+Intelligent-Audio-TEST/frontend/src/components/report/CaseCategoryComparisonComponent.vue
+  s_d8ad2abee5b8d9::t_ef3c8508535eb7 299
+  s_d8ad2abee5b8d9::t_91e940aa4609c3 274,280-281,300-306,821
+  s_d8ad2abee5b8d9::t_28fc7ba8e8d56e 817-820
+Intelligent-Audio-TEST/backend/schemas/algorithm.py
+  s_8b193e89562e3a::t_662327e11b3c4d 458
+  s_8b193e89562e3a::t_2a8d1c6363b2ef 110
+Intelligent-Audio-TEST/frontend/src/components/common/form/RequiredInputsEditor.vue
+  s_8b193e89562e3a::t_1694e99493edb1 45
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_voice_llm.py
+  s_8b193e89562e3a::t_39caf1b21a33cc 118-120
+Intelligent-Audio-TEST/frontend/src/views/TasksLogic/tasks.ts
+  s_8b193e89562e3a::t_7a2517459d2b2c 1085
+  s_8b193e89562e3a::t_f985b8e29e88d7 456-517
+  s_8b193e89562e3a::t_dbe09d8851a497 3
+  s_8b193e89562e3a::t_8f453ce6e41f88 333-335
+Intelligent-Audio-TEST/frontend/src/utils/api.ts
+  s_8b193e89562e3a::t_290b50aa61f796 974-977
+  s_8b193e89562e3a::t_956ab3cb7ceb5b 59
+  s_d8ad2abee5b8d9::t_ca82d4aae65ad3 961-969
+Intelligent-Audio-TEST/backend/controllers/task_controller.py
+  s_8b193e89562e3a::t_deefe61830d261 531-534
+Intelligent-Audio-TEST/backend/controllers/report_controller_compare.py
+  s_3d933104324f58::t_a74d498798667d 2-6,13,16-17,21,24-27,33-184,187-196,198-221,223-252,255-267,270-288,290-305,308-342,345-356,359-398,401-415,417-419,438-449,457-458,460-477,483-487,489-491,494,518,521-522,525-526,566-572,582
+Intelligent-Audio-TEST/frontend/src/views/Tasks.vue
+  s_8b193e89562e3a::t_238480cd8ddd55 261
+Intelligent-Audio-TEST/frontend/src/components/report/CaseTagComparisonComponent.vue
+  s_d8ad2abee5b8d9::t_4dac1563db69ec 256,262-264,281-288
+Intelligent-Audio-TEST/frontend/src/views/ReportView.vue
+  s_d9d5ababd0da63::t_9a87144be73cda 1245-1246
+  s_d8ad2abee5b8d9::t_2c130131062142 603
+  s_d8ad2abee5b8d9::t_d2edba38da6c78 760-775,778-780
+  s_d8ad2abee5b8d9::t_ece654de2fc966 228-242
+  s_d9d5ababd0da63::t_e5a4b28e5c705d 1249,1254-1255,1257-1259,1264,1271
+  s_d8ad2abee5b8d9::t_88b3cef6717334 432-440,445-448,462-463,466-467,469-470,472-473
+  s_d8ad2abee5b8d9::t_3284055375e733 494-496,546,555,620-632,635-641,643-670,673-676,678-695,697-704,706-716,718-724,726-759,776-777,781-785
+  s_d9d5ababd0da63::t_566681cc067473 1313
+  s_d8ad2abee5b8d9::t_034354ed481187 584-587,589-595,597-600
+  s_d8ad2abee5b8d9::t_7f6b4c186c1c32 252
+  s_d8ad2abee5b8d9::t_80aa5d544a99b1 1281-1312,1314-1317,1319-1322
+  s_d8ad2abee5b8d9::t_bdd7cbe7876956 810,815,817-823
+  s_d8ad2abee5b8d9::t_bfa6ef61e86c63 610
+  s_d8ad2abee5b8d9::t_6f65dc7e268d08 441-444,451-454,458-459,471
+  s_d8ad2abee5b8d9::t_8decd3312cde1a 449-450,455-457,460-461,468,476-487,493,497-504,506,519,521-542,554,556-562,564-570,573,580-583,588,596,601-602,604-609,611-619,633-634,642,671-672,677,696,705,717,725,786
+  s_d8ad2abee5b8d9::t_00a10df7e20dff 563,577-579
+  s_d9d5ababd0da63::t_46449e6f22c6cb 1260,1265,1272-1274
+  s_d8ad2abee5b8d9::t_f786d57e1aaca1 256
+  s_d9d5ababd0da63::t_02c6364616906f 1318
+  s_d8ad2abee5b8d9::t_ec1718d6207044 474-475,488-492,505,507-518,520,543-545,547-553,571-572,574-576
+  s_d8ad2abee5b8d9::t_4a9e05c10c6765 464-465
+Intelligent-Audio-TEST/frontend/src/components/common/form/OutputFieldsEditor.vue
+  s_8b193e89562e3a::t_f4fc235e59b9c3 54
+Intelligent-Audio-TEST/backend/scripts/migrations/202608/update_aux_visible.py
+  s_8b193e89562e3a::t_8aa6e986e58be0 1-18
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_noise_latency.py
+  s_8b193e89562e3a::t_c1eab4ff4b1cfd 78,81,84
+  s_8b193e89562e3a::t_cbc8c742172b28 127,131,134,137
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_8b193e89562e3a::t_593b6faa31fdef 412,1612-1621
+  s_8b193e89562e3a::t_02d845da80848c 557-558
+  s_8b193e89562e3a::t_b301ca93174927 305
+  s_d8ad2abee5b8d9::t_b94ee872c5459c 1236,1240-1242
+  s_d8ad2abee5b8d9::t_1469bda99004b8 401,410-411
+  s_d8ad2abee5b8d9::t_5e674859e4d822 1265-1267
+  s_8b193e89562e3a::t_caf1ca9f1aad4c 347
+  s_d8ad2abee5b8d9::t_30e1c9ad27e918 1237-1239,1243-1245
+  s_8b193e89562e3a::t_81effc96e2d6cc 1275-1276
+Intelligent-Audio-TEST/backend/schemas/report.py
+  s_8b193e89562e3a::t_70e2ceaa0e7031 179
+  s_d8ad2abee5b8d9::t_284f7a56ff38f0 222
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_8b193e89562e3a::t_0443fa90c20ac2 187,190
+Intelligent-Audio-TEST/backend/scripts/migrations/202608/add_field_mappings_to_report_summary_meta.py
+  s_8b193e89562e3a::t_d963e82bdabdbd 1-82
+Intelligent-Audio-TEST/backend/utils/report/html_report_renderer.py
+  s_d8ad2abee5b8d9::t_323ff33719bba9 1-787
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_result_processor.py
+  s_8b193e89562e3a::t_6c28d3b3ab0669 502-539
+Intelligent-Audio-TEST/backend/blueprints/report_bp.py
+  s_d8ad2abee5b8d9::t_fdc9c18fc87ec1 55-58
+  s_8b193e89562e3a::t_db3a3e9e3f8d42 47-50
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_8b193e89562e3a::t_d92f673b38de5c 656
+  s_8b193e89562e3a::t_bc78d6bef582cd 90
+  s_8b193e89562e3a::t_665668e653b629 169,173-175,181-187,191-192,197-198
+  s_8b193e89562e3a::t_128baf25257a70 170-172,176-180,188-190,193-196
+  s_8b193e89562e3a::t_ddce11a08b408c 513-514
+  s_8b193e89562e3a::t_78b91c5745e19a 872
+  s_8b193e89562e3a::t_24a2bf741a6f0d 15
+  s_8b193e89562e3a::t_b805537d43f9f6 206-213
+  s_8b193e89562e3a::t_b8fb6441688836 295-298
+  s_8b193e89562e3a::t_765a4477c14afb 299,302-311,315-317
+  s_8b193e89562e3a::t_f1c286dec1fb69 168,649,837-847
+  s_8b193e89562e3a::t_c811257c97b1c6 300-301,312-314,318-324,329-334,340-341
+  s_8b193e89562e3a::t_5ed9c0461b2c94 584
+  s_8b193e89562e3a::t_5b9f69a7d8538c 650-655,657-693
+Intelligent-Audio-TEST/frontend/src/services/reportService.ts
+  s_8b193e89562e3a::t_f1c8ebaaa21be7 731,734-735,737-843
+  s_8b193e89562e3a::t_97c2fc44244749 730,732-733,736
+  s_8b193e89562e3a::t_16fc553e824bb7 1005
+Intelligent-Audio-TEST/frontend/package-lock.json
+  s_d8ad2abee5b8d9::t_e5e7ec2de64462 17,1881-1885,2898-2909,2946-2951,3072-3083,3142-3145,3148,3440-3445,3609-3614,3680-3694,3805-3810,3878-3881,4012-4020,4319-4324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "4b4be5fa31bca7b84a1e5e19ab7d9b30f5972d7a",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_3d933104324f58": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8a64e473ad3a08262b4d60",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "operation_id": "6a8a6e4373ad3a08262b51c9",
+        "session_id": "6a8a64e473ad3a08262b4d60",
+        "external_session_id": "6a8a64e473ad3a08262b4d60",
+        "client_type": "ide",
+        "dedupe_key": "6a8a64e473ad3a08262b4d60:6a8a6e4373ad3a08262b51c9:afterEdit:9e237fea",
+        "tool_use_id": "6a8a6e4373ad3a08262b51c9",
+        "edit_kind": "file_edit",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin"
+      }
+    },
+    "s_6a7b086c101e3b": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8a627f73ad3a08262b4c8a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a8a627f73ad3a08262b4c8a",
+        "operation_id": "6a8a634873ad3a08262b4d0a",
+        "edit_kind": "bash",
+        "display_model_name": "glm-5.2",
+        "tool_name": "RunCommand",
+        "tool_use_id": "6a8a634873ad3a08262b4d0a",
+        "session_id": "6a8a627f73ad3a08262b4c8a"
+      }
+    },
+    "s_8b193e89562e3a": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a88177c73ad3a08262b4036",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "operation_id": "6a8a6dbd73ad3a08262b51b7",
+        "session_id": "6a88177c73ad3a08262b4036",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a88177c73ad3a08262b4036:6a8a6dbd73ad3a08262b51b7:afterEdit:f7de65f1",
+        "tool_use_id": "6a8a6dbd73ad3a08262b51b7",
+        "edit_kind": "file_edit",
+        "external_session_id": "6a88177c73ad3a08262b4036",
+        "tool_type": "builtin",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "source_scene": "agent"
+      }
+    },
+    "s_d8ad2abee5b8d9": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8a50ac73ad3a08262b42b2",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a8a8f3f73ad3a08262b5209",
+        "tool_type": "builtin",
+        "runtime_client": "trae-tob-git-ai",
+        "external_session_id": "6a8a50ac73ad3a08262b42b2",
+        "source_scene": "agent",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "dedupe_key": "6a8a50ac73ad3a08262b42b2:6a8a8f3f73ad3a08262b5209:afterEdit:9ca0520a",
+        "edit_kind": "file_edit",
+        "operation_id": "6a8a8f3f73ad3a08262b5209",
+        "session_id": "6a8a50ac73ad3a08262b42b2"
+      }
+    },
+    "s_d9d5ababd0da63": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8a5b8473ad3a08262b4ae0",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a8a5b8473ad3a08262b4ae0",
+        "tool_use_id": "6a8a5d0573ad3a08262b4c01",
+        "source_scene": "agent",
+        "dedupe_key": "6a8a5b8473ad3a08262b4ae0:6a8a5d0573ad3a08262b4c01:afterEdit:9ca0520a",
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a8a5d0573ad3a08262b4c01",
+        "session_id": "6a8a5b8473ad3a08262b4ae0",
+        "edit_kind": "file_edit",
+        "tool_type": "builtin",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "client_type": "ide"
+      }
+    }
+  }
+}
