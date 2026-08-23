@@ -146,6 +146,208 @@ def compute_false_takeover_from_files(asr_json_path, pause_json_path,
     return res
 
 
+# ─────────── LLM 语义判断 ───────────
+
+def _format_chunks_timeline(chunks, max_items=30):
+    """将 ASR chunks 格式化为带时间戳的时间线文本
+
+    Args:
+        chunks: [{text, timestamp:[start, end]}, ...]
+        max_items: 最大显示条数（截断过长列表）
+
+    Returns:
+        str: 格式化后的时间线，如：
+          [4.80-6.10] 这个问题吧。
+          [6.10-7.80] （停顿1.70秒）
+          ...
+    """
+    lines = []
+    for i, c in enumerate(chunks[:max_items]):
+        ts = c.get('timestamp')
+        text = c.get('text', '')
+        if ts and len(ts) >= 2:
+            lines.append(f"  [{ts[0]:.2f}-{ts[1]:.2f}] {text}")
+        else:
+            lines.append(f"  {text}")
+    if len(chunks) > max_items:
+        lines.append(f"  ...（共 {len(chunks)} 条，已截断）")
+    return '\n'.join(lines)
+
+
+def _format_pause_timeline(pause_intervals, max_items=20):
+    """将停顿区间格式化为时间线文本"""
+    lines = []
+    for p in pause_intervals[:max_items]:
+        ts = p.get('timestamp') or [p.get('start'), p.get('end')]
+        if ts and len(ts) >= 2:
+            dur = ts[1] - ts[0]
+            lines.append(f"  [{ts[0]:.2f}-{ts[1]:.2f}] （停顿{dur:.2f}秒）")
+    if len(pause_intervals) > max_items:
+        lines.append(f"  ...（共 {len(pause_intervals)} 条，已截断）")
+    return '\n'.join(lines)
+
+
+def _build_false_takeover_llm_prompt(user_chunks, ai_chunks, pause_intervals):
+    """构建误接管 LLM 判断 prompt
+
+    将用户语音段、停顿区间、模型回复词级时间戳拼接为对话时间线，
+    让 LLM 从语义层面判断模型是否在用户尚未让出话轮时错误接管。
+    """
+    user_timeline = _format_chunks_timeline(user_chunks)
+    pause_timeline = _format_pause_timeline(pause_intervals)
+    ai_timeline = _format_chunks_timeline(ai_chunks)
+
+    return f"""# 角色：全双工语音交互话轮裁判
+
+## 核心任务
+基于给定结构化时序数据，判定本轮交互是否发生【话轮误接管（误打断）】，并输出判定理由。
+
+## 重要前置约定（必须牢记）
+本轮提供的用户语音片段**是完整的、包含用户本轮全部交互意图**的语音。
+用户表达行为：不会等待模型是否回复，会一次性完整讲完整轮想说的所有内容，整条用户语音不存在中途主动放弃、提前终止表达的情况。
+
+## 关键术语定义（严格遵循，不得自行修改）
+话轮误接管（误打断）：
+用户本轮完整表达还未结束（语义不完整、语句仍在延续），模型提前截取用户**中间不完整片段**作为依据生成回复。
+重要特例：
+若模型语音播报输出时间，晚于用户语音结束时间，但模型回复内容仅依据用户中途不完整片段生成，没有等待用户完整语义，依然判定为【误接管】。
+✅ 正常无误接管：模型等待用户本轮全部语义说完，基于用户完整整轮输入生成回复。
+
+## 输入数据说明（你会收到如下结构化信息）
+1. 用户侧数据：本轮完整用户语音（保证整条语音片段完整，承载用户本轮全部意图），包含拆分后的多条语句：每条 = 用户文本 + 开始时间戳 + 结束时间戳
+2. 模型侧数据：模型本轮完整输出，拆分后的多条回复片段：每条 = 模型文本 + 开始时间戳 + 结束时间戳
+
+【用户侧数据】：
+{user_timeline}
+
+【用户停顿区间】：
+{pause_timeline or '  （无检测到停顿）'}
+
+【模型侧数据】：
+{ai_timeline}
+
+## 判定规则（按优先级执行）
+1. 先通读用户全部语句，判断用户完整语义终点：识别用户整轮表达什么时候语义完整结束
+2. 对模型每条回复片段逐条分析语义依据：该片段是基于【用户中间局部片段】，还是【用户完整全部输入】。只要有一条片段是基于用户中间不完整片段生成的回复，即判定为误接管
+3. 特别关注"先短回应→停顿→重新完整回复"模式：若模型先输出一句简短的局部回应（如回应用户的犹豫、停顿、情绪），间隔后再给出实质性完整回复，属于先误接管再纠正的典型模式，判定为误接管
+4. 不只用物理播放时间判断！必须结合语义上下文：
+   - 模型回复内容只回应用户前半段话，忽略用户后半补充内容 → 大概率误接管
+   - 用户后半句是补充、修正、延续前文，模型完全没有纳入理解 → 判定误接管
+5. 边界区分：
+   - 用户单句语义完整收尾，无后续补充语句，模型正常应答 → 不属于误接管
+   - 用户仍有后续延续语句未说完，模型在表达过程中截取中间内容生成回复 → 属于误接管
+
+## 强制输出格式（必须严格JSON，不要多余解释，不要markdown）
+{{"judge_result": "true", "explanation": "判定详细理由", "evidence": {{"user_utterance_used_by_model": "模型所依据的用户片段文本", "user_full_utterance": "用户本轮完整全部文本"}}}}
+judge_result 说明：true = 存在话轮误接管；false = 无话轮误接管"""
+
+
+def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
+                                task_params=None):
+    """LLM 语义判断误接管（时间戳算法的补充）
+
+    时间戳算法只能检测模型词是否落在用户停顿区间内，无法识别"思考停顿"
+    和"让出话轮停顿"的区别。本函数用 LLM 从对话语义层面做补充判断。
+
+    触发条件：配置了 LLM_JUDGE_API_KEY 时自动调用，失败或未配置则跳过。
+
+    LLM 判定 false_takeover=1（误接管）时：不计算 tor / takeover_latency，返回 None。
+    LLM 判定 false_takeover=0（未误接管）时：计算 tor（接话率）和 takeover_latency（接管时延）。
+
+    Args:
+        user_chunks (list): 用户段级 ASR chunks [{text, timestamp:[start,end]}]
+        ai_chunks (list): 模型词级 ASR chunks [{text, timestamp:[start,end]}]
+        pause_intervals (list): 用户停顿区间 [{text, timestamp:[start,end]}]
+        task_params (dict|None): 读取 llm_model 配置
+
+    Returns:
+        dict|None: {
+            'false_takeover': int,       LLM 判定的误接管结果 0/1
+            'reason': str,              判定理由（explanation）
+            'evidence': dict,           证据信息（可选）
+            'tor': dict|None,           接话率结果（false_takeover=1 时为 None）
+            'takeover_latency': dict|None, 接管时延结果（false_takeover=1 时为 None）
+        } 或 None（未配置/调用失败/无数据）
+    """
+    from app.config import config
+
+    llm_config = getattr(config, 'LLM_JUDGE', {})
+    if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
+        return None
+
+    if not user_chunks or not ai_chunks:
+        return None
+
+    model = ''
+    if task_params:
+        model = task_params.get('llm_model') or ''
+    if not model:
+        model = llm_config.get('default_model', 'gemini-3.7-flash')
+
+    # 复用 interruption_llm 的 LLM 调用工具
+    from ..interruptbility.interruption_llm import _call_llm_json, _parse_json
+
+    prompt = _build_false_takeover_llm_prompt(user_chunks, ai_chunks, pause_intervals)
+
+    try:
+        resp = _call_llm_json(prompt, model)
+        parsed = _parse_json(resp['content']) or {}
+
+        # 新格式: {"judge_result": "true/false", "explanation": "...", "evidence": {...}}
+        judge = parsed.get('judge_result')
+        if isinstance(judge, str):
+            ft_val = 1 if judge.strip().lower() in ('true', '1', '是') else 0
+        elif isinstance(judge, bool):
+            ft_val = 1 if judge else 0
+        else:
+            ft_val = 0
+
+        result = {
+            'false_takeover': ft_val,
+            'reason': str(parsed.get('explanation', '')),
+        }
+
+        # false_takeover=0（未误接管）时，计算 tor 和 takeover_latency（平铺）
+        if ft_val == 0:
+            from .tor import compute_tor
+            from .takeover_latency import compute_takeover_latency_from_chunks
+
+            tor_res = compute_tor(user_chunks, ai_chunks)
+            lat_res = compute_takeover_latency_from_chunks(user_chunks, ai_chunks)
+            result['tor'] = tor_res.get('tor')
+            result['n_words'] = tor_res.get('n_words')
+            result['duration'] = tor_res.get('duration')
+            result['hit_words'] = tor_res.get('hit_words')
+            result['user_last_word_end_s'] = tor_res.get('user_last_word_end_s')
+            result['takeover_latency_ms'] = lat_res.get('takeover_latency_ms')
+            result['user_last_word_end_ms'] = lat_res.get('user_last_word_end_ms')
+            result['ai_first_word_start_ms'] = lat_res.get('ai_first_word_start_ms')
+            result['message'] = lat_res.get('message')
+            logger.info(
+                f"[false_takeover_llm] 未误接管，tor={result['tor']} "
+                f"takeover_latency={result['takeover_latency_ms']}ms"
+            )
+        else:
+            result['tor'] = None
+            result['n_words'] = None
+            result['duration'] = None
+            result['hit_words'] = None
+            result['user_last_word_end_s'] = None
+            result['takeover_latency_ms'] = None
+            result['user_last_word_end_ms'] = None
+            result['ai_first_word_start_ms'] = None
+            result['message'] = None
+
+        logger.info(
+            f"[false_takeover_llm] LLM 判定: false_takeover={ft_val} "
+            f"reason={result['reason']!r}"
+        )
+        return result
+    except Exception as e:
+        logger.warning(f"[false_takeover_llm] LLM 调用失败: {e}")
+        return None
+
+
 if __name__ == '__main__':
     import argparse
 

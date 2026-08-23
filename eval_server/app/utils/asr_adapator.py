@@ -10,6 +10,8 @@ ASR 推理部署在独立的 ASR 主机上（asr_server.py），本机只负责�
     ASR_SERVER_URL    远程 ASR 服务地址（默认 http://127.0.0.1:10095）
                       在 .env 中改为实际 ASR 主机 IP，例如 http://192.168.1.50:10095
     ASR_TIMEOUT       请求超时秒数（默认 120）
+    ASR_JSON_OUTPUT_DIR  ASR 结果 JSON 的本地保存根目录（默认与 wav 同目录）
+                         若设置，JSON 会保存到 {ASR_JSON_OUTPUT_DIR}/pcm_case/pcm_case/{case_id}/{session_id}/ 下
 """
 import os
 import json
@@ -34,6 +36,61 @@ logger = logging.getLogger(__name__)
 # ─────────── 配置（从 .env 读取，提供默认值兜底） ───────────
 ASR_SERVER_URL = os.environ.get("ASR_SERVER_URL", "http://127.0.0.1:10095").rstrip("/")
 ASR_TIMEOUT = int(os.environ.get("ASR_TIMEOUT", "120"))
+ASR_JSON_OUTPUT_DIR = os.environ.get("ASR_JSON_OUTPUT_DIR", "").strip()
+
+
+def _build_json_save_path(wav_path):
+    """根据 wav 路径构造 ASR 结果 JSON 的保存路径。
+
+    若 wav_path 中包含 ``pcm_case`` 目录层级，则提取
+    ``pcm_case/pcm_case/{case_id}/{session_id}`` 部分，拼接到
+    ``ASR_JSON_OUTPUT_DIR`` 下保存。
+
+    若未配置 ``ASR_JSON_OUTPUT_DIR`` 或路径中无 ``pcm_case``，
+    则回退到 wav 同目录同名 .json（旧行为）。
+    """
+    wav_path = os.path.normpath(wav_path)
+    wav_basename = os.path.basename(wav_path)
+    json_name = os.path.splitext(wav_basename)[0] + '.json'
+
+    if not ASR_JSON_OUTPUT_DIR:
+        # 未配置输出根目录：回退到 wav 同目录
+        return os.path.join(os.path.dirname(wav_path), json_name)
+
+    # 尝试从 wav_path 中提取 pcm_case/pcm_case/{case_id}/{session_id} 层级
+    parts = wav_path.split(os.sep)
+    # 规范化分隔符，统一处理 /
+    parts = [p for p in parts if p]
+
+    # 找到第一个 pcm_case 的位置
+    pcm_idx = None
+    for i, p in enumerate(parts):
+        if p.lower() == 'pcm_case':
+            pcm_idx = i
+            break
+
+    if pcm_idx is not None:
+        # 从 pcm_case 开始取到倒数第二级（排除文件名所在目录和文件名本身）
+        # parts: [..., 'pcm_case', 'pcm_case', '{case_id}', '{session_id}', 'filename.wav']
+        # 需要提取: pcm_case, pcm_case, {case_id}, {session_id}
+        hierarchy_parts = parts[pcm_idx:-1]  # 去掉最后的文件名
+    else:
+        # 没有 pcm_case 层级，用 wav 所在目录名
+        hierarchy_parts = [os.path.basename(os.path.dirname(wav_path))]
+
+    save_dir = os.path.join(ASR_JSON_OUTPUT_DIR, *hierarchy_parts)
+    os.makedirs(save_dir, exist_ok=True)
+    return os.path.join(save_dir, json_name)
+
+
+def _save_asr_json(result, wav_path):
+    """将 ASR 结果保存为 JSON 文件，目录结构保留 pcm_case/pcm_case/{case_id}/{session_id}。"""
+    json_path = _build_json_save_path(wav_path)
+    os.makedirs(os.path.dirname(json_path), exist_ok=True)
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(result, f, ensure_ascii=False, indent=2)
+    logger.info(f"ASR 结果已保存: {json_path}")
+    return json_path
 
 
 # ─────────── 流程 ───────────
@@ -74,11 +131,8 @@ def call_modelscope_asr(wav_path, language=None):
     result = resp.json()
     logger.info(f"远程 ASR 完成 ({elapsed:.2f}s): {result.get('text', '')[:80]}")
 
-    # 落盘：将 ASR 结果保存到 WAV 同目录下的同名 .json 文件
-    json_path = os.path.splitext(wav_path)[0] + '.json'
-    with open(json_path, 'w', encoding='utf-8') as f:
-        json.dump(result, f, ensure_ascii=False, indent=2)
-    logger.info(f"ASR 结果已保存: {json_path}")
+    # 落盘：保存 ASR 结果 JSON（目录结构保留 pcm_case/pcm_case/{case_id}/{session_id}）
+    _save_asr_json(result, wav_path)
 
     # 包装成 [result]，让 parse_result(raw) 能继续工作（raw[0] 取出 result）
     return [result]
@@ -113,6 +167,9 @@ def call_modelscope_asr_word(wav_path, language=None):
 
     result = resp.json()
     logger.info(f"远程 ASR(词级) 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 字): {result.get('text', '')[:80]}")
+
+    # 落盘：保存词级 ASR 结果 JSON（目录结构保留 pcm_case/pcm_case/{case_id}/{session_id}）
+    _save_asr_json(result, wav_path)
 
     return [result]
 

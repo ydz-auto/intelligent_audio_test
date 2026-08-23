@@ -15,7 +15,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from .tor import compute_tor
-from .false_takeover import compute_false_takeover
+from .false_takeover import compute_false_takeover, compute_false_takeover_llm
 from .takeover_latency import compute_takeover_latency_from_raw
 from .input_asr import compute_input_asr_match
 from .high_freq_turn_taking import compute_high_freq_turn_taking
@@ -214,6 +214,31 @@ def calculate_xiaoyi_metrics(task_params):
     results['false_takeover'] = compute_false_takeover(ai_word_chunks or [], pause_intervals)
     logger.info(f"[false_takeover] {results['false_takeover']}")
 
+    # false_takeover LLM 补充判断：时间戳 tor=0 时用 LLM 做语义判断
+    _ft_tor = results['false_takeover'].get('tor', 0)
+    if _ft_tor == 0 and user_chunks and ai_word_chunks:
+        try:
+            llm_result = compute_false_takeover_llm(
+                user_chunks, ai_word_chunks, pause_intervals, task_params,
+            )
+            if llm_result is not None:
+                results['false_takeover']['llm_eval'] = llm_result
+                if llm_result.get('false_takeover', 0) == 1:
+                    results['false_takeover']['tor'] = 1
+                logger.info(
+                    f"[false_takeover_llm] LLM 判定: false_takeover={llm_result.get('false_takeover')} "
+                    f"reason={llm_result.get('reason')!r}"
+                )
+            else:
+                results['false_takeover']['llm_eval'] = {'false_takeover': _ft_tor, 'reason': 'LLM未配置或无数据'}
+        except Exception as e:
+            logger.warning(f"[false_takeover_llm] LLM 评估失败，跳过: {e}")
+            results['false_takeover']['llm_eval'] = {'false_takeover': _ft_tor, 'reason': f'LLM评估失败: {e}'}
+    elif _ft_tor == 1:
+        results['false_takeover']['llm_eval'] = {'false_takeover': 1, 'reason': '时间戳算法已判定抢话'}
+    else:
+        results['false_takeover']['llm_eval'] = {'false_takeover': 0, 'reason': '无用户或模型ASR数据'}
+
     # takeover_latency: 使用双路 ASR chunks 计算接管时延
     results['takeover_latency'] = compute_takeover_latency_from_raw(
         first_frame_ms=None,
@@ -405,6 +430,31 @@ def calculate_takeover_metrics(task_params):
     ai_word_chunks = (_get_asr_word_chunks(ai_wav) or []) if ai_wav else []
     results['false_takeover'] = compute_false_takeover(ai_word_chunks or [], pause_intervals)
     logger.info(f"[false_takeover] {results['false_takeover']}")
+
+    # false_takeover LLM 补充判断：时间戳 tor=0 时用 LLM 做语义判断
+    _ft_tor = results['false_takeover'].get('tor', 0)
+    if _ft_tor == 0 and user_chunks and ai_word_chunks:
+        try:
+            llm_result = compute_false_takeover_llm(
+                user_chunks, ai_word_chunks, pause_intervals, task_params,
+            )
+            if llm_result is not None:
+                results['false_takeover']['llm_eval'] = llm_result
+                if llm_result.get('false_takeover', 0) == 1:
+                    results['false_takeover']['tor'] = 1
+                logger.info(
+                    f"[false_takeover_llm] LLM 判定: false_takeover={llm_result.get('false_takeover')} "
+                    f"reason={llm_result.get('reason')!r}"
+                )
+            else:
+                results['false_takeover']['llm_eval'] = {'false_takeover': _ft_tor, 'reason': 'LLM未配置或无数据'}
+        except Exception as e:
+            logger.warning(f"[false_takeover_llm] LLM 评估失败，跳过: {e}")
+            results['false_takeover']['llm_eval'] = {'false_takeover': _ft_tor, 'reason': f'LLM评估失败: {e}'}
+    elif _ft_tor == 1:
+        results['false_takeover']['llm_eval'] = {'false_takeover': 1, 'reason': '时间戳算法已判定抢话'}
+    else:
+        results['false_takeover']['llm_eval'] = {'false_takeover': 0, 'reason': '无用户或模型ASR数据'}
 
     # 接管时延：优先双路 ASR chunks 直接相减，回退到 legacy 逻辑
     results['takeover_latency'] = compute_takeover_latency_from_raw(
