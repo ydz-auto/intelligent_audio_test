@@ -825,9 +825,19 @@ def calculate_interruption_metrics(task_params):
                 f"audio_dropped={llm_result.get('audio_dropped')}"
             )
         except Exception as e:
-            logger.warning(f"[interruption_metrics] LLM 全量评估失败，主字段回退时序值: {e}")
-            # 主字段保持时序原值(未覆写)；llm_eval 记失败
-            result['llm_eval'] = {'enabled': False, 'message': f'LLM 全量评估失败: {e}'}
+            logger.warning(f"[interruption_metrics] LLM 全量评估失败，回退本地时序计算(compute_interruption_metrics): {e}")
+            # 本地时序计算作为兜底：三项主字段保持为 compute_interruption_metrics 的时序值
+            # (上方未覆写)，llm_eval 标 fallback='timing' 并记所用时序值
+            result['llm_eval'] = {
+                'enabled': False,
+                'fallback': 'timing',
+                'message': f'LLM 全量评估失败，已回退本地时序计算: {e}',
+                'timing_comparison': {
+                    'timing_success_rate': _timing_success_rate,
+                    'timing_avg_stop_latency_s': _timing_avg_stop,
+                    'timing_avg_recovery_latency_s': _timing_avg_recov,
+                },
+            }
     else:
         reason = '未启用(enable_llm_eval=False)' if not enable_llm else '无 rounds 文本数据'
         result['llm_eval'] = {'enabled': False, 'message': reason}

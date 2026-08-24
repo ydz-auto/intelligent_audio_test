@@ -35,21 +35,19 @@ def _find(d, suffix):
     return None
 
 
-def build_task_params(d):
-    # 跳过慢/不稳的本地 ASR：传空 ASR，让 LLM 直接听音频算（gemini 音频路径才是主指标来源）
-    # query/answer 文本仍从 JSON 取作上下文
+def build_task_params(d, with_asr=False):
+    # with_asr=False(默认): 传空 ASR 跳过慢 ASR，专测 LLM 音频路径(快)
+    # with_asr=True: 不传 ASR，让 calculate_interruption_metrics 走 wav→远程段级 ASR(非致命)，
+    #               本地时序计算有数据，用于验证"LLM 失败→本地时序兜底"
     user_json_path = _find(d, "_1_1_cap_client_process_out.json")
     model_json_path = _find(d, "_2_1_cap_client_ec_out.json")
     user_text = json.load(open(user_json_path, encoding="utf-8")).get("text", "") if user_json_path else ""
     model_text = json.load(open(model_json_path, encoding="utf-8")).get("text", "") if model_json_path else ""
     user_wav = _find(d, "_1_1_cap_client_process_out.wav")
     ai_wav = _find(d, "_2_1_cap_client_ec_out.wav")
-    return {
+    tp = {
         "user_wav": user_wav,
         "ai_wav": ai_wav,
-        # 传空 ASR(非 None)→ 跳过 _wav_to_asr 远程调用；时序 aux 置空，LLM 走音频
-        "user_asr": {"text": user_text, "chunks": []},
-        "model_asr": {"text": model_text, "chunks": []},
         "seg_merge_gap_s": 3.0,
         "enable_llm_eval": True,
         "llm_model": "gemini-3.7-flash",
@@ -60,11 +58,16 @@ def build_task_params(d):
             "is_return_to_topic": False,
         }],
     }
+    if not with_asr:
+        # 传空 ASR(非 None)→ 跳过 _wav_to_asr；时序置空，LLM 走音频
+        tp["user_asr"] = {"text": user_text, "chunks": []}
+        tp["model_asr"] = {"text": model_text, "chunks": []}
+    return tp
 
 
-def run_case(name, d, expect_llm=True):
+def run_case(name, d, expect_llm=True, with_asr=False):
     print(f"\n{'='*70}\n{name}: {d}\n{'='*70}", flush=True)
-    tp = build_task_params(d)
+    tp = build_task_params(d, with_asr=with_asr)
     from app.config import config
     config.LLM_JUDGE["api_base_url"] = "https://az.gptplus5.com/v1"
     config.LLM_JUDGE["default_model"] = "gemini-3.7-flash"
@@ -111,10 +114,11 @@ def main():
             traceback.print_exc()
             results[name] = None
 
-    # 失败兜底验证
-    print(f"\n{'#'*70}\n# 失败兜底：清空 API key 重跑 case1\n{'#'*70}", flush=True)
+    # 失败兜底验证：清空 API key + 跑真实 ASR，验证 LLM 失败→本地时序兜底
+    print(f"\n{'#'*70}\n# 失败兜底：清空 API key + 真实 ASR 重跑 case1 → 验证 LLM 失败回退本地时序\n{'#'*70}", flush=True)
+    fb_r = None
     try:
-        run_case("case1-news(API key 清空)", CASES[0][1], expect_llm=False)
+        fb_r = run_case("case1-news(LLM失败→时序兜底)", CASES[0][1], expect_llm=False, with_asr=True)
     except Exception as e:
         import traceback
         print(f"!! 兜底异常(不该抛): {e}", flush=True)
@@ -138,6 +142,24 @@ def main():
         for k, v in checks.items():
             print(f"  [{'OK' if v else 'FAIL'}] {name}: {k}")
             if not v: ok = False
+
+    # 兜底断言：LLM 失败 → 本地时序兜底
+    if fb_r is not None:
+        fle = fb_r.get("llm_eval") or {}
+        ftc = fle.get("timing_comparison") or {}
+        fb_checks = {
+            "llm_eval.enabled=False(LLM失败)": fle.get("enabled") is False,
+            "fallback='timing'": fle.get("fallback") == "timing",
+            "主字段来自时序(非None或0.0)": fb_r.get("interruption_success_rate") is not None,
+            "timing_comparison含时序值": "timing_success_rate" in ftc,
+        }
+        print("--- 兜底(LLM失败→本地时序) ---")
+        for k, v in fb_checks.items():
+            print(f"  [{'OK' if v else 'FAIL'}] {k}")
+            if not v: ok = False
+    else:
+        print("[FAIL] 兜底用例无结果"); ok = False
+
     print(f"\n总体: {'ALL OK' if ok else 'HAS FAILURES'}", flush=True)
 
 
