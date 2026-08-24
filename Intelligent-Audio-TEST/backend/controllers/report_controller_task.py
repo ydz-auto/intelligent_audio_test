@@ -409,7 +409,7 @@ class ReportControllerTask(ReportControllerBase):
                             param_type = DEVICE_FIELDS.get(param_code, 'text')
                         # audio_file 类型：将绝对路径正则化为相对 STATIC_BASE_PATH 的相对路径
                         if param_type == 'audio_file' and isinstance(actual_value, str) and actual_value:
-                            actual_value = cls._normalize_audio_path(actual_value)
+                            actual_value = ReportControllerTask._normalize_audio_path(actual_value)
                         case_obj["algorithm_results"].append({
                             'device': resource,
                             'param_code': param_code,

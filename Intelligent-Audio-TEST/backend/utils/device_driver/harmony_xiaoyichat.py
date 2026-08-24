@@ -93,12 +93,17 @@ class Xiaoyilivechat(HarmonyDriver):
           - 2:      声道数
           - 1:      位深标志(1=16位, 2=32位)
         目前仅支持 16 位。成功返回 wav 绝对路径, 失败返回 None。
+
+        本地拉取的文件名可能带轮次前缀 r{round}_ (由 _pull_pcm 添加),
+        如 r1_100188_48000_2_1_cap_client_out.pcm。解析前先剥离该前缀。
         """
         if not os.path.exists(pcm_path):
             return None
         # 从文件名解析采样参数
         base = os.path.basename(pcm_path)
-        parts = base.split('_')
+        # 剥离轮次前缀 r{round}_ (如 r1_),避免干扰采样参数解析
+        parse_base = re.sub(r'^r\d+_', '', base)
+        parts = parse_base.split('_')
         try:
             sample_rate = int(parts[1])
             channels = int(parts[2])
@@ -224,7 +229,7 @@ class Xiaoyilivechat(HarmonyDriver):
         self._recorder_first_frame_ms = first_frame_ms
         return True
 
-    def _stop_recorder(self, device_sn):
+    def _stop_recorder(self, device_sn, task_id=None, test_case_id=None):
         """停止录屏服务
 
         说明: 与 _start_recorder 同理, aa dump -l 的二次校验不可靠,
@@ -464,7 +469,7 @@ class Xiaoyilivechat(HarmonyDriver):
                   task_id=task_id, test_case_id=test_case_id)
         return local_path
 
-    def _pull_pcm(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None):
+    def _pull_pcm(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None, round_number=None):
         # 获取小艺对话pcm,文件位置:/data/app/el2/100/base/com.huawei.hmos.aibase/cache/。用户输入名称格式100184_16000_1_1_cap_client_process_out.pcm。 AI助手回复名称格式100184_16000_2_1_cap_client_ec_out.pcm
         # 获取豆包对话PCM，文件位置:/data/app/el2/100/base/com.larus.nova.hm/cache/, 用户输入名称格式100186_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100184_48000_2_1_client_in..pcm
         # 获取chagpt对话PCM，文件位置：/data/local/tmp/。用户输入名称格式100174_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100175_48000_2_1_cap_client_in.pcm
@@ -474,6 +479,8 @@ class Xiaoyilivechat(HarmonyDriver):
         # - 豆包(doubao):   .../com.larus.nova.hm/cache      用户 cap_client_out.pcm        / AI client_in..pcm
         # - chatgpt:        /data/local/tmp                  用户 cap_client_out.pcm        / AI cap_client_in.pcm
         # 返回: {'user': local_path_or_None, 'ai': local_path_or_None, 'user_remote':..., 'ai_remote':...}
+        # 本地文件名加轮次前缀 r{round_number}_, 如 r1_100184_48000_2_1_cap_client_out.pcm,
+        # 便于多轮场景区分各轮 pcm 文件; _pcm_to_wav 解析时会剥离该前缀。
         result = {'user': None, 'ai': None, 'user_remote': None, 'ai_remote': None}
         cfg = self.PCM_APP_CONFIG.get(app)
         if not cfg:
@@ -510,7 +517,13 @@ class Xiaoyilivechat(HarmonyDriver):
                           content=f"{app} 未匹配到 {role} pcm (后缀 user={user_suffix} ai={ai_suffix})",
                           task_id=task_id, test_case_id=test_case_id)
                 continue
-            local_path = os.path.join(local_dir, os.path.basename(remote))
+            remote_base = os.path.basename(remote)
+            # 加轮次前缀 r{round_number}_, 便于多轮区分; round_number 为 None 时不加前缀(保持兼容)
+            if round_number is not None:
+                local_name = f"r{round_number}_{remote_base}"
+            else:
+                local_name = remote_base
+            local_path = os.path.join(local_dir, local_name)
             pulled = self._recv_pcm(device_sn, remote, local_path,
                                     task_id=task_id, test_case_id=test_case_id, app=app, role=role)
             if pulled:
@@ -518,12 +531,14 @@ class Xiaoyilivechat(HarmonyDriver):
                 result[f'{role}_remote'] = remote
         return result
 
-    def _pull_pcm_wav(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None):
+    def _pull_pcm_wav(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None, round_number=None):
         """拉取指定 app 的用户输入/AI 回复 pcm 并转为 wav。
 
+        round_number: 轮次号,传给 _pull_pcm 用于本地文件名加 r{round}_ 前缀。
         返回 (user_wav_path_or_None, ai_wav_path_or_None)。
         """
-        pulled = self._pull_pcm(device_sn, app=app, task_id=task_id, test_case_id=test_case_id)
+        pulled = self._pull_pcm(device_sn, app=app, task_id=task_id,
+                                test_case_id=test_case_id, round_number=round_number)
         user_pcm = pulled.get('user')
         ai_pcm = pulled.get('ai')
         user_wav = self._pcm_to_wav(user_pcm, task_id=task_id, test_case_id=test_case_id) if user_pcm else None
@@ -556,8 +571,6 @@ class Xiaoyilivechat(HarmonyDriver):
         driver.shell("chmod 777 /data/local/tmp")
         # pcm 抓取目标 app（当前驱动默认只抓小艺；可通过 kwargs.pcm_app 切换 doubao/chatgpt）
         self._pcm_app = kwargs.get('pcm_app', 'xiaoyi')
-        # 用例开始前清理设备上目标 app 的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
-        self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         # 清空闹钟(ALARM_CLOCK 表),避免测试中途闹钟响铃打断用例
         self._clear_alarms(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 点开小艺聊天窗口
@@ -605,6 +618,19 @@ class Xiaoyilivechat(HarmonyDriver):
         self._log(level='DEBUG',
                   content=f"pre_process kwargs: {kwargs}",
                   task_id=task_id, test_case_id=test_case_id)
+        # 录屏模式: round=每轮一段（默认）; case=整用例一段
+        record_mode = kwargs.get('record_mode', 'round')
+        total_rounds = kwargs.get('total_rounds', 1)
+        round_number = kwargs.get('round_number', 0)
+        self._record_mode = record_mode
+        self._total_rounds = total_rounds
+        self._round_number = round_number
+        is_first = not getattr(self, '_recording', False)
+        # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
+        # 会破坏连续通话已积累的音频)。必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
+        if record_mode != 'case' or is_first:
+            self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
+                            task_id=task_id, test_case_id=test_case_id)
         # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长
         self._ai_first_frame_ms = None
         self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
@@ -614,14 +640,6 @@ class Xiaoyilivechat(HarmonyDriver):
         self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 每轮清空闹钟(ALARM_CLOCK 表),防止上轮测试设的闹钟响铃打断本轮
         self._clear_alarms(device_sn, task_id=task_id, test_case_id=test_case_id)
-        # 录屏模式: round=每轮一段（默认）; case=整用例一段
-        record_mode = kwargs.get('record_mode', 'round')
-        total_rounds = kwargs.get('total_rounds', 1)
-        round_number = kwargs.get('round_number', 0)
-        self._record_mode = record_mode
-        self._total_rounds = total_rounds
-        self._round_number = round_number
-        is_first = not getattr(self, '_recording', False)
 
         # case 模式非首轮：通话与录屏已在进行，无需重复启动
         if record_mode == 'case' and not is_first:
@@ -682,7 +700,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 task_id=task_id, test_case_id=test_case_id)
             replied=self._wait_for_condition(
                 lambda:driver.find_component(By.text("说话可打断"))  is None,
-                timeout=10,interval=1,
+                timeout=60,interval=1,
                 operation_name='等待回复开始',
             )
 
@@ -695,11 +713,11 @@ class Xiaoyilivechat(HarmonyDriver):
                 # 等待小艺回复结束（带超时和停止检查）
                 self._wait_for_condition(
                     lambda: driver.find_component(By.text('说话可打断')),
-                    timeout=10, interval=1, operation_name="post_process_说话可打断"
+                    timeout=60, interval=1, operation_name="post_process_说话可打断"
                 )
                 self._wait_for_condition(
                     lambda: driver.find_component(By.text('正在听…')),
-                    timeout=10, interval=1, operation_name="post_process_正在听"
+                    timeout=60, interval=1, operation_name="post_process_正在听"
                 )
         record_mode = getattr(self, '_record_mode', 'round')
         round_number = getattr(self, '_round_number', 0)
@@ -721,7 +739,7 @@ class Xiaoyilivechat(HarmonyDriver):
             # case 模式：中间轮不停录屏、不挂断（保持通话与录屏连续）；
             # 仅末轮停止录屏，以便 get_results 拉取完整文件；全程不在此挂断，交给 teardown 兜底
             if is_last:
-                if not self._stop_recorder(device_sn):
+                if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                     self._log(level='WARNING', content="末轮停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
                 else:
                     self._log(level='INFO', content="末轮停止录屏成功", task_id=task_id, test_case_id=test_case_id)
@@ -729,7 +747,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 time.sleep(5)
         else:
             # round 模式：每轮停止录屏 + 挂断（原逻辑）
-            if not self._stop_recorder(device_sn):
+            if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                 self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
             else:
                 self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
@@ -785,7 +803,8 @@ class Xiaoyilivechat(HarmonyDriver):
         if not getattr(self, '_record_enabled', True):
             user_wav, ai_wav = self._pull_pcm_wav(
                 device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
-                task_id=task_id, test_case_id=test_case_id)
+                task_id=task_id, test_case_id=test_case_id,
+                round_number=getattr(self, '_round_number', None))
             question_text = getattr(self, 'question_text', None)
             answer_text = getattr(self, 'answer_text', None)
             self._log(level='INFO',
@@ -824,7 +843,8 @@ class Xiaoyilivechat(HarmonyDriver):
         if getattr(self, '_record_mode', 'round') == 'case' and getattr(self, '_recording', False):
             pcm_app = getattr(self, '_pcm_app', 'xiaoyi')
             user_wav, ai_wav = self._pull_pcm_wav(
-                device_sn, app=pcm_app, task_id=task_id, test_case_id=test_case_id)
+                device_sn, app=pcm_app, task_id=task_id, test_case_id=test_case_id,
+                round_number=getattr(self, '_round_number', None))
             self._log(level='DEBUG',
                       content=f"case模式录屏进行中,跳过录屏mp4,仍拉对话pcm: user_wav={user_wav} ai_wav={ai_wav}",
                       task_id=task_id, test_case_id=test_case_id)
@@ -845,7 +865,8 @@ class Xiaoyilivechat(HarmonyDriver):
         # 拉取对话 pcm 并转 wav（用户输入 + AI 回复），抓取目标 app 由 _pcm_app 指定
         pcm_app = getattr(self, '_pcm_app', 'xiaoyi')
         user_wav, ai_wav = self._pull_pcm_wav(device_sn, app=pcm_app,
-                                              task_id=task_id, test_case_id=test_case_id)
+                                              task_id=task_id, test_case_id=test_case_id,
+                                              round_number=getattr(self, '_round_number', None))
         try:
             # 优先用 _start_recorder 发现的真实 VID 路径直接 recv(绕开 mediatool 按 CustomizedFileName
             # 查询——后者对部分文件名报 "displayName format is not correct" 而查不到,case 模式尤其常见)
@@ -961,7 +982,7 @@ class Xiaoyilivechat(HarmonyDriver):
         # 1. 兜底停止录屏（仅在仍在录屏时执行，避免 toggle 把已停止的录屏又打开）
         if getattr(self, '_recording', False):
             try:
-                if not self._stop_recorder(device_sn):
+                if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                     self._log(level='WARNING', content="teardown: 兜底停止录屏失败,服务仍在运行",
                               task_id=task_id, test_case_id=test_case_id)
                 else:
@@ -1013,5 +1034,9 @@ class Xiaoyilivechat(HarmonyDriver):
             self._log(level='DEBUG', content="teardown: 已停止小艺 APP", task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
             self._log(level='WARNING', content=f"teardown: 停止小艺 APP 失败: {e}", task_id=task_id, test_case_id=test_case_id)
+
+        # 7. 清理 pcm 缓存(get_results 已拉取完毕,此处清设备残留,防止下个用例干扰)
+        self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
+                        task_id=task_id, test_case_id=test_case_id)
 
         return True

@@ -441,8 +441,6 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         driver.shell("param set sys.audio.dump.writehdi.enable w")
         driver.shell("param set sys.audio.dump.writeclient.enable a")
         driver.shell("chmod 777 /data/local/tmp")
-        # 用例开始前清理设备上 cap_client 残留 PCM，避免上个用例文件干扰本轮匹配
-        self._clear_pcm(device_sn, app=self._pcm_app, task_id=task_id, test_case_id=test_case_id)
         return True
 
     @with_rpc_retry()
@@ -465,6 +463,11 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         # 开局清掉可能残留的华为音乐(上轮/上个用例误识别"播放音乐"拉起的),
         # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。方法继承自父类。
         self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
+        # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
+        # 会破坏连续通话已积累的音频)。必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
+        if record_mode != 'case' or is_first:
+            self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'chatgpt'),
+                            task_id=task_id, test_case_id=test_case_id)
         # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长
         self._ai_first_frame_ms = None
         self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
@@ -583,7 +586,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                           content=f"case模式中间轮,保持语音/录屏进行中: r{round_number}/{total_rounds}",
                           task_id=task_id, test_case_id=test_case_id)
             else:
-                if not self._stop_recorder(device_sn):
+                if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                     self._log(level='WARNING', content="末轮停止录屏失败,服务仍在运行",
                               task_id=task_id, test_case_id=test_case_id)
                 else:
@@ -594,7 +597,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
             # round 模式：每轮独立——停录屏 + 退出语音回聊天首页(返回键 best-effort) + 提取气泡。
             # 注:返回键对 ChatGPT 语音态常不生效(press_home 兜底回桌面),round 模式多轮重入语音
             #    依赖成功退回聊天首页;失败则下轮 pre_process 难以点中蓝按钮。case 模式无此问题。
-            if not self._stop_recorder(device_sn):
+            if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                 self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
             else:
                 self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
@@ -616,7 +619,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         # 1. 兜底停止录屏
         if getattr(self, '_recording', False):
             try:
-                if not self._stop_recorder(device_sn):
+                if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                     self._log(level='WARNING', content="teardown: 兜底停止录屏失败,服务仍在运行",
                               task_id=task_id, test_case_id=test_case_id)
                 else:
@@ -659,5 +662,9 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         except Exception as e:
             self._log(level='WARNING', content=f"teardown: 停止 ChatGPT APP 失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
+
+        # 4. 清理 pcm 缓存(get_results 已拉取完毕,此处清设备残留,防止下个用例干扰)
+        self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'chatgpt'),
+                        task_id=task_id, test_case_id=test_case_id)
 
         return True
