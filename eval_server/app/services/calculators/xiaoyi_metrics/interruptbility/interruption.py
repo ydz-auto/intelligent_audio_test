@@ -25,8 +25,9 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # ─────────── 阈值 ───────────
-SEG_MERGE_GAP_S = 0.5          # 合并相邻词为语音段的间隙阈值（秒），参考 v1.5 USER_MERGE_GAP
-                                  # 0.3 太严：句内短暂停顿 0.3~0.4s 会被拆成多段，导致同一句打断被重复计数
+SEG_MERGE_GAP_S = 3.0          # 合并相邻词为语音段的间隙阈值（秒），参考 v1.5 USER_MERGE_GAP
+                                  # 3.0：间隔<3s 视为同一段话，避免回复中 0.5~3s 的短暂停顿把同一句拆成
+                                  # 多段、导致同一句打断被重复计数（句内停顿不应拆段）
 # 让出宽限：模型语音段结尾比用户打断结尾晚 YIELD_GRACE_S 以内，仍视为"让出"（模型把当前词说完的自然过延）；
 # 超过则视为"说穿"（模型无视打断继续说）。0.05 太严会把词尾过延误判成说穿。
 YIELD_GRACE_S = 0.5
@@ -218,7 +219,7 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
     Args:
         user_asr: 用户提问/打断语音的 ASR 结果（chunks 列表 或 {text, chunks}）
         model_asr: 模型恢复语音的 ASR 结果（同上）。两路需在同一时间轴、等长
-        seg_merge_gap_s: 词合并为段的间隙阈值（秒），默认 0.3
+        seg_merge_gap_s: 词合并为段的间隙阈值（秒），默认 3.0（间隔<3s 视为同一段话）
 
     Returns:
         dict: {
