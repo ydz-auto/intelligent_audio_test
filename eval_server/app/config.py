@@ -71,6 +71,8 @@ class Config:
         'api_base_url': os.environ.get('LLM_JUDGE_API_BASE', 'https://az.gptplus5.com/v1'),
         'api_key': os.environ.get('LLM_JUDGE_API_KEY', ''),
         'default_model': os.environ.get('LLM_JUDGE_DEFAULT_MODEL', 'gpt-4o-mini'),
+        'max_tokens': int(os.environ.get('LLM_JUDGE_MAX_TOKENS', '4096')),
+        'temperature': float(os.environ.get('LLM_JUDGE_TEMPERATURE', '0.1')),
         'timeout': int(os.environ.get('LLM_JUDGE_TIMEOUT', '120')),
         'prompt_template': (
             '你是一个严格的语言逻辑专家，你需要结合上下文并逐字逐词分析【当前用户提问】、【当前助手回答】与【历史对话】三者之间的逻辑是否正确，你需要遵照【评价规则】进行打分，并给出打分的理由。\n\n'

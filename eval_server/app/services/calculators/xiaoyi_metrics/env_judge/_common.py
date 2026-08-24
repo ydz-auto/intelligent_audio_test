@@ -33,8 +33,8 @@ _VIDEO_EXTS = {
     '.wmv', '.m4v', '.ts', '.3gp',
 }
 
-# 行为分类的合法取值（五选一）
-BEHAVIOR_LABELS = ['回应', '恢复', '询问', '无关回复', '沉默']
+# 行为分类的合法取值（四选一）
+BEHAVIOR_LABELS = ['回应', '恢复', '不确定询问', '未知']
 
 
 # ─────────── 文件编码 ───────────
@@ -354,11 +354,12 @@ def parse_json(content: str) -> Optional[dict]:
 def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
     """从 parsed 中提取 evaluations 列表，归一化 behavior 标签。
 
-    支持两种格式:
+    支持三种格式:
     - 多场景: {"evaluations": [{scene, behavior, reason}, ...]}
-    - 单场景: {"scene": "...", "behavior": "...", "reason": "..."}
+    - 单场景(含 scene): {"scene": "...", "behavior": "...", "reason": "..."}
+    - 单条(无 scene): {"behavior": "...", "reason": "..."}
     """
-    if 'behavior' in parsed and 'scene' in parsed:
+    if 'behavior' in parsed:
         evaluations = [parsed]
     else:
         evaluations = parsed.get('evaluations', [])
@@ -369,7 +370,7 @@ def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
         if not isinstance(item, dict):
             continue
         behavior = str(item.get('behavior', '')).strip()
-        if behavior and behavior not in BEHAVIOR_LABELS and behavior != '无法判断':
+        if behavior and behavior not in BEHAVIOR_LABELS:
             matched = next(
                 (label for label in BEHAVIOR_LABELS if label in behavior),
                 None,
@@ -382,7 +383,7 @@ def parse_evaluations(parsed: dict) -> List[Dict[str, Any]]:
 def get_asr_chunks(user_wav: str) -> Optional[List[Dict[str, Any]]]:
     """调用 ASR 获取用户侧 chunks（用于构建时间线上下文）"""
     try:
-        from app.services.xiaoyi_metrics.turn_taking import _get_asr_chunks
+        from app.services.calculators.xiaoyi_metrics.turn_taking import _get_asr_chunks
         return _get_asr_chunks(user_wav)
     except Exception as e:
         logger.warning(f'[env_judge] 用户侧 ASR 失败，时间线将缺用户段: {e}')

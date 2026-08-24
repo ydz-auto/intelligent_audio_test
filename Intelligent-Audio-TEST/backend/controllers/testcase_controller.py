@@ -2006,6 +2006,9 @@ class TestCaseController:
                 # 按标签筛选
                 query = query.join(TestCase.tags).filter(Tag.name == data['tag'])
 
+            if data.get('algorithm_type'):
+                query = query.filter(TestCase.algorithm_type == data['algorithm_type'])
+
             ids = [row[0] for row in query.with_entities(TestCase.id).all()]
             return jsonify({'ids': ids})
         except Exception as e:

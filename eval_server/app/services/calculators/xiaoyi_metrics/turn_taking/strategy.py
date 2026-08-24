@@ -155,9 +155,16 @@ class TurnTakingBase(BaseCalculator):
 # ─────────── 主维度：遍历子维度 ───────────
 
 # 主维度管理的子维度列表（按计算顺序）
-_SUB_DIMENSIONS = ['tor', 'false_takeover', 'takeover_latency',
-                   'interruption_metrics', 'non_interactive_latency',
-                   'high_freq_turn_taking', 'high_freq_llm_judge']
+# key = 输出结果 key，value = TaskService.CALCULATORS 查找 key
+_SUB_DIMENSIONS = {
+    'tor': 'tor',
+    'false_takeover': 'false_takeover',
+    'takeover_latency': 'takeover_latency',
+    'interruption': 'interruption_metrics',
+    'non_interactive_latency': 'non_interactive_latency',
+    'high_freq_turn_taking': 'high_freq_turn_taking',
+    'high_freq_llm_judge': 'high_freq_llm_judge',
+}
 
 
 class TurnTakingCalculator(TurnTakingBase):
@@ -180,29 +187,56 @@ class TurnTakingCalculator(TurnTakingBase):
         return task_params
 
     def calculate(self, params):
-        """遍历所有子维度 Calculator，各自 prepare_params + calculate，合并结果"""
+        """遍历所有子维度 Calculator，各自 prepare_params + calculate，合并结果
+
+        可通过 task_params['sub_tasks'] 指定只计算部分子维度，例如:
+            sub_tasks: ['tor', 'takeover_latency']  # 只算这两个，不算 false_takeover 等
+        未指定时默认计算全部子维度。
+        """
         from app.services.task_service import TaskService
 
+        sub_tasks = params.get('sub_tasks')  # None 或 list
         results = {}
-        for sub_task_type in _SUB_DIMENSIONS:
-            calculator = TaskService.CALCULATORS.get(sub_task_type)
+        for result_key, calc_key in _SUB_DIMENSIONS.items():
+            if sub_tasks and result_key not in sub_tasks:
+                logger.info(f"[turn_taking] 子维度 {calc_key} 不在 sub_tasks 中，跳过")
+                continue
+            calculator = TaskService.CALCULATORS.get(calc_key)
             if calculator is None:
-                logger.warning(f"[turn_taking] 子维度 {sub_task_type} 未注册，跳过")
+                logger.warning(f"[turn_taking] 子维度 {calc_key} 未注册，跳过")
                 continue
             try:
                 # 校验
                 is_valid, err = calculator.validate(params)
                 if not is_valid:
-                    logger.info(f"[turn_taking] 子维度 {sub_task_type} 校验失败: {err}，跳过")
-                    results[sub_task_type] = {'message': f'跳过: {err}'}
+                    logger.info(f"[turn_taking] 子维度 {calc_key} 校验失败: {err}，跳过")
+                    results[result_key] = {'message': f'跳过: {err}'}
                     continue
                 # 取参 + 计算
                 sub_params = calculator.prepare_params(params)
-                results[sub_task_type] = calculator.calculate(sub_params)
-                logger.info(f"[turn_taking] 子维度 {sub_task_type} 计算完成")
+                results[result_key] = calculator.calculate(sub_params)
+                logger.info(f"[turn_taking] 子维度 {calc_key} 计算完成")
             except Exception as e:
-                logger.warning(f"[turn_taking] 子维度 {sub_task_type} 计算失败: {e}")
-                results[sub_task_type] = {'message': f'计算失败: {e}'}
+                logger.warning(f"[turn_taking] 子维度 {calc_key} 计算失败: {e}")
+                results[result_key] = {'message': f'计算失败: {e}'}
+
+        # 后处理：检测到误接管（抢话）时，接话率和接管时延不适用，置 null
+        ft_result = results.get('false_takeover') or {}
+        if ft_result.get('tor') == 1:
+            _msg = '检测到误接管（抢话），接话率不适用'
+            results['tor'] = {
+                'tor': None, 'n_words': None, 'duration': None,
+                'hit_words': None, 'user_last_word_end_s': None,
+                'message': _msg,
+            }
+            _msg2 = '检测到误接管（抢话），接管时延不适用'
+            results['takeover_latency'] = {
+                'takeover_latency_ms': None,
+                'user_last_word_end_ms': None,
+                'ai_first_word_start_ms': None,
+                'message': _msg2,
+            }
+            logger.info("[turn_taking] false_takeover.tor=1，tor 和 takeover_latency 置 null")
 
         return results
 
@@ -258,15 +292,43 @@ class FalseTakeoverCalculator(TurnTakingBase):
     def prepare_params(self, task_params):
         idx = self._get_target_round_index(task_params)
         user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
-        return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav}
+        return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav,
+                'task_params': task_params}
 
     def calculate(self, params):
-        from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import compute_false_takeover
+        from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import (
+            compute_false_takeover, compute_false_takeover_llm,
+        )
 
-        user_chunks = self._get_asr_chunks(params['user_wav']) if params.get('user_wav') else None
+        user_wav = params.get('user_wav')
+        ai_wav = params.get('ai_wav')
+
+        user_chunks = self._get_asr_chunks(user_wav) if user_wav else None
         pause = self._compute_pause_intervals(user_chunks)
-        ai_word_chunks = (self._get_asr_word_chunks(params['ai_wav']) or []) if params.get('ai_wav') else []
-        return compute_false_takeover(ai_word_chunks, pause)
+        ai_word_chunks = (self._get_asr_word_chunks(ai_wav) or []) if ai_wav else []
+        result = compute_false_takeover(ai_word_chunks, pause)
+
+        # LLM 补充判断：时间戳 tor=0 时用 LLM 做语义判断
+        _ft_tor = result.get('tor', 0)
+        if _ft_tor == 0 and user_chunks and ai_word_chunks:
+            try:
+                llm_result = compute_false_takeover_llm(
+                    user_chunks, ai_word_chunks, pause, params.get('task_params'),
+                )
+                if llm_result is not None:
+                    result['llm_eval'] = llm_result
+                    if llm_result.get('false_takeover', 0) == 1:
+                        result['tor'] = 1
+                else:
+                    result['llm_eval'] = {'false_takeover': _ft_tor, 'reason': 'LLM未配置或无数据'}
+            except Exception as e:
+                result['llm_eval'] = {'false_takeover': _ft_tor, 'reason': f'LLM评估失败: {e}'}
+        elif _ft_tor == 1:
+            result['llm_eval'] = {'false_takeover': 1, 'reason': '时间戳算法已判定抢话'}
+        else:
+            result['llm_eval'] = {'false_takeover': 0, 'reason': '无用户或模型ASR数据'}
+
+        return result
 
 
 # ─────────── 子维度：Takeover Latency（接管时延）───────────

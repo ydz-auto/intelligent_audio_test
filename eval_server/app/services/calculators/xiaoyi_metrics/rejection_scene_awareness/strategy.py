@@ -105,11 +105,17 @@ class NonInteractiveLatencyCalculator(_RejectionBase):
     def prepare_params(self, task_params):
         if self._is_multi_round(task_params):
             audio_list = []
+            # 顶层音频作为回退（平台 driver 把音频放在顶层而非每个 round 里）
+            top_user_wav = task_params.get('user_wav') or ''
+            top_ai_wav = task_params.get('ai_wav') or ''
             for i, rd in self._iter_rounds(task_params):
-                user_wav = rd.get('user_wav') or ''
-                ai_wav = rd.get('ai_wav') or ''
+                user_wav = rd.get('user_wav') or top_user_wav
+                ai_wav = rd.get('ai_wav') or top_ai_wav
                 if user_wav and ai_wav:
                     audio_list.append({'user_wav': user_wav, 'ai_wav': ai_wav})
+            # 如果所有 round 都没有音频，用顶层音频兜底
+            if not audio_list and top_user_wav and top_ai_wav:
+                audio_list.append({'user_wav': top_user_wav, 'ai_wav': top_ai_wav})
             # 可选参数取最后一轮
             rd = self._get_round_safe(task_params, -1)
             kwargs = self._extract_kwargs(task_params, rd)

@@ -1283,6 +1283,14 @@ class ExecutionEngine:
                                 ).count()
                                 
                                 if evaluating_cases > 0:
+                                    # 超时检查：评估等待也不能无限等
+                                    if time.time() - wait_start_time > max_wait_time:
+                                        self._log(
+                                            level='WARNING',
+                                            content=f"等待评估完成超时，还有 {evaluating_cases} 个用例评估状态为pending/running",
+                                            task_id=task_id
+                                        )
+                                        break
                                     # 还有用例在评估中，事件驱动等待
                                     self._log(
                                         level='INFO',

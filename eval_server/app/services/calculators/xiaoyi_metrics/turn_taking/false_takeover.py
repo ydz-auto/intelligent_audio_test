@@ -305,6 +305,7 @@ def compute_false_takeover_llm(user_chunks, ai_chunks, pause_intervals,
         result = {
             'false_takeover': ft_val,
             'reason': str(parsed.get('explanation', '')),
+            'evidence': parsed.get('evidence') or {},
         }
 
         # false_takeover=0（未误接管）时，计算 tor 和 takeover_latency（平铺）

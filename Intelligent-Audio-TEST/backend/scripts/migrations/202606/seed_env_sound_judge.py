@@ -1,18 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-环境音/拒识场景裁判维度种子数据
+环境音裁判维度种子数据（拆分为 rejection_judge + interruption_judge 两个独立维度）
 
 功能：
-1. 注册一个评估维度（dimension）：
-   - env_judge (模型回复音频 LLM 裁判：拒识与环境理解)
-2. 注册该维度的输入/输出参数（evaluation_dimension_params）
-3. 注册 voice_llm 算法与该维度的关联（algorithm_dimension_relations）
-4. 注册 voice_llm → 该维度的参数映射（param_mappings）
+1. 注册两个评估维度（dimension）：
+   - rejection_judge   拒识场景裁判（旁人交谈/环境噪声/反馈词/生理声/环境回溯）
+   - interruption_judge 打断场景裁判（插话打断/停止指令/恢复原话题）
+2. 注册每个维度的输入/输出参数（evaluation_dimension_params）
+3. 注册 voice_llm 算法与维度的关联（algorithm_dimension_relations）
+4. 注册 voice_llm → 维度的参数映射（param_mappings）
 
 对应 eval_server 服务：
-   - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/env_judge.py
-   - 入口：evaluate_env_judge(ai_wav, task_type, env_type, user_wav, env_events, ...)
-   - task_type：env_judge
+   - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py
+   - eval_server/app/services/calculators/xiaoyi_metrics/env_judge/interruption_judge.py
+   - 入口：evaluate_rejection_judge / evaluate_interruption_judge
+   - task_type：rejection_judge / interruption_judge
 
 录屏不再可用后的方案：以模型回复音频 ai_wav 为主输入（裁判直接听回复，不过小 ASR），
 用户侧 ASR 转写 + 环境声事件(start_ms/end_ms/pcm_first_ms 换算到模型音频相对秒)作
@@ -20,7 +22,7 @@
 
 输入：
    - ai_wav       : 模型回复音频路径（主输入，被判定对象）
-   - env_type     : 环境子场景类型（如'旁人交谈''环境噪声''环境回溯'等）
+   - scene        : 场景名（如'旁人交谈''插话打断'等，兼容旧 env_type 字段）
    - user_wav     : 用户通道音频（可选，走小 ASR 生成时间线）
    - start_ms/end_ms/pcm_first_ms : 环境声播放绝对毫秒 + 模型音频起点毫秒
    - model        : LLM 模型名（可选，缺省读 config.LLM_JUDGE.default_model；
@@ -55,21 +57,91 @@ API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:5000')
 # ============================================================
 # 维度定义
 # ============================================================
+# ── 公共参数（两个维度共享的输入+输出参数定义） ──
+_COMMON_PARAMS = [
+    # ─── 输入参数 ───
+    ('ai_wav', '模型回复音频', '模型回复音频路径(被判定对象)', 'audio', 'input',
+     None, None, None, True,
+     False, None, '模型回复音频路径，裁判模型直接听回复(不过小ASR)；录屏没了的主输入', 5),
+    ('scene', '场景', '场景类型(决定使用哪组prompt)', 'text', 'input',
+     None, None, None, False,
+     False, None, '场景名(如 旁人交谈/环境噪声/插话打断 等)，为空则评估全部场景；兼容旧 env_type 字段', 10),
+    ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
+     None, None, None, False,
+     False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频，音频裁判需指定gpt-audio/omni等)', 15),
+    ('max_tokens', '最大token', '最大输出 token 数', 'number', 'input',
+     None, None, None, False,
+     False, '4096', 'LLM 最大输出 token 数', 20),
+    ('temperature', '采样温度', '采样温度', 'number', 'input',
+     None, None, None, False,
+     False, '0.1', '采样温度，评判场景建议低温 0.1', 25),
+    ('user_wav', '用户通道音频', '用户通道音频路径', 'audio', 'input',
+     None, None, None, False,
+     False, None, '用户通道音频(可选)，走小ASR生成时间线上下文', 26),
+    ('start_ms', '环境声起点', '环境声播放起点(绝对毫秒)', 'timestamp', 'input',
+     None, None, None, False,
+     False, None, '环境声播放起点毫秒(与pcm_first_ms同时间轴)，换算成相对秒作时间窗事件', 27),
+    ('end_ms', '环境声终点', '环境声播放终点(绝对毫秒)', 'timestamp', 'input',
+     None, None, None, False,
+     False, None, '环境声播放终点毫秒', 28),
+    ('pcm_first_ms', '模型音频起点', '模型音频起点(绝对毫秒)', 'timestamp', 'input',
+     None, None, None, False,
+     False, None, '模型音频(ai_wav)起点毫秒，把环境声绝对毫秒换算到模型音频相对秒', 29),
+
+    # ─── 输出参数 ───
+    ('evaluations', '裁判结果', 'LLM 裁判结果', 'json', 'output',
+     'evaluations', None, 'main', True,
+     False, None, 'LLM 裁判结果列表 [{scene, behavior, reason}, ...]', 60),
+    ('ej_model', '裁判模型', '使用的 LLM 模型', 'text', 'output',
+     'model', None, 'aux', True,
+     False, None, '本次裁判使用的 LLM 模型名', 61),
+    ('ej_scene', '场景', '场景类型', 'text', 'output',
+     'scene', None, 'aux', True,
+     False, None, '场景类型(兼容旧 env_type)', 63),
+    ('ej_enabled', '是否启用', '裁判是否正常执行', 'text', 'output',
+     'enabled', None, 'aux', True,
+     False, None, '裁判是否正常执行(True/False)', 64),
+    ('tokens_used', 'token用量', '总 token 用量', 'number', 'output',
+     'tokens_used', None, 'aux', True,
+     False, None, 'LLM 调用总 token 用量', 70),
+    ('input_token', '输入token', '输入 token 数', 'number', 'output',
+     'input_token', None, 'aux', True,
+     False, None, 'LLM 输入 token 数', 71),
+    ('output_token', '输出token', '输出 token 数', 'number', 'output',
+     'output_token', None, 'aux', True,
+     False, None, 'LLM 输出 token 数', 72),
+    ('ej_message', '裁判说明', '裁判结果说明', 'text', 'output',
+     'message', None, 'aux', True,
+     False, None, '裁判错误/成功说明', 99),
+]
+
+# ── 公共参数映射 ──
+_COMMON_PARAM_MAPPINGS = [
+    ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
+    ('device', 'output', 'user_wav', 'user_wav', 'none'),
+    ('device', 'output', 'start_ms', 'start_ms', 'none'),
+    ('device', 'output', 'end_ms', 'end_ms', 'none'),
+    ('device', 'output', 'pcm_first_ms', 'pcm_first_ms', 'none'),
+    ('reference', 'output', 'scene', 'scene', 'none'),
+    # 兼容旧 env_type 字段
+    ('reference', 'output', 'env_type', 'scene', 'none'),
+]
+
 DIMENSIONS = [
     {
-        'task_type_code': 'env_judge',
-        'legacy_task_type_codes': ['env_sound_judge'],
-        'name': '环境音裁判',
-        'keywords': 'env_sound,judge,环境音,拒识,场景理解,裁判,旁人交谈,环境噪声,反馈词,生理声,环境事件回溯',
+        'task_type_code': 'rejection_judge',
+        'legacy_task_type_codes': ['env_judge', 'env_sound_judge'],
+        'name': '拒识场景裁判',
+        'keywords': 'rejection,judge,拒识,场景,裁判,旁人交谈,环境噪声,反馈词,生理声,环境回溯',
         'description': (
-            '模型回复音频 LLM 裁判：拒识与环境理解。'
+            '拒识场景 LLM 裁判：评估模型在拒识场景下的行为。'
             '以模型回复音频(ai_wav)为主输入，裁判模型直接听回复，'
             '用户侧 ASR + 环境声事件作为文本时间线上下文。'
-            '场景包括旁人交谈静默/环境噪声/反馈词/生理声/环境事件回溯，'
+            '场景包括旁人交谈静默/环境噪声不触发/反馈词不误触发/生理声不触发/环境事件被动记录与回溯，'
             '由裁判模型对语音大模型的行为进行评判（回应/恢复/询问/无关回复/沉默）。'
         ),
         'type': 'auto',
-        'result_type': 1,  # 文本型，LLM 裁判输出为纯文本，无法数值统计
+        'result_type': 1,  # 文本型，LLM 裁判输出为 JSON，evaluations 为 main
         'result_min': 0.0,
         'result_max': 0.0,
         'decimal_places': 0,
@@ -77,67 +149,32 @@ DIMENSIONS = [
         'estimated_exec_time': 120,  # LLM 调用
         'score_unit': '',
         'statistic_method': 'none',
-        'params': [
-            # ─── 输入参数 ───
-            ('ai_wav', '模型回复音频', '模型回复音频路径(被判定对象)', 'audio', 'input',
-             None, None, None, True,
-             False, None, '模型回复音频路径，裁判模型直接听回复(不过小ASR)；录屏没了的主输入', 5),
-            ('env_type', '环境子场景', '环境子场景类型', 'text', 'input',
-             None, None, None, False,
-             False, None, '环境子场景类型(如 旁人交谈/环境噪声/环境回溯 等)，同时决定使用哪组 prompt', 10),
-            ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
-             None, None, None, False,
-             False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频，音频裁判需指定gpt-audio/omni等)', 15),
-            ('max_tokens', '最大token', '最大输出 token 数', 'number', 'input',
-             None, None, None, False,
-             False, '4096', 'LLM 最大输出 token 数', 20),
-            ('temperature', '采样温度', '采样温度', 'number', 'input',
-             None, None, None, False,
-             False, '0.1', '采样温度，评判场景建议低温 0.1', 25),
-            ('user_wav', '用户通道音频', '用户通道音频路径', 'audio', 'input',
-             None, None, None, False,
-             False, None, '用户通道音频(可选)，走小ASR生成时间线上下文', 26),
-            ('start_ms', '环境声起点', '环境声播放起点(绝对毫秒)', 'timestamp', 'input',
-             None, None, None, False,
-             False, None, '环境声播放起点毫秒(与pcm_first_ms同时间轴)，换算成相对秒作时间窗事件', 27),
-            ('end_ms', '环境声终点', '环境声播放终点(绝对毫秒)', 'timestamp', 'input',
-             None, None, None, False,
-             False, None, '环境声播放终点毫秒', 28),
-            ('pcm_first_ms', '模型音频起点', '模型音频起点(绝对毫秒)', 'timestamp', 'input',
-             None, None, None, False,
-             False, None, '模型音频(ai_wav)起点毫秒，把环境声绝对毫秒换算到模型音频相对秒', 29),
-
-            # ─── 输出参数 ───
-            ('evaluations', '裁判结果', 'LLM 裁判结果', 'text', 'output',
-             'evaluations', None, 'main', True,
-             False, None, 'LLM 裁判原始输出(纯文本，不做数值统计)', 60),
-            ('esj_model', '裁判模型', '使用的 LLM 模型', 'text', 'output',
-             'model', None, 'aux', False,
-             False, None, '本次裁判使用的 LLM 模型名', 61),
-            ('esj_env_type', '环境场景', '环境子场景类型', 'text', 'output',
-             'env_type', None, 'aux', False,
-             False, None, '环境子场景类型', 63),
-            ('tokens_used', 'token用量', '总 token 用量', 'number', 'output',
-             'tokens_used', None, 'aux', False,
-             False, None, 'LLM 调用总 token 用量', 70),
-            ('input_token', '输入token', '输入 token 数', 'number', 'output',
-             'input_token', None, 'aux', False,
-             False, None, 'LLM 输入 token 数', 71),
-            ('output_token', '输出token', '输出 token 数', 'number', 'output',
-             'output_token', None, 'aux', False,
-             False, None, 'LLM 输出 token 数', 72),
-            ('esj_message', '裁判说明', '裁判结果说明', 'text', 'output',
-             'message', None, 'aux', False,
-             False, None, '裁判错误/成功说明', 99),
-        ],
-        'param_mappings': [
-            ('device', 'output', 'ai_wav', 'ai_wav', 'none'),
-            ('device', 'output', 'user_wav', 'user_wav', 'none'),
-            ('device', 'output', 'start_ms', 'start_ms', 'none'),
-            ('device', 'output', 'end_ms', 'end_ms', 'none'),
-            ('device', 'output', 'pcm_first_ms', 'pcm_first_ms', 'none'),
-            ('reference', 'output', 'env_type', 'env_type', 'none'),
-        ],
+        'params': _COMMON_PARAMS,
+        'param_mappings': _COMMON_PARAM_MAPPINGS,
+    },
+    {
+        'task_type_code': 'interruption_judge',
+        'legacy_task_type_codes': [],
+        'name': '打断场景裁判',
+        'keywords': 'interruption,judge,打断,场景,裁判,插话打断,停止指令,恢复原话题',
+        'description': (
+            '打断场景 LLM 裁判：评估模型在打断场景下的行为。'
+            '以模型回复音频(ai_wav)为主输入，裁判模型直接听回复，'
+            '用户侧 ASR + 环境声事件作为文本时间线上下文。'
+            '场景包括插话打断与重新响应/停止指令响应/多轮对话打断后恢复原话题，'
+            '由裁判模型对语音大模型的行为进行评判（回应/恢复/询问/无关回复/沉默）。'
+        ),
+        'type': 'auto',
+        'result_type': 1,
+        'result_min': 0.0,
+        'result_max': 0.0,
+        'decimal_places': 0,
+        'weight': 1,
+        'estimated_exec_time': 120,
+        'score_unit': '',
+        'statistic_method': 'none',
+        'params': _COMMON_PARAMS,
+        'param_mappings': _COMMON_PARAM_MAPPINGS,
     },
 ]
 
@@ -211,7 +248,7 @@ def seed_env_sound_judge():
                         {
                             'ai_wav': '{{ai_wav}}',
                             'user_wav': '{{user_wav}}',
-                            'env_type': '{{env_type}}',
+                            'scene': '{{scene}}',
                             'start_ms': '{{start_ms}}',
                             'end_ms': '{{end_ms}}',
                             'pcm_first_ms': '{{pcm_first_ms}}',
@@ -423,7 +460,7 @@ def seed_env_sound_judge():
             print(f"  插入 {map_inserted} 条，跳过/更新 {map_skipped} 条")
 
         print(f"\n{'=' * 60}")
-        print("  环境音裁判维度种子数据注册完成")
+        print("  拒识场景裁判 + 打断场景裁判维度种子数据注册完成")
         print(f"{'=' * 60}")
 
 
@@ -435,13 +472,16 @@ if __name__ == '__main__':
     print(f"数据库: {POSTGRES_URI[:POSTGRES_URI.rindex('@')]}@localhost/...")
     print()
     print("此脚本将注册：")
-    print("1. env_judge 维度 — 环境音/拒识场景裁判")
-    print("   入参: ai_wav(模型回复音频), env_type(环境子场景), user_wav, start_ms/end_ms/pcm_first_ms, model, max_tokens, temperature")
+    print("1. rejection_judge 维度 — 拒识场景裁判")
+    print("   场景: 旁人交谈静默/环境噪声/反馈词/生理声/环境事件回溯")
+    print("2. interruption_judge 维度 — 打断场景裁判")
+    print("   场景: 插话打断与重新响应/停止指令响应/恢复原话题")
+    print()
+    print("   入参: ai_wav(模型回复音频), scene(场景), user_wav, start_ms/end_ms/pcm_first_ms, model, max_tokens, temperature")
     print()
     print("   主分: 裁判结果 (evaluations)")
-    print("   辅助: 模型名 / 裁判类型 / 环境场景 / token 用量 / 说明")
+    print("   辅助: 模型名 / 场景 / 是否启用 / token 用量 / 说明")
     print()
-    print("   场景: 旁人交谈静默/环境噪声/反馈词/生理声/环境事件回溯")
     print("   行为: 回应/恢复/询问/无关回复/沉默")
     print()
     print("脚本可重复执行（幂等）")

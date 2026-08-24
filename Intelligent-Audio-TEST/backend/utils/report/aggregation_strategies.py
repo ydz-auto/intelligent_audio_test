@@ -158,12 +158,15 @@ class PassRateStrategy(AggregationStrategy):
 
     def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None) -> Optional[float]:
         threshold, compare_op = _find_pass_condition(output_params)
-        total = len(items)
+
+        # 只统计 dimension_value 非 None 的条目，null 值既不计入达标数也不计入总数
+        valid_items = [item for item in items if _parse_numeric(item.get('dimension_value')) is not None]
+        total = len(valid_items)
         if total == 0:
             return None
 
         pass_count = 0
-        for item in items:
+        for item in valid_items:
             val = item.get('dimension_value')
             num_val = _parse_numeric(val)
             if num_val is None:

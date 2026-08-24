@@ -381,7 +381,8 @@ class DeviceResultReextractor:
 
             new_result_id = self._create_test_result(
                 task_id=task_id, test_case_id=test_case_id, device_id=device_id,
-                algorithm_type=algorithm_type, algo_result=converted_result, result_data=result_data_to_save
+                algorithm_type=algorithm_type, algo_result=converted_result, result_data=result_data_to_save,
+                device_sn=device.serial_number
             )
             new_result_ids.append(new_result_id)
         return new_result_ids
@@ -401,15 +402,24 @@ class DeviceResultReextractor:
         db.session.commit()
 
     def _create_test_result(self, task_id, test_case_id, device_id, algorithm_type,
-                            algo_result, result_data, execution_status='completed', response_time=0):
+                            algo_result, result_data, execution_status='completed', response_time=0,
+                            device_sn=None):
         """创建新的 TestResult 记录"""
         from sqlalchemy import text
-        from backend.models.models import utc8now
+        from backend.models.models import utc8now, Device
         from backend.models.database import db
         from backend.utils.common.result_data_store import write_result_data_file, split_result_data
         import json
 
-        result_data_path = write_result_data_file(task_id, test_case_id, device_id, result_data)
+        # 优先用传入的序列号;未传则查 Device 表取 serial_number,与执行阶段保持一致
+        sn = device_sn
+        if not sn and device_id:
+            dev = db.session.get(Device, device_id)
+            if dev:
+                sn = dev.serial_number or dev.ip or ''
+        if not sn:
+            sn = str(device_id)
+        result_data_path = write_result_data_file(task_id, test_case_id, sn, result_data)
         lightweight_data, _ = split_result_data(result_data)
 
         insert_sql = text("""
