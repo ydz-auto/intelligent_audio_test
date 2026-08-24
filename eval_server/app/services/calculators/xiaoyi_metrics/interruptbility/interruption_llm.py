@@ -608,6 +608,22 @@ def _seg(v: Any) -> Optional[List[float]]:
     return None
 
 
+def _to_bool(v: Any) -> bool:
+    """str 感知的布尔解析：multipart 上传时 is_return_to_topic 等会变 str('false'/'true')。
+    bool('false')=True 是 bug，这里按内容判：'false'/'0'/'no'/'否'→False，其余 truthy→True。
+    """
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return False
+    if isinstance(v, (int, float)):
+        return v != 0
+    s = str(v).strip().lower()
+    if s in ('false', '0', 'no', '否', 'off', ''):
+        return False
+    return True
+
+
 def _build_interruption_full_prompt(rounds: List[Dict[str, Any]],
                                     user_asr_ref_pr: List[Any],
                                     ai_word_chunks_pr: List[Any],
@@ -626,7 +642,7 @@ def _build_interruption_full_prompt(rounds: List[Dict[str, Any]],
         a = ai_word_chunks_pr[i - 1] if i - 1 < len(ai_word_chunks_pr) else None
         query = _unwrap_value(rd.get('query', '')) or ''
         answer = _unwrap_value(rd.get('answer', '')) or ''
-        is_ret = bool(rd.get('is_return_to_topic'))
+        is_ret = _to_bool(rd.get('is_return_to_topic'))
         blocks.append(
             f'── 第 {i} 轮 (is_return_to_topic={is_ret}) ──\n'
             f'用户指令(query): {query}\n'
@@ -650,13 +666,14 @@ def _build_interruption_full_prompt(rounds: List[Dict[str, Any]],
 4. recovery_latency_s(秒,3位小数|null): 仅打断轮——用户讲完(user_interrupt_segment[1]) → AI 重新开口(model_next_segment[0])。未打断则 null。
 5. user_interrupt_segment / model_active_segment / model_next_segment: [起, 止]秒|null，定位用户打断段与 AI 当前/下一段(以你听音频的字词级时间戳为准)。
 6. reaction_behavior: AI 对打断语句的反应，五选一(回应/恢复/询问/无关回复/沉默或无视)；未被打断填"回应"。
-7. coherence/relevance/adaptability(0-5整数): AI 恢复回复的连贯性/相关性/适应性。
-8. reasoning: 简短说明如何定位打断段与各段起止。
+7. reasoning: 简短说明如何定位打断段与各段起止。
+
+另外，对**整条用例**(不是逐轮、不要均值)给出一个恢复质量总分：coherence/relevance/adaptability(0-5整数)，评价 AI 对打断的恢复回复质量(连贯性/相关性/适应性)。一条用例只给一组值。
 
 时延定义须与时间戳一致(秒)：stop_latency = model_active_segment[1] - user_interrupt_segment[0]；recovery_latency = model_next_segment[0] - user_interrupt_segment[1]。model_active_segment 是用户开始打断时 AI 正在说的段(满足 m_s <= u_s < m_e)；model_next_segment 是其结束后 AI 重新开口的下一段。
 
 只输出严格 JSON(不要 markdown 围栏、不要额外文字)：
-{{"rounds":[{{"round":1,"is_interrupted":false,"success":null,"stop_latency_s":null,"recovery_latency_s":null,"user_interrupt_segment":null,"model_active_segment":null,"model_next_segment":null,"reaction_behavior":"回应","coherence":0,"relevance":0,"adaptability":0,"reasoning":""}}]}}"""
+{{"coherence":0,"relevance":0,"adaptability":0,"rounds":[{{"round":1,"is_interrupted":false,"success":null,"stop_latency_s":null,"recovery_latency_s":null,"user_interrupt_segment":null,"model_active_segment":null,"model_next_segment":null,"reaction_behavior":"回应","reasoning":""}}]}}"""
 
 
 def evaluate_interruption_llm_full(rounds: List[Dict[str, Any]],
@@ -743,6 +760,11 @@ def evaluate_interruption_llm_full(rounds: List[Dict[str, Any]],
     if not isinstance(raw_rounds, list):
         raw_rounds = []
 
+    # 用例级恢复质量(单值，非逐轮均值)：coherence/relevance/adaptability 从顶层取
+    case_coh = _score_field(parsed, 'coherence')
+    case_rel = _score_field(parsed, 'relevance')
+    case_adap = _score_field(parsed, 'adaptability')
+
     interaction_summary: Dict[str, int] = {label: 0 for label in _BEHAVIOR_LABELS}
     per_round: List[Dict[str, Any]] = []
     for idx, rd in enumerate(rounds, 1):
@@ -751,15 +773,12 @@ def evaluate_interruption_llm_full(rounds: List[Dict[str, Any]],
         rr = raw_rounds[idx - 1] if idx - 1 < len(raw_rounds) else {}
         if not isinstance(rr, dict):
             rr = {}
-        is_int = bool(rr.get('is_interrupted'))
+        is_int = _to_bool(rr.get('is_interrupted'))
         succ = rr.get('success')
         if isinstance(succ, str):
             succ = succ.strip().lower() in ('true', '1', 'yes', '是', '成功')
         beh_raw = rr.get('reaction_behavior', '回应' if not is_int else '')
         beh, _ = _normalize_behavior(beh_raw, interaction_summary)
-        coh = _score_field(rr, 'coherence')
-        rel = _score_field(rr, 'relevance')
-        adap = _score_field(rr, 'adaptability')
         per_round.append({
             'round': idx,
             'is_interrupted': is_int,
@@ -770,7 +789,6 @@ def evaluate_interruption_llm_full(rounds: List[Dict[str, Any]],
             'model_active_segment': _seg(rr.get('model_active_segment')),
             'model_next_segment': _seg(rr.get('model_next_segment')),
             'reaction_behavior': beh,
-            'coherence': coh, 'relevance': rel, 'adaptability': adap,
             'reasoning': str(rr.get('reasoning', '')),
         })
 
@@ -787,9 +805,10 @@ def evaluate_interruption_llm_full(rounds: List[Dict[str, Any]],
         'interruption_success_rate': success_rate,
         'avg_stop_latency_s': _avg(stop_lats),
         'avg_recovery_latency_s': _avg(recov_lats),
-        'llm_recovery_avg_coherence': _avg([r['coherence'] for r in per_round]),
-        'llm_recovery_avg_relevance': _avg([r['relevance'] for r in per_round]),
-        'llm_recovery_avg_adaptability': _avg([r['adaptability'] for r in per_round]),
+        # 恢复质量是用例级单值(LLM 顶层给出)，不是逐轮均值
+        'llm_recovery_avg_coherence': case_coh,
+        'llm_recovery_avg_relevance': case_rel,
+        'llm_recovery_avg_adaptability': case_adap,
         'llm_interaction_behavior_summary': interaction_summary,
         'llm_interaction_per_round': [
             {'round': r['round'], 'is_interrupted': r['is_interrupted'],

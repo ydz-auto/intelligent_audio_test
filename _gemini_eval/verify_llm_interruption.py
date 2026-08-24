@@ -85,6 +85,9 @@ def run_case(name, d, expect_llm=True, with_asr=False):
           f"per_event_len={len(r.get('per_event') or [])} "
           f"avg_overlap={r.get('avg_overlap_s')} avg_silence={r.get('avg_silence_gap_s')} "
           f"message={r.get('message')!r}", flush=True)
+    print(f"  用例级单值: coherence={r.get('llm_recovery_avg_coherence')} "
+          f"relevance={r.get('llm_recovery_avg_relevance')} "
+          f"adaptability={r.get('llm_recovery_avg_adaptability')}", flush=True)
     le = r.get("llm_eval") or {}
     print(f"llm_eval.enabled          = {le.get('enabled')}", flush=True)
     tc = le.get("timing_comparison") or {}
