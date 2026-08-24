@@ -80,6 +80,11 @@ def run_case(name, d, expect_llm=True, with_asr=False):
     print(f"interruption_success_rate = {r.get('interruption_success_rate')}", flush=True)
     print(f"avg_stop_latency_s        = {r.get('avg_stop_latency_s')}", flush=True)
     print(f"avg_recovery_latency_s    = {r.get('avg_recovery_latency_s')}", flush=True)
+    print(f"n_events={r.get('n_events')} n_user_segments={r.get('n_user_segments')} "
+          f"stop_rate={r.get('stop_rate')} resume_rate={r.get('resume_rate')} "
+          f"per_event_len={len(r.get('per_event') or [])} "
+          f"avg_overlap={r.get('avg_overlap_s')} avg_silence={r.get('avg_silence_gap_s')} "
+          f"message={r.get('message')!r}", flush=True)
     le = r.get("llm_eval") or {}
     print(f"llm_eval.enabled          = {le.get('enabled')}", flush=True)
     tc = le.get("timing_comparison") or {}

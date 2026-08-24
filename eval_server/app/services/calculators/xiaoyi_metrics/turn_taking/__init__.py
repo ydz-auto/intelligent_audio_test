@@ -797,6 +797,52 @@ def calculate_interruption_metrics(task_params):
                 'llm_interaction_behavior_summary', 'llm_recovery_per_round',
             ):
                 result[k] = llm_result.get(k)
+            # ── aux 结构字段也从 LLM per_round 派生，保持返回值一致 ──
+            # 否则 timing 的 n_events/stop_rate/per_event 会与 LLM 主字段(success_rate/latency)矛盾
+            _per_round = llm_result.get('per_round') or []
+            _int_rds = [r for r in _per_round if r.get('is_interrupted')]
+            _n_ev = len(_int_rds)
+            _succ_n = sum(1 for r in _int_rds if r.get('success'))
+            _rate = round(_succ_n / _n_ev, 3) if _n_ev else 0.0
+            result['n_events'] = _n_ev
+            result['n_user_segments'] = len(_per_round)
+            result['n_recovery_only'] = 0
+            result['n_no_model_speech'] = 0
+            result['per_event'] = _per_round
+            result['stop_rate'] = _rate
+            result['resume_rate'] = _rate
+            result['message'] = 'OK (LLM)'
+
+            def _seg_overlap(r):
+                u = r.get('user_interrupt_segment')
+                m = r.get('model_active_segment')
+                if not (isinstance(u, (list, tuple)) and isinstance(m, (list, tuple))
+                        and len(u) >= 2 and len(m) >= 2):
+                    return None
+                try:
+                    s, e = max(float(u[0]), float(m[0])), min(float(u[1]), float(m[1]))
+                    return round(e - s, 3) if e > s else 0.0
+                except (TypeError, ValueError):
+                    return None
+
+            def _seg_silence(r):
+                m = r.get('model_active_segment')
+                nx = r.get('model_next_segment')
+                if (isinstance(m, (list, tuple)) and isinstance(nx, (list, tuple))
+                        and len(m) >= 2 and len(nx) >= 1
+                        and m[1] is not None and nx[0] is not None):
+                    try:
+                        return round(float(nx[0]) - float(m[1]), 3)
+                    except (TypeError, ValueError):
+                        return None
+                return None
+
+            def _mean(vals):
+                vals = [v for v in vals if isinstance(v, (int, float))]
+                return round(sum(vals) / len(vals), 3) if vals else None
+
+            result['avg_overlap_s'] = _mean([_seg_overlap(r) for r in _int_rds])
+            result['avg_silence_gap_s'] = _mean([_seg_silence(r) for r in _int_rds])
             # ── llm_eval：含时序对照 ──
             result['llm_eval'] = {
                 'enabled': True,
