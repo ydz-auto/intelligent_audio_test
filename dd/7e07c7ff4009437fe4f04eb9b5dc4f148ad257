@@ -1,0 +1,218 @@
+Intelligent-Audio-TEST/backend/services/execution/e2e_executor.py
+  s_33c2ef6c835dfa::t_fb6ea01b978031 569
+Intelligent-Audio-TEST/frontend/src/views/ReportView.vue
+  s_d984c166b54640::t_16f5f8733a7f62 506-520,719-726,728-755,758,770,776,781,816-896
+  s_d8ad2abee5b8d9::t_18cc10b4916506 897
+Intelligent-Audio-TEST/frontend/src/store/testCaseStore.ts
+  s_d984c166b54640::t_16f5f8733a7f62 1195-1203
+Intelligent-Audio-TEST/backend/controllers/report_controller_base.py
+  s_cd5c500443b029::t_7d93ba7a7742c3 897
+  s_cd5c500443b029::t_c8ba45daea0bdd 903
+  s_cd5c500443b029::t_d2fca10dc6ce01 842,940
+  s_cd5c500443b029::t_a86c89ebd952bb 843-874
+  s_cd5c500443b029::t_46d0b8bbbde8ed 885
+Intelligent-Audio-TEST/backend/controllers/audio_controller.py
+  s_cd5c500443b029::t_8f13f9cbbbdeee 3021,3023-3025,3034,3049-3051,3054-3055,3058-3060,3062-3064
+  s_cd5c500443b029::t_66a6367274293c 3022,3026-3033,3035-3048
+eval_server/app/config.py
+  s_d984c166b54640::t_e3d2a29ef8e31e 46-47
+  s_d984c166b54640::t_9a1e23c3a038bf 51-64,66
+  s_d984c166b54640::t_8902ca54a905f8 43
+Intelligent-Audio-TEST/backend/controllers/testcase_controller.py
+  s_d984c166b54640::t_16f5f8733a7f62 361,364-366,485-487,1998-2000
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_cd5c500443b029::t_03403e8840a1ae 20
+  s_8b193e89562e3a::t_84de82e4f77fc8 303-307,309,311-313,315,329-330,333,335-337,339-340,343,345
+  s_8b193e89562e3a::t_3dbe94e40c4bca 355-359
+  s_cd5c500443b029::t_149d156fd09577 410-412
+  s_8b193e89562e3a::t_49f6c77ae93546 381-382
+  s_cd5c500443b029::t_40ca7896e77f0b 427-448
+  s_8b193e89562e3a::t_3d4e0cf41a279f 294,296,302
+  s_8b193e89562e3a::t_925a284b73b2c1 235-240
+  s_8b193e89562e3a::t_79a33b7e343efa 349-354,360-380,383-402,413-417,419-420
+  s_8b193e89562e3a::t_111072d704613a 403-409,418
+  s_8b193e89562e3a::t_f83e28ee5b861e 990
+  s_8b193e89562e3a::t_1bd5acd69168c5 295,297-301,334,338,341-342,344,346-348,426
+Intelligent-Audio-TEST/frontend/src/components/common/TestCaseReportDetail.vue
+  s_8b193e89562e3a::t_8ed116e4763597 1276,1278
+  s_8b193e89562e3a::t_f8b0cc2b02053b 1772-1773,1787-1790,1794
+  s_8b193e89562e3a::t_d1766b85989015 1739-1741,1744-1751
+  s_8b193e89562e3a::t_107fb79b926718 1469-1471,1479,1482-1487,1489-1490,1496-1498,1500
+  s_8b193e89562e3a::t_645bbb9dd351eb 606,621,626,639,646,696,985-987,1163,1263,1275,1502,1529-1530,1542,1551-1552
+  s_8b193e89562e3a::t_89992949782570 1267,1271-1274,1280
+  s_8b193e89562e3a::t_261a4b0fc2f153 1078-1084,1091-1093
+  s_8b193e89562e3a::t_c996f46c391483 1089-1090
+  s_cd5c500443b029::t_d69cc80efc3395 135
+  s_8b193e89562e3a::t_d385891a83fca6 181-185,190-191,193-196,207-208,210
+  s_8b193e89562e3a::t_7e447a7c921747 988-1000
+  s_8b193e89562e3a::t_36465ed5c14af8 1752-1753
+  s_8b193e89562e3a::t_afd3fe9eecfe31 1791,1795,1798
+  s_8b193e89562e3a::t_04ad7b66c52b38 1806-1808,1810-1812,1817-1820
+  s_8b193e89562e3a::t_a871204194d411 169-180,186-189,192,197-202,209,211-231,234-255,260-274
+  s_8b193e89562e3a::t_425d0fdca91856 1460-1464,1467-1468,1475,1488,1491,1494-1495,1499,1501,1506-1507,1512,1556-1557
+  s_8b193e89562e3a::t_df43da1102654c 1700-1704,1707-1720,1723,1728-1731,1734-1735,1767-1768,1802-1805,1809,1813-1814,1823-1824
+  h_eadf3f9b9a3d7b 232,707,713,1075,1085-1088,1277,1531,1691,1698,1705,1721,1726,1732,1736,1742,1754-1765,1769,1774,1785,1792,1799,1815,1821
+  s_8b193e89562e3a::t_454111f1622f40 705-706,710-712
+  s_8b193e89562e3a::t_1f9937297fd7f3 1694-1697,1724-1725,1776-1784
+  s_8b193e89562e3a::t_e88e5a680819f7 1221-1222,1226-1227
+  s_8b193e89562e3a::t_198ad219a990d0 148,150-162
+  s_8b193e89562e3a::t_74af34c69f29cf 1796-1797
+  s_8b193e89562e3a::t_3d9551d209cba0 1270,1279
+  s_8b193e89562e3a::t_012fc8909ce9ae 168
+  s_8b193e89562e3a::t_29fd573589714c 703-704
+  s_8b193e89562e3a::t_326366a67b9199 1458-1459
+  s_8b193e89562e3a::t_d2e56743910e48 1474
+  s_8b193e89562e3a::t_3b87e1ddde75ca 1478
+  s_8b193e89562e3a::t_011a7ba1351579 1505
+Intelligent-Audio-TEST/frontend/src/utils/api.ts
+  s_d984c166b54640::t_16f5f8733a7f62 5,288-289,291,743,746,748,750-752
+Intelligent-Audio-TEST/backend/controllers/group_controller.py
+  s_d984c166b54640::t_16f5f8733a7f62 34-36
+Intelligent-Audio-TEST/frontend/src/components/common/AudioPlayerModal.vue
+  s_cd5c500443b029::t_a3181f843de26f 78,94
+  s_cd5c500443b029::t_9916b065362e83 479-498,500-515
+Intelligent-Audio-TEST/backend/config/concurrency_config.json
+  s_d984c166b54640::t_1c39b5deea4867 3,5,8,10,13,15
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_d984c166b54640::t_16f5f8733a7f62 321,1295-1297
+  s_f1f2be89e3b9b9::t_4b251e4f917d32 1298-1299
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "dd7e07c7ff4009437fe4f04eb9b5dc4f148ad257",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_33c2ef6c835dfa": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8ad98241f59cf15668488f",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a8ad98241f59cf15668488f",
+        "operation_id": "6a8adc7641f59cf156684935",
+        "tool_use_id": "6a8adc7641f59cf156684935",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "dedupe_key": "6a8ad98241f59cf15668488f:6a8adc7641f59cf156684935:afterEdit:b8931be8",
+        "external_session_id": "6a8ad98241f59cf15668488f",
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent"
+      }
+    },
+    "s_8b193e89562e3a": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a88177c73ad3a08262b4036",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "source_scene": "agent",
+        "operation_id": "6a8bfe8541f59cf1566856c7",
+        "external_session_id": "6a88177c73ad3a08262b4036",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "edit_kind": "file_edit",
+        "session_id": "6a88177c73ad3a08262b4036",
+        "tool_use_id": "6a8bfe8541f59cf1566856c7",
+        "dedupe_key": "6a88177c73ad3a08262b4036:6a8bfe8541f59cf1566856c7:afterEdit:dfb27954"
+      }
+    },
+    "s_cd5c500443b029": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8bf79241f59cf15668521d",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a8bf79241f59cf15668521d",
+        "dedupe_key": "6a8bf79241f59cf15668521d:6a8bff7741f59cf156685711:afterEdit:d7957e78",
+        "edit_kind": "file_edit",
+        "session_id": "6a8bf79241f59cf15668521d",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "operation_id": "6a8bff7741f59cf156685711",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a8bff7741f59cf156685711",
+        "tool_type": "builtin"
+      }
+    },
+    "s_d8ad2abee5b8d9": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8a50ac73ad3a08262b42b2",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a8a50ac73ad3a08262b42b2:6a8ab80e41f59cf15668462c:afterEdit:58b2844a",
+        "session_id": "6a8a50ac73ad3a08262b42b2",
+        "edit_kind": "file_edit",
+        "runtime_client": "trae-tob-git-ai",
+        "external_session_id": "6a8a50ac73ad3a08262b42b2",
+        "tool_type": "builtin",
+        "tool_use_id": "6a8ab80e41f59cf15668462c",
+        "source_scene": "agent",
+        "operation_id": "6a8ab80e41f59cf15668462c",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "client_type": "ide"
+      }
+    },
+    "s_d984c166b54640": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a87fd7e73ad3a08262b32ff",
+        "model": "minimax-m2.7"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a87fd7e73ad3a08262b32ff:6a8b9d9641f59cf156684cef:afterEdit:762e21d5",
+        "source_scene": "agent",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "operation_id": "6a8b9d9641f59cf156684cef",
+        "external_session_id": "6a87fd7e73ad3a08262b32ff",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "session_id": "6a87fd7e73ad3a08262b32ff",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_use_id": "6a8b9d9641f59cf156684cef"
+      }
+    },
+    "s_f1f2be89e3b9b9": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8ab5a041f59cf1566843fe",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "builtin",
+        "session_id": "6a8ab5a041f59cf1566843fe",
+        "tool_use_id": "6a8ab7f941f59cf156684623",
+        "external_session_id": "6a8ab5a041f59cf1566843fe",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "client_type": "ide",
+        "operation_id": "6a8ab7f941f59cf156684623",
+        "dedupe_key": "6a8ab5a041f59cf1566843fe:6a8ab7f941f59cf156684623:afterEdit:d1f9eceb",
+        "source_scene": "agent",
+        "edit_kind": "file_edit"
+      }
+    }
+  }
+}
