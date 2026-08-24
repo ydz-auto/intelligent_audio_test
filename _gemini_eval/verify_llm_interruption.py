@@ -88,6 +88,9 @@ def run_case(name, d, expect_llm=True, with_asr=False):
     print(f"  用例级单值: coherence={r.get('llm_recovery_avg_coherence')} "
           f"relevance={r.get('llm_recovery_avg_relevance')} "
           f"adaptability={r.get('llm_recovery_avg_adaptability')}", flush=True)
+    print(f"  用例级reason: coh={r.get('llm_recovery_coherence_reason')!r} "
+          f"rel={r.get('llm_recovery_relevance_reason')!r} "
+          f"adap={r.get('llm_recovery_adaptability_reason')!r}", flush=True)
     le = r.get("llm_eval") or {}
     print(f"llm_eval.enabled          = {le.get('enabled')}", flush=True)
     tc = le.get("timing_comparison") or {}
@@ -96,9 +99,11 @@ def run_case(name, d, expect_llm=True, with_asr=False):
     for x in pr:
         print(f"  round{x.get('round')}: is_interrupted={x.get('is_interrupted')} "
               f"success={x.get('success')} stop={x.get('stop_latency_s')} "
-              f"recov={x.get('recovery_latency_s')} reaction={x.get('reaction_behavior')} "
-              f"coh={x.get('coherence')} rel={x.get('relevance')} adap={x.get('adaptability')}", flush=True)
-        print(f"     reasoning={x.get('reasoning')}", flush=True)
+              f"recov={x.get('recovery_latency_s')} reaction={x.get('reaction_behavior')}", flush=True)
+        print(f"     is_int_reason={x.get('is_interrupted_reason')!r}", flush=True)
+        print(f"     success_reason={x.get('success_reason')!r}", flush=True)
+        print(f"     stop_reason={x.get('stop_reason')!r}  recov_reason={x.get('recovery_reason')!r}", flush=True)
+        print(f"     reaction_reason={x.get('reaction_reason')!r}", flush=True)
 
     # 检查 _nokaana.json
     nk = _find(d, "_nokaana.json")

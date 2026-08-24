@@ -793,8 +793,11 @@ def calculate_interruption_metrics(task_params):
             # ── 平铺 LLM 聚合到顶层(与维度 field_path 对齐) ──
             for k in (
                 'llm_recovery_avg_coherence', 'llm_recovery_avg_relevance',
-                'llm_recovery_avg_adaptability', 'llm_interaction_per_round',
-                'llm_interaction_behavior_summary', 'llm_recovery_per_round',
+                'llm_recovery_avg_adaptability',
+                'llm_recovery_coherence_reason', 'llm_recovery_relevance_reason',
+                'llm_recovery_adaptability_reason',
+                'llm_interaction_per_round', 'llm_interaction_behavior_summary',
+                'llm_recovery_per_round',
             ):
                 result[k] = llm_result.get(k)
             # ── aux 结构字段也从 LLM per_round 派生，保持返回值一致 ──
