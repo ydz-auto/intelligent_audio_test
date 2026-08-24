@@ -2,6 +2,7 @@
  * Backend API Integration Service
  * Base URL is usually http://localhost:5000/api/v1
  */
+import { camelToSnakeObject } from './fieldNaming';
 
 export interface AlgorithmDefinition {
   id?: number;
@@ -284,8 +285,10 @@ async function request<T = any>(
 
   let finalUrl = normalizedUrl;
   if (method === 'GET' && requestOptions.params) {
+    // camelCase → snake_case 转换，确保后端能正确接收参数名
+    const snakeParams = camelToSnakeObject(requestOptions.params);
     const filteredParams = Object.fromEntries(
-      Object.entries(requestOptions.params).filter(([_, value]) => value !== undefined && value !== null)
+      Object.entries(snakeParams).filter(([_, value]) => value !== undefined && value !== null)
     );
     const query = new URLSearchParams(filteredParams).toString();
     if (query) {
@@ -737,11 +740,16 @@ export const audiosApi = {
 };
 
 export const groupsApi = {
-  async getAll(params: { page?: number; perPage?: number; algorithmType?: string } = {}) {
+  async getAll(params: Record<string, any> = {}) {
     const query = new URLSearchParams();
     if (params.page) query.append('page', String(params.page));
+    if (params.per_page) query.append('per_page', String(params.per_page));
     if (params.perPage) query.append('per_page', String(params.perPage));
+    if (params.algorithm_type) query.append('algorithm_type', params.algorithm_type);
     if (params.algorithmType) query.append('algorithm_type', params.algorithmType);
+    if (params.keyword) query.append('keyword', params.keyword);
+    if (params.type) query.append('type', params.type);
+    if (params.dimension_id) query.append('dimension_id', String(params.dimension_id));
     const queryString = query.toString();
     return request('get', `/groups${queryString ? '?' + queryString : ''}`);
   },

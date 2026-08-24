@@ -503,6 +503,21 @@ const generateExportZip = async (): Promise<Blob> => {
     el.classList.add('fa-chevron-down')
   })
 
+  // 用例分页：初始只显示第一页（pageSize=10），其余隐藏
+  const allCaseCards = clone.querySelectorAll('.case-card')
+  const exportPageSize = 10
+  allCaseCards.forEach((card, idx) => {
+    ;(card as HTMLElement).setAttribute('data-case-index', String(idx))
+    if (idx >= exportPageSize) {
+      ;(card as HTMLElement).style.display = 'none'
+    }
+  })
+  // 更新分页信息文本
+  const totalPages = Math.max(1, Math.ceil(allCaseCards.length / exportPageSize))
+  clone.querySelectorAll('.specific-case-pagination .pagination-info').forEach(el => {
+    el.textContent = `显示第 1 页，共 ${totalPages} 页，总计 ${allCaseCards.length} 条记录`
+  })
+
   // computed style
   const computedStyle = window.getComputedStyle(reportEl)
   const reportStyles: Record<string, string> = {
@@ -701,16 +716,46 @@ const getExportJs = (): string => {
     });
   });
 
-  // ========== 5. 用例搜索过滤 ==========
+  // ========== 5. 用例搜索过滤（与分页联动） ==========
+  // allCaseCards 等分页变量在下方第9节声明，此处提前声明以供 applyFilters 使用
+  var allCaseCards = document.querySelectorAll('.case-card');
+  var totalCases = allCaseCards.length;
+  var pageSize = 10;
+  var currentPage = 1;
+  var totalPages = Math.max(1, Math.ceil(totalCases / pageSize));
+  var paginationContainer = document.querySelector('.specific-case-pagination');
   var caseSearchInput = document.querySelector('.filter-input[placeholder*="用例名称"]') || document.querySelector('.filter-input[placeholder*="关键词"]');
+  function applyFilters() {
+    var query = caseSearchInput ? caseSearchInput.value.toLowerCase().trim() : '';
+    var activeCategories = Array.from(document.querySelectorAll('.tag-filter-item.active')).map(function(t) { return t.textContent.trim(); });
+    var activeTags = Array.from(document.querySelectorAll('.tag-filter-item-orange.active')).map(function(t) { return t.textContent.trim(); });
+    var visibleCount = 0;
+    allCaseCards.forEach(function(card) {
+      var nameEl = card.querySelector('.case-name');
+      var name = nameEl ? nameEl.textContent.toLowerCase() : '';
+      var catEl = card.querySelector('.case-category');
+      var cat = catEl ? catEl.textContent.trim() : '';
+      var tagEls = card.querySelectorAll('.tag');
+      var tags = Array.from(tagEls).map(function(t) { return t.textContent.trim(); });
+      var nameMatch = !query || name.includes(query);
+      var catMatch = activeCategories.length === 0 || activeCategories.includes(cat);
+      var tagMatch = activeTags.length === 0 || activeTags.some(function(t) { return tags.includes(t); });
+      if (nameMatch && catMatch && tagMatch) {
+        card.setAttribute('data-filtered-out', 'false');
+        visibleCount++;
+      } else {
+        card.setAttribute('data-filtered-out', 'true');
+      }
+    });
+    // 重新计算分页（基于可见用例数）
+    totalCases = visibleCount;
+    totalPages = Math.max(1, Math.ceil(totalCases / pageSize));
+    currentPage = 1;
+    updateCasePagination();
+  }
   if (caseSearchInput) {
     caseSearchInput.addEventListener('input', function() {
-      var query = caseSearchInput.value.toLowerCase().trim();
-      document.querySelectorAll('.case-card').forEach(function(card) {
-        var nameEl = card.querySelector('.case-name');
-        var name = nameEl ? nameEl.textContent.toLowerCase() : '';
-        card.style.display = (!query || name.includes(query)) ? '' : 'none';
-      });
+      applyFilters();
     });
   }
 
@@ -722,32 +767,18 @@ const getExportJs = (): string => {
     });
   });
 
-  // ========== 7. 重置/应用筛选 ==========
+  // ========== 7. 重置/应用筛选（与分页联动） ==========
   document.querySelectorAll('.btn-secondary, .filter-buttons .btn').forEach(function(btn) {
     if (btn.textContent.includes('重置')) {
       btn.addEventListener('click', function() {
         document.querySelectorAll('.filter-input').forEach(function(input) { input.value = ''; });
         document.querySelectorAll('.tag-filter-item.active, .tag-filter-item-orange.active, .metric-filter-item.active').forEach(function(t) { t.classList.remove('active'); });
-        document.querySelectorAll('.case-card').forEach(function(card) { card.style.display = ''; });
+        applyFilters();
       });
     }
     if (btn.textContent.includes('应用') || btn.textContent.includes('筛选')) {
       btn.addEventListener('click', function() {
-        var query = caseSearchInput ? caseSearchInput.value.toLowerCase().trim() : '';
-        var activeCategories = Array.from(document.querySelectorAll('.tag-filter-item.active')).map(function(t) { return t.textContent.trim(); });
-        var activeTags = Array.from(document.querySelectorAll('.tag-filter-item-orange.active')).map(function(t) { return t.textContent.trim(); });
-        document.querySelectorAll('.case-card').forEach(function(card) {
-          var nameEl = card.querySelector('.case-name');
-          var name = nameEl ? nameEl.textContent.toLowerCase() : '';
-          var catEl = card.querySelector('.case-category');
-          var cat = catEl ? catEl.textContent.trim() : '';
-          var tagEls = card.querySelectorAll('.tag');
-          var tags = Array.from(tagEls).map(function(t) { return t.textContent.trim(); });
-          var nameMatch = !query || name.includes(query);
-          var catMatch = activeCategories.length === 0 || activeCategories.includes(cat);
-          var tagMatch = activeTags.length === 0 || activeTags.some(function(t) { return tags.includes(t); });
-          card.style.display = (nameMatch && catMatch && tagMatch) ? '' : 'none';
-        });
+        applyFilters();
       });
     }
   });
@@ -781,6 +812,88 @@ const getExportJs = (): string => {
       }
     });
   });
+
+  // ========== 9. 用例分页 ==========
+  function updateCasePagination() {
+    var start = (currentPage - 1) * pageSize;
+    var end = start + pageSize;
+    allCaseCards.forEach(function(card, idx) {
+      // 如果被搜索/筛选隐藏了，不覆盖 display:none
+      var isFilteredOut = card.getAttribute('data-filtered-out') === 'true';
+      if (isFilteredOut) {
+        card.style.display = 'none';
+      } else {
+        card.style.display = (idx >= start && idx < end) ? '' : 'none';
+      }
+    });
+    // 更新分页信息
+    var infoEl = paginationContainer ? paginationContainer.querySelector('.pagination-info') : null;
+    if (infoEl) {
+      infoEl.textContent = '显示第 ' + currentPage + ' 页，共 ' + totalPages + ' 页，总计 ' + totalCases + ' 条记录';
+    }
+    // 更新按钮 active 状态
+    if (paginationContainer) {
+      paginationContainer.querySelectorAll('.pagination-btn').forEach(function(btn) {
+        btn.classList.remove('active');
+        var text = btn.textContent.trim();
+        if (text == String(currentPage)) btn.classList.add('active');
+      });
+      // 上一页/下一页 disabled 状态
+      var prevBtn = paginationContainer.querySelector('.pagination-btn:first-child');
+      var nextBtns = paginationContainer.querySelectorAll('.pagination-btn');
+      var nextBtn = nextBtns[nextBtns.length - 1];
+      if (prevBtn) prevBtn.disabled = (currentPage <= 1);
+      if (nextBtn) nextBtn.disabled = (currentPage >= totalPages);
+    }
+  }
+
+  if (paginationContainer) {
+    paginationContainer.querySelectorAll('.pagination-btn').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        var text = btn.textContent.trim();
+        if (text === '< 上一页' || text.indexOf('上一页') >= 0) {
+          if (currentPage > 1) currentPage--;
+        } else if (text === '下一页 >' || text.indexOf('下一页') >= 0) {
+          if (currentPage < totalPages) currentPage++;
+        } else if (text === '跳转') {
+          var input = paginationContainer.querySelector('.pagination-input');
+          if (input) {
+            var p = parseInt(input.value);
+            if (!isNaN(p) && p >= 1 && p <= totalPages) currentPage = p;
+          }
+        } else {
+          var pNum = parseInt(text);
+          if (!isNaN(pNum)) currentPage = pNum;
+        }
+        updateCasePagination();
+      });
+    });
+    // 回车跳转
+    var jumpInput = paginationContainer.querySelector('.pagination-input');
+    if (jumpInput) {
+      jumpInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          var p = parseInt(jumpInput.value);
+          if (!isNaN(p) && p >= 1 && p <= totalPages) {
+            currentPage = p;
+            updateCasePagination();
+          }
+        }
+      });
+    }
+    // 每页条数切换
+    var sizeSelect = paginationContainer.querySelector('.page-size-select select');
+    if (sizeSelect) {
+      sizeSelect.addEventListener('change', function() {
+        pageSize = parseInt(sizeSelect.value);
+        totalPages = Math.max(1, Math.ceil(totalCases / pageSize));
+        currentPage = 1;
+        updateCasePagination();
+      });
+    }
+    // 初始化
+    updateCasePagination();
+  }
 
   console.log('报告导出 HTML 交互脚本已加载');
 })();`

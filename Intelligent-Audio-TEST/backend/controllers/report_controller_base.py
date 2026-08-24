@@ -840,6 +840,39 @@ class ReportControllerBase:
         return 'api'
 
     @staticmethod
+    def _normalize_audio_paths_in_results(algorithm_results):
+        """对 algorithm_results 列表中 audio_file 类型字段的绝对路径做正则化，转为相对 STATIC_BASE_PATH 的相对路径。"""
+        if not isinstance(algorithm_results, list):
+            return algorithm_results
+        import os
+        from flask import current_app
+        static_base = current_app.config.get('STATIC_BASE_PATH')
+        if not static_base:
+            return algorithm_results
+        real_base = os.path.realpath(static_base)
+        for item in algorithm_results:
+            if not isinstance(item, dict):
+                continue
+            param_type = item.get('param_type') or item.get('paramType')
+            if param_type != 'audio_file':
+                continue
+            val = item.get('value')
+            if not isinstance(val, str) or not val:
+                continue
+            # 已经是相对路径则跳过
+            if not os.path.isabs(val):
+                continue
+            try:
+                real_abs = os.path.realpath(val)
+                common = os.path.commonpath([real_abs, real_base])
+                if common == real_base:
+                    rel = os.path.relpath(real_abs, real_base)
+                    item['value'] = rel.replace('\\', '/')
+            except Exception:
+                pass
+        return algorithm_results
+
+    @staticmethod
     def _expand_algorithm_results_for_report(algorithm_results, algorithm_type=None):
         """
         报告页 algorithm_results 后处理：
@@ -849,7 +882,7 @@ class ReportControllerBase:
         import logging
         log = logging.getLogger(__name__)
         if not isinstance(algorithm_results, list):
-            return algorithm_results
+            return algorithm_results  # 非列表类型不处理
         # 找到 rounds 字段
         rounds_item = None
         for item in algorithm_results:
@@ -861,13 +894,13 @@ class ReportControllerBase:
                 break
         if not rounds_item:
             log.warning('[expand_algo] no rounds item found, count=%d', len(algorithm_results))
-            return algorithm_results
+            return ReportControllerBase._normalize_audio_paths_in_results(algorithm_results)
         rounds_value = rounds_item.get('value')
         log.warning('[expand_algo] rounds_item found, value type=%s, is_list=%s, len=%s',
                     type(rounds_value).__name__, isinstance(rounds_value, list),
                     len(rounds_value) if isinstance(rounds_value, list) else 'N/A')
         if not isinstance(rounds_value, list) or not rounds_value:
-            return algorithm_results
+            return ReportControllerBase._normalize_audio_paths_in_results(algorithm_results)
 
         # 构建展开后的新列表：保留非 rounds 字段，rounds 替换为 question@round:N/answer@round:N
         expanded = []
@@ -904,7 +937,7 @@ class ReportControllerBase:
         rounds_item_copy['param_type'] = 'json'
         rounds_item_copy['paramType'] = 'json'
         expanded.append(rounds_item_copy)
-        return expanded
+        return ReportControllerBase._normalize_audio_paths_in_results(expanded)
 
     @staticmethod
     def _expand_reference_params_for_report(reference_params):

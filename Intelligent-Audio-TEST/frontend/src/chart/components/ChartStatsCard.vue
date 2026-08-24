@@ -147,7 +147,6 @@ const negativeStats = computed<StatItem[]>(() => {
   background-color: rgba(255, 106, 0, 0.1) !important;
   border-color: #FF6A00 !important;
   color: #FF6A00 !important;
-  box-shadow: 0 8px 24px rgba(255, 106, 0, 0.2) !important;
 }
 
 .statsGrid {

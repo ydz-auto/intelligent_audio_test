@@ -75,6 +75,7 @@ interface Props {
   visible: boolean;
   title?: string;
   audioId?: string | number | null;
+  audioPath?: string;
   audioTitle?: string;
   audioType?: string;
   selectedDevices?: PlaybackDevice[];
@@ -90,6 +91,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   title: '音频播放',
   audioId: null,
+  audioPath: '',
   audioTitle: '未知音频',
   audioType: 'dry',
   selectedDevices: () => [],
@@ -474,32 +476,43 @@ const playTestCasePreview = async () => {
 };
 
 const playAudioStream = async () => {
-  if (audio.value && props.audioId) {
-    const audioStreamUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
-    audio.value.src = audioStreamUrl;
-    
-    audio.value.addEventListener('error', (e) => {
-      console.error('Audio element error:', audio.value?.error);
-      if (audio.value?.error?.code === 4) {
-        playError.value = '音频格式不支持或服务器返回错误(400)。可能的原因：音频文件格式不正确或后端服务异常';
-      }
-    });
-    
-    try {
-      await audio.value.load();
-      await audio.value.play();
-      console.log('Local audio playback started');
-    } catch (playError: any) {
-      console.error('Audio play error:', playError);
-      if (playError.name === 'NotSupportedError') {
-        playError.value = '浏览器不支持该音频格式，请尝试使用其他格式的音频文件';
-      } else if (playError.message && playError.message.includes('400')) {
-        playError.value = '服务器返回400错误，可能是音频文件不存在或格式不正确';
-      } else {
-        playError.value = '音频播放失败，请检查音频文件是否有效';
-      }
-      isPlaying.value = false;
+  if (!audio.value) return;
+
+  let audioStreamUrl = '';
+  if (props.audioId) {
+    audioStreamUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
+  } else if (props.audioPath) {
+    audioStreamUrl = `${apiBaseUrl}/audios/stream-by-path?path=${encodeURIComponent(props.audioPath)}`;
+  } else {
+    console.warn('Cannot play audio: both audioId and audioPath are empty');
+    playError.value = '缺少音频ID或路径，无法播放';
+    isPlaying.value = false;
+    return;
+  }
+
+  audio.value.src = audioStreamUrl;
+
+  audio.value.addEventListener('error', (e) => {
+    console.error('Audio element error:', audio.value?.error);
+    if (audio.value?.error?.code === 4) {
+      playError.value = '音频格式不支持或服务器返回错误(400)。可能的原因：音频文件格式不正确或后端服务异常';
     }
+  });
+
+  try {
+    await audio.value.load();
+    await audio.value.play();
+    console.log('Local audio playback started, url:', audioStreamUrl);
+  } catch (playError: any) {
+    console.error('Audio play error:', playError);
+    if (playError.name === 'NotSupportedError') {
+      playError.value = '浏览器不支持该音频格式，请尝试使用其他格式的音频文件';
+    } else if (playError.message && playError.message.includes('400')) {
+      playError.value = '服务器返回400错误，可能是音频文件不存在或格式不正确';
+    } else {
+      playError.value = '音频播放失败，请检查音频文件是否有效';
+    }
+    isPlaying.value = false;
   }
 };
 
