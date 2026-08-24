@@ -9,6 +9,7 @@
     回应 / 恢复 / 不确定询问 / 未知
 
 输出: 严格 JSON，{behavior, reason}
+      额外返回 behavior_respond/recover/uncertain/unknown 四个 0/1 字段
 """
 import json
 import os
@@ -120,6 +121,10 @@ def evaluate_interruption_judge(
             'model': str,
             'ai_wav': str,
             'evaluations': [{behavior, reason}, ...],
+            'behavior_respond': int,   # 回应 → 1, 否则 0
+            'behavior_recover': int,   # 恢复 → 1, 否则 0
+            'behavior_uncertain': int, # 不确定询问 → 1, 否则 0
+            'behavior_unknown': int,   # 未知 → 1, 否则 0
             'tokens_used': int,
             'input_token': int,
             'output_token': int,
@@ -154,6 +159,10 @@ def evaluate_interruption_judge(
         'model': model,
         'ai_wav': ai_wav,
         'evaluations': [],
+        'behavior_respond': 0,
+        'behavior_recover': 0,
+        'behavior_uncertain': 0,
+        'behavior_unknown': 0,
         'tokens_used': 0,
         'input_token': 0,
         'output_token': 0,
@@ -190,6 +199,19 @@ def evaluate_interruption_judge(
     evaluations = parse_evaluations(parsed)
     result['evaluations'] = evaluations
     result['message'] = 'OK'
+
+    # 按行为类别拆分为 0/1 字段（供子维度 pass_rate 聚合）
+    if evaluations:
+        ev = evaluations[0]
+        behavior = ev.get('behavior', '')
+        if behavior == '回应':
+            result['behavior_respond'] = 1
+        elif behavior == '恢复':
+            result['behavior_recover'] = 1
+        elif behavior == '不确定询问':
+            result['behavior_uncertain'] = 1
+        elif behavior == '未知':
+            result['behavior_unknown'] = 1
 
     logger.info(
         f'[interruption_judge] '
