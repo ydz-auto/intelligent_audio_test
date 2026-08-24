@@ -91,8 +91,8 @@ ASR_PARAFORMER_PUNC_MODEL = os.environ.get(
 
 # ─── Silero VAD 参数 ───
 ASR_SILERO_MIN_SILENCE_MS = int(os.environ.get("ASR_SILERO_MIN_SILENCE_MS", "200"))
-ASR_SILERO_THRESHOLD = float(os.environ.get("ASR_SILERO_THRESHOLD", "0.5"))
-ASR_SILERO_MIN_SPEECH_MS = int(os.environ.get("ASR_SILERO_MIN_SPEECH_MS", "0"))
+ASR_SILERO_THRESHOLD = float(os.environ.get("ASR_SILERO_THRESHOLD", "0.6"))
+ASR_SILERO_MIN_SPEECH_MS = int(os.environ.get("ASR_SILERO_MIN_SPEECH_MS", "500"))
 ASR_SILERO_SPEECH_PAD_MS = int(os.environ.get("ASR_SILERO_SPEECH_PAD_MS", "30"))
 
 logging.basicConfig(

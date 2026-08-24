@@ -187,11 +187,20 @@ class TurnTakingCalculator(TurnTakingBase):
         return task_params
 
     def calculate(self, params):
-        """遍历所有子维度 Calculator，各自 prepare_params + calculate，合并结果"""
+        """遍历所有子维度 Calculator，各自 prepare_params + calculate，合并结果
+
+        可通过 task_params['sub_tasks'] 指定只计算部分子维度，例如:
+            sub_tasks: ['tor', 'takeover_latency']  # 只算这两个，不算 false_takeover 等
+        未指定时默认计算全部子维度。
+        """
         from app.services.task_service import TaskService
 
+        sub_tasks = params.get('sub_tasks')  # None 或 list
         results = {}
         for result_key, calc_key in _SUB_DIMENSIONS.items():
+            if sub_tasks and result_key not in sub_tasks:
+                logger.info(f"[turn_taking] 子维度 {calc_key} 不在 sub_tasks 中，跳过")
+                continue
             calculator = TaskService.CALCULATORS.get(calc_key)
             if calculator is None:
                 logger.warning(f"[turn_taking] 子维度 {calc_key} 未注册，跳过")
