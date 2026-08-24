@@ -1,7 +1,7 @@
 import json
 import traceback
 from datetime import datetime, timezone, timedelta
-from backend.models.models import Dimension, TestResultDimension, TaskCase, TestResult, Task, TaskDevice, TaskAPI, TestCase, utc8now
+from backend.models.models import Dimension, TestResultDimension, TaskCase, TestResult, Task, TaskDevice, TaskAPI, TestCase, Device, utc8now
 from backend.models.database import db
 from backend.services.evaluation.evaluation_utils import extract_by_path, calculate_score
 from backend.services.evaluation.round_aggregator import RoundAggregator
@@ -526,7 +526,15 @@ class EvaluationResultProcessor(RoundAggregator):
                             lightweight, has_heavy = split_result_data(r_data)
                             test_result.result_data = lightweight
                             if has_heavy:
-                                device_sn = str(device_id or api_id or test_result.id)
+                                # 用设备序列号(serial_number)作为目录名，与执行阶段保持一致；
+                                # 若查不到设备(跨用例设备被删等)，回退到 test_result.id 保底，避免 None
+                                device_sn = ''
+                                if device_id:
+                                    dev = local_db_session.query(Device).get(device_id)
+                                    if dev:
+                                        device_sn = dev.serial_number or dev.ip or ''
+                                if not device_sn:
+                                    device_sn = str(api_id or test_result.id)
                                 rel_path = write_result_data_file(task_id, test_case_id, device_sn, r_data)
                                 test_result.result_data_path = rel_path
                 except Exception as e:

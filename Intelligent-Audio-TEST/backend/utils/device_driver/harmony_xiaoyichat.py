@@ -682,7 +682,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 task_id=task_id, test_case_id=test_case_id)
             replied=self._wait_for_condition(
                 lambda:driver.find_component(By.text("说话可打断"))  is None,
-                timeout=60,interval=1,
+                timeout=10,interval=1,
                 operation_name='等待回复开始',
             )
 
@@ -695,11 +695,11 @@ class Xiaoyilivechat(HarmonyDriver):
                 # 等待小艺回复结束（带超时和停止检查）
                 self._wait_for_condition(
                     lambda: driver.find_component(By.text('说话可打断')),
-                    timeout=60, interval=1, operation_name="post_process_说话可打断"
+                    timeout=10, interval=1, operation_name="post_process_说话可打断"
                 )
                 self._wait_for_condition(
                     lambda: driver.find_component(By.text('正在听…')),
-                    timeout=60, interval=1, operation_name="post_process_正在听"
+                    timeout=10, interval=1, operation_name="post_process_正在听"
                 )
         record_mode = getattr(self, '_record_mode', 'round')
         round_number = getattr(self, '_round_number', 0)
