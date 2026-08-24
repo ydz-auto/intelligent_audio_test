@@ -1,0 +1,52 @@
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_non_interactive_latency.py
+  s_fcd203edfaf547::t_62ee2e88d80307 64,66
+  s_fcd203edfaf547::t_b8a9e4a243862a 93,97,101,105,108,111,115,118,121
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_xiaoyi_dimensions.py
+  s_fcd203edfaf547::t_adfd509ff3f03f 298-307,309-310,312-331,333-334
+  s_fcd203edfaf547::t_98187c6dc89abd 241,244,247,250,253,256,259,261-269,271-272
+  s_fcd203edfaf547::t_c79f4696467f7f 200,203,205-210,212-213
+  s_fcd203edfaf547::t_80bb8689e05eda 119,122,125,128,130-132
+  s_fcd203edfaf547::t_edd2da1dfb16b3 153
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_interruption_dimensions.py
+  s_fcd203edfaf547::t_e9a995d75313aa 122,125,128,131,134,137,140,143,146,149,152,155,158,163,166,169,172,175,178,181,184,187,190,193,196,199
+  s_fcd203edfaf547::t_63da38488d384a 306
+  s_fcd203edfaf547::t_735a6a5424bf16 238
+  s_fcd203edfaf547::t_15ca73a84dcbd2 142,144-145,147-148,150-151,153
+  s_fcd203edfaf547::t_e1b12e7aa1d57f 286
+  s_fcd203edfaf547::t_2e5c62f94a1f5a 326
+  s_fcd203edfaf547::t_97e7e60cf99e1e 259,262,265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "738d74da12284015e1689f397382c9e30b190bf2",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_fcd203edfaf547": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8ad837c2b7c194d3357a59",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "edit_kind": "file_edit",
+        "dedupe_key": "6a8ad837c2b7c194d3357a59:6a8bb309c2b7c194d3357d93:afterEdit:cc8b570c",
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a8bb309c2b7c194d3357d93",
+        "source_scene": "agent",
+        "tool_use_id": "6a8bb309c2b7c194d3357d93",
+        "tool_type": "builtin",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "external_session_id": "6a8ad837c2b7c194d3357a59",
+        "session_id": "6a8ad837c2b7c194d3357a59"
+      }
+    }
+  }
+}

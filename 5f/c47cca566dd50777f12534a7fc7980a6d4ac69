@@ -1,0 +1,64 @@
+Intelligent-Audio-TEST/backend/services/execution/execution_engine.py
+  s_ed8d8bdcdca690::t_a5be8491baf319 1286-1293
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_result_processor.py
+  s_9cffd6d623b314::t_9f5546e7107459 4
+  s_9cffd6d623b314::t_b68e4bdaa737a2 529-537
+Intelligent-Audio-TEST/backend/services/device/device_result_reextractor.py
+  s_9cffd6d623b314::t_58f6e7b4fb3b94 405-406,409,414-422
+  s_9cffd6d623b314::t_6eb4d7d6a674e2 384-385
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "5fc47cca566dd50777f12534a7fc7980a6d4ac69",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_9cffd6d623b314": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8ad5efc2b7c194d33579a3",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "operation_id": "6a8ad791c2b7c194d3357a55",
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "builtin",
+        "external_session_id": "6a8ad5efc2b7c194d33579a3",
+        "dedupe_key": "6a8ad5efc2b7c194d33579a3:6a8ad791c2b7c194d3357a55:afterEdit:a61719f8",
+        "edit_kind": "file_edit",
+        "session_id": "6a8ad5efc2b7c194d33579a3",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a8ad791c2b7c194d3357a55"
+      }
+    },
+    "s_ed8d8bdcdca690": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8ad4f6c2b7c194d3357952",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "source_scene": "agent",
+        "external_session_id": "6a8ad4f6c2b7c194d3357952",
+        "tool_type": "builtin",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "operation_id": "6a8ad5d9c2b7c194d335799f",
+        "runtime_client": "trae-tob-git-ai",
+        "edit_kind": "file_edit",
+        "dedupe_key": "6a8ad4f6c2b7c194d3357952:6a8ad5d9c2b7c194d335799f:afterEdit:1bcac529",
+        "client_type": "ide",
+        "session_id": "6a8ad4f6c2b7c194d3357952",
+        "tool_use_id": "6a8ad5d9c2b7c194d335799f"
+      }
+    }
+  }
+}
