@@ -27,8 +27,8 @@ def _get_asr(wav_path: str) -> Dict[str, Any]:
     """调用远程 ASR 服务获取词级时间戳，返回 {text, chunks} 结构"""
     if not wav_path or not os.path.isfile(wav_path):
         raise FileNotFoundError(f"wav 文件不存在: {wav_path}")
-    from app.utils.asr_adapator import call_modelscope_asr, parse_result
-    raw = call_modelscope_asr(wav_path)
+    from app.utils.asr_adapator import call_modelscope_asr_word, parse_result
+    raw = call_modelscope_asr_word(wav_path)
     return parse_result(raw)
 
 # ─────────── 阈值 ───────────

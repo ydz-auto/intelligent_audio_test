@@ -108,7 +108,7 @@ def test_calculate_xiaoyi_metrics_integration():
 
     with patch.object(tt_module, '_get_asr_chunks', side_effect=lambda w: mock_user_chunks if 'user' in w else mock_ai_chunks), \
          patch.object(tt_module, '_get_asr_word_chunks', return_value=[]), \
-         patch('app.utils.asr_adapator.call_modelscope_asr', return_value={'text': '', 'chunks': mock_main_chunks}), \
+         patch('app.utils.asr_adapator.call_modelscope_asr_word', return_value={'text': '', 'chunks': mock_main_chunks}), \
          patch('app.utils.asr_adapator.parse_result', return_value={'text': '', 'chunks': mock_main_chunks}), \
          patch.object(tt_module, 'calculate_high_freq_llm_judge',
                side_effect=lambda tp: {'enabled': False, 'message': 'mocked', 'n_rounds': 0, 'per_round': []}):

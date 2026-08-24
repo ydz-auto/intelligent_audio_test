@@ -11,6 +11,7 @@ turn_taking 包
     - high_freq_llm_judge (高频LLM裁判): high_freq_llm_judge.evaluate_high_freq_llm
 """
 import os
+import re
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -25,33 +26,43 @@ from ..rejection_scene_awareness.non_interactive_latency import compute_non_inte
 
 logger = logging.getLogger(__name__)
 
+# 含实际词字符（CJK / 字母 / 数字）才算是"说话"，纯标点/空白 chunk 的时间戳是 ASR 标点模型伪造的，需剔除
+_WORD_RE = re.compile(r'[\w一-鿿]')
+
 
 def _get_asr_chunks(wav_path):
-    """调用远程 ASR 服务获取字词时间戳（user_wav / ai_wav 共用）
+    """调用远程 ASR 服务获取词级时间戳（Paraformer，user_wav / ai_wav 共用）
+
+    使用 Paraformer 词级 ASR（/asr_word 端点），比 SenseVoice+Silero 段级 ASR
+    识别更完整，避免短语音段被 VAD 过滤丢失。
+
+    纯标点/空白 chunk 的时间戳是 ASR 标点模型伪造的，在此过滤掉。
 
     Args:
         wav_path: 本地 wav 文件路径
 
     Returns:
-        list: chunks 列表 [{text, timestamp:[start_s, end_s]}, ...]
+        list: chunks 列表 [{text, timestamp:[start_s, end_s]}, ...]（已过滤标点）
         None: ASR 失败或 chunks 为空
     """
     if not wav_path or not os.path.isfile(wav_path):
         logger.error(f"wav 文件不存在: {wav_path}")
         return None
 
-    from app.utils.asr_adapator import call_modelscope_asr, parse_result
+    from app.utils.asr_adapator import call_modelscope_asr_word, parse_result
 
     try:
-        raw = call_modelscope_asr(wav_path)
+        raw = call_modelscope_asr_word(wav_path)
         asr_result = parse_result(raw)
         chunks = asr_result.get('chunks', [])
+        # 过滤纯标点/空白 chunk（时间戳为标点模型伪造，不代表真实语音）
+        chunks = [c for c in chunks if _WORD_RE.search(c.get('text', ''))]
         if not chunks:
-            logger.warning(f"ASR chunks 为空: {wav_path}")
+            logger.warning(f"ASR(词级) chunks 为空: {wav_path}")
             return None
         return chunks
     except Exception as e:
-        logger.error(f"ASR 调用失败 {wav_path}: {e}")
+        logger.error(f"ASR(词级) 调用失败 {wav_path}: {e}")
         return None
 
 
@@ -158,7 +169,7 @@ def calculate_xiaoyi_metrics(task_params):
         }
     """
     import json as _json
-    from app.utils.asr_adapator import call_modelscope_asr, parse_result
+    from app.utils.asr_adapator import call_modelscope_asr_word, parse_result
 
     logger.info(f"[xiaoyi_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
 
@@ -252,23 +263,14 @@ def calculate_xiaoyi_metrics(task_params):
     logger.info(f"[takeover_latency] {_format_takeover_latency(results['takeover_latency'])}")
 
     # 打断指标：两路 wav（user_wav 用户打断 + ai_wav 模型恢复）各 ASR 一次，共享打断计算
-    # model_asr 打断路径改用词级(Paraformer /asr_word)以获更精确停/复时延；
-    # 词级 ai_word_chunks 已在上方 false_takeover 抓好，此处复用，不新增 ASR 调用。
-    # 词级会把标点作为独立 chunk 输出——compute_interruption_metrics→_to_segments
-    # 的 _is_punct_or_empty 已跳过纯标点/空白 chunk，去标点由此生效。
     if user_wav and ai_wav:
         try:
-            user_asr = parse_result(call_modelscope_asr(user_wav))
-            model_asr = parse_result(call_modelscope_asr(ai_wav))  # 段级，供 non_interactive_latency 用
-            # 打断用词级 model ASR；词级为空(ASR 失败)则退化到段级 model_asr
-            interrupt_model = ai_word_chunks if ai_word_chunks else model_asr
-            results['interruption'] = compute_interruption_metrics(user_asr, interrupt_model)
-            _im_chunks = (len(interrupt_model) if isinstance(interrupt_model, list)
-                          else len(interrupt_model.get('chunks', [])) if isinstance(interrupt_model, dict)
-                          else 0)
+            user_asr = parse_result(call_modelscope_asr_word(user_wav))
+            model_asr = parse_result(call_modelscope_asr_word(ai_wav))
+            results['interruption'] = compute_interruption_metrics(user_asr, model_asr)
             logger.info(
-                f"[interruption] 双路 ASR 完成(词级) user_chunks={len(user_asr.get('chunks', []))} "
-                f"model_chunks={_im_chunks} "
+                f"[interruption] 双路 ASR 完成 user_chunks={len(user_asr.get('chunks', []))} "
+                f"model_chunks={len(model_asr.get('chunks', []))} "
                 f"success_rate={results['interruption'].get('interruption_success_rate')} "
                 f"n_events={results['interruption'].get('n_events')} "
                 f"avg_stop={results['interruption'].get('avg_stop_latency_s')}s "
@@ -656,7 +658,7 @@ def calculate_interruption_metrics(task_params):
         }
     """
     import json as _json
-    from app.utils.asr_adapator import call_modelscope_asr, parse_result
+    from app.utils.asr_adapator import call_modelscope_asr_word, parse_result
 
     logger.info(f"[interruption_metrics] 收到 task_params: {_json.dumps(task_params, ensure_ascii=False, default=str)}")
 
@@ -673,23 +675,18 @@ def calculate_interruption_metrics(task_params):
     model_asr = task_params.get('model_asr') or task_params.get('model_chunks') or task_params.get('recovery_asr') or _r0.get('model_asr') or _r0.get('model_chunks')
 
     def _wav_to_asr(wav_path, label):
-        """wav → {text, chunks}，调远程 asr_server。
-
-        失败不致命：返回空结构(时序置空)，让后续 LLM 改听音频自己算——
-        本地 ASR 仅用于时序 aux 对照，LLM(音频驱动)才是主指标来源，不应被慢/超时的 ASR 阻断。
-        """
+        """wav → {text, chunks}，调远程 asr_server；失败抛 ValueError 使任务 failed。"""
         if not wav_path:
             return None
         try:
-            raw = call_modelscope_asr(wav_path)
+            raw = call_modelscope_asr_word(wav_path)
             asr_result = parse_result(raw)  # {text, chunks}
             if not asr_result.get('chunks'):
                 logger.warning(f"[interruption_metrics] {label} ASR chunks 为空: {wav_path}")
             logger.info(f"[interruption_metrics] {label} ASR 完成 chunks={len(asr_result.get('chunks', []))} wav={wav_path}")
             return asr_result
         except Exception as e:
-            logger.warning(f"[interruption_metrics] {label} ASR 调用失败 ({wav_path}): {e}；时序置空，LLM 改听音频")
-            return {'text': '', 'chunks': []}
+            raise ValueError(f"interruption_metrics: {label} ASR 调用失败 ({wav_path}): {e}") from e
 
     # 有 wav 则内部 ASR 转 chunks（不覆盖调用方已传的 asr 结果）
     if user_asr is None and user_wav:
@@ -729,174 +726,67 @@ def calculate_interruption_metrics(task_params):
         f"message={result['message']}"
     )
 
-    # ── 可选：大模型全量评估 ──
+    # ── 可选：大模型评估（打断后回复打分 / 回到原话题行为判断 / 回到原话题回复打分）──
     # 触发条件：enable_llm_eval=True 且 task_params 携带 rounds 文本结构
-    # 三项主指标(success_rate/stop_latency/recovery_latency)改为 LLM 计算；用户侧用本地 ASR
-    # 作参考，AI 侧用字词级 ASR；文本时间戳 + 音频多模态；强调用户会进行 2 轮及以上对话。
-    # LLM 失败/未配置：主字段回退时序原值(下方 _timing_* 留底)，不破坏现有行为。
+    # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，不影响时序指标
     # multipart 上传时 enable_llm_eval 是字符串('False'/'true')，bool('False')=True 会误判，用白名单
     # 默认开启(未传视为 True)；显式传 false/'false' 才关闭
     enable_llm = task_params.get('enable_llm_eval', True) in (True, 'true', '1', 1)
     rounds = task_params.get('rounds')
-
-    # 留底时序原值，LLM 覆写后作 timing_comparison 对照
-    _timing_success_rate = result.get('interruption_success_rate')
-    _timing_avg_stop = result.get('avg_stop_latency_s')
-    _timing_avg_recov = result.get('avg_recovery_latency_s')
-
     if enable_llm and rounds:
         try:
-            from ..interruptbility.interruption_llm import evaluate_interruption_llm_full
-            # ── 逐轮收集：用户 ASR / AI 字词级 ASR / wav ──
-            user_asr_ref_pr = []
-            ai_word_chunks_pr = []
-            ai_wav_pr = []
-            user_wav_pr = []
-            for idx, rd in enumerate(rounds, 1):
-                if not isinstance(rd, dict):
-                    user_asr_ref_pr.append(None)
-                    ai_word_chunks_pr.append(None)
-                    ai_wav_pr.append(None)
-                    user_wav_pr.append(None)
-                    continue
-                r_user_wav = rd.get('user_wav') or (user_wav if idx == 1 else None)
-                r_ai_wav = (rd.get('ai_wav') or rd.get('model_wav')
-                             or (ai_wav if idx == 1 else None))
-                r_user_asr = (rd.get('user_asr') or rd.get('user_chunks')
-                              or (user_asr if idx == 1 else None))
-                r_model_asr = (rd.get('model_asr') or rd.get('model_chunks')
-                               or (model_asr if idx == 1 else None))
-                # 用户 ASR：缺则远程段级 ASR（原样传入，不去日文）
-                if r_user_asr is None and r_user_wav:
-                    r_user_asr = _wav_to_asr(r_user_wav, f'round{idx}_user_wav')
-                user_asr_ref_pr.append(r_user_asr)
-                # AI 侧参考 ASR(段级, 时间戳准确)；字词级定位由 gemini 听音频自己产出，
-                # 不用本地字词级 ASR(其时间戳不可靠)
-                ai_wc = None
-                if isinstance(r_model_asr, dict) and r_model_asr.get('chunks'):
-                    ai_wc = r_model_asr.get('chunks')
-                elif r_ai_wav:
-                    _seg_asr = _wav_to_asr(r_ai_wav, f'round{idx}_ai_wav')
-                    ai_wc = _seg_asr.get('chunks') if isinstance(_seg_asr, dict) else None
-                ai_word_chunks_pr.append(ai_wc)
-                ai_wav_pr.append(r_ai_wav)
-                user_wav_pr.append(r_user_wav)
-
-            llm_result = evaluate_interruption_llm_full(
-                rounds, user_asr_ref_pr, ai_word_chunks_pr,
-                ai_wav_pr, user_wav_pr, task_params,
-            )
-            # ── 覆写三项主指标(LLM 产出) ──
-            result['interruption_success_rate'] = llm_result.get('interruption_success_rate')
-            result['avg_stop_latency_s'] = llm_result.get('avg_stop_latency_s')
-            result['avg_recovery_latency_s'] = llm_result.get('avg_recovery_latency_s')
-            # ── 平铺 LLM 聚合到顶层(与维度 field_path 对齐) ──
+            from ..interruptbility.interruption_llm import evaluate_interruption_llm
+            llm_result = evaluate_interruption_llm(rounds, task_params)
+            result['llm_eval'] = llm_result
+            # 顶层平铺关键聚合值，便于维度参数直接按 field_path 取值
             for k in (
                 'llm_recovery_avg_coherence', 'llm_recovery_avg_relevance',
-                'llm_recovery_avg_adaptability',
-                'llm_recovery_coherence_reason', 'llm_recovery_relevance_reason',
-                'llm_recovery_adaptability_reason',
+                'llm_recovery_avg_adaptability', 'llm_return_behavior_summary',
+                'llm_return_avg_coherence', 'llm_return_avg_relevance',
+                'llm_return_avg_adaptability', 'llm_recovery_per_round',
+                'llm_return_per_round', 'llm_return_scores_per_round',
                 'llm_interaction_per_round', 'llm_interaction_behavior_summary',
-                'llm_recovery_per_round',
             ):
                 result[k] = llm_result.get(k)
-            # ── aux 结构字段也从 LLM per_round 派生，保持返回值一致 ──
-            # 否则 timing 的 n_events/stop_rate/per_event 会与 LLM 主字段(success_rate/latency)矛盾
-            _per_round = llm_result.get('per_round') or []
-            _int_rds = [r for r in _per_round if r.get('is_interrupted')]
-            _n_ev = len(_int_rds)
-            _succ_n = sum(1 for r in _int_rds if r.get('success'))
-            _rate = round(_succ_n / _n_ev, 3) if _n_ev else 0.0
-            result['n_events'] = _n_ev
-            result['n_user_segments'] = len(_per_round)
-            result['n_recovery_only'] = 0
-            result['n_no_model_speech'] = 0
-            result['per_event'] = _per_round
-            result['stop_rate'] = _rate
-            result['resume_rate'] = _rate
-            result['message'] = 'OK (LLM)'
-
-            def _seg_overlap(r):
-                u = r.get('user_interrupt_segment')
-                m = r.get('model_active_segment')
-                if not (isinstance(u, (list, tuple)) and isinstance(m, (list, tuple))
-                        and len(u) >= 2 and len(m) >= 2):
-                    return None
-                try:
-                    s, e = max(float(u[0]), float(m[0])), min(float(u[1]), float(m[1]))
-                    return round(e - s, 3) if e > s else 0.0
-                except (TypeError, ValueError):
-                    return None
-
-            def _seg_silence(r):
-                m = r.get('model_active_segment')
-                nx = r.get('model_next_segment')
-                if (isinstance(m, (list, tuple)) and isinstance(nx, (list, tuple))
-                        and len(m) >= 2 and len(nx) >= 1
-                        and m[1] is not None and nx[0] is not None):
-                    try:
-                        return round(float(nx[0]) - float(m[1]), 3)
-                    except (TypeError, ValueError):
-                        return None
-                return None
-
-            def _mean(vals):
-                vals = [v for v in vals if isinstance(v, (int, float))]
-                return round(sum(vals) / len(vals), 3) if vals else None
-
-            result['avg_overlap_s'] = _mean([_seg_overlap(r) for r in _int_rds])
-            result['avg_silence_gap_s'] = _mean([_seg_silence(r) for r in _int_rds])
-            # ── llm_eval：含时序对照 ──
-            result['llm_eval'] = {
-                'enabled': True,
-                'model': llm_result.get('model'),
-                'timing_comparison': {
-                    'timing_success_rate': _timing_success_rate,
-                    'timing_avg_stop_latency_s': _timing_avg_stop,
-                    'timing_avg_recovery_latency_s': _timing_avg_recov,
-                    'llm_success_rate': llm_result.get('interruption_success_rate'),
-                    'llm_avg_stop_latency_s': llm_result.get('avg_stop_latency_s'),
-                    'llm_avg_recovery_latency_s': llm_result.get('avg_recovery_latency_s'),
-                },
-                'per_round': llm_result.get('per_round'),
-                'audio_dropped': llm_result.get('audio_dropped'),
-                'message': 'OK',
-            }
             logger.info(
-                f"[interruption_metrics] LLM 全量评估完成 model={llm_result.get('model')} "
-                f"n_rounds={len(llm_result.get('per_round') or [])} "
-                f"success_rate={result['interruption_success_rate']} "
-                f"avg_stop={result['avg_stop_latency_s']}s "
-                f"avg_recovery={result['avg_recovery_latency_s']}s "
-                f"timing(stop={_timing_avg_stop}s/recov={_timing_avg_recov}s "
-                f"success={_timing_success_rate}) "
-                f"behavior={llm_result.get('llm_interaction_behavior_summary')} "
-                f"audio_dropped={llm_result.get('audio_dropped')}"
+                f"[interruption_metrics] LLM 评估完成 model={llm_result.get('model')} "
+                f"n_rounds={len(llm_result.get('llm_recovery_per_round') or [])} "
+                f"n_return={len(llm_result.get('llm_return_per_round') or [])} "
+                f"behavior={llm_result.get('llm_return_behavior_summary')}"
             )
         except Exception as e:
-            logger.warning(f"[interruption_metrics] LLM 全量评估失败，回退本地时序计算(compute_interruption_metrics): {e}")
-            # 本地时序计算作为兜底：三项主字段保持为 compute_interruption_metrics 的时序值
-            # (上方未覆写)，llm_eval 标 fallback='timing' 并记所用时序值
-            result['llm_eval'] = {
-                'enabled': False,
-                'fallback': 'timing',
-                'message': f'LLM 全量评估失败，已回退本地时序计算: {e}',
-                'timing_comparison': {
-                    'timing_success_rate': _timing_success_rate,
-                    'timing_avg_stop_latency_s': _timing_avg_stop,
-                    'timing_avg_recovery_latency_s': _timing_avg_recov,
-                },
-            }
+            logger.warning(f"[interruption_metrics] LLM 评估失败，跳过: {e}")
+            result['llm_eval'] = {'enabled': False, 'message': f'LLM 评估失败: {e}'}
     else:
         reason = '未启用(enable_llm_eval=False)' if not enable_llm else '无 rounds 文本数据'
         result['llm_eval'] = {'enabled': False, 'message': reason}
         logger.info(f"[interruption_metrics] LLM 评估跳过：{reason}")
 
-    # 包成 {'interruption': <result>}：与 seed field_path 'interruption.X' 前缀约定一致
-    # (xiaoyi/turn_taking 同款嵌套约定)；平台 extract_by_path('interruption.X', resp) 才能取到。
-    # turn_taking 子维度路径(results['interruption']=本返回)会双层嵌套，但 interruption 维度
-    # 走独立 interruption_metrics 任务、不从 turn_taking 提取，故无害。
-    return {'interruption': result}
+    # ── 兜底：时序算不出 success_rate(n_events=0)时，用 LLM 按对话语义判定 ──
+    # 不依赖平台传 answer 文本，直接用 ai_wav 的 ASR 文本(model_asr.text)作模型回复
+    if enable_llm and result.get('n_events', 0) == 0 and not result.get('interruption_success_rate'):
+        result['timing_success_rate'] = result.get('interruption_success_rate', 0.0)
+        try:
+            from ..interruptbility.interruption_llm import evaluate_interruption_success_llm
+            _u_text = (user_asr.get('text') if isinstance(user_asr, dict) else '') or ''
+            _m_text = (model_asr.get('text') if isinstance(model_asr, dict) else '') or ''
+            _fb = evaluate_interruption_success_llm(_u_text, _m_text, task_params)
+            if _fb is not None:
+                result['interruption_success_rate'] = _fb['success_rate']
+                _le = result.get('llm_eval') or {}
+                _le['success_fallback'] = _fb
+                result['llm_eval'] = _le
+                result['llm_success_rate'] = _fb['success_rate']
+                logger.info(
+                    f"[interruption_metrics] success 兜底(LLM): success={_fb['success']} "
+                    f"reason={_fb['reason']!r}"
+                )
+            else:
+                logger.info("[interruption_metrics] success 兜底跳过：无 LLM 配置或无文本")
+        except Exception as e:
+            logger.warning(f"[interruption_metrics] success 兜底失败: {e}")
+
+    return result
 
 
 def calculate_high_freq_turn_taking_metrics(task_params):
