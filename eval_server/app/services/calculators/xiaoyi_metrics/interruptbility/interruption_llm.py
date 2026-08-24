@@ -27,8 +27,12 @@ interruption_llm.py
 """
 import json
 import logging
+import os
 import re
-from typing import Any, Dict, List, Optional
+import struct
+import tempfile
+import wave
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -480,3 +484,327 @@ def evaluate_interruption_success_llm(user_text: str, model_text: str,
     except Exception as e:
         logger.warning(f"[interruption_llm] success 兜底调用失败: {e}")
         return None
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# LLM 全量评估：success_rate / stop_latency / recovery_latency / 是否被打断 / 反应
+# （2026-08-23）三项主指标改为 LLM 计算，用户侧用本地 ASR 作参考，AI 侧用字词级 ASR，
+#  文本时间戳 + 音频多模态；强调用户会进行 2 轮及以上对话。
+# ═════════════════════════════════════════════════════════════════════════════
+
+# 音频总大小守卫：原始字节上限(base64≈4/3)，超过则丢弃音频只发文本
+_LLM_AUDIO_MAX_BYTES = 12 * 1024 * 1024  # ≈12MB 原始 → ≈16MB base64
+
+# 尾部静音裁剪阈值(16bit 幅度)；用于把长录音压小再发 gemini，偏移保持 0(只裁尾)时间戳不变
+_TRIM_AMP_THRESHOLD = 300
+_TRIM_FRAME_MS = 20
+_TRIM_TAIL_MS = 300
+
+
+def _trim_wav_tail(wav_path: str) -> str:
+    """裁掉 wav 尾部静音到临时文件，返回临时路径；失败/无需裁返回原路径。
+
+    只裁尾部(偏移 0)，时间戳不变；用于把 165s 全录音(语音仅~60s)压到几 MB 再发 gemini。
+    """
+    try:
+        with wave.open(wav_path, 'rb') as w:
+            p = w.getparams()
+            frames = w.readframes(w.getnframes())
+        nchan, sw, sr = p.nchannels, p.sampwidth, p.framerate
+        bytes_per_sample = sw * nchan
+        frame_bytes = int(sr * _TRIM_FRAME_MS / 1000) * bytes_per_sample
+        if frame_bytes == 0:
+            frame_bytes = bytes_per_sample
+        n = len(frames)
+        if n < frame_bytes:
+            return wav_path
+        pos = n
+        last_voice = 0
+        while pos > 0:
+            start = max(0, pos - frame_bytes)
+            chunk = frames[start:pos]
+            max_amp = 0
+            if sw == 2:
+                cnt = len(chunk) // 2
+                for i in range(cnt):
+                    v = abs(struct.unpack_from('<h', chunk, i * 2)[0])
+                    if v > max_amp:
+                        max_amp = v
+                        if max_amp > _TRIM_AMP_THRESHOLD:
+                            break
+            elif sw == 1:
+                for b in chunk:
+                    v = abs(b - 128)
+                    if v > max_amp:
+                        max_amp = v
+                        if max_amp > _TRIM_AMP_THRESHOLD:
+                            break
+            else:
+                return wav_path  # 未知位深不裁
+            if max_amp > _TRIM_AMP_THRESHOLD:
+                last_voice = pos
+                break
+            pos = start
+        if last_voice == 0:
+            return wav_path  # 全静音或未找到语音，不裁
+        tail = int(sr * _TRIM_TAIL_MS / 1000) * bytes_per_sample
+        end = min(n, last_voice + tail)
+        trimmed = frames[:end]
+        fd, tmp = tempfile.mkstemp(suffix='_trimmed.wav')
+        with os.fdopen(fd, 'wb'):
+            pass
+        with wave.open(tmp, 'wb') as w:
+            w.setparams(p)
+            w.writeframes(trimmed)
+        return tmp
+    except Exception as e:
+        logger.warning(f"[interruption_llm_full] trim wav tail 失败 {wav_path}: {e}")
+        return wav_path
+
+
+def _fmt_chunks(chunks: Any, limit: int = 600) -> str:
+    """把 chunks 格式成 `text[start,end] text[start,end]` 形式，供 prompt 引用时间戳。"""
+    if not chunks:
+        return '(无)'
+    if isinstance(chunks, dict):
+        chunks = chunks.get('chunks') or []
+    parts: List[str] = []
+    for c in (chunks or [])[:limit]:
+        if not isinstance(c, dict):
+            continue
+        t = str(c.get('text', ''))
+        ts = c.get('timestamp')
+        if isinstance(ts, (list, tuple)) and len(ts) >= 2 and ts[0] is not None and ts[1] is not None:
+            try:
+                parts.append(f'{t}[{float(ts[0]):.2f},{float(ts[1]):.2f}]')
+            except (TypeError, ValueError):
+                parts.append(t)
+        else:
+            parts.append(t)
+    return ' '.join(parts) if parts else '(无)'
+
+
+def _num(v: Any) -> Optional[float]:
+    """转数值(秒)，3 位小数；非数值返回 None。"""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return round(float(v), 3)
+    if isinstance(v, str):
+        try:
+            return round(float(v.strip()), 3)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
+def _seg(v: Any) -> Optional[List[float]]:
+    """[起, 止] 秒，3 位小数。"""
+    if isinstance(v, (list, tuple)) and len(v) >= 2:
+        try:
+            return [round(float(v[0]), 3), round(float(v[1]), 3)]
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _build_interruption_full_prompt(rounds: List[Dict[str, Any]],
+                                    user_asr_ref_pr: List[Any],
+                                    ai_word_chunks_pr: List[Any],
+                                    original_topic: str = '') -> str:
+    """构建多轮打断全量评估 prompt（强调 2 轮及以上、逐轮独立分析）。
+
+    用户/AI 侧均给段级 ASR 时间戳作参考；字词级定位优先由 gemini 听随附音频自己产出
+    （本地字词级 ASR 时间戳不可靠，不喂）；音频不可用时回落到段级 ASR 时间戳。
+    """
+    topic_line = original_topic or '(未显式给出，可从对话推断)'
+    blocks: List[str] = []
+    for i, rd in enumerate(rounds, 1):
+        if not isinstance(rd, dict):
+            continue
+        u = user_asr_ref_pr[i - 1] if i - 1 < len(user_asr_ref_pr) else None
+        a = ai_word_chunks_pr[i - 1] if i - 1 < len(ai_word_chunks_pr) else None
+        query = _unwrap_value(rd.get('query', '')) or ''
+        answer = _unwrap_value(rd.get('answer', '')) or ''
+        is_ret = bool(rd.get('is_return_to_topic'))
+        blocks.append(
+            f'── 第 {i} 轮 (is_return_to_topic={is_ret}) ──\n'
+            f'用户指令(query): {query}\n'
+            f'模型回复(answer): {answer}\n'
+            f'用户ASR(段级, 参考时间戳, 秒): {_fmt_chunks(u)}\n'
+            f'AI回复ASR(段级, 参考时间戳, 秒): {_fmt_chunks(a)}'
+        )
+    rounds_text = '\n\n'.join(blocks)
+    return f"""你是语音对话打断评估专家。**重要：用户会进行 2 轮或 2 轮以上的对话**，请逐轮独立分析；打断可能发生在任一轮。
+
+定位打断边界时，**优先听随附音频做字词级 ASR**（本地 ASR 常把中文短词误识成日文假名，文本不可全信，以你听音频为准）；若未提供音频或音频不可用，则用上方段级 ASR 时间戳作参考。两路音频同一时间轴(秒)。
+
+【原始话题/上下文】: {topic_line}
+
+{rounds_text}
+
+请逐轮判断并输出。每轮需要判定：
+1. is_interrupted(布尔): AI 在该轮是否被用户打断(用户在 AI 正在说话期间开口插话)。
+2. success(布尔|null): 仅 is_interrupted=true 时判定——AI 是否成功处理打断(合理停下当前输出 + 给出与打断意图相符的恢复回复)；未被打断则 null。
+3. stop_latency_s(秒,3位小数|null): 仅打断轮——用户开始打断(user_interrupt_segment[0]) → AI 当前段停止(model_active_segment[1])。未打断则 null。
+4. recovery_latency_s(秒,3位小数|null): 仅打断轮——用户讲完(user_interrupt_segment[1]) → AI 重新开口(model_next_segment[0])。未打断则 null。
+5. user_interrupt_segment / model_active_segment / model_next_segment: [起, 止]秒|null，定位用户打断段与 AI 当前/下一段(以你听音频的字词级时间戳为准)。
+6. reaction_behavior: AI 对打断语句的反应，五选一(回应/恢复/询问/无关回复/沉默或无视)；未被打断填"回应"。
+7. coherence/relevance/adaptability(0-5整数): AI 恢复回复的连贯性/相关性/适应性。
+8. reasoning: 简短说明如何定位打断段与各段起止。
+
+时延定义须与时间戳一致(秒)：stop_latency = model_active_segment[1] - user_interrupt_segment[0]；recovery_latency = model_next_segment[0] - user_interrupt_segment[1]。model_active_segment 是用户开始打断时 AI 正在说的段(满足 m_s <= u_s < m_e)；model_next_segment 是其结束后 AI 重新开口的下一段。
+
+只输出严格 JSON(不要 markdown 围栏、不要额外文字)：
+{{"rounds":[{{"round":1,"is_interrupted":false,"success":null,"stop_latency_s":null,"recovery_latency_s":null,"user_interrupt_segment":null,"model_active_segment":null,"model_next_segment":null,"reaction_behavior":"回应","coherence":0,"relevance":0,"adaptability":0,"reasoning":""}}]}}"""
+
+
+def evaluate_interruption_llm_full(rounds: List[Dict[str, Any]],
+                                   user_asr_ref_pr: List[Any],
+                                   ai_word_chunks_pr: List[Any],
+                                   ai_wav_pr: List[Any],
+                                   user_wav_pr: List[Any],
+                                   task_params: Dict[str, Any]) -> Dict[str, Any]:
+    """LLM 全量打断评估主入口。
+
+    把 success_rate / stop_latency / recovery_latency 三项主指标交给 LLM 计算，同时判断
+    AI 是否被打断、AI 对打断语句的反应(reaction_behavior)与恢复质量(coherence/relevance/adaptability)。
+
+    Args:
+        rounds: 多轮文本结构，每轮 {query, answer, is_return_to_topic, user_wav, ai_wav...}
+        user_asr_ref_pr: 各轮用户本地 ASR(已 _strip_kana 去日文) {text, chunks} 列表
+        ai_word_chunks_pr: 各轮 AI 字词级 ASR chunks 列表
+        ai_wav_pr / user_wav_pr: 各轮 wav 路径(多模态音频，带轮号)
+        task_params: 读 llm_model / max_tokens / temperature / original_topic
+
+    Returns:
+        dict: enabled/model/interruption_success_rate/avg_stop_latency_s/avg_recovery_latency_s/
+              llm_recovery_avg_*/llm_interaction_*/per_round/audio_dropped/message
+    """
+    from app.config import config
+    from ..llm_judge.llm_judge_calculator import _call_llm_api
+
+    llm_config = getattr(config, 'LLM_JUDGE', {})
+    default_model = llm_config.get('default_model', 'gpt-4')
+    model = task_params.get('llm_model') or default_model
+    max_tokens = int(task_params.get('max_tokens', 8192) or 8192)
+    temperature = float(task_params.get('temperature', 0.0) or 0.0)
+    original_topic = _unwrap_value(task_params.get('original_topic', '')) or ''
+
+    if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
+        raise ValueError(
+            'LLM 评估未配置：请在 eval_server 设置 LLM_JUDGE_API_BASE 与 LLM_JUDGE_API_KEY'
+        )
+
+    prompt = _build_interruption_full_prompt(rounds, user_asr_ref_pr, ai_word_chunks_pr, original_topic)
+
+    # ── 多模态音频：收集各轮 ai_wav/user_wav，带轮号标签 ──
+    # 先裁尾部静音把长录音压小(偏移0,时间戳不变)，让更多 case 能发音频给 gemini 听
+    audio_paths: List[str] = []
+    audio_labels: List[str] = []
+    temp_files: List[str] = []
+    try:
+        for i, (aw, uw) in enumerate(zip(ai_wav_pr, user_wav_pr), 1):
+            if aw and os.path.isfile(aw):
+                tw = _trim_wav_tail(aw)
+                if tw != aw:
+                    temp_files.append(tw)
+                audio_paths.append(tw)
+                audio_labels.append(f'第{i}轮_AI回复音频')
+            if uw and os.path.isfile(uw):
+                tw = _trim_wav_tail(uw)
+                if tw != uw:
+                    temp_files.append(tw)
+                audio_paths.append(tw)
+                audio_labels.append(f'第{i}轮_用户音频')
+
+        audio_dropped = False
+        if audio_paths:
+            total_bytes = sum(os.path.getsize(p) for p in audio_paths)
+            if total_bytes > _LLM_AUDIO_MAX_BYTES:
+                logger.warning(
+                    f"[interruption_llm_full] 裁后音频总 {total_bytes // 1024}KB 仍过大(>{_LLM_AUDIO_MAX_BYTES // 1024}KB)，丢弃音频只发文本"
+                )
+                audio_paths = []
+                audio_labels = []
+                audio_dropped = True
+            else:
+                prompt += '\n\n[附] 随附音频按顺序对应：' + '，'.join(audio_labels) + '（与上方各轮 ASR 时间戳同源，可直接听辨判断是否被打断与 AI 反应）'
+
+        resp = _call_llm_api(model, prompt, max_tokens, temperature, audio_paths=audio_paths)
+    finally:
+        for tf in temp_files:
+            try:
+                os.remove(tf)
+            except OSError:
+                pass
+    parsed = _parse_json(resp['content']) or {}
+    raw_rounds = parsed.get('rounds')
+    if not isinstance(raw_rounds, list):
+        raw_rounds = []
+
+    interaction_summary: Dict[str, int] = {label: 0 for label in _BEHAVIOR_LABELS}
+    per_round: List[Dict[str, Any]] = []
+    for idx, rd in enumerate(rounds, 1):
+        if not isinstance(rd, dict):
+            continue
+        rr = raw_rounds[idx - 1] if idx - 1 < len(raw_rounds) else {}
+        if not isinstance(rr, dict):
+            rr = {}
+        is_int = bool(rr.get('is_interrupted'))
+        succ = rr.get('success')
+        if isinstance(succ, str):
+            succ = succ.strip().lower() in ('true', '1', 'yes', '是', '成功')
+        beh_raw = rr.get('reaction_behavior', '回应' if not is_int else '')
+        beh, _ = _normalize_behavior(beh_raw, interaction_summary)
+        coh = _score_field(rr, 'coherence')
+        rel = _score_field(rr, 'relevance')
+        adap = _score_field(rr, 'adaptability')
+        per_round.append({
+            'round': idx,
+            'is_interrupted': is_int,
+            'success': bool(succ) if succ is not None else None,
+            'stop_latency_s': _num(rr.get('stop_latency_s')),
+            'recovery_latency_s': _num(rr.get('recovery_latency_s')),
+            'user_interrupt_segment': _seg(rr.get('user_interrupt_segment')),
+            'model_active_segment': _seg(rr.get('model_active_segment')),
+            'model_next_segment': _seg(rr.get('model_next_segment')),
+            'reaction_behavior': beh,
+            'coherence': coh, 'relevance': rel, 'adaptability': adap,
+            'reasoning': str(rr.get('reasoning', '')),
+        })
+
+    # ── Python 聚合(不让 LLM 算平均) ──
+    int_rds = [r for r in per_round if r['is_interrupted']]
+    succ_count = sum(1 for r in int_rds if r['success'])
+    success_rate = round(succ_count / len(int_rds), 3) if int_rds else 0.0
+    stop_lats = [r['stop_latency_s'] for r in int_rds if r['stop_latency_s'] is not None]
+    recov_lats = [r['recovery_latency_s'] for r in int_rds if r['recovery_latency_s'] is not None]
+
+    result: Dict[str, Any] = {
+        'enabled': True,
+        'model': model,
+        'interruption_success_rate': success_rate,
+        'avg_stop_latency_s': _avg(stop_lats),
+        'avg_recovery_latency_s': _avg(recov_lats),
+        'llm_recovery_avg_coherence': _avg([r['coherence'] for r in per_round]),
+        'llm_recovery_avg_relevance': _avg([r['relevance'] for r in per_round]),
+        'llm_recovery_avg_adaptability': _avg([r['adaptability'] for r in per_round]),
+        'llm_interaction_behavior_summary': interaction_summary,
+        'llm_interaction_per_round': [
+            {'round': r['round'], 'is_interrupted': r['is_interrupted'],
+             'reaction_behavior': r['reaction_behavior'], 'reasoning': r['reasoning']}
+            for r in per_round
+        ],
+        'llm_recovery_per_round': per_round,
+        'per_round': per_round,
+        'audio_dropped': audio_dropped,
+        'message': 'OK',
+    }
+    logger.info(
+        f"[interruption_llm_full] model={model} n_rounds={len(per_round)} "
+        f"n_interrupted={len(int_rds)} success_rate={success_rate} "
+        f"avg_stop={result['avg_stop_latency_s']}s avg_recovery={result['avg_recovery_latency_s']}s "
+        f"behavior={interaction_summary} audio_dropped={audio_dropped}"
+    )
+    return result

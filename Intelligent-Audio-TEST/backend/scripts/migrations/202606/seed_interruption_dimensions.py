@@ -98,7 +98,7 @@ MAIN_DIMENSION = {
          False, None, '模型恢复语音 wav 路径；与 user_wav 各调一次 ASR 后对齐算打断', 6),
         ('seg_merge_gap_s', '词合并间隙', '词合并为段的间隙阈值(秒)', 'number', 'input',
          None, None, None, False,
-         False, '0.5', '相邻词时间戳间隙小于该值则合并为同一段(秒)', 11),
+         False, '3.0', '相邻词时间戳间隙小于该值则合并为同一段(秒)', 11),
 
         # ─── 输入参数: 大模型评估（可选）───
         ('rounds', '多轮文本', '多轮对话文本结构(用于大模型评估)', 'json', 'input',
