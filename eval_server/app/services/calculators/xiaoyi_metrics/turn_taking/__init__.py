@@ -892,7 +892,11 @@ def calculate_interruption_metrics(task_params):
         result['llm_eval'] = {'enabled': False, 'message': reason}
         logger.info(f"[interruption_metrics] LLM 评估跳过：{reason}")
 
-    return result
+    # 包成 {'interruption': <result>}：与 seed field_path 'interruption.X' 前缀约定一致
+    # (xiaoyi/turn_taking 同款嵌套约定)；平台 extract_by_path('interruption.X', resp) 才能取到。
+    # turn_taking 子维度路径(results['interruption']=本返回)会双层嵌套，但 interruption 维度
+    # 走独立 interruption_metrics 任务、不从 turn_taking 提取，故无害。
+    return {'interruption': result}
 
 
 def calculate_high_freq_turn_taking_metrics(task_params):

@@ -76,6 +76,8 @@ def run_case(name, d, expect_llm=True, with_asr=False):
         config.LLM_JUDGE["api_key"] = ""
 
     r = calculate_interruption_metrics(tp)
+    # 现返回 {'interruption': <flat>}（匹配 seed field_path 'interruption.X' 前缀），解包读
+    r = (r.get('interruption') if isinstance(r, dict) and 'interruption' in r else r) or {}
     print(f"\n--- {name} 结果 ---", flush=True)
     print(f"interruption_success_rate = {r.get('interruption_success_rate')}", flush=True)
     print(f"avg_stop_latency_s        = {r.get('avg_stop_latency_s')}", flush=True)
