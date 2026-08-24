@@ -1,0 +1,37 @@
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/strategy.py
+  s_a837f2de50895c::t_0ae107ec3112c4 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "a6e79bb3d1694be353023dd40b610b3dae52a100",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_a837f2de50895c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8abe2cc2b7c194d33578d5",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a8abf5dc2b7c194d335790f",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "operation_id": "6a8abf5dc2b7c194d335790f",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "external_session_id": "6a8abe2cc2b7c194d33578d5",
+        "dedupe_key": "6a8abe2cc2b7c194d33578d5:6a8abf5dc2b7c194d335790f:afterEdit:37c8930c",
+        "runtime_client": "trae-tob-git-ai",
+        "session_id": "6a8abe2cc2b7c194d33578d5",
+        "tool_type": "builtin",
+        "source_scene": "agent"
+      }
+    }
+  }
+}
