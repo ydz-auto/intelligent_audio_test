@@ -3018,18 +3018,50 @@ class AudioController:
         path = request.args.get('path')
         if not path:
             return error_response("未提供路径", 400)
-            
-        if not os.path.exists(path):
+
+        # 安全检查：路径应为相对路径，拼接 STATIC_BASE_PATH 后检查
+        static_base = current_app.config.get('STATIC_BASE_PATH')
+        audio_storage = current_app.config.get('AUDIO_STORAGE_PATH')
+        archive_path = current_app.config.get('ARCHIVE_PATH')
+
+        # 构建允许的基础目录（用 realpath 解析符号链接后比较）
+        allowed_base_dirs = []
+        for base in [static_base, audio_storage, archive_path]:
+            if base:
+                allowed_base_dirs.append(os.path.realpath(base))
+
+        # 拼接基础目录 + 相对路径
+        if static_base:
+            full_path = os.path.join(static_base, path)
+        elif audio_storage:
+            full_path = os.path.join(audio_storage, path)
+        else:
+            return error_response("服务器未配置音频目录", 500)
+
+        # 解析符号链接后规范化
+        normalized_path = os.path.realpath(full_path)
+
+        # 检查路径遍历攻击：规范化后路径必须在允许目录下
+        if not any(
+            normalized_path == base or normalized_path.startswith(base + os.sep)
+            for base in allowed_base_dirs
+        ):
+            return error_response("路径不在允许的目录范围内", 403)
+
+        if not os.path.exists(normalized_path):
             return error_response("文件不存在", 404)
 
-        # 安全检查：确保路径在允许的目录下（例如音频存储目录或任务结果目录）
-        # 这里为了简化，仅检查是否存在。在生产环境中应加强检查。
-        
-        file_size = os.path.getsize(path)
-        ext = os.path.splitext(path)[1].lower().replace('.', '')
+        # 仅允许音频文件扩展名
+        ext = os.path.splitext(normalized_path)[1].lower().replace('.', '')
         if not ext:
             ext = 'wav'
+        allowed_exts = {'wav', 'mp3', 'flac', 'aac', 'ogg', 'm4a', 'wma', 'opus'}
+        if ext not in allowed_exts:
+            return error_response("不支持的文件类型", 403)
         mimetype = f"audio/{ext}"
+
+        path = normalized_path
+        file_size = os.path.getsize(path)
         
         range_header = request.headers.get('Range', None)
         if not range_header:

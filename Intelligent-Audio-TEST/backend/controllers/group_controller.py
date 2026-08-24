@@ -31,7 +31,9 @@ class GroupController:
             dim_str = str(dimension_id)
             case_filters.append(
                 TestCase.config.cast(db.Text).like(f'"id": {dim_str}') |
-                TestCase.config.cast(db.Text).like(f'"id":{dim_str}')
+                TestCase.config.cast(db.Text).like(f'"id":{dim_str}') |
+                TestCase.config.cast(db.Text).like(f'"id": "{dim_str}"') |
+                TestCase.config.cast(db.Text).like(f'"id":"{dim_str}"')
             )
         if keyword:
             case_filters.append(

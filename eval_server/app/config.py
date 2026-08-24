@@ -40,30 +40,30 @@ class Config:
     HOST = '0.0.0.0'
 
     # Local concurrency control
-    LOCAL_MAX_CONCURRENCY = 15
+    LOCAL_MAX_CONCURRENCY = 30
 
     # WSGI 服务器线程数（waitress 固定线程池）
-    # None = 自动计算（LOCAL_MAX_CONCURRENCY * 2 + 4，上限 32）
-    WSGI_THREADS = None
+    # None = 自动计算（LOCAL_MAX_CONCURRENCY * 2 + 4，上限 64）
+    WSGI_THREADS = 64
 
     # Task settings
     CONCURRENCY_LIMITS = {
-        'wer': 3,
-        'ser': 3,
-        'der': 2,
-        'cpwer': 3,
-        'tcpwer': 3,
-        'stm_wer': 3,
-        'llm_judge': 5,
-        'turn_taking': 3,
-        'interruption_metrics': 3,
-        'non_interactive_latency': 3,
-        'noise_latency': 3,
-        'env_judge': 3,
-        'high_freq_turn_taking': 3,
-        'high_freq_llm_judge': 5,
+        'wer': 10,
+        'ser': 10,
+        'der': 5,
+        'cpwer': 10,
+        'tcpwer': 10,
+        'stm_wer': 10,
+        'llm_judge': 10,
+        'turn_taking': 10,
+        'interruption_metrics': 10,
+        'non_interactive_latency': 10,
+        'noise_latency': 10,
+        'env_judge': 10,
+        'high_freq_turn_taking': 10,
+        'high_freq_llm_judge': 10,
     }
-    DEFAULT_MAX_CONCURRENCY = 3
+    DEFAULT_MAX_CONCURRENCY = 10
 
     # LLM Judge 配置（OpenAI 兼容代理 https://az.gptplus5.com/v1）
     # 所有字段均可在 eval_server/.env 覆盖

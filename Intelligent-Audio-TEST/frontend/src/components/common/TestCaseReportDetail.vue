@@ -132,6 +132,7 @@
       v-if="showAudioModal && currentPlayingAudio"
       :visible="showAudioModal"
       :audioId="currentPlayingAudio.id"
+      :audioPath="currentPlayingAudio.path"
       :audioTitle="currentPlayingAudio.label || '音频播放'"
       :audioType="currentPlayingAudio.type || 'api'"
       :spl="currentPlayingAudio.spl"
@@ -144,70 +145,133 @@
       <h4 class="section-title"><i class="fas fa-play-circle"></i> 执行结果</h4>
 
       <div class="execution-results-container">
-        <!-- 参考文本字段 -->
+        <!-- 参考数据表格 -->
         <div v-if="referenceTextFields.length > 0" class="result-subsection">
-          <div class="subsection-label">参考数据</div>
-          <div class="text-comparison-grid reference-row">
-            <div class="text-group" v-for="field in referenceTextFields" :key="'ref_' + field.param_code">
-              <div class="text-item">
-                <div class="result-label">{{ field.label || field.param_code }}</div>
-                <div class="text-card reference">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts['ref_' + field.param_code] }">
-                    <pre v-if="isJsonString(field.text)" class="text-content json-formatted">{{ formatJson(field.text) }}</pre>
-                    <div v-else class="text-content">{{ field.text }}</div>
-                    <div v-if="(field.text || '').length > 100" class="expand-toggle" @click="toggleText('ref_' + field.param_code)">
-                      {{ expandedTexts['ref_' + field.param_code] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </div>
+          <div class="subsection-label"><i class="fas fa-bookmark"></i> 参考数据</div>
+          <div class="kv-table">
+            <div class="kv-table-row" v-for="field in referenceTextFields" :key="'ref_' + field.param_code">
+              <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+              <div class="kv-table-value">
+                <pre v-if="isJsonString(field.text)" class="json-formatted">{{ formatJson(field.text) }}</pre>
+                <span v-else-if="(field.text || '').length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['ref_' + field.param_code] }">
+                  <span class="text-content">{{ field.text }}</span>
+                  <span class="expand-toggle" @click="toggleText('ref_' + field.param_code)">
+                    {{ expandedTexts['ref_' + field.param_code] ? '收起' : '展开' }}
+                  </span>
+                </span>
+                <span v-else>{{ field.text }}</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 结果文本字段 -->
-        <div v-if="resultTextFields.length > 0" class="result-subsection">
-          <div v-if="referenceTextFields.length > 0" class="subsection-label">结果数据</div>
-          <!-- 按维度分组展示 -->
-          <template v-if="!isComparison">
-            <div v-for="group in groupedResultTextFields" :key="group.key" class="dimension-group">
-              <div v-if="group.label" class="dimension-group-label">{{ group.label }}</div>
-              <div class="device-result-row">
-                <div class="text-comparison-grid">
-                  <div class="text-item" v-for="field in group.fields" :key="'res_' + field.param_code">
-                    <div class="result-label">{{ field.label || field.param_code }}</div>
-                    <div class="text-card">
-                      <div class="collapsible-text" :class="{ expanded: expandedTexts['default_' + field.param_code] }">
-                        <pre v-if="isJsonString(field.getValue('default'))" class="text-content json-formatted">{{ formatJson(field.getValue('default')) }}</pre>
-                        <div v-else class="text-content">{{ field.getValue('default') }}</div>
-                        <div v-if="(field.getValue('default')).length > 100" class="expand-toggle" @click="toggleText('default_' + field.param_code)">
-                          {{ expandedTexts['default_' + field.param_code] ? '收起' : '展开' }}
-                        </div>
+        <!-- 评估结果（维度 tab 切换） -->
+        <div v-if="dimResultGroups.length" class="result-subsection">
+          <div class="subsection-label"><i class="fas fa-clipboard-list"></i> 评估结果</div>
+          <div class="dim-tab-container">
+            <div class="dim-tab-bar sub">
+              <button
+                v-for="(group, idx) in dimResultGroups"
+                :key="group.key"
+                class="dim-tab-btn sub"
+                :class="{ active: activeDimTab === idx }"
+                @click="activeDimTab = idx"
+              >
+                {{ group.label }}
+              </button>
+            </div>
+            <div class="dim-tab-content">
+              <!-- 对比模式：按设备列 -->
+              <template v-if="isComparison">
+                <div v-for="device in devices" :key="device" class="device-block">
+                  <div class="device-block-title">{{ getDeviceName(device) }}</div>
+                  <div class="kv-table">
+                    <div class="kv-table-row" v-for="field in dimResultGroups[activeDimTab]?.fields" :key="device + '_' + field.param_code">
+                      <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+                      <div class="kv-table-value">
+                        <button v-if="field.param_type === 'audio_file'" class="audio-play-btn" @click="openPathAudio(field.getValue(device))">
+                          <i class="fas fa-play-circle"></i> 播放音频
+                        </button>
+                        <pre v-else-if="isJsonString(field.getValue(device))" class="json-formatted">{{ formatJson(field.getValue(device)) }}</pre>
+                        <span v-else-if="String(field.getValue(device)).length > 200" class="collapsible-text" :class="{ expanded: expandedTexts[device + '_' + field.param_code] }">
+                          <span class="text-content">{{ field.getValue(device) }}</span>
+                          <span class="expand-toggle" @click="toggleText(device + '_' + field.param_code)">
+                            {{ expandedTexts[device + '_' + field.param_code] ? '收起' : '展开' }}
+                          </span>
+                        </span>
+                        <span v-else>{{ field.getValue(device) }}</span>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </template>
+              <!-- 单设备模式 -->
+              <template v-else>
+                <div class="kv-table">
+                  <div class="kv-table-row" v-for="field in dimResultGroups[activeDimTab]?.fields" :key="'res_' + field.param_code">
+                    <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+                    <div class="kv-table-value">
+                      <button v-if="field.param_type === 'audio_file'" class="audio-play-btn" @click="openPathAudio(field.getValue('default'))">
+                        <i class="fas fa-play-circle"></i> 播放音频
+                      </button>
+                      <pre v-else-if="isJsonString(field.getValue('default'))" class="json-formatted">{{ formatJson(field.getValue('default')) }}</pre>
+                      <span v-else-if="String(field.getValue('default')).length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['default_' + field.param_code] }">
+                        <span class="text-content">{{ field.getValue('default') }}</span>
+                        <span class="expand-toggle" @click="toggleText('default_' + field.param_code)">
+                          {{ expandedTexts['default_' + field.param_code] ? '收起' : '展开' }}
+                        </span>
+                      </span>
+                      <span v-else>{{ field.getValue('default') }}</span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- 设备/API 执行结果（独立区域） -->
+        <div v-if="generalResultGroup.fields.length" class="result-subsection">
+          <div class="subsection-label"><i class="fas fa-mobile-alt"></i> 设备/API 执行结果</div>
+          <template v-if="isComparison">
+            <div v-for="device in devices" :key="device" class="device-block">
+              <div class="device-block-title">{{ getDeviceName(device) }}</div>
+              <div class="kv-table">
+                <div class="kv-table-row" v-for="field in generalResultGroup.fields" :key="device + '_' + field.param_code">
+                  <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+                  <div class="kv-table-value">
+                    <button v-if="field.param_type === 'audio_file'" class="audio-play-btn" @click="openPathAudio(field.getValue(device))">
+                      <i class="fas fa-play-circle"></i> 播放音频
+                    </button>
+                    <pre v-else-if="isJsonString(field.getValue(device))" class="json-formatted">{{ formatJson(field.getValue(device)) }}</pre>
+                    <span v-else-if="String(field.getValue(device)).length > 200" class="collapsible-text" :class="{ expanded: expandedTexts[device + '_' + field.param_code] }">
+                      <span class="text-content">{{ field.getValue(device) }}</span>
+                      <span class="expand-toggle" @click="toggleText(device + '_' + field.param_code)">
+                        {{ expandedTexts[device + '_' + field.param_code] ? '收起' : '展开' }}
+                      </span>
+                    </span>
+                    <span v-else>{{ field.getValue(device) }}</span>
                   </div>
                 </div>
               </div>
             </div>
           </template>
           <template v-else>
-            <div v-for="device in devices" :key="device" class="device-result-row">
-              <div class="device-row-title">{{ getDeviceName(device) }}</div>
-              <div v-for="group in groupedResultTextFields" :key="device + '_' + group.key" class="dimension-group">
-                <div v-if="group.label" class="dimension-group-label">{{ group.label }}</div>
-                <div class="text-comparison-grid">
-                  <div class="text-item" v-for="field in group.fields" :key="device + '_' + field.param_code">
-                    <div class="result-label">{{ field.label || field.param_code }}</div>
-                    <div class="text-card">
-                      <div class="collapsible-text" :class="{ expanded: expandedTexts[device + '_' + field.param_code] }">
-                        <pre v-if="isJsonString(field.getValue(device))" class="text-content json-formatted">{{ formatJson(field.getValue(device)) }}</pre>
-                        <div v-else class="text-content">{{ field.getValue(device) }}</div>
-                        <div v-if="(field.getValue(device)).length > 100" class="expand-toggle" @click="toggleText(device + '_' + field.param_code)">
-                          {{ expandedTexts[device + '_' + field.param_code] ? '收起' : '展开' }}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+            <div class="kv-table">
+              <div class="kv-table-row" v-for="field in generalResultGroup.fields" :key="'res_' + field.param_code">
+                <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+                <div class="kv-table-value">
+                  <button v-if="field.param_type === 'audio_file'" class="audio-play-btn" @click="openPathAudio(field.getValue('default'))">
+                    <i class="fas fa-play-circle"></i> 播放音频
+                  </button>
+                  <pre v-else-if="isJsonString(field.getValue('default'))" class="json-formatted">{{ formatJson(field.getValue('default')) }}</pre>
+                  <span v-else-if="String(field.getValue('default')).length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['default_' + field.param_code] }">
+                    <span class="text-content">{{ field.getValue('default') }}</span>
+                    <span class="expand-toggle" @click="toggleText('default_' + field.param_code)">
+                      {{ expandedTexts['default_' + field.param_code] ? '收起' : '展开' }}
+                    </span>
+                  </span>
+                  <span v-else>{{ field.getValue('default') }}</span>
                 </div>
               </div>
             </div>
@@ -257,7 +321,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { API_CONFIG } from '../../utils/config';
 import DataTable from './DataTable.vue';
 import TimelineComparison from '../report/TimelineComparison.vue';
@@ -539,6 +603,7 @@ const resultTextFields = computed(() => {
     param_code: i.param_code ?? i.paramCode,
     param_type: i.param_type ?? i.paramType,
     round_number: i.round_number ?? i.roundNumber,
+    dimension_name: i.dimension_name ?? i.dimensionName,
   }));
 
   // 1. 从 algorithmResults 中提取所有 text 类型项（包含 question@round / answer@round）
@@ -553,11 +618,12 @@ const resultTextFields = computed(() => {
     'context_mode', 'contextMode',
     'error',
   ]);
+  const DISPLAY_TYPES = new Set(['text', 'timestamp', 'number', 'boolean', 'json', 'audio_file']);
   const textItems = [];
   const seenCodes = new Set();
   for (const item of algoResults) {
     const code = item.param_code;
-    if ((item.param_type === 'text' || item.param_type === 'timestamp') && code && !META_CODES.has(code) && !code.startsWith('rounds') && !seenCodes.has(code)) {
+    if (DISPLAY_TYPES.has(item.param_type) && code && !META_CODES.has(code) && !code.startsWith('rounds') && !seenCodes.has(code)) {
       seenCodes.add(code);
       textItems.push({
         param_code: code,
@@ -570,14 +636,14 @@ const resultTextFields = computed(() => {
     }
   }
 
-  // 2. 补充 fieldMapping 里定义的 text/timestamp 字段（跳过 algorithmResults 已覆盖的）
+  // 2. 补充 fieldMapping 里定义的 text/timestamp/number 字段（跳过 algorithmResults 已覆盖的）
   const fmFields = (props.fieldMapping?.result || [])
     .map(f => ({
       ...f,
       param_code: f.param_code ?? f.paramCode,
       param_type: f.param_type ?? f.paramType ?? 'text',
     }))
-    .filter(f => (f.param_type === 'text' || f.param_type === 'timestamp')
+    .filter(f => DISPLAY_TYPES.has(f.param_type)
       && f.param_code && !META_CODES.has(f.param_code) && !f.param_code.startsWith('rounds'));
   for (const f of fmFields) {
     if (!seenCodes.has(f.param_code)) {
@@ -627,11 +693,22 @@ const groupedResultTextFields = computed(() => {
   if (groups[null]) {
     result.push({
       key: '_general',
-      label: null,
+      label: '其他结果',
       fields: groups[null]
     });
   }
   return result;
+});
+
+// 有维度归属的结果分组（维度评估结果）
+const dimResultGroups = computed(() => {
+  return groupedResultTextFields.value.filter(g => g.key !== '_general');
+});
+
+// 无维度归属的结果分组（设备/API 执行结果）
+const generalResultGroup = computed(() => {
+  const found = groupedResultTextFields.value.find(g => g.key === '_general');
+  return found || { key: '_general', label: '设备/API 执行结果', fields: [] };
 });
 
 // 是否有结果音频
@@ -905,6 +982,22 @@ const getResultTextValue = (device, paramCode) => {
     }
     return ts;
   }
+  // 数值类型：格式化数字
+  if (item.param_type === 'number') {
+    if (typeof data === 'number') {
+      return Number.isInteger(data) ? String(data) : data.toFixed(2);
+    }
+    const num = Number(data);
+    if (!isNaN(num)) {
+      return Number.isInteger(num) ? String(num) : num.toFixed(2);
+    }
+    return String(data);
+  }
+  // 布尔类型
+  if (item.param_type === 'boolean') {
+    if (typeof data === 'boolean') return data ? '是' : '否';
+    return String(data);
+  }
   if (typeof data === 'string') {
     // 尝试解析 JSON 字符串并格式化
     try {
@@ -979,6 +1072,25 @@ const closeAudioModal = () => {
   showAudioModal.value = false;
   currentPlayingAudio.value = null;
 };
+
+// 打开音频路径（通过 stream-by-path）
+const openPathAudio = (path) => {
+  currentPlayingAudio.value = {
+    path: path,
+    label: path.split('\\').pop().split('/').pop(),
+    type: 'api'
+  };
+  showAudioModal.value = true;
+};
+
+// 维度 tab 状态
+const activeDimTab = ref(0);
+
+watch(dimResultGroups, (newGroups) => {
+  if (activeDimTab.value >= newGroups.length) {
+    activeDimTab.value = 0;
+  }
+}, { flush: 'post' });
 </script>
 
 <style scoped>
@@ -1048,7 +1160,7 @@ const closeAudioModal = () => {
 .section-title {
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--primary-color);
   margin-bottom: 16px;
   display: flex;
   align-items: center;
@@ -1106,11 +1218,13 @@ const closeAudioModal = () => {
 
 .dim-name {
   font-weight: 500;
-  color: var(--text-primary);
+  font-size: 13px;
+  color: #333;
 }
 
 .dim-value {
-  color: var(--text-primary);
+  font-size: 13px;
+  color: #333;
 }
 
 .dim-detail {
@@ -1146,16 +1260,24 @@ const closeAudioModal = () => {
 .result-subsection {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .subsection-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--primary-color);
-  padding-bottom: 4px;
-  border-bottom: 1px dashed var(--border-color);
-  margin-bottom: 4px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #e8e8e8;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subsection-label i {
+  color: var(--primary-color);
+  font-size: 12px;
 }
 
 .audio-result-item {
@@ -1333,54 +1455,64 @@ const closeAudioModal = () => {
   gap: 20px;
 }
 
-.device-result-row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-top: 12px;
-  border-top: 1px dashed var(--border-color);
-}
-
-.device-row-title {
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--primary-color);
-}
-
-.text-comparison-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
-}
-
-.reference-row {
-  background: white;
-  padding: 12px;
-  border-radius: 8px;
-}
-
-.text-card {
-  background: white;
-  padding: 12px;
+/* KV Table - 键值对表格样式 */
+.kv-table {
+  width: 100%;
+  border: 1px solid #e8e8e8;
   border-radius: 6px;
-  min-height: 80px;
+  overflow: hidden;
+  background: #fff;
 }
 
-.text-card.reference {
-  background: white;
-}
-
-.text-group {
+.kv-table-row {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  border-bottom: 1px solid #f5f5f5;
+  min-height: 34px;
+  align-items: stretch;
+}
+
+.kv-table-row:last-child {
+  border-bottom: none;
+}
+
+.kv-table-row:hover {
+  background: #fafcff;
+}
+
+.kv-table-key {
+  flex: 0 0 180px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #8c8c8c;
+  background: #fbfbfb;
+  border-right: 1px solid #f0f0f0;
+  display: flex;
+  align-items: center;
+}
+
+.kv-table-value {
+  flex: 1;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+.kv-table-value pre.json-formatted {
+  margin: 0;
+  width: 100%;
 }
 
 .collapsible-text {
   position: relative;
+  width: 100%;
 }
 
-.text-content {
+.collapsible-text .text-content {
   line-height: 1.6;
   font-size: 13px;
   color: var(--text-primary);
@@ -1391,10 +1523,13 @@ const closeAudioModal = () => {
   overflow: hidden;
 }
 
-.json-formatted.text-content {
-  display: block;
+.collapsible-text.expanded .text-content {
   -webkit-line-clamp: unset;
   line-clamp: unset;
+  overflow: visible;
+}
+
+.json-formatted {
   white-space: pre-wrap;
   word-break: break-all;
   font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -1404,12 +1539,7 @@ const closeAudioModal = () => {
   border-radius: 4px;
   max-height: 400px;
   overflow-y: auto;
-}
-
-.expanded .text-content {
-  -webkit-line-clamp: unset;
-  line-clamp: unset;
-  display: block;
+  line-height: 1.5;
 }
 
 .expand-toggle {
@@ -1418,12 +1548,13 @@ const closeAudioModal = () => {
   font-size: 12px;
   margin-top: 4px;
   font-weight: 500;
-  text-align: right;
+  display: inline-block;
+  margin-left: 8px;
 }
 
 @media (max-width: 768px) {
-  .text-comparison-grid {
-    grid-template-columns: 1fr;
+  .kv-table-key {
+    flex: 0 0 120px;
   }
   .multi-round-aggregated {
     flex-direction: column;
@@ -1556,5 +1687,139 @@ const closeAudioModal = () => {
   background: #f0f5ff;
   color: #1677ff;
   font-weight: 500;
+}
+
+/* 维度 Tab 切换 */
+.dim-tab-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dim-tab-bar {
+  display: flex;
+  gap: 2px;
+  border-bottom: 2px solid var(--primary-color);
+  flex-wrap: wrap;
+}
+
+.dim-tab-btn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dim-tab-btn:hover {
+  background: #f0f5ff;
+  color: var(--primary-color);
+}
+
+.dim-tab-btn.active {
+  background: var(--primary-color);
+  color: white;
+  font-weight: 600;
+}
+
+.dim-tab-btn i {
+  font-size: 12px;
+}
+
+/* 第二行子 tab */
+.dim-tab-bar.sub {
+  border-bottom: 1px solid #e8e8e8;
+  padding-left: 8px;
+}
+
+.dim-tab-btn.sub {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 4px;
+  border: 1px solid #e8e8e8;
+  border-bottom: none;
+  margin-bottom: -1px;
+  transition: all 0.2s ease;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.dim-tab-btn.sub:hover {
+  background: #fff5ef;
+}
+
+.dim-tab-btn.sub.active {
+  background: rgba(255, 106, 0, 0.1);
+  color: #FF6A00;
+  border-color: rgba(255, 106, 0, 0.3);
+  font-weight: 500;
+}
+
+.dim-tab-content {
+  padding-top: 4px;
+}
+
+/* 对比模式维度块 */
+.dimension-block {
+  padding: 4px 0;
+}
+
+.dimension-block-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary-color);
+  background: #f0f5ff;
+  padding: 4px 10px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.device-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.device-block-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--primary-color);
+  padding: 2px 0;
+}
+
+/* 音频播放按钮 */
+.audio-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #595959;
+  background: #f5f5f5;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.audio-play-btn:hover {
+  background: #eff6ff;
+  border-color: #91d5ff;
+  color: #1890ff;
+}
+
+.audio-play-btn i {
+  font-size: 14px;
 }
 </style>

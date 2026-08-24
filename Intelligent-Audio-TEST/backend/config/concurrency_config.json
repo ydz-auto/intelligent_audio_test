@@ -1,18 +1,18 @@
 {
   "api_executor": {
-    "max_queue_size": 100,
+    "max_queue_size": 200,
     "max_wait_time": 300,
-    "default_max_process": 5
+    "default_max_process": 20
   },
   "evaluation_service": {
-    "max_queue_size": 100,
+    "max_queue_size": 200,
     "max_wait_time": 300,
-    "default_max_concurrent": 10
+    "default_max_concurrent": 20
   },
   "execution_engine": {
-    "max_queue_size": 100,
+    "max_queue_size": 200,
     "test_case_wait_time": 3000,
-    "api_task_max_workers": 10,
+    "api_task_max_workers": 20,
     "device_control_max_workers": 5,
     "audio_playback_max_workers": 12
   }

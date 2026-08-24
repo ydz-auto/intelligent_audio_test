@@ -248,7 +248,7 @@ class DoubaoChat(Xiaoyilivechat):
             self._log(level='INFO',
                       content=f"[录屏] _stop_recorder: 首帧已记录({first_frame}),graceful toggle + force-stop 兜底",
                       task_id=task_id, test_case_id=test_case_id)
-            super()._stop_recorder(device_sn)
+            super()._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id)
             time.sleep(2)  # 给 graceful toggle 落盘 finalizes mp4 的时间
         else:
             self._log(level='WARNING',
@@ -320,8 +320,6 @@ class DoubaoChat(Xiaoyilivechat):
         driver.shell("param set sys.audio.dump.writehdi.enable w")
         driver.shell("param set sys.audio.dump.writeclient.enable a")
         driver.shell("chmod 777 /data/local/tmp")
-        # 用例开始前清理设备上豆包的 pcm 缓存，避免上个用例残留文件干扰本轮匹配
-        self._clear_pcm(device_sn, app='doubao', task_id=task_id, test_case_id=test_case_id)
 
         # 清除聊天记录以及上下文(开启新话题)
         # 豆包聊天首页右上角菜单按钮: 先尝试语义查找(SymbolGlyph), 找不到则回退坐标
@@ -393,6 +391,11 @@ class DoubaoChat(Xiaoyilivechat):
         # 开局清掉可能残留的华为音乐(上轮/上个用例误识别"播放音乐"拉起的),
         # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。方法继承自父类。
         self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
+        # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
+        # 会破坏连续通话已积累的音频)。必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
+        if record_mode != 'case' or is_first:
+            self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'doubao'),
+                            task_id=task_id, test_case_id=test_case_id)
         # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长
         self._ai_first_frame_ms = None
         self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
@@ -525,7 +528,7 @@ class DoubaoChat(Xiaoyilivechat):
                 return True
             # 末轮：停录屏供 get_results 拉取,但仍【不挂断】——通话交给 teardown.stop_app 兜底结束,
             # 避免挂断重置 AI 上下文。case 模式全程在通话页,无聊天列表,不做气泡文本提取。
-            if not self._stop_recorder(device_sn):
+            if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                 self._log(level='WARNING', content="末轮停止录屏失败,服务仍在运行",
                           task_id=task_id, test_case_id=test_case_id)
             else:
@@ -538,7 +541,7 @@ class DoubaoChat(Xiaoyilivechat):
             return True
 
         # round 模式：每轮独立——停录屏 + 挂断 + 提取气泡。
-        if not self._stop_recorder(device_sn):
+        if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
             self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
         else:
             self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
@@ -591,7 +594,7 @@ class DoubaoChat(Xiaoyilivechat):
         # 1. 兜底停止录屏（仅在仍在录屏时执行，避免 toggle 把已停止的录屏又打开）
         if getattr(self, '_recording', False):
             try:
-                if not self._stop_recorder(device_sn):
+                if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                     self._log(level='WARNING', content="teardown: 兜底停止录屏失败,服务仍在运行",
                               task_id=task_id, test_case_id=test_case_id)
                 else:
@@ -647,5 +650,9 @@ class DoubaoChat(Xiaoyilivechat):
         # 7. 无条件硬停 screenrecorder 兜底(幂等):无论前面 _recording 标志真假,
         #    保证"录屏不停止"残留不可能跨用例存活(豆包录屏 bug 的核心修复兜底)。
         self._force_stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id)
+
+        # 8. 清理 pcm 缓存(get_results 已拉取完毕,此处清设备残留,防止下个用例干扰)
+        self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'doubao'),
+                        task_id=task_id, test_case_id=test_case_id)
 
         return True

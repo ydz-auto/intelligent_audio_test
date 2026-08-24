@@ -358,10 +358,12 @@ class TestCaseController:
         # 按评估维度过滤：搜索 config JSON 中包含该 dimension_id 的用例
         if dimension_id:
             dim_str = str(dimension_id)
-            # config.rounds[].evaluation.dimensions[].id 和 config.dimensions[].id
+            # config 中 id 可能存为整数 "id": 3 或字符串 "id": "3"，两种都要匹配
             query = query.filter(
                 TestCase.config.cast(db.Text).like(f'"id": {dim_str}') |
-                TestCase.config.cast(db.Text).like(f'"id":{dim_str}')
+                TestCase.config.cast(db.Text).like(f'"id":{dim_str}') |
+                TestCase.config.cast(db.Text).like(f'"id": "{dim_str}"') |
+                TestCase.config.cast(db.Text).like(f'"id":"{dim_str}"')
             )
 
         pagination = query.paginate(page=page, per_page=per_page, error_out=False)
@@ -480,7 +482,9 @@ class TestCaseController:
             dim_str = str(dimension_id)
             tc_query = tc_query.filter(
                 TestCase.config.cast(db.Text).like(f'"id": {dim_str}') |
-                TestCase.config.cast(db.Text).like(f'"id":{dim_str}')
+                TestCase.config.cast(db.Text).like(f'"id":{dim_str}') |
+                TestCase.config.cast(db.Text).like(f'"id": "{dim_str}"') |
+                TestCase.config.cast(db.Text).like(f'"id":"{dim_str}"')
             )
 
         test_cases = tc_query.all()
@@ -1991,7 +1995,9 @@ class TestCaseController:
                 dim_str = str(data['dimension_id'])
                 query = query.filter(
                     TestCase.config.cast(db.Text).like(f'"id": {dim_str}') |
-                    TestCase.config.cast(db.Text).like(f'"id":{dim_str}')
+                    TestCase.config.cast(db.Text).like(f'"id":{dim_str}') |
+                    TestCase.config.cast(db.Text).like(f'"id": "{dim_str}"') |
+                    TestCase.config.cast(db.Text).like(f'"id":"{dim_str}"')
                 )
 
             if data.get('search'):

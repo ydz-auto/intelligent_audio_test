@@ -1192,7 +1192,15 @@ export const useTestCaseStore = defineStore('testCase', () => {
     dimensionId?: number;
   }): Promise<(string | number)[]> => {
     try {
-      const result: any = await testcasesApi.getIdsByFilter(filters);
+      // 后端期望 snake_case 键名
+      const payload: Record<string, any> = {};
+      if (filters.group) payload.group = filters.group;
+      if (filters.testType) payload.test_type = filters.testType;
+      if (filters.search) payload.search = filters.search;
+      if (filters.tag) payload.tag = filters.tag;
+      if (filters.algorithmType) payload.algorithm_type = filters.algorithmType;
+      if (filters.dimensionId) payload.dimension_id = filters.dimensionId;
+      const result: any = await testcasesApi.getIdsByFilter(payload);
       return (result as any)?.ids || [];
     } catch (err: any) {
       console.error('[fetchCaseIdsByFilter] 获取用例ID失败:', err);

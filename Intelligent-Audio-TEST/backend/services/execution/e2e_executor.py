@@ -566,7 +566,7 @@ class E2EExecutor(BaseExecutor):
                 driver = info.get('driver')
                 if driver is None:
                     continue
-                device_sn = info.get('device_sn') or info.get('device_id', '')
+                device_sn = info.get('device_sn', '')
                 try:
                     final_results = driver.get_final_results(
                         device_sn, task_id=task_id, test_case_id=test_case_id,

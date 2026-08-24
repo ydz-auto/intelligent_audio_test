@@ -17,6 +17,7 @@ from backend.app import socketio
 import json
 import traceback
 import threading
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 _report_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='report_gen')
@@ -231,9 +232,12 @@ class ReportControllerTask(ReportControllerBase):
                 if result_data and isinstance(result_data, dict):
                     eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
                     if isinstance(eval_data, dict):
-                        for dim_name, dim_value in eval_data.items():
-                            if dim_name not in dim_values or dim_values.get(dim_name) is None:
-                                dim_values[dim_name] = dim_value
+                        # 只合并属于维度名称的键，跳过 aux 辅助参数
+                        dim_name_set = {d.name for d in all_dimensions}
+                        for eval_key, eval_val in eval_data.items():
+                            if eval_key in dim_name_set:
+                                if eval_key not in dim_values or dim_values.get(eval_key) is None:
+                                    dim_values[eval_key] = eval_val
                 
                 resource_metrics = []
                 for dim_name, dim_value in dim_values.items():
@@ -287,18 +291,28 @@ class ReportControllerTask(ReportControllerBase):
                     result_data = None
                 
                 if algo_res or result_data:
-                    combined_data = {}
-                    if algo_res:
-                        combined_data.update(algo_res)
-                    if result_data:
-                        combined_data.update(result_data)
-                        # 展开 evaluation_data 中的 aux 辅助参数到顶层
-                        eval_data = result_data.get('evaluation_data')
-                        if isinstance(eval_data, dict):
-                            combined_data.update(eval_data)
+                    # 构建 param_code → (dimension_name, field_type) 的全局映射（覆盖所有 aux 参数）
+                    param_to_dim = {}  # {param_code: dimension_name}
+                    param_to_type = {}  # {param_code: field_type}
+                    for _dim_id, aux_list in aux_params_map.items():
+                        for aux_info in aux_list:
+                            p = aux_info['param']
+                            dim_name = aux_info['dimension_name']
+                            param_to_dim[p.param_code] = dim_name
+                            param_to_type[p.param_code] = p.field_type
 
-                    # 从 api_raw_response 提取 aux 值，按维度分组
-                    aux_by_dim = {}  # {dimension_name: {param_code: value}}
+                    # 构建 aux 参数值映射：只收集已配置的 aux 参数
+                    aux_values = {}  # {param_code: value}
+
+                    # 1. 从 evaluation_data 提取（eval_result_processor 写入的值）
+                    if result_data:
+                        eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
+                        if isinstance(eval_data, dict):
+                            for param_code in param_to_dim:
+                                if param_code in eval_data:
+                                    aux_values[param_code] = eval_data[param_code]
+
+                    # 2. 从 api_raw_response 提取（补充 evaluation_data 中缺失的）
                     result_dim_rows = dim_results_map.get(result.id, [])
                     for dr in result_dim_rows:
                         raw_resp = dr.api_raw_response
@@ -311,39 +325,126 @@ class ReportControllerTask(ReportControllerBase):
                                 continue
                         for aux_info in aux_params_map.get(dr.dimension_id, []):
                             p = aux_info['param']
-                            dim_name = aux_info['dimension_name']
                             param_code = p.param_code
+                            if param_code in aux_values:
+                                continue
                             value = extract_by_path(raw_resp, p.field_path)
                             if value is not None:
-                                if dim_name not in aux_by_dim:
-                                    aux_by_dim[dim_name] = {}
-                                aux_by_dim[dim_name][param_code] = value
-                                # 同时放入 combined_data 供 fieldMapping 匹配
-                                if param_code not in combined_data:
-                                    combined_data[param_code] = value
+                                aux_values[param_code] = value
 
-                    # 扁平列表格式，与 task_controller.py 一致
-                    for param_key, param_value in combined_data.items():
-                        if param_key and param_value is not None:
-                            param_type = ReportControllerBase._infer_param_type(param_key)
-                            # 查找该 param 属于哪个维度
-                            dim_name = None
-                            for dn, params in aux_by_dim.items():
-                                if param_key in params:
-                                    dim_name = dn
-                                    break
-                            case_obj["algorithm_results"].append({
-                                'device': resource,
-                                'param_code': param_key,
-                                'param_type': param_type,
-                                'label': param_key,
-                                'value': param_value,
-                                'dimension_name': dim_name
-                            })
+                    # 输出扁平列表，只包含已配置的 aux 参数
+                    for param_code, param_value in aux_values.items():
+                        if param_value is None:
+                            continue
+                        param_type = param_to_type.get(param_code, 'text')
+                        dim_name = param_to_dim.get(param_code)
+                        case_obj["algorithm_results"].append({
+                            'device': resource,
+                            'param_code': param_code,
+                            'param_type': param_type,
+                            'label': param_code,
+                            'value': param_value,
+                            'dimension_name': dim_name
+                        })
+
+                    # 提取设备/API 原始执行结果（无维度归属）
+                    DEVICE_FIELDS = {
+                        'start_ms': 'timestamp',
+                        'end_ms': 'timestamp',
+                        'first_frame_ms': 'timestamp',
+                        'record_file': 'audio_file',
+                        'record_path': 'audio_file',
+                        'user_wav': 'audio_file',
+                        'ai_wav': 'audio_file',
+                        'wav_path': 'audio_file',
+                        'question': 'text',
+                        'answer': 'text',
+                        'success': 'boolean',
+                        'message': 'text',
+                    }
+                    device_values = {}
+
+                    # 从 algorithm_result.rounds[0].output 提取
+                    if isinstance(algo_res, dict):
+                        rounds = algo_res.get('rounds') or []
+                        if rounds and isinstance(rounds, list) and isinstance(rounds[0], dict):
+                            output = rounds[0].get('output') or {}
+                            if isinstance(output, dict):
+                                for k, v in output.items():
+                                    if k in DEVICE_FIELDS and v is not None:
+                                        device_values[k] = v
+                        # 从 aggregated 提取
+                        agg = algo_res.get('aggregated') or {}
+                        if isinstance(agg, dict):
+                            for k, v in agg.items():
+                                if v is not None:
+                                    agg_type = 'number' if isinstance(v, (int, float)) else 'text'
+                                    device_values['agg_' + k] = {'value': v, 'type': agg_type}
+
+                    # 从 raw_results_list 提取（补充）
+                    if result_data:
+                        rrl = result_data.get('raw_results_list') or []
+                        if rrl and isinstance(rrl, list) and isinstance(rrl[0], dict):
+                            raw_item = rrl[0]
+                            # 从 raw_results 子对象提取
+                            raw_res = raw_item.get('raw_results') or {}
+                            if isinstance(raw_res, dict):
+                                for k, v in raw_res.items():
+                                    if k in DEVICE_FIELDS and v is not None and k not in device_values:
+                                        device_values[k] = v
+                            # 从顶层提取
+                            for k in ['round_number', 'success']:
+                                if k in raw_item and raw_item[k] is not None and k not in device_values:
+                                    device_values[k] = raw_item[k]
+
+                    for param_code, param_value in device_values.items():
+                        if param_value is None or param_value == '':
+                            continue
+                        # 处理 agg_ 前缀的聚合字段（含类型信息）
+                        if param_code.startswith('agg_') and isinstance(param_value, dict) and 'value' in param_value:
+                            actual_value = param_value['value']
+                            param_type = param_value.get('type', 'text')
+                        else:
+                            actual_value = param_value
+                            param_type = DEVICE_FIELDS.get(param_code, 'text')
+                        # audio_file 类型：将绝对路径正则化为相对 STATIC_BASE_PATH 的相对路径
+                        if param_type == 'audio_file' and isinstance(actual_value, str) and actual_value:
+                            actual_value = ReportControllerTask._normalize_audio_path(actual_value)
+                        case_obj["algorithm_results"].append({
+                            'device': resource,
+                            'param_code': param_code,
+                            'param_type': param_type,
+                            'label': param_code,
+                            'value': actual_value,
+                            'dimension_name': None
+                        })
             
             cases.append(case_obj)
         
         return cases
+
+    @staticmethod
+    def _normalize_audio_path(abs_path):
+        """将音频文件的绝对路径转换为相对 STATIC_BASE_PATH 的相对路径。
+        兼容符号链接/junction：用 os.path.commonpath 比较规范化后的路径。
+        如果路径不在 STATIC_BASE_PATH 下，原样返回。
+        """
+        try:
+            from flask import current_app
+            static_base = current_app.config.get('STATIC_BASE_PATH')
+            if not static_base:
+                return abs_path
+            # 用 realpath 解析符号链接后比较
+            real_abs = os.path.realpath(abs_path)
+            real_base = os.path.realpath(static_base)
+            common = os.path.commonpath([real_abs, real_base])
+            if common == real_base:
+                rel = os.path.relpath(real_abs, real_base)
+                # 统一使用正斜杠，避免前端 URL 编码问题
+                return rel.replace('\\', '/')
+        except Exception:
+            pass
+        return abs_path
 
     @staticmethod
     def _get_reference_params(test_case, case_results, test_type):
@@ -886,6 +987,7 @@ class ReportControllerTask(ReportControllerBase):
                 log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report.id}', task_id=task_id)
 
                 report_id = new_report.id
+                new_report.status = ReportStatus.PUBLISHED.value
                 db.session.commit()
                 
                 log_and_emit('INFO', 'report', f'[generate_task_report_async] Report generated successfully, report_id={report_id}', task_id=task_id)

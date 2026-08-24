@@ -318,6 +318,7 @@
       @prev-page="handlePrevPage"
       @next-page="handleNextPage"
       @go-to-page="handleGoToPage"
+      @page-size-change="handlePageSizeChange"
     />
 
     <!-- Case Detail Modal -->
@@ -1289,6 +1290,11 @@ const handleGoToPage = (page) => {
   const p = Number(page)
   if (!Number.isFinite(p)) return
   currentPage.value = Math.min(Math.max(1, p), totalPages.value)
+}
+
+const handlePageSizeChange = (newSize) => {
+  pageSize.value = newSize
+  currentPage.value = 1
 }
 
 // Methods
