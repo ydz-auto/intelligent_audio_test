@@ -1,0 +1,54 @@
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/_common.py
+  s_1f332de3edb746::t_13975ebc343dc6 126-127
+  s_1f332de3edb746::t_4789bcc6350590 172
+  s_1f332de3edb746::t_53822331f9077d 26
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py
+  s_1f332de3edb746::t_69a6bbea7609dd 108-110
+  s_1f332de3edb746::t_6a88fecd18da46 142-147
+eval_server/app/controllers/api.py
+  s_1f332de3edb746::t_4c6573a2472730 425
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/interruption_judge.py
+  s_1f332de3edb746::t_8617cbcc802fde 140-145
+  s_1f332de3edb746::t_098d5685c6b9c8 106-108
+Intelligent-Audio-TEST/backend/services/evaluation/api_request_handler.py
+  s_1f332de3edb746::t_00b5647723f074 289
+eval_server/app/config.py
+  s_1f332de3edb746::t_d36d7dada9d7a7 63-64
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/strategy.py
+  s_1f332de3edb746::t_9e0dc6379fb929 164-166
+  s_1f332de3edb746::t_7caaa3067acc98 180-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "79dd3f37aa5e6dd7e6764b23b6ec5845fb320af7",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_1f332de3edb746": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8d83f1c2b7c194d3359e3b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "source_scene": "agent",
+        "tool_use_id": "6a8d8d94c2b7c194d335a025",
+        "external_session_id": "6a8d83f1c2b7c194d3359e3b",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "edit_kind": "file_edit",
+        "operation_id": "6a8d8d94c2b7c194d335a025",
+        "session_id": "6a8d83f1c2b7c194d3359e3b",
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "dedupe_key": "6a8d83f1c2b7c194d3359e3b:6a8d8d94c2b7c194d335a025:afterEdit:45525fb8",
+        "runtime_client": "trae-tob-git-ai"
+      }
+    }
+  }
+}
