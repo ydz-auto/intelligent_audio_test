@@ -199,11 +199,12 @@ _BEHAVIOR_FIELDS = [
 ]
 
 def _build_sub_dimensions(task_type_code, prefix):
-    """为主维度生成 4 个行为占比子维度定义。"""
+    """为主维度生成 4 个行为占比子维度定义。子维度 task_type_code 各自独立。"""
     subs = []
     for i, (field, label, help) in enumerate(_BEHAVIOR_FIELDS):
+        sub_tc = f'{task_type_code}_{field}'
         subs.append({
-            'task_type_code': task_type_code,
+            'task_type_code': sub_tc,
             'name': f'{prefix}{label}占比',
             'keywords': f'{task_type_code},{field},{label},占比',
             'description': f'子维度：{prefix}行为「{label}」的占比。output field_path = {field}',
@@ -236,13 +237,34 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
     task_code = dim_def['task_type_code']
     name = dim_def['name']
 
-    # 子维度用 name 做唯一性匹配（同 task_type_code 下多个子维度）
+    # 子维度用 name 做唯一性匹配（不限定 task_type_code，保证改名后能复用旧记录）
     if dimension_type == 'sub':
         existing = conn.execute(text(
             "SELECT id FROM dimensions "
-            "WHERE task_type_code = :tc AND name = :name "
+            "WHERE name = :name "
             "AND dimension_type = 'sub' AND deleted = FALSE"
-        ), {'tc': task_code, 'name': name}).fetchone()
+        ), {'name': name}).fetchone()
+        if existing:
+            # 如果旧记录 task_type_code 与当前定义不一致，说明是改名场景，
+            # 软删旧记录的从属数据（params/mappings/relations），避免新旧并存
+            old_tc = conn.execute(text(
+                "SELECT task_type_code FROM dimensions WHERE id = :did"
+            ), {'did': existing[0]}).scalar()
+            if old_tc and old_tc != task_code:
+                print(f"  ! 检测到子维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，软删旧记录 id={existing[0]} 并新建")
+                conn.execute(text(
+                    "UPDATE dimensions SET deleted = TRUE, updated_at = NOW() WHERE id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE evaluation_dimension_params SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE param_mappings SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                existing = None
     else:
         existing = conn.execute(text(
             "SELECT id FROM dimensions "

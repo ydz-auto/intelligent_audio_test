@@ -9,17 +9,20 @@
    - 配置打断成功率 output params（interruption_success_rate 等）
    - 包含 LLM 评估 output params
 3. 注册/更新5个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
-   - 打断检查时延 → output field_path = avg_stop_latency_s
-   - 打断恢复时延 → output field_path = avg_recovery_latency_s
-   - 子维度不重复 input params / param_mappings，由 evaluation_service._load_dimension_data
-     的继承逻辑从父维度合并 input_params；param_mappings 不按 dimension_id 过滤
-     （主调用路径 dimension_ids=None），挂在主维度 id 下即可被子维度共用
+   - 打断检查时延 → task_type_code='interruption_stop_latency', output field_path = avg_stop_latency_s
+   - 打断恢复时延 → task_type_code='interruption_recovery_latency', output field_path = avg_recovery_latency_s
+   - 平均连贯性     → task_type_code='interruption_coherence'
+   - 平均相关性     → task_type_code='interruption_relevance'
+   - 平均适应性     → task_type_code='interruption_adaptability'
+   - 子维度 task_type_code 各自独立，平台按 parent_dimension_id 分组，
+     提取各子维度 task_type_code 组成 sub_tasks 注入 payload，eval_server 按 sub_tasks 只算选中子维度
 4. 注册 voice_llm 算法与主维度 + 5个子维度的关联（algorithm_dimension_relations）
 5. 注册 voice_llm → 主维度的参数映射（param_mappings.dimension_id = 主维度id）
 
 执行链路：
-   用例选主维度 + 5个子维度 → 继承父维度 task_type_code/api 配置 → 被
-   (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server
+   用例选主维度 + 5个子维度 → 平台按 (api_url, parent_dimension_id) 分到同一组
+   → task_type 用主维度的 interruption_metrics，payload 注入 sub_tasks（从各子维度 task_type_code 提取）
+   → 调一次 eval_server，eval_server 按 sub_tasks 只算选中的子维度
    → process_group_dimension_results 把同一份响应按各自 output field_path 分发提取
 
 对应 eval_server 服务：
@@ -71,8 +74,8 @@ MAIN_DIMENSION = {
     'decimal_places': 3,
     'weight': 1,
     'estimated_exec_time': 30,
-    'score_unit': '',
-    'statistic_method': 'average',
+    'score_unit': '%',
+    'statistic_method': 'pass_rate',
     'body_template': {
         'seg_merge_gap_s': '{{seg_merge_gap_s}}',
         'enable_llm_eval': '{{enable_llm_eval}}',
@@ -210,7 +213,7 @@ MAIN_DIMENSION = {
 
 SUB_DIMENSIONS = [
     {
-        'task_type_code': 'interruption_metrics',  # 与主维度相同，保证被分到同一组
+        'task_type_code': 'interruption_stop_latency',
         'name': '打断检查时延',
         'keywords': 'interruption,stop_latency,打断检查时延,停下时延',
         'description': '子维度：用户开始打断 → 模型停下的时延。output field_path = avg_stop_latency_s',
@@ -231,7 +234,7 @@ SUB_DIMENSIONS = [
         ],
     },
     {
-        'task_type_code': 'interruption_metrics',
+        'task_type_code': 'interruption_recovery_latency',
         'name': '打断恢复时延',
         'keywords': 'interruption,recovery_latency,打断恢复时延,恢复时延',
         'description': '子维度：用户说完 → 模型重新开口的时延。output field_path = avg_recovery_latency_s',
@@ -259,7 +262,7 @@ SUB_DIMENSIONS = [
     },
     # ─── LLM 评估子维度：打断后回复质量三维均分(0-5) ───
     {
-        'task_type_code': 'interruption_metrics',
+        'task_type_code': 'interruption_coherence',
         'name': '平均连贯性',
         'keywords': 'interruption,coherence,连贯性,平均连贯性,llm_coherence',
         'description': '子维度：打断后回复连贯性均分(0-5)。output field_path = llm_recovery_avg_coherence',
@@ -279,7 +282,7 @@ SUB_DIMENSIONS = [
         ],
     },
     {
-        'task_type_code': 'interruption_metrics',
+        'task_type_code': 'interruption_relevance',
         'name': '平均相关性',
         'keywords': 'interruption,relevance,相关性,平均相关性,llm_relevance',
         'description': '子维度：打断后回复相关性均分(0-5)。output field_path = llm_recovery_avg_relevance',
@@ -299,7 +302,7 @@ SUB_DIMENSIONS = [
         ],
     },
     {
-        'task_type_code': 'interruption_metrics',
+        'task_type_code': 'interruption_adaptability',
         'name': '平均适应性',
         'keywords': 'interruption,adaptability,适应性,平均适应性,llm_adaptability',
         'description': '子维度：打断后回复适应性均分(0-5)。output field_path = llm_recovery_avg_adaptability',
@@ -326,13 +329,34 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
     task_code = dim_def['task_type_code']
     name = dim_def['name']
 
-    # 子维度用 name 做唯一性匹配（同 task_type_code 下多个子维度）
+    # 子维度用 name 做唯一性匹配（不限定 task_type_code，保证改名后能复用旧记录）
     if dimension_type == 'sub':
         existing = conn.execute(text(
             "SELECT id FROM dimensions "
-            "WHERE task_type_code = :tc AND name = :name "
+            "WHERE name = :name "
             "AND dimension_type = 'sub' AND deleted = FALSE"
-        ), {'tc': task_code, 'name': name}).fetchone()
+        ), {'name': name}).fetchone()
+        if existing:
+            # 如果旧记录 task_type_code 与当前定义不一致，说明是改名场景，
+            # 软删旧记录的从属数据（params/mappings/relations），避免新旧并存
+            old_tc = conn.execute(text(
+                "SELECT task_type_code FROM dimensions WHERE id = :did"
+            ), {'did': existing[0]}).scalar()
+            if old_tc and old_tc != task_code:
+                print(f"  ! 检测到子维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，软删旧记录 id={existing[0]} 并新建")
+                conn.execute(text(
+                    "UPDATE dimensions SET deleted = TRUE, updated_at = NOW() WHERE id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE evaluation_dimension_params SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE param_mappings SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                conn.execute(text(
+                    "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
+                ), {'did': existing[0]})
+                existing = None
     else:
         existing = conn.execute(text(
             "SELECT id FROM dimensions "
