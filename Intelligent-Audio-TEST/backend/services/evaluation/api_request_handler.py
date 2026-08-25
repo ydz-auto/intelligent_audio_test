@@ -286,7 +286,7 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         result_url = f"{url}/api/get_final_result/{eval_task_id}"
         return self.make_api_request(result_url, 'GET', {}, {}, timeout)
 
-    def wait_for_task_completion(self, url, eval_task_id, max_wait_time=300, poll_interval=5, test_case_id=None, api_id=None, task_id=None):
+    def wait_for_task_completion(self, url, eval_task_id, max_wait_time=600, poll_interval=5, test_case_id=None, api_id=None, task_id=None):
         """
         等待评估任务完成，定期查询状态
         """

@@ -161,6 +161,9 @@ class RejectionJudgeCalculator(_BaseEnvJudgeCalculator):
         return evaluate_rejection_judge(
             ai_wav=params['ai_wav'],
             user_wav=params['user_wav'],
+            model=params.get('model', ''),
+            max_tokens=params.get('max_tokens', 4096),
+            temperature=params.get('temperature', 0.1),
         )
 
 
@@ -174,4 +177,7 @@ class InterruptionJudgeCalculator(_BaseEnvJudgeCalculator):
         return evaluate_interruption_judge(
             ai_wav=params['ai_wav'],
             user_wav=params['user_wav'],
+            model=params.get('model', ''),
+            max_tokens=params.get('max_tokens', 4096),
+            temperature=params.get('temperature', 0.1),
         )

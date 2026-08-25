@@ -60,6 +60,8 @@ class Config:
         'non_interactive_latency': 10,
         'noise_latency': 10,
         'env_judge': 10,
+        'rejection_judge': 10,
+        'interruption_judge': 10,
         'high_freq_turn_taking': 10,
         'high_freq_llm_judge': 10,
     }

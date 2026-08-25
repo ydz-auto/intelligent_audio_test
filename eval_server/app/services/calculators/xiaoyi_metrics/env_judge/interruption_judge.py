@@ -103,6 +103,9 @@ def build_interruption_prompt(timeline_text: str = '') -> str:
 def evaluate_interruption_judge(
     ai_wav: str = '',
     user_wav: str = '',
+    model: str = '',
+    max_tokens: int = 4096,
+    temperature: float = 0.1,
 ) -> Dict[str, Any]:
     """打断场景 LLM 裁判主入口
 
@@ -134,9 +137,12 @@ def evaluate_interruption_judge(
     from app.config import config
 
     llm_config = getattr(config, 'LLM_JUDGE', {})
-    model = llm_config.get('default_model', 'gpt-4o')
-    max_tokens = llm_config.get('max_tokens', 4096)
-    temperature = llm_config.get('temperature', 0.1)
+    if not model:
+        model = llm_config.get('default_model', 'gpt-4o')
+    if not max_tokens:
+        max_tokens = llm_config.get('max_tokens', 4096)
+    if temperature is None:
+        temperature = llm_config.get('temperature', 0.1)
 
     # 主音频：ai_wav（模型回复，被判定对象）
     if not ai_wav or not os.path.isfile(ai_wav):

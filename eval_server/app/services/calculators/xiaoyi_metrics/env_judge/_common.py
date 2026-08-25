@@ -23,7 +23,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 # ─────────── 常量 ───────────
-LLM_DEFAULT_TIMEOUT = 120
+LLM_DEFAULT_TIMEOUT = 300
 LLM_MAX_RETRIES = 3
 LLM_RETRY_BASE_DELAY = 2  # 秒
 
@@ -123,6 +123,8 @@ def call_llm_api(model: str, prompt: str,
     api_base = llm_config.get('api_base_url', '')
     api_key = llm_config.get('api_key', '')
     timeout = llm_config.get('timeout', LLM_DEFAULT_TIMEOUT)
+    # httpx Timeout: connect=10s, write=timeout(音频base64上传慢), read=timeout, pool=timeout
+    httpx_timeout = httpx.Timeout(connect=10.0, write=float(timeout), read=float(timeout), pool=float(timeout))
 
     if not api_base or not api_key:
         raise ValueError(
@@ -167,7 +169,7 @@ def call_llm_api(model: str, prompt: str,
     last_exc = None
     for attempt in range(max_retries + 1):
         try:
-            with httpx.Client(trust_env=False, timeout=timeout) as client:
+            with httpx.Client(trust_env=False, timeout=httpx_timeout) as client:
                 response = client.post(url, headers=headers, json=payload)
 
             response.raise_for_status()

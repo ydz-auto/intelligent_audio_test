@@ -422,7 +422,7 @@ def create_task_upload():
     # （record_file / user_wav / ai_wav 已作为文件上传保存，这里补充其他标量字段；
     #   interruption_metrics 走 wav 路径，user_wav/ai_wav 同样需提顶层供 calculate_interruption_metrics 取值）
     # 单轮取 rounds[0]；多轮取最后一轮 rounds[-1]
-    if task_type in ('xiaoyi_metrics', 'takeover', 'interruption_metrics'):
+    if task_type in ('xiaoyi_metrics', 'takeover', 'interruption_metrics', 'rejection_judge', 'interruption_judge'):
         rounds_list = task_params.get('rounds')
         if isinstance(rounds_list, list) and len(rounds_list) >= 1 and isinstance(rounds_list[-1], dict):
             rd = rounds_list[-1]
