@@ -32,7 +32,7 @@
               <input 
                 type="text" 
                 class="filter-input" 
-                placeholder="输入用例名称关键词" 
+                placeholder="输入用例ID或名称关键词"
                 v-model="searchKeyword"
               />
             </div>
@@ -1147,9 +1147,11 @@ const filteredCases = computed(() => {
   // First, filter cases based on keyword, category, and tags
   let filtered = caseData.filter(caseItem => {
     // Keyword filter
-    const keywordMatch = !searchKeyword.value || 
-      caseItem.name.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
-      (caseItem.description && caseItem.description.toLowerCase().includes(searchKeyword.value.toLowerCase()))
+    const keyword = searchKeyword.value.toLowerCase()
+    const keywordMatch = !keyword ||
+      String(caseItem.id || '').toLowerCase().includes(keyword) ||
+      caseItem.name.toLowerCase().includes(keyword) ||
+      (caseItem.description && caseItem.description.toLowerCase().includes(keyword))
     
     // Category filter
     const categoryMatch = selectedCategories.value.length === 0 || 
