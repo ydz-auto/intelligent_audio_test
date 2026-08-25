@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # ─────────── 阈值 ───────────
 TURN_DURATION_THRESHOLD = 1   # 秒
 TURN_NUM_WORDS_THRESHOLD = 3
-MIN_HIT_WORD_TEXT_LEN = 3      # 去标点后最短文本长度，低于此值的 chunk 不计入命中词
+MIN_HIT_WORD_TEXT_LEN = 1      # 去标点后最短文本长度，低于此值的 chunk 不计入命中词
 
 # 中英文标点 + 空白（用于去除后统计有效字符数）
 _PUNCT_RE = re.compile(
@@ -114,8 +114,8 @@ def compute_tor(user_chunks, ai_chunks,
         )
 
     # 3. 统一计算命中词的 duration 和 n_words
-    #    n_words = 所有命中词去标点后的总字符数（而非 chunk/句段数）
-    n_words = sum(len(_strip_punctuation(w['text'])) for w in hit_words)
+    #    n_words = 命中词的 chunk 数量（每个 chunk 是一个词）
+    n_words = len(hit_words)
     if n_words == 0:
         duration = 0.0
     else:
