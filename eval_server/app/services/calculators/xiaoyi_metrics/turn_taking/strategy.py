@@ -264,6 +264,12 @@ class TorCalculator(TurnTakingBase):
         user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
         return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav}
 
+    def run(self, task_params):
+        """独立调用入口：结果包装为 {'tor': result}"""
+        params = self.prepare_params(task_params)
+        result = self.calculate(params)
+        return {'tor': result}
+
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.tor import compute_tor
 
@@ -294,6 +300,12 @@ class FalseTakeoverCalculator(TurnTakingBase):
         user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
         return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav,
                 'task_params': task_params}
+
+    def run(self, task_params):
+        """独立调用入口：结果包装为 {'false_takeover': result}"""
+        params = self.prepare_params(task_params)
+        result = self.calculate(params)
+        return {'false_takeover': result}
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.false_takeover import (
@@ -353,6 +365,12 @@ class TakeoverLatencyCalculator(TurnTakingBase):
         user_wav, ai_wav = self._get_audio_from_round(task_params, idx)
         return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav}
 
+    def run(self, task_params):
+        """独立调用入口：结果包装为 {'takeover_latency': result}"""
+        params = self.prepare_params(task_params)
+        result = self.calculate(params)
+        return {'takeover_latency': result}
+
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.takeover_latency import compute_takeover_latency_from_raw
 
@@ -395,6 +413,12 @@ class HighFreqTurnTakingCalculator(TurnTakingBase):
         if merge_gap is not None:
             result['seg_merge_gap_s'] = float(merge_gap)
         return result
+
+    def run(self, task_params):
+        """独立调用入口：结果包装为 {'high_freq_turn_taking': result}"""
+        params = self.prepare_params(task_params)
+        result = self.calculate(params)
+        return {'high_freq_turn_taking': result}
 
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.high_freq_turn_taking import compute_high_freq_turn_taking
@@ -452,6 +476,12 @@ class HighFreqLlmJudgeCalculator(TurnTakingBase):
             'temperature': float(task_params.get('temperature') or rd.get('temperature') or 0.1),
         }
 
+    def run(self, task_params):
+        """独立调用入口：结果包装为 {'high_freq_llm_judge': result}"""
+        params = self.prepare_params(task_params)
+        result = self.calculate(params)
+        return {'high_freq_llm_judge': result}
+
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.high_freq_llm_judge import evaluate_high_freq_llm
         return evaluate_high_freq_llm(
@@ -493,6 +523,16 @@ class InterruptionMetricsCalculator(TurnTakingBase):
         return {'mode': 'single', 'user_wav': user_wav, 'ai_wav': ai_wav,
                 'user_asr': user_asr, 'model_asr': model_asr,
                 'task_params': task_params}
+
+    def run(self, task_params):
+        """独立调用入口：结果包装为 {'interruption': result}
+
+        经 turn_taking 主维度调用时走 calculate()（由 TurnTakingCalculator
+        负责包装 results['interruption']），不经过此方法。
+        """
+        params = self.prepare_params(task_params)
+        result = self.calculate(params)
+        return {'interruption': result}
 
     def calculate(self, params):
         # 委托给 turn_taking.calculate_interruption_metrics 统一入口：
