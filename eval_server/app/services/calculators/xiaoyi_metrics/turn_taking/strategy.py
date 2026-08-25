@@ -192,11 +192,38 @@ class TurnTakingCalculator(TurnTakingBase):
         可通过 task_params['sub_tasks'] 指定只计算部分子维度，例如:
             sub_tasks: ['tor', 'takeover_latency']  # 只算这两个，不算 false_takeover 等
         未指定时默认计算全部子维度。
+
+        ASR 共享：主维度统一调一次双路 ASR（user_wav + ai_wav），
+        结果注入各子维度的 params，子维度优先用已注入的 chunks，避免重复调用 ASR。
         """
         from app.services.task_service import TaskService
 
         sub_tasks = params.get('sub_tasks')  # None 或 list
         results = {}
+
+        # ── 主维度统一调一次 ASR，共享给各子维度 ──
+        idx = self._get_target_round_index(params)
+        user_wav, ai_wav = self._get_audio_from_round(params, idx)
+        shared_asr = {}
+        if user_wav:
+            shared_asr['user_chunks'] = self._get_asr_chunks(user_wav)
+        if ai_wav:
+            shared_asr['ai_chunks'] = self._get_asr_chunks(ai_wav)
+            shared_asr['ai_word_chunks'] = self._get_asr_word_chunks(ai_wav)
+        # pause 区间也从 user_chunks 统一算一次
+        if shared_asr.get('user_chunks'):
+            shared_asr['pause_intervals'] = self._compute_pause_intervals(shared_asr['user_chunks'])
+        else:
+            shared_asr['pause_intervals'] = []
+
+        logger.info(
+            f"[turn_taking] 共享 ASR 完成: "
+            f"user_chunks={len(shared_asr.get('user_chunks') or [])}, "
+            f"ai_chunks={len(shared_asr.get('ai_chunks') or [])}, "
+            f"ai_word_chunks={len(shared_asr.get('ai_word_chunks') or [])}, "
+            f"pause={len(shared_asr.get('pause_intervals') or [])}"
+        )
+
         for result_key, calc_key in _SUB_DIMENSIONS.items():
             if sub_tasks and result_key not in sub_tasks:
                 logger.info(f"[turn_taking] 子维度 {calc_key} 不在 sub_tasks 中，跳过")
@@ -212,8 +239,9 @@ class TurnTakingCalculator(TurnTakingBase):
                     logger.info(f"[turn_taking] 子维度 {calc_key} 校验失败: {err}，跳过")
                     results[result_key] = {'message': f'跳过: {err}'}
                     continue
-                # 取参 + 计算
+                # 取参 + 注入共享 ASR + 计算
                 sub_params = calculator.prepare_params(params)
+                sub_params['_shared_asr'] = shared_asr
                 results[result_key] = calculator.calculate(sub_params)
                 logger.info(f"[turn_taking] 子维度 {calc_key} 计算完成")
             except Exception as e:
@@ -273,8 +301,13 @@ class TorCalculator(TurnTakingBase):
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.tor import compute_tor
 
-        user_chunks = self._get_asr_chunks(params['user_wav']) or []
-        ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
+        shared = params.get('_shared_asr') or {}
+        user_chunks = shared.get('user_chunks')
+        if user_chunks is None:
+            user_chunks = self._get_asr_chunks(params['user_wav']) or []
+        ai_chunks = shared.get('ai_chunks')
+        if ai_chunks is None:
+            ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
         return compute_tor(user_chunks=user_chunks, ai_chunks=ai_chunks)
 
 
@@ -312,12 +345,19 @@ class FalseTakeoverCalculator(TurnTakingBase):
             compute_false_takeover, compute_false_takeover_llm,
         )
 
-        user_wav = params.get('user_wav')
-        ai_wav = params.get('ai_wav')
+        shared = params.get('_shared_asr') or {}
+        user_chunks = shared.get('user_chunks')
+        if user_chunks is None:
+            user_wav = params.get('user_wav')
+            user_chunks = self._get_asr_chunks(user_wav) if user_wav else None
+        pause = shared.get('pause_intervals')
+        if pause is None:
+            pause = self._compute_pause_intervals(user_chunks)
+        ai_word_chunks = shared.get('ai_word_chunks')
+        if ai_word_chunks is None:
+            ai_wav = params.get('ai_wav')
+            ai_word_chunks = (self._get_asr_word_chunks(ai_wav) or []) if ai_wav else []
 
-        user_chunks = self._get_asr_chunks(user_wav) if user_wav else None
-        pause = self._compute_pause_intervals(user_chunks)
-        ai_word_chunks = (self._get_asr_word_chunks(ai_wav) or []) if ai_wav else []
         result = compute_false_takeover(ai_word_chunks, pause)
 
         # LLM 补充判断：时间戳 tor=0 时用 LLM 做语义判断
@@ -374,8 +414,13 @@ class TakeoverLatencyCalculator(TurnTakingBase):
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.takeover_latency import compute_takeover_latency_from_raw
 
-        user_chunks = self._get_asr_chunks(params['user_wav']) or []
-        ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
+        shared = params.get('_shared_asr') or {}
+        user_chunks = shared.get('user_chunks')
+        if user_chunks is None:
+            user_chunks = self._get_asr_chunks(params['user_wav']) or []
+        ai_chunks = shared.get('ai_chunks')
+        if ai_chunks is None:
+            ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
         return compute_takeover_latency_from_raw(
             first_frame_ms=None, asr_hyp=None, start_ms=None,
             input_words=[], offset_ms=40,
@@ -423,8 +468,13 @@ class HighFreqTurnTakingCalculator(TurnTakingBase):
     def calculate(self, params):
         from app.services.calculators.xiaoyi_metrics.turn_taking.high_freq_turn_taking import compute_high_freq_turn_taking
 
-        user_chunks = self._get_asr_chunks(params['user_wav']) or []
-        ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
+        shared = params.get('_shared_asr') or {}
+        user_chunks = shared.get('user_chunks')
+        if user_chunks is None:
+            user_chunks = self._get_asr_chunks(params['user_wav']) or []
+        ai_chunks = shared.get('ai_chunks')
+        if ai_chunks is None:
+            ai_chunks = self._get_asr_chunks(params['ai_wav']) or []
 
         kwargs = {}
         if 'seg_merge_gap_s' in params:

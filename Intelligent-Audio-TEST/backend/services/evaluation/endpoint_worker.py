@@ -258,6 +258,24 @@ class EndpointWorker(EvaluationLoggerMixin):
 
         payload = self.eval_service.api_client.build_payload(body_template, context, task_id=task_id, test_case_id=test_case_id, algorithm_type=algorithm_type)
 
+        # 从 group_items 提取各子维度的 task_type_code，组成 sub_tasks 注入 payload
+        # eval_server 的 TurnTakingCalculator 按 sub_tasks 只算选中的子维度
+        sub_tasks = []
+        for item in group_items:
+            dim_data = item[0]
+            tc_code = dim_data.get('task_type_code')
+            if tc_code and tc_code not in sub_tasks:
+                sub_tasks.append(tc_code)
+        if sub_tasks:
+            if isinstance(payload, dict):
+                payload['sub_tasks'] = sub_tasks
+            self._log(
+                level='DEBUG',
+                content=f"[sub_tasks] 从 group_items 提取: {sub_tasks}",
+                task_id=task_id,
+                test_case_id=test_case_id
+            )
+
         # 从维度 input_params 提取 field_type='audio' 的字段名集合
         audio_field_names = {
             inp.get('param_code') for inp in representative_dim_data.get('input_params', [])
@@ -270,10 +288,12 @@ class EndpointWorker(EvaluationLoggerMixin):
             test_case_id=test_case_id
         )
 
+        # dim_info.task_type_code 用主维度的 turn_taking（parent_task_type_code），
+        # 子维度各自的 task_type_code 已通过 sub_tasks 传递
         dim_info = {
             'dimension_type': representative_dim_data.get('dimension_type', 'main'),
             'parent_dimension_id': representative_dim_data.get('parent_dimension_id'),
-            'task_type_code': representative_dim_data.get('task_type_code')
+            'task_type_code': representative_dim_data.get('parent_task_type_code') or representative_dim_data.get('task_type_code')
         }
 
         try:

@@ -7,19 +7,21 @@
 2. 注册/更新 turn_taking 主维度（dimension_type='main'）：
    - 配置全部 input params、api_settings、body_template、param_mappings
    - 不配 output params（主维度不直接参与评估，只作容器）
-3. 注册/更新三个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
-   - tor              → output field_path = tor.tor
-   - false_takeover   → output field_path = false_takeover.tor
-   - takeover_latency → output field_path = takeover_latency.takeover_latency_ms
-   - 子维度不重复 input params / param_mappings，由 evaluation_service._load_dimension_data
-     的继承逻辑从父维度合并 input_params；param_mappings 不按 dimension_id 过滤
-     （主调用路径 dimension_ids=None），挂在主维度 id 下即可被三个子维度共用
+3. 注册/更新五个子维度（dimension_type='sub'，parent_dimension_id 指向主维度）：
+   - tor              → task_type_code='tor', output field_path = tor.tor
+   - false_takeover   → task_type_code='false_takeover', output field_path = false_takeover.tor
+   - takeover_latency → task_type_code='takeover_latency', output field_path = takeover_latency.takeover_latency_ms
+   - high_freq_turn_taking → task_type_code='high_freq_turn_taking'
+   - high_freq_llm_judge    → task_type_code='high_freq_llm_judge'
+   - 子维度 task_type_code 各自独立，平台按 parent_dimension_id 分组，
+     提取各子维度 task_type_code 组成 sub_tasks 注入 payload，eval_server 按 sub_tasks 只算选中子维度
 4. 注册 voice_llm 算法与主维度 + 三个子维度的关联（algorithm_dimension_relations）
 5. 注册 voice_llm → 主维度的参数映射（param_mappings.dimension_id = 主维度id）
 
 执行链路：
-   用例选三个子维度 → 三者继承父维度 task_type_code/api 配置 → 被
-   (endpoint_url, task_type_code) 分到同一组 → 调一次 eval_server
+   用例选三个子维度 → 平台按 (api_url, parent_dimension_id) 分到同一组
+   → task_type 用主维度的 turn_taking，payload 注入 sub_tasks（从各子维度 task_type_code 提取）
+   → 调一次 eval_server，TurnTakingCalculator 按 sub_tasks 只算选中的子维度
    → process_group_dimension_results 把同一份响应按各自 output field_path 分发提取
 
 对应 eval_server 服务：
@@ -97,7 +99,7 @@ MAIN_DIMENSION = {
 
 SUB_DIMENSIONS = [
     {
-        'task_type_code': 'turn_taking',  # 与主维度相同，保证被分到同一组
+        'task_type_code': 'tor',  # 子维度独立类型，平台提取后注入 sub_tasks
         'name': '接话率(TOR)',
         'keywords': 'tor,接话率,takeoff',
         'description': '子维度：打断后接话率。output field_path = tor.tor',
@@ -133,7 +135,7 @@ SUB_DIMENSIONS = [
         ],
     },
     {
-        'task_type_code': 'turn_taking',
+        'task_type_code': 'false_takeover',  # 子维度独立类型，平台提取后注入 sub_tasks
         'name': '误接管率',
         'keywords': 'false_takeover,误接管,抢话',
         'description': '子维度：用户停顿期间模型是否抢话。output field_path = false_takeover.tor',
@@ -178,7 +180,7 @@ SUB_DIMENSIONS = [
         ],
     },
     {
-        'task_type_code': 'turn_taking',
+        'task_type_code': 'takeover_latency',  # 子维度独立类型，平台提取后注入 sub_tasks
         'name': '接管时延',
         'keywords': 'takeover_latency,接管时延,延迟',
         'description': '子维度：模型回复第一词时刻 - 音频结束时刻。output field_path = takeover_latency.takeover_latency_ms',
@@ -214,12 +216,12 @@ SUB_DIMENSIONS = [
         ],
     },
     # ────────────────────────────────────────────────────────────
-    # 高频轮换子维度：task_type_code='turn_taking'（与主维度同）
+    # 高频轮换子维度：task_type_code='high_freq_turn_taking'
     # 由 calculate_xiaoyi_metrics 统一入口返回，嵌套在 results['high_freq_turn_taking']
     # output field_path 前缀为 high_freq_turn_taking.<key>
     # ────────────────────────────────────────────────────────────
     {
-        'task_type_code': 'turn_taking',
+        'task_type_code': 'high_freq_turn_taking',
         'name': '高频轮换时延',
         'keywords': 'high_freq,高频轮换,飞花令,成语接龙,快问快答,时延',
         'description': '子维度：高频轮换场景每轮回复时延（飞花令/成语接龙/快问快答）。由 calculate_xiaoyi_metrics 统一入口返回，field_path 前缀 high_freq_turn_taking.',
@@ -273,12 +275,12 @@ SUB_DIMENSIONS = [
         ],
     },
     # ────────────────────────────────────────────────────────────
-    # 高频LLM裁判子维度：task_type_code='turn_taking'（与主维度同）
+    # 高频LLM裁判子维度：task_type_code='high_freq_llm_judge'
     # 由 calculate_xiaoyi_metrics 统一入口返回，嵌套在 results['high_freq_llm_judge']
     # output field_path 前缀为 high_freq_llm_judge.<key>
     # ────────────────────────────────────────────────────────────
     {
-        'task_type_code': 'turn_taking',
+        'task_type_code': 'high_freq_llm_judge',
         'name': '高频LLM裁判',
         'keywords': 'high_freq,高频轮换,llm,judge,裁判,飞花令,成语接龙,快问快答',
         'description': '子维度：高频轮换场景 LLM 逐轮裁判问答内容是否符合预期。由 calculate_xiaoyi_metrics 统一入口返回，field_path 前缀 high_freq_llm_judge.',

@@ -551,9 +551,14 @@ class EvaluationService(EvaluationLoggerMixin):
                                         has_valid_endpoint = True
                                         break
                             if not has_valid_endpoint and not dim_dict.get('api_url'):
-                                for k in ['api_endpoints', 'api_url', 'api_settings', 'task_type_code']:
+                                # api_endpoints/api_url/api_settings 继承父维度
+                                # task_type_code 不继承：子维度各自独立（如 tor/false_takeover/takeover_latency），
+                                # 发请求时 task_type 用主维度的 turn_taking，sub_tasks 从子维度 task_type_code 提取
+                                for k in ['api_endpoints', 'api_url', 'api_settings']:
                                     if not dim_dict.get(k):
                                         dim_dict[k] = getattr(parent_dim, k, None)
+                                # 子维度继承主维度的 task_type_code，用于发请求时 task_type=turn_taking
+                                dim_dict['parent_task_type_code'] = getattr(parent_dim, 'task_type_code', None)
                             # input_params 继承：子维度自己没有 input 时，用父维度的 input_params
                             if not dim_dict.get('input_params') and input_param_map.get(parent_dim.id):
                                 dim_dict['input_params'] = input_param_map.get(parent_dim.id)
@@ -759,7 +764,13 @@ class EvaluationService(EvaluationLoggerMixin):
                     no_endpoint_groups.append((dim_data, dimension_result_id))
                 continue
 
-            group_key = (endpoint_url, task_type_code)
+            # 分组键：(endpoint_url, parent_dimension_id)
+            # 同一父维度下的子维度分到同一组，发一个请求给 eval_server
+            # 父维度自身（dimension_type=main）用自身 id 作为 parent（即 None → 用 task_type_code 代替）
+            parent_id = dim_data.get('parent_dimension_id')
+            if dim_type == 'main':
+                parent_id = dim_id  # 主维度自己一组（通常不直接参与评估）
+            group_key = (endpoint_url, parent_id)
             if group_key not in endpoint_groups:
                 endpoint_groups[group_key] = []
 
@@ -786,14 +797,18 @@ class EvaluationService(EvaluationLoggerMixin):
 
         # 异步提交评估任务，不等待完成
         for group_key, group_items in endpoint_groups.items():
-            endpoint_url, task_type_code = group_key
+            endpoint_url, _ = group_key
             representative_dim_data = group_items[0][0]
             group_dim_names = [item[0]['name'] for item in group_items]
             group_dim_ids = [item[0]['id'] for item in group_items]
 
+            # task_type 用主维度的 task_type_code（parent_task_type_code），
+            # 子维度各自的 task_type_code 提取为 sub_tasks 注入 payload
+            task_type_code = representative_dim_data.get('parent_task_type_code') or representative_dim_data.get('task_type_code')
+
             self._log(
                 level='DEBUG',
-                content=f"[分组详情] group_key={group_key}, 维度IDs={group_dim_ids}, 维度名称={group_dim_names}, 代表维度ID={representative_dim_data['id']}, 代表维度name={representative_dim_data['name']}, api_settings={representative_dim_data.get('api_settings')}",
+                content=f"[分组详情] group_key={group_key}, 维度IDs={group_dim_ids}, 维度名称={group_dim_names}, 代表维度ID={representative_dim_data['id']}, 代表维度name={representative_dim_data['name']}, task_type={task_type_code}, api_settings={representative_dim_data.get('api_settings')}",
                 task_id=task_id,
                 test_case_id=test_case_id
             )
