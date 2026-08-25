@@ -1,0 +1,39 @@
+Intelligent-Audio-TEST/backend/services/evaluation/api_request_handler.py
+  s_1f332de3edb746::t_2990b7e661daed 140-143
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/__init__.py
+  s_1f332de3edb746::t_47a7a0bc1ac670 734-737
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "1884b22575301b759e73112f5c91a8a4c01fc7d2",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_1f332de3edb746": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8d83f1c2b7c194d3359e3b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "source_scene": "agent",
+        "operation_id": "6a8d861dc2b7c194d3359ef5",
+        "external_session_id": "6a8d83f1c2b7c194d3359e3b",
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "session_id": "6a8d83f1c2b7c194d3359e3b",
+        "dedupe_key": "6a8d83f1c2b7c194d3359e3b:6a8d861dc2b7c194d3359ef5:afterEdit:b7eb45ee",
+        "runtime_client": "trae-tob-git-ai",
+        "edit_kind": "file_edit",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a8d861dc2b7c194d3359ef5"
+      }
+    }
+  }
+}
