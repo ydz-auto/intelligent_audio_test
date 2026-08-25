@@ -731,7 +731,10 @@ def calculate_interruption_metrics(task_params):
     # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，不影响时序指标
     # multipart 上传时 enable_llm_eval 是字符串('False'/'true')，bool('False')=True 会误判，用白名单
     # 默认开启(未传视为 True)；显式传 false/'false' 才关闭
-    enable_llm = task_params.get('enable_llm_eval', True) in (True, 'true', '1', 1)
+    # multipart 上传时 enable_llm_eval 可能是 "True"/"False"(首字母大写)、"true"/"false"、
+    # 布尔 True/False、或 1/0；统一 str().lower() 归一化后判断，默认未传视为 True
+    _raw = task_params.get('enable_llm_eval', True)
+    enable_llm = str(_raw).lower() in ('true', '1', 'yes')
     rounds = task_params.get('rounds')
     if enable_llm and rounds:
         try:

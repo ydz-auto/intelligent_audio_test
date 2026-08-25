@@ -137,6 +137,10 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 self._extract_single_file(key, value, files, form_fields_fallback=form_fields, fallback_key=key, fallback_value=value)
             elif isinstance(value, (dict, list)):
                 form_fields[key] = json.dumps(value)
+            elif isinstance(value, bool):
+                # multipart 上传会把 Python bool 序列化成 "True"/"False"（首字母大写），
+                # eval_server 白名单只认小写 'true'/'false'，这里统一转小写
+                form_fields[key] = 'true' if value else 'false'
             else:
                 form_fields[key] = value
 
