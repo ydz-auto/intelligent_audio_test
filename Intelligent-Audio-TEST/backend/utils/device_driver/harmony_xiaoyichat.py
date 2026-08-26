@@ -41,8 +41,10 @@ class Xiaoyilivechat(HarmonyDriver):
         'xiaoyi': {
             'cache_dirs': ['/data/app/el2/100/base/com.huawei.hmos.aibase/cache',
                            '/data/app/el2/100/base/com.huawei.hmos.vassistant/cache'],
-            'user_suffix': 'cap_client_process_out.pcm',
-            'ai_suffix': 'cap_client_ec_out.pcm',
+            # 实测设备文件名与 doubao/chatgpt 一致: 用户 cap_client_out.pcm / AI client_in..pcm
+            'user_suffix': 'cap_client_out.pcm',
+            # AI 回复有两种命名(不同固件版本): cap_client_ec_out.pcm(旧) 和 client_in..pcm(新)
+            'ai_suffix': ['cap_client_ec_out.pcm', 'client_in..pcm'],
         },
         'doubao': {
             'cache_dirs': ['/data/app/el2/100/base/com.larus.nova.hm/cache'],
@@ -378,6 +380,8 @@ class Xiaoyilivechat(HarmonyDriver):
         if not cfg:
             return {}
         ai_suffix = cfg['ai_suffix']
+        # endswith 仅接受 str 或 tuple(不接受 list),这里统一转 tuple
+        ai_suffix = tuple(ai_suffix) if isinstance(ai_suffix, list) else ai_suffix
         files = []
         for d in cfg['cache_dirs']:
             files.extend(self._list_dir_pcm(device_sn, d))
@@ -397,6 +401,8 @@ class Xiaoyilivechat(HarmonyDriver):
         if not cfg:
             return None
         ai_suffix = cfg['ai_suffix']
+        # endswith 仅接受 str 或 tuple(不接受 list),这里统一转 tuple
+        ai_suffix = tuple(ai_suffix) if isinstance(ai_suffix, list) else ai_suffix
         deadline = int(time.time() * 1000) + timeout_ms
         while int(time.time() * 1000) < deadline:
             if self._check_stop('ai_pcm首帧检测'):
@@ -424,6 +430,9 @@ class Xiaoyilivechat(HarmonyDriver):
                   task_id=None, test_case_id=None):
         """从文件列表中按后缀匹配一个 pcm 路径，多个匹配时【取文件最大者】。
 
+        suffix 支持单个字符串或列表(任一后缀匹配即可)，用于小艺 AI 回复
+        同时存在 cap_client_ec_out.pcm 和 client_in..pcm 两种命名的情况。
+
         cap_client 在一次会话里可能写多个同名后缀流：真麦克风采集流(有声、
         时长最长、size 最大) + 若干探针/回声流(静音、size 小)。若按文件名排序
         取最后一个，可能恰好选中静音探针流(如 *_1_1_cap_client_out.pcm)，
@@ -431,7 +440,9 @@ class Xiaoyilivechat(HarmonyDriver):
 
         size 全部取不到(stat 失败/全 0)时退回按文件名排序取最后一个,保持旧行为。
         """
-        matches = [f for f in files if f.endswith(suffix) and f != exclude]
+        suffixes = [suffix] if isinstance(suffix, str) else suffix
+        matches = [f for f in files
+                   if any(f.endswith(s) for s in suffixes) and f != exclude]
         if not matches:
             return None
         sized = []
@@ -504,6 +515,10 @@ class Xiaoyilivechat(HarmonyDriver):
             self._log(level='DEBUG', content=f"{app} 目录无 pcm 文件: {cfg['cache_dirs']}",
                       task_id=task_id, test_case_id=test_case_id)
             return result
+        # 诊断: 打印设备上找到的所有 pcm 文件完整路径,便于排查"未匹配到"问题
+        self._log(level='DEBUG',
+                  content=f"{app} 设备 pcm 文件({len(files)}个): {files}",
+                  task_id=task_id, test_case_id=test_case_id)
 
         # 用户输入与 AI 回复按后缀区分；ai 排除已选中的用户文件避免后缀包含导致误匹配
         user_remote = self._pick_pcm(device_sn, files, user_suffix,
@@ -573,6 +588,9 @@ class Xiaoyilivechat(HarmonyDriver):
         self._pcm_app = kwargs.get('pcm_app', 'xiaoyi')
         # 清空闹钟(ALARM_CLOCK 表),避免测试中途闹钟响铃打断用例
         self._clear_alarms(device_sn, task_id=task_id, test_case_id=test_case_id)
+        # 清理设备上残留的 pcm 缓存(防止上个用例 teardown 失败残留干扰本轮)
+        self._clear_pcm(device_sn, app=self._pcm_app,
+                        task_id=task_id, test_case_id=test_case_id)
         # 点开小艺聊天窗口
         # 注:08-17 fdb087a43 曾注掉此段(假设窗口已开只点通话按钮),
         # 但实测窗口常不在前台→pre_process 通话 SymbolGlyph 找不到→小艺没打开,故解回。
@@ -627,10 +645,12 @@ class Xiaoyilivechat(HarmonyDriver):
         self._round_number = round_number
         is_first = not getattr(self, '_recording', False)
         # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
-        # 会破坏连续通话已积累的音频)。必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
-        if record_mode != 'case' or is_first:
-            self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
-                            task_id=task_id, test_case_id=test_case_id)
+        # 会破坏连续通话已积累的音频)。打断轮不清(pcm 可能仍在写入/尚未拉取)。
+        # 必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
+        is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        # if (record_mode != 'case' or is_first) and not is_interruption:
+        #     self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
+        #                     task_id=task_id, test_case_id=test_case_id)
         # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长
         self._ai_first_frame_ms = None
         self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
@@ -713,7 +733,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 # 等待小艺回复结束（带超时和停止检查）
                 self._wait_for_condition(
                     lambda: driver.find_component(By.text('说话可打断')),
-                    timeout=60, interval=1, operation_name="post_process_说话可打断"
+                    timeout=10, interval=1, operation_name="post_process_说话可打断"
                 )
                 self._wait_for_condition(
                     lambda: driver.find_component(By.text('正在听…')),

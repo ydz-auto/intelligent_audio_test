@@ -464,8 +464,10 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。方法继承自父类。
         self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
-        # 会破坏连续通话已积累的音频)。必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
-        if record_mode != 'case' or is_first:
+        # 会破坏连续通话已积累的音频)。打断轮不清(pcm 可能仍在写入/尚未拉取)。
+        # 必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
+        is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        if (record_mode != 'case' or is_first) and not is_interruption:
             self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'chatgpt'),
                             task_id=task_id, test_case_id=test_case_id)
         # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长

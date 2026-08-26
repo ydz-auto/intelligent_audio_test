@@ -98,6 +98,11 @@ class E2EExecutor(BaseExecutor):
                     device_info_list, result_id, case_reference_params
                 )
 
+            if not execution_success:
+                error_msg = "执行失败，跳过评估" if not all_round_results else "执行过程中部分轮次失败"
+                self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
+                return False
+
             if not all_round_results:
                 error_msg = "所有轮次均未产生有效结果"
                 self._update_tc_rel_status(tc_rel_id, execution_status='failed', status='failed', error_message=error_msg)
@@ -135,9 +140,15 @@ class E2EExecutor(BaseExecutor):
             # ── 阶段四：设备驱动 teardown（与 initialize 对称）──
             if device_info_list:
                 try:
-                    self._device_manager.teardown_devices(
+                    teardown_ok = self._device_manager.teardown_devices(
                         device_info_list, task_id, test_case_id=test_case_id
                     )
+                    if not teardown_ok:
+                        self._log(
+                            level='WARNING',
+                            content="设备 teardown 部分失败（忽略）",
+                            task_id=task_id, test_case_id=test_case_id
+                        )
                 except Exception as teardown_err:
                     self._log(
                         level='WARNING',
@@ -264,10 +275,16 @@ class E2EExecutor(BaseExecutor):
             all_round_results.extend(tagged_results)
             if round_result.get('round_data'):
                 rounds_data.append(round_result['round_data'])
-            if not round_result.get('success', True):
-                execution_success = False
             if round_result.get('adjusted_ref_params'):
                 last_adjusted_ref_params = round_result['adjusted_ref_params']
+
+            # 本轮失败：设备状态已损坏，后续轮次无法正常执行，直接结束
+            if not round_result.get('success', True):
+                execution_success = False
+                self._log(level='ERROR',
+                          content=f"第 {round_number} 轮失败，跳过剩余 {len(rounds) - round_idx - 1} 轮",
+                          task_id=task_id, test_case_id=test_case_id)
+                break
 
         return all_round_results, rounds_data, execution_success, last_adjusted_ref_params
 
@@ -281,12 +298,22 @@ class E2EExecutor(BaseExecutor):
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
         self._register_voiceprint(task_id, tc_rel_id, round_algo_params, test_case_id)
-        self._device_manager.pre_process_devices(
+        pre_ok = self._device_manager.pre_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
             extra_params={'round_number': round_idx,
                           'total_rounds': len(rounds),
                           **round_algo_params},
         )
+        if not pre_ok:
+            self._log(level='ERROR', content=f"第 {round_number} 轮设备预处理失败，跳过本轮",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
+                'adjusted_ref_params': None,
+            }
 
         play_result = playback_orchestrator.play_round(
             round_config=round_config, task_id=task_id,
@@ -329,10 +356,20 @@ class E2EExecutor(BaseExecutor):
                     for p in detail
                 ]
 
-        self._device_manager.post_process_devices(
+        post_ok = self._device_manager.post_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
             extra_params=post_extra_params,
         )
+        if not post_ok:
+            self._log(level='ERROR', content=f"第 {round_number} 轮设备后处理失败，跳过采集",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
+                'adjusted_ref_params': None,
+            }
 
         # 采集结果
         collect_result = self._collector.collect_results(

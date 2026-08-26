@@ -295,7 +295,12 @@ class ReportCaseListQuery(APIModel):
 class ReportSearchCasesRequest(APIModel):
     keyword: Optional[str] = Field(None, alias='keyword', validation_alias=AliasChoices('keyword'))
     category: Optional[str] = Field(None, alias='category', validation_alias=AliasChoices('category'))
+    categories: Optional[List[str]] = Field(None, alias='categories', validation_alias=AliasChoices('categories'))
     include_untagged: Optional[bool] = Field(None, alias='includeUntagged', validation_alias=AliasChoices('include_untagged', 'includeUntagged'))
     tags: Optional[List[str]] = Field(None, alias='tags', validation_alias=AliasChoices('tags'))
+    metrics: Optional[List[str]] = Field(None, alias='metrics', validation_alias=AliasChoices('metrics'))
+    sort_by: Optional[str] = Field('name', alias='sortBy', validation_alias=AliasChoices('sort_by', 'sortBy'))
+    sort_metric: Optional[str] = Field(None, alias='sortMetric', validation_alias=AliasChoices('sort_metric', 'sortMetric'))
+    sort_order: Optional[str] = Field('asc', alias='sortOrder', validation_alias=AliasChoices('sort_order', 'sortOrder'))
     page: int = Field(1, alias='page', validation_alias=AliasChoices('page'))
     per_page: int = Field(20, alias='perPage', validation_alias=AliasChoices('per_page', 'perPage'))

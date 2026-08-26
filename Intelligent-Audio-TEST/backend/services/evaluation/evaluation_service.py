@@ -929,10 +929,13 @@ class EvaluationService(EvaluationLoggerMixin):
 
                 task_cases = task_cases_query.all()
                 for tc in task_cases:
+                    # 已完成评估的用例：同步 status 字段（覆盖服务重启后 status 停留在 pending 的情况）
                     if tc.evaluation_status in ['queued', 'pending'] and tc.execution_status in ['completed', 'failed']:
                         tc.evaluation_status = 'completed'
                         if tc.status == 'pending':
                             tc.status = tc.execution_status
+                    elif tc.evaluation_status == 'completed' and tc.status == 'pending' and tc.execution_status in ['completed', 'failed']:
+                        tc.status = tc.execution_status
 
                 local_db_session.commit()
 

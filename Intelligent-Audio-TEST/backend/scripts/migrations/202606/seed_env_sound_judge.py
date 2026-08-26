@@ -59,7 +59,7 @@ POSTGRES_URI = os.environ.get(
 )
 
 # eval_server 微服务地址
-API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:5000')
+API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
 
 # ============================================================
 # 维度定义
@@ -245,26 +245,16 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
             "AND dimension_type = 'sub' AND deleted = FALSE"
         ), {'name': name}).fetchone()
         if existing:
-            # 如果旧记录 task_type_code 与当前定义不一致，说明是改名场景，
-            # 软删旧记录的从属数据（params/mappings/relations），避免新旧并存
+            # 如果旧记录 task_type_code 与当前定义不一致，原地更新 task_type_code
+            # 不软删+新建，避免 test_result_dimensions 里的 dimension_id 失效
             old_tc = conn.execute(text(
                 "SELECT task_type_code FROM dimensions WHERE id = :did"
             ), {'did': existing[0]}).scalar()
             if old_tc and old_tc != task_code:
-                print(f"  ! 检测到子维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，软删旧记录 id={existing[0]} 并新建")
+                print(f"  ! 检测到子维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，原地更新 id={existing[0]}")
                 conn.execute(text(
-                    "UPDATE dimensions SET deleted = TRUE, updated_at = NOW() WHERE id = :did"
-                ), {'did': existing[0]})
-                conn.execute(text(
-                    "UPDATE evaluation_dimension_params SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
-                ), {'did': existing[0]})
-                conn.execute(text(
-                    "UPDATE param_mappings SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
-                ), {'did': existing[0]})
-                conn.execute(text(
-                    "UPDATE algorithm_dimension_relations SET deleted = TRUE, updated_at = NOW() WHERE dimension_id = :did"
-                ), {'did': existing[0]})
-                existing = None
+                    "UPDATE dimensions SET task_type_code = :tc, updated_at = NOW() WHERE id = :did"
+                ), {'tc': task_code, 'did': existing[0]})
     else:
         existing = conn.execute(text(
             "SELECT id FROM dimensions "

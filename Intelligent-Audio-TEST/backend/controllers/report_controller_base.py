@@ -893,10 +893,9 @@ class ReportControllerBase:
                 rounds_item = item
                 break
         if not rounds_item:
-            log.warning('[expand_algo] no rounds item found, count=%d', len(algorithm_results))
             return ReportControllerBase._normalize_audio_paths_in_results(algorithm_results)
         rounds_value = rounds_item.get('value')
-        log.warning('[expand_algo] rounds_item found, value type=%s, is_list=%s, len=%s',
+        log.debug('[expand_algo] rounds_item found, value type=%s, is_list=%s, len=%s',
                     type(rounds_value).__name__, isinstance(rounds_value, list),
                     len(rounds_value) if isinstance(rounds_value, list) else 'N/A')
         if not isinstance(rounds_value, list) or not rounds_value:
@@ -913,14 +912,13 @@ class ReportControllerBase:
         for r_idx, r_item in enumerate(rounds_value):
             if not isinstance(r_item, dict):
                 continue
-            raw_round = r_item.get('roundNumber')
-            if raw_round is None:
-                raw_round = r_item.get('round')
+            raw_round = r_item.get('round')
             rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
             output = r_item.get('output') or {}
-            for sub_key in ('question', 'answer'):
-                val = output.get(sub_key)
-                if val:
+            if isinstance(output, dict):
+                for sub_key, val in output.items():
+                    if val is None or sub_key == 'evaluation':
+                        continue
                     expanded.append({
                         'device': device,
                         'param_code': f'{sub_key}@round:{rn}',
@@ -978,6 +976,7 @@ class ReportControllerBase:
         
         keyword = data.keyword
         category = data.category
+        categories = data.categories
         include_untagged = data.include_untagged or False
         
         raw_tags = data.tags or []
@@ -991,6 +990,8 @@ class ReportControllerBase:
         else:
             tags = [t.strip() for t in str(raw_tags).split(',') if t.strip()]
 
+        metrics_filter = data.metrics or []
+
         query = ReportCase.query.filter_by(report_id=report.id)
 
         if keyword:
@@ -998,13 +999,19 @@ class ReportControllerBase:
             query = query.filter(
                 db.or_(
                     db.func.lower(ReportCase.name).contains(kw),
-                    db.func.lower(ReportCase.description).contains(kw)
+                    db.func.lower(ReportCase.description).contains(kw),
+                    db.func.lower(ReportCase.test_case_id).contains(kw)
                 )
             )
-        
+
         if category:
             query = query.filter(ReportCase.category == str(category))
-        
+
+        if categories:
+            cat_list = [str(c) for c in categories if c]
+            if cat_list:
+                query = query.filter(ReportCase.category.in_(cat_list))
+
         if tags or include_untagged:
             tag_set = set(str(t) for t in tags)
             if include_untagged and not tag_set:
@@ -1017,20 +1024,82 @@ class ReportControllerBase:
                 )
             elif tag_set:
                 for tag in tags:
-                    query = query.filter(ReportCase.tags.contains([tag]))
-        
+                    # PostgreSQL JSONB: cast to text 再 LIKE
+                    query = query.filter(
+                        ReportCase.tags.cast(db.Text).contains(f'"{tag}"'),
+                    )
+
+        # 指标过滤：case 的 metrics(JSON) 中至少有一个 resource 包含该指标名
+        if metrics_filter:
+            for metric_name in metrics_filter:
+                mn = str(metric_name)
+                # cast jsonb to text 再做 LIKE
+                query = query.filter(
+                    ReportCase.metrics.cast(db.Text).contains(f'"{mn}"'),
+                )
+
         page = data.page
         per_page = data.per_page
         if page < 1:
             page = 1
         if per_page < 1:
             per_page = 20
-        
-        paginated = query.paginate(page=page, per_page=per_page, error_out=False)
-        
+
+        sort_by = (data.sort_by or 'name').lower()
+        sort_order = (data.sort_order or 'asc').lower()
+        sort_metric = data.sort_metric
+
+        # 按评估维度排序：Python 提取指标值排序 + 手动分页
+        if sort_by == 'metric' and sort_metric:
+            mn = str(sort_metric)
+            asc = (sort_order != 'desc')
+            all_cases = query.all()
+
+            def _metric_key(case_item):
+                m = case_item.metrics or {}
+                if isinstance(m, dict):
+                    vals = []
+                    for v in m.values():
+                        if isinstance(v, dict) and mn in v:
+                            try:
+                                vals.append(float(v[mn]))
+                            except (TypeError, ValueError):
+                                pass
+                    if vals:
+                        avg = sum(vals) / len(vals)
+                        return (0, avg)
+                # 没有该维度的 case 排到最后
+                return (1, 0)
+
+            # 有值的 case 始终排在无值的前面；有值之间按 asc/desc 排序
+            with_metric = [c for c in all_cases if _metric_key(c)[0] == 0]
+            without_metric = [c for c in all_cases if _metric_key(c)[0] == 1]
+            with_metric.sort(key=lambda c: _metric_key(c)[1], reverse=not asc)
+            all_cases = with_metric + without_metric
+            total = len(all_cases)
+            start = (page - 1) * per_page
+            page_cases = all_cases[start:start + per_page]
+            pages = (total + per_page - 1) // per_page if per_page > 0 else 1
+        else:
+            # SQL 排序 + 分页
+            sort_col = {
+                'name': ReportCase.name,
+                'category': ReportCase.category,
+                'createdat': ReportCase.created_at,
+            }.get(sort_by, ReportCase.name)
+            if sort_order == 'desc':
+                sort_col = sort_col.desc()
+            else:
+                sort_col = sort_col.asc()
+            query = query.order_by(sort_col)
+            paginated = query.paginate(page=page, per_page=per_page, error_out=False)
+            page_cases = paginated.items
+            total = paginated.total
+            pages = paginated.pages
+
         items = []
         test_type = ReportControllerBase._get_report_test_type(report)
-        for case in paginated.items:
+        for case in page_cases:
             # 对 voice_llm 多轮场景做 question/answer 展开 + 参考参数多轮展开
             raw_algo_results = case.algorithm_results
             raw_ref_params = case.reference_params
@@ -1053,11 +1122,11 @@ class ReportControllerBase:
                 "testType": test_type,
                 "logs": case.logs
             })
-        
+
         return success_response({
             "items": items,
-            "total": paginated.total,
+            "total": total,
             "page": page,
             "perPage": per_page,
-            "pages": paginated.pages
+            "pages": pages
         })

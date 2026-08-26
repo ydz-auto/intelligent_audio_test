@@ -45,7 +45,7 @@ POSTGRES_URI = os.environ.get(
 )
 
 # eval_server 微服务地址
-API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:5000')
+API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
 
 # ============================================================
 # 维度定义

@@ -173,16 +173,10 @@
                   <select class="filter-select" v-model="sortDimension">
                     <option value="name">按名称</option>
                     <option value="category">按分组</option>
-                    <option value="tags">按用例标签</option>
                     <option value="createdAt">按创建时间</option>
                     <option value="评估维度">按评估维度</option>
-                    <option value="多维度值">按多维度值</option>
                   </select>
-                  <select class="filter-select" v-model="selectedSortMetric" v-if="sortDimension === '评估维度' || sortDimension === '多维度值'">
-                    <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
-                  </select>
-                  <select class="filter-select" v-model="secondSortMetric" v-if="sortDimension === '多维度值'">
-                    <option value="">无</option>
+                  <select class="filter-select" v-model="selectedSortMetric" v-if="sortDimension === '评估维度'">
                     <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
                   </select>
                   <select class="filter-select" v-model="sortOrder">
@@ -310,11 +304,11 @@
     </div>
 
     <PaginationComponent
-      v-if="unpinnedFilteredCases.length > 0"
+      v-if="totalCases > 0"
       class="specific-case-pagination"
       :currentPage="currentPage"
       :pageSize="pageSize"
-      :totalItems="unpinnedFilteredCases.length"
+      :totalItems="totalCases"
       @prev-page="handlePrevPage"
       @next-page="handleNextPage"
       @go-to-page="handleGoToPage"
@@ -406,6 +400,7 @@ import PaginationComponent from '../common/PaginationComponent.vue'
 import { reportsApi } from '../../utils/api'
 import { API_CONFIG } from '../../utils/config'
 import { useNotification } from '../../composables/useNotification'
+import { debounce } from '../../utils/utils'
 import '../../assets/styles/components/report-filter-card.css'
 
 // 导出模式：导出时展开所有用例、显示全部不分页
@@ -530,7 +525,6 @@ const selectedTags = ref([])
 const selectedMetrics = ref([])
 const sortDimension = ref('name')
 const selectedSortMetric = ref('')
-const secondSortMetric = ref('')  // 第二个排序维度（用于多维度排序）
 const sortOrder = ref('asc')
 const expandedCases = ref([])
 const pinnedCases = ref([])
@@ -895,6 +889,9 @@ const extractCasesFromReportData = (reportData) => {
 
 // 获取用例数据
 const cases = ref([])
+const totalCases = ref(0)
+const pageSize = ref(10)
+const currentPage = ref(1)
 
 const normalizeCasesForUi = (caseItems) => {
   const taskType = props.reportData?.taskType || 'all'
@@ -905,10 +902,10 @@ const normalizeCasesForUi = (caseItems) => {
       const metricsMap = toMetricsMap(c)
       const asrMap = toTextMap(c.asr)
       const tranMap = toTextMap(c.translation)
-      
+
       const algoResults = c.algorithmResults || c.algorithm_results || c.algorithmResults || []
       const refParams = c.referenceParams || c.reference_params || c.referenceParams || {}
-      
+
       return {
         ...c,
         metrics: metricsMap,
@@ -929,25 +926,63 @@ const normalizeCasesForUi = (caseItems) => {
   }
 }
 
-const loadCasesFromApi = async (reportId) => {
+// 后端分页加载当前页用例（排序也由后端处理）
+const loadCasesPage = async (reportId) => {
   casesLoading.value = true
   casesLoadError.value = ''
   try {
-    const perPage = 200
-    let page = 1
-    let pages = 1
-    const allItems = []
-    while (page <= pages) {
-      const data = await reportsApi.searchCases(reportId, { page, per_page: perPage })
-      const items = data?.items || []
-      pages = data?.pages || 1
-      allItems.push(...items)
-      page += 1
-      if (allItems.length >= 5000) break
+    const params = {
+      page: currentPage.value,
+      per_page: pageSize.value,
     }
-    cases.value = normalizeCasesForUi(allItems)
+    if (searchKeyword.value) params.keyword = searchKeyword.value
+    if (selectedCategories.value.length > 0) params.categories = selectedCategories.value
+    if (selectedTags.value.length > 0) params.tags = selectedTags.value
+    if (selectedMetrics.value.length > 0) params.metrics = selectedMetrics.value
+    if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
+      params.sort_by = 'metric'
+      params.sort_metric = selectedSortMetric.value
+      params.sort_order = sortOrder.value
+    } else {
+      params.sort_by = sortDimension.value
+      params.sort_order = sortOrder.value
+    }
+    const data = await reportsApi.searchCases(reportId, params)
+    const items = data?.items || []
+    totalCases.value = data?.total || 0
+    cases.value = normalizeCasesForUi(items)
   } catch (e) {
     console.error('加载报告用例失败:', e)
+    casesLoadError.value = e?.message || '加载用例失败'
+  } finally {
+    casesLoading.value = false
+  }
+}
+
+// 导出模式：拉取全量用例数据
+const loadAllCasesForExport = async (reportId) => {
+  casesLoading.value = true
+  casesLoadError.value = ''
+  try {
+    const params = { page: 1, per_page: 999999 }
+    if (searchKeyword.value) params.keyword = searchKeyword.value
+    if (selectedCategories.value.length > 0) params.categories = selectedCategories.value
+    if (selectedTags.value.length > 0) params.tags = selectedTags.value
+    if (selectedMetrics.value.length > 0) params.metrics = selectedMetrics.value
+    if (sortDimension.value === '评估维度' && selectedSortMetric.value) {
+      params.sort_by = 'metric'
+      params.sort_metric = selectedSortMetric.value
+      params.sort_order = sortOrder.value
+    } else {
+      params.sort_by = sortDimension.value
+      params.sort_order = sortOrder.value
+    }
+    const data = await reportsApi.searchCases(reportId, params)
+    const items = data?.items || []
+    totalCases.value = data?.total || 0
+    cases.value = normalizeCasesForUi(items)
+  } catch (e) {
+    console.error('加载全量用例失败:', e)
     casesLoadError.value = e?.message || '加载用例失败'
   } finally {
     casesLoading.value = false
@@ -960,9 +995,9 @@ const initializeCases = async () => {
   if (reportId) {
     // 优先调用 API
     console.log('优先调用 /api/v1/reports/{id}/cases/search API 获取用例数据')
-    await loadCasesFromApi(reportId)
+    await loadCasesPage(reportId)
   }
-  
+
   // 如果 API 返回空数据，尝试从本地数据提取
   if (!cases.value || cases.value.length === 0) {
     console.log('API 返回空数据，尝试从本地数据提取')
@@ -1014,8 +1049,9 @@ watch([
     if (effectiveReportId !== loadedReportId && effectiveReportId !== oldId && effectiveReportId !== oldReportId) {
       loadedReportId = effectiveReportId
       console.log('watch: 优先调用 /api/v1/reports/{id}/cases/search API 获取用例数据')
-      await loadCasesFromApi(effectiveReportId)
-      
+      currentPage.value = 1
+      await loadCasesPage(effectiveReportId)
+
       // 如果 API 返回空数据，尝试从本地数据提取
       if (!cases.value || cases.value.length === 0) {
         console.log('watch: API 返回空数据，尝试从本地数据提取')
@@ -1140,133 +1176,22 @@ const getResourceName = (resourceKey) => {
   return resourceKey;
 }
 
-const filteredCases = computed(() => {
-  // 使用我们新定义的cases.value获取案例数据，否则使用空数组
-  const caseData = cases.value || []
-  
-  // First, filter cases based on keyword, category, and tags
-  let filtered = caseData.filter(caseItem => {
-    // Keyword filter
-    const keyword = searchKeyword.value.toLowerCase()
-    const keywordMatch = !keyword ||
-      String(caseItem.id || '').toLowerCase().includes(keyword) ||
-      caseItem.name.toLowerCase().includes(keyword) ||
-      (caseItem.description && caseItem.description.toLowerCase().includes(keyword))
-    
-    // Category filter
-    const categoryMatch = selectedCategories.value.length === 0 || 
-      selectedCategories.value.includes(caseItem.category)
-    
-    // Tag filter - if all tags are selected, match all cases
-    const allTagsSelected = selectedTags.value.length === allTags.value.length
-    const tagMatch = allTagsSelected || selectedTags.value.length === 0 || 
-      selectedTags.value.some(tag => {
-        if (!caseItem.tags) return false
-        const tagNames = caseItem.tags.map(t => typeof t === 'object' ? t.name : t)
-        return tagNames.includes(tag)
-      })
-    
-    // Metric filter - if all metrics are selected, match all cases
-    const allMetricsSelected = selectedMetrics.value.length === actualAllMetrics.value.length
-    const metricMatch = allMetricsSelected || selectedMetrics.value.length === 0 || 
-      selectedMetrics.value.every(metric => {
-        // Check if at least one device has this metric
-          const metricsMap = toMetricsMap(caseItem)
-          return Object.values(metricsMap).some(deviceMetrics => deviceMetrics && typeof deviceMetrics[metric] === 'number')
-      })
-    
-    return keywordMatch && categoryMatch && tagMatch && metricMatch
-  })
-  
-  // Then, sort the filtered cases
-  filtered.sort((a, b) => {
-    let aVal, bVal
-    
-    // Determine the value to sort by
-    if (sortDimension.value === '评估维度') {
-      // Calculate average of the selected metric across devices
-      const aMap = toMetricsMap(a)
-      const bMap = toMetricsMap(b)
-      aVal = Object.values(aMap).reduce((sum, metrics) => sum + (metrics?.[selectedSortMetric.value] || 0), 0) / (Object.values(aMap).length || 1)
-      bVal = Object.values(bMap).reduce((sum, metrics) => sum + (metrics?.[selectedSortMetric.value] || 0), 0) / (Object.values(bMap).length || 1)
-    } else {
-      // Traditional sorting by other dimensions
-      switch (sortDimension.value) {
-        case 'name':
-          aVal = a.name.toLowerCase()
-          bVal = b.name.toLowerCase()
-          break
-        case 'category':
-          aVal = (a.category || '').toLowerCase()
-          bVal = (b.category || '').toLowerCase()
-          break
-        case 'tags':
-          // Sort by the first tag in alphabetical order
-          const aTags = a.tags ? a.tags.map(t => typeof t === 'object' ? t.name : t) : []
-          const bTags = b.tags ? b.tags.map(t => typeof t === 'object' ? t.name : t) : []
-          aVal = aTags.length > 0 ? aTags[0].toLowerCase() : ''
-          bVal = bTags.length > 0 ? bTags[0].toLowerCase() : ''
-          break
-        case 'createdAt':
-          // 使用startTime作为createdAt的代理
-          aVal = Object.values(a.results || {})[0]?.startTime || 0
-          bVal = Object.values(b.results || {})[0]?.startTime || 0
-          break
-        default:
-          aVal = 0
-          bVal = 0
-      }
-    }
-    
-    // Apply sort order
-    if (aVal < bVal) {
-      return sortOrder.value === 'asc' ? -1 : 1
-    }
-    if (aVal > bVal) {
-      return sortOrder.value === 'asc' ? 1 : -1
-    }
-    return 0
-  })
-  
-  return filtered
-})
+// 后端已分页+过滤+排序，cases.value 即当前页数据
+const filteredCases = computed(() => cases.value || [])
 
 const unpinnedFilteredCases = computed(() => {
   const pinnedIds = new Set((pinnedCases.value || []).map(p => p?.id))
   return (filteredCases.value || []).filter(c => c && !pinnedIds.has(c.id))
 })
 
-// 导出模式：展开本区块 + 显示全部用例 + 展开所有用例详情（克隆后再由 JS 隐藏）
-watch(isExporting, (exporting) => {
-  if (exporting) {
-    isCollapsed.value = false
-    // 展开所有用例详情，让 .case-details 渲染到 DOM 中
-    // 克隆后由 ReportView 的 generateExportZip 统一隐藏，JS 点击再展开
-    expandedCases.value = (unpinnedFilteredCases.value || []).map(c => c.id)
-  }
-}, { immediate: true })
-
-const pageSize = ref(10)
-const currentPage = ref(1)
-
 const totalPages = computed(() => {
-  const total = unpinnedFilteredCases.value.length
-  return Math.max(1, Math.ceil(total / pageSize.value))
+  return Math.max(1, Math.ceil(totalCases.value / pageSize.value))
 })
 
-watch([unpinnedFilteredCases, pageSize], () => {
-  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
-  if (currentPage.value < 1) currentPage.value = 1
-})
-
-const paginatedCases = computed(() => {
-  const start = (currentPage.value - 1) * pageSize.value
-  return unpinnedFilteredCases.value.slice(start, start + pageSize.value)
-})
+const paginatedCases = computed(() => filteredCases.value)
 
 const paginatedCasesWithPreparedData = computed(() => {
-  // 导出模式：显示全部用例，不分页
-  const sourceCases = isExporting.value ? unpinnedFilteredCases.value : paginatedCases.value
+  const sourceCases = paginatedCases.value
   return sourceCases.map(caseItem => ({
     ...caseItem,
     _preparedComparisonData: prepareComparisonData(caseItem),
@@ -1280,23 +1205,63 @@ const paginatedCasesWithPreparedData = computed(() => {
   }))
 })
 
+// 导出模式：拉取全量用例并展开所有用例详情
+watch(isExporting, async (exporting) => {
+  if (exporting) {
+    isCollapsed.value = false
+    const reportId = props.reportData?.id || props.reportData?.reportId
+    if (reportId) {
+      await loadAllCasesForExport(reportId)
+    }
+    // 展开所有用例详情，让 .case-details 渲染到 DOM 中
+    // 克隆后由 ReportView 的 generateExportZip 统一隐藏，JS 点击再展开
+    expandedCases.value = (unpinnedFilteredCases.value || []).map(c => c.id)
+  }
+}, { immediate: true })
+
+// 筛选/排序条件变化时重新请求后端
+const debouncedReload = debounce(() => {
+  const reportId = props.reportData?.id || props.reportData?.reportId
+  if (reportId && !isExporting.value) {
+    currentPage.value = 1
+    loadCasesPage(reportId)
+  }
+}, 300)
+
+watch([searchKeyword, selectedCategories, selectedTags, selectedMetrics, sortDimension, selectedSortMetric, sortOrder], () => {
+  debouncedReload()
+})
+
+// 翻页/改页大小
 const handlePrevPage = () => {
-  if (currentPage.value > 1) currentPage.value -= 1
+  if (currentPage.value > 1) {
+    currentPage.value -= 1
+    const reportId = props.reportData?.id || props.reportData?.reportId
+    if (reportId) loadCasesPage(reportId)
+  }
 }
 
 const handleNextPage = () => {
-  if (currentPage.value < totalPages.value) currentPage.value += 1
+  if (currentPage.value < totalPages.value) {
+    currentPage.value += 1
+    const reportId = props.reportData?.id || props.reportData?.reportId
+    if (reportId) loadCasesPage(reportId)
+  }
 }
 
 const handleGoToPage = (page) => {
   const p = Number(page)
   if (!Number.isFinite(p)) return
   currentPage.value = Math.min(Math.max(1, p), totalPages.value)
+  const reportId = props.reportData?.id || props.reportData?.reportId
+  if (reportId) loadCasesPage(reportId)
 }
 
 const handlePageSizeChange = (newSize) => {
   pageSize.value = newSize
   currentPage.value = 1
+  const reportId = props.reportData?.id || props.reportData?.reportId
+  if (reportId) loadCasesPage(reportId)
 }
 
 // Methods
@@ -1675,14 +1640,13 @@ const resetFilters = () => {
 }
 
 const applyFilters = () => {
-  // 这里可以添加筛选逻辑
+  // 筛选由 watch 自动触发后端请求，这里仅做日志
   console.log('应用筛选:', {
     searchKeyword: searchKeyword.value,
     selectedCategories: selectedCategories.value,
     selectedTags: selectedTags.value,
     selectedMetrics: selectedMetrics.value,
     sortDimension: sortDimension.value,
-    selectedSortMetric: selectedSortMetric.value,
     sortOrder: sortOrder.value
   })
 }
