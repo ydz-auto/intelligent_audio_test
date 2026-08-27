@@ -322,14 +322,12 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { API_CONFIG } from '../../utils/config';
+import { buildAudioUrl, normalizeAudioItem } from '../../utils/audioUtils';
 import DataTable from './DataTable.vue';
 import TimelineComparison from '../report/TimelineComparison.vue';
 import AudioPlayerModal from './AudioPlayerModal.vue';
 import AudioTimelineVisualization from './AudioTimelineVisualization.vue';
 import reportService from '../../services/reportService';
-
-const apiBaseUrl = API_CONFIG.baseUrl;
 
 const props = defineProps({
   dimensions: { type: Array, default: () => [] },
@@ -486,40 +484,7 @@ const formatValue = (value) => {
   return num.toFixed(2);
 };
 
-const getAudioUrl = (audio) => {
-  if (!audio) return '';
-  
-  // 如果直接传入的是路径字符串（兼容旧用法）
-  if (typeof audio === 'string') {
-    return `${apiBaseUrl.replace('/v1', '')}/audio/stream-by-path?path=${encodeURIComponent(audio)}`;
-  }
-  
-  // 如果有完整URL（后端直接返回的），直接返回
-  if (audio.url && audio.url.startsWith('http')) {
-    return audio.url;
-  }
-  if (audio.url && audio.url.startsWith('/')) {
-    // 处理后端返回的 /api/audios/play/{id} 格式
-    if (audio.url.includes('/audios/play/')) {
-      return audio.url;
-    }
-    // 处理其他 /api 开头的路径
-    return `${apiBaseUrl.replace('/v1', '')}${audio.url}`;
-  }
-  
-  // 优先使用 ID 获取音频
-  if (audio.id) {
-    const taskType = audio.type || 'api';
-    return `${apiBaseUrl}/audios/${audio.id}/stream?task_type=${taskType}`;
-  }
-  
-  // 如果没有 ID，回退到使用路径
-  if (audio.path) {
-    return `${apiBaseUrl.replace('/v1', '')}/audio/stream-by-path?path=${encodeURIComponent(audio.path)}`;
-  }
-  
-  return '';
-};
+const getAudioUrl = buildAudioUrl;
 
 const hasAudio = computed(() => props.audioPath || props.audioList.length > 0);
 
@@ -637,6 +602,7 @@ const resultTextFields = computed(() => {
   }
 
   // 2. 补充 fieldMapping 里定义的 text/timestamp/number 字段（跳过 algorithmResults 已覆盖的）
+  //    仅补充 algorithmResults 中有对应值的字段，避免显示"无数据"
   const fmFields = (props.fieldMapping?.result || [])
     .map(f => ({
       ...f,
@@ -645,8 +611,9 @@ const resultTextFields = computed(() => {
     }))
     .filter(f => DISPLAY_TYPES.has(f.param_type)
       && f.param_code && !META_CODES.has(f.param_code) && !f.param_code.startsWith('rounds'));
+  const allResultCodes = new Set(algoResults.map(i => i.param_code));
   for (const f of fmFields) {
-    if (!seenCodes.has(f.param_code)) {
+    if (!seenCodes.has(f.param_code) && allResultCodes.has(f.param_code)) {
       seenCodes.add(f.param_code);
       textItems.push({
         ...f,
@@ -719,18 +686,7 @@ const hasResultAudioData = computed(() => {
 const audioListWithTimeline = computed(() => {
   const list = props.audioList || [];
   if (list.length === 0) return [];
-
-  // 只做字段归一化，不再自行计算时间轴位置
-  // 后端已根据 overlap_rate/overlap_time 计算好 timelineStart/timelineEnd
-  return list.map(a => ({
-    ...a,
-    timelineStart: a.timelineStart ?? a.timeline_start ?? 0,
-    timelineEnd: a.timelineEnd ?? a.timeline_end ?? ((a.timelineStart ?? a.timeline_start ?? 0) + (a.duration || 0)),
-    testType: a.testType ?? a.test_type ?? a.audio_type ?? a.type ?? 'api',
-    playOrder: a.playOrder ?? a.play_order,
-    playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
-    roundNumber: a.roundNumber ?? a.round_number ?? a.round ?? 1,
-  }));
+  return list.map(a => normalizeAudioItem(a));
 });
 
 const hasTimelineData = computed(() => {
@@ -954,11 +910,14 @@ const getResultTextValue = (device, paramCode) => {
     param_code: i.param_code ?? i.paramCode,
     param_type: i.param_type ?? i.paramType,
   });
+  const normed = items.map(norm);
   let item;
   if (props.isComparison && device !== 'default') {
-    item = items.map(norm).find(i => i.device === device && i.param_code === paramCode);
+    // 先尝试精确匹配，再回退到包含匹配（快照可能使用完整资源名如 "1-小艺通话-1.0.0"）
+    item = normed.find(i => i.device === device && i.param_code === paramCode)
+         || normed.find(i => i.device && (i.device.includes(device) || device.includes(i.device)) && i.param_code === paramCode);
   } else {
-    item = items.map(norm).find(i => i.param_code === paramCode);
+    item = normed.find(i => i.param_code === paramCode);
   }
   if (!item || item.value === undefined || item.value === null) return '无数据';
   const data = item.value;

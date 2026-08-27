@@ -180,19 +180,51 @@
       <div class="association-content">
         <!-- 关联用例列表 -->
         <div class="associated-cases" v-show="activeTab === 'cases'" style="display: flex; flex-direction: column; gap: 12px;">
-          <div style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
             <h5 style="margin: 0; font-size: 16px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
               <i class="fas fa-list-check" style="color: var(--primary-color);"></i>
               关联用例
             </h5>
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <!-- 视图切换 -->
+              <div class="case-view-switcher" style="display: inline-flex; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); overflow: hidden;">
+                <button class="case-view-btn" :class="{ active: caseViewMode === 'flat' }" @click="caseViewMode = 'flat'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                  <i class="fas fa-list"></i> 平铺
+                </button>
+                <button class="case-view-btn" :class="{ active: caseViewMode === 'tag' }" @click="caseViewMode = 'tag'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                  <i class="fas fa-tags"></i> 标签
+                </button>
+                <button class="case-view-btn" :class="{ active: caseViewMode === 'group' }" @click="caseViewMode = 'group'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                  <i class="fas fa-folder"></i> 分组
+                </button>
+              </div>
+              <!-- 状态筛选 -->
+              <div class="filter-select" style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">状态:</label>
+                <select v-model="caseFilterStatus" class="form-input" style="height: 32px; padding: 0 8px; font-size: 13px; min-width: 110px;">
+                  <option value="all">全部状态</option>
+                  <option value="pending">等待中</option>
+                  <option value="queued">排队中</option>
+                  <option value="in_progress">执行中</option>
+                  <option value="calculating">计算指标中</option>
+                  <option value="completed">已完成</option>
+                  <option value="failed">已失败</option>
+                  <option value="skipped">已跳过</option>
+                  <option value="stopped">已停止</option>
+                  <option value="deleted">已删除</option>
+                </select>
+              </div>
+            </div>
           </div>
-          <div class="associated-items-list-container" 
+
+          <!-- 平铺视图：保留虚拟滚动 -->
+          <div v-if="caseViewMode === 'flat'" class="associated-items-list-container"
                ref="caseScrollContainer"
                @scroll="handleCaseScroll"
                style="max-height: 400px; overflow-y: auto; position: relative;">
             <div :style="{ height: caseTotalHeight + 'px', position: 'relative' }">
               <div :style="{ transform: `translateY(${caseOffset}px)` }">
-                <div v-if="associatedCases && associatedCases.length === 0 && (!testProgress || testProgress.length === 0)" class="no-items-message" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <div v-if="filteredAssociatedCases.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                   <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
                   暂无关联用例
                 </div>
@@ -200,13 +232,7 @@
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
                     <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
-                      {{ 
-                        testCase.status === 'completed' ? '已完成' : 
-                        testCase.status === 'failed' ? '已失败' : 
-                        testCase.status === 'in_progress' ? '执行中' : 
-                        testCase.status === 'calculating' ? '计算指标中' : 
-                        testCase.status === 'queued' ? '排队中' : '等待中' 
-                      }} ({{ testCase.duration || '' }})
+                      {{ getCaseStatusLabel(testCase.status) }} ({{ testCase.duration || '' }})
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
@@ -221,24 +247,53 @@
                   </div>
                   <div class="progress-actions" style="display: flex; align-items: center; gap: 8px;">
                     <div class="progress-status" style="display: flex; align-items: center; gap: 8px;">
-                      <i v-if="testCase.status === 'completed'" class="fas fa-check status-icon" style="color: var(--success-color);"></i>
-                      <i v-else-if="testCase.status === 'in_progress'" class="fas fa-spinner fa-spin status-icon" style="color: var(--warning-color);"></i>
-                      <i v-else-if="testCase.status === 'calculating'" class="fas fa-calculator status-icon" style="color: var(--info-color, #1677FF);"></i>
-                      <i v-else-if="testCase.status === 'queued'" class="fas fa-clock status-icon" style="color: var(--warning-color);"></i>
-                      <i v-else-if="testCase.status === 'pending'" class="fas fa-circle pending-dot" style="color: var(--text-disabled);"></i>
-                      <i v-else-if="testCase.status === 'skipped'" class="fas fa-forward status-icon" style="color: var(--warning-color);"></i>
-                      <i v-else-if="testCase.status === 'deleted'" class="fas fa-trash status-icon" style="color: var(--danger-color, #FF4D4F);"></i>
-                      <i v-else-if="testCase.status === 'failed'" class="fas fa-times status-icon" style="color: var(--danger-color, #FF4D4F);"></i>
-                      <i v-else-if="testCase.status === 'stopped'" class="fas fa-stop status-icon" style="color: var(--secondary-color);"></i>
-                      <i v-else class="fas fa-circle pending-dot" style="color: var(--text-disabled);"></i>
+                      <i :class="getCaseStatusIcon(testCase.status).icon" :style="{ color: getCaseStatusIcon(testCase.status).color }"></i>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-          
 
+          <!-- 标签视图 / 分组视图 -->
+          <div v-else class="associated-items-list-container" style="max-height: 400px; overflow-y: auto; position: relative;">
+            <div v-if="filteredAssociatedCases.length === 0" class="no-items-message" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+              <i class="fas fa-info-circle" style="font-size: 24px; margin-bottom: 12px; display: block;"></i>
+              暂无关联用例
+            </div>
+            <div v-for="(cases, key) in (caseViewMode === 'tag' ? groupedCasesByTag : groupedCasesByGroupName)" :key="key" class="case-group-card" style="background-color: var(--background-secondary); border-radius: var(--border-radius-md); margin-bottom: 8px; border: 1px solid var(--border-color);">
+              <div class="case-group-header" @click="toggleCaseGroup(key)" style="padding: 10px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-chevron-down" :class="{ expanded: expandedCaseGroups[key] }" style="font-size: 12px; transition: transform 0.2s; transform: rotate(-90deg);"></i>
+                <i v-if="caseViewMode === 'tag'" class="fas fa-tag" style="color: var(--primary-color, #4a90e2); font-size: 13px;"></i>
+                <i v-else class="fas fa-folder" style="color: var(--primary-color, #4a90e2); font-size: 13px;"></i>
+                <span style="font-weight: 500; color: var(--text-primary);">{{ key }}</span>
+                <span style="background-color: var(--primary-color); color: white; font-size: 12px; padding: 2px 8px; border-radius: 12px; min-width: 20px; text-align: center;">{{ cases.length }}</span>
+              </div>
+              <div v-if="expandedCaseGroups[key]" class="case-group-content" style="padding: 0 12px 12px 12px; display: flex; flex-direction: column; gap: 2px;">
+                <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: 8px; background-color: var(--background-primary); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
+                  <div class="progress-info" style="flex: 1; overflow: hidden;">
+                    <div class="progress-name" style="font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
+                    <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
+                      {{ getCaseStatusLabel(testCase.status) }} ({{ testCase.duration || '' }})
+                    </div>
+                    <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
+                      <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
+                        第 {{ testCase.roundProgress.current }}/{{ testCase.roundProgress.total }} 轮
+                      </span>
+                      <div style="flex: 1; height: 3px; background: var(--border-color, #e5e7eb); border-radius: 2px; overflow: hidden; min-width: 40px;">
+                        <div style="height: 100%; background: var(--primary-color, #1677FF); border-radius: 2px; transition: width 0.3s ease;"
+                             :style="{ width: (testCase.roundProgress.current / testCase.roundProgress.total * 100) + '%' }">
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="progress-status" style="display: flex; align-items: center; gap: 8px;">
+                    <i :class="getCaseStatusIcon(testCase.status).icon" :style="{ color: getCaseStatusIcon(testCase.status).color }"></i>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 关联设备/API列表 -->
@@ -395,17 +450,110 @@ const caseVisibleCount = 10;
 const caseStartIndex = ref(0);
 const caseScrollContainer = ref(null);
 
+// 视图模式：'flat' 平铺 | 'tag' 标签视图 | 'group' 用例分组视图
+const caseViewMode = ref('flat');
+// 状态筛选：'all' 或具体状态
+const caseFilterStatus = ref('all');
+// 分组展开状态
+const expandedCaseGroups = ref({});
+
+const toggleCaseGroup = (key) => {
+  expandedCaseGroups.value = {
+    ...expandedCaseGroups.value,
+    [key]: !expandedCaseGroups.value[key]
+  };
+};
+
+// 状态 -> 图标 class
+const statusIconMap = {
+  completed: { icon: 'fas fa-check', color: 'var(--success-color)' },
+  in_progress: { icon: 'fas fa-spinner fa-spin', color: 'var(--warning-color)' },
+  calculating: { icon: 'fas fa-calculator', color: 'var(--info-color, #1677FF)' },
+  queued: { icon: 'fas fa-clock', color: 'var(--warning-color)' },
+  pending: { icon: 'fas fa-circle pending-dot', color: 'var(--text-disabled)' },
+  skipped: { icon: 'fas fa-forward', color: 'var(--warning-color)' },
+  deleted: { icon: 'fas fa-trash', color: 'var(--danger-color, #FF4D4F)' },
+  failed: { icon: 'fas fa-times', color: 'var(--danger-color, #FF4D4F)' },
+  stopped: { icon: 'fas fa-stop', color: 'var(--secondary-color)' }
+};
+
+const statusLabelMap = {
+  completed: '已完成',
+  failed: '已失败',
+  in_progress: '执行中',
+  calculating: '计算指标中',
+  queued: '排队中',
+  pending: '等待中',
+  skipped: '已跳过',
+  stopped: '已停止',
+  deleted: '已删除'
+};
+
+const getCaseStatusIcon = (status) => statusIconMap[status] || statusIconMap.pending;
+const getCaseStatusLabel = (status) => statusLabelMap[status] || '等待中';
+
+// 将 tags 归一为字符串数组
+const normalizeCaseTags = (tags) => {
+  if (!tags) return [];
+  if (Array.isArray(tags) && tags.length > 0 && typeof tags[0] === 'string') return tags;
+  return (tags || []).map((t) => t?.name || String(t || ''));
+};
+
+// 按状态筛选后的用例
+const filteredAssociatedCases = computed(() => {
+  const list = props.associatedCases || [];
+  if (caseFilterStatus.value === 'all') return list;
+  return list.filter((c) => c.status === caseFilterStatus.value);
+});
+
+// 按标签分组
+const groupedCasesByTag = computed(() => {
+  const groups = {};
+  filteredAssociatedCases.value.forEach((c) => {
+    const tags = normalizeCaseTags(c.tags);
+    if (tags.length === 0) {
+      const key = '未分组';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(c);
+    } else {
+      tags.forEach((t) => {
+        if (!groups[t]) groups[t] = [];
+        groups[t].push(c);
+      });
+    }
+  });
+  return groups;
+});
+
+// 按 groupName 分组
+const groupedCasesByGroupName = computed(() => {
+  const groups = {};
+  filteredAssociatedCases.value.forEach((c) => {
+    const key = c.groupName || '未分组';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(c);
+  });
+  return groups;
+});
+
 const visibleCases = computed(() => {
+  const list = filteredAssociatedCases.value;
   const start = Math.max(0, caseStartIndex.value - 5);
-  const end = Math.min(props.associatedCases.length, caseStartIndex.value + caseVisibleCount + 5);
-  return props.associatedCases.slice(start, end).map((item, index) => ({
+  const end = Math.min(list.length, caseStartIndex.value + caseVisibleCount + 5);
+  return list.slice(start, end).map((item, index) => ({
     ...item,
     viewIndex: start + index
   }));
 });
 
-const caseTotalHeight = computed(() => props.associatedCases.length * caseItemHeight);
+const caseTotalHeight = computed(() => filteredAssociatedCases.value.length * caseItemHeight);
 const caseOffset = computed(() => Math.max(0, caseStartIndex.value - 5) * caseItemHeight);
+
+// 视图或筛选变化时重置滚动位置
+watch([caseViewMode, caseFilterStatus], () => {
+  caseStartIndex.value = 0;
+  if (caseScrollContainer.value) caseScrollContainer.value.scrollTop = 0;
+});
 
 const handleCaseScroll = (e) => {
   const scrollTop = e.target.scrollTop;
@@ -490,4 +638,19 @@ const scrollToBottom = () => {
 
 <style scoped>
 /* 组件样式已内联在模板中 */
+
+/* 视图切换按钮激活态 */
+.case-view-btn.active {
+  background: var(--primary-color, #4a90e2);
+  color: #fff;
+}
+
+.case-view-btn:hover:not(.active) {
+  background: var(--background-tertiary, #f5f5f5);
+}
+
+/* 分组展开图标旋转 */
+.case-group-header .fa-chevron-down.expanded {
+  transform: rotate(0deg);
+}
 </style>

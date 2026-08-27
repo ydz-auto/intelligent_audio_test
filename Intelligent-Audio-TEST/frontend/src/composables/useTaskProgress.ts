@@ -10,11 +10,18 @@ interface RoundProgress {
 
 interface AssociatedCase {
   id: string | number;
+  name?: string;
   status: string;
   executionStatus: string;
   evaluationStatus: string;
   duration?: string;
   roundProgress?: RoundProgress;
+  /** 用例分组名，用于"用例分组视图" */
+  groupName?: string;
+  /** 用例标签，用于"标签视图" */
+  tags?: string[] | { id: number; name: string }[];
+  /** 算法类型 */
+  algorithmType?: string;
 }
 
 interface APIResource {

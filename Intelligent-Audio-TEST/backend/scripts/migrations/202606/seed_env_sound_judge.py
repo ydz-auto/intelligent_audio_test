@@ -75,7 +75,7 @@ _COMMON_PARAMS = [
      False, None, '场景名(如 旁人交谈/环境噪声/插话打断 等)，为空则评估全部场景；兼容旧 env_type 字段', 10),
     ('model', 'LLM模型', 'LLM 模型名(覆盖默认)', 'text', 'input',
      None, None, None, False,
-     False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频，音频裁判需指定gpt-audio/omni等)', 15),
+     False, 'gemini-3.7-flash', '覆盖 config.LLM_JUDGE.default_model，留空用默认(注意:默认gpt-4o-mini不支持音频，音频裁判需指定gpt-audio/omni等)', 15),
     ('max_tokens', '最大token', '最大输出 token 数', 'number', 'input',
      None, None, None, False,
      False, '4096', 'LLM 最大输出 token 数', 20),

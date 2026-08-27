@@ -320,8 +320,8 @@ const calculateCompletionRate = (task) => {
   display: flex;
   align-items: flex-start;
   gap: 12px;
-  flex: 1;
-  min-width: 300px;
+  flex: 1 1 300px;
+  min-width: 0;
 }
 
 .task-info {

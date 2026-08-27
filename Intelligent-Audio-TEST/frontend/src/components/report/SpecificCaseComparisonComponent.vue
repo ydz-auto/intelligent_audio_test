@@ -398,7 +398,7 @@ import AudioPlayerModal from '../common/AudioPlayerModal.vue'
 import TestCaseReportDetail from '../common/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/PaginationComponent.vue'
 import { reportsApi } from '../../utils/api'
-import { API_CONFIG } from '../../utils/config'
+import { normalizeAudioFields } from '../../utils/audioUtils'
 import { useNotification } from '../../composables/useNotification'
 import { debounce } from '../../utils/utils'
 import '../../assets/styles/components/report-filter-card.css'
@@ -698,49 +698,6 @@ const getValidResources = (data) => {
 };
 
 const devices = ref(getValidResources(props.reportData));
-
-const normalizeAudioFields = (caseItem, taskType) => {
-  if (!caseItem || typeof caseItem !== 'object') return caseItem
-  const normalized = { ...caseItem }
-
-  // 用例级 testType 是测试用例/任务的属性，作为音频类型的兜底
-  const caseTestType = normalized.testType ?? normalized.test_type ?? taskType ?? 'api'
-
-  if (normalized.audios && Array.isArray(normalized.audios) && normalized.audios.length > 0) {
-    normalized.audioList = normalized.audios.map((audio, idx) => {
-      let typeLabel = '测试音频'
-      const audioType = audio.testType ?? audio.audioType ?? audio.test_type ?? audio.audio_type ?? caseTestType
-      if (audioType === 'api') {
-        typeLabel = 'API测试音频'
-      } else if (audioType === 'e2e') {
-        typeLabel = 'E2E测试音频'
-      } else if (audioType === 'noise') {
-        typeLabel = '噪声'
-      } else if (audioType === 'dry') {
-        typeLabel = '干声'
-      }
-      
-      return {
-        id: audio.id,
-        path: audio.url ?? audio.path,
-        label: audio.label ?? audio.filename ?? `${typeLabel} ${idx + 1}`,
-        type: audioType,
-        filename: audio.filename,
-        duration: audio.duration,
-        spl: audio.spl,
-        playOrder: audio.playOrder ?? audio.play_order,
-        noiseSpl: audio.noiseSpl ?? audio.noise_spl,
-        deviceId: audio.playbackDeviceId ?? audio.deviceId ?? audio.device_id,
-        deviceName: audio.playbackDeviceName ?? audio.deviceName ?? audio.device_name,
-        timelineStart: audio.timelineStart ?? audio.timeline_start ?? 0,
-        timelineEnd: audio.timelineEnd ?? audio.timeline_end ?? (audio.timelineStart ?? 0 + (audio.duration || 0)),
-        roundNumber: audio.roundNumber ?? audio.round_number
-      }
-    })
-  }
-
-  return normalized
-}
 
 // 从reportData中提取用例数据
 // 优先级：1. /api/v1/reports/{id}/cases/search API 2. testReportsCases 3. reportData.cases 4. summary.cases 5. detailedResults
@@ -1230,7 +1187,7 @@ const debouncedReload = debounce(() => {
 
 watch([searchKeyword, selectedCategories, selectedTags, selectedMetrics, sortDimension, selectedSortMetric, sortOrder], () => {
   debouncedReload()
-})
+}, { deep: true })
 
 // 翻页/改页大小
 const handlePrevPage = () => {

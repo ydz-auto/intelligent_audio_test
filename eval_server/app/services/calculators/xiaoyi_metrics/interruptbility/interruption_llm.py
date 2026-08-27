@@ -297,6 +297,17 @@ def evaluate_interruption_llm(rounds: List[Dict[str, Any]],
 
     behavior_summary: Dict[str, int] = {label: 0 for label in _BEHAVIOR_LABELS}
     interaction_summary: Dict[str, int] = {label: 0 for label in _BEHAVIOR_LABELS}
+    # 0/1 字段（与 env_judge 风格对齐）：1=该行为出现过
+    behavior_respond = 0
+    behavior_recover = 0
+    behavior_ask = 0
+    behavior_irrelevant = 0
+    behavior_silence = 0
+    interaction_respond = 0
+    interaction_recover = 0
+    interaction_ask = 0
+    interaction_irrelevant = 0
+    interaction_silence = 0
 
     for idx, rd in enumerate(rounds, 1):
         if not isinstance(rd, dict):
@@ -320,6 +331,16 @@ def evaluate_interruption_llm(rounds: List[Dict[str, Any]],
             parsed = _parse_json(resp['content']) or {}
             ib_item['behavior'], _ = _normalize_behavior(
                 parsed.get('behavior', ''), interaction_summary)
+            if ib_item['behavior'] == '回应':
+                interaction_respond = 1
+            elif ib_item['behavior'] == '恢复':
+                interaction_recover = 1
+            elif ib_item['behavior'] == '询问':
+                interaction_ask = 1
+            elif ib_item['behavior'] == '无关回复':
+                interaction_irrelevant = 1
+            elif ib_item['behavior'] == '沉默或无视':
+                interaction_silence = 1
             ib_item['reason'] = parsed.get('reason', '')
         except Exception as e:
             ib_item['error'] = str(e)
@@ -366,6 +387,16 @@ def evaluate_interruption_llm(rounds: List[Dict[str, Any]],
             parsed = _parse_json(resp['content']) or {}
             behavior, _ = _normalize_behavior(parsed.get('behavior', ''), behavior_summary)
             beh_item['behavior'] = behavior
+            if behavior == '回应':
+                behavior_respond = 1
+            elif behavior == '恢复':
+                behavior_recover = 1
+            elif behavior == '询问':
+                behavior_ask = 1
+            elif behavior == '无关回复':
+                behavior_irrelevant = 1
+            elif behavior == '沉默或无视':
+                behavior_silence = 1
             beh_item['reason'] = parsed.get('reason', '')
         except Exception as e:
             beh_item['error'] = str(e)
@@ -414,6 +445,17 @@ def evaluate_interruption_llm(rounds: List[Dict[str, Any]],
         # 交互过程行为（每轮，所有打断用例）
         'llm_interaction_per_round': interaction_behavior,
         'llm_interaction_behavior_summary': interaction_summary,
+        # 0/1 字段（与 env_judge 风格对齐）：1=该行为出现过
+        'behavior_respond': behavior_respond,
+        'behavior_recover': behavior_recover,
+        'behavior_ask': behavior_ask,
+        'behavior_irrelevant': behavior_irrelevant,
+        'behavior_silence': behavior_silence,
+        'interaction_respond': interaction_respond,
+        'interaction_recover': interaction_recover,
+        'interaction_ask': interaction_ask,
+        'interaction_irrelevant': interaction_irrelevant,
+        'interaction_silence': interaction_silence,
         'message': 'OK',
     }
 

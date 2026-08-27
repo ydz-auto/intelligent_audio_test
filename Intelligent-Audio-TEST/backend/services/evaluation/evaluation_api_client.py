@@ -234,7 +234,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         self._log(
             level='DEBUG',
             category='execution',
-            content=f"任务已创建，开始轮询结果",
+            content=f"create_task 请求已发送，开始处理响应",
             task_id=task_id,
             test_case_id=test_case_id,
             api_id=api_id
@@ -301,7 +301,11 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 )
                 resp_data = {'__error__': error_msg}
         else:
-            error_msg = create_response.get('msg', '创建任务失败') if isinstance(create_response, dict) else str(create_response)
+            if isinstance(create_response, dict):
+                # 优先取 __error__（网络异常等场景），其次取 msg，最后兜底
+                error_msg = create_response.get('__error__') or create_response.get('msg', '创建任务失败')
+            else:
+                error_msg = str(create_response)
             self._log(
                 level='ERROR',
                 category='execution',
@@ -374,7 +378,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             self._log(
                 level='INFO',
                 category='execution',
-                content=f"端点 {selected_url} 调用成功，响应：{str(resp_data)}，获取评估结果",
+                content=f"端点 {selected_url} 请求完成，响应：{str(resp_data)}",
                 task_id=task_id,
                 test_case_id=test_case_id,
                 api_id=api_id

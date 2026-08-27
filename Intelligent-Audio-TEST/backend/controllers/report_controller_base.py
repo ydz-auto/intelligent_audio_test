@@ -1023,20 +1023,26 @@ class ReportControllerBase:
                     )
                 )
             elif tag_set:
-                for tag in tags:
+                # 同类标签内部为 OR 关系：case 的 tags 中包含任一选中标签即匹配
+                tag_conditions = []
+                for tag in tag_set:
                     # PostgreSQL JSONB: cast to text 再 LIKE
-                    query = query.filter(
-                        ReportCase.tags.cast(db.Text).contains(f'"{tag}"'),
+                    tag_conditions.append(
+                        ReportCase.tags.cast(db.Text).contains(f'"{tag}"')
                     )
+                query = query.filter(db.or_(*tag_conditions))
 
         # 指标过滤：case 的 metrics(JSON) 中至少有一个 resource 包含该指标名
+        # 同类指标内部为 OR 关系：case 的 metrics 中包含任一选中指标即匹配
         if metrics_filter:
+            metric_conditions = []
             for metric_name in metrics_filter:
                 mn = str(metric_name)
                 # cast jsonb to text 再做 LIKE
-                query = query.filter(
-                    ReportCase.metrics.cast(db.Text).contains(f'"{mn}"'),
+                metric_conditions.append(
+                    ReportCase.metrics.cast(db.Text).contains(f'"{mn}"')
                 )
+            query = query.filter(db.or_(*metric_conditions))
 
         page = data.page
         per_page = data.per_page

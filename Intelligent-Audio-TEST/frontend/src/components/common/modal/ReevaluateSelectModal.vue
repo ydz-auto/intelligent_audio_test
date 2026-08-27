@@ -2,19 +2,7 @@
   <div class="reevaluate-select">
     <p class="reevaluate-title">{{ content }}</p>
     <div class="reevaluate-options">
-      <div 
-        class="reevaluate-option" 
-        :class="{ active: selectedType === 'all' }"
-        @click="selectedType = 'all'"
-      >
-        <div class="option-radio">
-          <div class="radio-circle"></div>
-        </div>
-        <div class="option-content">
-          <span class="option-title">重新评估全部用例</span>
-          <span class="option-desc">对该任务下所有执行成功的用例进行重新评估</span>
-        </div>
-      </div>
+
       <div 
         class="reevaluate-option" 
         :class="{ active: selectedType === 'failed' }"
@@ -26,6 +14,19 @@
         <div class="option-content">
           <span class="option-title">仅重新评估失败用例</span>
           <span class="option-desc">仅对评估结果为失败的用例进行重新评估</span>
+        </div>
+      </div>
+      <div 
+        class="reevaluate-option" 
+        :class="{ active: selectedType === 'all' }"
+        @click="selectedType = 'all'"
+      >
+        <div class="option-radio">
+          <div class="radio-circle"></div>
+        </div>
+        <div class="option-content">
+          <span class="option-title">重新评估全部用例</span>
+          <span class="option-desc">对该任务下所有执行成功的用例进行重新评估</span>
         </div>
       </div>
     </div>

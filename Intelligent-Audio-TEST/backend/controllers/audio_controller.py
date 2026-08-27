@@ -3060,45 +3060,8 @@ class AudioController:
             return error_response("不支持的文件类型", 403)
         mimetype = f"audio/{ext}"
 
-        path = normalized_path
-        file_size = os.path.getsize(path)
-        
-        range_header = request.headers.get('Range', None)
-        if not range_header:
-            return send_file(path, mimetype=mimetype)
-            
-        # 处理 Range 请求: bytes=start-end
-        import re
-        match = re.search(r'bytes=(\d+)-(\d*)', range_header)
-        if not match:
-            return send_file(path, mimetype=mimetype)
-
-        start = int(match.group(1))
-        end = match.group(2)
-        end = int(end) if end else file_size - 1
-
-        if start >= file_size:
-            return Response("Range Not Satisfiable", status=416)
-
-        chunk_size = end - start + 1
-        
-        def generate():
-            with open(path, 'rb') as f:
-                f.seek(start)
-                remaining = chunk_size
-                while remaining > 0:
-                    read_size = min(remaining, 1024 * 64)
-                    data = f.read(read_size)
-                    if not data:
-                        break
-                    yield data
-                    remaining -= len(data)
-
-        rv = Response(generate(), 206, mimetype=mimetype, direct_passthrough=True)
-        rv.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
-        rv.headers.add('Accept-Ranges', 'bytes')
-        rv.headers.add('Content-Length', str(chunk_size))
-        return rv
+        # Flask send_file 原生支持 Range 请求和条件 GET
+        return send_file(normalized_path, mimetype=mimetype, conditional=True)
 
     # 试听音频 (前端或后端播放)
     @staticmethod

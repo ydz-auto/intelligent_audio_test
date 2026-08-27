@@ -270,6 +270,17 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         'llm_return_scores_per_round': [],
         'llm_interaction_per_round': [],
         'llm_interaction_behavior_summary': {},
+        # 0/1 行为字段（与 env_judge 风格对齐）：1=该行为出现过
+        'behavior_respond': 0,
+        'behavior_recover': 0,
+        'behavior_ask': 0,
+        'behavior_irrelevant': 0,
+        'behavior_silence': 0,
+        'interaction_respond': 0,
+        'interaction_recover': 0,
+        'interaction_ask': 0,
+        'interaction_irrelevant': 0,
+        'interaction_silence': 0,
     }
 
     if not user_chunks:

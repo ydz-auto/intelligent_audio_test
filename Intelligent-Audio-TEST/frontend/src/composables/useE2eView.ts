@@ -350,13 +350,19 @@ export function useE2eView() {
       console.log('[E2E测试] selectedTestCaseIds:', selectedTestCaseIds.value)
       console.log('[E2E测试] e2eTestCases数量:', e2eTestCases.value.length)
       
-      associatedCases.value = selectedCaseIds.map((id: any) => ({
-        id: id,
-        name: e2eTestCases.value.find((c: any) => String(c.id) === String(id))?.name || `用例 ${id}`,
-        status: 'pending',
-        executionStatus: 'pending',
-        evaluationStatus: 'pending'
-      }))
+      associatedCases.value = selectedCaseIds.map((id: any) => {
+        const tc = e2eTestCases.value.find((c: any) => String(c.id) === String(id))
+        return {
+          id: id,
+          name: tc?.name || `用例 ${id}`,
+          groupName: tc?.groupName,
+          tags: tc?.tags,
+          algorithmType: tc?.algorithmType,
+          status: 'pending',
+          executionStatus: 'pending',
+          evaluationStatus: 'pending'
+        }
+      })
       
       console.log('[E2E测试] associatedCases:', associatedCases.value)
       totalTestCases.value = associatedCases.value.length

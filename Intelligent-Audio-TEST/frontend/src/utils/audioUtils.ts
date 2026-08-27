@@ -2,6 +2,11 @@
  * 共享音频工具函数
  */
 
+import { API_CONFIG } from './config';
+
+const _apiBaseUrl = API_CONFIG.baseUrl;
+const _apiBaseNoV1 = _apiBaseUrl.replace('/v1', '');
+
 export const DB_MIN = -60;
 export const DB_MAX = 0;
 
@@ -712,3 +717,124 @@ export const extractParamsFromAnnotations = (
 
   return result;
 };
+
+/**
+ * 根据音频对象构建播放 URL
+ * 统一处理 string / {url} / {id} / {path} 等多种输入格式
+ * @param audio - 路径字符串或音频对象
+ * @returns 播放 URL
+ */
+export function buildAudioUrl(audio: any): string {
+  if (!audio) return '';
+
+  // 兼容直接传入路径字符串
+  if (typeof audio === 'string') {
+    return `${_apiBaseNoV1}/audio/stream-by-path?path=${encodeURIComponent(audio)}`;
+  }
+
+  // 完整 URL（http 开头），直接返回
+  if (audio.url && audio.url.startsWith('http')) {
+    return audio.url;
+  }
+
+  // 后端返回的 /api 路径
+  if (audio.url && audio.url.startsWith('/')) {
+    // /api/audios/play/{id} 格式直接用
+    if (audio.url.includes('/audios/play/')) {
+      return audio.url;
+    }
+    // 其他 /api 开头路径拼接 baseUrl
+    return `${_apiBaseNoV1}${audio.url}`;
+  }
+
+  // 优先使用 ID 获取音频
+  if (audio.id) {
+    const taskType = audio.type || 'api';
+    return `${_apiBaseUrl}/audios/${audio.id}/stream?task_type=${taskType}`;
+  }
+
+  // 回退到路径
+  if (audio.path) {
+    return `${_apiBaseNoV1}/audio/stream-by-path?path=${encodeURIComponent(audio.path)}`;
+  }
+
+  return '';
+}
+
+/**
+ * 音频类型标签映射
+ */
+const AUDIO_TYPE_LABELS: Record<string, string> = {
+  api: 'API测试音频',
+  e2e: 'E2E测试音频',
+  noise: '噪声',
+  dry: '干声',
+};
+
+/**
+ * 根据音频类型获取标签
+ * @param audioType - 音频类型
+ * @returns 标签文本
+ */
+export function getAudioTypeLabel(audioType: string): string {
+  return AUDIO_TYPE_LABELS[audioType] || '测试音频';
+}
+
+/**
+ * 归一化单个音频项：snake_case → camelCase，补充 timeline/playback 等字段
+ * @param audio - 原始音频对象
+ * @param fallbackTestType - 兜底类型（来自用例/任务级 testType）
+ * @returns 归一化后的音频对象
+ */
+export function normalizeAudioItem(audio: any, fallbackTestType?: string): any {
+  if (!audio || typeof audio !== 'object') return audio;
+
+  const audioType = audio.testType ?? audio.audioType ?? audio.test_type ?? audio.audio_type ?? fallbackTestType ?? 'api';
+  const timelineStart = audio.timelineStart ?? audio.timeline_start ?? 0;
+
+  return {
+    ...audio,
+    id: audio.id,
+    path: audio.url ?? audio.path,
+    type: audioType,
+    filename: audio.filename,
+    duration: audio.duration,
+    spl: audio.spl,
+    testType: audioType,
+    playOrder: audio.playOrder ?? audio.play_order,
+    noiseSpl: audio.noiseSpl ?? audio.noise_spl,
+    deviceId: audio.playbackDeviceId ?? audio.deviceId ?? audio.device_id,
+    deviceName: audio.playbackDeviceName ?? audio.deviceName ?? audio.device_name,
+    playbackDeviceName: audio.playbackDeviceName ?? audio.device_name ?? audio.playback_device_name,
+    timelineStart,
+    timelineEnd: audio.timelineEnd ?? audio.timeline_end ?? (timelineStart + (audio.duration || 0)),
+    roundNumber: audio.roundNumber ?? audio.round_number ?? audio.round ?? 1,
+  };
+}
+
+/**
+ * 从用例对象中提取并归一化音频列表
+ * 当 caseItem.audios 存在时，将其映射为归一化的 audioList
+ * @param caseItem - 用例对象
+ * @param taskType - 兜底测试类型
+ * @returns 带有 audioList 的用例对象副本
+ */
+export function normalizeAudioFields(caseItem: any, taskType?: string): any {
+  if (!caseItem || typeof caseItem !== 'object') return caseItem;
+  const normalized = { ...caseItem };
+
+  const caseTestType = normalized.testType ?? normalized.test_type ?? taskType ?? 'api';
+
+  if (normalized.audios && Array.isArray(normalized.audios) && normalized.audios.length > 0) {
+    normalized.audioList = normalized.audios.map((audio: any, idx: number) => {
+      const item = normalizeAudioItem(audio, caseTestType);
+      // label 兜底需要 idx
+      if (!audio.label && !audio.filename) {
+        item.label = `${getAudioTypeLabel(item.type)} ${idx + 1}`;
+      }
+      return item;
+    });
+  }
+
+  return normalized;
+}

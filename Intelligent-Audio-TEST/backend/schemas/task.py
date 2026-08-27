@@ -71,6 +71,8 @@ class TaskCaseBrief(APIModel):
     completed_at: Optional[str] = Field(None, alias='completedAt', validation_alias='completedAt')
     duration: Optional[float] = Field(None, alias='duration', validation_alias='duration')
     error_message: Optional[str] = Field(None, alias='errorMessage', validation_alias='errorMessage')
+    group_name: Optional[str] = Field(None, alias='groupName', validation_alias='groupName')
+    tags: List[str] = Field(default_factory=list, alias='tags', validation_alias='tags')
 
 
 class TaskDetailData(APIModel):

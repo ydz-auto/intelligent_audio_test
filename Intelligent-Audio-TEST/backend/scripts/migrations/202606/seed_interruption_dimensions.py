@@ -115,7 +115,7 @@ MAIN_DIMENSION = {
          '显式传 false 才关闭(需配置 LLM_JUDGE_API_KEY)', 13),
         ('llm_model', 'LLM模型', 'LLM 模型名称(覆盖默认)', 'text', 'input',
          None, None, None, False,
-         False, None, '覆盖 config.LLM_JUDGE.default_model，留空用默认', 14),
+         False, 'gemini-3.7-flash', '覆盖 config.LLM_JUDGE.default_model，留空用默认', 14),
         ('original_topic', '原始话题', '原始话题文本', 'text', 'input',
          None, None, None, False,
          False, None, '原始话题文本，供回到原话题行为判断/打分使用', 15),

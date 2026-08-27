@@ -241,13 +241,13 @@ const handleTimeUpdate = () => {
         progressPercentage.value = Math.max(0, Math.min(100, (currentTime.value / duration.value) * 100));
       }
       
-      if (Math.floor(currentTime.value * 10) % 5 === 0) {
-        console.log('Audio time update:', {
-          currentTime: currentTime.value,
-          duration: duration.value,
-          progress: progressPercentage.value
-        });
-      }
+      console.log('Audio time update:', {
+        audioCurrentTime: currentAudioTime,
+        audioDuration: audioDuration,
+        displayCurrentTime: currentTime.value,
+        displayDuration: duration.value,
+        progress: progressPercentage.value
+      });
     }
   } catch (error) {
     console.error('Error in handleTimeUpdate:', error);
@@ -491,13 +491,6 @@ const playAudioStream = async () => {
   }
 
   audio.value.src = audioStreamUrl;
-
-  audio.value.addEventListener('error', (e) => {
-    console.error('Audio element error:', audio.value?.error);
-    if (audio.value?.error?.code === 4) {
-      playError.value = '音频格式不支持或服务器返回错误(400)。可能的原因：音频文件格式不正确或后端服务异常';
-    }
-  });
 
   try {
     await audio.value.load();
@@ -879,7 +872,7 @@ watch(() => props.audioId, (newId, oldId) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: var(--z-index-modal-top);
+  z-index: 14000;
   animation: fadeIn 0.3s ease;
   opacity: 1;
   visibility: visible;

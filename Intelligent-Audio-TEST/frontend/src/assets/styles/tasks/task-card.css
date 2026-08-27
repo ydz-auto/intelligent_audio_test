@@ -146,6 +146,8 @@
     font-weight: 500;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
     transition: all 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .task-meta-item:hover {
@@ -284,11 +286,23 @@
     gap: 16px;
 }
 
+/* 任务操作按钮容器 */
+.task-status-actions {
+    flex: 0 0 767px;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 /* 任务操作容器样式 */
 .task-actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    justify-content: flex-end;
+    gap: 8px;
 }
 
 /* 确保任务操作容器内的所有元素垂直对齐 */

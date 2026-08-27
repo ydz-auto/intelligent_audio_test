@@ -49,6 +49,15 @@ class EvaluationResultProcessor(RoundAggregator):
                     category='database',
                     content=f"标记 TestResult {result_id} 为完成状态，影响行数: {update_count}"
                 )
+
+                # 预提取 algorithm_results 快照（无评估维度场景）
+                tr = local_db_session.query(TestResult).get(result_id)
+                if tr:
+                    self._build_and_store_algorithm_results(
+                        local_db_session, result_id,
+                        getattr(tr, 'task_id', None),
+                        getattr(tr, 'test_case_id', None)
+                    )
             except Exception as e:
                 self._log(
                     level='ERROR',
@@ -548,6 +557,11 @@ class EvaluationResultProcessor(RoundAggregator):
                 # 循环结束后统一提交
                 local_db_session.commit()
 
+                # 预提取 algorithm_results 快照，存入 result_data['algorithm_results']
+                self._build_and_store_algorithm_results(
+                    local_db_session, result_id, task_id, test_case_id, test_type
+                )
+
                 # 检查是否所有维度都已完成评估，如果是，更新TaskCase状态
                 if result_id and test_case_id:
                     if self.check_all_dimensions_completed(result_id, task_id):
@@ -591,3 +605,88 @@ class EvaluationResultProcessor(RoundAggregator):
             except Exception as e:
                 self._log(level='ERROR', content=f"检查维度完成状态失败: {str(e)}", task_id=task_id)
                 return False
+
+    def _build_and_store_algorithm_results(self, local_db_session, result_id, task_id, test_case_id, test_type='api'):
+        """预提取 algorithm_results 扁平列表并存入 result_data['algorithm_results']。
+
+        在评估完成后调用，报告页和详情页可直接读取，无需重复提取。
+        """
+        if not result_id:
+            return
+        try:
+            test_result = local_db_session.query(TestResult).get(result_id)
+            if not test_result:
+                return
+
+            # 获取 algorithm_type 和 resource
+            algorithm_type = test_result.algorithm_type or ''
+            task = local_db_session.query(Task).get(task_id) if task_id else None
+
+            from backend.controllers.report_controller_task import ReportControllerTask
+            from backend.controllers.report_controller_base import ReportControllerBase
+
+            resource = ReportControllerBase.get_resource_name(test_result, task, use_time_prefix=False)
+
+            # 加载 algo_res 和 result_data
+            from backend.utils.common.result_data_store import load_full_result_data, write_result_data_file, split_result_data
+            algo_res = test_result.algorithm_result
+            while isinstance(algo_res, str):
+                try:
+                    algo_res = json.loads(algo_res)
+                except (json.JSONDecodeError, TypeError):
+                    algo_res = {}
+            if not isinstance(algo_res, dict):
+                algo_res = {}
+            result_data = load_full_result_data(test_result.result_data, getattr(test_result, 'result_data_path', None))
+            if not isinstance(result_data, dict):
+                result_data = {}
+
+            if not (algo_res or result_data):
+                return
+
+            # 查询 dim_result_rows（含 api_raw_response）
+            dim_result_rows = local_db_session.query(
+                TestResultDimension
+            ).filter(TestResultDimension.test_result_id == result_id).all()
+
+            # 查询 aux_params_map
+            all_dim_ids = set(dr.dimension_id for dr in dim_result_rows)
+            aux_params_map = ReportControllerTask._get_aux_params_batch(list(all_dim_ids)) if all_dim_ids else {}
+
+            # 查询 output_fields
+            from backend.utils.algorithm.algorithm_result_field_mapper import AlgorithmResultFieldMapper
+            output_fields = AlgorithmResultFieldMapper.get_output_fields(algorithm_type) if algorithm_type else []
+
+            # 调用公共方法构建 algorithm_results
+            algorithm_results = ReportControllerTask.build_algorithm_results_for_result(
+                test_result, resource, algo_res, result_data,
+                aux_params_map, dim_result_rows, output_fields, algorithm_type
+            )
+
+            # 存入 result_data['algorithm_results']
+            result_data['algorithm_results'] = algorithm_results if algorithm_results else None
+
+            # 写回：大字段存文件，轻量部分存 DB
+            lightweight, has_heavy = split_result_data(result_data)
+            test_result.result_data = lightweight
+            if has_heavy:
+                device_sn = ''
+                if test_result.device_id:
+                    dev = local_db_session.query(Device).get(test_result.device_id)
+                    if dev:
+                        device_sn = dev.serial_number or dev.ip or ''
+                if not device_sn:
+                    device_sn = str(test_result.api_id or test_result.id)
+                rel_path = write_result_data_file(task_id, test_case_id, device_sn, result_data)
+                test_result.result_data_path = rel_path
+
+            local_db_session.commit()
+
+        except Exception as e:
+            self._log(
+                level='WARNING',
+                category='execution',
+                content=f"预提取 algorithm_results 失败: {e}",
+                task_id=task_id, test_case_id=test_case_id
+            )
+            local_db_session.rollback()
