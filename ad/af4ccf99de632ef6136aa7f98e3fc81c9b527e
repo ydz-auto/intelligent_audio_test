@@ -1,0 +1,35 @@
+Intelligent-Audio-TEST/frontend/src/assets/styles/tasks/task-card.css
+  s_109465deec8b52::t_b13462369db3e2 292
+  s_109465deec8b52::t_bd566034cdb95e 291
+Intelligent-Audio-TEST/frontend/src/components/TaskCard.vue
+  s_109465deec8b52::t_eadd74cc7f05f9 323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "adaf4ccf99de632ef6136aa7f98e3fc81c9b527e",
+  "prompts": {},
+  "sessions": {
+    "s_109465deec8b52": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8e8b6241f59cf156686a2a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a8fe6b341f59cf156687aa3",
+        "source_scene": "agent",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "operation_id": "6a8fe6b341f59cf156687aa3",
+        "tool_type": "builtin",
+        "edit_kind": "file_edit",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a8e8b6241f59cf156686a2a:6a8fe6b341f59cf156687aa3:afterEdit:8625d9bf",
+        "external_session_id": "6a8e8b6241f59cf156686a2a",
+        "session_id": "6a8e8b6241f59cf156686a2a"
+      }
+    }
+  }
+}
