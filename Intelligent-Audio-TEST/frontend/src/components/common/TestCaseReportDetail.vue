@@ -914,8 +914,10 @@ const getResultTextValue = (device, paramCode) => {
   let item;
   if (props.isComparison && device !== 'default') {
     // 先尝试精确匹配，再回退到包含匹配（快照可能使用完整资源名如 "1-小艺通话-1.0.0"）
+    // 使用大小写不敏感比较，兼容 "HarmonyOS Harmony Device" vs "9-harmonyos harmony device-1.0.0"
+    const deviceLower = device.toLowerCase();
     item = normed.find(i => i.device === device && i.param_code === paramCode)
-         || normed.find(i => i.device && (i.device.includes(device) || device.includes(i.device)) && i.param_code === paramCode);
+         || normed.find(i => i.device && (i.device.toLowerCase().includes(deviceLower) || deviceLower.includes(i.device.toLowerCase())) && i.param_code === paramCode);
   } else {
     item = normed.find(i => i.param_code === paramCode);
   }

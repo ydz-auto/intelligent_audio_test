@@ -554,7 +554,7 @@ class TaskController:
                 resource = pr['device_name'] or pr['api_name'] or f'result_{result.id}'
 
                 # 优先读取预提取的 algorithm_results（存在 result_data 里）
-                r_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+                r_data = pr.get('result_data') or {}
                 if not isinstance(r_data, dict):
                     r_data = {}
 
