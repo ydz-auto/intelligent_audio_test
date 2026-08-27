@@ -288,8 +288,8 @@
 
 /* 任务操作按钮容器 */
 .task-status-actions {
-    flex: 0 0 767px;
-    min-width: 0;
+    flex: 0 0 auto;
+    min-width: 767px;
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
