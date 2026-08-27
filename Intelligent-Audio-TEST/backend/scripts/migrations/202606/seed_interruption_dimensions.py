@@ -499,12 +499,15 @@ def _cleanup_stale_params(conn, dim_id, dim_def):
         if stale:
             stale_codes = [r[0] for r in stale]
             print(f"  ! 清理已废弃 {direction} 参数: {stale_codes}")
+            # 用 stale_codes(要删的) 建 IN 列表，勿用 current_codes(要留的)——否则删错+被upsert复活
+            stale_placeholders = ','.join(f':s{i}' for i in range(len(stale_codes)))
+            stale_bind = {f's{i}': code for i, code in enumerate(stale_codes)}
             conn.execute(text(
                 "UPDATE evaluation_dimension_params SET "
                 "  deleted = TRUE, updated_at = NOW() "
                 "WHERE dimension_id = :did AND param_direction = :dir "
-                f"AND param_code IN ({placeholders})"
-            ), {'did': dim_id, 'dir': direction, **bind})
+                f"AND param_code IN ({stale_placeholders})"
+            ), {'did': dim_id, 'dir': direction, **stale_bind})
 
 
 def _upsert_params(conn, dim_id, dim_def):

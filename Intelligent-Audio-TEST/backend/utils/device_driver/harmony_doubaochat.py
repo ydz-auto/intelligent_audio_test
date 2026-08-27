@@ -139,6 +139,57 @@ class DoubaoChat(Xiaoyilivechat):
                       task_id=task_id, test_case_id=test_case_id)
         return False
 
+    def _wait_ai_reply_start_via_pcm(self, device_sn, task_id=None, test_case_id=None,
+                                    start_timeout=None, energy_thr=None, interval=1.0):
+        """等 AI 开始回复(阶段A)：基于 client_in.. 尾部 1s RMS>阈值 判定 AI 开始说话。
+
+        用于 barge-in 门：打断轮 post_process 检测到 AI 开始回复后即放下一轮打断音频，
+        让打断发生在 AI 回复期间(而非 AI 说完之后)。仅复用 _wait_ai_reply_end_via_pcm
+        的阶段 A 逻辑，不等说完(阶段 B)，避免改动正常轮。
+
+        返回 (status, remote):
+          'fresh'  = 刚检测到 AI 开始说话(barge-in 窗口打开)；并记 self._ai_first_frame_ms
+          'ended'  = start_timeout 内未检测到新语音，但近 15s 曾有语音(起得晚,回复已结束)
+          'none'   = 未回复(无任何语音)
+        """
+        if start_timeout is None:
+            start_timeout = self.RMS_START_TIMEOUT
+        if energy_thr is None:
+            energy_thr = self.RMS_THRESHOLD
+        tail_bytes = self.RMS_TAIL_BYTES  # 1s @ 48000*2ch*2bytes
+        remote = None
+        deadline_start = time.time() + start_timeout
+        saw_speech = False
+        while time.time() < deadline_start:
+            if self._check_stop("post_process_等AI回复开始"):
+                return 'none', remote
+            remote = self._find_ai_pcm_remote(device_sn, task_id=task_id, test_case_id=test_case_id)
+            if remote:
+                rms, size = self._read_tail_rms(device_sn, remote, tail_bytes=tail_bytes,
+                                                task_id=task_id, test_case_id=test_case_id)
+                if rms is not None and rms > energy_thr:
+                    saw_speech = True
+                    self._ai_first_frame_ms = int(time.time() * 1000)  # 替代 size 增长,更准的回复起点
+                    self._log(level='INFO',
+                              content=f"AI回复开始: {remote} size={size} tail_rms={rms:.0f}",
+                              task_id=task_id, test_case_id=test_case_id)
+                    break
+            time.sleep(interval)
+        if saw_speech:
+            return 'fresh', remote
+        # 兜底: post_process 起得晚、回复可能已结束——扫最后 15s 是否曾有语音
+        if remote and self._scan_remote_for_speech(device_sn, remote, seconds=self.RMS_SCAN_SECONDS,
+                                                   energy_thr=energy_thr,
+                                                   task_id=task_id, test_case_id=test_case_id):
+            self._log(level='INFO',
+                      content="AI回复已结束(post_process起得晚,尾部虽静默但近15s曾有语音)",
+                      task_id=task_id, test_case_id=test_case_id)
+            return 'ended', remote
+        self._log(level='INFO',
+                  content=f"豆包未回复({start_timeout}s 内 client_in.. 尾部无语音能量)",
+                  task_id=task_id, test_case_id=test_case_id)
+        return 'none', remote
+
     def _wait_ai_reply_end_via_pcm(self, device_sn, task_id=None, test_case_id=None,
                                    interval=1.0):
         """等 AI 回复完成: 基于 client_in.. 尾部 RMS 能量判定(双阶段+历史兜底)。
@@ -488,12 +539,20 @@ class DoubaoChat(Xiaoyilivechat):
                   task_id=task_id, test_case_id=test_case_id)
 
         # 等 AI 回复完成：client_in.. 尾部 RMS 双阶段判定
-        # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
+        # 打断轮(is_interruption=True): 只等 AI 开始回复(phase A, RMS 能量>阈值)即放下一轮,
+        # 让打断发生在 AI 回复期间(真 barge-in)。不再用 size 增长判断——PCM 文件全程匀速
+        # 增长,size 增长只代表"文件在写",不代表"AI 在说话"。
         if kwargs.get('is_interruption') in (True, 'true', '1', 1):
+            _status, _ = self._wait_ai_reply_start_via_pcm(
+                device_sn, task_id=task_id, test_case_id=test_case_id,
+                start_timeout=kwargs.get('ai_start_timeout', None))
+            replied = _status in ('fresh', 'ended')
             self._log(level='INFO',
-                      content=f"[post_process] is_interruption=True,跳过等待 AI 回复完成,直接收尾",
+                      content=f"[post_process] is_interruption,等AI开始回复(RMS)后延迟1s放下一轮(barge-in): status={_status}",
                       task_id=task_id, test_case_id=test_case_id)
-            replied = True
+            if not replied:
+                self.question_text = '豆包识别为空'
+                self.answer_text = '豆包回复为空'
         else:
             # 检测 ai PCM 首帧(模型回复起始时刻,替代录屏 first_frame)
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
@@ -509,14 +568,15 @@ class DoubaoChat(Xiaoyilivechat):
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
 
-        # case 模式打断轮非末轮：延迟 5s 再进下一轮播放（可被停止/暂停打断）
+        # case 模式打断轮非末轮：检测到 AI 开始回复后延迟 1s 再进下一轮播放（可被停止/暂停打断）
+        # 让 AI 先说 1s 再被打断（真 barge-in 落在回复中段）
         if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
-                and record_mode == 'case' and not is_last):
+                and replied and record_mode == 'case' and not is_last):
             self._log(level='INFO',
-                      content=f"[post_process] 打断轮结束,等待5s后进入下一轮播放: r{round_number}/{total_rounds}",
+                      content=f"[post_process] 检测到AI开始回复,等1s后进入下一轮播放: r{round_number}/{total_rounds}",
                       task_id=task_id, test_case_id=test_case_id)
-            for _ in range(10):  # 10 * 0.5s = 5s
-                if self._check_stop('轮间延迟5s'):
+            for _ in range(2):  # 2 * 0.5s = 1s
+                if self._check_stop('AI回复后延迟1s'):
                     return True
                 time.sleep(0.5)
 

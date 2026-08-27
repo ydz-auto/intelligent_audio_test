@@ -555,7 +555,7 @@ class ChatGptVoiceChat(Xiaoyilivechat):
                 start_timeout=kwargs.get('ai_start_timeout', 25))
             replied = _status in ('fresh', 'ended')
             self._log(level='INFO',
-                      content=f"[post_process] is_interruption,等AI开始回复后即放下一轮(barge-in): status={_status}",
+                      content=f"[post_process] is_interruption,等AI开始回复后延迟1s放下一轮(barge-in): status={_status}",
                       task_id=task_id, test_case_id=test_case_id)
             if not replied:
                 self.question_text = 'ChatGPT识别为空'
@@ -577,6 +577,19 @@ class ChatGptVoiceChat(Xiaoyilivechat):
         round_number = getattr(self, '_round_number', 0)
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
+
+        # 打断轮：检测到 AI 开始回复后延迟 1s 再放下一轮打断音频，让 AI 先说 1s
+        # （真 barge-in 落在回复中段而非刚开口）；仅 case 模式非末轮有"下一轮"才需延迟
+        if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
+                and replied and record_mode == 'case' and not is_last):
+            self._log(level='INFO',
+                      content=f"[post_process] 检测到AI开始回复,等1s再放下一轮打断音频"
+                              f"(barge-in落回复中段): r{round_number}/{total_rounds}",
+                      task_id=task_id, test_case_id=test_case_id)
+            for _ in range(2):  # 2 * 0.5s = 1s
+                if self._check_stop('AI回复后延迟1s'):
+                    return True
+                time.sleep(0.5)
 
         if record_mode == 'case':
             # case 模式：一次连续语音通话 / 一个录屏 / 一个连续 PCM,对话间不退出语音。

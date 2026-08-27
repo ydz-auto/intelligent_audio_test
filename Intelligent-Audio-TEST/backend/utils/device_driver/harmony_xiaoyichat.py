@@ -3,6 +3,8 @@ import subprocess
 import os
 import re
 import wave
+import struct
+import base64
 
 try:
     from hypium.model import UiParam
@@ -41,10 +43,12 @@ class Xiaoyilivechat(HarmonyDriver):
         'xiaoyi': {
             'cache_dirs': ['/data/app/el2/100/base/com.huawei.hmos.aibase/cache',
                            '/data/app/el2/100/base/com.huawei.hmos.vassistant/cache'],
-            # 实测设备文件名与 doubao/chatgpt 一致: 用户 cap_client_out.pcm / AI client_in..pcm
+            # 实测设备文件名: 用户 cap_client_out.pcm / AI client_in..pcm
             'user_suffix': 'cap_client_out.pcm',
-            # AI 回复有两种命名(不同固件版本): cap_client_ec_out.pcm(旧) 和 client_in..pcm(新)
-            'ai_suffix': ['cap_client_ec_out.pcm', 'client_in..pcm'],
+            # AI 回复: client_in..pcm(新设备实测,主); 兼容旧设备 cap_client_ec_out.pcm 不删。
+            # 两者并存时 _pick_pcm 按 size 取最大者(避免选中静音探针流)。
+            'ai_suffix': ['client_in..pcm', 'cap_client_ec_out.pcm'],
+
         },
         'doubao': {
             'cache_dirs': ['/data/app/el2/100/base/com.larus.nova.hm/cache'],
@@ -61,6 +65,14 @@ class Xiaoyilivechat(HarmonyDriver):
     }
     # 清理时一并清的公共目录
     PCM_COMMON_CLEAR_DIRS = ['/data/data/.pulse_dir', '/data/local/tmp']
+
+    # AI 回复完成检测(RMS 能量法)参数 — 不依赖控件文本,按 AI PCM 尾部能量判定。
+    # 小艺/豆包/ChatGPT 共用;采样率从 PCM 文件名解析(小艺16k/豆包48k),1s 尾部字节随之自适应。
+    RMS_THRESHOLD = 300          # RMS 阈值,低于此值视为静音
+    RMS_SILENCE_SECONDS = 8      # 连续静默秒数(实测回复中停顿≤6s,8s 不误触发)
+    RMS_START_TIMEOUT = 25       # 等 AI 开始说话的超时(超时走兜底扫最后 15s 历史)
+    RMS_END_TIMEOUT = 60         # 等 AI 说完的超时(单轮回复+8s静默够,超时视为已回复可能截断)
+    RMS_SCAN_SECONDS = 15        # 阶段A超时后扫最后 N 秒历史
 
     def _mp4_to_wav(self, mp4_path, task_id=None, test_case_id=None):
         """将 mp4 无损转换为 wav（pcm_s16le，44.1kHz，双声道）。
@@ -426,6 +438,246 @@ class Xiaoyilivechat(HarmonyDriver):
                   task_id=task_id, test_case_id=test_case_id)
         return None
 
+    # ------------------------------------------------------------------
+    # AI 回复完成检测（基于 AI PCM 尾部 RMS 能量，双阶段+历史兜底）
+    # 不依赖控件文本(说话可打断/正在听…),后者在语音态透传性不稳定。
+    # 豆包/ChatGPT 在各自子类有同名覆盖(签名略异),此处为小艺基线实现。
+    # ------------------------------------------------------------------
+    def _parse_pcm_fmt(self, remote):
+        """从 PCM 文件名解析 (sample_rate, channels, sample_width)。
+
+        文件名前缀 <流ID>_<采样率>_<声道>_<位深标志>_;位深标志 1=16bit(width=2)。
+        与 _pcm_to_wav 同源解析逻辑;不可解析返回 None。
+        """
+        base = os.path.basename(remote)
+        parts = re.sub(r'^r\d+_', '', base).split('_')
+        try:
+            sr, ch, bdf = int(parts[1]), int(parts[2]), int(parts[3])
+        except (IndexError, ValueError):
+            return None
+        if bdf != 1:  # 仅支持 16-bit
+            return None
+        return sr, ch, 2
+
+    def _find_ai_pcm_remote(self, device_sn, task_id=None, test_case_id=None):
+        """在当前 app(PCM_APP_CONFIG[self._pcm_app]) 缓存目录找 AI 回复 PCM(ai_suffix)。
+
+        多个匹配取 size 最大者(同 _pick_pcm 策略,避免选中静音探针流)。无匹配返回 None。
+        小艺 ai_suffix 可能是 list(cap_client_ec_out.pcm + client_in..pcm),_pick_pcm 已兼容。
+        """
+        app = getattr(self, '_pcm_app', 'xiaoyi')
+        cfg = self.PCM_APP_CONFIG.get(app) or {}
+        ai_suffix = cfg.get('ai_suffix')
+        if not ai_suffix:
+            return None
+        files = []
+        for d in cfg.get('cache_dirs', []):
+            files.extend(self._list_dir_pcm(device_sn, d))
+        if not files:
+            return None
+        return self._pick_pcm(device_sn, files, ai_suffix,
+                             task_id=task_id, test_case_id=test_case_id)
+
+    def _read_tail_rms(self, device_sn, remote, tail_seconds=1.0,
+                       task_id=None, test_case_id=None):
+        """读 AI PCM 最后 tail_seconds 秒字节(经 base64 文本传输,二进制安全)算左声道 RMS。
+
+        采样率/声道从文件名解析(小艺16k/豆包48k 均可),1s 尾部字节随之自适应。
+        返回 (rms, size);文件不存在/不足尾部/读取失败返回 (None, size 或 None)。
+        """
+        fmt = self._parse_pcm_fmt(remote)
+        if not fmt:
+            self._log(level='DEBUG', content=f"_read_tail_rms 无法解析采样格式: {remote}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None, None
+        sr, ch, sw = fmt
+        tail_bytes = int(tail_seconds * sr * ch * sw)
+        size = self._get_device_file_size(device_sn, remote)
+        if size < 0 or size < tail_bytes:
+            return None, (size if size >= 0 else None)
+        try:
+            r = subprocess.run(
+                ['hdc', '-t', device_sn, 'shell',
+                 f"tail -c {tail_bytes} '{remote}' | base64"],
+                capture_output=True, timeout=20,
+            )
+            raw = base64.b64decode(r.stdout)
+            if len(raw) < 4:
+                return None, size
+            samples = struct.unpack('<' + 'h' * (len(raw) // 2), raw)
+            mono = samples[0::ch]  # 取第一声道(ch=1 取全部, ch=2 取左声道)
+            rms = (sum(s * s for s in mono) / len(mono)) ** 0.5 if mono else 0
+            return rms, size
+        except Exception as e:
+            self._log(level='DEBUG', content=f"_read_tail_rms 异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None, size
+
+    def _scan_remote_for_speech(self, device_sn, remote, seconds=None,
+                                energy_thr=None, task_id=None, test_case_id=None):
+        """读最后 N 秒按 0.5s 窗算 RMS,任一窗>阈值视为近期有语音。
+
+        用于"回复已结束但 post_process 起得晚"的兜底判定。返回 True/False。
+        """
+        if seconds is None:
+            seconds = self.RMS_SCAN_SECONDS
+        if energy_thr is None:
+            energy_thr = self.RMS_THRESHOLD
+        fmt = self._parse_pcm_fmt(remote)
+        if not fmt:
+            return False
+        sr, ch, sw = fmt
+        tail_bytes = int(seconds * sr * ch * sw)
+        size = self._get_device_file_size(device_sn, remote)
+        if size < 0 or size < sr * ch * sw:  # 至少 1s 数据
+            return False
+        try:
+            r = subprocess.run(
+                ['hdc', '-t', device_sn, 'shell',
+                 f"tail -c {tail_bytes} '{remote}' | base64"],
+                capture_output=True, timeout=40,
+            )
+            raw = base64.b64decode(r.stdout)
+            samples = struct.unpack('<' + 'h' * (len(raw) // 2), raw)
+            mono = samples[0::ch]  # 取第一声道(ch=1 取全部, ch=2 取左声道)
+            win = int(0.5 * sr)
+            for i in range(0, len(mono), win):
+                c = mono[i:i + win]
+                if not c:
+                    break
+                rms = (sum(s * s for s in c) / len(c)) ** 0.5
+                if rms > energy_thr:
+                    return True
+        except Exception as e:
+            self._log(level='DEBUG', content=f"_scan_remote_for_speech 异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+        return False
+
+    def _wait_ai_reply_start_via_pcm(self, device_sn, task_id=None, test_case_id=None,
+                                    start_timeout=None, energy_thr=None, interval=1.0):
+        """等 AI 开始回复(阶段A)：基于 AI PCM 尾部 1s RMS>阈值 判定 AI 开始说话。
+
+        用于 barge-in 门：打断轮 post_process 检测到 AI 开始回复后即放下一轮打断音频，
+        让打断发生在 AI 回复期间(而非 AI 说完之后)。仅复用 _wait_ai_reply_end_via_pcm
+        的阶段 A 逻辑，不等说完(阶段 B)，避免改动正常轮。
+
+        返回 (status, remote):
+          'fresh'  = 刚检测到 AI 开始说话(barge-in 窗口打开)；记 self._ai_first_frame_ms
+          'ended'  = start_timeout 内未检测到新语音，但近 scan_seconds 曾有语音(起得晚,回复已结束)
+          'none'   = 未回复(无任何语音)
+        """
+        if start_timeout is None:
+            start_timeout = self.RMS_START_TIMEOUT
+        if energy_thr is None:
+            energy_thr = self.RMS_THRESHOLD
+        remote = None
+        deadline_start = time.time() + start_timeout
+        saw_speech = False
+        while time.time() < deadline_start:
+            if self._check_stop("post_process_等AI回复开始"):
+                return 'none', remote
+            remote = self._find_ai_pcm_remote(device_sn, task_id=task_id, test_case_id=test_case_id)
+            if remote:
+                rms, size = self._read_tail_rms(device_sn, remote, tail_seconds=1.0,
+                                                task_id=task_id, test_case_id=test_case_id)
+                if rms is not None and rms > energy_thr:
+                    saw_speech = True
+                    self._ai_first_frame_ms = int(time.time() * 1000)  # 回复起点(替代 size 增长)
+                    self._log(level='INFO',
+                              content=f"AI回复开始: {remote} size={size} tail_rms={rms:.0f}",
+                              task_id=task_id, test_case_id=test_case_id)
+                    break
+            time.sleep(interval)
+        if saw_speech:
+            return 'fresh', remote
+        # 兜底: post_process 起得晚、回复可能已结束——扫最后 scan_seconds 是否曾有语音
+        if remote and self._scan_remote_for_speech(device_sn, remote, seconds=self.RMS_SCAN_SECONDS,
+                                                   energy_thr=energy_thr,
+                                                   task_id=task_id, test_case_id=test_case_id):
+            self._log(level='INFO',
+                      content="AI回复已结束(post_process起得晚,尾部虽静默但近15s曾有语音)",
+                      task_id=task_id, test_case_id=test_case_id)
+            return 'ended', remote
+        self._log(level='INFO',
+                  content=f"小艺未回复({start_timeout}s 内 AI PCM 尾部无语音能量)",
+                  task_id=task_id, test_case_id=test_case_id)
+        return 'none', remote
+
+    def _wait_ai_reply_end_via_pcm(self, device_sn, task_id=None, test_case_id=None,
+                                   interval=1.0):
+        """等 AI 回复完成: 基于 AI PCM 尾部 RMS 能量判定(双阶段+历史兜底)。
+
+        阶段A: 等尾部 1s RMS>阈值(AI 开始说话), start_timeout 内。
+               ——必须先看到说话,避免在用户提问期(AI 通道静默)误判"说完"。
+               超时则扫最后 scan_seconds 历史:曾有语音→回复已结束(起得晚)→True;
+               否则未回复→False。
+        阶段B: AI 开说过后,等连续 silence_seconds 秒 RMS<阈值(说完回静默)。
+        实测: 回复中停顿≤6s, 回复后静默很长, silence_seconds=8 不误触发。
+
+        返回: True=回复结束(或超时但已说过,视为已回复); False=未回复。
+        """
+        remote = None
+        # 阶段A: 等 AI 开始说话
+        deadline_start = time.time() + self.RMS_START_TIMEOUT
+        saw_speech = False
+        while time.time() < deadline_start:
+            if self._check_stop("post_process_等AI回复开始"):
+                return False
+            remote = self._find_ai_pcm_remote(device_sn, task_id=task_id, test_case_id=test_case_id)
+            if remote:
+                rms, size = self._read_tail_rms(device_sn, remote,
+                                                task_id=task_id, test_case_id=test_case_id)
+                if rms is not None and rms > self.RMS_THRESHOLD:
+                    saw_speech = True
+                    self._log(level='INFO',
+                              content=f"AI回复开始: {remote} size={size} tail_rms={rms:.0f}",
+                              task_id=task_id, test_case_id=test_case_id)
+                    break
+            time.sleep(interval)
+        if not saw_speech:
+            # 兜底: post_process 起得晚、回复可能已结束——扫最后 15s 是否曾有语音
+            if remote and self._scan_remote_for_speech(device_sn, remote,
+                                                       task_id=task_id, test_case_id=test_case_id):
+                self._log(level='INFO',
+                          content="AI回复已结束(post_process起得晚,尾部虽静默但近15s曾有语音)",
+                          task_id=task_id, test_case_id=test_case_id)
+                return True
+            self._log(level='INFO',
+                      content=f"小艺未回复({self.RMS_START_TIMEOUT}s 内 AI PCM 尾部无语音能量)",
+                      task_id=task_id, test_case_id=test_case_id)
+            return False
+
+        # 阶段B: 等 AI 说完(连续 silence_seconds 秒 RMS<阈值)
+        silence_since = None
+        deadline_end = time.time() + self.RMS_END_TIMEOUT
+        while time.time() < deadline_end:
+            if self._check_stop("post_process_等AI回复结束"):
+                return False
+            rms, size = self._read_tail_rms(device_sn, remote,
+                                            task_id=task_id, test_case_id=test_case_id)
+            now = time.time()
+            if rms is None:
+                time.sleep(interval)
+                continue
+            if rms >= self.RMS_THRESHOLD:
+                silence_since = None  # 还在说,重置
+            else:
+                if silence_since is None:
+                    silence_since = now
+                elif (now - silence_since) >= self.RMS_SILENCE_SECONDS:
+                    self._log(level='INFO',
+                              content=(f"AI回复结束(尾部静默 {self.RMS_SILENCE_SECONDS}s, "
+                                       f"size={size} rms={rms:.0f})"),
+                              task_id=task_id, test_case_id=test_case_id)
+                    return True
+            time.sleep(interval)
+        # 超时: 已开说过但未等到静默(回复过长被截断),视为已回复
+        self._log(level='WARNING',
+                  content=(f"等待AI回复结束超时 {self.RMS_END_TIMEOUT}s"
+                           f"(已说过但未静默,视为已回复可能截断)"),
+                  task_id=task_id, test_case_id=test_case_id)
+        return True
+
     def _pick_pcm(self, device_sn, files, suffix, exclude=None,
                   task_id=None, test_case_id=None):
         """从文件列表中按后缀匹配一个 pcm 路径，多个匹配时【取文件最大者】。
@@ -481,12 +733,13 @@ class Xiaoyilivechat(HarmonyDriver):
         return local_path
 
     def _pull_pcm(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None, round_number=None):
-        # 获取小艺对话pcm,文件位置:/data/app/el2/100/base/com.huawei.hmos.aibase/cache/。用户输入名称格式100184_16000_1_1_cap_client_process_out.pcm。 AI助手回复名称格式100184_16000_2_1_cap_client_ec_out.pcm
+        # 获取小艺对话pcm。新设备实测: AI 回复 client_in..pcm(24k/1ch, 在 vassistant/cache)、
+        # 用户输入 cap_client_out.pcm(16k/1ch, aibase/cache); 旧设备 AI 为 cap_client_ec_out.pcm(已兼容)。
         # 获取豆包对话PCM，文件位置:/data/app/el2/100/base/com.larus.nova.hm/cache/, 用户输入名称格式100186_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100184_48000_2_1_client_in..pcm
         # 获取chagpt对话PCM，文件位置：/data/local/tmp/。用户输入名称格式100174_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100175_48000_2_1_cap_client_in.pcm
         #
         # 按 app 参数选择对应 app 的缓存目录与文件后缀:
-        # - 小艺(xiaoyi):   .../com.huawei.hmos.aibase/cache  用户 cap_client_process_out.pcm / AI cap_client_ec_out.pcm
+        # - 小艺(xiaoyi):   aibase+vassistant/cache   用户 cap_client_out.pcm / AI client_in..pcm(主) 或 cap_client_ec_out.pcm(旧), _pick_pcm 取最大
         # - 豆包(doubao):   .../com.larus.nova.hm/cache      用户 cap_client_out.pcm        / AI client_in..pcm
         # - chatgpt:        /data/local/tmp                  用户 cap_client_out.pcm        / AI cap_client_in.pcm
         # 返回: {'user': local_path_or_None, 'ai': local_path_or_None, 'user_remote':..., 'ai_remote':...}
@@ -644,22 +897,27 @@ class Xiaoyilivechat(HarmonyDriver):
         self._total_rounds = total_rounds
         self._round_number = round_number
         is_first = not getattr(self, '_recording', False)
-        # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
-        # 会破坏连续通话已积累的音频)。打断轮不清(pcm 可能仍在写入/尚未拉取)。
-        # 必须在 _snapshot_ai_pcm_sizes 之前清,保证基线干净。
-        is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
-        # if (record_mode != 'case' or is_first) and not is_interruption:
-        #     self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
-        #                     task_id=task_id, test_case_id=test_case_id)
-        # ai PCM 首帧基准：轮首快照当前 ai 后缀文件 size，供 post_process 检测首帧增长
-        self._ai_first_frame_ms = None
-        self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
-            device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'))
-        # 开局清掉可能残留的华为音乐(上轮/上个用例小艺误识别"播放音乐"拉起的),
-        # 防止其播放声污染本轮录屏/pcm。放在所有分支之前,每轮都清。
+        # 先停华为音乐 + 清闹钟: 音乐 app 若被上轮误识别"播放音乐"拉起,其音频正被 dump 写到
+        # 打开文件,必须先 force-stop 关掉(释放 dump 句柄)再清 PCM,否则 rm 删到仍打开的文件→
+        # "写入中清空"。放在 case 分支之前,每轮都清。
         self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 每轮清空闹钟(ALARM_CLOCK 表),防止上轮测试设的闹钟响铃打断本轮
         self._clear_alarms(device_sn, task_id=task_id, test_case_id=test_case_id)
+        # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
+        # 会破坏连续通话已积累的音频)。打断轮不清(pcm 可能仍在写入/尚未拉取)。
+        # 时序安全: 正常轮 post_process 用 _wait_ai_reply_end_via_pcm 等 AI 说完(8s 静默)才返回,
+        # 到 get_results 时 AI 的 dump 文件已关闭;此处又先停了音乐,故清的是已关闭文件,不会
+        # "写入中清空"(224bf94c 当初注释根因:旧 UI 文案检测误判"结束"→文件还在写就清;改 RMS 后消除)。
+        # 残留风险: 若系统音频 dump(sys.audio.dump.write*)跨轮保持文件句柄常开,仍可能清坏——
+        # 真机验证若再拉不到,改为清前 param set ...enable n 关 dump→rm→enable w 重开。
+        is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
+        if (record_mode != 'case' or is_first) and not is_interruption:
+            self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
+                            task_id=task_id, test_case_id=test_case_id)
+        # ai PCM 首帧基准：必须在 _clear_pcm 之后快照,保证基线干净(清完残留再建基线)
+        self._ai_first_frame_ms = None
+        self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
+            device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'))
 
         # case 模式非首轮：通话与录屏已在进行，无需重复启动
         if record_mode == 'case' and not is_first:
@@ -708,50 +966,48 @@ class Xiaoyilivechat(HarmonyDriver):
                           f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
                   task_id=task_id, test_case_id=test_case_id)
 
-        # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
+        # 打断轮(is_interruption=True): 只等 AI 开始回复(阶段A, RMS>阈值)即放下一轮,
+        # 让打断发生在 AI 回复期间(真 barge-in)。不等 AI 说完(阶段B)。
         if kwargs.get('is_interruption') in (True, 'true', '1', 1):
-            self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
+            _status, _ = self._wait_ai_reply_start_via_pcm(
+                device_sn, task_id=task_id, test_case_id=test_case_id,
+                start_timeout=kwargs.get('ai_start_timeout', None))
+            replied = _status in ('fresh', 'ended')
+            self._log(level='INFO',
+                      content=f"[post_process] is_interruption,等AI开始回复(RMS)后延迟1s放下一轮(barge-in): status={_status}",
                       task_id=task_id, test_case_id=test_case_id)
-            replied = True
+            if not replied:
+                self.question_text = '小艺识别为空'
+                self.answer_text = '小艺回复为空'
         else:
             # 检测 ai PCM 首帧(模型回复起始时刻,替代录屏 first_frame)
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
                 device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
                 task_id=task_id, test_case_id=test_case_id)
-            replied=self._wait_for_condition(
-                lambda:driver.find_component(By.text("说话可打断"))  is None,
-                timeout=300,interval=1,
-                operation_name='等待回复开始',
-            )
-
+            # 等 AI 回复完成: 基于 AI PCM 尾部 RMS 能量(双阶段+历史兜底),
+            # 不依赖控件文本(说话可打断/正在听…),后者在语音态透传性不稳定。
+            replied = self._wait_ai_reply_end_via_pcm(
+                device_sn, task_id=task_id, test_case_id=test_case_id)
             if not replied:
-                self._log(level='INFO',content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
-                self.question_text='小艺识别为空'
-                self.answer_text='小艺回复为空'
+                self._log(level='INFO', content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
+                self.question_text = '小艺识别为空'
+                self.answer_text = '小艺回复为空'
             else:
-                self._log(level='INFO',content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
-                # 等待小艺回复结束（带超时和停止检查）
-                self._wait_for_condition(
-                    lambda: driver.find_component(By.text('说话可打断')),
-                    timeout=10, interval=1, operation_name="post_process_说话可打断"
-                )
-                self._wait_for_condition(
-                    lambda: driver.find_component(By.text('正在听…')),
-                    timeout=300, interval=1, operation_name="post_process_正在听"
-                )
+                self._log(level='INFO', content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
         record_mode = getattr(self, '_record_mode', 'round')
         round_number = getattr(self, '_round_number', 0)
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
 
-        # case 模式打断轮非末轮：延迟 5s 再进下一轮播放（可被停止/暂停打断）
+        # case 模式打断轮非末轮：检测到 AI 开始回复后延迟 1s 再进下一轮播放（可被停止/暂停打断）
+        # 让 AI 先说 1s 再被打断（真 barge-in 落在回复中段）
         if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
-                and record_mode == 'case' and not is_last):
+                and replied and record_mode == 'case' and not is_last):
             self._log(level='INFO',
-                      content=f"打断轮结束,等待5s后进入下一轮播放: r{round_number}/{total_rounds}",
+                      content=f"[post_process] 检测到AI开始回复,等1s后进入下一轮播放: r{round_number}/{total_rounds}",
                       task_id=task_id, test_case_id=test_case_id)
-            for _ in range(10):  # 10 * 0.5s = 5s
-                if self._check_stop('轮间延迟5s'):
+            for _ in range(2):  # 2 * 0.5s = 1s
+                if self._check_stop('AI回复后延迟1s'):
                     return True
                 time.sleep(0.5)
 

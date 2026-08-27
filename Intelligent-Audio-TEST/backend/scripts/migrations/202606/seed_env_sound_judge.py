@@ -35,7 +35,9 @@
                     注意默认 gpt-4o-mini 不支持音频，音频裁判需指定 gpt-audio/omni 等）
 
 输出：
-   - evaluations : LLM 裁判结果列表 [{scene, behavior, reason}, ...]
+   - evaluations : LLM 裁判结果列表 [{scene, behavior, reason}, ...]（main，json 非数值，得分恒 0）
+   - ej_behavior : 裁判行为类别（aux，取 evaluations.0.behavior，文本可显示）
+   - ej_reason   : 裁判判定理由（aux，取 evaluations.0.reason，文本可显示）
    - behavior_respond/recover/uncertain/unknown : 四个 0/1 字段（供子维度 pass_rate 聚合）
 
 使用方法：
@@ -102,6 +104,12 @@ _COMMON_PARAMS = [
     ('ej_model', '裁判模型', '使用的 LLM 模型', 'text', 'output',
      'model', None, 'aux', True,
      False, None, '本次裁判使用的 LLM 模型名', 61),
+    ('ej_behavior', '裁判行为', 'LLM裁判行为类别', 'text', 'output',
+     'evaluations.0.behavior', None, 'aux', True,
+     False, None, 'LLM裁判行为类别(回应/恢复/不确定询问/未知 等；取evaluations首条，多场景仅显首条，完整数据在api_raw_response)', 62),
+    ('ej_reason', '裁判理由', 'LLM裁判判定理由', 'text', 'output',
+     'evaluations.0.reason', None, 'aux', True,
+     False, None, 'LLM裁判判定理由(取evaluations首条)', 62),
     ('ej_scene', '场景', '场景类型', 'text', 'output',
      'scene', None, 'aux', True,
      False, None, '场景类型(兼容旧 env_type)', 63),
