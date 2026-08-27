@@ -1,0 +1,42 @@
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/strategy.py
+  s_e10664062e490c::t_bb6044bcc26ce6 527-536
+  s_e10664062e490c::t_0b49dcafd8eba8 368-373
+  s_e10664062e490c::t_af60cbc38bd845 417-422
+  s_e10664062e490c::t_c59df9075e593d 304-309
+  s_e10664062e490c::t_659cb5541aa44a 267-272
+  s_e10664062e490c::t_064d9fe1e297f2 479-484
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "2ca573a560799836d074f366782dadc90ac84b7e",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_e10664062e490c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8d0a8fc2b7c194d3358d31",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "session_id": "6a8d0a8fc2b7c194d3358d31",
+        "runtime_client": "trae-tob-git-ai",
+        "external_session_id": "6a8d0a8fc2b7c194d3358d31",
+        "operation_id": "6a8d0fcac2b7c194d3358f86",
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "source_scene": "agent",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "dedupe_key": "6a8d0a8fc2b7c194d3358d31:6a8d0fcac2b7c194d3358f86:afterEdit:b752441b",
+        "tool_use_id": "6a8d0fcac2b7c194d3358f86"
+      }
+    }
+  }
+}

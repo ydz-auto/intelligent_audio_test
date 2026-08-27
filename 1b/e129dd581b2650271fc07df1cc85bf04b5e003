@@ -1,0 +1,85 @@
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  s_1b2a62c34e6614::t_4ed3ebf7191e8b 750
+  s_1b2a62c34e6614::t_287830c778480d 621-633
+  s_1b2a62c34e6614::t_d233668cb9f11c 868-869
+  s_1b2a62c34e6614::t_4f41937d0ee107 985
+  s_1b2a62c34e6614::t_3f596ee71b0714 472,482-483
+  s_1b2a62c34e6614::t_990d5fba3df40f 806-807
+  s_1b2a62c34e6614::t_6f5d55c6744b05 96-98,104-106
+  s_1b2a62c34e6614::t_6b7e741d99d080 846-847
+  s_1b2a62c34e6614::t_ac9e2ec92c0722 520-526
+  s_1b2a62c34e6614::t_fe7570f239c535 534,537,540-541
+  s_1b2a62c34e6614::t_03f58c4d13f36c 742
+  s_1b2a62c34e6614::t_ff26e44258fe7a 1038-1041
+  s_1b2a62c34e6614::t_b55997b1ec6e4c 232
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_chatgpt.py
+  s_1b2a62c34e6614::t_7776f75fadb5bf 589
+  s_1b2a62c34e6614::t_f68560cc903117 622
+  s_1b2a62c34e6614::t_339edda5a5947c 466-470
+  s_1b2a62c34e6614::t_a1a948b17785a8 600
+  s_1b2a62c34e6614::t_d20210a2e4c200 666-669
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_70914e84cac598::t_f06eb727c82402 412
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_doubaochat.py
+  s_1b2a62c34e6614::t_7d952f8fd0442f 654-657
+  s_1b2a62c34e6614::t_087fc238a9c454 544
+  s_1b2a62c34e6614::t_591f97c526e906 251
+  s_1b2a62c34e6614::t_6791bb8529b4b9 394-398
+  s_1b2a62c34e6614::t_9ae3419601b831 597
+  s_1b2a62c34e6614::t_684dd5c81b750a 531
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "1be129dd581b2650271fc07df1cc85bf04b5e003",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_1b2a62c34e6614": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8bc221c2b7c194d3357f17",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a8bc6d3c2b7c194d335809c",
+        "dedupe_key": "6a8bc221c2b7c194d3357f17:6a8bc6d3c2b7c194d335809c:afterEdit:00161172",
+        "edit_kind": "file_edit",
+        "tool_type": "builtin",
+        "runtime_client": "trae-tob-git-ai",
+        "session_id": "6a8bc221c2b7c194d3357f17",
+        "external_session_id": "6a8bc221c2b7c194d3357f17",
+        "operation_id": "6a8bc6d3c2b7c194d335809c",
+        "client_type": "ide",
+        "source_scene": "agent"
+      }
+    },
+    "s_70914e84cac598": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8c065ac2b7c194d33580d4",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "source_scene": "agent",
+        "tool_type": "builtin",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "dedupe_key": "6a8c065ac2b7c194d33580d4:6a8c066fc2b7c194d33580eb:afterEdit:af31db24",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "session_id": "6a8c065ac2b7c194d33580d4",
+        "tool_use_id": "6a8c066fc2b7c194d33580eb",
+        "external_session_id": "6a8c065ac2b7c194d33580d4",
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a8c066fc2b7c194d33580eb"
+      }
+    }
+  }
+}

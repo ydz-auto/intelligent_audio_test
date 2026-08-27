@@ -1,0 +1,49 @@
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/interruption_judge.py
+  s_94d11443945b53::t_3c23c4d382442b 12
+  s_94d11443945b53::t_b98251e65979bf 203-215
+  s_94d11443945b53::t_667c58b511389d 162-165
+  s_94d11443945b53::t_9b8617afc34c48 124-127
+eval_server/app/services/calculators/xiaoyi_metrics/env_judge/rejection_judge.py
+  s_94d11443945b53::t_821f84ee7b0566 126-129
+  s_94d11443945b53::t_aadb881674ad64 205-217
+  s_94d11443945b53::t_8b6afc30178c61 164-167
+  s_94d11443945b53::t_6b3722d1400d4b 12
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_env_sound_judge.py
+  s_94d11443945b53::t_9ea6037ca4998b 234-519,568,570-575,578,580-587,602,604,606-608,613
+  s_94d11443945b53::t_7470c0de7100cf 3,6,9-17,39,232-233
+  s_94d11443945b53::t_b7d9b21bb967b2 148,172,188-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "e2e39577ac5a85454a164df00eee71ae4ecf1ec5",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_94d11443945b53": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8c280fc2b7c194d3358564",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "external_session_id": "6a8c280fc2b7c194d3358564",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a8c280fc2b7c194d3358564:6a8c2f8ac2b7c194d33587f6:afterEdit:b7eb45ee",
+        "edit_kind": "file_edit",
+        "session_id": "6a8c280fc2b7c194d3358564",
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "operation_id": "6a8c2f8ac2b7c194d33587f6",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "source_scene": "agent",
+        "tool_use_id": "6a8c2f8ac2b7c194d33587f6"
+      }
+    }
+  }
+}
