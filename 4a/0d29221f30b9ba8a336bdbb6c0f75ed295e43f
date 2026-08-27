@@ -1,0 +1,283 @@
+Intelligent-Audio-TEST/frontend/src/components/common/modal/ReevaluateSelectModal.vue
+  h_eadf3f9b9a3d7b 5,8-9,15-16,21-22,28-29
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_interruption_dimensions.py
+  s_2237dc5e66b317::t_534cf15dacf5f8 118
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_8a8a971a7f96ec::t_190c1bd352dfd4 435-437,441
+  s_fe3161712758aa::t_d5b27ec0d53593 302-304,306-312
+  s_fe3161712758aa::t_dd0db3d6ef8f58 288,292-293,300
+  s_fe3161712758aa::t_88819e68ff852a 294-298
+  s_fe3161712758aa::t_c82065f64d7f30 299,315,318-434,438-440,442-533
+Intelligent-Audio-TEST/backend/controllers/task_controller.py
+  s_fe3161712758aa::t_58b3d718bbfd83 532,539,562-564,566-572,578-584
+  s_fe3161712758aa::t_a4546e8b7094f5 556,561
+  s_d71e1c4fd6a5ca::t_0c703dea341e34 315-323,325,337-338
+Intelligent-Audio-TEST/frontend/src/components/common/AudioPlayerModal.vue
+  s_8a8a971a7f96ec::t_8f860091cfd815 244-250
+  s_8a8a971a7f96ec::t_e49f2285016537 875
+eval_server/app/services/calculators/xiaoyi_metrics/interruptbility/interruption_llm.py
+  s_4ce76b3bb90463::t_feacb7660b2a6c 448-458
+  s_4ce76b3bb90463::t_37cbabcb1b077a 390-399
+  s_4ce76b3bb90463::t_db88b8ea888e58 300-310
+  s_4ce76b3bb90463::t_703aae263de2a4 334-343
+eval_server/app/services/calculators/xiaoyi_metrics/interruptbility/interruption.py
+  s_4ce76b3bb90463::t_965e65e5012fe6 273-283
+Intelligent-Audio-TEST/backend/scripts/migrations/202606/seed_env_sound_judge.py
+  s_2237dc5e66b317::t_b894a79e12a02d 78
+Intelligent-Audio-TEST/frontend/src/composables/useE2eView.ts
+  s_d71e1c4fd6a5ca::t_bcacb42940f159 353-365
+Intelligent-Audio-TEST/frontend/src/utils/audioUtils.ts
+  s_8a8a971a7f96ec::t_c2587f26b63b6f 829
+  s_8a8a971a7f96ec::t_e79d30a5b22932 5-9
+  s_8a8a971a7f96ec::t_701f0e8e7fa584 720-828,830-840
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_191dab24697b45::t_4942b8987afab8 1190
+  s_8a8a971a7f96ec::t_e1f3ca76becba4 401
+Intelligent-Audio-TEST/backend/controllers/report_controller_base.py
+  s_191dab24697b45::t_b186e252107508 1026-1028,1030-1031,1033,1036,1038,1042-1043,1045
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_result_processor.py
+  s_fe3161712758aa::t_2032bbdc1fd12f 560
+  s_fe3161712758aa::t_3867db004ed652 52-60
+  s_fe3161712758aa::t_d08c19d5328d1a 610,612,631,642,666-682,689
+  s_fe3161712758aa::t_7406a80bee0f36 561-564
+  s_fe3161712758aa::t_9cb67e800cb1c0 608-609,611,613-630,632-641,643-665,683-688,690-692
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/__init__.py
+  s_4ce76b3bb90463::t_39519042ab8a3c 752-755
+Intelligent-Audio-TEST/frontend/src/assets/styles/tasks/task-card.css
+  s_109465deec8b52::t_fe2dd827efdc1d 293-296
+  s_109465deec8b52::t_2c26b9a7a48403 291
+  s_109465deec8b52::t_4eb0ee96adbaca 289-290,297-298,302,304-305
+  s_109465deec8b52::t_d9bf62e6c6434f 149-150
+  s_109465deec8b52::t_99bfe8aa368d9c 292
+Intelligent-Audio-TEST/frontend/src/composables/useTaskProgress.ts
+  s_d71e1c4fd6a5ca::t_a1b682179f4beb 13,19-24
+Intelligent-Audio-TEST/frontend/src/components/common/TestCaseReportDetail.vue
+  s_fe3161712758aa::t_f0283f4b49ebdd 913,916-918,920
+  s_8a8a971a7f96ec::t_ab97688ced6fe0 325
+  s_8a8a971a7f96ec::t_adf56916484238 487
+  s_8a8a971a7f96ec::t_f747e69c8a2d60 689
+  s_fe3161712758aa::t_b6f7964638637e 605,614,616
+Intelligent-Audio-TEST/backend/controllers/audio_controller.py
+  s_8a8a971a7f96ec::t_d2d3ff3f409abd 3063-3064
+Intelligent-Audio-TEST/backend/schemas/task.py
+  s_d71e1c4fd6a5ca::t_1b6713719c8e19 74-75
+Intelligent-Audio-TEST/frontend/src/views/TasksLogic/TaskDetailModal.vue
+  s_d71e1c4fd6a5ca::t_64b57f22cb8fe0 290-293
+Intelligent-Audio-TEST/frontend/src/components/TaskCard.vue
+  s_109465deec8b52::t_1abb4a1d505afe 324
+  s_109465deec8b52::t_cdabf50eae1c12 323
+eval_server/app/services/calculators/xiaoyi_metrics/turn_taking/tor.py
+  s_e2a179e6e9b48c::t_261228fa7e6628 31
+Intelligent-Audio-TEST/frontend/src/components/TestExecutionComponent.vue
+  s_d71e1c4fd6a5ca::t_fe7c41471e69cc 641-655
+  s_d71e1c4fd6a5ca::t_d27894f48144c5 453-457,459,461-467,469-479,481-491,494-495,497,500-505,507-510,513-518,520-529,532-538,540,542-543,549,552-556
+  s_d71e1c4fd6a5ca::t_902e088295bd1e 458,460,468,480,492-493,496,498-499,506,511-512,519,530-531
+  s_d71e1c4fd6a5ca::t_c7b349bd5638fe 183,188-217,219-221,227,235,250,258-296
+  s_d71e1c4fd6a5ca::t_847e868b932d0a 557
+Intelligent-Audio-TEST/backend/services/evaluation/evaluation_api_client.py
+  s_b193ed833c7a87::t_4e4c313a8ae433 237
+  s_b193ed833c7a87::t_f6f43501ec9efd 304-308
+  s_b193ed833c7a87::t_a700d5f6653020 381
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "4a0d29221f30b9ba8a336bdbb6c0f75ed295e43f",
+  "prompts": {},
+  "humans": {
+    "h_eadf3f9b9a3d7b": {
+      "author": "ydz-auto <ydz-auto@users.noreply.github.com>"
+    }
+  },
+  "sessions": {
+    "s_109465deec8b52": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8e8b6241f59cf156686a2a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a8e8b6241f59cf156686a2a",
+        "edit_kind": "file_edit",
+        "runtime_client": "trae-tob-git-ai",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "source_scene": "agent",
+        "dedupe_key": "6a8e8b6241f59cf156686a2a:6a8fe47141f59cf156687a0e:afterEdit:e11b5af2",
+        "external_session_id": "6a8e8b6241f59cf156686a2a",
+        "tool_use_id": "6a8fe47141f59cf156687a0e",
+        "operation_id": "6a8fe47141f59cf156687a0e"
+      }
+    },
+    "s_191dab24697b45": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8e569241f59cf156686217",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a8e569241f59cf156686217:6a8e59b441f59cf1566865cd:afterEdit:6b9ff098",
+        "operation_id": "6a8e59b441f59cf1566865cd",
+        "source_scene": "agent",
+        "client_type": "ide",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a8e59b441f59cf1566865cd",
+        "edit_kind": "file_edit",
+        "session_id": "6a8e569241f59cf156686217",
+        "tool_type": "builtin",
+        "external_session_id": "6a8e569241f59cf156686217"
+      }
+    },
+    "s_2237dc5e66b317": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8f978941f59cf15668776c",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "operation_id": "6a8f983c41f59cf1566877da",
+        "runtime_client": "trae-tob-git-ai",
+        "external_session_id": "6a8f978941f59cf15668776c",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "session_id": "6a8f978941f59cf15668776c",
+        "dedupe_key": "6a8f978941f59cf15668776c:6a8f983c41f59cf1566877da:afterEdit:68e23050",
+        "source_scene": "agent",
+        "tool_use_id": "6a8f983c41f59cf1566877da",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin"
+      }
+    },
+    "s_4ce76b3bb90463": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8ea7f341f59cf15668732a",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a8ea7f341f59cf15668732a",
+        "runtime_client": "trae-tob-git-ai",
+        "operation_id": "6a8eaaa541f59cf1566873b9",
+        "edit_kind": "file_edit",
+        "tool_type": "builtin",
+        "source_scene": "agent",
+        "session_id": "6a8ea7f341f59cf15668732a",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a8eaaa541f59cf1566873b9",
+        "dedupe_key": "6a8ea7f341f59cf15668732a:6a8eaaa541f59cf1566873b9:afterEdit:3b80ec5a",
+        "client_type": "ide"
+      }
+    },
+    "s_8a8a971a7f96ec": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8e56f941f59cf156686295",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "source_scene": "agent",
+        "tool_use_id": "6a8ea41941f59cf1566872a7",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "operation_id": "6a8ea41941f59cf1566872a7",
+        "external_session_id": "6a8e56f941f59cf156686295",
+        "edit_kind": "file_edit",
+        "client_type": "ide",
+        "runtime_client": "trae-tob-git-ai",
+        "session_id": "6a8e56f941f59cf156686295",
+        "dedupe_key": "6a8e56f941f59cf156686295:6a8ea41941f59cf1566872a7:afterEdit:0aeaa354",
+        "tool_type": "builtin"
+      }
+    },
+    "s_b193ed833c7a87": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8fd8e941f59cf156687806",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "operation_id": "6a8fddf241f59cf156687899",
+        "tool_use_id": "6a8fddf241f59cf156687899",
+        "client_type": "ide",
+        "dedupe_key": "6a8fd8e941f59cf156687806:6a8fddf241f59cf156687899:afterEdit:eb424559",
+        "session_id": "6a8fd8e941f59cf156687806",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "external_session_id": "6a8fd8e941f59cf156687806",
+        "edit_kind": "file_edit",
+        "tool_type": "builtin",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent"
+      }
+    },
+    "s_d71e1c4fd6a5ca": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8eab2041f59cf1566873c6",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "session_id": "6a8eab2041f59cf1566873c6",
+        "external_session_id": "6a8eab2041f59cf1566873c6",
+        "operation_id": "6a8eb11c41f59cf15668754f",
+        "tool_type": "builtin",
+        "source_scene": "agent",
+        "tool_use_id": "6a8eb11c41f59cf15668754f",
+        "edit_kind": "file_edit",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "runtime_client": "trae-tob-git-ai",
+        "client_type": "ide",
+        "dedupe_key": "6a8eab2041f59cf1566873c6:6a8eb11c41f59cf15668754f:afterEdit:9eb875ec"
+      }
+    },
+    "s_e2a179e6e9b48c": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8e544e41f59cf156685fb0",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "tool_use_id": "6a8e552341f59cf1566860b2",
+        "session_id": "6a8e544e41f59cf156685fb0",
+        "dedupe_key": "6a8e544e41f59cf156685fb0:6a8e552341f59cf1566860b2:afterEdit:ba1b8235",
+        "edit_kind": "file_edit",
+        "operation_id": "6a8e552341f59cf1566860b2",
+        "source_scene": "agent",
+        "external_session_id": "6a8e544e41f59cf156685fb0",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_type": "builtin",
+        "client_type": "ide"
+      }
+    },
+    "s_fe3161712758aa": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8e8be141f59cf156686a2b",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "external_session_id": "6a8e8be141f59cf156686a2b",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "tool_use_id": "6a8eb85541f59cf156687741",
+        "session_id": "6a8e8be141f59cf156686a2b",
+        "client_type": "ide",
+        "source_scene": "agent",
+        "dedupe_key": "6a8e8be141f59cf156686a2b:6a8eb85541f59cf156687741:afterEdit:f3e17df7",
+        "operation_id": "6a8eb85541f59cf156687741",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_type": "builtin",
+        "edit_kind": "file_edit"
+      }
+    }
+  }
+}
