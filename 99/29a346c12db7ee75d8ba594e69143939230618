@@ -1,0 +1,34 @@
+eval_server/app/services/calculators/xiaoyi_metrics/API.md
+  s_04d2ca556c6ae2::t_0fac3e7d9be042 1-609
+eval_server/app/services/calculators/xiaoyi_metrics/README.md
+  s_04d2ca556c6ae2::t_018bca8cf041d8 3,13,18-19,30,32-36,46-49,55-57,59,73,75-77,88-89,115-116,138-163,166,185-187,200,211,218-222,224,226,228-231,233-260,284-289,293-294,298-314,319,321-322,325-326
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "9929a346c12db7ee75d8ba594e69143939230618",
+  "prompts": {},
+  "sessions": {
+    "s_04d2ca556c6ae2": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8fe79d41f59cf156687b07",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "client_type": "ide",
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a8fe79d41f59cf156687b07:6a8ff7d541f59cf156688861:afterEdit:65be6d77",
+        "external_session_id": "6a8fe79d41f59cf156687b07",
+        "tool_use_id": "6a8ff7d541f59cf156688861",
+        "tool_type": "builtin",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "edit_kind": "file_edit",
+        "session_id": "6a8fe79d41f59cf156687b07",
+        "source_scene": "agent",
+        "operation_id": "6a8ff7d541f59cf156688861"
+      }
+    }
+  }
+}
