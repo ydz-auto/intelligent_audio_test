@@ -981,14 +981,26 @@ class Xiaoyilivechat(HarmonyDriver):
         """清理 audio_hook 目录(子目录 + stub + 旧 pcm),供 pre_process/teardown 调用。
 
         rm -rf <dir>/* 清整个 audio_hook 内容(hook tap stub 与 CustStreamConfig 会被系统重建)。
+        ⚠️ 不要再传多余 'shell' 参数: _hdc_shell 内部已拼 'hdc -t sn shell <args>',
+        多传会变 'shell shell rm ...'(设备收到 'shell rm ...' 不是命令,rm 静默不执行)。
         """
         try:
-            self._hdc_shell(device_sn, 'shell',
-                            f'rm -rf {self.DSP_AUDIO_HOOK_DIR}/*')
-            self._log(level='DEBUG', content=f"[DSP] 已清 {self.DSP_AUDIO_HOOK_DIR}",
+            result = self._hdc_shell(device_sn, 'rm', '-rf',
+                                     f'{self.DSP_AUDIO_HOOK_DIR}/*')
+            self._log(level='DEBUG',
+                      content=f"[DSP] 清 audio_hook rc={result.returncode}",
                       task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
             self._log(level='WARNING', content=f"[DSP] 清 audio_hook 异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return
+        # 残留检测:若仍有 .pcm 残留(DSP 写入占用/权限),仅告警便于排查
+        r = self._hdc_shell(device_sn, 'find', self.DSP_AUDIO_HOOK_DIR,
+                            '-name', '*.pcm', '-type', 'f')
+        remaining = [l for l in (r.stdout or '').splitlines() if l.strip()]
+        if remaining:
+            self._log(level='WARNING',
+                      content=f"[DSP] audio_hook 清除后仍有 {len(remaining)} 个 pcm 残留: {remaining}",
                       task_id=task_id, test_case_id=test_case_id)
 
     def _pull_dsp_pcm_wav(self, device_sn, task_id=None, test_case_id=None, round_number=None):
@@ -1016,13 +1028,9 @@ class Xiaoyilivechat(HarmonyDriver):
             matched = [f for f in files if os.path.basename(f).startswith(prefix)]
             if not matched:
                 return None
-            # 取 size 最大者(避开 0 字节 stub)
-            best, best_sz = None, -1
-            for f in matched:
-                sz = self._get_device_file_size(device_sn, f)
-                if sz > best_sz:
-                    best, best_sz = f, sz
-            return best
+            # 取文件名最新者: DSP 文件名含时间戳(YYYY-MM-DD-HH-MM-SS),字典序=时间序。
+            # 用最新而非 size 最大,避免清残留失败时误选旧会话文件(多用例抓到同一文件)。
+            return max(matched, key=lambda f: os.path.basename(f))
 
         user_remote = pick_by_prefix(self.DSP_USER_PREFIX)
         ai_remote = pick_by_prefix(self.DSP_AI_PREFIX)
