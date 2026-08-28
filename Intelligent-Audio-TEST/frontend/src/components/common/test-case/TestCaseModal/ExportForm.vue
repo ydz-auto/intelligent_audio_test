@@ -256,7 +256,6 @@ function handleSubmit() {
   }
 
   emit('update', { ...localFormData.value, ids });
-  emit('submit');
 }
 
 watch(

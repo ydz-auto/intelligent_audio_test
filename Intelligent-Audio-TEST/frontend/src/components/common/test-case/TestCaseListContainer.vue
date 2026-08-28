@@ -45,6 +45,14 @@
             <i class="fas fa-upload"></i>
             导入用例
           </button>
+          <button class="btn btn-danger" @click="confirmBatchDeleteGroups" v-if="innerViewMode === 'group'" :disabled="selectedGroups.length === 0">
+            <i class="fas fa-folder"></i>
+            批量删除分组
+          </button>
+          <button class="btn btn-danger" @click="confirmBatchDeleteTags" v-if="innerViewMode === 'tag'" :disabled="selectedTagNames.length === 0">
+            <i class="fas fa-tags"></i>
+            批量删除标签
+          </button>
         </div>
       <div class="toolbar-filters">
         <div class="search-box-container">
@@ -135,10 +143,10 @@
       >
         <div class="category-header" @click="() => toggleCategory(group)">
           <div class="category-info">
-            <input type="checkbox" class="group-checkbox" 
-                   @change="() => toggleGroupSelection(group)" 
+            <input type="checkbox" class="group-checkbox"
+                   @change="() => toggleGroupCheck(group)"
                    @click.stop
-                   :checked="groupSelectionStates[group]">
+                   :checked="groupChecked[group] || false">
             <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedCategories[group] }"></i>
             <h4 class="category-title">{{ group }}</h4>
             <span class="category-count">{{ getGroupTotalCount(group) }}</span>
@@ -225,9 +233,9 @@
           <div class="category-header" @click="() => toggleTagCategory(tagName)">
             <div class="category-info">
               <input type="checkbox" class="group-checkbox"
-                     @change="() => toggleTagSelection(tagName)"
+                     @change="() => toggleTagCheck(tagName)"
                      @click.stop
-                     :checked="tagSelectionStates[tagName]">
+                     :checked="tagChecked[tagName] || false">
               <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedTagCategories[tagName] }"></i>
               <i class="fas fa-tag" style="color: var(--primary-color, #4a90e2); margin-right: 6px;"></i>
               <h4 class="category-title">{{ tagName }}</h4>
@@ -415,6 +423,9 @@ const emit = defineEmits<{
 const expandedCategories = ref<Record<string, boolean>>({});
 const expandedTagCategories = ref<Record<string, boolean>>({});
 const selectedCases = ref<(string | number)[]>([]);
+const batchDeletingTags = ref(false);
+const groupChecked = ref<Record<string, boolean>>({});
+const tagChecked = ref<Record<string, boolean>>({});
 const searchQuery = ref('');
 const debouncedSearchQuery = useDebounce(searchQuery, 300);
 const testTypeFilter = ref('all');
@@ -893,6 +904,16 @@ const sortedGroups = computed(() => {
   });
 });
 
+// 已勾选的分组名列表（用于批量删除分组）
+const selectedGroups = computed(() => {
+  return Object.keys(groupChecked.value).filter(g => groupChecked.value[g]);
+});
+
+// 已勾选的标签名列表（用于批量删除标签）
+const selectedTagNames = computed(() => {
+  return Object.keys(tagChecked.value).filter(t => tagChecked.value[t]);
+});
+
 // Paginated groups computed property
 const paginatedGroups = computed(() => {
   const allGroups = sortedGroups.value;
@@ -1059,6 +1080,14 @@ const toggleTestCaseSelection = (caseId: string | number) => {
   } else {
     selectedCases.value.push(caseId);
   }
+};
+
+const toggleGroupCheck = (group: string) => {
+  groupChecked.value = { ...groupChecked.value, [group]: !groupChecked.value[group] };
+};
+
+const toggleTagCheck = (tagName: string) => {
+  tagChecked.value = { ...tagChecked.value, [tagName]: !tagChecked.value[tagName] };
 };
 
 const toggleGroupSelection = async (group: string) => {
@@ -1345,24 +1374,93 @@ const handleTagDelete = async (tagName: string) => {
     }
 
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
-      title: '删除标签',
-      content: `确定删除标签「${tagName}」吗？\n\n注意：这只会删除标签本身，不会删除用例。`,
-      confirmText: '确定删除',
+      title: '确认删除',
+      content: `确定要删除标签 "${tagName}" 及其下所有测试用例吗？此操作不可逆！`,
+      confirmText: '删除',
       cancelText: '取消',
       danger: true
     });
 
     if (confirmed?.confirmed) {
-      await api.tags.deleteTag(tagItem.id);
-      alert(`标签"${tagName}"已删除`);
-      // 刷新数据
+      // cascade=true: 删除标签及其下所有测试用例
+      await api.tags.deleteTag(tagItem.id, true);
+      // 刷新标签视图数据
       const store = useTestCaseStore();
-      await store.fetchTestCases();
+      await store.refreshTagView();
     }
   } catch (error) {
     console.error('删除标签失败:', error);
     alert('删除标签失败: ' + (error instanceof Error ? error.message : '未知错误'));
   }
+};
+
+// ===== 批量删除标签 =====
+const confirmBatchDeleteTags = async () => {
+  const tagsToDelete = selectedTagNames.value;
+  if (tagsToDelete.length === 0) return;
+  batchDeletingTags.value = true;
+  const totalCases = tagsToDelete.reduce((sum, name) => sum + (filteredTagCases.value[name]?.length || 0), 0);
+  const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${tagsToDelete.length} 个标签及其下 ${totalCases} 个测试用例吗？此操作不可逆！`,
+    confirmText: '删除',
+    cancelText: '取消',
+    danger: true
+  });
+  if (!confirmed?.confirmed) {
+    batchDeletingTags.value = false;
+    return;
+  }
+  try {
+    for (const tagName of tagsToDelete) {
+      const res = await api.tags.getTags({ search: tagName });
+      const tagItem = res.items?.find((t: any) => t.name === tagName);
+      if (tagItem) {
+        await api.tags.deleteTag(tagItem.id, true);
+      }
+    }
+    const store = useTestCaseStore();
+    await store.refreshTagView();
+    selectedCases.value = [];
+    tagChecked.value = {};
+    alert(`已成功删除 ${tagsToDelete.length} 个标签及其下所有用例`);
+  } catch (error) {
+    console.error('批量删除标签失败:', error);
+    alert('批量删除标签失败: ' + (error instanceof Error ? error.message : '未知错误'));
+  } finally {
+    batchDeletingTags.value = false;
+  }
+};
+
+// ===== 批量删除分组 =====
+const confirmBatchDeleteGroups = async () => {
+  const groupsToDelete = selectedGroups.value;
+  if (groupsToDelete.length === 0) return;
+  const totalCases = groupsToDelete.reduce((sum, g) => sum + getGroupTotalCount(g), 0);
+  const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+    title: '确认批量删除',
+    content: `确定要删除选中的 ${groupsToDelete.length} 个分组及其下 ${totalCases} 个测试用例吗？此操作不可逆！`,
+    confirmText: '删除',
+    cancelText: '取消',
+    danger: true
+  });
+  if (!confirmed?.confirmed) return;
+
+  const store = useTestCaseStore();
+  let successCount = 0;
+  let failCount = 0;
+  for (const groupName of groupsToDelete) {
+    try {
+      await store.deleteGroup(groupName);
+      successCount++;
+    } catch {
+      failCount++;
+    }
+  }
+  await store.fetchTestCases();
+  selectedCases.value = [];
+  groupChecked.value = {};
+  alert(`批量删除完成：成功 ${successCount} 个${failCount > 0 ? `，失败 ${failCount} 个` : ''}`);
 };
 
 const handleTagEdit = async (tagName: string) => {
@@ -1654,7 +1752,7 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
-  align-items: stretch;
+  align-items: flex-start;
   flex-wrap: nowrap;
   background-color: white;
   padding: var(--spacing-md);
@@ -1675,7 +1773,8 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   height: 40px;
   margin: 0;
   padding: 0;
-  flex-shrink: 1;
+  flex-grow: 0;
+  flex-shrink: 0;
   width: 100%;
   min-width: 200px;
   margin-bottom: 0;
@@ -1694,13 +1793,20 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   display: flex;
   gap: var(--spacing-md);
   align-items: center;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   width: 100%;
-  overflow-x: auto;
+  overflow-x: visible;
   padding-bottom: var(--spacing-xs);
   min-height: 40px;
   box-sizing: border-box;
+  flex-grow: 0;
+  flex-shrink: 0;
+}
+
+/* 重置筛选按钮推到最右下角 */
+.filters-container > .filter-section:last-child {
+  margin-left: auto;
 }
 
 /* 确保筛选器在所有屏幕尺寸下都在同一行 */
@@ -1713,10 +1819,10 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
 @media (max-width: 767px) {
   .filters-container {
     flex-wrap: wrap;
-    justify-content: center;
+    justify-content: flex-start;
     overflow-x: visible;
   }
-  
+
   .filter-section {
     min-width: 120px;
   }
@@ -1731,7 +1837,8 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   box-sizing: border-box;
   margin: 0;
   padding: 4px 0;
-  flex-shrink: 1;
+  flex-grow: 0;
+  flex-shrink: 0;
   flex-wrap: nowrap;
   min-width: 150px;
   justify-content: flex-start;
@@ -1789,7 +1896,8 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   height: 40px;
   margin: 0;
   padding: 0;
-  flex-shrink: 1;
+  flex-grow: 0;
+  flex-shrink: 0;
   width: 100%;
   min-width: 200px;
   margin-bottom: 0;
@@ -1844,7 +1952,7 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
   .filter-section {
     gap: 8px;
     min-width: 150px;
-    justify-content: center;
+    justify-content: flex-start;
   }
   
   .filter-section .form-input {

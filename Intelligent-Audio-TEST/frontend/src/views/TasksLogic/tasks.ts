@@ -650,7 +650,14 @@ export function useTasks() {
 
   const batchDelete = async () => {
     if (selectedTasks.value.size === 0) return;
-    if (confirm(`确定要删除选中的 ${selectedTasks.value.size} 个任务吗？`)) {
+    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '批量删除任务',
+      content: `确定要删除选中的 ${selectedTasks.value.size} 个任务吗？`,
+      confirmText: '删除',
+      cancelText: '取消',
+      danger: true
+    });
+    if (confirmed) {
       try {
         const ids = Array.from(selectedTasks.value);
         await tasksApi.batchAction('delete', ids as any);
@@ -719,7 +726,7 @@ export function useTasks() {
 
   const batchCompare = async () => {
     if (selectedTasks.value.size < 2) {
-      alert('请至少选择两个任务进行对比');
+      notification.warning('请至少选择两个任务进行对比');
       return;
     }
     try {
@@ -735,36 +742,44 @@ export function useTasks() {
       }, 100);
     } catch (error) {
       console.error('Failed to batch compare tasks:', error);
-      alert('生成对比报告失败，请稍后重试');
+      notification.error('生成对比报告失败，请稍后重试');
     }
   };
 
   const batchRestore = async () => {
     if (selectedTasks.value.size === 0) return;
-    try {
-      const ids = Array.from(selectedTasks.value);
-      await tasksApi.batchAction('restore', ids as any);
-      selectedTasks.value.clear();
-      await fetchTasks();
-    } catch (error) {
-      console.error('Failed to batch restore tasks:', error);
+    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '批量恢复任务',
+      content: `确定要恢复选中的 ${selectedTasks.value.size} 个任务吗？`,
+      confirmText: '恢复',
+      cancelText: '取消'
+    });
+    if (confirmed) {
+      try {
+        const ids = Array.from(selectedTasks.value);
+        await tasksApi.batchAction('restore', ids as any);
+        selectedTasks.value.clear();
+        await fetchTasks();
+      } catch (error) {
+        console.error('Failed to batch restore tasks:', error);
+      }
     }
   };
 
   const batchMerge = async () => {
     if (selectedTasks.value.size < 2) {
-      alert('请至少选择两个任务进行合并');
+      notification.warning('请至少选择两个任务进行合并');
       return;
     }
-    
+
     const selectedTasksArray = tasks.value.filter(t => selectedTasks.value.has(t.id));
     const incompleteTasks = selectedTasksArray.filter(t => t.status !== 'completed');
     if (incompleteTasks.length > 0) {
       const names = incompleteTasks.map(t => t.name).join(', ');
-      alert(`以下任务未完成，无法合并: ${names}`);
+      notification.warning(`以下任务未完成，无法合并: ${names}`);
       return;
     }
-    
+
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '合并任务',
       content: `确定要合并选中的 ${selectedTasks.value.size} 个任务吗？合并后将会创建一个新的任务，原任务将被标记为已合并。`,
@@ -779,10 +794,10 @@ export function useTasks() {
       const result = await tasksApi.mergeTasks(ids as any) as any;
       selectedTasks.value.clear();
       await fetchTasks();
-      alert(`合并成功！新任务: ${result.merged_task_name || result.name || '合并任务'}`);
+      notification.success(`合并成功！新任务: ${result.merged_task_name || result.name || '合并任务'}`);
     } catch (error: any) {
       console.error('Failed to merge tasks:', error);
-      alert(error.message || '合并失败，请稍后重试');
+      notification.error(error.message || '合并失败，请稍后重试');
     }
   };
 
@@ -815,10 +830,11 @@ export function useTasks() {
     try {
       if (reportService.comparisonReport.value) {
         await reportService.saveReport(reportService.comparisonReport.value);
-        alert('报告已保存');
+        notification.success('报告已保存');
       }
     } catch (error) {
       console.error('Failed to save report:', error);
+      notification.error('报告保存失败');
     }
   };
 
@@ -826,10 +842,11 @@ export function useTasks() {
     try {
       if (reportService.comparisonReport.value?.id) {
         await reportService.publishReport(reportService.comparisonReport.value.id);
-        alert('报告已发布');
+        notification.success('报告已发布');
       }
     } catch (error) {
       console.error('Failed to publish report:', error);
+      notification.error('报告发布失败');
     }
   };
 
@@ -847,7 +864,7 @@ export function useTasks() {
       isEditingConclusion.value = false;
     } catch (error: any) {
       console.error('Failed to save conclusion:', error);
-      alert('结论保存失败: ' + (error.message || '未知错误'));
+      notification.error('结论保存失败: ' + (error.message || '未知错误'));
     }
   };
 

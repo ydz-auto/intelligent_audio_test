@@ -6,6 +6,13 @@ export function useBatchActions() {
   const store = useTestCaseStore()
   const modalControl = useModalControl()
 
+  // 标签视图下批量操作成功后刷新 tagViewData
+  const refreshAfterBatch = async (viewMode: 'group' | 'tag') => {
+    if (viewMode === 'tag') {
+      await store.refreshTagView()
+    }
+  }
+
   /**
    * 统一获取批量操作的目标用例ID
    * 规则：有勾选用勾选的，没勾选用筛选后的全量（从后端拉取）
@@ -75,6 +82,7 @@ export function useBatchActions() {
         roundNumbers: result.roundNumbers,
       })
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功更新 ${ids.length} 个用例的声压`)
       }
     }
@@ -108,6 +116,7 @@ export function useBatchActions() {
         roundNumbers: result.roundNumbers,
       })
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功更新 ${ids.length} 个用例的播放设备`)
       }
     }
@@ -147,6 +156,7 @@ export function useBatchActions() {
         }
       )
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功更新 ${ids.length} 个用例的噪声配置`)
       }
     }
@@ -180,6 +190,7 @@ export function useBatchActions() {
         roundNumbers: result.roundNumbers,
       })
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功更新 ${ids.length} 个用例的专属参数`)
       }
     }
@@ -216,6 +227,7 @@ export function useBatchActions() {
         multiDimensions: result.multiDimensions || [],
       })
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功更新 ${ids.length} 个用例的评价维度`)
       }
     } else if (result?.roundMode === 'per_round' && result?.multiDimensions) {
@@ -226,6 +238,7 @@ export function useBatchActions() {
         multiDimensions: result.multiDimensions,
       })
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功更新 ${ids.length} 个用例的评价维度`)
       }
     } else {
@@ -236,6 +249,7 @@ export function useBatchActions() {
         multiDimensions: result?.multiDimensions || [],
       })
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功更新 ${ids.length} 个用例的评价维度`)
       }
     }
@@ -271,6 +285,7 @@ export function useBatchActions() {
         success = await store.batchMoveCases(ids, result.groupId)
       }
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功将 ${ids.length} 个用例${result.isCopy ? '复制' : '移动'}到目标分组`)
       }
     }
@@ -303,6 +318,7 @@ export function useBatchActions() {
     if (confirmed?.confirmed) {
       const success = await store.batchAutoGenerateName(ids)
       if (success) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功为 ${ids.length} 个用例自动生成名称`)
       }
     }
@@ -339,6 +355,7 @@ export function useBatchActions() {
         success = await store.batchRenameTag(result.oldTagName, result.newTagName)
       }
       if (success) {
+        await refreshAfterBatch(viewMode)
         const actionText = result.action === 'add' ? '添加' : result.action === 'remove' ? '移除' : '重命名'
         alert(`已成功${actionText}标签`)
       }
@@ -375,11 +392,13 @@ export function useBatchActions() {
 
         if (status.success) {
           await store.fetchTestCases()
+          await refreshAfterBatch(viewMode)
           alert(`用例参考更新完成！\n\n成功刷新: ${status.updated} 个\n失败: ${status.failed} 个`)
         } else {
           alert('用例参考更新任务执行失败，请稍后重试')
         }
       } else if (result === true) {
+        await refreshAfterBatch(viewMode)
         alert(`已成功刷新 ${ids.length} 个用例的参考参数`)
       }
     }

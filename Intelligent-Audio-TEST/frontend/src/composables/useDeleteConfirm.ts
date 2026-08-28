@@ -33,6 +33,14 @@ export function useDeleteConfirm() {
     );
   };
 
+  const confirmDeleteTag = async (tagName: string): Promise<boolean> => {
+    console.log('[useDeleteConfirm] confirmDeleteTag 被调用, tagName:', tagName);
+    return confirmDelete(
+      '确认删除',
+      `确定要删除标签 "${tagName}" 及其下所有测试用例吗？此操作不可逆！`
+    );
+  };
+
   const confirmDeleteTestCase = async (testCaseName: string): Promise<boolean> => {
     console.log('[useDeleteConfirm] confirmDeleteTestCase 被调用, testCaseName:', testCaseName);
     return confirmDelete(
@@ -44,6 +52,7 @@ export function useDeleteConfirm() {
   return {
     confirmDelete,
     confirmDeleteGroup,
+    confirmDeleteTag,
     confirmDeleteTestCase
   };
 }

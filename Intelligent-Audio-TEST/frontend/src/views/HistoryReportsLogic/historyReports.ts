@@ -5,6 +5,7 @@ import { useAlgorithmLabels } from '../../composables/useAlgorithmLabels';
 import { getReportTypeLabel } from '../../shared/constants/reportConstants';
 import type { Report, ReportListParams } from '../../shared/types/index';
 import socketService from '../../utils/socket';
+import { useModalControl, MODAL_TYPES } from '../../composables/useModal';
 
 interface AlgorithmOption {
   value: string;
@@ -48,6 +49,7 @@ function showToast(type: ToastMessage['type'], message: string): void {
 
 export function useHistoryReports() {
   const router = useRouter();
+  const modalControl = useModalControl();
   const allReports = ref<Report[]>([]);
   const totalItems = ref(0);
   const currentPage = ref(1);
@@ -253,7 +255,14 @@ export function useHistoryReports() {
 
   const handleBatchDelete = async () => {
     if (selectedReports.value.size === 0) return;
-    if (confirm(`确定要删除选中的 ${selectedReports.value.size} 个报告吗？`)) {
+    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '批量删除报告',
+      content: `确定要删除选中的 ${selectedReports.value.size} 个报告吗？`,
+      confirmText: '删除',
+      cancelText: '取消',
+      danger: true
+    });
+    if (confirmed) {
       try {
         const ids = Array.from(selectedReports.value);
         await reportsApi.batchDelete(ids);
@@ -331,7 +340,14 @@ export function useHistoryReports() {
   };
 
   const deleteReport = async (reportId: string | number) => {
-    if (confirm('确定要删除这个报告吗？')) {
+    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '删除报告',
+      content: '确定要删除这个报告吗？',
+      confirmText: '删除',
+      cancelText: '取消',
+      danger: true
+    });
+    if (confirmed) {
       try {
         await reportsApi.delete(reportId);
         selectedReports.value.delete(reportId);
@@ -344,7 +360,13 @@ export function useHistoryReports() {
   };
 
   const publishReport = async (reportId: string | number) => {
-    if (confirm('确定要发布这个报告吗？')) {
+    const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
+      title: '发布报告',
+      content: '确定要发布这个报告吗？',
+      confirmText: '发布',
+      cancelText: '取消'
+    });
+    if (confirmed) {
       try {
         await reportsApi.publish(reportId);
         showToast('success', '报告发布成功');

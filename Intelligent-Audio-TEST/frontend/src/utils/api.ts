@@ -1397,8 +1397,8 @@ export const tagsApi = {
     return request<TagItem>('PUT', `/tags/${id}`, data);
   },
 
-  async deleteTag(id: number) {
-    return request<void>('DELETE', `/tags/${id}`);
+  async deleteTag(id: number, cascade: boolean = false) {
+    return request<void>('DELETE', `/tags/${id}?cascade=${cascade}`);
   },
 
   async batchUpdateCategory(tagIds: number[], categoryId: number | null) {

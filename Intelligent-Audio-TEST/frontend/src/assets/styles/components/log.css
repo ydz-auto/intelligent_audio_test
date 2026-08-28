@@ -192,8 +192,8 @@
     color: var(--success-color);
 }
 
-/* 筛选部分样式 */
-.filter-section {
+/* 筛选部分样式 - 仅限日志视图 */
+.log-view .filter-section {
     margin-bottom: var(--spacing-xl);
     width: 100%;
     box-sizing: border-box;

@@ -1,4 +1,4 @@
-﻿from flask import request
+from flask import request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 from backend.models.models import Tag, TagCategory
@@ -446,16 +446,19 @@ class TagController:
         tag = db.session.get(Tag, tag_id)
         if not tag:
             return error_response("未找到标签", 404)
-        
-        from backend.models.models import TestCaseTag, AudioTag, DeviceTag, TaskTag
-        
+
+        from backend.models.models import TestCaseTag, AudioTag, DeviceTag, TaskTag, TestCase
+
+        # 获取 cascade 参数，默认为 False（仅删除标签本身）
+        cascade = request.args.get('cascade', 'false').lower() == 'true'
+
         case_count = TestCaseTag.query.filter_by(tag_id=tag_id).count()
         audio_count = AudioTag.query.filter_by(tag_id=tag_id).count()
         device_count = DeviceTag.query.filter_by(tag_id=tag_id).count()
         task_count = TaskTag.query.filter_by(tag_id=tag_id).count()
-        
+
         total_usage = case_count + audio_count + device_count + task_count
-        if total_usage > 0:
+        if total_usage > 0 and not cascade:
             usage_info = []
             if case_count > 0:
                 usage_info.append(f"用例 {case_count} 个")
@@ -466,13 +469,30 @@ class TagController:
             if task_count > 0:
                 usage_info.append(f"任务 {task_count} 个")
             return error_response(f"该标签正在被使用（{', '.join(usage_info)}），请先移除关联")
-        
+
         try:
             tag_name = tag.name
+
+            # cascade=True 时，先删除该标签关联的所有测试用例
+            if cascade and case_count > 0:
+                case_ids = [rel.test_case_id for rel in
+                            TestCaseTag.query.filter_by(tag_id=tag_id).all()]
+                if case_ids:
+                    TestCase.query.filter(TestCase.id.in_(case_ids)).update(
+                        {"deleted": True}, synchronize_session=False)
+
+            # 删除标签的所有关联记录
+            TestCaseTag.query.filter_by(tag_id=tag_id).delete()
+            AudioTag.query.filter_by(tag_id=tag_id).delete()
+            DeviceTag.query.filter_by(tag_id=tag_id).delete()
+            TaskTag.query.filter_by(tag_id=tag_id).delete()
+
             db.session.delete(tag)
             db.session.commit()
-            logger.info(f"删除标签成功: {tag_name} (ID: {tag_id})")
-            return success_response(None, "标签删除成功")
+
+            deleted_case_msg = f"，已级联删除 {case_count} 个测试用例" if cascade and case_count > 0 else ""
+            logger.info(f"删除标签成功: {tag_name} (ID: {tag_id}){deleted_case_msg}")
+            return success_response(None, f"标签删除成功{deleted_case_msg}")
         except Exception as e:
             db.session.rollback()
             logger.error(f"删除标签失败: {str(e)}")

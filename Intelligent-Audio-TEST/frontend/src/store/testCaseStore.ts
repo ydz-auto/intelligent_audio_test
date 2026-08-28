@@ -361,6 +361,13 @@ export const useTestCaseStore = defineStore('testCase', () => {
     }
   };
 
+  // 使用上一次的参数重新拉取标签视图数据（用于删除/批量操作后刷新）
+  const refreshTagView = async () => {
+    if (Object.keys(tagViewLastParams.value).length > 0) {
+      await fetchTagView(tagViewLastParams.value);
+    }
+  };
+
   const fetchGroupsList = async (params: Record<string, any> = {}) => {
     try {
       isLoading.value = true;
@@ -1226,6 +1233,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     tagViewLoading,
     fetchTestCases,
     fetchTagView,
+    refreshTagView,
     loadMoreTagView,
     fetchGroupsList,
     fetchCasesByGroup,
