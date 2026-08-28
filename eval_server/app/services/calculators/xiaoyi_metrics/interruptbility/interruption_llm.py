@@ -1,29 +1,27 @@
 # -*- coding: utf-8 -*-
 """
 interruption_llm.py
-打断指标的可选大模型评估
+打断指标的大模型评估（吃字词级 ASR，做语义复核 + 回复打分）
 
-在 calculate_interruption_metrics 算完时序指标后，对多轮打断对话的"回复内容/回到原话题行为"做语义级评估。
-仅在 enable_llm_eval=True 且配置了 LLM_JUDGE_API_KEY 时触发，否则由调用方跳过本模块。
+在 calculate_interruption_metrics 算完本地时序指标后，对每个打断事件做两件事：
+    1. 是否真的打断（is_real_interruption）：基于用户与模型两侧的字词级 ASR（词+时间戳）
+       做语义复核，给出布尔结论与简短原因。这是对本地时序结论的语义复核，
+       不回写覆盖本地 interruption_success_rate——本地数值始终是唯一权威。
+    2. AI 回复内容打分：对模型恢复回复，按 连贯性/相关性/适应性 打 0-5 分
+       （对标 Full-Duplex-Bench 论文 GPT-4o Score：coherence/relevance/adaptability，0~5）
 
-三类评估（均由本模块发请求，复用 eval_server/app/config.py 的 config.LLM_JUDGE 配置）：
-    1. 打断后回复打分     : 对每轮打断后模型回复，按 连贯性/相关性/适应性 打 0-5 分
-                           （对标 Full-Duplex-Bench 论文 GPT-4o Score：coherence/relevance/adaptability，0~5）
-    2. 回到原话题行为判断 : 回到原话题是独立于打断处理的另一维度（仅 is_return_to_topic 轮）。
-                           5 类行为：回应 / 恢复 / 询问 / 无关回复 / 沉默或无视
-                           （与 env_judge.interruption_judge 同一量表，聚焦是否回到原话题）
-    3. 回到原话题回复打分 : 对回到原话题后的模型回复，按 连贯性/相关性/适应性 打 0-5 分
-    4. 交互过程行为判断   : 每轮判断模型收到用户"指令语言"后的回复行为（5 类，同上量表），
-                           适用于所有打断用例的每一轮（停止指令/连续打断/上下文恢复）
-
-数据来源：调用方传入的 rounds 文本结构（与 ASR 时戳解耦），每轮：
-    {query: 用户本轮打断/请求文本, answer: 模型本轮回复文本,
-     is_return_to_topic: bool（用例打标，缺省 False）}
-顶层可选 original_topic（原始话题文本，供 2/3 使用）。
+数据来源：调用方传入的 per_event（来自 compute_interruption_metrics，已富集字词级 ASR），
+每个 interruption 事件含 user_text/user_words、model_interrupted_text/words、
+model_recovery_text/words 及本地时序结论（success/stop_latency/recovery_latency）。
+即 LLM 直接吃用户和模型的字词级 ASR 结果，不再依赖与 ASR 解耦的 rounds 文本。
 
 设计原则：
-    - 单轮调用失败不阻断其他轮（记 error 字段，不计入均值）
+    - 数值指标（时延/成功率/让出率/恢复率等）全部本地算，本模块不产出任何数值指标
+    - 单事件调用失败不阻断其他事件（记 error 字段，不计入均值）
     - LLM 输出严格 JSON；先 json.loads，失败用正则兜底，再失败置 error
+    - 返回字段沿用既有结构（llm_recovery_avg_* / llm_recovery_per_round / llm_return_* / llm_eval），
+      is_real_interruption/interruption_reason 折进 llm_recovery_per_round 每项与 llm_eval，
+      不新增顶层维度字段
 """
 import json
 import logging
@@ -38,118 +36,63 @@ LLM_DEFAULT_TIMEOUT = 120
 LLM_DEFAULT_TEMPERATURE = 0.1
 LLM_DEFAULT_MAX_TOKENS = 1024
 
-# 行为分类的合法取值（5 类，与 env_judge.interruption_judge 对齐）
-# 回应=直接回复用户指令/回到原话题请求；恢复=未明确回应但自然续上原话题/交互主线；
-# 询问=追问澄清确认；无关回复=有回复但与意图无关(含说穿/未停/恢复失败)；沉默或无视=无有效回复/无视指令
-_BEHAVIOR_LABELS = ['回应', '恢复', '询问', '无关回复', '沉默或无视']
-
 
 # ─────────── prompt 构建 ───────────
-def _build_recovery_score_prompt(query: str, answer: str,
-                                 original_topic: str = '') -> str:
-    """1) 打断后回复打分 prompt（每轮）
+def _fmt_words(words: List[Dict[str, Any]]) -> str:
+    """把字词级 ASR chunks 格式化为 "词(start-end) 词2(s-e) ..." 便于 LLM 看文本+时间戳"""
+    if not words:
+        return ''
+    parts = []
+    for w in words:
+        if not isinstance(w, dict):
+            continue
+        txt = str(w.get('text', ''))
+        ts = w.get('timestamp') or []
+        if isinstance(ts, (list, tuple)) and len(ts) >= 2 and ts[0] is not None and ts[1] is not None:
+            try:
+                parts.append(f'{txt}({round(float(ts[0]), 2)}-{round(float(ts[1]), 2)})')
+                continue
+            except (TypeError, ValueError):
+                pass
+        parts.append(txt)
+    return ' '.join(parts)
 
-    对标 Full-Duplex-Bench 论文 GPT-4o Score：coherence/relevance/adaptability，0~5。
-    （注：论文正文称三维 0~5；仓库 v1.0 eval_user_interruption.py 实为单一 0~5 相关度分，
-     此处沿用论文正文的三维表述，量表统一为 0~5。）
+
+def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '') -> str:
+    """单事件复核+打分 prompt
+
+    给 LLM：原始话题 + 用户打断字词级ASR + 模型被打断尾巴字词级ASR + 模型恢复回复字词级ASR
+    + 本地时序结论（success/stop_latency/recovery_latency）作参考。
+    要求返回：是否真的打断+原因，以及回复三维打分+理由。
     """
     topic_line = original_topic or '（未显式给出，可从对话推断）'
-    return f"""你是语音对话打断恢复质量评估专家。场景：用户和 AI 语音对话，用户在 AI 说话时打断，模型随后给出回复。请对该【模型回复内容】打分。
+    user_w = _fmt_words(ev.get('user_words')) or ev.get('user_text', '')
+    int_w = _fmt_words(ev.get('model_interrupted_words')) or ev.get('model_interrupted_text', '')
+    rec_w = _fmt_words(ev.get('model_recovery_words')) or ev.get('model_recovery_text', '')
+
+    return f"""你是语音对话打断处理评估专家。场景：用户在 AI 说话时打断，AI 随后停下并给出恢复回复。
+请基于以下【字词级 ASR（词+时间戳，秒）】做两件事：(A) 语义复核这是否是一次"真正的打断"；(B) 对 AI 的恢复回复打分。
 
 【原始话题/上下文】：{topic_line}
-【用户打断内容】：{query}
-【模型回复内容】：{answer}
+【用户打断 字词级ASR】：{user_w}
+【模型被打断时正在说的尾巴 字词级ASR】：{int_w}
+【模型恢复回复 字词级ASR】：{rec_w}
+【本地时序结论(仅供参考，勿直接照搬)】：success={ev.get('success')} stop_latency_s={ev.get('stop_latency_s')} recovery_latency_s={ev.get('recovery_latency_s')}
 
-请从三个维度打分（0-5 的整数，0 分最差、5 分最好；参考 Full-Duplex-Bench GPT-4o Score）：
-1. 连贯性(coherence)：回复与打断前对话、与打断内容的衔接是否连贯自然，过渡是否平滑。
-   0=完全断裂/无意义 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
-2. 相关性(relevance)：回复是否切合用户打断所表达的需求与意图。
-   0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题
-3. 适应性(adaptability)：模型是否适应了打断带来的话题切换/调整，自然承接而非生硬。
-   0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美适应
-
-输出严格 JSON，不要输出 JSON 以外的任何内容：
-{{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "reason": ""}}
-其中 overall 为三维平均分（可保留一位小数），reason 为简短打分理由。"""
-
-
-def _build_return_behavior_prompt(query: str, answer: str,
-                                  original_topic: str = '') -> str:
-    """2) 回到原话题行为判断 prompt（仅 is_return_to_topic 轮）
-
-    用户明确要求"回到原始话题"，判断模型该轮回复属于哪类行为（5 类）。
-    与 env_judge.interruption_judge 同一量表，此处聚焦"是否回到原话题"。
-    """
-    topic_line = original_topic or '（未显式给出，需从历史对话推断原话题）'
-    return f"""你是语音对话行为分析专家。用户此前偏离了原始话题，现在明确要求"回到原始话题"。请判断模型在此轮【回复内容】属于下列哪一类行为（五选一，仅可选其一）。
-
-【原始话题】：{topic_line}
-【用户本轮请求】：{query}
-【模型本轮回复】：{answer}
-
-行为类别：
-- 回应：模型直接回应了"回到原话题"的请求，并围绕原始话题作答/澄清/引导。
-- 恢复：模型未明确回应请求，但回复内容已自然切回原始话题、继续原任务。
-- 询问：模型对"回到哪个话题/回到哪里"进行追问、澄清或确认（如"您是说…""回到哪个话题？"），未给出切题内容。
-- 无关回复：模型产生了回复，但与原始话题、与"回到原话题"请求均无关（模板话术/兜底/答非所问/恢复失败且回复无关）。
-- 沉默或无视：模型未产生任何有效回复（无声、空回复、兜底拒答），或完全无视了回到原话题的请求。
+(A) 是否真的打断（is_real_interruption）：用户确有打断意图并在模型说话期间插入语音、模型也确有让出/恢复响应，
+    视为真正的打断；若用户只是应答词("嗯/好")、或并未在模型说话期间插入、或模型全程未被影响，则不算。
+    给出布尔结论与简短原因(interruption_reason)。
+(B) 对【模型恢复回复】从三维打分（0-5 整数，0 最差、5 最好；参考 Full-Duplex-Bench GPT-4o Score）：
+    1. 连贯性(coherence)：回复与被打断尾巴、与打断内容的衔接是否连贯自然。
+       0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
+    2. 相关性(relevance)：回复是否切合用户打断所表达的需求与意图。
+       0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题
+    3. 适应性(adaptability)：模型是否适应了打断带来的话题切换/调整，自然承接而非生硬。
+       0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美适应
 
 输出严格 JSON，不要输出 JSON 以外的任何内容：
-{{"behavior": "", "reason": ""}}
-behavior 必须是上述五个标签之一（回应/恢复/询问/无关回复/沉默或无视），reason 为简短判定理由。"""
-
-
-def _build_interaction_behavior_prompt(query: str, answer: str,
-                                       original_topic: str = '') -> str:
-    """4) 交互过程行为判断 prompt（每轮）
-
-    判断模型收到用户本轮"指令语言"后的回复行为属于哪一类（5 类）。
-    适用于所有打断用例的每一轮（含停止指令、连续打断、上下文恢复各轮）。
-    """
-    topic_line = original_topic or '（未显式给出，可从对话推断）'
-    return f"""你是语音对话行为分析专家。用户在语音交互中向模型发出本轮指令（提问/插话/停止/切换话题/要求继续等）。请判断模型收到该指令后的【回复行为】属于下列哪一类（五选一，仅可选其一）。
-
-【原始话题/上下文】：{topic_line}
-【用户本轮指令】：{query}
-【模型本轮回复】：{answer}
-
-行为类别：
-- 回应：模型针对用户本轮指令给出了直接、相关的回复（含停止后简短确认"好的"、针对插话内容作答、回应切换话题请求）。
-- 恢复：模型未直接回应当前指令，但其回复已自然回到此前的话题或交互主线，体现对话恢复能力。
-- 询问：模型对用户意图追问/澄清/确认（如"您是想了解……吗？"），未直接作答或执行。
-- 无关回复：模型产生了回复，但与本轮用户指令、上下文或场景要求无关（含插话后未停止而继续原输出、收到停止指令仍继续、回复混乱/乱码/答非所问）。
-- 沉默或无视：模型未产生任何有效回复（无声、空回复、兜底拒答），或完全无视了用户本轮指令。
-
-输出严格 JSON，不要输出 JSON 以外的任何内容：
-{{"behavior": "", "reason": ""}}
-behavior 必须是上述五个标签之一（回应/恢复/询问/无关回复/沉默或无视），reason 为简短判定理由。"""
-
-
-def _build_return_score_prompt(query: str, answer: str,
-                               original_topic: str = '') -> str:
-    """3) 回到原话题回复打分 prompt（仅 is_return_to_topic 轮）
-
-    回到原话题是独立于打断处理的另一维度：用户明确要求"回到原始话题"后，
-    对模型回复是否成功回到原话题及内容质量打分（0-5）。
-    """
-    topic_line = original_topic or '（未显式给出，需从历史对话推断原话题）'
-    return f"""你是语音对话质量评估专家。用户明确要求"回到原始话题"，模型随后给出回复。请对该【回复内容】打分，重点看是否成功回到原话题且内容质量如何。
-
-【原始话题】：{topic_line}
-【用户回到原话题请求】：{query}
-【模型回复内容】：{answer}
-
-请从三个维度打分（0-5 的整数，0 分最差、5 分最好）：
-1. 连贯性(coherence)：回复与原话题、与"回到原话题"请求的衔接是否连贯自然。
-   0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
-2. 相关性(relevance)：回复是否切合原始话题、是否真正回到了原话题。
-   0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题回到原话题
-3. 适应性(adaptability)：模型是否平滑回到原话题，而非生硬跳转或答非所问。
-   0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美平滑回到
-
-输出严格 JSON，不要输出 JSON 以外的任何内容：
-{{"coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "reason": ""}}
-其中 overall 为三维平均分（可保留一位小数），reason 为简短打分理由。"""
+{{"is_real_interruption": true, "interruption_reason": "", "coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "reason": ""}}
+其中 overall 为三维平均分（可保留一位小数），reason 为打分简短理由。"""
 
 
 # ─────────── LLM 调用 ───────────
@@ -246,34 +189,35 @@ def _score_field(parsed: dict, key: str) -> Optional[float]:
     return None
 
 
-def _normalize_behavior(raw: Any, summary: Dict[str, int]) -> tuple:
-    """把 LLM 输出的 behavior 归一到合法 5 类标签，命中则给 summary 计数 +1。
-
-    返回 (归一后标签, 是否命中合法标签)。未命中返回 (原值, False) 不计数。
-    """
-    behavior = str(raw or '').strip()
-    if behavior in summary:
-        summary[behavior] += 1
-        return behavior, True
-    # 子串/近义映射：LLM 偶有"回应了""沉默"等变体
-    for label in _BEHAVIOR_LABELS:
-        if label in behavior:
-            summary[label] += 1
-            return label, True
-    return behavior, False
+def _bool_field(parsed: dict, key: str) -> Optional[bool]:
+    """从 parsed 中取布尔；无法判定返回 None"""
+    v = parsed.get(key)
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return bool(v)
+    if isinstance(v, str):
+        return v.strip().lower() in ('true', '1', 'yes', '是', '真正打断', '真正')
+    return None
 
 
 # ─────────── 主入口 ───────────
-def evaluate_interruption_llm(rounds: List[Dict[str, Any]],
+def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
                               task_params: Dict[str, Any]) -> Dict[str, Any]:
-    """打断对话的可选 LLM 评估主入口
+    """打断对话的大模型评估主入口（吃字词级 ASR，语义复核 + 回复打分）
 
     Args:
-        rounds: 多轮文本结构，每轮 {query, answer, is_return_to_topic}
+        per_event: compute_interruption_metrics 产出的事件列表，每个 interruption 事件
+            含 user_text/user_words、model_interrupted_text/words、model_recovery_text/words
+            及本地时序结论（success/stop_latency_s/recovery_latency_s）
         task_params: 任务参数，读取 original_topic / llm_model / max_tokens / temperature
 
     Returns:
-        dict: 见模块头 docstring 的返回结构
+        dict: 沿用既有字段结构——
+            llm_recovery_per_round: 每事件复核+打分明细（含 is_real_interruption/interruption_reason）
+            llm_recovery_avg_coherence/relevance/adaptability: 三维均分
+            llm_return_*: 保留字段（空），向后兼容
+            llm_eval 内的 interruption_real_rate: LLM 判定真正打断的事件占比
     """
     from app.config import config
 
@@ -284,241 +228,83 @@ def evaluate_interruption_llm(rounds: List[Dict[str, Any]],
     temperature = float(task_params.get('temperature', LLM_DEFAULT_TEMPERATURE) or LLM_DEFAULT_TEMPERATURE)
     original_topic = _unwrap_value(task_params.get('original_topic', '')) or ''
 
-    # 预检：未配置 API 则整体跳过，避免每轮都重复报错
+    # 预检：未配置 API 则整体跳过，避免每事件都重复报错
     if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
         raise ValueError(
             'LLM 评估未配置：请在 eval_server 设置 LLM_JUDGE_API_BASE 与 LLM_JUDGE_API_KEY'
         )
 
+    # 仅对真正发生了 barge-in 的事件做 LLM 评估
+    events = [e for e in (per_event or []) if isinstance(e, dict) and e.get('event_type') == 'interruption']
+
     recovery_per_round: List[Dict[str, Any]] = []
-    return_behavior: List[Dict[str, Any]] = []
-    return_scores: List[Dict[str, Any]] = []
-    interaction_behavior: List[Dict[str, Any]] = []
+    real_count = 0
 
-    behavior_summary: Dict[str, int] = {label: 0 for label in _BEHAVIOR_LABELS}
-    interaction_summary: Dict[str, int] = {label: 0 for label in _BEHAVIOR_LABELS}
-    # 0/1 字段（与 env_judge 风格对齐）：1=该行为出现过
-    behavior_respond = 0
-    behavior_recover = 0
-    behavior_ask = 0
-    behavior_irrelevant = 0
-    behavior_silence = 0
-    interaction_respond = 0
-    interaction_recover = 0
-    interaction_ask = 0
-    interaction_irrelevant = 0
-    interaction_silence = 0
-
-    for idx, rd in enumerate(rounds, 1):
-        if not isinstance(rd, dict):
-            continue
-        query = _unwrap_value(rd.get('query', '')) or ''
-        answer = _unwrap_value(rd.get('answer', '')) or ''
-        if not query or not answer:
-            logger.info(f"[interruption_llm] 第 {idx} 轮缺 query/answer，跳过打分")
-            continue
-        is_return = bool(rd.get('is_return_to_topic'))
-
-        # ── 4) 交互过程行为判断（每轮）：模型收到本轮指令后的回复行为 ──
-        ib_item: Dict[str, Any] = {
-            'round': idx, 'query': query, 'answer': answer,
-            'is_return_to_topic': is_return,
-            'behavior': '', 'reason': '', 'error': '',
+    for idx, ev in enumerate(events, 1):
+        item: Dict[str, Any] = {
+            'event': idx,
+            'user_text': ev.get('user_text', ''),
+            'model_interrupted_text': ev.get('model_interrupted_text', ''),
+            'model_recovery_text': ev.get('model_recovery_text', ''),
+            'is_real_interruption': None,
+            'interruption_reason': '',
+            'coherence': None,
+            'relevance': None,
+            'adaptability': None,
+            'overall': None,
+            'reason': '',
+            'error': '',
         }
         try:
-            prompt = _build_interaction_behavior_prompt(query, answer, original_topic)
+            prompt = _build_event_prompt(ev, original_topic)
             resp = _call_llm_json(prompt, model, max_tokens, temperature)
             parsed = _parse_json(resp['content']) or {}
-            ib_item['behavior'], _ = _normalize_behavior(
-                parsed.get('behavior', ''), interaction_summary)
-            if ib_item['behavior'] == '回应':
-                interaction_respond = 1
-            elif ib_item['behavior'] == '恢复':
-                interaction_recover = 1
-            elif ib_item['behavior'] == '询问':
-                interaction_ask = 1
-            elif ib_item['behavior'] == '无关回复':
-                interaction_irrelevant = 1
-            elif ib_item['behavior'] == '沉默或无视':
-                interaction_silence = 1
-            ib_item['reason'] = parsed.get('reason', '')
-        except Exception as e:
-            ib_item['error'] = str(e)
-            logger.warning(f"[interruption_llm] 第 {idx} 轮交互行为判断失败: {e}")
-        interaction_behavior.append(ib_item)
-
-        # ── 1) 打断后回复打分（每轮）──
-        rec_item: Dict[str, Any] = {
-            'round': idx, 'query': query, 'answer': answer,
-            'is_return_to_topic': is_return,
-            'coherence': None, 'relevance': None, 'adaptability': None,
-            'overall': None, 'reason': '', 'error': '',
-        }
-        try:
-            prompt = _build_recovery_score_prompt(query, answer, original_topic)
-            resp = _call_llm_json(prompt, model, max_tokens, temperature)
-            parsed = _parse_json(resp['content']) or {}
-            rec_item['coherence'] = _score_field(parsed, 'coherence')
-            rec_item['relevance'] = _score_field(parsed, 'relevance')
-            rec_item['adaptability'] = _score_field(parsed, 'adaptability')
-            rec_item['overall'] = _score_field(parsed, 'overall')
-            if rec_item['overall'] is None and any(
-                rec_item[k] is not None for k in ('coherence', 'relevance', 'adaptability')
+            item['is_real_interruption'] = _bool_field(parsed, 'is_real_interruption')
+            item['interruption_reason'] = str(parsed.get('interruption_reason', ''))
+            item['coherence'] = _score_field(parsed, 'coherence')
+            item['relevance'] = _score_field(parsed, 'relevance')
+            item['adaptability'] = _score_field(parsed, 'adaptability')
+            item['overall'] = _score_field(parsed, 'overall')
+            if item['overall'] is None and any(
+                item[k] is not None for k in ('coherence', 'relevance', 'adaptability')
             ):
-                rec_item['overall'] = _avg([rec_item[k] for k in ('coherence', 'relevance', 'adaptability')])
-            rec_item['reason'] = parsed.get('reason', '')
-        except Exception as e:  # 单轮失败不阻断
-            rec_item['error'] = str(e)
-            logger.warning(f"[interruption_llm] 第 {idx} 轮回复打分失败: {e}")
-        recovery_per_round.append(rec_item)
-
-        # ── 2) & 3) 仅"回到原话题"轮 ──
-        if not is_return:
-            continue
-
-        # 2) 行为判断
-        beh_item: Dict[str, Any] = {
-            'round': idx, 'query': query, 'answer': answer,
-            'behavior': '', 'reason': '', 'error': '',
-        }
-        try:
-            prompt = _build_return_behavior_prompt(query, answer, original_topic)
-            resp = _call_llm_json(prompt, model, max_tokens, temperature)
-            parsed = _parse_json(resp['content']) or {}
-            behavior, _ = _normalize_behavior(parsed.get('behavior', ''), behavior_summary)
-            beh_item['behavior'] = behavior
-            if behavior == '回应':
-                behavior_respond = 1
-            elif behavior == '恢复':
-                behavior_recover = 1
-            elif behavior == '询问':
-                behavior_ask = 1
-            elif behavior == '无关回复':
-                behavior_irrelevant = 1
-            elif behavior == '沉默或无视':
-                behavior_silence = 1
-            beh_item['reason'] = parsed.get('reason', '')
-        except Exception as e:
-            beh_item['error'] = str(e)
-            logger.warning(f"[interruption_llm] 第 {idx} 轮行为判断失败: {e}")
-        return_behavior.append(beh_item)
-
-        # 3) 回到原话题回复打分
-        rsc_item: Dict[str, Any] = {
-            'round': idx, 'query': query, 'answer': answer,
-            'coherence': None, 'relevance': None, 'adaptability': None,
-            'overall': None, 'reason': '', 'error': '',
-        }
-        try:
-            prompt = _build_return_score_prompt(query, answer, original_topic)
-            resp = _call_llm_json(prompt, model, max_tokens, temperature)
-            parsed = _parse_json(resp['content']) or {}
-            rsc_item['coherence'] = _score_field(parsed, 'coherence')
-            rsc_item['relevance'] = _score_field(parsed, 'relevance')
-            rsc_item['adaptability'] = _score_field(parsed, 'adaptability')
-            rsc_item['overall'] = _score_field(parsed, 'overall')
-            if rsc_item['overall'] is None and any(
-                rsc_item[k] is not None for k in ('coherence', 'relevance', 'adaptability')
-            ):
-                rsc_item['overall'] = _avg([rsc_item[k] for k in ('coherence', 'relevance', 'adaptability')])
-            rsc_item['reason'] = parsed.get('reason', '')
-        except Exception as e:
-            rsc_item['error'] = str(e)
-            logger.warning(f"[interruption_llm] 第 {idx} 轮回到原话题打分失败: {e}")
-        return_scores.append(rsc_item)
+                item['overall'] = _avg([item[k] for k in ('coherence', 'relevance', 'adaptability')])
+            item['reason'] = parsed.get('reason', '')
+            if item['is_real_interruption'] is True:
+                real_count += 1
+        except Exception as e:  # 单事件失败不阻断
+            item['error'] = str(e)
+            logger.warning(f"[interruption_llm] 第 {idx} 事件复核/打分失败: {e}")
+        recovery_per_round.append(item)
 
     # ── 聚合 ──
+    n_eval = len(recovery_per_round)
+    interruption_real_rate = round(real_count / n_eval, 3) if n_eval else None
+
     result: Dict[str, Any] = {
         'enabled': True,
         'model': model,
         'original_topic': original_topic,
         'llm_recovery_per_round': recovery_per_round,
-        'llm_return_per_round': return_behavior,
-        'llm_return_scores_per_round': return_scores,
+        # 回到原话题独立打分链路已移除，保留字段为空以兼容既有维度
+        'llm_return_scores_per_round': [],
         'llm_recovery_avg_coherence': _avg([r['coherence'] for r in recovery_per_round]),
         'llm_recovery_avg_relevance': _avg([r['relevance'] for r in recovery_per_round]),
         'llm_recovery_avg_adaptability': _avg([r['adaptability'] for r in recovery_per_round]),
-        'llm_return_behavior_summary': behavior_summary,
-        'llm_return_avg_coherence': _avg([r['coherence'] for r in return_scores]),
-        'llm_return_avg_relevance': _avg([r['relevance'] for r in return_scores]),
-        'llm_return_avg_adaptability': _avg([r['adaptability'] for r in return_scores]),
-        # 交互过程行为（每轮，所有打断用例）
-        'llm_interaction_per_round': interaction_behavior,
-        'llm_interaction_behavior_summary': interaction_summary,
-        # 0/1 字段（与 env_judge 风格对齐）：1=该行为出现过
-        'behavior_respond': behavior_respond,
-        'behavior_recover': behavior_recover,
-        'behavior_ask': behavior_ask,
-        'behavior_irrelevant': behavior_irrelevant,
-        'behavior_silence': behavior_silence,
-        'interaction_respond': interaction_respond,
-        'interaction_recover': interaction_recover,
-        'interaction_ask': interaction_ask,
-        'interaction_irrelevant': interaction_irrelevant,
-        'interaction_silence': interaction_silence,
+        'llm_return_avg_coherence': None,
+        'llm_return_avg_relevance': None,
+        'llm_return_avg_adaptability': None,
+        # LLM 语义复核汇总（折进 llm_eval json，不新增顶层维度字段）
+        'interruption_real_rate': interruption_real_rate,
+        'n_events_evaluated': n_eval,
         'message': 'OK',
     }
 
     logger.info(
-        f"[interruption_llm] model={model} n_rounds={len(recovery_per_round)} "
-        f"n_return={len(return_behavior)} behavior={behavior_summary} "
-        f"interaction={interaction_summary} "
+        f"[interruption_llm] model={model} n_events_evaluated={n_eval} "
+        f"interruption_real_rate={interruption_real_rate} "
         f"recovery_avg_coherence={result['llm_recovery_avg_coherence']} "
-        f"return_avg_coherence={result['llm_return_avg_coherence']}"
+        f"recovery_avg_relevance={result['llm_recovery_avg_relevance']} "
+        f"recovery_avg_adaptability={result['llm_recovery_avg_adaptability']}"
     )
     return result
-
-
-def evaluate_interruption_success_llm(user_text: str, model_text: str,
-                                       task_params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """兜底：时序算不出 interruption_success_rate(n_events=0)时，
-    用 LLM 按对话语义判断模型是否成功处理了用户打断。
-
-    不依赖平台传 answer 文本，直接吃 ai_wav 的 ASR 文本(model_text)作模型回复。
-
-    Args:
-        user_text: 用户打断/提问文本(来自 user_asr.text)
-        model_text: 模型回复文本(来自 ai_wav ASR 的 model_asr.text)
-        task_params: 读 llm_model / LLM_JUDGE 配置
-
-    Returns:
-        {'success': bool, 'success_rate': 1.0|0.0, 'reason': str} 或 None(无法判定/未配置/无文本)
-    """
-    from app.config import config
-
-    llm_config = getattr(config, 'LLM_JUDGE', {})
-    if not llm_config.get('api_base_url') or not llm_config.get('api_key'):
-        return None
-    if not user_text or not model_text:
-        return None
-
-    model = task_params.get('llm_model') or llm_config.get('default_model', 'gpt-4o')
-    prompt = (
-        '你是语音对话打断处理评估专家。用户在模型回复期间打断说话，请判断模型是否【成功处理了打断】'
-        '（即模型合理地让出/停下，并给出了与用户打断意图相符的恢复回复；'
-        '若模型回复直接回应了用户打断的新需求，或与打断前话题连贯承接恢复，都算成功；'
-        '若模型无视打断继续说穿、或回复与打断意图无关/混乱，算失败）。\n\n'
-        f'【用户打断内容】：{user_text}\n\n'
-        f'【模型回复内容】：{model_text}\n\n'
-        '输出严格 JSON，不要输出 JSON 以外的任何内容：\n'
-        '{"success": true, "reason": ""}\n'
-        'success 为布尔(true/false)，reason 为简短判定理由。'
-    )
-    try:
-        resp = _call_llm_json(prompt, model)
-        parsed = _parse_json(resp['content']) or {}
-        success = parsed.get('success')
-        if isinstance(success, str):
-            success = success.strip().lower() in ('true', '1', 'yes', '是', '成功')
-        if success is None:
-            return None
-        success = bool(success)
-        return {
-            'success': success,
-            'success_rate': 1.0 if success else 0.0,
-            'reason': str(parsed.get('reason', '')),
-            'model': model,
-        }
-    except Exception as e:
-        logger.warning(f"[interruption_llm] success 兜底调用失败: {e}")
-        return None

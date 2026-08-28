@@ -182,18 +182,24 @@ YIELD_GRACE_S   = 0.5   # 让出宽限
 
 事件类型：`interruption`（完整打断）/ `recovery_only`（只算到恢复）/ `no_model_speech`（模型全程未说话）。
 
-**success 兜底**：时序算不出 `success_rate`（`n_events=0`）时，用 LLM 按对话语义判定（`evaluate_interruption_success_llm`）。
+**success 全本地**：`interruption_success_rate` 始终由本地时序算出（让出且恢复 / 有效打断事件）。
+`n_events=0` 时 success_rate=0.0，不再走 LLM 兜底（旧 `evaluate_interruption_success_llm` 已移除）。
 
 ##### 8. interruption_llm —— 打断 LLM 评估 [interruption_llm.py](interruptbility/interruption_llm.py)
 
 打断指标的**可选**大模型语义评估。仅在 `enable_llm_eval=True` 且配置 `LLM_JUDGE_API_KEY` 时触发。
+LLM 直接吃 `compute_interruption_metrics` 富集后的 `per_event`（用户与模型的**字词级 ASR**），
+对每个 `event_type=='interruption'` 事件做：
 
-三类评估：
-1. **打断后回复打分**：每轮按 连贯性/相关性/适应性 打 1-5 分
-2. **回到原话题行为判断**：分类为 回应/恢复/询问/无关恢复/沉默
-3. **回到原话题回复打分**：同三维打分
+1. **是否真的打断（语义复核）**：基于两侧字词级 ASR（词+时间戳）判断是否为真实打断，
+   给出 `is_real_interruption` 布尔结论与简短原因 `interruption_reason`。
+   **不回写覆盖**本地 `interruption_success_rate`——本地数值始终是唯一权威。
+2. **AI 回复内容打分**：对模型恢复回复按 连贯性/相关性/适应性 打 0-5 分
+   （对标 Full-Duplex-Bench GPT-4o Score）。
 
-复用 `config.LLM_JUDGE`（api_base_url / api_key / timeout）。单轮失败不阻断其他轮。
+数值指标（时延/成功率/让出率/恢复率等）全部本地算，本模块不产出任何数值指标。
+复用 `config.LLM_JUDGE`（api_base_url / api_key / timeout）。单事件失败不阻断其他事件。
+旧 `rounds` 文本链路与"回到原话题"独立打分已移除（`llm_return_*` 字段保留为空以兼容既有维度）。
 
 ### rejection_scene_awareness —— 拒识与场景感知
 

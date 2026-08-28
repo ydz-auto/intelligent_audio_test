@@ -726,72 +726,41 @@ def calculate_interruption_metrics(task_params):
         f"message={result['message']}"
     )
 
-    # ── 可选：大模型评估（打断后回复打分 / 回到原话题行为判断 / 回到原话题回复打分）──
-    # 触发条件：enable_llm_eval=True 且 task_params 携带 rounds 文本结构
-    # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，不影响时序指标
-    # multipart 上传时 enable_llm_eval 是字符串('False'/'true')，bool('False')=True 会误判，用白名单
-    # 默认开启(未传视为 True)；显式传 false/'false' 才关闭
+    # ── 可选：大模型评估（语义复核"是否真的打断" + AI 回复打分）──
+    # 触发条件：enable_llm_eval=True。LLM 直接吃 compute_interruption_metrics 富集后的
+    # per_event（含用户/模型字词级 ASR），不再依赖与 ASR 解耦的 rounds 文本。
+    # 数值指标（success_rate/时延等）全部本地算，LLM 不产出任何数值指标，
+    # 其 is_real_interruption 是对本地结论的语义复核，不回写覆盖本地 interruption_success_rate。
+    # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，不影响时序指标。
     # multipart 上传时 enable_llm_eval 可能是 "True"/"False"(首字母大写)、"true"/"false"、
     # 布尔 True/False、或 1/0；统一 str().lower() 归一化后判断，默认未传视为 True
     _raw = task_params.get('enable_llm_eval', True)
     enable_llm = str(_raw).lower() in ('true', '1', 'yes')
-    rounds = task_params.get('rounds')
-    if enable_llm and rounds:
+    if enable_llm:
         try:
             from ..interruptbility.interruption_llm import evaluate_interruption_llm
-            llm_result = evaluate_interruption_llm(rounds, task_params)
+            llm_result = evaluate_interruption_llm(result.get('per_event') or [], task_params)
             result['llm_eval'] = llm_result
             # 顶层平铺关键聚合值，便于维度参数直接按 field_path 取值
             for k in (
                 'llm_recovery_avg_coherence', 'llm_recovery_avg_relevance',
-                'llm_recovery_avg_adaptability', 'llm_return_behavior_summary',
+                'llm_recovery_avg_adaptability',
                 'llm_return_avg_coherence', 'llm_return_avg_relevance',
-                'llm_return_avg_adaptability', 'llm_recovery_per_round',
-                'llm_return_per_round', 'llm_return_scores_per_round',
-                'llm_interaction_per_round', 'llm_interaction_behavior_summary',
-                'behavior_respond', 'behavior_recover', 'behavior_ask',
-                'behavior_irrelevant', 'behavior_silence',
-                'interaction_respond', 'interaction_recover', 'interaction_ask',
-                'interaction_irrelevant', 'interaction_silence',
+                'llm_return_avg_adaptability',
+                'llm_recovery_per_round', 'llm_return_scores_per_round',
             ):
                 result[k] = llm_result.get(k)
             logger.info(
                 f"[interruption_metrics] LLM 评估完成 model={llm_result.get('model')} "
-                f"n_rounds={len(llm_result.get('llm_recovery_per_round') or [])} "
-                f"n_return={len(llm_result.get('llm_return_per_round') or [])} "
-                f"behavior={llm_result.get('llm_return_behavior_summary')}"
+                f"n_events_evaluated={llm_result.get('n_events_evaluated')} "
+                f"interruption_real_rate={llm_result.get('interruption_real_rate')}"
             )
         except Exception as e:
             logger.warning(f"[interruption_metrics] LLM 评估失败，跳过: {e}")
             result['llm_eval'] = {'enabled': False, 'message': f'LLM 评估失败: {e}'}
     else:
-        reason = '未启用(enable_llm_eval=False)' if not enable_llm else '无 rounds 文本数据'
-        result['llm_eval'] = {'enabled': False, 'message': reason}
-        logger.info(f"[interruption_metrics] LLM 评估跳过：{reason}")
-
-    # ── 兜底：时序算不出 success_rate(n_events=0)时，用 LLM 按对话语义判定 ──
-    # 不依赖平台传 answer 文本，直接用 ai_wav 的 ASR 文本(model_asr.text)作模型回复
-    if enable_llm and result.get('n_events', 0) == 0 and not result.get('interruption_success_rate'):
-        result['timing_success_rate'] = result.get('interruption_success_rate', 0.0)
-        try:
-            from ..interruptbility.interruption_llm import evaluate_interruption_success_llm
-            _u_text = (user_asr.get('text') if isinstance(user_asr, dict) else '') or ''
-            _m_text = (model_asr.get('text') if isinstance(model_asr, dict) else '') or ''
-            _fb = evaluate_interruption_success_llm(_u_text, _m_text, task_params)
-            if _fb is not None:
-                result['interruption_success_rate'] = _fb['success_rate']
-                _le = result.get('llm_eval') or {}
-                _le['success_fallback'] = _fb
-                result['llm_eval'] = _le
-                result['llm_success_rate'] = _fb['success_rate']
-                logger.info(
-                    f"[interruption_metrics] success 兜底(LLM): success={_fb['success']} "
-                    f"reason={_fb['reason']!r}"
-                )
-            else:
-                logger.info("[interruption_metrics] success 兜底跳过：无 LLM 配置或无文本")
-        except Exception as e:
-            logger.warning(f"[interruption_metrics] success 兜底失败: {e}")
+        result['llm_eval'] = {'enabled': False, 'message': '未启用(enable_llm_eval=False)'}
+        logger.info("[interruption_metrics] LLM 评估跳过：未启用(enable_llm_eval=False)")
 
     return result
 

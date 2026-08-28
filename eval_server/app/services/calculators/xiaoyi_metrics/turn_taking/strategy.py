@@ -587,7 +587,7 @@ class InterruptionMetricsCalculator(TurnTakingBase):
     def calculate(self, params):
         # 委托给 turn_taking.calculate_interruption_metrics 统一入口：
         # 该入口内部完成 wav→ASR、时序指标(compute_interruption_metrics)、
-        # 可选 LLM 评估(enable_llm_eval)、以及 n_events=0 时的 success 兜底。
-        # 直接调 compute_interruption_metrics 会跳过 LLM/兜底（refactor 回归），此处修正。
+        # 可选 LLM 评估(enable_llm_eval)：吃 per_event 字词级 ASR 做是否真打断的语义复核 + 回复打分。
+        # 数值指标(success_rate/时延等)全部本地算，直接调 compute_interruption_metrics 会跳过 LLM，此处修正。
         from app.services.calculators.xiaoyi_metrics.turn_taking import calculate_interruption_metrics
         return calculate_interruption_metrics(params.get('task_params') or {})

@@ -81,12 +81,17 @@ def _valid_ts(ts: Any) -> Optional[Tuple[float, float]]:
     return s_f, e_f
 
 
-def _to_segments(chunks: List[Dict[str, Any]], gap: float = SEG_MERGE_GAP_S) -> List[Tuple[float, float]]:
-    """把词级 chunks 合并成语音段 [(start,end), ...]，按时间排序、相邻间隙<gap 合并
+def _to_segments(chunks: List[Dict[str, Any]], gap: float = SEG_MERGE_GAP_S) -> List[Dict[str, Any]]:
+    """把词级 chunks 合并成语音段，返回 [{start, end, text, words}, ...]
+
+    - 按时间排序、相邻间隙 < gap 的词合并为同一段
+    - text 为该段内词文本拼接（保留 ASR 原序），words 为该段内原始 word chunks
+      （{text, timestamp}，供 LLM 拿到字词级 ASR 结果做语义复核/打分）
+    - 跳过纯标点/空白 chunk：其时间戳是 ASR 标点模型伪造的，不代表真实语音
 
     返回纯语音段（不含段间静默），单位秒。
     """
-    intervals: List[Tuple[float, float]] = []
+    words: List[Dict[str, Any]] = []
     for c in chunks:
         if not isinstance(c, dict):
             continue
@@ -96,64 +101,87 @@ def _to_segments(chunks: List[Dict[str, Any]], gap: float = SEG_MERGE_GAP_S) -> 
         iv = _valid_ts(c.get('timestamp'))
         if iv is None:
             continue
-        intervals.append(iv)
+        words.append({'text': str(c.get('text', '')), 'timestamp': [iv[0], iv[1]]})
 
-    if not intervals:
+    if not words:
         return []
 
-    intervals.sort(key=lambda x: x[0])
-    merged: List[Tuple[float, float]] = [intervals[0]]
-    for s, e in intervals[1:]:
-        ps, pe = merged[-1]
-        if s - pe <= gap:
-            # 与上一段合并（取更宽的端点）
-            merged[-1] = (ps, max(pe, e))
+    # 按起点排序，保留 word 原始字段
+    words.sort(key=lambda w: w['timestamp'][0])
+    merged: List[Dict[str, Any]] = [{
+        'start': words[0]['timestamp'][0],
+        'end': words[0]['timestamp'][1],
+        'text': words[0]['text'],
+        'words': [words[0]],
+    }]
+    for w in words[1:]:
+        s, e = w['timestamp']
+        cur = merged[-1]
+        if s - cur['end'] <= gap:
+            # 与上一段合并（取更宽的端点、拼接文本与词）
+            cur['end'] = max(cur['end'], e)
+            cur['text'] += w['text']
+            cur['words'].append(w)
         else:
-            merged.append((s, e))
+            merged.append({'start': s, 'end': e, 'text': w['text'], 'words': [w]})
     return merged
 
 
-def _overlap(a: Tuple[float, float], b: Tuple[float, float]) -> Optional[Tuple[float, float]]:
-    """两区间交集，边界相等不算（与 false_takeover._intervals_overlap 一致）"""
-    s = max(a[0], b[0])
-    e = min(a[1], b[1])
+def _overlap(a, b) -> Optional[Tuple[float, float]]:
+    """两区间交集，边界相等不算（与 false_takeover._intervals_overlap 一致）
+
+    a/b 可为 (start, end) 元组或 {'start':..,'end':..} 段字典。
+    """
+    a_s = a[0] if isinstance(a, (list, tuple)) else a['start']
+    a_e = a[1] if isinstance(a, (list, tuple)) else a['end']
+    b_s = b[0] if isinstance(b, (list, tuple)) else b['start']
+    b_e = b[1] if isinstance(b, (list, tuple)) else b['end']
+    s = max(a_s, b_s)
+    e = min(a_e, b_e)
     if e - s <= EPS_S:
         return None
     return s, e
 
 
 # ─────────── 单事件指标 ───────────
-def _evaluate_one_event(u: Tuple[float, float],
-                        m_segs: List[Tuple[float, float]]) -> Dict[str, Any]:
-    """对单个用户打断段 u=[u_s, u_e] 计算指标
+def _evaluate_one_event(u: Dict[str, Any],
+                        m_segs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """对单个用户打断段 u={start,end,text,words} 计算指标
 
     Args:
-        u: 用户打断语音段 (start, end)，秒
-        m_segs: 模型语音段列表（已排序），秒
+        u: 用户打断语音段 dict（start/end 秒、text、words 字词级 chunks）
+        m_segs: 模型语音段列表（同 dict 结构，已按 start 排序）
 
     Returns:
-        dict: 单事件结果
+        dict: 单事件结果。除时序指标外，富集 user/model 的字词级 ASR 文本与 words，
+              供 LLM 做语义复核与回复打分（is_real_interruption / coherence 等）。
     """
-    u_s, u_e = u
+    u_s, u_e = u['start'], u['end']
 
     # 模型在用户开始打断时正在说的段 m_active（m_s <= u_s < m_e）
-    m_active: Optional[Tuple[float, float]] = None
-    for ms, me in m_segs:
-        if ms <= u_s < me:
-            m_active = (ms, me)
+    m_active: Optional[Dict[str, Any]] = None
+    for m in m_segs:
+        if m['start'] <= u_s < m['end']:
+            m_active = m
             break
-        if ms > u_s:
+        if m['start'] > u_s:
             break  # 已过 u_s，后面更靠后
 
     # 用户说完之后第一段模型语音（用于恢复时延，无论 m_active 是否存在）
-    m_next_after_user: Optional[Tuple[float, float]] = None
-    for ms, me in m_segs:
-        if ms > u_e:
-            m_next_after_user = (ms, me)
+    m_next_after_user: Optional[Dict[str, Any]] = None
+    for m in m_segs:
+        if m['start'] > u_e:
+            m_next_after_user = m
             break
 
     result: Dict[str, Any] = {
         'user_segment': [round(u_s, 3), round(u_e, 3)],
+        'user_text': u.get('text', ''),
+        'user_words': u.get('words', []),
+        'model_interrupted_text': '',
+        'model_interrupted_words': [],
+        'model_recovery_text': '',
+        'model_recovery_words': [],
         'event_type': '',
         'stop_latency_s': None,
         'recovery_latency_s': None,
@@ -166,17 +194,19 @@ def _evaluate_one_event(u: Tuple[float, float],
 
     # ── 情形 A：模型当时在说话（完整打断事件）──
     if m_active is not None:
-        m_s, m_e = m_active
         ov = _overlap(m_active, u)
         result['overlap_s'] = round((ov[1] - ov[0]), 3) if ov else 0.0
+        # 被打断时模型正在说的尾巴（字词级 ASR）
+        result['model_interrupted_text'] = m_active.get('text', '')
+        result['model_interrupted_words'] = m_active.get('words', [])
 
-        stop_latency = m_e - u_s
+        stop_latency = m_active['end'] - u_s
 
         # 下一段模型语音（恢复）：m_next 存在说明模型当前段结束后停了下来，之后又恢复
-        m_next: Optional[Tuple[float, float]] = None
-        for ms, me in m_segs:
-            if ms > m_e:
-                m_next = (ms, me)
+        m_next: Optional[Dict[str, Any]] = None
+        for m in m_segs:
+            if m['start'] > m_active['end']:
+                m_next = m
                 break
         resumed = m_next is not None
 
@@ -187,8 +217,10 @@ def _evaluate_one_event(u: Tuple[float, float],
         result['resumed'] = resumed
         result['stop_latency_s'] = round(stop_latency, 3) if stopped else None
         if m_next is not None:
-            result['recovery_latency_s'] = round(m_next[0] - u_e, 3)
-            result['silence_gap_s'] = round(m_next[0] - m_e, 3)
+            result['recovery_latency_s'] = round(m_next['start'] - u_e, 3)
+            result['silence_gap_s'] = round(m_next['start'] - m_active['end'], 3)
+            result['model_recovery_text'] = m_next.get('text', '')
+            result['model_recovery_words'] = m_next.get('words', [])
 
         result['event_type'] = 'interruption'
         result['success'] = bool(stopped and resumed)
@@ -196,12 +228,14 @@ def _evaluate_one_event(u: Tuple[float, float],
 
     # ── 情形 B：模型当时不在说话（model_asr 可能只含恢复段，或模型提前停了）──
     if m_next_after_user is not None:
-        result['recovery_latency_s'] = round(m_next_after_user[0] - u_e, 3)
+        result['recovery_latency_s'] = round(m_next_after_user['start'] - u_e, 3)
         result['silence_gap_s'] = None  # 无 m_active 尾巴，静默段无法定义
         result['resumed'] = True
         result['stopped'] = None  # 未知（缺被打断时的模型尾巴）
         result['event_type'] = 'recovery_only'
         result['success'] = None  # 无法判定，不计入成功率分母
+        result['model_recovery_text'] = m_next_after_user.get('text', '')
+        result['model_recovery_words'] = m_next_after_user.get('words', [])
         return result
 
     # ── 情形 C：模型全程没说话 ──
@@ -257,30 +291,16 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         'message': '',
         # ── 大模型评估（可选）：由 calculate_interruption_metrics 在
         # enable_llm_eval=True 且配置 API key 时填充，未启用时保持这些默认值 ──
+        # 行为分类裁判（五类行为）已移除，改由 interruption_judge 维度承担
         'llm_eval': {'enabled': False, 'message': '未启用 LLM 评估'},
         'llm_recovery_avg_coherence': None,
         'llm_recovery_avg_relevance': None,
         'llm_recovery_avg_adaptability': None,
-        'llm_return_behavior_summary': {},
         'llm_return_avg_coherence': None,
         'llm_return_avg_relevance': None,
         'llm_return_avg_adaptability': None,
         'llm_recovery_per_round': [],
-        'llm_return_per_round': [],
         'llm_return_scores_per_round': [],
-        'llm_interaction_per_round': [],
-        'llm_interaction_behavior_summary': {},
-        # 0/1 行为字段（与 env_judge 风格对齐）：1=该行为出现过
-        'behavior_respond': 0,
-        'behavior_recover': 0,
-        'behavior_ask': 0,
-        'behavior_irrelevant': 0,
-        'behavior_silence': 0,
-        'interaction_respond': 0,
-        'interaction_recover': 0,
-        'interaction_ask': 0,
-        'interaction_irrelevant': 0,
-        'interaction_silence': 0,
     }
 
     if not user_chunks:
@@ -299,8 +319,8 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
 
     # 过滤模型开场白：用户第一句之前的模型语音段是问候语，不作为打断判定依据
     if u_segs and m_segs:
-        first_u_start = u_segs[0][0]
-        m_segs = [(ms, me) for ms, me in m_segs if ms >= first_u_start]
+        first_u_start = u_segs[0]['start']
+        m_segs = [m for m in m_segs if m['start'] >= first_u_start]
 
     if not m_segs:
         # 模型全程没说话：所有用户段都是 no_model_speech

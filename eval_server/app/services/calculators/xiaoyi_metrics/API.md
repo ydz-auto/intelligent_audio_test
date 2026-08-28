@@ -266,8 +266,9 @@
 | `user_asr` | list/dict | 二选一 | 已对齐的用户 ASR 结果 |
 | `model_asr` | list/dict | 二选一 | 已对齐的模型 ASR 结果 |
 | `seg_merge_gap_s` | float | 否 | 同上，但强制最小 0.5 |
-| `enable_llm_eval` | bool | 否 | 是否启用 LLM 评估，默认 True |
-| `rounds` | list[dict] | 否 | 多轮文本数据（LLM 评估用） |
+| `enable_llm_eval` | bool | 否 | 是否启用 LLM 评估，默认 True。LLM 直接吃 per_event 字词级 ASR，做"是否真的打断"语义复核 + 回复打分 |
+| `original_topic` | str | 否 | 原始话题文本（透传给 LLM 作上下文） |
+| `rounds` | list[dict] | 否 | （已废弃）旧多轮文本数据；LLM 现改用 per_event 字词级 ASR，传入忽略 |
 
 ### 出参
 
@@ -287,6 +288,12 @@
   "per_event": [                     // 每个用户段的结果
     {
       "user_segment": [1.0, 3.0],   // 用户段 [start, end]
+      "user_text": "别管电影了附近有什么好吃的",  // 用户打断字词级 ASR 拼接文本
+      "user_words": [{"text":"别管电影了","timestamp":[1.0,1.6]}, ...],  // 字词级 chunks
+      "model_interrupted_text": "我给你推荐奥本海默",  // 被打断时模型正在说的尾巴
+      "model_interrupted_words": [...],               // 其字词级 chunks
+      "model_recovery_text": "附近有一家川菜馆...",    // 模型恢复回复
+      "model_recovery_words": [...],                  // 其字词级 chunks
       "event_type": "interruption", // interruption / recovery_only / no_model_speech
       "stop_latency_s": 0.3,        // 用户开始打断→模型当前段结束
       "recovery_latency_s": 0.5,   // 用户说完→模型重新开口
@@ -294,92 +301,77 @@
       "overlap_s": 0.2,            // 重叠时长
       "stopped": true,             // 是否停下
       "resumed": true,             // 是否恢复
-      "success": true              // 是否成功（容差内停下且恢复）
+      "success": true              // 是否成功（停下且恢复）—纯本地判定，LLM 不覆盖
     },
     ...
   ],
   "message": "OK",
-  "llm_eval": { /* 见 §8 */ },
-  "behavior_respond": 0,            // 0/1 行为字段（LLM评估填充）
-  "behavior_recover": 1,
-  "behavior_ask": 0,
-  "behavior_irrelevant": 0,
-  "behavior_silence": 0,
-  "interaction_respond": 0,
-  "interaction_recover": 1,
-  "interaction_ask": 0,
-  "interaction_irrelevant": 0,
-  "interaction_silence": 0
+  "llm_eval": { /* 见 §8 */ }
 }
 ```
+
+> 行为分类裁判（`behavior_*` / `interaction_*` / `llm_return_behavior_summary` /
+> `llm_interaction_behavior_summary` 等）已移除，改由 interruption_judge 维度承担。
 
 ---
 
 ## 8. interruption_llm —— 打断 LLM 评估
 
+> 数值指标（success_rate / 时延 / 让出率 / 恢复率等）**全部本地算**，本模块不产出任何数值指标。
+> LLM 直接吃 `compute_interruption_metrics` 富集后的 `per_event`（用户与模型的字词级 ASR），
+> 对每个 `event_type=='interruption'` 事件做：(A) 是否真的打断的语义复核 + 简短原因；
+> (B) 模型恢复回复的 连贯性/相关性/适应性 打分（0-5）。
+> `is_real_interruption` 是对本地结论的语义复核，**不回写覆盖**本地 `interruption_success_rate`。
+
 ### 入参（evaluate_interruption_llm）
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `rounds` | list[dict] | 是 | 多轮文本数据，每轮 `{query, answer, is_return_to_topic}` |
-| `original_topic` | str | 否 | 原始话题文本（顶层参数） |
+| `per_event` | list[dict] | 是 | `compute_interruption_metrics` 产出的事件列表（含 user/model 字词级 ASR 文本与 words） |
+| `original_topic` | str | 否 | 原始话题文本（task_params 透传，作上下文） |
 | `llm_model` | str | 否 | LLM 模型名，缺省读 `config.LLM_JUDGE` |
-| `enable_llm_eval` | bool | 否 | 是否启用，默认 True |
 
 ### 出参
 
 ```json
 {
   "enabled": true,
-  "model": "gpt-4o",
-  "llm_recovery_per_round": [        // 1) 打断后回复打分
+  "model": "gemini-3.7-flash",
+  "llm_recovery_per_round": [        // 每个 interruption 事件的复核+打分
     {
-      "coherence": 4,               // 连贯性 0-5
-      "relevance": 5,              // 相关性 0-5
-      "adaptability": 4,           // 适应性 0-5
-      "overall": 4.3,             // 三维平均
-      "reason": "回复与打断内容衔接自然",
-      "error": null
+      "event": 1,
+      "user_text": "别管电影了附近有什么好吃的",
+      "model_interrupted_text": "我给你推荐奥本海默...",
+      "model_recovery_text": "附近有一家川菜馆...",
+      "is_real_interruption": true,   // (A) 是否真的打断（语义复核）
+      "interruption_reason": "用户在模型推荐期间明确打断并切换话题，模型停止并响应",
+      "coherence": 5,                  // (B) 连贯性 0-5
+      "relevance": 5,                // 相关性 0-5
+      "adaptability": 5,            // 适应性 0-5
+      "overall": 5.0,              // 三维平均
+      "reason": "迅速切题响应...",  // 打分理由
+      "error": ""
     },
     ...
   ],
-  "llm_recovery_avg_coherence": 4.0,
-  "llm_recovery_avg_relevance": 4.5,
-  "llm_recovery_avg_adaptability": 4.2,
-  "llm_return_behavior_summary": {  // 2) 回到原话题行为判断
-    "respond": 1, "recover": 0, "ask": 0, "irrelevant": 0, "silence": 0
-  },
-  "llm_return_per_round": [          // 每轮行为判断
-    {"behavior": "回应", "reason": "..."},
-    ...
-  ],
-  "llm_return_scores_per_round": [   // 3) 回到原话题回复打分
-    {"coherence": 4, "relevance": 5, "adaptability": 4, "overall": 4.3, "reason": "..."},
-    ...
-  ],
-  "llm_return_avg_coherence": 4.0,
-  "llm_return_avg_relevance": 5.0,
-  "llm_return_avg_adaptability": 4.0,
-  "llm_interaction_per_round": [     // 4) 交互过程行为判断
-    {"behavior": "回应", "reason": "..."},
-    ...
-  ],
-  "llm_interaction_behavior_summary": {
-    "respond": 2, "recover": 1, "ask": 0, "irrelevant": 0, "silence": 0
-  },
-  "behavior_respond": 1,             // 0/1 行为字段（回到原话题）
-  "behavior_recover": 0,
-  "behavior_ask": 0,
-  "behavior_irrelevant": 0,
-  "behavior_silence": 0,
-  "interaction_respond": 1,        // 0/1 行为字段（交互过程）
-  "interaction_recover": 0,
-  "interaction_ask": 0,
-  "interaction_irrelevant": 0,
-  "interaction_silence": 0,
-  "tokens_used": 3000
+  "llm_recovery_avg_coherence": 4.667,
+  "llm_recovery_avg_relevance": 5.0,
+  "llm_recovery_avg_adaptability": 4.667,
+  "interruption_real_rate": 1.0,      // LLM 判定真正打断的事件占比
+  "n_events_evaluated": 3,
+  // 回到原话题独立打分链路已移除，下列字段保留为空以兼容既有维度定义
+  "llm_return_scores_per_round": [],
+  "llm_return_avg_coherence": null,
+  "llm_return_avg_relevance": null,
+  "llm_return_avg_adaptability": null,
+  "message": "OK"
 }
 ```
+
+> 行为分类裁判（五类行为：回应/恢复/询问/无关回复/沉默或无视）已移除，
+> 改由 interruption_judge 维度承担（四类：回应/恢复/不确定询问/未知）。
+> 旧 `rounds` 文本链路与 `evaluate_interruption_success_llm` success 兜底已移除——
+> success_rate 始终由本地时序算出。
 
 ---
 
