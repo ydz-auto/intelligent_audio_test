@@ -41,14 +41,13 @@ class Xiaoyilivechat(HarmonyDriver):
     # 当前驱动仅抓取小艺(xiaoyi)数据；通过 app 参数可切换到 doubao/chatgpt
     PCM_APP_CONFIG = {
         'xiaoyi': {
-            'cache_dirs': ['/data/app/el2/100/base/com.huawei.hmos.aibase/cache',
-                           '/data/app/el2/100/base/com.huawei.hmos.vassistant/cache'],
-            # 实测设备文件名: 用户 cap_client_out.pcm / AI client_in..pcm
+            # AI 回复 PCM 只取 aibase/cache 的 cap_client_ec_out.pcm。
+            # ⚠️ 不从 vassistant/cache 取 client_in..pcm: 实测其时间轴不对齐
+            #   (PCM 内容与 AI 实际说话时刻错位), 用于 RMS 回复完成检测会误判, 已弃用。
+            'cache_dirs': ['/data/app/el2/100/base/com.huawei.hmos.aibase/cache'],
+            # 实测设备文件名: 用户 cap_client_out.pcm / AI cap_client_ec_out.pcm
             'user_suffix': 'cap_client_out.pcm',
-            # AI 回复: client_in..pcm(新设备实测,主); 兼容旧设备 cap_client_ec_out.pcm 不删。
-            # 两者并存时 _pick_pcm 按 size 取最大者(避免选中静音探针流)。
-            'ai_suffix': ['client_in..pcm', 'cap_client_ec_out.pcm'],
-
+            'ai_suffix': 'cap_client_ec_out.pcm',
         },
         'doubao': {
             'cache_dirs': ['/data/app/el2/100/base/com.larus.nova.hm/cache'],
@@ -65,6 +64,23 @@ class Xiaoyilivechat(HarmonyDriver):
     }
     # 清理时一并清的公共目录
     PCM_COMMON_CLEAR_DIRS = ['/data/data/.pulse_dir', '/data/local/tmp']
+
+    # ===== DSP 层 audio_hook PCM(仅小艺用,替换 fwk 层) =====
+    # 来源:华为全双工调试脚本 AudioLogTools/1.start-dump-smartpa.bat 的 DSP 子集产物。
+    # audio_hook 目录下两类时间轴对齐的裸 PCM(s16le,固定格式,非文件名解析):
+    #   in_after_imedia_asr_module*  16000Hz/4ch/16bit → 取第 1 声道(ch0)为用户输入(mono)
+    #   in_raw1*                    16000Hz/2ch/16bit → 模型回复(2ch)
+    DSP_AUDIO_HOOK_DIR = '/data/vendor/log/audio_logs/audio_hook'
+    DSP_USER_PREFIX = 'in_after_imedia_asr_module'   # 用户麦克风采集流前缀
+    DSP_AI_PREFIX = 'in_raw1'                        # 模型回复流前缀
+    DSP_USER_FMT = (16000, 4, 2)                     # (sample_rate, channels, sample_width)
+    DSP_AI_FMT = (16000, 2, 2)
+    DSP_USER_EXTRACT_CHANNEL = 0                     # 4ch 取第 1 声道(ch0)→ mono
+    # audiodebug 二进制版本(对应 libaudio_proxy_<V>.z.so),本地随驱动打包
+    DSP_BIN_DIR = os.path.join(os.path.dirname(__file__), 'bin', 'dsp')
+    DSP_AUDIODEBUG_VERSIONS = ['4.0', '5.0']          # 本地有这两个版本(缺 6.0)
+    DSP_HOOKCHANNEL = 196609                          # bat1 实测的 hook 通道
+
 
     # AI 回复完成检测(RMS 能量法)参数 — 不依赖控件文本,按 AI PCM 尾部能量判定。
     # 小艺/豆包/ChatGPT 共用;采样率从 PCM 文件名解析(小艺16k/豆包48k),1s 尾部字节随之自适应。
@@ -158,6 +174,56 @@ class Xiaoyilivechat(HarmonyDriver):
             return wav_path
         except Exception as e:
             self._log(level='ERROR', content=f"pcm转wav异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return None
+
+    def _pcm_to_wav_fixed(self, pcm_path, sample_rate, channels, sample_width=2,
+                          extract_channel=None, task_id=None, test_case_id=None):
+        """将裸 pcm 转 wav,采样参数由调用方显式给出(不从文件名解析)。
+
+        用于 DSP 层 audio_hook PCM——其文件名(in_after_imedia_asr_module* / in_raw1*)
+        不符合 <id>_<sr>_<ch>_<bdf>_... 契约,无法用 _pcm_to_wav 解析。
+
+        extract_channel: 若不为 None,只取该声道(0-based)写 mono wav。
+          例如 4ch PCM 取第 1 声道: extract_channel=0 → samples[0::4] → nchannels=1。
+          None 则原样写多声道。成功返回 wav 绝对路径,失败返回 None。
+        """
+        if not os.path.exists(pcm_path):
+            return None
+        wav_path = os.path.splitext(pcm_path)[0] + '.wav'
+        try:
+            with open(pcm_path, 'rb') as f:
+                pcm_data = f.read()
+            frame_size = sample_width * channels
+            if frame_size > 0 and len(pcm_data) % frame_size != 0:
+                pcm_data = pcm_data[:len(pcm_data) - (len(pcm_data) % frame_size)]
+            if extract_channel is not None:
+                # 抽单声道: 全部 16-bit 样本解包后按下标跨步取目标声道
+                total = len(pcm_data) // 2  # s16le 每样本 2 字节
+                samples = struct.unpack('<' + 'h' * total, pcm_data)
+                mono = samples[extract_channel::channels]
+                with wave.open(wav_path, 'wb') as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(sample_width)
+                    wf.setframerate(sample_rate)
+                    wf.writeframes(struct.pack('<' + 'h' * len(mono), *mono))
+                self._log(level='INFO',
+                          content=(f"pcm转wav成功(抽声道{extract_channel}/{channels}): {wav_path} "
+                                   f"(sr={sample_rate} mono bw={sample_width})"),
+                          task_id=task_id, test_case_id=test_case_id)
+            else:
+                with wave.open(wav_path, 'wb') as wf:
+                    wf.setnchannels(channels)
+                    wf.setsampwidth(sample_width)
+                    wf.setframerate(sample_rate)
+                    wf.writeframes(pcm_data)
+                self._log(level='INFO',
+                          content=(f"pcm转wav成功(定参): {wav_path} "
+                                   f"(sr={sample_rate} ch={channels} bw={sample_width})"),
+                          task_id=task_id, test_case_id=test_case_id)
+            return wav_path
+        except Exception as e:
+            self._log(level='ERROR', content=f"pcm转wav异常(定参): {e}",
                       task_id=task_id, test_case_id=test_case_id)
             return None
 
@@ -463,7 +529,8 @@ class Xiaoyilivechat(HarmonyDriver):
         """在当前 app(PCM_APP_CONFIG[self._pcm_app]) 缓存目录找 AI 回复 PCM(ai_suffix)。
 
         多个匹配取 size 最大者(同 _pick_pcm 策略,避免选中静音探针流)。无匹配返回 None。
-        小艺 ai_suffix 可能是 list(cap_client_ec_out.pcm + client_in..pcm),_pick_pcm 已兼容。
+        小艺 ai_suffix=cap_client_ec_out.pcm(aibase); vassistant 的 client_in..pcm 时间轴
+        不对齐,已从 ai_suffix 移除(详见 PCM_APP_CONFIG 注释)。
         """
         app = getattr(self, '_pcm_app', 'xiaoyi')
         cfg = self.PCM_APP_CONFIG.get(app) or {}
@@ -733,13 +800,13 @@ class Xiaoyilivechat(HarmonyDriver):
         return local_path
 
     def _pull_pcm(self, device_sn, app='xiaoyi', task_id=None, test_case_id=None, round_number=None):
-        # 获取小艺对话pcm。新设备实测: AI 回复 client_in..pcm(24k/1ch, 在 vassistant/cache)、
-        # 用户输入 cap_client_out.pcm(16k/1ch, aibase/cache); 旧设备 AI 为 cap_client_ec_out.pcm(已兼容)。
+        # 获取小艺对话pcm。AI 回复 cap_client_ec_out.pcm、用户输入 cap_client_out.pcm,
+        # 均在 aibase/cache。⚠️ vassistant/cache 的 client_in..pcm 时间轴不对齐, 不取(已弃用)。
         # 获取豆包对话PCM，文件位置:/data/app/el2/100/base/com.larus.nova.hm/cache/, 用户输入名称格式100186_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100184_48000_2_1_client_in..pcm
         # 获取chagpt对话PCM，文件位置：/data/local/tmp/。用户输入名称格式100174_48000_2_1_cap_client_out.pcm。AI助手回复名称格式100175_48000_2_1_cap_client_in.pcm
         #
         # 按 app 参数选择对应 app 的缓存目录与文件后缀:
-        # - 小艺(xiaoyi):   aibase+vassistant/cache   用户 cap_client_out.pcm / AI client_in..pcm(主) 或 cap_client_ec_out.pcm(旧), _pick_pcm 取最大
+        # - 小艺(xiaoyi):   aibase/cache            用户 cap_client_out.pcm  / AI cap_client_ec_out.pcm(vassistant 的 client_in..pcm 时间轴不对齐, 不取)
         # - 豆包(doubao):   .../com.larus.nova.hm/cache      用户 cap_client_out.pcm        / AI client_in..pcm
         # - chatgpt:        /data/local/tmp                  用户 cap_client_out.pcm        / AI cap_client_in.pcm
         # 返回: {'user': local_path_or_None, 'ai': local_path_or_None, 'user_remote':..., 'ai_remote':...}
@@ -804,7 +871,13 @@ class Xiaoyilivechat(HarmonyDriver):
 
         round_number: 轮次号,传给 _pull_pcm 用于本地文件名加 r{round}_ 前缀。
         返回 (user_wav_path_or_None, ai_wav_path_or_None)。
+
+        小艺走 DSP 层 audio_hook(in_after_imedia_asr_module* / in_raw1*),
+        替换 fwk 层 cap_client_*;豆包/ChatGPT 走原 fwk 逻辑。
         """
+        if app == 'xiaoyi':
+            return self._pull_dsp_pcm_wav(device_sn, task_id=task_id,
+                                          test_case_id=test_case_id, round_number=round_number)
         pulled = self._pull_pcm(device_sn, app=app, task_id=task_id,
                                 test_case_id=test_case_id, round_number=round_number)
         user_pcm = pulled.get('user')
@@ -813,8 +886,175 @@ class Xiaoyilivechat(HarmonyDriver):
         ai_wav = self._pcm_to_wav(ai_pcm, task_id=task_id, test_case_id=test_case_id) if ai_pcm else None
         return user_wav, ai_wav
 
+    # ------------------------------------------------------------------
+    # DSP 层 audio_hook PCM(仅小艺用)
+    # ------------------------------------------------------------------
+    def _enable_dsp_audio_dump(self, device_sn, task_id=None, test_case_id=None):
+        """开启 DSP 层 audio 抓取(照 AudioLogTools/1.start-dump-smartpa.bat 的 DSP 子集,幂等)。
 
+        产物落 /data/vendor/log/audio_logs/audio_hook/:in_after_imedia_asr_module*(用户4ch)
+        与 in_raw1*(模型2ch),时间轴对齐。仅小艺用(替换 fwk write*.enable)。
+        豆包/ChatGPT 不调用。每步 try/except 不中断后续。
+        """
+        lg = lambda msg, lv='INFO': self._log(level=lv, content=msg,
+                                              task_id=task_id, test_case_id=test_case_id)
 
+        def sh(*args):
+            return self._hdc_shell(device_sn, *args)
+
+        try:
+            sh('mount', '-o', 'rw,remount', '/')
+            self._hdc_shell(device_sn, 'target', 'mount')
+            sh('setenforce', '0')
+        except Exception as e:
+            lg(f"[DSP] 挂载/setenforce 失败(继续): {e}", 'WARNING')
+
+        try:
+            sh('pkill', 'dhifimesg')
+        except Exception:
+            pass
+
+        # 版本对齐推送 audiodebug: 探测 libaudio_proxy_<V>.z.so, 命中则推对应二进制;
+        # 不命中(如 6.0,本地无对应二进制)则探测设备是否已有可用 audiodebug,有就用,不报错。
+        pushed_audiodebug = False
+        for v in self.DSP_AUDIODEBUG_VERSIONS:
+            local_bin = os.path.join(self.DSP_BIN_DIR, f'audiodebug_{v}')
+            if not os.path.exists(local_bin):
+                continue
+            probe = sh('find', '/system', '-name', f'libaudio_proxy_{v}.z.so')
+            if probe.stdout and f'libaudio_proxy_{v}' in probe.stdout:
+                subprocess.run(['hdc', '-t', device_sn, 'file', 'send', local_bin, '/system/bin/audiodebug'],
+                               check=False, capture_output=True, text=True, timeout=30)
+                sh('chmod', '777', '/system/bin/audiodebug')
+                lg(f"[DSP] 推送 audiodebug_{v} → /system/bin/audiodebug (匹配 libaudio_proxy_{v}.z.so)")
+                pushed_audiodebug = True
+                break
+        if not pushed_audiodebug:
+            # 探测设备自带的 audiodebug(如 6.0 系统/之前装过)
+            ab = sh('ls', '/system/bin/audiodebug')
+            if ab.returncode == 0 and ab.stdout.strip():
+                lg("[DSP] 未推送 audiodebug(本地无匹配版本),使用设备自带 /system/bin/audiodebug")
+            else:
+                lg("[DSP] 未匹配 audiodebug 版本且设备无自带 audiodebug,audio_hook 可能无 PCM 产出",
+                   'ERROR')
+
+        def inject2(cmd):
+            try:
+                subprocess.run(['hdc', '-t', device_sn, 'shell',
+                                f'echo {cmd} > /proc/hifidebug/dspfaultinject'],
+                               check=False, capture_output=True, text=True, timeout=10)
+            except Exception as e:
+                lg(f"[DSP] dspfaultinject '{cmd}' 异常: {e}", 'WARNING')
+
+        inject2('hook_data_to_ap stop')
+        inject2('hifi_test_set_poweroff_enable_flag false')
+        inject2('audio_cmd histen,cmd,8')
+        inject2('audio_cmd histen_lite,cmd,8')
+
+        for p in ('primary dump_file off', 'primary dump_file all', 'primary dump_file on'):
+            sh('audiodebug', 'setparameter', *p.split())
+
+        # hifi 日志 daemon(PCM hook 依赖其运行)
+        dhifimesg_bin = os.path.join(self.DSP_BIN_DIR, 'dhifimesg')
+        if os.path.exists(dhifimesg_bin):
+            subprocess.run(['hdc', '-t', device_sn, 'file', 'send', dhifimesg_bin, '/system/bin/dhifimesg'],
+                           check=False, capture_output=True, text=True, timeout=30)
+            sh('chmod', '777', '/system/bin/dhifimesg')
+            sh('dhifimesg', '-D')
+
+        # 目录(audio_hook 可能已存在, -p 兼容)
+        sh('mkdir', '-p', '/data/hisi_logs/om_data')
+        sh('mkdir', '-p', '/data/data/.pulse_dir')
+        sh('mkdir', '-p', '/data/vendor/log/audio_logs')
+        sh('mkdir', '-p', self.DSP_AUDIO_HOOK_DIR)
+
+        inject2('hook_data_to_ap start')
+        sh('audiodebug', 'setparameter', 'primary', 'hookChannel', str(self.DSP_HOOKCHANNEL))
+        sh('param', 'set', 'vendor.cust.audio.dump', 'true')
+        for d in ('/data/data/.pulse_dir', '/data/local/tmp', '/data/hisi_logs/om_data', self.DSP_AUDIO_HOOK_DIR):
+            sh('chmod', '777', d)
+        inject2('hook_data_to_ap start')  # 二次确保
+        lg("[DSP] DSP audio dump 已开启(audio_hook): "
+           f"user={self.DSP_USER_PREFIX}* ai={self.DSP_AI_PREFIX}*")
+
+    def _clear_dsp_audio_hook(self, device_sn, task_id=None, test_case_id=None):
+        """清理 audio_hook 目录(子目录 + stub + 旧 pcm),供 pre_process/teardown 调用。
+
+        rm -rf <dir>/* 清整个 audio_hook 内容(hook tap stub 与 CustStreamConfig 会被系统重建)。
+        """
+        try:
+            self._hdc_shell(device_sn, 'shell',
+                            f'rm -rf {self.DSP_AUDIO_HOOK_DIR}/*')
+            self._log(level='DEBUG', content=f"[DSP] 已清 {self.DSP_AUDIO_HOOK_DIR}",
+                      task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            self._log(level='WARNING', content=f"[DSP] 清 audio_hook 异常: {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+
+    def _pull_dsp_pcm_wav(self, device_sn, task_id=None, test_case_id=None, round_number=None):
+        """从 audio_hook 拉取 DSP 层 用户/模型 PCM 并转 wav。
+
+        前缀匹配(非后缀):in_after_imedia_asr_module*(用户4ch→抽ch0 mono)、
+        in_raw1*(模型2ch)。多个匹配取 size 最大者(避开 0 字节 stub)。
+        返回 (user_wav_path_or_None, ai_wav_path_or_None)。
+        """
+        # 列 audio_hook 下所有 .pcm(递归,文件可能在 pcm_in_22_*/pcm_out_21_* 子目录)
+        r = self._hdc_shell(device_sn, 'find', self.DSP_AUDIO_HOOK_DIR,
+                            '-name', '*.pcm', '-type', 'f')
+        files = [line.strip() for line in (r.stdout or '').splitlines() if line.strip()]
+        self._log(level='DEBUG',
+                  content=f"[DSP] audio_hook pcm({len(files)}个): {files}",
+                  task_id=task_id, test_case_id=test_case_id)
+
+        local_dir = os.path.join(Config.STATIC_BASE_PATH, 'case_pcm',
+                                 str(task_id) if task_id else 'default_task_id',
+                                 str(test_case_id) if test_case_id else 'default_id',
+                                 device_sn)
+        os.makedirs(local_dir, exist_ok=True)
+
+        def pick_by_prefix(prefix):
+            matched = [f for f in files if os.path.basename(f).startswith(prefix)]
+            if not matched:
+                return None
+            # 取 size 最大者(避开 0 字节 stub)
+            best, best_sz = None, -1
+            for f in matched:
+                sz = self._get_device_file_size(device_sn, f)
+                if sz > best_sz:
+                    best, best_sz = f, sz
+            return best
+
+        user_remote = pick_by_prefix(self.DSP_USER_PREFIX)
+        ai_remote = pick_by_prefix(self.DSP_AI_PREFIX)
+
+        user_wav = ai_wav = None
+        sr_u, ch_u, sw_u = self.DSP_USER_FMT
+        sr_a, ch_a, sw_a = self.DSP_AI_FMT
+        for role, remote, fmt, extract in (
+            ('user', user_remote, self.DSP_USER_FMT, self.DSP_USER_EXTRACT_CHANNEL),
+            ('ai', ai_remote, self.DSP_AI_FMT, None),
+        ):
+            if not remote:
+                self._log(level='DEBUG',
+                          content=f"[DSP] 未匹配到 {role} pcm (prefix "
+                                  f"{self.DSP_USER_PREFIX if role=='user' else self.DSP_AI_PREFIX})",
+                          task_id=task_id, test_case_id=test_case_id)
+                continue
+            remote_base = os.path.basename(remote)
+            local_name = f"r{round_number}_{remote_base}" if round_number is not None else remote_base
+            local_path = os.path.join(local_dir, local_name)
+            pulled = self._recv_pcm(device_sn, remote, local_path,
+                                    task_id=task_id, test_case_id=test_case_id,
+                                    app='xiaoyi', role=role)
+            if pulled:
+                wav = self._pcm_to_wav_fixed(pulled, fmt[0], fmt[1], fmt[2],
+                                             extract_channel=extract,
+                                             task_id=task_id, test_case_id=test_case_id)
+                if role == 'user':
+                    user_wav = wav
+                else:
+                    ai_wav = wav
+        return user_wav, ai_wav
 
     @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
@@ -831,19 +1071,27 @@ class Xiaoyilivechat(HarmonyDriver):
         self._record_file_name = None
         self._record_pulled = False
         self._record_device_path = None  # 重置: 避免上个用例的 VID 路径残留
-        # 开启抓取pcm权限
-        driver.shell("mount -o rw,remount /")
-        driver.shell("param set sys.audio.dump.writeserver.enable w")
-        driver.shell("param set sys.audio.dump.writehdi.enable w")
-        driver.shell("param set sys.audio.dump.writeclient.enable a")
-        driver.shell("chmod 777 /data/local/tmp")
         # pcm 抓取目标 app（当前驱动默认只抓小艺；可通过 kwargs.pcm_app 切换 doubao/chatgpt）
         self._pcm_app = kwargs.get('pcm_app', 'xiaoyi')
+        # 开启抓取pcm权限: 小艺用 DSP 层 audio_hook(替换 fwk write*.enable);
+        # 豆包/ChatGPT 各自重写 initialize 跑自己的 write*.enable,基类这条 fwk 兜底分支
+        # 实际只服务 小艺 之外的兜底场景,保留不动。
+        if self._pcm_app == 'xiaoyi':
+            self._enable_dsp_audio_dump(device_sn, task_id=task_id, test_case_id=test_case_id)
+        else:
+            driver.shell("mount -o rw,remount /")
+            driver.shell("param set sys.audio.dump.writeserver.enable w")
+            driver.shell("param set sys.audio.dump.writehdi.enable w")
+            driver.shell("param set sys.audio.dump.writeclient.enable a")
+            driver.shell("chmod 777 /data/local/tmp")
         # 清空闹钟(ALARM_CLOCK 表),避免测试中途闹钟响铃打断用例
         self._clear_alarms(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 清理设备上残留的 pcm 缓存(防止上个用例 teardown 失败残留干扰本轮)
         self._clear_pcm(device_sn, app=self._pcm_app,
                         task_id=task_id, test_case_id=test_case_id)
+        if self._pcm_app == 'xiaoyi':
+            # DSP 层 audio_hook 也要清(防止上轮残留干扰本轮基线)
+            self._clear_dsp_audio_hook(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 点开小艺聊天窗口
         # 注:08-17 fdb087a43 曾注掉此段(假设窗口已开只点通话按钮),
         # 但实测窗口常不在前台→pre_process 通话 SymbolGlyph 找不到→小艺没打开,故解回。
@@ -905,15 +1153,18 @@ class Xiaoyilivechat(HarmonyDriver):
         self._clear_alarms(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 清理 pcm 缓存: round 每轮清(上轮拉取后残留)、case 仅首轮清(中间轮不能清,
         # 会破坏连续通话已积累的音频)。打断轮不清(pcm 可能仍在写入/尚未拉取)。
-        # 时序安全: 正常轮 post_process 用 _wait_ai_reply_end_via_pcm 等 AI 说完(8s 静默)才返回,
+        # 时序安全: 正常轮 post_process 用 UI 文案(说话可打断/正在听…)等 AI 说完才返回,
         # 到 get_results 时 AI 的 dump 文件已关闭;此处又先停了音乐,故清的是已关闭文件,不会
-        # "写入中清空"(224bf94c 当初注释根因:旧 UI 文案检测误判"结束"→文件还在写就清;改 RMS 后消除)。
+        # "写入中清空"。
         # 残留风险: 若系统音频 dump(sys.audio.dump.write*)跨轮保持文件句柄常开,仍可能清坏——
         # 真机验证若再拉不到,改为清前 param set ...enable n 关 dump→rm→enable w 重开。
         is_interruption = kwargs.get('is_interruption') in (True, 'true', '1', 1)
         if (record_mode != 'case' or is_first) and not is_interruption:
             self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
                             task_id=task_id, test_case_id=test_case_id)
+            # 小艺 DSP 层 audio_hook 也要清(轮首清上轮残留)
+            if getattr(self, '_pcm_app', 'xiaoyi') == 'xiaoyi':
+                self._clear_dsp_audio_hook(device_sn, task_id=task_id, test_case_id=test_case_id)
         # ai PCM 首帧基准：必须在 _clear_pcm 之后快照,保证基线干净(清完残留再建基线)
         self._ai_first_frame_ms = None
         self._ai_pcm_size_base = self._snapshot_ai_pcm_sizes(
@@ -966,48 +1217,50 @@ class Xiaoyilivechat(HarmonyDriver):
                           f"detail_count={len(ts['detail']) if ts['detail'] else 0})",
                   task_id=task_id, test_case_id=test_case_id)
 
-        # 打断轮(is_interruption=True): 只等 AI 开始回复(阶段A, RMS>阈值)即放下一轮,
-        # 让打断发生在 AI 回复期间(真 barge-in)。不等 AI 说完(阶段B)。
+        # 打断轮(is_interruption=True):不等 AI 回复完成,直接收尾进入下一轮 pre_process
         if kwargs.get('is_interruption') in (True, 'true', '1', 1):
-            _status, _ = self._wait_ai_reply_start_via_pcm(
-                device_sn, task_id=task_id, test_case_id=test_case_id,
-                start_timeout=kwargs.get('ai_start_timeout', None))
-            replied = _status in ('fresh', 'ended')
-            self._log(level='INFO',
-                      content=f"[post_process] is_interruption,等AI开始回复(RMS)后延迟1s放下一轮(barge-in): status={_status}",
+            self._log(level='INFO', content='is_interruption=True,跳过等待 AI 回复完成,直接收尾',
                       task_id=task_id, test_case_id=test_case_id)
-            if not replied:
-                self.question_text = '小艺识别为空'
-                self.answer_text = '小艺回复为空'
+            replied = True
         else:
             # 检测 ai PCM 首帧(模型回复起始时刻,替代录屏 first_frame)
             self._ai_first_frame_ms = self._detect_ai_pcm_first_frame(
                 device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
                 task_id=task_id, test_case_id=test_case_id)
-            # 等 AI 回复完成: 基于 AI PCM 尾部 RMS 能量(双阶段+历史兜底),
-            # 不依赖控件文本(说话可打断/正在听…),后者在语音态透传性不稳定。
-            replied = self._wait_ai_reply_end_via_pcm(
-                device_sn, task_id=task_id, test_case_id=test_case_id)
+            # ===== 开始回复检测（UI 法）：等"说话可打断"控件消失=AI 开始说话 =====
+            replied = self._wait_for_condition(
+                lambda: driver.find_component(By.text("说话可打断")) is None,
+                timeout=300, interval=1,
+                operation_name='等待回复开始',
+            )
             if not replied:
                 self._log(level='INFO', content='小艺未回复', task_id=task_id, test_case_id=test_case_id)
                 self.question_text = '小艺识别为空'
                 self.answer_text = '小艺回复为空'
             else:
                 self._log(level='INFO', content='模型成功回复', task_id=task_id, test_case_id=test_case_id)
+                # ===== 结束回复检测（UI 法）：等"说话可打断"重现 + "正在听…"出现 =====
+                self._wait_for_condition(
+                    lambda: driver.find_component(By.text('说话可打断')),
+                    timeout=10, interval=1, operation_name="post_process_说话可打断"
+                )
+                self._wait_for_condition(
+                    lambda: driver.find_component(By.text('正在听…')),
+                    timeout=300, interval=1, operation_name="post_process_正在听"
+                )
         record_mode = getattr(self, '_record_mode', 'round')
         round_number = getattr(self, '_round_number', 0)
         total_rounds = getattr(self, '_total_rounds', 1)
         is_last = (total_rounds and round_number == total_rounds - 1)
 
-        # case 模式打断轮非末轮：检测到 AI 开始回复后延迟 1s 再进下一轮播放（可被停止/暂停打断）
-        # 让 AI 先说 1s 再被打断（真 barge-in 落在回复中段）
+        # case 模式打断轮非末轮：延迟 5s 再进下一轮播放（可被停止/暂停打断）
         if (kwargs.get('is_interruption') in (True, 'true', '1', 1)
-                and replied and record_mode == 'case' and not is_last):
+                and record_mode == 'case' and not is_last):
             self._log(level='INFO',
-                      content=f"[post_process] 检测到AI开始回复,等1s后进入下一轮播放: r{round_number}/{total_rounds}",
+                      content=f"打断轮结束,等待5s后进入下一轮播放: r{round_number}/{total_rounds}",
                       task_id=task_id, test_case_id=test_case_id)
-            for _ in range(2):  # 2 * 0.5s = 1s
-                if self._check_stop('AI回复后延迟1s'):
+            for _ in range(10):  # 10 * 0.5s = 5s
+                if self._check_stop('轮间延迟5s'):
                     return True
                 time.sleep(0.5)
 
@@ -1314,5 +1567,7 @@ class Xiaoyilivechat(HarmonyDriver):
         # 7. 清理 pcm 缓存(get_results 已拉取完毕,此处清设备残留,防止下个用例干扰)
         self._clear_pcm(device_sn, app=getattr(self, '_pcm_app', 'xiaoyi'),
                         task_id=task_id, test_case_id=test_case_id)
+        if getattr(self, '_pcm_app', 'xiaoyi') == 'xiaoyi':
+            self._clear_dsp_audio_hook(device_sn, task_id=task_id, test_case_id=test_case_id)
 
         return True
