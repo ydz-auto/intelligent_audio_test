@@ -1287,6 +1287,27 @@ class ReportUtils:
                 and m.get('name') is not None
                 and str(m.get('name')) in used_metric_names
             ]
+            # 补回有子维度被保留的主维度（主维度自身可能无值，但子维度有值）
+            parent_names_to_preserve = set()
+            for m in all_metrics_items:
+                if not isinstance(m, dict):
+                    continue
+                dim_type = m.get('dimension_type')
+                parent_name = m.get('parent_dimension_name')
+                if dim_type == 'sub' and parent_name:
+                    if str(parent_name) not in {
+                        str(fm.get('name')) for fm in filtered_all_metrics_items
+                        if isinstance(fm, dict) and fm.get('name') is not None
+                    }:
+                        parent_names_to_preserve.add(str(parent_name))
+            if parent_names_to_preserve:
+                for m in all_metrics_items:
+                    if (isinstance(m, dict)
+                            and m.get('dimension_type') == 'main'
+                            and m.get('name') is not None
+                            and str(m.get('name')) in parent_names_to_preserve):
+                        if m not in filtered_all_metrics_items:
+                            filtered_all_metrics_items.append(m)
 
         metric_name_to_id = ReportUtils._build_metric_name_id_map(filtered_all_metrics_items)
         

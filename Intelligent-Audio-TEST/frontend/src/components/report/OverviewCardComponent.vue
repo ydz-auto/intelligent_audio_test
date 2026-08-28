@@ -267,8 +267,9 @@ const tableData = computed(() => {
   // 按主维度分组，子维度归入父维度组
   const groupMap = new Map()
   actualAllMetrics.value.forEach(metric => {
-    const dimType = metric.dimension_type || 'main'
-    const parentName = metric.parent_dimension_name
+    // 兼容 camelCase（API 序列化后）和 snake_case（原始格式）
+    const dimType = metric.dimension_type || metric.dimensionType || 'main'
+    const parentName = metric.parent_dimension_name || metric.parentDimensionName
     const groupKey = (dimType === 'sub' && parentName) ? parentName : metric.name
     if (!groupMap.has(groupKey)) {
       groupMap.set(groupKey, { label: groupKey, main: null, subs: [] })
@@ -291,8 +292,10 @@ const tableData = computed(() => {
   const rows = []
   let rowSeq = 0
   groups.forEach(group => {
-    // 仅当组内有子维度时才插入分组标题行，避免主维度自身重复
-    if (group.subs.length > 0) {
+    // 当主维度名与分组名相同时，主维度行直接作为分组标题行，避免同名重复行
+    const mainIsHeader = group.main && group.main.name === group.label
+    // 仅当组内有子维度且主维度名与分组名不同时，才插入独立分组标题行
+    if (group.subs.length > 0 && !mainIsHeader) {
       const headerRow = { _rowId: `hdr_${rowSeq++}`, dimension: group.label, isGroupHeader: true }
       devices.value.forEach((device, index) => {
         headerRow[`device-${index}`] = ''
@@ -301,7 +304,7 @@ const tableData = computed(() => {
     }
     // 主维度行
     if (group.main) {
-      const row = { _rowId: `main_${rowSeq++}`, dimension: group.main.name, isSubDim: false }
+      const row = { _rowId: `main_${rowSeq++}`, dimension: group.main.name, isSubDim: false, isGroupHeader: mainIsHeader }
       const unit = group.main.unit || ''
       devices.value.forEach((device, index) => {
         row[`device-${index}`] = formatMetricValue(group.main.name, getAverageValue(group.main.name, device)) + unit

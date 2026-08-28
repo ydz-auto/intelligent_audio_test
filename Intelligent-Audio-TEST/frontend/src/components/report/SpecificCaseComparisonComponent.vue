@@ -1050,12 +1050,12 @@ function toMetricsMap(caseItem) {
         if (Array.isArray(group.metrics)) {
           group.metrics.forEach(m => {
             if (!m || !m.metric) return
-            // 保留维度层级信息
+            // 保留维度层级信息（兼容 camelCase 和 snake_case）
             map[resource][m.metric] = {
               value: m.value,
-              dimension_type: m.dimension_type || 'main',
-              parent_dimension_id: m.parent_dimension_id ?? null,
-              parent_dimension_name: m.parent_dimension_name ?? null
+              dimension_type: m.dimension_type || m.dimensionType || 'main',
+              parent_dimension_id: m.parent_dimension_id ?? m.parentDimensionId ?? null,
+              parent_dimension_name: m.parent_dimension_name ?? m.parentDimensionName ?? null
             }
           })
         }
@@ -1067,9 +1067,9 @@ function toMetricsMap(caseItem) {
         if (!m || !m.metric) return
         flatMap[m.metric] = {
           value: m.value,
-          dimension_type: m.dimension_type || 'main',
-          parent_dimension_id: m.parent_dimension_id ?? null,
-          parent_dimension_name: m.parent_dimension_name ?? null
+          dimension_type: m.dimension_type || m.dimensionType || 'main',
+          parent_dimension_id: m.parent_dimension_id ?? m.parentDimensionId ?? null,
+          parent_dimension_name: m.parent_dimension_name ?? m.parentDimensionName ?? null
         }
       })
       result = flatMap
@@ -1456,9 +1456,9 @@ const prepareComparisonData = (caseItem) => {
         result[metricName] = {
           metric: metricName,
           value: info.value,
-          dimension_type: info.dimension_type || 'main',
-          parent_dimension_id: info.parent_dimension_id ?? null,
-          parent_dimension_name: info.parent_dimension_name ?? null
+          dimension_type: info.dimension_type || info.dimensionType || 'main',
+          parent_dimension_id: info.parent_dimension_id ?? info.parentDimensionId ?? null,
+          parent_dimension_name: info.parent_dimension_name ?? info.parentDimensionName ?? null
         }
       } else {
         // 旧格式：直接是数值

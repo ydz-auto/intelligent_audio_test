@@ -927,8 +927,10 @@ const currentRoundTableData = computed(() => {
   const rows = [];
   let rowSeq = 0;
   groupedMetricsForCurrentRound.value.forEach(group => {
-    // 仅当组内有子维度时才插入分组标题行，避免主维度自身重复
-    if (group.subItems.length > 0) {
+    // 当主维度名与分组名相同时，主维度行直接作为分组标题行，避免同名重复行
+    const mainItemIsHeader = group.mainItem && group.mainItem.base === group.groupLabel;
+    // 仅当组内有子维度且主维度名与分组名不同时，才插入独立分组标题行
+    if (group.subItems.length > 0 && !mainItemIsHeader) {
       const headerRow = {
         _rowId: `hdr_${rowSeq++}`,
         metricName: group.groupLabel,
@@ -945,6 +947,8 @@ const currentRoundTableData = computed(() => {
         _rowId: `main_${rowSeq++}`,
         metricName: group.mainItem.base,
         isSubDim: false,
+        // 主维度名与分组名相同时，主维度行兼作分组标题
+        isGroupHeader: mainItemIsHeader,
       };
       props.devices.forEach((device, index) => {
         row[`device-${index}`] = getMetricValue(device, group.mainItem.metricKey);
