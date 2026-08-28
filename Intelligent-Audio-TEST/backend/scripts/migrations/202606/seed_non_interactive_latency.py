@@ -64,7 +64,7 @@ DIMENSIONS = [
         'result_type': 1,
         'result_min': 0.0,
         'result_max': None,
-        'decimal_places': 3,
+        'decimal_places': 2,
         'weight': 1,
         'estimated_exec_time': 10,
         'score_unit': 's',

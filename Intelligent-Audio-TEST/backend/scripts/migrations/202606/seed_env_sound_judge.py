@@ -159,7 +159,7 @@ DIMENSIONS = [
         'result_type': 1,  # 文本型，LLM 裁判输出为 JSON，evaluations 为 main
         'result_min': 0.0,
         'result_max': 0.0,
-        'decimal_places': 0,
+        'decimal_places': 2,
         'weight': 1,
         'estimated_exec_time': 120,  # LLM 调用
         'score_unit': '',
@@ -183,7 +183,7 @@ DIMENSIONS = [
         'result_type': 1,
         'result_min': 0.0,
         'result_max': 0.0,
-        'decimal_places': 0,
+        'decimal_places': 2,
         'weight': 1,
         'estimated_exec_time': 120,
         'score_unit': '',
