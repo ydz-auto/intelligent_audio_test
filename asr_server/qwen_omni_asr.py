@@ -126,13 +126,6 @@ def call_qwen_omni_asr(wav_path: str) -> Dict[str, Any]:
         user_content = [
             {'type': 'input_audio', 'input_audio': {'data': audio_data}},
         ]
-    elif is_omni and not is_dashscope:
-        # omni 模型在第三方代理上不支持 input_audio 格式，
-        # 改用 image_url + data URI 方式发送音频（与 llm_judge_calculator.py 一致）
-        user_content = [
-            {'type': 'image_url', 'image_url': {'url': audio_data}},
-            {'type': 'text', 'text': ASR_PROMPT},
-        ]
     else:
         # omni 模型在百炼 DashScope / 其他多模态模型：input_audio + 文本 prompt
         user_content = [

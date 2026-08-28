@@ -161,10 +161,9 @@ def call_modelscope_asr(wav_path, language=None):
 
 def call_modelscope_asr_word(wav_path, language=None):
     """
-    调用第三方 qwen3.5-omni-plus 模型进行 ASR 转写（词级时间戳）。
+    调用远程 ASR 服务的 /asr_word 端点（Paraformer 词级时间戳）。
 
     用于 false_takeover 等需要词级粒度的指标。
-    模型配置从 asr_server/.env 读取（QWEN_OMNI_* 环境变量）。
 
     Returns:
         [result] 形式，result = {"text": "...", "chunks": [{"text": "字", "timestamp": [start_s, end_s]}, ...]}
@@ -173,15 +172,22 @@ def call_modelscope_asr_word(wav_path, language=None):
         logger.error(f"wav 文件不存在: {wav_path}")
         return [{'text': '', 'chunks': []}]
 
-    if call_qwen_omni_asr is None:
-        raise RuntimeError("qwen_omni_asr 模块未成功导入，无法调用第三方 ASR")
+    url = f"{ASR_SERVER_URL}/asr_word"
+    logger.info(f"调用远程 ASR(词级): {url}  wav={wav_path}")
 
-    logger.info(f"调用 qwen3.5-omni-plus ASR: wav={wav_path}")
-    t0 = time.time()
-    result = call_qwen_omni_asr(wav_path)
-    elapsed = time.time() - t0
+    with open(wav_path, "rb") as f:
+        files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
+        t0 = time.time()
+        resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
+        elapsed = time.time() - t0
 
-    logger.info(f"qwen3.5-omni-plus ASR 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 字): {result.get('text', '')[:80]}")
+    if resp.status_code != 200:
+        raise RuntimeError(
+            f"远程 ASR(词级) 返回错误 {resp.status_code}: {resp.text}"
+        )
+
+    result = resp.json()
+    logger.info(f"远程 ASR(词级) 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 字): {result.get('text', '')[:80]}")
 
     # 落盘：保存词级 ASR 结果 JSON（目录结构保留 pcm_case/pcm_case/{case_id}/{session_id}）
     _save_asr_json(result, wav_path)
