@@ -97,25 +97,25 @@ export function useEvaluation() {
     loading.value = true;
     error.value = null;
     try {
-      const params : Record<string, any> = {page: currentPage.value, perPage: pageSize.value, search: searchKeyword.value};
-      
+      const params : Record<string, any> = {page: 1, perPage: 1000, search: searchKeyword.value};
+
       if (filterStatus.value !== 'all') {
         params.status = filterStatus.value === 'active';
       }
-      
+
       if (filterCategory.value !== 'all') {
         params.categoryId = filterCategory.value;
       }
-      
+
       const [dimsData, catsData, algosData] = await Promise.all([
         evaluationApi.getAll(params),
         evaluationApi.getCategories(),
         algorithmApi.getOptions()
       ]);
-      
+
       dimensions.value = dimsData?.items || [];
-      totalItems.value = dimsData?.total || 0;
-      totalPages.value = dimsData?.pages || 0;
+      totalItems.value = dimsData?.total || dimensions.value.length;
+      totalPages.value = dimsData?.pages || 1;
       categories.value = catsData?.items || [];
       algorithms.value = (algosData?.algorithms || []).map((algo: any) => ({
         value: algo.value,

@@ -85,95 +85,96 @@
             </div>
           </div>
           <div class="card-body">
-            <div class="table-container">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th class="checkbox-column" style="width: 50px;">
-                      <input type="checkbox" id="selectAll" v-model="isAllSelected" @change="toggleSelectAll">
-                    </th>
-                    <th class="dimension-name-col sortable" style="width: 200px;">维度名称</th>
-                    <th class="dimension-description-col" style="width: 250px;">描述</th>
-                    <th class="dimension-category-col sortable" style="width: 120px;">分类</th>
-                    <th class="dimension-algorithms-col" style="width: 180px;">关联算法</th>
-                    <th class="dimension-weight-col sortable" style="width: 150px;">权重</th>
-                    <th class="dimension-api-status-col sortable" style="width: 120px;">API状态</th>
-                    <th class="dimension-status-col sortable" style="width: 100px;">状态</th>
-                    <th class="dimension-actions-col" style="width: auto;">操作</th>
-                  </tr>
-                </thead>
-                <tbody id="dimensionsTable">
-                  <tr v-for="dimension in hierarchicalDimensions" :key="dimension.id" :class="{ 'sub-dimension-row': dimension._level === 1 }" @click="toggleDimensionSelection(dimension.id)">
-                    <td class="checkbox-column"><input type="checkbox" class="dimension-checkbox" v-model="selectedDimensions" :value="dimension.id" @click.stop></td>
-                    <td class="dimension-name-col" @click.stop="openEditModal(dimension.id)">
-                      <div class="dimension-name-cell" :style="{ paddingLeft: dimension._level === 1 ? '28px' : '0' }">
-                        <span v-if="dimension._level === 1" class="tree-branch">└</span>
-                        <span class="dimension-type-badge" :class="dimension._isMain ? 'main-dim-badge' : 'sub-dim-badge'">
-                          {{ dimension._isMain ? '主' : '子' }}
-                        </span>
-                        <span class="dimension-name-text">{{ dimension.name }}</span>
-                        <span v-if="dimension._level === 1 && dimension._parentName" class="parent-name-hint">（{{ dimension._parentName }}）</span>
-                      </div>
-                    </td>
-                    <td class="dimension-description-col text-truncate" :title="dimension.description">{{ dimension.description || '-' }}</td>
-                    <td class="dimension-category-col">{{ dimension.category || dimension.type }}</td>
-                    <td class="dimension-algorithms-col">
-                      <div class="algorithm-tags" v-if="dimension.associatedAlgorithms && dimension.associatedAlgorithms.length > 0">
-                        <span class="algo-tag" v-for="algo in dimension.associatedAlgorithms" :key="algo.algorithmType" :class="{ 'is-default': algo.isDefault }">
-                          {{ getAlgorithmLabel(algo.algorithmType) }}
-                        </span>
-                      </div>
-                      <span v-else class="text-muted">-</span>
-                    </td>
-                    <td class="dimension-weight-col">
-                      <div class="weight-control">
-                        <input type="range" class="weight-slider" min="1" max="10" v-model="dimension.weight" @input="updateWeight(dimension.id, dimension.weight)" @click.stop>
-                        <span class="weight-value">{{ dimension.weight }}</span>
-                      </div>
-                    </td>
-                    <td class="dimension-api-status-col">
-                      <span v-if="isLlmJudge(dimension)" class="api-status llm-judge">
-                        <i class="fas fa-robot"></i> LLM Judge
-                      </span>
-                      <span v-else class="api-status" :class="dimension.apiStatus">
-                        <i class="fas fa-circle" :class="dimension.apiStatus === 'online' ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.apiStatus === 'online' ? '在线' : '离线' }}
-                      </span>
-                    </td>
-                    <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
-                    <td class="dimension-actions-col">
-                      <div class="action-buttons">
-                        <button class="btn btn-text btn-primary" @click.stop="openEditModal(dimension.id)">
-                          <i class="fas fa-edit btn-icon"></i>
-                          编辑
-                        </button>
-                        <button class="btn btn-text btn-info" @click.stop="testApiHealth(dimension.id)">
-                          <i class="fas fa-heartbeat btn-icon"></i>
-                          测试API
-                        </button>
-                        <button class="btn btn-text btn-danger" @click.stop="deleteDimension(dimension.id)">
-                          <i class="fas fa-trash btn-icon"></i>
-                          删除
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <InfiniteScrollList
+              :items="hierarchicalDimensions"
+              :page-size="pageSize"
+              :loading="loading"
+            >
+              <template #default="{ items }">
+                <div class="table-container">
+                  <table class="data-table">
+                    <thead>
+                      <tr>
+                        <th class="checkbox-column" style="width: 50px;">
+                          <input type="checkbox" id="selectAll" v-model="isAllSelected" @change="toggleSelectAll">
+                        </th>
+                        <th class="dimension-name-col sortable" style="width: 200px;">维度名称</th>
+                        <th class="dimension-description-col" style="width: 250px;">描述</th>
+                        <th class="dimension-category-col sortable" style="width: 120px;">分类</th>
+                        <th class="dimension-algorithms-col" style="width: 180px;">关联算法</th>
+                        <th class="dimension-weight-col sortable" style="width: 150px;">权重</th>
+                        <th class="dimension-api-status-col sortable" style="width: 120px;">API状态</th>
+                        <th class="dimension-status-col sortable" style="width: 100px;">状态</th>
+                        <th class="dimension-actions-col" style="width: auto;">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody id="dimensionsTable">
+                      <tr v-for="dimension in items" :key="dimension.id" :class="{ 'sub-dimension-row': dimension._level === 1 }" @click="toggleDimensionSelection(dimension.id)">
+                        <td class="checkbox-column"><input type="checkbox" class="dimension-checkbox" v-model="selectedDimensions" :value="dimension.id" @click.stop></td>
+                        <td class="dimension-name-col" @click.stop="openEditModal(dimension.id)">
+                          <div class="dimension-name-cell" :style="{ paddingLeft: dimension._level === 1 ? '28px' : '0' }">
+                            <span v-if="dimension._level === 1" class="tree-branch">└</span>
+                            <span class="dimension-type-badge" :class="dimension._isMain ? 'main-dim-badge' : 'sub-dim-badge'">
+                              {{ dimension._isMain ? '主' : '子' }}
+                            </span>
+                            <span class="dimension-name-text">{{ dimension.name }}</span>
+                            <span v-if="dimension._level === 1 && dimension._parentName" class="parent-name-hint">（{{ dimension._parentName }}）</span>
+                          </div>
+                        </td>
+                        <td class="dimension-description-col text-truncate" :title="dimension.description">{{ dimension.description || '-' }}</td>
+                        <td class="dimension-category-col">{{ dimension.category || dimension.type }}</td>
+                        <td class="dimension-algorithms-col">
+                          <div class="algorithm-tags" v-if="dimension.associatedAlgorithms && dimension.associatedAlgorithms.length > 0">
+                            <span class="algo-tag" v-for="algo in dimension.associatedAlgorithms" :key="algo.algorithmType" :class="{ 'is-default': algo.isDefault }">
+                              {{ getAlgorithmLabel(algo.algorithmType) }}
+                            </span>
+                          </div>
+                          <span v-else class="text-muted">-</span>
+                        </td>
+                        <td class="dimension-weight-col">
+                          <div class="weight-control">
+                            <input type="range" class="weight-slider" min="1" max="10" v-model="dimension.weight" @input="updateWeight(dimension.id, dimension.weight)" @click.stop>
+                            <span class="weight-value">{{ dimension.weight }}</span>
+                          </div>
+                        </td>
+                        <td class="dimension-api-status-col">
+                          <span v-if="isLlmJudge(dimension)" class="api-status llm-judge">
+                            <i class="fas fa-robot"></i> LLM Judge
+                          </span>
+                          <span v-else class="api-status" :class="dimension.apiStatus">
+                            <i class="fas fa-circle" :class="dimension.apiStatus === 'online' ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.apiStatus === 'online' ? '在线' : '离线' }}
+                          </span>
+                        </td>
+                        <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
+                        <td class="dimension-actions-col">
+                          <div class="action-buttons">
+                            <button class="btn btn-text btn-primary" @click.stop="openEditModal(dimension.id)">
+                              <i class="fas fa-edit btn-icon"></i>
+                              编辑
+                            </button>
+                            <button class="btn btn-text btn-info" @click.stop="testApiHealth(dimension.id)">
+                              <i class="fas fa-heartbeat btn-icon"></i>
+                              测试API
+                            </button>
+                            <button class="btn btn-text btn-danger" @click.stop="deleteDimension(dimension.id)">
+                              <i class="fas fa-trash btn-icon"></i>
+                              删除
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </template>
+              <template #empty>
+                <div class="empty-dimensions">
+                  <i class="fas fa-inbox"></i>
+                  <p>暂无评估维度数据</p>
+                </div>
+              </template>
+            </InfiniteScrollList>
           </div>
-        </div>
-        <!-- 分页控件 - 显示在卡片下方 -->
-        <div class="pagination-container">
-          <pagination-component 
-            :current-page="currentPage"
-            :page-size="pageSize"
-            :total-items="totalItems"
-            :total-pages="totalPages"
-            @prev-page="prevPage"
-            @next-page="nextPage"
-            @go-to-page="goToPage"
-            @page-size-change="onPageSizeChange"
-          ></pagination-component>
         </div>
       </section>
     </div>
@@ -187,8 +188,8 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 // 只导入主样式文件，所有组件样式已包含在main.css中
 import '../assets/styles/main.css';
 
-// 导入分页组件
-import PaginationComponent from '../components/common/PaginationComponent.vue';
+// 导入滚动加载分页组件
+import InfiniteScrollList from '../components/common/InfiniteScrollList.vue';
 
 // 导入API
 import { evaluationApi } from '../utils/api';
@@ -203,7 +204,6 @@ const {
   filterStatus,
   filterCategory,
   selectedDimensions,
-  currentPage,
   pageSize,
   dimensions,
   newDimension,
@@ -217,8 +217,6 @@ const {
   editingDimension,
   filteredDimensions,
   hierarchicalDimensions,
-  totalPages,
-  totalItems,
   isAllSelected,
   saveDimension,
   deleteDimension,
@@ -234,7 +232,6 @@ const {
   searchDimensions,
   filterDimensions,
   resetFilters,
-  onPageSizeChange,
   previewImportData,
   handleImport,
   saveAPISettings,
@@ -244,9 +241,6 @@ const {
   toggleSelectAllInCategory,
   deleteGroup,
   saveCategory,
-  prevPage,
-  nextPage,
-  goToPage,
   fetchData,
   getAlgorithmLabel,
   // 模态框操作函数
@@ -641,5 +635,31 @@ select.form-input.filter-select:focus {
   font-size: 12px;
   color: var(--text-light, #999);
   white-space: nowrap;
+}
+
+.empty-dimensions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: #64748b;
+  background-color: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.empty-dimensions i {
+  font-size: 32px;
+  margin-bottom: 12px;
+  color: #94a3b8;
+}
+
+.empty-dimensions p {
+  margin: 0;
+  font-size: 15px;
 }
 </style>

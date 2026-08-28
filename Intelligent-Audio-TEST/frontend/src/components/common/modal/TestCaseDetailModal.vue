@@ -13,14 +13,14 @@
     
     <div v-else class="detail-content">
       <div class="case-header-panel" style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
-        <h4 style="margin: 0 0 12px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+        <h4 style="margin: 0 0 8px 0; font-size: 18px; font-weight: var(--font-weight-semibold); color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
           <i class="fas fa-file-alt" style="color: var(--primary-color);"></i>
-          {{ detail.caseName }}
+          <span style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ detail.caseName }}</span>
         </h4>
+        <div style="margin-bottom: 12px;">
+          <CaseIdBadge :case-id="caseId" />
+        </div>
         <div class="case-meta" style="display: flex; gap: 20px; flex-wrap: wrap;">
-          <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
-            <CaseIdBadge :case-id="caseId" />
-          </div>
           <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
             <i class="fas fa-info-circle" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">状态: </span>
@@ -159,7 +159,8 @@ const preparedComparisonData = computed(() => {
           round_number: rn,
           dimension_type: d.dimension_type ?? d.dimensionType ?? 'main',
           parent_dimension_id: d.parent_dimension_id ?? d.parentDimensionId ?? null,
-          dimension_id: d.dimension_id ?? d.dimensionId ?? null
+          dimension_id: d.dimension_id ?? d.dimensionId ?? null,
+          parent_dimension_name: d.parent_dimension_name ?? d.parentDimensionName ?? null
         }
       })
     }

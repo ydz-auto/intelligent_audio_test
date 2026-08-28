@@ -1210,6 +1210,128 @@ class ReportUtils:
         return list(grouped.values())
     
     @staticmethod
+    def enrich_metrics_with_dim_hierarchy(all_metrics_items):
+        """为 all_metrics 列表补充维度富化字段（decimal_places / dimension_type /
+        parent_dimension_id / parent_dimension_name），供读取路径对旧报告做兼容补充。"""
+        if not isinstance(all_metrics_items, list):
+            return all_metrics_items
+        needs_enrich = any(
+            isinstance(m, dict)
+            and m.get('id') is not None
+            and (
+                ('decimal_places' not in m and 'decimalPlaces' not in m)
+                or 'dimension_type' not in m
+            )
+            for m in all_metrics_items
+        )
+        if not needs_enrich:
+            return all_metrics_items
+        ids = []
+        for m in all_metrics_items:
+            if not isinstance(m, dict):
+                continue
+            mid = m.get('id')
+            if mid is None:
+                continue
+            try:
+                ids.append(int(mid))
+            except Exception:
+                continue
+        if not ids:
+            return all_metrics_items
+        dims = Dimension.query.filter(Dimension.id.in_(list(set(ids)))).all()
+        id_to_dim = {}
+        for d in dims:
+            if getattr(d, 'id', None) is None:
+                continue
+            id_to_dim[int(d.id)] = {
+                'decimal_places': d.decimal_places if d.decimal_places is not None else 2,
+                'dimension_type': d.dimension_type or 'main',
+                'parent_dimension_id': d.parent_dimension_id,
+                'name': d.name
+            }
+        # id -> name 映射，用于补充 parent_dimension_name
+        id_to_name = {int(d.id): d.name for d in dims if getattr(d, 'id', None) is not None}
+        for m in all_metrics_items:
+            if not isinstance(m, dict):
+                continue
+            mid = m.get('id')
+            try:
+                mid_int = int(mid)
+            except Exception:
+                continue
+            info = id_to_dim.get(mid_int)
+            if not info:
+                continue
+            if 'decimal_places' not in m and 'decimalPlaces' not in m:
+                m['decimal_places'] = info['decimal_places']
+            if 'dimension_type' not in m:
+                m['dimension_type'] = info['dimension_type']
+            if 'parent_dimension_id' not in m:
+                m['parent_dimension_id'] = info['parent_dimension_id']
+            if 'parent_dimension_name' not in m:
+                m['parent_dimension_name'] = id_to_name.get(info['parent_dimension_id']) if info['parent_dimension_id'] else None
+        return all_metrics_items
+
+    @staticmethod
+    def enrich_case_metrics_with_dim_hierarchy(metrics):
+        """为用例 metrics 补充维度层级字段（dimension_type / parent_dimension_id /
+        parent_dimension_name），兼容旧报告存量数据。
+        支持两种格式：
+        - 新格式: [{resource, metrics: [{id, metric, value, ...}]}]
+        - 旧格式: {resource: {dim_name: value}}（无法注入字段，原样返回）
+        """
+        if not isinstance(metrics, list):
+            return metrics
+        # 收集所有 metric 名称
+        names = set()
+        for group in metrics:
+            if not isinstance(group, dict):
+                continue
+            items = group.get('metrics')
+            if not isinstance(items, list):
+                continue
+            for m in items:
+                if isinstance(m, dict) and m.get('metric') is not None:
+                    names.add(str(m.get('metric')))
+        if not names:
+            return metrics
+        # 检测是否已含层级字段
+        need_enrich = False
+        for group in metrics:
+            if not isinstance(group, dict):
+                continue
+            for m in (group.get('metrics') or []):
+                if isinstance(m, dict) and 'dimension_type' not in m:
+                    need_enrich = True
+                    break
+            if need_enrich:
+                break
+        if not need_enrich:
+            return metrics
+        dims = Dimension.query.filter(Dimension.name.in_(list(names))).all()
+        name_to_dim = {d.name: d for d in dims if getattr(d, 'id', None) is not None}
+        id_to_name = {int(d.id): d.name for d in dims if getattr(d, 'id', None) is not None}
+        for group in metrics:
+            if not isinstance(group, dict):
+                continue
+            for m in (group.get('metrics') or []):
+                if not isinstance(m, dict):
+                    continue
+                if 'dimension_type' in m:
+                    continue
+                d = name_to_dim.get(str(m.get('metric')))
+                if not d:
+                    m['dimension_type'] = 'main'
+                    m['parent_dimension_id'] = None
+                    m['parent_dimension_name'] = None
+                    continue
+                m['dimension_type'] = d.dimension_type or 'main'
+                m['parent_dimension_id'] = d.parent_dimension_id
+                m['parent_dimension_name'] = id_to_name.get(d.parent_dimension_id) if d.parent_dimension_id else None
+        return metrics
+
+    @staticmethod
     def normalize_summary_metrics(summary):
         if not isinstance(summary, dict):
             return {}
@@ -1220,44 +1342,8 @@ class ReportUtils:
         tag_id_to_name = ReportUtils._build_id_name_map(tag_items)
         all_metrics_items = summary.get('all_metrics') or summary.get('allMetrics') or []
         if isinstance(all_metrics_items, list):
-            needs_decimal_places = any(
-                isinstance(m, dict)
-                and m.get('id') is not None
-                and ('decimal_places' not in m and 'decimalPlaces' not in m)
-                for m in all_metrics_items
-            )
-            if needs_decimal_places:
-                ids = []
-                for m in all_metrics_items:
-                    if not isinstance(m, dict):
-                        continue
-                    mid = m.get('id')
-                    if mid is None:
-                        continue
-                    try:
-                        ids.append(int(mid))
-                    except Exception:
-                        continue
-                if ids:
-                    dims = Dimension.query.filter(Dimension.id.in_(list(set(ids)))).all()
-                    id_to_decimal_places = {
-                        int(d.id): (d.decimal_places if d.decimal_places is not None else 2)
-                        for d in dims
-                        if getattr(d, 'id', None) is not None
-                    }
-                    for m in all_metrics_items:
-                        if not isinstance(m, dict):
-                            continue
-                        if 'decimal_places' in m or 'decimalPlaces' in m:
-                            continue
-                        mid = m.get('id')
-                        try:
-                            mid_int = int(mid)
-                        except Exception:
-                            continue
-                        if mid_int in id_to_decimal_places:
-                            m['decimal_places'] = id_to_decimal_places[mid_int]
-        
+            ReportUtils.enrich_metrics_with_dim_hierarchy(all_metrics_items)
+
         raw_data_flat = ReportUtils.flatten_raw_data(summary.get('raw_data') or summary.get('rawData'))
         used_metric_names = set()
         for item in raw_data_flat:

@@ -463,18 +463,22 @@ class TaskController:
                     api_name = api.name
 
             # 获取每个结果的维度得分（含主维度/子维度层级信息）
+            ParentDim = db.aliased(Dimension)
             dimensions = db.session.query(
                 TestResultDimension, Dimension.name,
                 Dimension.dimension_type, Dimension.parent_dimension_id,
-                Dimension.id.label('dim_table_id')
+                Dimension.id.label('dim_table_id'),
+                ParentDim.name.label('parent_dim_name')
             ).join(
                 Dimension, TestResultDimension.dimension_id == Dimension.id
+            ).outerjoin(
+                ParentDim, Dimension.parent_dimension_id == ParentDim.id
             ).filter(
                 TestResultDimension.test_result_id == result.id
             ).all()
 
             dim_data = []
-            for dim, dim_name, dim_type, parent_dim_id, dim_table_id in dimensions:
+            for dim, dim_name, dim_type, parent_dim_id, dim_table_id, parent_dim_name in dimensions:
                 dim_data.append({
                     "id": dim.id,
                     "name": dim_name,
@@ -486,7 +490,8 @@ class TaskController:
                     "round_number": getattr(dim, 'round_number', None),
                     "dimension_type": dim_type or 'main',
                     "parent_dimension_id": parent_dim_id,
-                    "dimension_id": dim_table_id
+                    "dimension_id": dim_table_id,
+                    "parent_dimension_name": parent_dim_name
                 })
 
             full_result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
@@ -710,18 +715,22 @@ class TaskController:
                 if api:
                     api_name = api.name
 
+            ParentDim = db.aliased(Dimension)
             dimensions = db.session.query(
                 TestResultDimension, Dimension.name,
                 Dimension.dimension_type, Dimension.parent_dimension_id,
-                Dimension.id.label('dim_table_id')
+                Dimension.id.label('dim_table_id'),
+                ParentDim.name.label('parent_dim_name')
             ).join(
                 Dimension, TestResultDimension.dimension_id == Dimension.id
+            ).outerjoin(
+                ParentDim, Dimension.parent_dimension_id == ParentDim.id
             ).filter(
                 TestResultDimension.test_result_id == result.id
             ).all()
 
             dim_data = []
-            for dim, dim_name, dim_type, parent_dim_id, dim_table_id in dimensions:
+            for dim, dim_name, dim_type, parent_dim_id, dim_table_id, parent_dim_name in dimensions:
                 dim_data.append({
                     "id": dim.id,
                     "name": dim_name,
@@ -733,7 +742,8 @@ class TaskController:
                     "round_number": getattr(dim, 'round_number', None),
                     "dimension_type": dim_type or 'main',
                     "parent_dimension_id": parent_dim_id,
-                    "dimension_id": dim_table_id
+                    "dimension_id": dim_table_id,
+                    "parent_dimension_name": parent_dim_name
                 })
 
             # 兼容历史双重序列化数据：algorithm_result 可能是 str

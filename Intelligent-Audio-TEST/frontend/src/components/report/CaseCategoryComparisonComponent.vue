@@ -812,7 +812,7 @@ const displayTypes = ref([
   { type: 'distribution', label: '正态分布图', icon: 'fas fa-chart-area' }
 ])
 
-const activeDisplayType = ref('distribution') // 临时改为 distribution 用于调试
+const activeDisplayType = ref('table')
 
 // 导出模式：强制使用表格模式（canvas 图表无法克隆到静态 HTML）
 watch(isExporting, (exporting) => {

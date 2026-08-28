@@ -32,11 +32,19 @@
           :min-column-width="60"
           :default-column-width="{ first: 200, others: 150 }"
           table-class="report-data-table"
-          row-key="dimension"
+          row-key="_rowId"
         >
           <!-- 自定义第一列（维度名称） -->
-          <template #cell-dimension="{ row, value }">
-            <span>{{ row.dimension }}</span>
+          <template #cell-dimension="{ row }">
+            <span
+              v-if="row.isGroupHeader"
+              class="dim-group-header"
+            >{{ row.dimension }}</span>
+            <span
+              v-else
+              class="dim-name"
+              :class="{ 'dim-sub': row.isSubDim }"
+            >{{ row.dimension }}</span>
           </template>
 
           <!-- 空状态 -->
@@ -256,19 +264,61 @@ const tableColumns = computed(() => {
 })
 
 const tableData = computed(() => {
-  return actualAllMetrics.value.map(metric => {
-    const row = {
-      dimension: metric.name
+  // 按主维度分组，子维度归入父维度组
+  const groupMap = new Map()
+  actualAllMetrics.value.forEach(metric => {
+    const dimType = metric.dimension_type || 'main'
+    const parentName = metric.parent_dimension_name
+    const groupKey = (dimType === 'sub' && parentName) ? parentName : metric.name
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, { label: groupKey, main: null, subs: [] })
     }
-
-    devices.value.forEach((device, index) => {
-      const metricObj = actualAllMetrics.value.find(m => m.name === metric.name)
-      const unit = metricObj?.unit || ''
-      row[`device-${index}`] = formatMetricValue(metric.name, getAverageValue(metric.name, device)) + unit
-    })
-
-    return row
+    const group = groupMap.get(groupKey)
+    if (dimType === 'main' || !parentName) {
+      if (!group.main) group.main = metric
+      else group.subs.push(metric)
+    } else {
+      group.subs.push(metric)
+    }
   })
+  // 子维度按名称排序，分组按名称排序
+  const groups = Array.from(groupMap.values()).sort((a, b) =>
+    a.label.localeCompare(b.label, 'zh')
+  )
+  groups.forEach(g => g.subs.sort((a, b) => a.name.localeCompare(b.name, 'zh')))
+
+  // 构建表格行：分组标题行 + 主维度行 + 子维度行（缩进）
+  const rows = []
+  let rowSeq = 0
+  groups.forEach(group => {
+    // 仅当组内有子维度时才插入分组标题行，避免主维度自身重复
+    if (group.subs.length > 0) {
+      const headerRow = { _rowId: `hdr_${rowSeq++}`, dimension: group.label, isGroupHeader: true }
+      devices.value.forEach((device, index) => {
+        headerRow[`device-${index}`] = ''
+      })
+      rows.push(headerRow)
+    }
+    // 主维度行
+    if (group.main) {
+      const row = { _rowId: `main_${rowSeq++}`, dimension: group.main.name, isSubDim: false }
+      const unit = group.main.unit || ''
+      devices.value.forEach((device, index) => {
+        row[`device-${index}`] = formatMetricValue(group.main.name, getAverageValue(group.main.name, device)) + unit
+      })
+      rows.push(row)
+    }
+    // 子维度行
+    group.subs.forEach(sub => {
+      const row = { _rowId: `sub_${rowSeq++}`, dimension: sub.name, isSubDim: true }
+      const unit = sub.unit || ''
+      devices.value.forEach((device, index) => {
+        row[`device-${index}`] = formatMetricValue(sub.name, getAverageValue(sub.name, device)) + unit
+      })
+      rows.push(row)
+    })
+  })
+  return rows
 })
 
 const metricDecimalPlacesMap = computed(() => {
@@ -385,6 +435,27 @@ const getAverageValue = (metricName, device) => {
 .overview-table-container {
   overflow-x: auto;
   width: 100%;
+}
+
+/* 维度层级样式 */
+.dim-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: #333;
+}
+
+.dim-name.dim-sub {
+  padding-left: 20px;
+  color: #595959;
+  font-weight: 400;
+}
+
+.dim-group-header {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--primary-color, #1677ff);
+  display: inline-block;
+  padding: 2px 0;
 }
 
 .empty-row {

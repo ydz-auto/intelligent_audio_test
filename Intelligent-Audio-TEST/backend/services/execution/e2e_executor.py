@@ -687,9 +687,10 @@ class E2EExecutor(BaseExecutor):
         )
 
         # 整体评估
-        # 检查是否有评估维度（从 rounds[].evaluation.dimensions 读单轮维度，从 config.dimensions 读多轮维度）
-        # 同时检查 evaluation.enabled 开关：enabled 为 False 时不提交评估
-        _has_dims = False
+        # _has_round_dims: 是否有单轮维度（用于判断是否需要聚合各轮分数）
+        # _has_overall_dims: 是否有顶层多轮聚合维度（用于判断是否需要提交 round_number=None 的整体评估）
+        _has_round_dims = False
+        _has_overall_dims = False
         if case_config:
             rounds = case_config.get('rounds', [])
             if rounds and isinstance(rounds, list):
@@ -700,16 +701,16 @@ class E2EExecutor(BaseExecutor):
                             if evaluation.get('enabled', True) is False:
                                 continue
                             if evaluation.get('dimensions'):
-                                _has_dims = True
+                                _has_round_dims = True
                                 break
-            if not _has_dims and case_config.get('dimensions'):
-                _has_dims = True
+            _has_overall_dims = bool(case_config.get('dimensions'))
 
-        if execution_success and _has_dims:
+        # 整体评估：仅当配置了顶层 config.dimensions（多轮聚合维度）时才提交
+        if execution_success and _has_overall_dims:
             _dims_log = json.dumps(
-                case_config.get('rounds', [{}])[0].get('evaluation', {}).get('dimensions', []),
+                case_config.get('dimensions', []),
                 ensure_ascii=False
-            )[:200] if case_config.get('rounds') else json.dumps(case_config.get('dimensions', []), ensure_ascii=False)[:200]
+            )[:200] if case_config else ''
             self._log(
                 level='INFO',
                 content=f"提交整体评估: result_id={result_id}, dimensions={_dims_log}",
@@ -725,8 +726,8 @@ class E2EExecutor(BaseExecutor):
                 reference_params_col=data.get('reference_params_col')
             )
 
-        # 聚合各轮评估分数到 algo_result（仅当有评估维度时才执行）
-        if _has_dims:
+        # 聚合各轮评估分数到 algo_result（仅当有单轮评估维度时才执行）
+        if _has_round_dims:
             self._aggregator.update_algorithm_result_evaluation(task_id, result_id)
 
         # 更新 TaskCase 状态

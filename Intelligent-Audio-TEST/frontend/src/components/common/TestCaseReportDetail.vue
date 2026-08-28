@@ -801,7 +801,9 @@ const getDimInfo = (k) => {
       const info = d.metrics[k];
       const dimType = info.dimension_type || 'main';
       const parentId = info.parent_dimension_id;
-      const parentName = parentId ? (dimIdToName.value[parentId] || '') : '';
+      // 优先使用后端直接返回的 parent_dimension_name，回退到 dimIdToName 映射
+      const parentName = info.parent_dimension_name
+        || (parentId ? (dimIdToName.value[parentId] || '') : '');
       return { dimType, parentName, parentId };
     }
   }
@@ -870,14 +872,23 @@ const groupedMetricsForCurrentRound = computed(() => {
   const items = keys.map(k => {
     const { base } = parseMetricKey(k);
     const info = getDimInfo(k);
-    return { key, base, ...info };
+    return { metricKey: k, base, ...info };
   });
 
   // 构建分组：主维度自身为一组，子维度归入父维度组
   // groupKey = 子维度用 parentName，主维度用自身 base
+  // 如果子维度的 parentName 为空（找不到父维度），则当作独立主维度处理
   const groupMap = new Map(); // groupKey -> { groupLabel, mainItem, subItems: [] }
   items.forEach(item => {
-    const groupKey = item.dimType === 'sub' ? item.parentName : item.base;
+    let effectiveType = item.dimType;
+    let groupKey;
+    if (item.dimType === 'sub' && item.parentName) {
+      groupKey = item.parentName;
+    } else {
+      // 主维度或没有父维度名的子维度 → 当作独立主维度
+      effectiveType = 'main';
+      groupKey = item.base;
+    }
     if (!groupMap.has(groupKey)) {
       groupMap.set(groupKey, {
         groupLabel: groupKey,
@@ -886,8 +897,13 @@ const groupedMetricsForCurrentRound = computed(() => {
       });
     }
     const group = groupMap.get(groupKey);
-    if (item.dimType === 'main') {
-      group.mainItem = item;
+    if (effectiveType === 'main') {
+      // 如果该组已有 mainItem（说明是空名子维度提升的），追加为子维度
+      if (group.mainItem) {
+        group.subItems.push(item);
+      } else {
+        group.mainItem = item;
+      }
     } else {
       group.subItems.push(item);
     }
@@ -906,21 +922,23 @@ const groupedMetricsForCurrentRound = computed(() => {
   return groups;
 });
 
-// 当前轮次的表格数据：在主维度组之间插入分组行
+// 当前轮次的表格数据：仅当组内有子维度时插入分组标题行
 const currentRoundTableData = computed(() => {
   const rows = [];
   let rowSeq = 0;
   groupedMetricsForCurrentRound.value.forEach(group => {
-    // 分组标题行（设备列留空）
-    const headerRow = {
-      _rowId: `hdr_${rowSeq++}`,
-      metricName: group.groupLabel,
-      isGroupHeader: true,
-    };
-    props.devices.forEach((device, index) => {
-      headerRow[`device-${index}`] = '';
-    });
-    rows.push(headerRow);
+    // 仅当组内有子维度时才插入分组标题行，避免主维度自身重复
+    if (group.subItems.length > 0) {
+      const headerRow = {
+        _rowId: `hdr_${rowSeq++}`,
+        metricName: group.groupLabel,
+        isGroupHeader: true,
+      };
+      props.devices.forEach((device, index) => {
+        headerRow[`device-${index}`] = '';
+      });
+      rows.push(headerRow);
+    }
     // 主维度行（如有）
     if (group.mainItem) {
       const row = {
@@ -929,7 +947,7 @@ const currentRoundTableData = computed(() => {
         isSubDim: false,
       };
       props.devices.forEach((device, index) => {
-        row[`device-${index}`] = getMetricValue(device, group.mainItem.key);
+        row[`device-${index}`] = getMetricValue(device, group.mainItem.metricKey);
       });
       rows.push(row);
     }
@@ -941,7 +959,7 @@ const currentRoundTableData = computed(() => {
         isSubDim: true,
       };
       props.devices.forEach((device, index) => {
-        row[`device-${index}`] = getMetricValue(device, sub.key);
+        row[`device-${index}`] = getMetricValue(device, sub.metricKey);
       });
       rows.push(row);
     });
@@ -1362,7 +1380,7 @@ watch(dimResultGroups, (newGroups) => {
   padding: 2px 0;
 }
 
-/* 轮次 Tab */
+/* 轮次 Tab — 与 dim-tab-bar.sub 风格一致 */
 .round-metrics-container {
   display: flex;
   flex-direction: column;
@@ -1371,33 +1389,37 @@ watch(dimResultGroups, (newGroups) => {
 
 .round-tab-bar {
   display: flex;
-  gap: 4px;
-  border-bottom: 2px solid var(--primary-color);
+  gap: 2px;
+  border-bottom: 1px solid #e8e8e8;
+  padding-left: 8px;
   flex-wrap: wrap;
 }
 
 .round-tab-btn {
-  padding: 5px 16px;
-  font-size: 13px;
+  padding: 4px 10px;
+  font-size: 12px;
   font-weight: 500;
-  border: 1px solid transparent;
+  border: 1px solid #e8e8e8;
   border-bottom: none;
+  margin-bottom: -1px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 4px 4px 0 0;
-  transition: all 0.2s;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .round-tab-btn:hover {
-  background: #f0f5ff;
-  color: var(--primary-color);
+  background: #fff5ef;
 }
 
 .round-tab-btn.active {
-  background: var(--primary-color);
-  color: white;
-  font-weight: 600;
+  background: rgba(255, 106, 0, 0.1);
+  color: #FF6A00;
+  border-color: rgba(255, 106, 0, 0.3);
+  font-weight: 500;
 }
 
 .dim-value {

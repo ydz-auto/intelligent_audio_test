@@ -212,6 +212,9 @@ class ReportControllerTask(ReportControllerBase):
                 all_dim_ids.add(dr.dimension_id)
         aux_params_map = ReportControllerTask._get_aux_params_batch(list(all_dim_ids))
 
+        # 维度ID→名称映射，用于补充 parent_dimension_name
+        dim_id_to_name = {dim.id: dim.name for dim in all_dimensions}
+
         cases = []
         
         for test_case in test_cases:
@@ -242,15 +245,18 @@ class ReportControllerTask(ReportControllerBase):
                 resource_metrics = []
                 for dim_name, dim_value in dim_values.items():
                     if dim_value is not None:
-                        dim_id = None
+                        dim_obj = None
                         for dim in all_dimensions:
                             if dim.name == dim_name:
-                                dim_id = dim.id
+                                dim_obj = dim
                                 break
                         resource_metrics.append({
-                            "id": dim_id,
+                            "id": dim_obj.id if dim_obj else None,
                             "metric": dim_name,
-                            "value": dim_value
+                            "value": dim_value,
+                            "dimension_type": dim_obj.dimension_type if dim_obj else 'main',
+                            "parent_dimension_id": dim_obj.parent_dimension_id if dim_obj else None,
+                            "parent_dimension_name": dim_id_to_name.get(dim_obj.parent_dimension_id) if dim_obj and dim_obj.parent_dimension_id else None
                         })
                 if resource_metrics:
                     resource_metrics_map[resource] = resource_metrics
@@ -662,6 +668,8 @@ class ReportControllerTask(ReportControllerBase):
 
     @staticmethod
     def _build_all_metrics(all_dimensions):
+        # 构建维度ID→名称映射，用于查找父维度名
+        dim_id_to_name = {dim.id: dim.name for dim in all_dimensions}
         all_metrics = []
         for dim in all_dimensions:
             statistic_method = dim.statistic_method or "average"
@@ -676,7 +684,10 @@ class ReportControllerTask(ReportControllerBase):
                 "name": dim.name,
                 "unit": unit,
                 "decimal_places": decimal_places,
-                "statistic_method": statistic_method
+                "statistic_method": statistic_method,
+                "dimension_type": dim.dimension_type or 'main',
+                "parent_dimension_id": dim.parent_dimension_id,
+                "parent_dimension_name": dim_id_to_name.get(dim.parent_dimension_id) if dim.parent_dimension_id else None
             })
         return all_metrics
 

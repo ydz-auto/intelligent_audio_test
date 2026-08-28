@@ -1050,7 +1050,13 @@ function toMetricsMap(caseItem) {
         if (Array.isArray(group.metrics)) {
           group.metrics.forEach(m => {
             if (!m || !m.metric) return
-            map[resource][m.metric] = m.value
+            // 保留维度层级信息
+            map[resource][m.metric] = {
+              value: m.value,
+              dimension_type: m.dimension_type || 'main',
+              parent_dimension_id: m.parent_dimension_id ?? null,
+              parent_dimension_name: m.parent_dimension_name ?? null
+            }
           })
         }
       })
@@ -1059,7 +1065,12 @@ function toMetricsMap(caseItem) {
       const flatMap = {}
       metrics.forEach(m => {
         if (!m || !m.metric) return
-        flatMap[m.metric] = m.value
+        flatMap[m.metric] = {
+          value: m.value,
+          dimension_type: m.dimension_type || 'main',
+          parent_dimension_id: m.parent_dimension_id ?? null,
+          parent_dimension_name: m.parent_dimension_name ?? null
+        }
       })
       result = flatMap
     }
@@ -1429,25 +1440,44 @@ const downloadCaseLogZip = async (caseItem) => {
 // 为 TestCaseReportDetail 准备数据
 const prepareComparisonData = (caseItem) => {
   const data = {}
-  const metricsMap = toMetricsMap(caseItem)  // 扁平格式: {WER: 63.0, wer_zh: 0.0}
+  const metricsMap = toMetricsMap(caseItem)
   const asrMap = toTextMap(caseItem.asr)
   const tranMap = toTextMap(caseItem.translation)
-  
+
   // 判断 metrics 是否是扁平格式（不在设备分组内）
   const isFlatFormat = !Object.keys(metricsMap).some(k => allDevices.value.includes(k))
-  
+
+  // 将 metric 对象 {value, dimension_type, ...} 转换为 TestCaseReportDetail 期望的格式
+  const buildMetricsEntry = (rawMetrics) => {
+    if (!rawMetrics || typeof rawMetrics !== 'object') return {}
+    const result = {}
+    for (const [metricName, info] of Object.entries(rawMetrics)) {
+      if (info && typeof info === 'object' && 'value' in info) {
+        result[metricName] = {
+          metric: metricName,
+          value: info.value,
+          dimension_type: info.dimension_type || 'main',
+          parent_dimension_id: info.parent_dimension_id ?? null,
+          parent_dimension_name: info.parent_dimension_name ?? null
+        }
+      } else {
+        // 旧格式：直接是数值
+        result[metricName] = { metric: metricName, value: info }
+      }
+    }
+    return result
+  }
+
   allDevices.value.forEach(device => {
     if (isFlatFormat) {
-      // 扁平格式：所有设备共享相同的指标数据
       data[device] = {
-        metrics: metricsMap,  // 使用完整的指标对象
+        metrics: buildMetricsEntry(metricsMap),
         asr: { text: asrMap?.[device]?.text || '-' },
         trans: { text: tranMap?.[device]?.text || '-' }
       }
     } else {
-      // 按设备分组的格式
       data[device] = {
-        metrics: metricsMap[device] || {},
+        metrics: buildMetricsEntry(metricsMap[device] || {}),
         asr: { text: asrMap?.[device]?.text || '-' },
         trans: { text: tranMap?.[device]?.text || '-' }
       }

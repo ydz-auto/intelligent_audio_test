@@ -186,6 +186,26 @@
               关联用例
             </h5>
             <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <!-- 搜索框 -->
+              <div style="position: relative; flex: 1; min-width: 280px; max-width: 400px; height: 34px; display: flex; align-items: center; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); background: var(--background-primary); overflow: hidden;">
+                <i class="fas fa-search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-light); font-size: 13px; z-index: 1; pointer-events: none;"></i>
+                <input type="text" v-model="caseSearchQuery" placeholder="搜索用例名称或ID..." style="width: 100%; height: 100%; border: none; outline: none; background: transparent; padding: 0 10px 0 32px; font-size: 13px; color: var(--text-primary); box-sizing: border-box;">
+              </div>
+              <!-- 状态筛选 -->
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">状态:</label>
+                <select v-model="caseFilterStatus" style="height: 34px; padding: 0 28px 0 8px; font-size: 13px; min-width: 110px; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); background-color: var(--background-primary); color: var(--text-primary); outline: none; cursor: pointer; appearance: none; -webkit-appearance: none; -moz-appearance: none; background-image: url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M3.293 6.293a1 1 0 0 1 1.414 0L8 10.586l3.293-3.293a1 1 0 0 1 1.414 1.414l-4 4a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414z' fill='%236B7280'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 8px center; background-size: 12px;">
+                  <option value="all">全部状态</option>
+                  <option value="pending">等待中</option>
+                  <option value="queued">排队中</option>
+                  <option value="in_progress">执行中</option>
+                  <option value="calculating">计算指标中</option>
+                  <option value="completed">已完成</option>
+                  <option value="failed">已失败</option>
+                  <option value="skipped">已跳过</option>
+                  <option value="stopped">已停止</option>
+                </select>
+              </div>
               <!-- 视图切换 -->
               <div class="case-view-switcher" style="display: inline-flex; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); overflow: hidden;">
                 <button class="case-view-btn" :class="{ active: caseViewMode === 'flat' }" @click="caseViewMode = 'flat'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
@@ -197,22 +217,6 @@
                 <button class="case-view-btn" :class="{ active: caseViewMode === 'group' }" @click="caseViewMode = 'group'" style="padding: 6px 12px; border: none; background: transparent; font-size: 13px; color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
                   <i class="fas fa-folder"></i> 分组
                 </button>
-              </div>
-              <!-- 状态筛选 -->
-              <div class="filter-select" style="display: flex; align-items: center; gap: 6px;">
-                <label style="font-size: 13px; color: var(--text-secondary); white-space: nowrap;">状态:</label>
-                <select v-model="caseFilterStatus" class="form-input" style="height: 32px; padding: 0 8px; font-size: 13px; min-width: 110px;">
-                  <option value="all">全部状态</option>
-                  <option value="pending">等待中</option>
-                  <option value="queued">排队中</option>
-                  <option value="in_progress">执行中</option>
-                  <option value="calculating">计算指标中</option>
-                  <option value="completed">已完成</option>
-                  <option value="failed">已失败</option>
-                  <option value="skipped">已跳过</option>
-                  <option value="stopped">已停止</option>
-                  <option value="deleted">已删除</option>
-                </select>
               </div>
             </div>
           </div>
@@ -457,6 +461,8 @@ const caseScrollContainer = ref(null);
 const caseViewMode = ref('flat');
 // 状态筛选：'all' 或具体状态
 const caseFilterStatus = ref('all');
+// 搜索关键词
+const caseSearchQuery = ref('');
 // 分组展开状态
 const expandedCaseGroups = ref({});
 
@@ -502,11 +508,23 @@ const normalizeCaseTags = (tags) => {
   return (tags || []).map((t) => t?.name || String(t || ''));
 };
 
-// 按状态筛选后的用例
+// 按状态和搜索关键词筛选后的用例
 const filteredAssociatedCases = computed(() => {
-  const list = props.associatedCases || [];
-  if (caseFilterStatus.value === 'all') return list;
-  return list.filter((c) => c.status === caseFilterStatus.value);
+  let list = props.associatedCases || [];
+  // 状态筛选
+  if (caseFilterStatus.value !== 'all') {
+    list = list.filter((c) => c.status === caseFilterStatus.value);
+  }
+  // 搜索筛选（按名称或ID）
+  const q = caseSearchQuery.value.trim().toLowerCase();
+  if (q) {
+    list = list.filter((c) => {
+      const name = (c.name || '').toLowerCase();
+      const id = String(c.id || '').toLowerCase();
+      return name.includes(q) || id.includes(q);
+    });
+  }
+  return list;
 });
 
 // 按标签分组
