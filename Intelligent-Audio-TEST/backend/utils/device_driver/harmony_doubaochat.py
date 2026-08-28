@@ -376,47 +376,19 @@ class DoubaoChat(Xiaoyilivechat):
         # 豆包聊天首页右上角菜单按钮: 先尝试语义查找(SymbolGlyph), 找不到则回退坐标
         driver.wait(3)
         try:
-            # 第1步: 点击右上角菜单/设置按钮(打开侧边栏或菜单面板)
-
-            driver.touch((1161, 234))
+            # 第1步:进入导航栏
+            driver.touch((105,231))
             driver.wait(1)
-            driver.touch((1175,234))
+            # 进入设置界面
+            driver.touch((959,2552))
             driver.wait(1)
-
+            # 开启新话题
+            driver.touch((BY.text("开启新话题")))
+            driver.wait(1)
+            driver.touch((105,234))
+            driver.wait(1)
+            driver.touch((990,266))
             # 第2步: 点击"删除聊天记录"(或"删除对话记录",豆包不同版本文案可能不同)
-            delete_chat = None
-            for label in ('删除聊天记录', '删除对话记录'):
-                try:
-                    delete_chat = driver.find_component(BY.text(label))
-                    if delete_chat:
-                        break
-                except Exception:
-                    continue
-            if delete_chat:
-                delete_chat.click()
-                driver.wait(1)
-                # 第3步: 确认删除
-                confirm_btn = None
-                try:
-                    confirm_btn = driver.find_component(BY.text('删除'))
-                except Exception:
-                    pass
-                if confirm_btn:
-                    confirm_btn.click()
-                    driver.wait(1)
-                # 第4步: 开启新话题(按钮可能不存在,删除后已自动重置)
-                try:
-                    new_topic = driver.find_component(BY.text('开启新话题'))
-                    if new_topic:
-                        new_topic.click()
-                        driver.wait(1)
-                except Exception:
-                    pass
-                self._log(level='INFO', content="已清除上下文",
-                          task_id=task_id, test_case_id=test_case_id)
-            else:
-                self._log(level='WARNING', content="未找到'删除聊天记录'按钮(跳过)",
-                          task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
             self._log(level='WARNING', content=f"清除聊天记录失败(跳过继续): {e}",
                       task_id=task_id, test_case_id=test_case_id)
@@ -463,7 +435,7 @@ class DoubaoChat(Xiaoyilivechat):
 
         # 开启通话聊天（首轮）
         try:
-            driver.touch((853, 234))
+            driver.touch((1011, 231))
             driver.wait(0.5)
             driver.wait(2)
         except Exception as e:
@@ -610,7 +582,7 @@ class DoubaoChat(Xiaoyilivechat):
         self._recording = False
         time.sleep(5)
         try:
-            driver.touch((1084, 2440))
+            driver.touch((1060, 2368))
             self._log(level='DEBUG', content="已挂断通话", task_id=task_id, test_case_id=test_case_id)
         except Exception as e:
             self._log(level='WARNING', content=f"挂断通话失败: {e}", task_id=task_id, test_case_id=test_case_id)
@@ -681,7 +653,7 @@ class DoubaoChat(Xiaoyilivechat):
 
         # 3. 兜底挂断通话
         try:
-            driver.touch((1084, 2440))
+            driver.touch((1060, 2368))
             self._log(level='DEBUG', content="teardown: 兜底挂断通话",
                       task_id=task_id, test_case_id=test_case_id)
             time.sleep(2)

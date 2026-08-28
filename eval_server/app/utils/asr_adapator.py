@@ -14,6 +14,7 @@ ASR 推理部署在独立的 ASR 主机上（asr_server.py），本机只负责�
                          若设置，JSON 会保存到 {ASR_JSON_OUTPUT_DIR}/pcm_case/pcm_case/{case_id}/{session_id}/ 下
 """
 import os
+import sys
 import json
 import logging
 import time
@@ -28,6 +29,26 @@ if _env_path.exists():
             if line and not line.startswith('#') and '=' in line:
                 k, v = line.split('=', 1)
                 os.environ.setdefault(k.strip(), v.strip())
+
+# ─── 加载 asr_server/.env（含 QWEN_OMNI_* 配置） ───
+_asr_server_env = Path(__file__).resolve().parent.parent.parent.parent / 'asr_server' / '.env'
+if _asr_server_env.exists():
+    with open(_asr_server_env, encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                k, v = line.split('=', 1)
+                os.environ.setdefault(k.strip(), v.strip())
+
+# ─── 导入第三方 qwen omni ASR 模块 ───
+_asr_server_dir = str(Path(__file__).resolve().parent.parent.parent.parent / 'asr_server')
+if _asr_server_dir not in sys.path:
+    sys.path.insert(0, _asr_server_dir)
+try:
+    from qwen_omni_asr import call_qwen_omni_asr
+except ImportError as e:
+    call_qwen_omni_asr = None
+    logging.getLogger(__name__).warning(f"无法导入 qwen_omni_asr 模块: {e}")
 
 import requests
 
@@ -140,9 +161,10 @@ def call_modelscope_asr(wav_path, language=None):
 
 def call_modelscope_asr_word(wav_path, language=None):
     """
-    调用远程 ASR 服务的 /asr_word 端点（Paraformer 词级时间戳）。
+    调用第三方 qwen3.5-omni-plus 模型进行 ASR 转写（词级时间戳）。
 
     用于 false_takeover 等需要词级粒度的指标。
+    模型配置从 asr_server/.env 读取（QWEN_OMNI_* 环境变量）。
 
     Returns:
         [result] 形式，result = {"text": "...", "chunks": [{"text": "字", "timestamp": [start_s, end_s]}, ...]}
@@ -151,22 +173,15 @@ def call_modelscope_asr_word(wav_path, language=None):
         logger.error(f"wav 文件不存在: {wav_path}")
         return [{'text': '', 'chunks': []}]
 
-    url = f"{ASR_SERVER_URL}/asr_word"
-    logger.info(f"调用远程 ASR(词级): {url}  wav={wav_path}")
+    if call_qwen_omni_asr is None:
+        raise RuntimeError("qwen_omni_asr 模块未成功导入，无法调用第三方 ASR")
 
-    with open(wav_path, "rb") as f:
-        files = {"file": (os.path.basename(wav_path), f, "audio/wav")}
-        t0 = time.time()
-        resp = requests.post(url, files=files, timeout=ASR_TIMEOUT)
-        elapsed = time.time() - t0
+    logger.info(f"调用 qwen3.5-omni-plus ASR: wav={wav_path}")
+    t0 = time.time()
+    result = call_qwen_omni_asr(wav_path)
+    elapsed = time.time() - t0
 
-    if resp.status_code != 200:
-        raise RuntimeError(
-            f"远程 ASR(词级) 返回错误 {resp.status_code}: {resp.text}"
-        )
-
-    result = resp.json()
-    logger.info(f"远程 ASR(词级) 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 字): {result.get('text', '')[:80]}")
+    logger.info(f"qwen3.5-omni-plus ASR 完成 ({elapsed:.2f}s, {len(result.get('chunks', []))} 字): {result.get('text', '')[:80]}")
 
     # 落盘：保存词级 ASR 结果 JSON（目录结构保留 pcm_case/pcm_case/{case_id}/{session_id}）
     _save_asr_json(result, wav_path)
