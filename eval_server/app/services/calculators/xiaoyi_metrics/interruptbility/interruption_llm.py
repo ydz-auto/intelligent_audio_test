@@ -62,37 +62,41 @@ def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '') -> str:
     """单事件复核+打分 prompt
 
     给 LLM：原始话题 + 用户打断字词级ASR + 模型被打断尾巴字词级ASR + 模型恢复回复字词级ASR
-    + 本地时序结论（success/stop_latency/recovery_latency）作参考。
-    要求返回：是否真的打断+原因，以及回复三维打分+理由。
+    + 本地时序结论（success/stop_latency/recovery_latency，单位毫秒）作参考。
+    要求返回：是否真的打断+原因，以及回复三维打分+每维分项理由。
+    严格区分角色：仅"用户打断"是人类输入；其余两段是 AI(语音助手)的话。
     """
     topic_line = original_topic or '（未显式给出，可从对话推断）'
     user_w = _fmt_words(ev.get('user_words')) or ev.get('user_text', '')
     int_w = _fmt_words(ev.get('model_interrupted_words')) or ev.get('model_interrupted_text', '')
     rec_w = _fmt_words(ev.get('model_recovery_words')) or ev.get('model_recovery_text', '')
 
-    return f"""你是语音对话打断处理评估专家。场景：用户在 AI 说话时打断，AI 随后停下并给出恢复回复。
-请基于以下【字词级 ASR（词+时间戳，秒）】做两件事：(A) 语义复核这是否是一次"真正的打断"；(B) 对 AI 的恢复回复打分。
+    return f"""你是语音对话打断处理评估专家。请严格区分两个角色：
+- 用户(人类)：打断者，在 AI 说话时插入语音。
+- AI(语音助手，被评估对象)：被打断后停下，再给出恢复回复。
+【重要·角色区分】下面三段字词级 ASR 中，只有【用户打断】是人类说的话；
+【模型被打断尾巴】和【模型恢复回复】都是 AI(语音助手)说的话，**不是用户输入**，切勿把 AI 的话当成用户说的。
 
 【原始话题/上下文】：{topic_line}
-【用户打断 字词级ASR】：{user_w}
-【模型被打断时正在说的尾巴 字词级ASR】：{int_w}
-【模型恢复回复 字词级ASR】：{rec_w}
-【本地时序结论(仅供参考，勿直接照搬)】：success={ev.get('success')} stop_latency_s={ev.get('stop_latency_s')} recovery_latency_s={ev.get('recovery_latency_s')}
+【用户打断 字词级ASR(人类)】：{user_w}
+【模型被打断尾巴 字词级ASR(AI)】：{int_w}
+【模型恢复回复 字词级ASR(AI)】：{rec_w}
+【本地时序结论(仅供参考，勿照搬)】：success={ev.get('success')} stop_latency_ms={ev.get('stop_latency_s')} recovery_latency_ms={ev.get('recovery_latency_s')}
 
-(A) 是否真的打断（is_real_interruption）：用户确有打断意图并在模型说话期间插入语音、模型也确有让出/恢复响应，
-    视为真正的打断；若用户只是应答词("嗯/好")、或并未在模型说话期间插入、或模型全程未被影响，则不算。
-    给出布尔结论与简短原因(interruption_reason)。
-(B) 对【模型恢复回复】从三维打分（0-5 整数，0 最差、5 最好；参考 Full-Duplex-Bench GPT-4o Score）：
-    1. 连贯性(coherence)：回复与被打断尾巴、与打断内容的衔接是否连贯自然。
+(A) is_real_interruption：是否真的打断(用户确有打断意图且在 AI 说话期间插入、AI 确有让出/恢复)。给布尔+简短 interruption_reason。
+    若用户只是应答词("嗯/好")、或未在 AI 说话期间插入、或 AI 全程未被影响，则不算。
+(B) 对【模型恢复回复】(AI 的话，非用户输入) 三维打分(0-5 整数，0 最差、5 最好；参考 Full-Duplex-Bench GPT-4o Score)，
+    每维各给一个简短理由(只解释该维为何这个分)：
+    1. coherence(连贯性)：回复与被打断尾巴、与打断内容的衔接是否连贯自然。
        0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
-    2. 相关性(relevance)：回复是否切合用户打断所表达的需求与意图。
+    2. relevance(相关性)：回复是否切合用户打断所表达的需求与意图。
        0=完全无关 1=不相关 2=略微相关 3=相关 4=高度相关 5=完全切题
-    3. 适应性(adaptability)：模型是否适应了打断带来的话题切换/调整，自然承接而非生硬。
+    3. adaptability(适应性)：AI 是否适应了打断带来的话题切换/调整，自然承接而非生硬。
        0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美适应
 
-输出严格 JSON，不要输出 JSON 以外的任何内容：
-{{"is_real_interruption": true, "interruption_reason": "", "coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "reason": ""}}
-其中 overall 为三维平均分（可保留一位小数），reason 为打分简短理由。"""
+输出严格 JSON，不要输出 JSON 以外的任何内容，且必须只含下列键：
+{{"is_real_interruption": true, "interruption_reason": "", "coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "coherence_reason": "", "relevance_reason": "", "adaptability_reason": ""}}
+其中 overall 为三维平均分(保留一位小数)；coherence_reason/relevance_reason/adaptability_reason 分别是对应维度的简短打分理由。"""
 
 
 # ─────────── LLM 调用 ───────────
@@ -252,7 +256,9 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
             'relevance': None,
             'adaptability': None,
             'overall': None,
-            'reason': '',
+            'coherence_reason': '',
+            'relevance_reason': '',
+            'adaptability_reason': '',
             'error': '',
         }
         try:
@@ -269,7 +275,9 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
                 item[k] is not None for k in ('coherence', 'relevance', 'adaptability')
             ):
                 item['overall'] = _avg([item[k] for k in ('coherence', 'relevance', 'adaptability')])
-            item['reason'] = parsed.get('reason', '')
+            item['coherence_reason'] = str(parsed.get('coherence_reason', ''))
+            item['relevance_reason'] = str(parsed.get('relevance_reason', ''))
+            item['adaptability_reason'] = str(parsed.get('adaptability_reason', ''))
             if item['is_real_interruption'] is True:
                 real_count += 1
         except Exception as e:  # 单事件失败不阻断
@@ -281,6 +289,11 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
     n_eval = len(recovery_per_round)
     interruption_real_rate = round(real_count / n_eval, 3) if n_eval else None
 
+    def _join_reasons(key: str) -> str:
+        """把各事件的某维分项理由拼接成单段文本(用'；'连接)，供 seed 的 *_reason field_path 取值"""
+        parts = [r.get(key, '') for r in recovery_per_round if r.get(key)]
+        return '；'.join(parts)
+
     result: Dict[str, Any] = {
         'enabled': True,
         'model': model,
@@ -291,6 +304,10 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
         'llm_recovery_avg_coherence': _avg([r['coherence'] for r in recovery_per_round]),
         'llm_recovery_avg_relevance': _avg([r['relevance'] for r in recovery_per_round]),
         'llm_recovery_avg_adaptability': _avg([r['adaptability'] for r in recovery_per_round]),
+        # 三维分项理由(拼接各事件)，对应 seed 的 llm_recovery_*_reason field_path
+        'llm_recovery_coherence_reason': _join_reasons('coherence_reason'),
+        'llm_recovery_relevance_reason': _join_reasons('relevance_reason'),
+        'llm_recovery_adaptability_reason': _join_reasons('adaptability_reason'),
         'llm_return_avg_coherence': None,
         'llm_return_avg_relevance': None,
         'llm_return_avg_adaptability': None,

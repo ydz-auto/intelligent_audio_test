@@ -295,10 +295,10 @@
       "model_recovery_text": "附近有一家川菜馆...",    // 模型恢复回复
       "model_recovery_words": [...],                  // 其字词级 chunks
       "event_type": "interruption", // interruption / recovery_only / no_model_speech
-      "stop_latency_s": 0.3,        // 用户开始打断→模型当前段结束
-      "recovery_latency_s": 0.5,   // 用户说完→模型重新开口
-      "silence_gap_s": 0.15,        // 模型停止→恢复的静默
-      "overlap_s": 0.2,            // 重叠时长
+      "stop_latency_s": 300,        // 用户开始打断→模型当前段结束(毫秒，字段名保留 _s)
+      "recovery_latency_s": 500,   // 用户说完→模型重新开口(毫秒)
+      "silence_gap_s": 150,        // 模型停止→恢复的静默(毫秒)
+      "overlap_s": 200,            // 重叠时长(毫秒)
       "stopped": true,             // 是否停下
       "resumed": true,             // 是否恢复
       "success": true              // 是否成功（停下且恢复）—纯本地判定，LLM 不覆盖
@@ -306,7 +306,18 @@
     ...
   ],
   "message": "OK",
-  "llm_eval": { /* 见 §8 */ }
+  "llm_eval": { /* 见 §8；以下键为 llm_eval 内同名字段平铺到顶层，便于维度按 field_path 取值 */ },
+  "llm_recovery_avg_coherence": 4.667,   // 打断后回复连贯性均分(0-5)，LLM 关闭时为 null
+  "llm_recovery_avg_relevance": 5.0,    // 相关性均分
+  "llm_recovery_avg_adaptability": 4.667,// 适应性均分
+  "llm_recovery_coherence_reason": "事件1: ...；事件2: ...",  // 连贯性分项理由(各事件拼接)
+  "llm_recovery_relevance_reason": "...",                      // 相关性分项理由
+  "llm_recovery_adaptability_reason": "...",                   // 适应性分项理由
+  "llm_return_avg_coherence": null,     // 回到原话题链路已移除，保留为 null
+  "llm_return_avg_relevance": null,
+  "llm_return_avg_adaptability": null,
+  "llm_recovery_per_round": [ /* 见 §8，每事件复核+打分明细 */ ],
+  "llm_return_scores_per_round": []
 }
 ```
 
@@ -320,8 +331,10 @@
 > 数值指标（success_rate / 时延 / 让出率 / 恢复率等）**全部本地算**，本模块不产出任何数值指标。
 > LLM 直接吃 `compute_interruption_metrics` 富集后的 `per_event`（用户与模型的字词级 ASR），
 > 对每个 `event_type=='interruption'` 事件做：(A) 是否真的打断的语义复核 + 简短原因；
-> (B) 模型恢复回复的 连贯性/相关性/适应性 打分（0-5）。
+> (B) 模型恢复回复的 连贯性/相关性/适应性 打分（0-5）+ **每维分项理由**（coherence_reason/relevance_reason/adaptability_reason）。
 > `is_real_interruption` 是对本地结论的语义复核，**不回写覆盖**本地 `interruption_success_rate`。
+> **角色约束**：prompt 显式声明仅"用户打断"是人类输入，"模型被打断尾巴"与"模型恢复回复"都是 AI(语音助手)的话，
+> 防止 LLM 把 ai_wav 也当成用户输入；输出严格 JSON，仅含约定键。
 
 ### 入参（evaluate_interruption_llm）
 
@@ -337,6 +350,7 @@
 {
   "enabled": true,
   "model": "gemini-3.7-flash",
+  "original_topic": "推荐一部适合周末看的电影",  // 透传的原始话题
   "llm_recovery_per_round": [        // 每个 interruption 事件的复核+打分
     {
       "event": 1,
@@ -349,7 +363,9 @@
       "relevance": 5,                // 相关性 0-5
       "adaptability": 5,            // 适应性 0-5
       "overall": 5.0,              // 三维平均
-      "reason": "迅速切题响应...",  // 打分理由
+      "coherence_reason": "衔接自然...",   // 连贯性分项理由
+      "relevance_reason": "切题...",       // 相关性分项理由
+      "adaptability_reason": "平滑承接...",// 适应性分项理由
       "error": ""
     },
     ...
@@ -357,6 +373,9 @@
   "llm_recovery_avg_coherence": 4.667,
   "llm_recovery_avg_relevance": 5.0,
   "llm_recovery_avg_adaptability": 4.667,
+  "llm_recovery_coherence_reason": "事件1: ...；事件2: ...",  // 各事件连贯性分项理由拼接
+  "llm_recovery_relevance_reason": "...",                      // 相关性分项理由拼接
+  "llm_recovery_adaptability_reason": "...",                   // 适应性分项理由拼接
   "interruption_real_rate": 1.0,      // LLM 判定真正打断的事件占比
   "n_events_evaluated": 3,
   // 回到原话题独立打分链路已移除，下列字段保留为空以兼容既有维度定义

@@ -95,7 +95,9 @@ def run():
         else:
             print(f"  分数            : 连贯={r.get('coherence')} 相关={r.get('relevance')} "
                   f"适应={r.get('adaptability')} 总={r.get('overall')}")
-            print(f"  打分理由        : {r.get('reason')}")
+            print(f"  连贯理由        : {r.get('coherence_reason')}")
+            print(f"  相关理由        : {r.get('relevance_reason')}")
+            print(f"  适应理由        : {r.get('adaptability_reason')}")
 
     print('\n' + '=' * 70)
     print('【聚合】')

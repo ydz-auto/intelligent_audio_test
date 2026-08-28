@@ -606,6 +606,17 @@ def _empty_interruption(message):
         'per_event': [],
         'message': message,
         'llm_eval': {'enabled': False, 'message': '未启用 LLM 评估'},
+        'llm_recovery_avg_coherence': None,
+        'llm_recovery_avg_relevance': None,
+        'llm_recovery_avg_adaptability': None,
+        'llm_recovery_coherence_reason': None,
+        'llm_recovery_relevance_reason': None,
+        'llm_recovery_adaptability_reason': None,
+        'llm_return_avg_coherence': None,
+        'llm_return_avg_relevance': None,
+        'llm_return_avg_adaptability': None,
+        'llm_recovery_per_round': [],
+        'llm_return_scores_per_round': [],
     }
 
 
@@ -745,6 +756,8 @@ def calculate_interruption_metrics(task_params):
             for k in (
                 'llm_recovery_avg_coherence', 'llm_recovery_avg_relevance',
                 'llm_recovery_avg_adaptability',
+                'llm_recovery_coherence_reason', 'llm_recovery_relevance_reason',
+                'llm_recovery_adaptability_reason',
                 'llm_return_avg_coherence', 'llm_return_avg_relevance',
                 'llm_return_avg_adaptability',
                 'llm_recovery_per_round', 'llm_return_scores_per_round',
