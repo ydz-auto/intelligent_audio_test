@@ -249,9 +249,7 @@
                 ></span>
                 <div class="case-name">{{ caseItem.name }}</div>
                 <span class="case-category">{{ caseItem.category || '未分类' }}</span>
-                <span v-if="caseItem.id" class="case-id-badge" @click.stop="copyToClipboard(caseItem.id)" title="点击复制ID">
-                  <i class="fas fa-copy"></i> 用例ID: {{ caseItem.id }}
-                </span>
+                <CaseIdBadge v-if="caseItem.id" :case-id="caseItem.id" />
               </div>
               <div class="case-tags-container" v-if="caseItem.tags && caseItem.tags.length > 0">
                 <div class="case-tags">
@@ -397,6 +395,7 @@ import { ref, computed, watch, onUnmounted, inject } from 'vue'
 import AudioPlayerModal from '../common/AudioPlayerModal.vue'
 import TestCaseReportDetail from '../common/TestCaseReportDetail.vue'
 import PaginationComponent from '../common/PaginationComponent.vue'
+import CaseIdBadge from '../common/CaseIdBadge.vue'
 import { reportsApi } from '../../utils/api'
 import { normalizeAudioFields } from '../../utils/audioUtils'
 import { useNotification } from '../../composables/useNotification'
@@ -1301,18 +1300,6 @@ const getCaseTaskId = (caseItem) => {
   return caseItem.taskId || caseItem.task_id || props.reportData?.taskId || props.reportData?.summary?.taskId || ''
 }
 
-const copyToClipboard = (text) => {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(() => {
-      const notification = useNotification()
-      notification.success('ID已复制到剪贴板')
-    }).catch(() => {
-      const notification = useNotification()
-      notification.error('复制失败')
-    })
-  }
-}
-
 const formatFileSize = (bytes) => {
   if (bytes === 0) return '0 B'
   const k = 1024
@@ -1846,29 +1833,6 @@ const applyFilters = () => {
   border-radius: var(--border-radius-sm);
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
-}
-
-.case-id-badge {
-  padding: 2px 10px;
-  background: white;
-  color: #1677ff;
-  border-radius: var(--border-radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.case-id-badge:hover {
-  background: #f8fafc;
-  color: #1677ff;
-}
-
-.case-id-badge .fa-copy {
-  font-size: 10px;
 }
 
 .download-log-btn {

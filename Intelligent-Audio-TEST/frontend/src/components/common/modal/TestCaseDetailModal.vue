@@ -19,6 +19,9 @@
         </h4>
         <div class="case-meta" style="display: flex; gap: 20px; flex-wrap: wrap;">
           <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
+            <CaseIdBadge :case-id="caseId" />
+          </div>
+          <div class="meta-item" style="display: flex; align-items: center; gap: 8px;">
             <i class="fas fa-info-circle" style="color: var(--text-secondary); font-size: 14px;"></i>
             <span style="font-size: 14px; color: var(--text-secondary);">状态: </span>
             <span :class="'status-tag ' + (detail.executionStatus || 'pending').toLowerCase()" style="font-size: 12px; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
@@ -110,6 +113,7 @@
 import { ref, computed, onMounted, nextTick } from 'vue'
 import { tasksApi, logsApi } from '../../../utils/api'
 import TestCaseReportDetail from '../TestCaseReportDetail.vue'
+import CaseIdBadge from '../CaseIdBadge.vue'
 
 const props = defineProps({
   taskId: { type: [String, Number], required: true },
@@ -149,7 +153,14 @@ const preparedComparisonData = computed(() => {
           if (rn === null || rn === undefined) key = `${d.name}@overall`
           else key = `${d.name}@round:${rn + 1}`
         }
-        metricsMap[key] = { metric: d.name, value: d.score ?? d.value, round_number: rn }
+        metricsMap[key] = {
+          metric: d.name,
+          value: d.score ?? d.value,
+          round_number: rn,
+          dimension_type: d.dimension_type ?? d.dimensionType ?? 'main',
+          parent_dimension_id: d.parent_dimension_id ?? d.parentDimensionId ?? null,
+          dimension_id: d.dimension_id ?? d.dimensionId ?? null
+        }
       })
     }
     data[device] = {

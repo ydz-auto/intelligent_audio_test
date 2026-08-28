@@ -486,13 +486,17 @@ class EventManager:
             if actual_total_cases != db_task.total_cases:
                 db_task.total_cases = actual_total_cases
                 local_db_session.commit()
-            actual_completed_cases = local_db_session.query(TaskCase).filter(
+            # 统计已处理用例（含失败/跳过），与 execution_engine 状态口径一致
+            processed_cases = local_db_session.query(TaskCase).filter(
                 TaskCase.task_id == db_task.id,
-                TaskCase.execution_status == 'completed',
-                TaskCase.status == 'completed'
+                TaskCase.status.in_(['completed', 'failed', 'skipped'])
             ).count()
-            progress_percentage = round(actual_completed_cases / actual_total_cases * 100, 2) if actual_total_cases > 0 else 0
+            progress_percentage = round(processed_cases / actual_total_cases * 100, 2) if actual_total_cases > 0 else 0
+            # 任务结束后强制100%，避免边界状态未更新导致卡住
+            if db_task.status in ('completed', 'failed'):
+                progress_percentage = 100.0
             progress_percentage = min(progress_percentage, 100.0)
+            actual_completed_cases = processed_cases
 
             execution_failed_count = sum(
                 1 for tc in test_cases_data if tc.get("executionStatus") == "failed"

@@ -231,8 +231,9 @@
                 <div v-for="testCase in visibleCases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 12px; border-radius: 8px; background-color: var(--background-secondary); display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; min-height: 52px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
-                    <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
+                    <div class="progress-time" style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
                       {{ getCaseStatusLabel(testCase.status) }} ({{ testCase.duration || '' }})
+                      <CaseIdBadge :case-id="testCase.id" />
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
@@ -273,8 +274,9 @@
                 <div v-for="testCase in cases" :key="testCase.id" class="progress-item-small" :class="testCase.status" style="padding: 10px; border-radius: 8px; background-color: var(--background-primary); display: flex; justify-content: space-between; align-items: center; min-height: 48px; box-sizing: border-box; cursor: pointer;" @click="handleTestCaseClick(testCase)">
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
-                    <div class="progress-time" style="font-size: 12px; color: var(--text-secondary);">
+                    <div class="progress-time" style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
                       {{ getCaseStatusLabel(testCase.status) }} ({{ testCase.duration || '' }})
+                      <CaseIdBadge :case-id="testCase.id" />
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
                       <span style="font-size: 11px; color: var(--text-secondary); white-space: nowrap;">
@@ -370,6 +372,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import CaseIdBadge from './common/CaseIdBadge.vue';
 
 const props = defineProps({
   testType: {type: String, required: true, validator: (value) => ['API', 'E2E'].includes(value)},

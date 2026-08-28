@@ -3,25 +3,46 @@
     <div v-if="hasMetrics" class="detail-section">
       <h4 class="section-title"><i class="fas fa-chart-bar"></i> 评分指标</h4>
       <div class="metrics-table-wrapper">
-        <DataTable
-          v-if="isComparison"
-          :columns="comparisonTableColumns"
-          :data="comparisonTableData"
-          :resizable="true"
-          :min-column-width="60"
-          :default-column-width="{ first: 200, others: 150 }"
-          table-class="report-data-table"
-          row-key="metricName"
-        >
-          <template #cell-metricName="{ row, value }">
-            <span class="dim-name">{{ row.metricName }}</span>
-          </template>
-          <template #empty>
-            <div style="padding: 20px; text-align: center; color: #94a3b8;">
-              暂无指标数据
-            </div>
-          </template>
-        </DataTable>
+        <!-- 对比模式：按轮次横向 Tab + 主维度/子维度层级分组 -->
+        <div v-if="isComparison" class="round-metrics-container">
+          <div v-if="roundTabs.length > 1" class="round-tab-bar">
+            <button
+              v-for="(tab, idx) in roundTabs"
+              :key="tab.key"
+              class="round-tab-btn"
+              :class="{ active: activeRoundTab === idx }"
+              @click="activeRoundTab = idx"
+            >
+              {{ tab.label }}
+            </button>
+          </div>
+          <DataTable
+            :columns="comparisonTableColumns"
+            :data="currentRoundTableData"
+            :resizable="true"
+            :min-column-width="60"
+            :default-column-width="{ first: 200, others: 150 }"
+            table-class="report-data-table"
+            row-key="_rowId"
+          >
+            <template #cell-metricName="{ row }">
+              <span
+                v-if="row.isGroupHeader"
+                class="dim-group-header"
+              >{{ row.metricName }}</span>
+              <span
+                v-else
+                class="dim-name"
+                :class="{ 'dim-sub': row.isSubDim }"
+              >{{ row.metricName }}</span>
+            </template>
+            <template #empty>
+              <div style="padding: 20px; text-align: center; color: #94a3b8;">
+                暂无指标数据
+              </div>
+            </template>
+          </DataTable>
+        </div>
         <DataTable
           v-else
           :columns="singleTableColumns"
@@ -491,7 +512,7 @@ const hasAudio = computed(() => props.audioPath || props.audioList.length > 0);
 // 是否有评分指标数据
 const hasMetrics = computed(() => {
   if (props.isComparison) {
-    return allMetricNames.value.length > 0;
+    return allMetricKeys.value.length > 0;
   }
   return (props.dimensions && props.dimensions.length > 0) || 
          (props.metrics && props.metrics.length > 0);
@@ -751,25 +772,181 @@ const getDeviceName = (deviceId) => {
   return key
 };
 
-const allMetricNames = computed(() => {
+// 构建维度ID→维度名的映射（用于子维度查找父维度名）
+const dimIdToName = computed(() => {
+  const map = {};
+  Object.values(props.comparisonData).forEach(d => {
+    if (!d?.metrics) return;
+    Object.entries(d.metrics).forEach(([, info]) => {
+      if (info?.dimension_id) {
+        map[info.dimension_id] = info.metric || info.name;
+      }
+    });
+  });
+  return map;
+});
+
+// 解析指标 key：提取基础名、轮次标记（'round:N' / 'overall' / null）
+const parseMetricKey = (k) => {
+  const m = k.match(/^(.*)@(round:(\d+)|overall)$/);
+  if (!m) return { base: k, roundTag: null };
+  if (m[2] === 'overall') return { base: m[1], roundTag: 'overall' };
+  return { base: m[1], roundTag: `round:${m[3]}` };
+};
+
+// 从 comparisonData 中获取某 key 对应的维度层级信息
+const getDimInfo = (k) => {
+  for (const d of Object.values(props.comparisonData)) {
+    if (d?.metrics?.[k]) {
+      const info = d.metrics[k];
+      const dimType = info.dimension_type || 'main';
+      const parentId = info.parent_dimension_id;
+      const parentName = parentId ? (dimIdToName.value[parentId] || '') : '';
+      return { dimType, parentName, parentId };
+    }
+  }
+  return { dimType: 'main', parentName: '', parentId: null };
+};
+
+// 所有指标 key 集合
+const allMetricKeys = computed(() => {
   if (!props.isComparison) return [];
   const names = new Set();
   Object.values(props.comparisonData).forEach(d => {
     if (d.metrics) Object.keys(d.metrics).forEach(m => names.add(m));
   });
-  // 排序：按维度基础名分组，组内按轮次（round:N 升序）在前、整体（@overall）在后
-  return Array.from(names).sort((a, b) => {
-    const parseKey = (k) => {
-      const m = k.match(/^(.*)@(round:(\d+)|overall)$/);
-      if (!m) return { base: k, order: -1, rn: -1 }; // 单轮/无后缀，最前
-      if (m[2] === 'overall') return { base: m[1], order: 1, rn: 9999 };
-      return { base: m[1], order: 0, rn: parseInt(m[3], 10) };
-    };
-    const pa = parseKey(a), pb = parseKey(b);
-    if (pa.base !== pb.base) return pa.base.localeCompare(pb.base, 'zh');
-    if (pa.order !== pb.order) return pa.order - pb.order;
-    return pa.rn - pb.rn;
+  return Array.from(names);
+});
+
+// 轮次 Tab 列表：从指标 key 中提取出现的轮次
+const roundTabs = computed(() => {
+  const tabs = [];
+  const seen = new Set();
+  allMetricKeys.value.forEach(k => {
+    const { roundTag } = parseMetricKey(k);
+    if (roundTag && !seen.has(roundTag)) {
+      seen.add(roundTag);
+      if (roundTag === 'overall') {
+        tabs.push({ key: 'overall', label: '整体', roundTag: 'overall', order: 9999 });
+      } else {
+        const rn = parseInt(roundTag.split(':')[1], 10);
+        tabs.push({ key: roundTag, label: `第${rn}轮`, roundTag, order: rn });
+      }
+    }
   });
+  // 如果有指标但没有任何 roundTag（全部无后缀），就放一个默认 tab
+  if (tabs.length === 0 && allMetricKeys.value.length > 0) {
+    tabs.push({ key: 'all', label: '指标', roundTag: null, order: 0 });
+  }
+  tabs.sort((a, b) => a.order - b.order);
+  return tabs;
+});
+
+const activeRoundTab = ref(0);
+watch(roundTabs, (newTabs) => {
+  if (activeRoundTab.value >= newTabs.length) {
+    activeRoundTab.value = 0;
+  }
+}, { flush: 'post' });
+
+// 当前轮次 Tab 对应的指标 key 列表
+const currentRoundMetricKeys = computed(() => {
+  const tab = roundTabs.value[activeRoundTab.value];
+  if (!tab) return [];
+  return allMetricKeys.value.filter(k => {
+    const { roundTag } = parseMetricKey(k);
+    // roundTag 为 null 的指标在 'all' tab 或者唯一 tab 时显示
+    if (tab.roundTag === null) return true;
+    return roundTag === tab.roundTag;
+  });
+});
+
+// 按主维度分组的指标列表（用于层级显示）
+const groupedMetricsForCurrentRound = computed(() => {
+  const keys = currentRoundMetricKeys.value;
+  if (keys.length === 0) return [];
+
+  // 收集每个 key 的基础名和层级信息
+  const items = keys.map(k => {
+    const { base } = parseMetricKey(k);
+    const info = getDimInfo(k);
+    return { key, base, ...info };
+  });
+
+  // 构建分组：主维度自身为一组，子维度归入父维度组
+  // groupKey = 子维度用 parentName，主维度用自身 base
+  const groupMap = new Map(); // groupKey -> { groupLabel, mainItem, subItems: [] }
+  items.forEach(item => {
+    const groupKey = item.dimType === 'sub' ? item.parentName : item.base;
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, {
+        groupLabel: groupKey,
+        mainItem: null,
+        subItems: [],
+      });
+    }
+    const group = groupMap.get(groupKey);
+    if (item.dimType === 'main') {
+      group.mainItem = item;
+    } else {
+      group.subItems.push(item);
+    }
+  });
+
+  // 子维度按名称排序
+  groupMap.forEach(g => {
+    g.subItems.sort((a, b) => a.base.localeCompare(b.base, 'zh'));
+  });
+
+  // 分组按名称排序
+  const groups = Array.from(groupMap.values()).sort((a, b) =>
+    a.groupLabel.localeCompare(b.groupLabel, 'zh')
+  );
+
+  return groups;
+});
+
+// 当前轮次的表格数据：在主维度组之间插入分组行
+const currentRoundTableData = computed(() => {
+  const rows = [];
+  let rowSeq = 0;
+  groupedMetricsForCurrentRound.value.forEach(group => {
+    // 分组标题行（设备列留空）
+    const headerRow = {
+      _rowId: `hdr_${rowSeq++}`,
+      metricName: group.groupLabel,
+      isGroupHeader: true,
+    };
+    props.devices.forEach((device, index) => {
+      headerRow[`device-${index}`] = '';
+    });
+    rows.push(headerRow);
+    // 主维度行（如有）
+    if (group.mainItem) {
+      const row = {
+        _rowId: `main_${rowSeq++}`,
+        metricName: group.mainItem.base,
+        isSubDim: false,
+      };
+      props.devices.forEach((device, index) => {
+        row[`device-${index}`] = getMetricValue(device, group.mainItem.key);
+      });
+      rows.push(row);
+    }
+    // 子维度行
+    group.subItems.forEach(sub => {
+      const row = {
+        _rowId: `sub_${rowSeq++}`,
+        metricName: sub.base,
+        isSubDim: true,
+      };
+      props.devices.forEach((device, index) => {
+        row[`device-${index}`] = getMetricValue(device, sub.key);
+      });
+      rows.push(row);
+    });
+  });
+  return rows;
 });
 
 // 友好显示指标名：把内部 key 转成带" (第N轮)"/" (整体)"的标签
@@ -834,20 +1011,6 @@ const comparisonTableColumns = computed(() => {
   })
 
   return columns
-})
-
-const comparisonTableData = computed(() => {
-  return allMetricNames.value.map(metricName => {
-    const row = {
-      metricName: formatMetricLabel(metricName)
-    }
-
-    props.devices.forEach((device, index) => {
-      row[`device-${index}`] = getMetricValue(device, metricName)
-    })
-
-    return row
-  })
 })
 
 const singleTableColumns = computed(() => {
@@ -1181,6 +1344,60 @@ watch(dimResultGroups, (newGroups) => {
   font-weight: 500;
   font-size: 13px;
   color: #333;
+}
+
+/* 子维度缩进 */
+.dim-name.dim-sub {
+  padding-left: 20px;
+  color: #595959;
+  font-weight: 400;
+}
+
+/* 主维度分组标题行 */
+.dim-group-header {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--primary-color);
+  display: inline-block;
+  padding: 2px 0;
+}
+
+/* 轮次 Tab */
+.round-metrics-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.round-tab-bar {
+  display: flex;
+  gap: 4px;
+  border-bottom: 2px solid var(--primary-color);
+  flex-wrap: wrap;
+}
+
+.round-tab-btn {
+  padding: 5px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  transition: all 0.2s;
+}
+
+.round-tab-btn:hover {
+  background: #f0f5ff;
+  color: var(--primary-color);
+}
+
+.round-tab-btn.active {
+  background: var(--primary-color);
+  color: white;
+  font-weight: 600;
 }
 
 .dim-value {
