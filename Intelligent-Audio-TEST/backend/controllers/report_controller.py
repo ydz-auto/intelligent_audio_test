@@ -181,17 +181,13 @@ class ReportController(ReportControllerBase):
                     return json.loads(val)
                 return val if isinstance(val, list) else []
 
-            # 读取时对旧报告补充维度层级富化字段（兼容存量数据）
-            all_metrics = to_json(summary_meta.all_metrics) if summary_meta else []
-            all_metrics = ReportUtils.enrich_metrics_with_dim_hierarchy(all_metrics)
-
             simplified_summary = {
                 "raw_data": to_json(raw_data_record.raw_data) if raw_data_record else [],
                 "case_categories": to_json(summary_meta.case_categories) if summary_meta else [],
                 "all_case_tags": to_json(summary_meta.all_case_tags) if summary_meta else [],
                 "resources": to_json(summary_meta.resources) if summary_meta else [],
                 "resource_headers": to_json(summary_meta.resource_headers) if summary_meta else [],
-                "all_metrics": all_metrics,
+                "all_metrics": to_json(summary_meta.all_metrics) if summary_meta else [],
                 "field_mappings": json.loads(summary_meta.field_mappings) if summary_meta and summary_meta.field_mappings else {},
                 "device_stats": to_json(metric_stats_record.device_stats) if metric_stats_record else [],
                 "api_stats": to_json(metric_stats_record.api_stats) if metric_stats_record else [],
@@ -355,10 +351,6 @@ class ReportController(ReportControllerBase):
                         return json.loads(val)
                     return val if isinstance(val, dict) else {}
 
-                # 读取时对旧报告补充维度层级富化字段（兼容存量数据）
-                html_all_metrics = to_json(summary_meta.all_metrics) if summary_meta else []
-                html_all_metrics = ReportUtils.enrich_metrics_with_dim_hierarchy(html_all_metrics)
-
                 report_data = {
                     "id": report.id,
                     "name": report.name,
@@ -373,7 +365,7 @@ class ReportController(ReportControllerBase):
                         "all_case_tags": to_json(summary_meta.all_case_tags) if summary_meta else [],
                         "resources": to_json(summary_meta.resources) if summary_meta else [],
                         "resource_headers": to_json(summary_meta.resource_headers) if summary_meta else [],
-                        "all_metrics": html_all_metrics,
+                        "all_metrics": to_json(summary_meta.all_metrics) if summary_meta else [],
                         "device_stats": to_json(metric_stats_record.device_stats) if metric_stats_record else [],
                         "api_stats": to_json(metric_stats_record.api_stats) if metric_stats_record else [],
                         "case_type_stats": to_json(metric_stats_record.case_type_stats) if metric_stats_record else [],
