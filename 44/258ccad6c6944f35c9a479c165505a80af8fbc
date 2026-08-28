@@ -1,0 +1,19 @@
+Intelligent-Audio-TEST/backend/utils/device_driver/harmony_xiaoyichat.py
+  s_8283355e19b49e::t_ad3acd30b0ca8b 723,740
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "44258ccad6c6944f35c9a479c165505a80af8fbc",
+  "prompts": {},
+  "sessions": {
+    "s_8283355e19b49e": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a8ffd0316b19a6e721cbf04",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  }
+}
