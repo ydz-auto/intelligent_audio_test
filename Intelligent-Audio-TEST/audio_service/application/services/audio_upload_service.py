@@ -8,6 +8,7 @@
 - 以及内部辅助方法
 """
 import os
+import re
 import uuid
 import logging
 from datetime import timedelta
@@ -32,9 +33,30 @@ from audio_service.application.services.audio_testcase_creation_service import a
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_filename(filename):
+    """清理文件名，防止路径穿越，同时保留中文等非ASCII字符。
+
+    与 werkzeug.secure_filename 不同，不会将中文替换为下划线。
+    仅移除/替换路径穿越危险字符（.., /, \\, 空字符等）。
+    """
+    if not filename:
+        return ''
+    # 去掉路径分隔符和父目录引用，防止路径穿越
+    # 先把 \\ 转为 / 统一处理
+    cleaned = filename.replace('\\', '/').replace('\x00', '')
+    # 取 basename，去掉任何目录部分
+    cleaned = cleaned.split('/')[-1]
+    # 把路径穿越用的点序列中危险的部分替换掉（如 .. 变为 _）
+    # 但保留文件名中正常的点（扩展名分隔符）
+    # 替换 Windows 不允许的字符: < > : " | ? *
+    cleaned = re.sub(r'[<>:"|?*]', '_', cleaned)
+    # 去掉开头/结尾的点和空格（Windows 下不允许）
+    cleaned = cleaned.strip('. ')
+    return cleaned
+
+
 def _get_unique_filename(directory, original_filename):
-    from werkzeug.utils import secure_filename
-    safe_filename = secure_filename(original_filename)
+    safe_filename = _sanitize_filename(original_filename)
     if not safe_filename:
         safe_filename = f"audio_{uuid.uuid4().hex[:8]}"
     base_name, ext = os.path.splitext(safe_filename)
@@ -611,6 +633,8 @@ class AudioUploadService:
 
         tc_group_name = tc_config.get('group_name') if tc_config else None
         tc_inherit_tags = tc_config.get('inherit_tags', True) if tc_config else True
+        # case 级背景噪声（rounds 外层），优先级高于轮次级
+        tc_case_background_noise = tc_config.get('background_noise') if tc_config else None
 
         test_case_group_name = data.get('test_case_group_name') or data.get('testCaseGroupName')
         if tc_group_name:
@@ -653,6 +677,7 @@ class AudioUploadService:
             'user_tags': data.get('tags', []),
             'rounds_config': rounds_config,
             'tc_inherit_tags': tc_inherit_tags,
+            'case_background_noise': tc_case_background_noise,
         }
 
     def _check_instant_upload(self, upload_file, data, params):
@@ -678,6 +703,32 @@ class AudioUploadService:
                 audio_tags = self.repo.get_audio_tag_names(existing_audio.id)
 
                 if params['create_test_case']:
+                    # 秒传场景：已有音频的 name 可能改过名，前端传的 audio_name 匹配不上，
+                    # 这里直接把 existing_audio.id 填进 rounds_config 里对应的项
+                    rounds_config = params['rounds_config']
+                    if rounds_config:
+                        # 先收集所有未匹配的音频项
+                        unmatched_items = []
+                        for r in rounds_config:
+                            if not isinstance(r, dict):
+                                continue
+                            for a in r.get('audios', []):
+                                if not isinstance(a, dict) or a.get('audio_id'):
+                                    continue
+                                unmatched_items.append(a)
+                        # 对未匹配项尝试按 name/original_filename/md5 匹配
+                        matched_count = 0
+                        for a in unmatched_items:
+                            item_name = a.get('audio_name') or ''
+                            if (item_name == existing_audio.name
+                                    or item_name == (existing_audio.original_filename or '')
+                                    or item_name == (existing_audio.md5 or '')
+                                    or not item_name):
+                                a['audio_id'] = existing_audio.id
+                                matched_count += 1
+                        # 兜底：若按名称都匹配不上，且仅剩1个未匹配项，直接赋值（秒传的音频就是它）
+                        if matched_count == 0 and len(unmatched_items) == 1:
+                            unmatched_items[0]['audio_id'] = existing_audio.id
                     raw_annotations_data = self._annotation_service.persist_annotations_and_raw(
                         existing_audio.id,
                         data.get('annotations', []),
@@ -699,6 +750,7 @@ class AudioUploadService:
                         inherit_tags=params['tc_inherit_tags'],
                         raw_annotations=raw_annotations_data,
                         noise_device_ids=params.get('noise_device_ids'),
+                        case_background_noise=params.get('case_background_noise'),
                     )
                     self.repo.commit()
                     return {
@@ -827,8 +879,9 @@ class AudioUploadService:
             if os.path.exists(wav_file_path):
                 _retry_file_operation(os.remove, wav_file_path)
 
+            # 更新文件名为WAV文件名（转换后存储用的文件名）
+            # original_filename 保留注册时记录的原始上传名，不覆盖
             upload_file.filename = wav_filename
-            upload_file.original_filename = wav_filename
             self.repo.flush()
 
         except Exception as e:
@@ -856,7 +909,7 @@ class AudioUploadService:
         file_size = os.path.getsize(meta_source_path)
         duration = 0.0
         sample_rate = 44100
-        channels = 2
+        channels = 1  # 默认单声道
         bitrate = 128000
 
         try:
@@ -865,7 +918,7 @@ class AudioUploadService:
             duration = len(audio_seg) / 1000.0
             sample_rate = audio_seg.frame_rate
             channels = audio_seg.channels
-            bitrate = audio_seg.frame_width * 8 * sample_rate
+            bitrate = audio_seg.sample_width * 8 * sample_rate
             if duration <= 0:
                 raise ValueError("音频时长为0，可能是无效的音频文件")
         except Exception as e:
@@ -980,6 +1033,7 @@ class AudioUploadService:
             inherit_tags=params['tc_inherit_tags'],
             raw_annotations=raw_annotations_data or None,
             noise_device_ids=params.get('noise_device_ids'),
+            case_background_noise=params.get('case_background_noise'),
         )
 
         if isinstance(tc_ids, list):

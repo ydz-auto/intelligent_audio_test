@@ -1,6 +1,7 @@
 from datetime import datetime, timezone, timedelta
 import logging
 from shared.models.database import get_db_session
+from shared.models.common_enums import TestType
 
 logger = logging.getLogger(__name__)
 # TODO(gRPC): _time_estimate 属于 event_manager 实时进度估算模块，
@@ -84,12 +85,12 @@ class TimeEstimateMixin:
                 actual_total_cases = len(tc_resp.get('items', [])) if tc_resp else 0
             self._log(level='DEBUG', content=f"任务 {task.id}: 总用例数={actual_total_cases}", task_id=str(task.id))
 
-            if task.type == 'api':
+            if task.type == TestType.API.value:
                 # API测试任务：优先基于历史用例执行时间
                 from task_service.infrastructure.persistence.models import Task as TaskModel
                 # 查询最近完成的API测试任务
                 recent_api_tasks = local_db_session.query(TaskModel).filter(
-                    TaskModel.type == 'api',
+                    TaskModel.type == TestType.API.value,
                     TaskModel.status == 'completed',
                     TaskModel.total_cases > 0,
                     TaskModel.actual_duration > 0,
@@ -182,7 +183,7 @@ class TimeEstimateMixin:
                 from task_service.infrastructure.persistence.models import Task as TaskModel
                 # 查询最近完成的E2E测试任务
                 recent_e2e_tasks = local_db_session.query(TaskModel).filter(
-                    TaskModel.type == 'e2e',
+                    TaskModel.type == TestType.E2E.value,
                     TaskModel.status == 'completed',
                     TaskModel.total_cases > 0,
                     TaskModel.actual_duration > 0,

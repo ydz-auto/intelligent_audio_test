@@ -18,6 +18,7 @@ from api_test_service.core.api_concurrency_manager import APIConcurrencyManager
 from api_test_service.core.api_task_runner import APITaskRunner
 from api_test_service.core.api_result_processor import APIResultProcessor
 from api_test_service.core.api_session_executor import APISessionExecutor
+from shared.utils.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,10 @@ class APIExecutor(BaseExecutor):
     def cleanup_completed_tasks(self):
         self._concurrency.cleanup_completed_tasks()
 
-    def acquire_api_execution_right(self, api_id, task_id, current_test_case_id, max_process=5, timeout=None):
+    def acquire_api_execution_right(self, api_id, task_id, current_test_case_id, max_process=None, timeout=None):
+        # 并发参数配置化：max_process 缺省时从 config_manager 取默认值
+        if max_process is None:
+            max_process = config_manager.get_value('api_executor', 'default_max_process', 5)
         return self._concurrency.acquire(api_id, task_id, current_test_case_id, max_process, timeout)
 
     def release_api_execution_right(self, api_id, task_id):
@@ -210,7 +214,8 @@ class APIExecutor(BaseExecutor):
             self._handle_control(task_id)
             api_id = api_config.id
 
-            max_process = getattr(api_config, 'default_max_process', 5) or 5
+            # 并发参数配置化：api_config 未配置时回退到 config_manager 默认值
+            max_process = getattr(api_config, 'default_max_process', None) or config_manager.get_value('api_executor', 'default_max_process', 5)
             if not self._concurrency.acquire(api_id, task_id, tc_rel_id, max_process=max_process):
                 self._log(level='ERROR', content=f"API {api_id} 执行权获取失败，跳过",
                           task_id=task_id, api_id=api_id)
@@ -520,7 +525,7 @@ class APIExecutor(BaseExecutor):
                 id=api_config.id,
                 endpoint=api_config.api_url,
                 api_endpoints=api_config.api_endpoints or [],
-                default_max_process=api_config.default_max_process or 5,
+                default_max_process=api_config.default_max_process or config_manager.get_value('api_executor', 'default_max_process', 5),
                 meta=api_config.meta or {},
                 max_timeout=api_config.max_timeout or 30,
                 vendor=api_config.vendor or None

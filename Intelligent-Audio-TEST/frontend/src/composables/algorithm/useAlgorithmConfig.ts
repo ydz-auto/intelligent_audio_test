@@ -344,12 +344,12 @@ export function useAlgorithmConfig() {
       const result = await algorithmApi.getCaseParams(algorithmType)
       const params = (result?.parameters || []).map((p: any) => ({
         ...p,
-        param_code: p.paramCode || p.param_code,
-        param_name: p.paramName || p.param_name,
-        param_type: p.paramType || p.param_type,
-        default_value: p.defaultValue ?? p.default_value,
-        help_text: p.helpText || p.help_text,
-        ui_order: p.uiOrder ?? p.ui_order,
+        param_code: p.param_code,
+        param_name: p.param_name,
+        param_type: p.param_type,
+        default_value: p.default_value,
+        help_text: p.help_text,
+        ui_order: p.ui_order,
       }))
       caseParamCache.value.set(algorithmType, params)
       return params

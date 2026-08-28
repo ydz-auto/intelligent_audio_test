@@ -47,7 +47,7 @@ export function useUploadOptions(props: any, emit: any) {
       uploadConfig.value = {
         ...uploadConfig.value,
         createTestCase: false,
-        testTypes: ['api'],
+        testTypes: ['e2e'],
         algorithmType: '',
         algorithmParams: [],
         apiDimensions: [],

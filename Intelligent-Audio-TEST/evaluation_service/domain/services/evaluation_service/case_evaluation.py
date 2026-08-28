@@ -14,13 +14,15 @@ class CaseEvaluationMixin:
         test_type = kwargs.get('test_type', 'api')
         round_number = kwargs.get('round_number')  # 多轮评估: 轮次编号 (None=整体评估, 0-indexed)
         reference_params_col = kwargs.pop('reference_params_col', None)
+        algorithm_params_col = kwargs.pop('algorithm_params_col', None)
 
         # 多轮场景：统一构建 rounds 列表（单轮也走此路径，列表只有一个元素）
         if isinstance(algorithm_result, dict) and algorithm_result.get('rounds'):
             rounds_list = self._build_rounds_list(
                 algorithm_result, reference_params_col,
                 field_mapper, kwargs.get('algorithm_type', 'translation'),
-                test_type, task_id, test_case_id
+                test_type, task_id, test_case_id,
+                algorithm_params_col=algorithm_params_col
             )
             if round_number is not None:
                 # 指定轮次：只取对应轮

@@ -6,6 +6,10 @@ from .utils import log_and_emit
 # HarmonyDriver 的 scan() 仅依赖 hdc 命令，不需要 hypium，始终可用
 from .harmony_driver import HarmonyDriver
 
+# 注册表（新体系入口）
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import driver_registry
+
 # 专用驱动依赖 hypium（华为内部测试框架，非 PyPI 包）
 # hypium 不可时跳过这些专用驱动，不影响基础扫描功能
 try:
@@ -29,7 +33,11 @@ except ImportError:
 
 
 class DeviceDriverFactory:
-    """设备驱动工厂"""
+    """设备驱动工厂
+
+    兼容层：同时支持新体系（DriverRegistry + AppType/AppVersion/DevicePlatform）
+    和旧体系（关键字匹配 keywords）。新调用方应优先使用 get_driver_typed()。
+    """
 
     def __init__(self):
         # 尝试从配置加载mock模式设置
@@ -118,13 +126,6 @@ class DeviceDriverFactory:
                 ['xiaoyilivechat', '小艺通话', 'livechat'],
                 'HarmonyOS',
                 '小艺通话聊天专用驱动'
-            )
-
-            self.register_specialized_driver(
-                XiaoyilivechatV2(),
-                ['xiaoyilivechatv2', '小艺通话live', 'livechatv2'],
-                'HarmonyOS',
-                '小艺通话live专用驱动(V2)'
             )
 
             self.register_specialized_driver(
@@ -222,6 +223,64 @@ class DeviceDriverFactory:
             if device_sn in self._task_device_map[task_id]:
                 return self._base_drivers.get('HarmonyOS')
         return None
+
+    # —— 新体系：基于注册表的类型化入口 ——
+
+    # 旧关键字 → AppType 映射表（供 get_driver 内部降级使用）
+    _KEYWORD_TO_APP_TYPE: dict[str, AppType] = {
+        'plaud': AppType.PLAUD,
+        'doubao': AppType.DOUBAO_ASR,
+        'face2face': AppType.XIAOYI_FACE2FACE,
+        'simultaneous': AppType.XIAOYI_SIMULTANEOUS,
+        'huiji': AppType.XIAOYI_HUIJI,
+        'livechat': AppType.XIAOYI_LIVECHAT,
+        'input_method': AppType.XIAOYI_INPUT_METHOD,
+    }
+
+    _SYSTEM_TO_PLATFORM: dict[str, DevicePlatform] = {
+        'android': DevicePlatform.ANDROID,
+        'harmonyos': DevicePlatform.HARMONYOS,
+        'ios': DevicePlatform.IOS,
+    }
+
+    def get_driver_typed(
+        self,
+        app_type: AppType,
+        platform: DevicePlatform,
+        version: AppVersion = AppVersion.V1,
+    ):
+        """新体系入口：通过 Enum 精确定位驱动实例
+
+        优先走注册表 resolve（含版本降级 + 依赖检测），
+        resolve 返回的是类，从 _specialized_drivers / _base_drivers 中取已实例化的单例。
+
+        Args:
+            app_type: 应用类型
+            platform: 设备平台
+            version: 应用版本（默认 V1）
+
+        Returns:
+            BaseDeviceDriver 实例（未命中注册表时返回 None）
+        """
+        try:
+            driver_cls = driver_registry.resolve(app_type, version, platform)
+        except Exception:
+            return None
+
+        # 从已实例化的驱动中查找匹配的类
+        for entry in self._specialized_drivers:
+            if isinstance(entry['driver'], driver_cls):
+                return entry['driver']
+        for driver in self._base_drivers.values():
+            if isinstance(driver, driver_cls):
+                return driver
+        return None
+
+    def list_registered_drivers(self) -> list[dict]:
+        """列出注册表中所有驱动（代理给 DriverRegistry）"""
+        return driver_registry.list_drivers()
+
+    # —— 旧体系：关键字匹配（保持兼容）——
 
     def get_driver(self, system, keywords=None, device_sn=None):
         """获取驱动实例

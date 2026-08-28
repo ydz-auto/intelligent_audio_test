@@ -1,5 +1,4 @@
 import { reportsApi } from '../utils/api';
-import { normalizeReport } from '../utils/fieldNaming';
 import socketService from '../utils/socket';
 import { MODAL_TYPES } from '../composables/modal/useModal';
 import type { Report, Task } from './reportTypes';
@@ -51,7 +50,6 @@ export async function viewTaskReport(task: Task): Promise<Report> {
                 throw new Error('无法获取报告详情');
               }
 
-              report = normalizeReport(report);
               const cases = extractCasesFromReport(report);
               const summary = report.summary || {};
 
@@ -61,15 +59,15 @@ export async function viewTaskReport(task: Task): Promise<Report> {
                 description: report.description || '',
                 conclusion: (report.analysis || report.conclusion) || '',
                 status: report.status,
-                algorithmType: report.algorithmType || task.algorithmType,
-                createdAt: report.createdAt,
-                updatedAt: report.updatedAt,
+                algorithm_type: report.algorithm_type || task.algorithm_type,
+                created_at: report.created_at,
+                updated_at: report.updated_at,
                 summary: {
-                  ...summary, allMetrics: summary.allMetrics || [], detailedResults: report.detailedResults || [], deviceStats: summary.deviceStats || [], apiStats: summary.apiStats || []
+                  ...summary, all_metrics: summary.all_metrics || [], detailed_results: report.detailed_results || [], device_stats: summary.device_stats || [], api_stats: summary.api_stats || []
                 },
                 cases: cases,
-                detailedResults: report.detailedResults || [],
-                allMetrics: summary.allMetrics || []
+                detailed_results: report.detailed_results || [],
+                all_metrics: summary.all_metrics || []
               } as any;
 
               comparisonTasks.value = [task];
@@ -98,8 +96,6 @@ export async function viewTaskReport(task: Task): Promise<Report> {
       throw new Error('无法获取报告详情');
     }
 
-    report = normalizeReport(report);
-
     const cases = extractCasesFromReport(report);
 
     const summary = report.summary || {};
@@ -109,15 +105,15 @@ export async function viewTaskReport(task: Task): Promise<Report> {
       description: report.description || '',
       conclusion: (report.analysis || report.conclusion) || '',
       status: report.status,
-      algorithmType: report.algorithmType || task.algorithmType,
-      createdAt: report.createdAt,
-      updatedAt: report.updatedAt,
+      algorithm_type: report.algorithm_type || task.algorithm_type,
+      created_at: report.created_at,
+      updated_at: report.updated_at,
       summary: {
-        ...summary, allMetrics: summary.allMetrics || [], detailedResults: report.detailedResults || [], deviceStats: summary.deviceStats || [], apiStats: summary.apiStats || []
+        ...summary, all_metrics: summary.all_metrics || [], detailed_results: report.detailed_results || [], device_stats: summary.device_stats || [], api_stats: summary.api_stats || []
       },
       cases: cases,
-      detailedResults: report.detailedResults || [],
-      allMetrics: summary.allMetrics || []
+      detailed_results: report.detailed_results || [],
+      all_metrics: summary.all_metrics || []
     } as any;
 
     comparisonTasks.value = [task];
@@ -141,6 +137,118 @@ export async function viewTaskReport(task: Task): Promise<Report> {
   }
 }
 
+export async function regenerateTaskReport(reportId: string | number, task: Task): Promise<Report> {
+  try {
+    if (!reportId) {
+      throw new Error('报告ID无效');
+    }
+
+    const result = await reportsApi.regenerateReport(reportId);
+
+    if (result.status === 'generating') {
+      socketService.connect();
+
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          socketService.off('report_generated', handleReportGenerated);
+          reject(new Error('报告重新生成超时'));
+        }, 120000);
+
+        const handleReportGenerated = async (data: any) => {
+          if (data.taskId === task.id) {
+            clearTimeout(timeout);
+            socketService.off('report_generated', handleReportGenerated);
+
+            if (!data.success) {
+              reject(new Error(data.error || '报告重新生成失败'));
+              return;
+            }
+
+            try {
+              let report = await reportsApi.getOne(data.reportId);
+              if (!report) throw new Error('无法获取报告详情');
+
+              const cases = extractCasesFromReport(report);
+              const summary = report.summary || {};
+              comparisonReport.value = {
+                ...comparisonReport.value,
+                id: report.id,
+                name: report.name || report.title,
+                description: report.description || '',
+                conclusion: (report.analysis || report.conclusion) || '',
+                status: report.status,
+                algorithm_type: report.algorithm_type || task.algorithm_type,
+                created_at: report.created_at,
+                updated_at: report.updated_at,
+                summary: {
+                  ...summary,
+                  all_metrics: summary.all_metrics || [],
+                  detailed_results: report.detailed_results || [],
+                  device_stats: summary.device_stats || [],
+                  api_stats: summary.api_stats || []
+                },
+                cases: cases,
+                detailed_results: report.detailed_results || [],
+                all_metrics: summary.all_metrics || []
+              } as any;
+
+              comparisonTasks.value = [task];
+              extractDevicesFromTasks(comparisonTasks.value, comparisonReport.value);
+              updateComparisonData();
+
+              resolve(comparisonReport.value);
+            } catch (err: any) {
+              reject(err);
+            }
+          }
+        };
+
+        socketService.on('report_generated', handleReportGenerated);
+      });
+    }
+
+    if (!result || !result.id) {
+      throw new Error('重新生成报告失败，结果无效');
+    }
+
+    let report = await reportsApi.getOne(result.id);
+    if (!report) throw new Error('无法获取报告详情');
+
+    const cases = extractCasesFromReport(report);
+    const summary = report.summary || {};
+    comparisonReport.value = {
+      ...comparisonReport.value,
+      id: report.id,
+      name: report.name || report.title,
+      description: report.description || '',
+      conclusion: (report.analysis || report.conclusion) || '',
+      status: report.status,
+      algorithm_type: report.algorithm_type || task.algorithm_type,
+      created_at: report.created_at,
+      updated_at: report.updated_at,
+      summary: {
+        ...summary,
+        all_metrics: summary.all_metrics || [],
+        detailed_results: report.detailed_results || [],
+        device_stats: summary.device_stats || [],
+        api_stats: summary.api_stats || []
+      },
+      cases: cases,
+      detailed_results: report.detailed_results || [],
+      all_metrics: summary.all_metrics || []
+    } as any;
+
+    comparisonTasks.value = [task];
+    extractDevicesFromTasks(comparisonTasks.value, comparisonReport.value);
+    updateComparisonData();
+
+    return comparisonReport.value;
+  } catch (error: any) {
+    console.error('Failed to regenerate task report:', error);
+    throw new Error(`重新生成报告失败: ${error.message}`);
+  }
+}
+
 export async function batchCompare(taskIds: (string | number)[], tasks: Task[]): Promise<Report> {
   try {
     const taskNames = tasks.map(task => task.name || (task as { title?: string }).title || '未命名任务').join('_');
@@ -156,21 +264,19 @@ export async function batchCompare(taskIds: (string | number)[], tasks: Task[]):
       throw new Error('获取对比报告详情失败');
     }
 
-    report = normalizeReport(report);
-
     const cases = extractCasesFromReport(report);
 
     const summary = report.summary || {};
 
-    if (summary.overallSuccessRate !== undefined && summary.passRate === undefined) {
-      summary.passRate = summary.overallSuccessRate;
+    if (summary.overall_success_rate !== undefined && summary.pass_rate === undefined) {
+      summary.pass_rate = summary.overall_success_rate;
     }
 
-    const dimensionValues = summary.dimensionValues;
-    if (dimensionValues) {
+    const dimension_values = summary.dimension_values;
+    if (dimension_values) {
       const findValue = (names: string[]) => {
         for (const name of names) {
-          if (dimensionValues[name] !== undefined) return dimensionValues[name];
+          if (dimension_values[name] !== undefined) return dimension_values[name];
         }
         return undefined;
       };
@@ -179,8 +285,8 @@ export async function batchCompare(taskIds: (string | number)[], tasks: Task[]):
         summary.stability = findValue(['稳定性', 'Stability', 'stability']) || 0;
       }
 
-      if (summary.avgResponseTime === undefined) {
-        summary.avgResponseTime = findValue(['平均响应时间', 'Avg Response Time', 'avgResponseTime', 'Response Time']) || 0;
+      if (summary.avg_response_time === undefined) {
+        summary.avg_response_time = findValue(['平均响应时间', 'Avg Response Time', 'avg_response_time', 'Response Time']) || 0;
       }
     }
 
@@ -190,12 +296,12 @@ export async function batchCompare(taskIds: (string | number)[], tasks: Task[]):
       description: report.description || '',
       conclusion: (report.analysis || report.conclusion) || '',
       status: report.status,
-      algorithmType: report.algorithmType,
-      updatedAt: report.updatedAt,
+      algorithm_type: report.algorithm_type,
+      updated_at: report.updated_at,
       summary: summary,
       cases: cases,
-      detailedResults: report.detailedResults || [],
-      allMetrics: summary.allMetrics || []
+      detailed_results: report.detailed_results || [],
+      all_metrics: summary.all_metrics || []
     } as any;
 
     comparisonTasks.value = [...tasks];

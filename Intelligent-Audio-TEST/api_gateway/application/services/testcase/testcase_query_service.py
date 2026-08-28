@@ -22,6 +22,7 @@ from api_gateway.schemas.testcase import (
     TestCaseDimensionBrief,
     TestCaseListItem,
     TestCaseListData,
+    TestCaseListQuery,
     TestCasePreviewData,
     TestCaseStatsData,
 )
@@ -35,6 +36,12 @@ _task_acl = TaskConfigAclRepositoryImpl()
 _playback_acl = PlaybackAclRepositoryImpl()
 
 
+def _parse_query_params(model_cls):
+    """从 request.args 提取查询参数并通过 APIModel 校验"""
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
+
+
 class TestCaseQueryService:
     """测试用例查询读侧 Service（CQRS Query Side）。
 
@@ -43,16 +50,16 @@ class TestCaseQueryService:
 
     @staticmethod
     def get_all():
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
-        keyword = request.args.get('keyword')
-        tag_name = request.args.get('tag')
-        group_id = request.args.get('group_id')
-        test_type = request.args.get('type')
-        algorithm_type = request.args.get('algorithm_type')
-        view = request.args.get('view')
-        include_deleted_raw = request.args.get('include_deleted', 'false')
-        include_deleted = str(include_deleted_raw).lower() in ('true', '1', 'yes')
+        query = _parse_query_params(TestCaseListQuery)
+        page = query.page
+        per_page = query.per_page
+        keyword = query.keyword
+        tag_name = query.tag
+        group_id = query.group_id
+        test_type = query.test_type
+        algorithm_type = query.algorithm_type
+        view = query.view
+        include_deleted = query.include_deleted
 
         result = _testcase_acl.list_testcases(
             page=page,
@@ -395,6 +402,17 @@ class TestCaseQueryService:
             code = result.get('code', 400)
             if code == 404:
                 return error_response(result.get('message', '未找到测试用例'), 404)
+            return error_response(result.get('message', '查询失败'))
+
+        return success_response(result.get('data'))
+
+    @staticmethod
+    def fetch_case_ids():
+        """按筛选条件返回全量用例ID（不分页）"""
+        data = request.get_json() or {}
+        result = _testcase_acl.fetch_case_ids(data)
+
+        if not result.get('success'):
             return error_response(result.get('message', '查询失败'))
 
         return success_response(result.get('data'))

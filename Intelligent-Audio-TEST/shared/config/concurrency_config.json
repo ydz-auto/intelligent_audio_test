@@ -1,0 +1,35 @@
+{
+  "api_executor": {
+    "max_queue_size": 200,
+    "max_wait_time": 300,
+    "default_max_process": 20
+  },
+  "evaluation_service": {
+    "max_queue_size": 200,
+    "max_wait_time": 300,
+    "default_max_concurrent": 20,
+    "poll_interval": 5,
+    "eval_max_wait_time": 600,
+    "redis_queue_brpop_timeout": 1,
+    "redis_result_callback_timeout": 5
+  },
+  "execution_engine": {
+    "max_queue_size": 200,
+    "test_case_wait_time": 3000,
+    "api_task_max_workers": 20,
+    "device_control_max_workers": 5,
+    "audio_playback_max_workers": 12
+  },
+  "grpc": {
+    "report_service_workers": 10,
+    "algorithm_service_workers": 10,
+    "task_service_workers": 10,
+    "auth_service_workers": 10,
+    "evaluation_service_workers": 10,
+    "device_service_workers": 5,
+    "audio_service_workers": 5,
+    "e2e_test_service_workers": 5,
+    "api_adapter_service_workers": 8,
+    "api_test_service_workers": 8
+  }
+}

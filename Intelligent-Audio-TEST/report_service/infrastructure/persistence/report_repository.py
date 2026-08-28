@@ -468,6 +468,100 @@ class ReportRepository(ReportRepositoryABC):
         finally:
             session.close()
 
+    def load_full_report_data(self, report_id: int) -> Optional[dict]:
+        """加载报告完整数据（用于 HTML 导出）。
+
+        一次性查询 ReportSummary / ReportSummaryMeta / ReportMetricStats /
+        ReportRawData，返回 dict 格式的完整报告数据。
+
+        Args:
+            report_id: 报告 ID
+
+        Returns:
+            包含完整报告数据的 dict，或 None（报告不存在）
+        """
+        import json as _json
+        session = get_db_session()
+        try:
+            # 查询摘要
+            summary_po = (
+                session.query(ReportSummary)
+                .filter(ReportSummary.report_id == report_id)
+                .first()
+            )
+            # 查询摘要元数据
+            meta_po = (
+                session.query(ReportSummaryMeta)
+                .filter(ReportSummaryMeta.report_id == report_id)
+                .first()
+            )
+            # 查询指标统计
+            stats_po = (
+                session.query(ReportMetricStats)
+                .filter(ReportMetricStats.report_id == report_id)
+                .first()
+            )
+            # 查询原始数据
+            raw_po = (
+                session.query(ReportRawData)
+                .filter(ReportRawData.report_id == report_id)
+                .first()
+            )
+
+            if not summary_po:
+                return None
+
+            def _to_json(val):
+                """将 JSON 列字段统一转为 Python 对象。"""
+                if val is None:
+                    return []
+                if isinstance(val, (list, dict)):
+                    return val
+                if isinstance(val, str):
+                    try:
+                        return _json.loads(val)
+                    except Exception:
+                        return []
+                return val
+
+            def _to_json_obj(val):
+                """将 JSON 列字段统一转为 dict。"""
+                if val is None:
+                    return {}
+                if isinstance(val, dict):
+                    return val
+                if isinstance(val, str):
+                    try:
+                        obj = _json.loads(val)
+                        return obj if isinstance(obj, dict) else {}
+                    except Exception:
+                        return {}
+                return {}
+
+            return {
+                'total_cases': summary_po.total_cases or 0,
+                'completed_cases': summary_po.completed_cases or 0,
+                'failed_cases': summary_po.failed_cases or 0,
+                'pass_rate': summary_po.pass_rate or 0.0,
+                'raw_data': _to_json(raw_po.raw_data) if raw_po else [],
+                'case_categories': _to_json(meta_po.case_categories) if meta_po else [],
+                'all_case_tags': _to_json(meta_po.all_case_tags) if meta_po else [],
+                'devices': _to_json(meta_po.devices) if meta_po else [],
+                'apis': _to_json(meta_po.apis) if meta_po else [],
+                'resources': _to_json(meta_po.resources) if meta_po else [],
+                'resource_headers': _to_json(meta_po.resource_headers) if meta_po else [],
+                'all_metrics': _to_json(meta_po.all_metrics) if meta_po else [],
+                'field_mappings': _to_json_obj(meta_po.field_mappings) if meta_po else {},
+                'metric_data': _to_json_obj(stats_po.metric_data) if stats_po else {},
+                'tag_metric_data': _to_json_obj(stats_po.tag_metric_data) if stats_po else {},
+                'tag_category_metric_data': _to_json_obj(stats_po.tag_category_metric_data) if stats_po else {},
+                'case_type_stats': _to_json(stats_po.case_type_stats) if stats_po else [],
+                'device_stats': _to_json(stats_po.device_stats) if stats_po else [],
+                'api_stats': _to_json(stats_po.api_stats) if stats_po else [],
+            }
+        finally:
+            session.close()
+
     # ---- 写入 ----
 
     def save(self, aggregate: ReportAggregate) -> None:
@@ -620,6 +714,7 @@ class ReportRepository(ReportRepositoryABC):
                 resources=meta_data.get('resources'),
                 resource_headers=meta_data.get('resource_headers'),
                 all_metrics=meta_data.get('all_metrics'),
+                field_mappings=meta_data.get('field_mappings'),
             )
             session.add(po)
             session.flush()
@@ -844,6 +939,37 @@ class ReportRepository(ReportRepositoryABC):
                 }
                 for r, s in rows
             ]
+        finally:
+            session.close()
+
+    def hard_delete(self, report_id: int) -> bool:
+        """硬删除报告及其所有子表记录。
+
+        级联删除 ReportSummary、ReportSummaryMeta、ReportRawData、
+        ReportCase、ReportMetricStats、ReportComparisonMatrix。
+
+        Returns:
+            True 表示删除成功，False 表示报告不存在。
+        """
+        session = get_db_session()
+        try:
+            po = session.get(Report, report_id)
+            if po is None:
+                return False
+            # 级联删除子表
+            session.query(ReportSummary).filter(ReportSummary.report_id == report_id).delete(synchronize_session=False)
+            session.query(ReportSummaryMeta).filter(ReportSummaryMeta.report_id == report_id).delete(synchronize_session=False)
+            session.query(ReportRawData).filter(ReportRawData.report_id == report_id).delete(synchronize_session=False)
+            session.query(ReportCase).filter(ReportCase.report_id == report_id).delete(synchronize_session=False)
+            session.query(ReportMetricStats).filter(ReportMetricStats.report_id == report_id).delete(synchronize_session=False)
+            session.query(ReportComparisonMatrix).filter(ReportComparisonMatrix.report_id == report_id).delete(synchronize_session=False)
+            # 删除主表
+            session.delete(po)
+            session.commit()
+            return True
+        except Exception:
+            session.rollback()
+            raise
         finally:
             session.close()
 

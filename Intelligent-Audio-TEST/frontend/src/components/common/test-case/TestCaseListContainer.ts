@@ -1,6 +1,7 @@
 import { ref, computed, watch, onMounted, onUnmounted, onBeforeUnmount, nextTick } from 'vue';
-import { playbackApi, algorithmApi } from '../../../utils/api';
+import { playbackApi, algorithmApi, evaluationApi } from '../../../utils/api';
 import { normalizeTestCaseConfig } from '../../../utils/utils';
+import { useTestCaseStore } from '../../../store/testCaseStore';
 import { useTestCaseBatchActions } from '../../../composables/testCase/useTestCaseBatchActions';
 import { useTestCaseAudioPreview } from '../../../composables/testCase/useTestCaseAudioPreview';
 import { useTestCaseGroupExpand } from '../../../composables/testCase/useTestCaseGroupExpand';
@@ -24,6 +25,8 @@ export function useTestCaseListContainer(props: any, emit: any) {
   const tagFilter = ref('all');
   const sortBy = ref('count');
   const sortOrder = ref('desc');
+  const dimensionFilter = ref<number | 'all'>('all');
+  const dimensionOptions = ref<{ id: number; name: string }[]>([]);
 
   // hasMoreGroups 由分组分页计算属性驱动，先占位再被 composable 引用
   const hasMoreGroups = ref(true);
@@ -41,7 +44,11 @@ export function useTestCaseListContainer(props: any, emit: any) {
     paginatedGroupsRef,
     paginatedTagsRef,
     hasMoreGroups,
-    hasMoreTagsRef
+    hasMoreTagsRef,
+    computed(() => props.tagViewLoading ?? false),
+    () => emit('loadMoreTags'),
+    dimensionFilter,
+    searchQuery
   );
 
   const {
@@ -75,12 +82,14 @@ export function useTestCaseListContainer(props: any, emit: any) {
       groupFilter,
       tagFilter,
       sortBy,
-      sortOrder
+      sortOrder,
+      dimensionFilter
     },
     {
       currentPage,
       innerViewMode,
-      emitTagFilterChange: (filters) => emit('tagFilterChange', filters)
+      emitTagFilterChange: (filters) => emit('tagFilterChange', filters),
+      emitGroupFilterChange: (filters) => emit('groupFilterChange', filters)
     }
   );
 
@@ -162,7 +171,7 @@ export function useTestCaseListContainer(props: any, emit: any) {
           const rounds = normalizedConfig.rounds || [];
           const hasAudios = rounds.some((r: any) => Array.isArray(r.audios) && r.audios.length > 0);
           // In dual-record architecture, test_type is at record level
-          const recordTestType = (testCase as any).test_type || (testCase as any).testType || '';
+          const recordTestType = (testCase as any).test_type || '';
           if (recordTestType) {
             if (testType === 'api') return recordTestType === 'api';
             if (testType === 'e2e') return recordTestType === 'e2e';
@@ -198,7 +207,8 @@ export function useTestCaseListContainer(props: any, emit: any) {
   const batchActionsModule = useTestCaseBatchActions(
     computed(() => filteredTestCases.value),
     selectedCases,
-    algorithmTypeFilter
+    algorithmTypeFilter,
+    computed(() => filteredTagCases.value)
   );
 
   const {
@@ -211,7 +221,16 @@ export function useTestCaseListContainer(props: any, emit: any) {
     handleUpdateNoise,
     handleAutoGenerateName,
     handleUpdateTags,
-    handleRefreshReference
+    handleRefreshReference,
+    handleTagUpdateSPL,
+    handleTagUpdatePlaybackDevice,
+    handleTagUpdateNoise,
+    handleTagUpdateAlgorithmParams,
+    handleTagUpdateDimensions,
+    handleTagAdjustGroup,
+    handleTagAutoGenerateName,
+    handleTagUpdateTags,
+    handleTagRefreshReference
   } = batchActionsModule;
 
   // ===== 音频预览 composable =====
@@ -244,7 +263,10 @@ export function useTestCaseListContainer(props: any, emit: any) {
   const updateViewMode = (mode: 'group' | 'tag') => {
     innerViewMode.value = mode;
     emit('update:viewMode', mode);
-    // 切换视图时重置展开状态
+    // 切换视图时重置展开状态和选中状态
+    selectedCases.value = [];
+    // 重置前端分页（分组视图使用）
+    currentPage.value = 1;
     if (mode === 'tag') {
       expandedCategories.value = {};
     } else {
@@ -281,17 +303,25 @@ export function useTestCaseListContainer(props: any, emit: any) {
   const groupSelectionStates = computed(() => {
     const result: Record<string, boolean> = {};
     const filteredValue = filteredTestCases.value;
+    const selectedSet = new Set(selectedCases.value.map(id => String(id)));
 
     Object.keys(filteredValue).forEach((group: string) => {
       const groupCases = filteredValue[group];
-      if (groupCases.length === 0) {
+      // 用后端总数判断全选状态，而非已加载的用例数
+      const totalCount = getGroupTotalCount(group);
+      if (totalCount === 0) {
         result[group] = false;
       } else {
-        result[group] = groupCases
+        // 统计该分组下已选中的用例数
+        const selectedInGroup = groupCases.filter((tc: TestCase) => tc && tc.id && selectedSet.has(String(tc.id))).length;
+        // 如果已加载数 < 总数，只能判断部分选中；只有全部加载且全选才算全选
+        // 但 toggleGroupSelection 会从后端拉全量ID，所以已加载的用例数可能 < 选中数
+        // 此处用 totalCount === selectedInGroup 判断不够准确（selectedInGroup 只数已加载的）
+        // 改为：如果 selectedCases 长度 >= totalCount 且已加载的全部选中，则全选
+        result[group] = groupCases.length > 0 && groupCases
           .filter((caseItem: TestCase) => caseItem && caseItem.id)
-          .every((caseItem: TestCase) =>
-            selectedCases.value.includes(caseItem.id)
-          );
+          .every((caseItem: TestCase) => selectedSet.has(String(caseItem.id)))
+          && selectedInGroup >= totalCount;
       }
     });
 
@@ -461,20 +491,21 @@ export function useTestCaseListContainer(props: any, emit: any) {
     });
   });
 
-  const paginatedTags = computed(() => {
-    const allTags = sortedTags.value;
-    const endIndex = currentPage.value * itemsPerPage.value;
-    return allTags.slice(0, endIndex);
+  // 标签视图是否还有更多未从后端加载的标签（基于后端分页信息）
+  const hasMoreTagsFromBackend = computed(() => {
+    const pagination = props.tagViewPagination;
+    if (!pagination) return false;
+    return pagination.page < pagination.pages;
   });
 
-  // 标签视图是否还有更多未展示的标签
-  const hasMoreTags = computed(() => paginatedTags.value.length < sortedTags.value.length);
+  // 兼容旧引用：标签视图的前端分页标志，后端分页模式下始终为 false（由 hasMoreTagsFromBackend 接管）
+  const hasMoreTags = computed(() => false);
 
   // 同步分页结果到 groupExpand composable 引用（用于哨兵 watch）
-  watch([paginatedGroups, paginatedTags, hasMoreTags], () => {
+  watch([paginatedGroups, hasMoreTagsFromBackend], () => {
     paginatedGroupsRef.value = paginatedGroups.value;
-    paginatedTagsRef.value = paginatedTags.value;
-    hasMoreTagsRef.value = hasMoreTags.value;
+    paginatedTagsRef.value = sortedTags.value;
+    hasMoreTagsRef.value = hasMoreTagsFromBackend.value;
   }, { immediate: true });
 
   // ===== 用例卡片操作 =====
@@ -496,18 +527,88 @@ export function useTestCaseListContainer(props: any, emit: any) {
     }
   };
 
-  const toggleGroupSelection = (group: string) => {
-    const groupCases = filteredTestCases.value[group] || [];
+  const toggleGroupSelection = async (group: string) => {
     const allSelected = groupSelectionStates.value[group];
+    const store = useTestCaseStore();
+    const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
+    const keyword = debouncedSearchQuery.value || undefined;
+    const testType = testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined;
+    const dimensionId = dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
 
-    groupCases.forEach((testCase: TestCase) => {
-      const index = selectedCases.value.indexOf(testCase.id);
-      if (allSelected) {
-        if (index > -1) selectedCases.value.splice(index, 1);
+    // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例
+    const allIds = await store.fetchCaseIdsByFilter({
+      group,
+      testType,
+      search: keyword,
+      algorithmType,
+      dimensionId,
+    });
+
+    if (allSelected) {
+      // 取消全选：移除该分组下全量用例ID
+      const idSet = new Set(allIds);
+      selectedCases.value = selectedCases.value.filter(id => !idSet.has(id));
+    } else {
+      // 全选：添加该分组下全量用例ID
+      allIds.forEach((id: string | number) => {
+        if (!selectedCases.value.includes(id)) {
+          selectedCases.value.push(id);
+        }
+      });
+    }
+  };
+
+  const tagSelectionStates = computed(() => {
+    const result: Record<string, boolean> = {};
+    const filteredValue = filteredTagCases.value;
+    const selectedSet = new Set(selectedCases.value.map(id => String(id)));
+
+    Object.keys(filteredValue).forEach((tagName: string) => {
+      const tagCases = filteredValue[tagName];
+      const tagCaseCount = tagCases.length;
+      if (tagCaseCount === 0) {
+        result[tagName] = false;
       } else {
-        if (index === -1) selectedCases.value.push(testCase.id);
+        const selectedInTag = tagCases.filter((tc: TestCase) => tc && tc.id && selectedSet.has(String(tc.id))).length;
+        result[tagName] = tagCases
+          .filter((caseItem: TestCase) => caseItem && caseItem.id)
+          .every((caseItem: TestCase) => selectedSet.has(String(caseItem.id)))
+          && selectedInTag >= tagCaseCount;
       }
     });
+
+    return result;
+  });
+
+  const toggleTagSelection = async (tagName: string) => {
+    const allSelected = tagSelectionStates.value[tagName];
+    const store = useTestCaseStore();
+    const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
+    const keyword = debouncedSearchQuery.value || undefined;
+    const testType = testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined;
+    const dimensionId = dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
+
+    // 始终从后端拉全量ID，确保取消全选时也能移除未加载的用例
+    const allIds = await store.fetchCaseIdsByFilter({
+      tag: tagName,
+      testType,
+      search: keyword,
+      algorithmType,
+      dimensionId,
+    });
+
+    if (allSelected) {
+      // 取消全选：移除该标签下全量用例ID
+      const idSet = new Set(allIds);
+      selectedCases.value = selectedCases.value.filter(id => !idSet.has(id));
+    } else {
+      // 全选：添加该标签下全量用例ID
+      allIds.forEach((id: string | number) => {
+        if (!selectedCases.value.includes(id)) {
+          selectedCases.value.push(id);
+        }
+      });
+    }
   };
 
   const handleGroupDelete = (group: string) => {
@@ -552,6 +653,18 @@ export function useTestCaseListContainer(props: any, emit: any) {
     }
   }
 
+  async function loadDimensionOptions() {
+    try {
+      const data = await evaluationApi.getOptions();
+      dimensionOptions.value = (data?.dimensions || [])
+        .filter((d: any) => d.dimension_type !== 'sub')
+        .map((d: any) => ({ id: d.id, name: d.name }));
+    } catch (error) {
+      console.error('加载评估维度选项失败:', error);
+      dimensionOptions.value = [];
+    }
+  }
+
   const loadPlaybackDevices = async () => {
     try {
       const result = await playbackApi.getAll();
@@ -587,7 +700,8 @@ export function useTestCaseListContainer(props: any, emit: any) {
     setupLoadMoreObserver();
     Promise.all([
       loadPlaybackDevices(),
-      loadAlgorithmOptions()
+      loadAlgorithmOptions(),
+      loadDimensionOptions()
     ]);
   });
 
@@ -616,6 +730,8 @@ export function useTestCaseListContainer(props: any, emit: any) {
     tagFilter,
     sortBy,
     sortOrder,
+    dimensionFilter,
+    dimensionOptions,
     hasMoreGroups,
     // 分组展开
     expandedCategories,
@@ -646,6 +762,16 @@ export function useTestCaseListContainer(props: any, emit: any) {
     handleAutoGenerateName,
     handleUpdateTags,
     handleRefreshReference,
+    // 标签视图批量操作
+    handleTagUpdateSPL,
+    handleTagUpdatePlaybackDevice,
+    handleTagUpdateNoise,
+    handleTagUpdateAlgorithmParams,
+    handleTagUpdateDimensions,
+    handleTagAdjustGroup,
+    handleTagAutoGenerateName,
+    handleTagUpdateTags,
+    handleTagRefreshReference,
     // 音频预览
     showAudioPlayer,
     currentTestCaseCaseId,
@@ -679,13 +805,15 @@ export function useTestCaseListContainer(props: any, emit: any) {
     filteredTagCases,
     formattedTagCases,
     sortedTags,
-    paginatedTags,
+    hasMoreTagsFromBackend,
     hasMoreTags,
     getTagDurationStats,
     // 用例操作
     getTestCaseActions,
     toggleTestCaseSelection,
     toggleGroupSelection,
+    tagSelectionStates,
+    toggleTagSelection,
     handleGroupDelete,
     // 批量菜单
     openBatchMenuGroup,

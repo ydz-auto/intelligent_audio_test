@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
+from shared.models.common_enums import TestType
+
 
 @dataclass(frozen=True)
 class TaskId:
@@ -59,7 +61,7 @@ class TaskProgress:
 @dataclass(frozen=True)
 class TaskConfig:
     """任务配置值对象（封装 task.config JSON 字段）。"""
-    task_type: str = 'api'
+    task_type: str = TestType.API.value
     algorithm_type: Optional[str] = None
     algorithm_params: Dict[str, Any] = field(default_factory=dict)
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -70,7 +72,7 @@ class TaskConfig:
         if not data:
             return cls()
         return cls(
-            task_type=data.get('type', 'api'),
+            task_type=data.get('type', TestType.API.value),
             algorithm_type=data.get('algorithm_type'),
             algorithm_params=data.get('algorithm_params', {}) or {},
             extra={k: v for k, v in data.items()

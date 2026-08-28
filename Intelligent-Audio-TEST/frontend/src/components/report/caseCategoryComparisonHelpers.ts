@@ -1,7 +1,6 @@
 export function extractInitialMetricData(reportData: any) {
   // 1. 优先使用后端预计算的 metricData
-  const preCalculatedRows = reportData.metricData || reportData.summary?.metricData ||
-                           reportData.metric_data || reportData.summary?.metric_data;
+  const preCalculatedRows = reportData.metric_data || reportData.summary?.metric_data;
 
   // 处理 dict 格式: {category: {resource: {metric: value}}}
   if (preCalculatedRows && !Array.isArray(preCalculatedRows) && typeof preCalculatedRows === 'object') {
@@ -20,8 +19,7 @@ export function extractInitialMetricData(reportData: any) {
       });
     });
 
-    const rawRows = reportData.rawData || reportData.summary?.rawData ||
-                   reportData.raw_data || reportData.summary?.raw_data;
+    const rawRows = reportData.raw_data || reportData.summary?.raw_data;
     if (rawRows && !Array.isArray(rawRows) && typeof rawRows === 'object') {
       Object.keys(mergedData).forEach(category => {
         const resources = mergedData[category] || {};
@@ -48,7 +46,7 @@ export function extractInitialMetricData(reportData: any) {
         const resourceKey = row.resource || '0-默认资源';
         row.categories.forEach(c => {
           if (!c) return;
-          const category = c.categoryName || c.categoryId || '未分类';
+          const category = c.category_name || c.category_id || '未分类';
           if (!mergedData[category]) mergedData[category] = {};
           if (!mergedData[category][resourceKey]) mergedData[category][resourceKey] = {};
           (c.metrics || []).forEach(m => {
@@ -57,7 +55,7 @@ export function extractInitialMetricData(reportData: any) {
           });
         });
       } else {
-        const category = row.categoryName || row.categoryId || '未分类';
+        const category = row.category_name || row.category_id || '未分类';
         const resourceKey = row.resource || '0-默认资源';
         if (!mergedData[category]) mergedData[category] = {};
         if (!mergedData[category][resourceKey]) mergedData[category][resourceKey] = {};
@@ -74,8 +72,7 @@ export function extractInitialMetricData(reportData: any) {
       }
     });
 
-    const rawRows = reportData.rawData || reportData.summary?.rawData ||
-                   reportData.raw_data || reportData.summary?.raw_data || [];
+    const rawRows = reportData.raw_data || reportData.summary?.raw_data || [];
     if (Array.isArray(rawRows) && rawRows.length > 0) {
       const rawMap = {};
       rawRows.forEach(r => {
@@ -178,26 +175,26 @@ export function extractInitialMetricData(reportData: any) {
     return reconstructedData;
   }
 
-  // 2. 如果没有预计算数据，则从 detailedResults 中提取 (原有逻辑)
+  // 2. 如果没有预计算数据，则从 detailed_results 中提取 (原有逻辑)
   const dataAccumulator = {};
 
-  const detailedResults = reportData.detailedResults || reportData.summary?.detailedResults || [];
+  const detailedResults = reportData.detailed_results || reportData.summary?.detailed_results || [];
   if (detailedResults && detailedResults.length > 0) {
     detailedResults.forEach(result => {
-        const testCaseId = result.testCaseId;
+        const testCaseId = result.test_case_id;
         let category = '其他';
         let categoryId = 'default';
         let tags = [];
 
-        if (result.testCaseGroup) {
-          category = result.testCaseGroup.name;
-          categoryId = result.testCaseGroup.id;
+        if (result.test_case_group) {
+          category = result.test_case_group.name;
+          categoryId = result.test_case_group.id;
         }
-        if (result.testCaseTags) {
-          tags = result.testCaseTags.map(tag => tag.name);
+        if (result.test_case_tags) {
+          tags = result.test_case_tags.map(tag => tag.name);
         }
-        else if (result.testCaseName) {
-          category = result.testCaseName;
+        else if (result.test_case_name) {
+          category = result.test_case_name;
           categoryId = testCaseId;
         }
 
@@ -227,17 +224,17 @@ export function extractInitialMetricData(reportData: any) {
         };
       }
 
-      if (result.dimensionScores) {
-        result.dimensionScores.forEach(dim => {
-          if (!dataAccumulator[category][resourceKey].counts[dim.dimensionName]) {
-            dataAccumulator[category][resourceKey].counts[dim.dimensionName] = 0;
-            dataAccumulator[category][resourceKey].sums[dim.dimensionName] = 0;
-            dataAccumulator[category][resourceKey].values[dim.dimensionName] = [];
+      if (result.dimension_scores) {
+        result.dimension_scores.forEach(dim => {
+          if (!dataAccumulator[category][resourceKey].counts[dim.dimension_name]) {
+            dataAccumulator[category][resourceKey].counts[dim.dimension_name] = 0;
+            dataAccumulator[category][resourceKey].sums[dim.dimension_name] = 0;
+            dataAccumulator[category][resourceKey].values[dim.dimension_name] = [];
           }
 
-          dataAccumulator[category][resourceKey].counts[dim.dimensionName]++;
-          dataAccumulator[category][resourceKey].sums[dim.dimensionName] += dim.score;
-          dataAccumulator[category][resourceKey].values[dim.dimensionName].push(dim.score);
+          dataAccumulator[category][resourceKey].counts[dim.dimension_name]++;
+          dataAccumulator[category][resourceKey].sums[dim.dimension_name] += dim.score;
+          dataAccumulator[category][resourceKey].values[dim.dimension_name].push(dim.score);
         });
       } else if (result.metrics) {
         Object.entries(result.metrics).forEach(([dimName, value]) => {

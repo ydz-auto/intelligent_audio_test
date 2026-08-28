@@ -295,3 +295,69 @@ select.form-input.filter-select:focus {
 .api-status.llm-judge i {
   font-size: 11px;
 }
+
+/* === 层级展示样式 === */
+
+/* 子维度行背景微调 */
+.sub-dimension-row {
+  background-color: var(--background-secondary, #fafafa);
+}
+
+.sub-dimension-row:hover {
+  background-color: var(--background-tertiary, #f5f5f5);
+}
+
+/* 维度名称单元格容器 */
+.dimension-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+/* 树形分支符号 */
+.tree-branch {
+  color: var(--text-light, #999);
+  font-size: 16px;
+  font-family: monospace;
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+/* 主维度/子维度类型标签 */
+.dimension-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.main-dim-badge {
+  background-color: var(--primary-light, #fff3e0);
+  color: var(--primary-color, #ff6a00);
+  border: 1px solid var(--primary-color, #ff6a00);
+}
+
+.sub-dim-badge {
+  background-color: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #2e7d32;
+}
+
+/* 维度名称文字 */
+.dimension-name-text {
+  font-weight: var(--font-weight-medium, 500);
+  color: var(--text-primary);
+}
+
+/* 父维度提示文字 */
+.parent-name-hint {
+  font-size: 12px;
+  color: var(--text-light, #999);
+  white-space: nowrap;
+}

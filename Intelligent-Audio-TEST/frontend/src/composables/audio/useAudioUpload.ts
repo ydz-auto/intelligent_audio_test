@@ -73,7 +73,7 @@ export function useAudioUpload(algorithmApi: AlgorithmParamsApi) {
     createTestCase: false,
     tags: [],
     description: '',
-    testTypes: ['api'],
+    testTypes: ['e2e'],
     inheritTags: true,
     dimensions: [],
     algorithmType: '',
@@ -91,7 +91,7 @@ export function useAudioUpload(algorithmApi: AlgorithmParamsApi) {
     keepStructure: true,
     allowedExtensions: ['.wav', '.mp3', '.m4a', '.flac'],
     createTestCase: false,
-    testTypes: ['api'] as ('api' | 'e2e')[],
+    testTypes: ['e2e'] as ('api' | 'e2e')[],
     playbackDeviceId: null as string | number | null,
     spl: 65.0,
     groupNameType: 'root' as 'root' | 'folder' | 'custom',
@@ -123,9 +123,10 @@ export function useAudioUpload(algorithmApi: AlgorithmParamsApi) {
   const startUploadProcess = (
     files: any[],
     folderGroupMappings?: Record<string, string>,
-    unifiedRounds?: any[],
+    unifiedRoundsByGroup?: Record<string, any>,
+    testCaseGroupsData?: Record<string, any>,
     onUploadComplete?: () => void
-  ) => startUploadProcessImpl(ctx, files, folderGroupMappings, unifiedRounds, onUploadComplete);
+  ) => startUploadProcessImpl(ctx, files, folderGroupMappings, unifiedRoundsByGroup, testCaseGroupsData, onUploadComplete);
 
   const processMergeForExistingFile = (
     taskId: string,
@@ -164,8 +165,8 @@ export function useAudioUpload(algorithmApi: AlgorithmParamsApi) {
   const filePickCtx = {
     ...ctx,
     selectedFilesForUpload,
-    startUploadProcess: (ctxParam: any, files: any[], folderGroupMappings?: Record<string, string>, unifiedRounds?: any[], onUploadComplete?: () => void) =>
-      startUploadProcessImpl(ctxParam, files, folderGroupMappings, unifiedRounds, onUploadComplete),
+    startUploadProcess: (ctxParam: any, files: any[], folderGroupMappings?: Record<string, string>, unifiedRoundsByGroup?: Record<string, any>, testCaseGroupsData?: Record<string, any>, onUploadComplete?: () => void) =>
+      startUploadProcessImpl(ctxParam, files, folderGroupMappings, unifiedRoundsByGroup, testCaseGroupsData, onUploadComplete),
   };
 
   const handleDrop = (e: DragEvent) => handleDropImpl(filePickCtx, e);

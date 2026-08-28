@@ -33,8 +33,15 @@ from audio_service.infrastructure.audio.audio_timeline import (
 
 class AudioService:
     """音频管理服务：支持多通道播放控制"""
+    # 全局统一的播放 API，保证同一物理设备不会跨 API 打开流
+    # DirectSound 优先：WASAPI 对设备独占/格式限制过多，DirectSound 更宽松
+    _api_fallback_chain = ["Windows DirectSound", "Windows WDM-KS", "Windows WASAPI", "MME"]
+    _resolved_api = None  # 运行时确定的可用品 API（首次成功打开后固定）
+
     def __init__(self):
-        self.driver = PyAudioDriver()
+        # 延迟初始化 PyAudio 驱动，避免模块导入时调用 pyaudio.PyAudio() 导致启动卡死
+        # 注意：Pa_Initialize() 非线程安全，必须由 init_driver() 在主线程预初始化
+        self.driver = None
         self.active_players = {} # taskId -> {player_type: thread}
         self._device_cache = None
         self._cache_time = 0
@@ -42,16 +49,32 @@ class AudioService:
         self._lock = threading.Lock()
         self._audio_pool = None
 
+    def init_driver(self):
+        """在主线程中预初始化 PyAudio 驱动（Pa_Initialize 非线程安全）"""
+        if self.driver is None:
+            with self._lock:
+                if self.driver is None:
+                    self.driver = PyAudioDriver()
+                    log_and_emit('INFO', 'audio_engine', "PyAudio 驱动已在主线程预初始化", category='audio')
+        return self.driver
+
+    def _get_driver(self):
+        """获取 PyAudio 驱动实例（应在主线程预初始化后调用）"""
+        if self.driver is None:
+            self.init_driver()
+        return self.driver
+
     def _get_audio_pool(self):
         """获取音频播放专用线程池（延迟初始化）
 
         微服务化后：音频播放完全由 audio_service 本地管理，
         不再通过 gRPC 向 task_service 请求线程池大小。
-        固定 6 个线程，满足多设备并行音频播放需求。
+        扩容至 10 个线程：全局背景噪声（最多4设备）+ 轮次内 play_round
+        （主讲人/干扰人/噪声，最多4-6设备）需要足够容量避免排队死锁。
         """
         if self._audio_pool is None:
             from concurrent.futures import ThreadPoolExecutor
-            self._audio_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix='audio_play_')
+            self._audio_pool = ThreadPoolExecutor(max_workers=10, thread_name_prefix='audio_play_')
         return self._audio_pool
 
     def _get_cached_devices(self):
@@ -61,7 +84,7 @@ class AudioService:
             current_time = time.time()
             if self._device_cache is None or (current_time - self._cache_time) > self._cache_duration:
                 log_and_emit('DEBUG', 'audio_engine', "Cache expired or empty, scanning devices...", category='audio')
-                self._device_cache = self.driver.get_devices()
+                self._device_cache = self._get_driver().get_devices()
                 self._cache_time = current_time
             else:
                 log_and_emit('DEBUG', 'audio_engine', f"Using cached device list (age: {round(current_time - self._cache_time, 2)}s)", category='audio')
@@ -125,11 +148,16 @@ class AudioService:
             log_and_emit('DEBUG', 'audio_engine', f"Fuzzy matches: {len(fuzzy_matches)}", category='audio')
             return fuzzy_matches
 
-        # 5. 括号内容匹配
+        # 5. 括号内容匹配 + 主体名联合过滤
         log_and_emit('DEBUG', 'audio_engine', "Trying to match content in parentheses...", category='audio')
         import re
         bracket_content = re.findall(r'\(([^)]+)\)', clean_unique_id)
         if bracket_content:
+            # 提取输入的主体名（括号外的部分），如 "扬声器 (RME Fireface UCX II)" → "扬声器"
+            # 同时去掉 [Ch X] 后缀
+            input_main = re.sub(r'\([^)]*\)', '', clean_unique_id)
+            input_main = re.sub(r'\s*\[Ch\s*\d+\]', '', input_main).strip()
+            normalized_input_main = normalize(input_main)
             bracket_matches = []
             for content in bracket_content:
                 normalized_bracket = normalize(content)
@@ -138,21 +166,35 @@ class AudioService:
                     if normalized_bracket in normalize(dev['name'])
                 )
             if bracket_matches:
+                # 用主体名过滤：只保留设备名主体与输入主体一致的
+                if normalized_input_main:
+                    filtered = []
+                    for dev in bracket_matches:
+                        dev_main = re.sub(r'\([^)]*\)', '', dev['name']).strip()
+                        normalized_dev_main = normalize(dev_main)
+                        if normalized_input_main == normalized_dev_main:
+                            filtered.append(dev)
+                    if filtered:
+                        bracket_matches = filtered
                 log_and_emit('DEBUG', 'audio_engine', f"Bracket content matches: {len(bracket_matches)}", category='audio')
                 return bracket_matches
 
         return []
 
-    @staticmethod
-    def _select_by_api_priority(matches):
-        """按 API 优先级从匹配列表中选择最佳设备。
+    @classmethod
+    def _select_by_api_priority(cls, matches):
+        """按全局统一 API 从匹配列表中选择最佳设备。
+
+        保证所有设备选择都走同一个 API，避免同一物理设备
+        被不同 API 索引同时占用导致打开失败。
 
         Returns:
             dict: 选中的设备 dict，或 None
         """
-        priority_apis = ["Windows WDM-KS", "Windows DirectSound", "Windows WASAPI", "MME"]
+        # 如果已确定可用品 API，优先使用
+        apis_to_try = [cls._resolved_api] if cls._resolved_api else cls._api_fallback_chain
 
-        for api in priority_apis:
+        for api in apis_to_try:
             api_matches = [dev for dev in matches if dev['host_api'] == api]
             if api_matches:
                 log_and_emit('DEBUG', 'audio_engine', f"API matches for {api}: {len(api_matches)}", category='audio')
@@ -165,6 +207,8 @@ class AudioService:
                 selected = pure_devices[0] if pure_devices else api_matches[0]
                 tag = "" if pure_devices else " (fallback)"
                 log_and_emit('INFO', 'audio_engine', f"Selected device{tag}: {selected['name']} (API: {selected['host_api']}, Index: {selected['index']})", category='audio')
+                # 固定此 API，后续所有设备选择都走同一 API
+                cls._resolved_api = api
                 return selected
 
         # 所有优先级都没有，返回第一个匹配
@@ -215,7 +259,7 @@ class AudioService:
         if device_index is None:
             return None
         try:
-            dev_info = self.driver.pa.get_device_info_by_index(device_index)
+            dev_info = self._get_driver().pa.get_device_info_by_index(device_index)
             return int(dev_info.get('defaultSampleRate', 44100))
         except Exception as e:
             log_and_emit('WARNING', 'audio_engine',
@@ -372,7 +416,7 @@ class AudioService:
                 frames = wf.readframes(wf.getnframes())
 
             audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32)
-            resampled_np = self.driver.resample_audio_data(audio_np, orig_sr, target_rate)
+            resampled_np = self._get_driver().resample_audio_data(audio_np, orig_sr, target_rate)
             resampled_np = np.clip(resampled_np, -32768, 32767).astype(np.int16)
 
             temp_file = os.path.join(
@@ -413,7 +457,7 @@ class AudioService:
         else:
             stable_card_name = None
 
-        if 'RME' in dev_name:
+        if 'RME' in dev_name or 'Fireface' in dev_name:
             if '802' in dev_name:
                 card_key = 'RME Fireface 802'
             elif 'UCX' in dev_name:
@@ -546,7 +590,7 @@ class AudioService:
         
         pool = self._get_audio_pool()
         future = pool.submit(
-            self.driver.play_multi,
+            self._get_driver().play_multi,
             audio_configs, device_index, stop_event, offset, loop
         )
         
@@ -591,7 +635,7 @@ class AudioService:
                 })
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Before play_multi: configs count={len(multi_configs)}, delays={[c.get('delay') for c in multi_configs]}, files={[c.get('file', '').split('\\\\')[-1] for c in multi_configs]}", category='audio')
-            self.driver.play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event)
+            self._get_driver().play_multi(multi_configs, device_index, stop_event, loop=loop, app=app, playback_started_event=playback_started_event, playback_finished_event=playback_finished_event)
 
             log_and_emit('DEBUG', 'audio_engine', f"[play_device_audios] Device {device_index} done")
         except Exception as e:

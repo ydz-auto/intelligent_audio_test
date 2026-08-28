@@ -19,7 +19,11 @@ import logging
 from datetime import datetime, timezone, timedelta
 
 from shared.infrastructure.storage import storage
+from shared.models.common_enums import FieldType, TestType
 from shared.utils.status_constants import TaskStatus
+from shared.utils.path_extractor import extract_by_path
+from shared.constants.device_fields import DEVICE_FIELDS
+from shared.utils.audio_path_utils import normalize_audio_path
 
 from task_service.infrastructure.persistence.task_repository import task_repository
 from task_service.infrastructure.read_models.task_read_model import task_read_model
@@ -141,7 +145,7 @@ class TaskQueryService:
                 return {'success': False, 'message': '未找到该任务关联的用例', 'data': None, 'code': 404}
 
             case_info = raw.get('case_info')
-            test_type = raw.get('test_type', 'api')
+            test_type = raw.get('test_type', TestType.API.value)
             results = raw.get('results', [])
             tc_dto = raw.get('tc', {})
 
@@ -150,6 +154,7 @@ class TaskQueryService:
             audios_list = []
 
             # 构建 algorithm_results 和 field_mapping
+            # 7. 构建 algorithm_results：优先读取预提取快照，无快照时实时提取
             algorithm_type = case_info.get('algorithm_type', '') if case_info else ''
             algorithm_results = []
             field_mapping = {'result': [], 'reference': []}
@@ -162,58 +167,77 @@ class TaskQueryService:
                 if algorithm_type:
                     field_mapping = _algo_repo.algo_get_full_field_mapping(algorithm_type)
 
+                # 7a. 收集所有维度 ID，批量查询 aux 参数（快照为空时才需要）
                 output_fields = _algo_repo.algo_get_output_fields(algorithm_type) if algorithm_type else []
+
+                # 构建 aux_params_map（与 report_service 逻辑一致）
+                aux_params_map = {}
+                all_dim_ids = set()
+                for pr in results:
+                    for dim in pr.get('dimensions', []):
+                        dim_id = dim.get('id') or dim.get('dimension_id')
+                        if dim_id:
+                            all_dim_ids.add(dim_id)
+                if all_dim_ids:
+                    try:
+                        from shared.clients.grpc_clients import get_algorithm_config_service_stub
+                        from shared.proto import task_service_pb2 as task_pb
+                        from shared.utils.grpc_json import loads as _loads
+                        stub = get_algorithm_config_service_stub()
+                        for dim_id in all_dim_ids:
+                            resp = stub.GetDimensionParams(task_pb.GetDimensionParamsRequest(dimension_id=dim_id))
+                            if not resp.success:
+                                continue
+                            data = _loads(resp.data, None)
+                            items = data.get('params', []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                            for p in items:
+                                if not isinstance(p, dict):
+                                    continue
+                                if p.get('param_direction') != 'output':
+                                    continue
+                                if p.get('output_role') != 'aux':
+                                    continue
+                                if not p.get('visible_in_report'):
+                                    continue
+                                dim_name = p.get('dimension_name') or ''
+                                if dim_id not in aux_params_map:
+                                    aux_params_map[dim_id] = []
+                                aux_params_map[dim_id].append({'param': p, 'dimension_name': dim_name})
+                    except Exception:
+                        pass
 
                 for i, result in enumerate(results):
                     pr = results[i]
                     resource = pr.get('device_name') or pr.get('api_name') or f'result_{result.get("id")}'
 
-                    algo_res = result.get('algorithm_result') or {}
+                    # 优先读取预提取的 algorithm_results（存在 result_data 里）
                     r_data = result.get('result_data') or {}
                     if not isinstance(r_data, dict):
                         r_data = {}
 
-                    combined_data = {**algo_res, **r_data}
-                    for field in output_fields:
-                        param_key = field.get('target_param') or field.get('source_param')
-                        if not param_key or not combined_data.get(param_key):
-                            continue
+                    snapshot = r_data.get('algorithm_results')
+                    if snapshot:
+                        algorithm_results.extend(snapshot)
+                        continue
 
-                        if algorithm_type == 'voice_llm' and param_key == 'rounds':
-                            rounds_arr = combined_data.get('rounds') or []
-                            if isinstance(rounds_arr, list):
-                                for r_idx, r_item in enumerate(rounds_arr):
-                                    raw_round = r_item.get('roundNumber')
-                                    if raw_round is None:
-                                        raw_round = r_item.get('round')
-                                    rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
-                                    out = r_item.get('output') or {}
-                                    for sub_key in ('question', 'answer'):
-                                        val = out.get(sub_key)
-                                        if val:
-                                            algorithm_results.append({
-                                                'device': resource,
-                                                'param_code': f'{sub_key}@round:{rn}',
-                                                'param_type': 'text',
-                                                'label': f'{sub_key} (第{rn}轮)',
-                                                'value': val,
-                                                'round_number': rn,
-                                            })
-                            algorithm_results.append({
-                                'device': resource,
-                                'param_code': param_key,
-                                'param_type': field.get('param_type', 'json'),
-                                'label': field.get('dimension_name') or param_key,
-                                'value': combined_data[param_key],
-                            })
-                        else:
-                            algorithm_results.append({
-                                'device': resource,
-                                'param_code': param_key,
-                                'param_type': field.get('param_type', 'text'),
-                                'label': field.get('dimension_name') or param_key,
-                                'value': combined_data[param_key],
-                            })
+                    # 快照为空时回退到实时提取（兼容旧数据）
+                    algo_res = result.get('algorithm_result') or {}
+                    if not isinstance(algo_res, dict):
+                        algo_res = {}
+
+                    if not (algo_res or r_data):
+                        continue
+
+                    # 收集该 result 的维度行（用于 aux 提取）
+                    result_dim_rows = pr.get('dimensions') or []
+
+                    algorithm_results.extend(
+                        TaskQueryService._build_algorithm_results_for_result(
+                            result, resource, algo_res, r_data,
+                            aux_params_map, result_dim_rows,
+                            output_fields, algorithm_type
+                        )
+                    )
             except Exception as e:
                 logger.warning(f"构建 algorithm_results 失败: {e}")
 
@@ -330,6 +354,212 @@ class TaskQueryService:
             h = secs // 3600
             m = (secs % 3600) // 60
             return f"{h}小时" + (f"{m}分钟" if m > 0 else "")
+
+    @staticmethod
+    def _build_algorithm_results_for_result(
+        result, resource, algo_res, result_data, aux_params_map,
+        dim_result_rows, output_fields, algorithm_type
+    ):
+        """为单个 TestResult 构建 algorithm_results 扁平列表。
+
+        合并 aux 辅助参数 + 设备/API 原始结果，供详情页使用。
+        与 report_service.ReportDataBuilder.build_algorithm_results_for_result 逻辑一致。
+        """
+        import json
+        import os
+
+        algorithm_results = []
+
+        if not (algo_res or result_data):
+            return algorithm_results
+
+        # ── 1. 构建 param_code → (dimension_name, field_type) 全局映射 ──
+        param_to_dim = {}
+        param_to_type = {}
+        if aux_params_map:
+            for _dim_id, aux_list in aux_params_map.items():
+                for aux_info in aux_list:
+                    p = aux_info['param']
+                    param_code = p.get('param_code') if isinstance(p, dict) else getattr(p, 'param_code', None)
+                    if param_code:
+                        param_to_dim[param_code] = aux_info['dimension_name']
+                        param_to_type[param_code] = p.get('field_type', FieldType.TEXT.value) if isinstance(p, dict) else getattr(p, 'field_type', FieldType.TEXT.value)
+
+        # ── 2. 提取 aux 辅助参数值 ──
+        aux_values = {}
+
+        # 2a. 从 evaluation_data 提取
+        if result_data:
+            eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
+            if isinstance(eval_data, dict):
+                for param_code in param_to_dim:
+                    if param_code in eval_data:
+                        aux_values[param_code] = eval_data[param_code]
+
+        # 2b. 从 api_raw_response 补充
+        for dr in dim_result_rows:
+            if not isinstance(dr, dict):
+                continue
+            raw_resp = dr.get('api_raw_response')
+            if not raw_resp:
+                continue
+            if isinstance(raw_resp, str):
+                try:
+                    raw_resp = json.loads(raw_resp)
+                except Exception:
+                    continue
+            dim_id = dr.get('dimension_id') or dr.get('id')
+            for aux_info in (aux_params_map.get(dim_id, []) if aux_params_map else []):
+                p = aux_info['param']
+                param_code = p.get('param_code') if isinstance(p, dict) else getattr(p, 'param_code', None)
+                if not param_code or param_code in aux_values:
+                    continue
+                field_path = p.get('field_path') if isinstance(p, dict) else getattr(p, 'field_path', None)
+                value = _extract_by_path(raw_resp, field_path)
+                if value is not None:
+                    aux_values[param_code] = value
+
+        # 输出 aux 参数
+        for param_code, param_value in aux_values.items():
+            if param_value is None:
+                continue
+            algorithm_results.append({
+                'device': resource,
+                'param_code': param_code,
+                'param_type': param_to_type.get(param_code, FieldType.TEXT.value),
+                'label': param_code,
+                'value': param_value,
+                'dimension_name': param_to_dim.get(param_code),
+            })
+
+        # ── 3. 提取设备/API 原始执行结果 ──
+        combined_data = {**(algo_res or {}), **(result_data or {})}
+
+        try:
+            from task_service.config.config import Config
+            _static_base = getattr(Config, 'STATIC_BASE_PATH', '')
+        except Exception:
+            _static_base = ''
+
+        def _normalize_audio_path_wrapper(abs_path):
+            """将音频文件的绝对路径转换为相对 STATIC_BASE_PATH 的相对路径。"""
+            return normalize_audio_path(abs_path, _static_base)
+
+        if algorithm_type == 'voice_llm':
+            # voice_llm：按 output_fields 映射，rounds 数组展开
+            for field in output_fields:
+                param_key = field.get('target_param') or field.get('source_param')
+                if not param_key or not combined_data.get(param_key):
+                    continue
+                if param_key == 'rounds':
+                    rounds_arr = combined_data.get('rounds') or []
+                    if isinstance(rounds_arr, list):
+                        for r_idx, r_item in enumerate(rounds_arr):
+                            raw_round = r_item.get('round')
+                            rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
+                            out = r_item.get('output') or {}
+                            if isinstance(out, dict):
+                                for sub_key, val in out.items():
+                                    if val is None or sub_key == 'evaluation':
+                                        continue
+                                    sub_type = DEVICE_FIELDS.get(sub_key, FieldType.TEXT.value)
+                                    if sub_type == 'audio_file' and isinstance(val, str) and val:
+                                        val = _normalize_audio_path_wrapper(val)
+                                    algorithm_results.append({
+                                        'device': resource,
+                                        'param_code': f'{sub_key}@round:{rn}',
+                                        'param_type': sub_type,
+                                        'label': f'{sub_key} (第{rn}轮)',
+                                        'value': val,
+                                        'round_number': rn,
+                                        'dimension_name': None,
+                                    })
+                    algorithm_results.append({
+                        'device': resource,
+                        'param_code': param_key,
+                        'param_type': field.get('param_type', FieldType.JSON.value),
+                        'label': field.get('dimension_name') or param_key,
+                        'value': combined_data[param_key],
+                        'dimension_name': None,
+                    })
+                else:
+                    algorithm_results.append({
+                        'device': resource,
+                        'param_code': param_key,
+                        'param_type': field.get('param_type', FieldType.TEXT.value),
+                        'label': field.get('dimension_name') or param_key,
+                        'value': combined_data[param_key],
+                        'dimension_name': None,
+                    })
+        else:
+            # 非 voice_llm：按 output_fields 映射
+            for field in output_fields:
+                param_key = field.get('target_param') or field.get('source_param')
+                if not param_key or not combined_data.get(param_key):
+                    continue
+                algorithm_results.append({
+                    'device': resource,
+                    'param_code': param_key,
+                    'param_type': field.get('param_type', FieldType.TEXT.value),
+                    'label': field.get('dimension_name') or param_key,
+                    'value': combined_data[param_key],
+                    'dimension_name': None,
+                })
+
+            # 补充固定设备字段
+            device_values = {}
+            if isinstance(algo_res, dict):
+                rounds = algo_res.get('rounds') or []
+                if rounds and isinstance(rounds, list) and isinstance(rounds[0], dict):
+                    output = rounds[0].get('output') or {}
+                    if isinstance(output, dict):
+                        for k, v in output.items():
+                            if k in DEVICE_FIELDS and v is not None:
+                                device_values[k] = v
+                agg = algo_res.get('aggregated') or {}
+                if isinstance(agg, dict):
+                    for k, v in agg.items():
+                        if v is not None:
+                            agg_type = FieldType.NUMBER.value if isinstance(v, (int, float)) else FieldType.TEXT.value
+                            device_values['agg_' + k] = {'value': v, 'type': agg_type}
+
+            if result_data:
+                rrl = result_data.get('raw_results_list') or []
+                if rrl and isinstance(rrl, list) and isinstance(rrl[0], dict):
+                    raw_item = rrl[0]
+                    raw_res = raw_item.get('raw_results') or {}
+                    if isinstance(raw_res, dict):
+                        for k, v in raw_res.items():
+                            if k in DEVICE_FIELDS and v is not None and k not in device_values:
+                                device_values[k] = v
+                    for k in ['round_number', 'success']:
+                        if k in raw_item and raw_item[k] is not None and k not in device_values:
+                            device_values[k] = raw_item[k]
+
+            existing_codes = {item['param_code'] for item in algorithm_results if item.get('device') == resource}
+            for param_code, param_value in device_values.items():
+                if param_value is None or param_value == '':
+                    continue
+                if param_code in existing_codes:
+                    continue
+                if param_code.startswith('agg_') and isinstance(param_value, dict) and 'value' in param_value:
+                    actual_value = param_value['value']
+                    param_type = param_value.get('type', FieldType.TEXT.value)
+                else:
+                    actual_value = param_value
+                    param_type = DEVICE_FIELDS.get(param_code, FieldType.TEXT.value)
+                if param_type == 'audio_file' and isinstance(actual_value, str) and actual_value:
+                    actual_value = _normalize_audio_path(actual_value)
+                algorithm_results.append({
+                    'device': resource,
+                    'param_code': param_code,
+                    'param_type': param_type,
+                    'label': param_code,
+                    'value': actual_value,
+                    'dimension_name': None,
+                })
+
+        return algorithm_results
 
 
 # 模块级单例

@@ -125,7 +125,11 @@ class E2EDeviceManager:
             raise RuntimeError(f"设备初始化失败: {'; '.join([f'{r.get('device_name')}: {r.get('error')}' for r in failed])}")
 
     def pre_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
-        """并行预处理设备（通过 gRPC DeviceService.CreateDriver action=pre_process）"""
+        """并行预处理设备（通过 gRPC DeviceService.CreateDriver action=pre_process）
+
+        Returns:
+            bool: 所有设备预处理是否全部成功；任一失败返回 False
+        """
         extra_params = kwargs.get('extra_params', {})
         record_start_time = time.time()
         self._executor._playback_timestamps[task_id] = {
@@ -147,14 +151,21 @@ class E2EDeviceManager:
                 }],
             )
             futures.append(future)
+        success = True
         for future in futures:
             try:
                 future.result(timeout=60)
             except Exception as e:
+                success = False
                 self._log(level='ERROR', content=f"设备预处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
+        return success
 
     def post_process_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
-        """并行后处理设备（通过 gRPC DeviceService.CreateDriver action=post_process）"""
+        """并行后处理设备（通过 gRPC DeviceService.CreateDriver action=post_process）
+
+        Returns:
+            bool: 所有设备后处理是否全部成功；任一失败返回 False
+        """
         extra_params = kwargs.get('extra_params', {})
         pool = self._executor.execution_engine.device_control_pool
         futures = []
@@ -170,14 +181,21 @@ class E2EDeviceManager:
                 }],
             )
             futures.append(future)
+        success = True
         for future in futures:
             try:
                 future.result(timeout=300)
             except Exception as e:
+                success = False
                 self._log(level='ERROR', content=f"设备后处理失败: {e}", task_id=task_id, test_case_id=test_case_id)
+        return success
 
     def teardown_devices(self, device_info_list, task_id, test_case_id=None, **kwargs):
-        """并行 teardown 所有设备驱动（通过 gRPC DeviceService.CreateDriver action=teardown）"""
+        """并行 teardown 所有设备驱动（通过 gRPC DeviceService.CreateDriver action=teardown）
+
+        Returns:
+            bool: 所有设备 teardown 是否全部成功；任一失败返回 False
+        """
         extra_params = kwargs.get('extra_params', {})
         pool = self._executor.execution_engine.device_control_pool
         futures = []
@@ -193,11 +211,14 @@ class E2EDeviceManager:
                 }],
             )
             futures.append(future)
+        success = True
         for future in futures:
             try:
                 future.result(timeout=60)
             except Exception as e:
+                success = False
                 self._log(level='ERROR', content=f"设备 teardown 失败: {e}", task_id=task_id, test_case_id=test_case_id)
+        return success
 
     def play_prompt_audio(self, device_info_list, task_id, device_index, playback_dev, main_gain):
         """播放提示音频"""

@@ -15,14 +15,23 @@ from device_service.config.config import Config
 from shared.infrastructure.storage import storage
 from .android_driver import AndroidDriver
 from .device_config import get_device_config
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 from .utils import check_stop, u2, log_and_emit, By
 
 LOG_DEVICE_PATH = '/storage/media/100/local/files/Docs/Huawei Share'
 LOG_DEVICE_ID = '3QC0124C11000914'
 
 
+@register_driver
 class PlaudDriver(AndroidDriver):
     """Plaud AI 录音应用安卓设备驱动实现"""
+
+    # —— 驱动元数据 ——
+    app_type = AppType.PLAUD
+    version = AppVersion.V1
+    platform = DevicePlatform.ANDROID
+    display_name = "Plaud AI 录音 v1"
 
     def __init__(self):
         super().__init__()

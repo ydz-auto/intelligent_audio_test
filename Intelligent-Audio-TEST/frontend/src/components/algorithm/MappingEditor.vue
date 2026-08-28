@@ -367,9 +367,14 @@ function handleTransformChange(index: number) {
 async function autoSaveMapping(record: any, index: number) {
   if (!props.algorithmType) return
 
+  // source 非空校验：防止脏数据入库
+  if (!record.source) {
+    return
+  }
+
   const mappingData = {
     algorithm_type: props.algorithmType,
-    source_type: record.source || props.componentType,
+    source_type: record.source,
     source: record.source,
     source_param: record.source_param,
     source_direction: record.source_direction || 'output',

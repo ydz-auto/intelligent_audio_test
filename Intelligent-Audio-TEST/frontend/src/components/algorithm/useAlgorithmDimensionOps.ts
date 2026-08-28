@@ -75,7 +75,7 @@ export function useAlgorithmDimensionOps(
           await algorithmApi.updateDimensionRelation(dim.id, {
             weight: dim.weight,
             is_default: dim.is_default,
-            dimension_id: dim.dimension_id
+            dimension_id: dim.dimension_id ?? undefined
           })
         } else if (dim.dimension_id) {
           const result = await algorithmApi.createDimensionRelation({

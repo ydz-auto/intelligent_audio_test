@@ -118,9 +118,9 @@ export function useTestFlow(testType: 'e2e' | 'api') {
   // ============ 测试用例操作 ============
   const {
     formData, groupFormData, editingTestCase, editingGroup,
-    testCaseGroups, tags, tagViewData, isLoading, casePaginationInfo,
+    testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading, casePaginationInfo,
     e2eTestCases,
-    initializeTestCases, fetchTagView, handleTagFilterChange,
+    initializeTestCases, fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,
     handleDeleteGroup, handleDeleteTestCase, handleSaveModal,
     handleOpenEditModal, showTestCaseDetails: _showTestCaseDetails,
     openAddTestCaseModal, openCreateGroupModal, openEditGroupModal,
@@ -332,8 +332,8 @@ export function useTestFlow(testType: 'e2e' | 'api') {
     testType,
     currentStep, steps, selectedTestCaseIds, taskName, activeTab, concurrentTasks,
     currentTaskId, taskStartTime, taskElapsedTimeDisplay,
-    testCaseGroups, tags, tagViewData, isLoading, casePaginationInfo,
-    fetchTagView, handleTagFilterChange,
+    testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading, casePaginationInfo,
+    fetchTagView, loadMoreTagView, handleTagFilterChange, handleGroupFilterChange,
     associatedDevices: associatedResources, selectedDeviceIdsList: selectedResourceIds,
     apis, apiSearchQuery, apiFilter, selectedAPIIds, filteredAPIs, allFilteredAPIs,
     apiCurrentPage, apiPageSize, apiTotalItems, apiTotalPages,

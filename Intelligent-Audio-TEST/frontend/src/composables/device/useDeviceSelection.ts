@@ -15,8 +15,11 @@ export function useDeviceSelection() {
       field.key === 'playbackType' ||
       field.key === 'audioChannel' ||
       field.key === 'deviceUniqueId' ||
+      field.key === 'device_unique_id' ||
       field.key === 'sampleRate' ||
-      field.key === 'channelIndex'
+      field.key === 'sample_rate' ||
+      field.key === 'channelIndex' ||
+      field.key === 'channel_index'
     )
   }
 
@@ -25,16 +28,18 @@ export function useDeviceSelection() {
       field.key === 'serialNumber' ||
       field.key === 'system' ||
       field.key === 'systemVersion' ||
-      field.key === 'connectionType'
+      field.key === 'system_version' ||
+      field.key === 'connectionType' ||
+      field.key === 'connection_type'
     )
   }
 
   const selectDevice = (device: any, fields: FormField[], formValuesRef: Ref<any>, isEditMode: boolean) => {
-    selectedDeviceId.value = device.displayKey || device.deviceUniqueId || device.serial
+    selectedDeviceId.value = device.displayKey || device.device_unique_id || device.serial
 
     const formValues = formValuesRef.value
 
-    const deviceUniqueId = device.deviceUniqueId || device.id || device.serial
+    const deviceUniqueId = device.device_unique_id || device.id || device.serial
     if (deviceUniqueId) {
       const uniqueIdField = fields.find(f => f.key === 'deviceUniqueId' || f.key === 'device_unique_id')
       if (uniqueIdField) {
@@ -51,12 +56,12 @@ export function useDeviceSelection() {
 
     const srField = fields.find(f => f.key === 'sampleRate' || f.key === 'sample_rate')
     if (srField) {
-      formValues[srField.key] = device.sampleRate || 48000
+      formValues[srField.key] = device.sample_rate || 48000
     }
 
     const ciField = fields.find(f => f.key === 'channelIndex' || f.key === 'channel_index')
     if (ciField) {
-      formValues[ciField.key] = device.channelIndex !== undefined ? device.channelIndex : 0
+      formValues[ciField.key] = device.channel_index !== undefined ? device.channel_index : 0
     }
 
     if (device.serial) {
@@ -71,22 +76,22 @@ export function useDeviceSelection() {
         formValues.system = device.system
       }
     }
-    if (device.systemVersion) {
+    if (device.system_version) {
       const svField = fields.find(f => f.key === 'systemVersion')
       if (svField) {
-        formValues.systemVersion = device.systemVersion
+        formValues.systemVersion = device.system_version
       }
     }
-    if (device.appName) {
+    if (device.app_name) {
       const appField = fields.find(f => f.key === 'appName')
       if (appField) {
-        formValues.appName = device.appName
+        formValues.appName = device.app_name
       }
     }
-    if (device.appVersion) {
+    if (device.app_version) {
       const appVField = fields.find(f => f.key === 'appVersion')
       if (appVField) {
-        formValues.appVersion = device.appVersion
+        formValues.appVersion = device.app_version
       }
     }
 

@@ -142,3 +142,11 @@ class TestCaseConfigServiceServicer(task_grpc.TestCaseConfigServiceServicer):
             ))
         except Exception as e:
             return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")
+
+    def FetchCaseIds(self, request, context=None):
+        try:
+            data = _loads(request.data, {})
+            from task_service.application.queries.task_queries import FetchCaseIdsQuery
+            return self._resp(self.qry.handle_fetch_case_ids(FetchCaseIdsQuery(data=data)))
+        except Exception as e:
+            return task_pb.TestCaseConfigResponse(success=False, message=str(e), data="")

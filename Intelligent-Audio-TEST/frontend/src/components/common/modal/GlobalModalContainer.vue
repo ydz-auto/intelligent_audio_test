@@ -130,6 +130,7 @@ import BatchAdjustGroupModal from './BatchAdjustGroupModal.vue'
 import BatchDimensionModal from './BatchDimensionModal.vue'
 import BatchNoiseModal from './BatchNoiseModal.vue'
 import BatchTagsModal from './BatchTagsModal.vue'
+import BatchRefreshReferenceModal from './BatchRefreshReferenceModal.vue'
 import TagCategoryModal from './TagCategoryModal.vue'
 import TagEditModal from './TagEditModal.vue'
 import TaskTypeModal from './TaskTypeModal.vue'
@@ -291,6 +292,7 @@ const getModalComponent = (type: string) => {
     [MODAL_TYPES.BATCH_DIMENSION]: BatchDimensionModal,
     [MODAL_TYPES.BATCH_NOISE]: BatchNoiseModal,
     [MODAL_TYPES.BATCH_TAGS]: BatchTagsModal,
+    [MODAL_TYPES.BATCH_REFRESH_REFERENCE]: BatchRefreshReferenceModal,
     [MODAL_TYPES.TAG_CATEGORY]: TagCategoryModal,
     [MODAL_TYPES.TAG_EDIT]: TagEditModal
   }

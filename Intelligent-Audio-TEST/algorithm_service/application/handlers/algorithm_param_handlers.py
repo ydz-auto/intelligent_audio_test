@@ -197,6 +197,12 @@ class AlgorithmParamCommandHandler:
         self, cmd: CreateMappingCommand
     ) -> Dict[str, Any]:
         """处理创建参数映射命令，返回新映射 dict。"""
+        # source 必须是合法值，防止 'evaluation' 等非法值写入
+        source_val = cmd.data.get('source_type') or cmd.data.get('source')
+        if source_val and source_val not in ('case', 'reference', 'device', 'api'):
+            raise ValueError(
+                f"source 必须是 case/reference/device/api，当前值: {source_val}"
+            )
         return self._mapping_repo.create(cmd.data)
 
     def handle_update_mapping(

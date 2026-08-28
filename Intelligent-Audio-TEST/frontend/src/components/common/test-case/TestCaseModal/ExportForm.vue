@@ -152,7 +152,7 @@ async function updateExportPreview() {
     };
 
     const getGroupName = (testCase: any): string => {
-      return String(testCase?.group_name || testCase?.group || testCase?.groupName || testCase?.group_id || testCase?.groupId || '');
+      return String(testCase?.group_name || testCase?.group || testCase?.group_id);
     };
 
     const getTypesSet = (testCase: any): Set<string> => {

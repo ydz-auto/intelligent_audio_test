@@ -158,15 +158,15 @@ export function useHistoryReports() {
     if (!report.summary) return '暂无摘要';
     
     const summary = report.summary;
-    const totalCases = summary.totalCases || summary.total_cases || 0;
-    const completedCases = summary.completedCases || summary.completed_cases || 0;
-    const failedCases = summary.failedCases || summary.failed_cases || 0;
-    const successRate = summary.overallSuccessRate || summary.passRate || summary.overall_success_rate || 0;
+    const totalCases = summary.total_cases || 0;
+    const completedCases = summary.completed_cases || 0;
+    const failedCases = summary.failed_cases || 0;
+    const successRate = summary.overall_success_rate || summary.pass_rate || 0;
     
     if (report.type === 'task') {
       return `共 ${totalCases} 个测试用例，通过 ${completedCases} 个，失败 ${failedCases} 个，通过率 ${successRate}%`;
     } else if (report.type === 'comparison') {
-      return `共对比 ${summary.taskCount || 0} 个任务，包含 ${totalCases} 个测试用例`;
+      return `共对比 ${summary.task_count || 0} 个任务，包含 ${totalCases} 个测试用例`;
     } else {
       return `共 ${totalCases} 个测试用例，通过 ${completedCases} 个，失败 ${failedCases} 个，通过率 ${successRate}%`;
     }

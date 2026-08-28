@@ -42,7 +42,12 @@ class TaskDispatcherMixin:
 
     def _group_dimensions_by_endpoint(self, dimension_data_list, dimension_result_map,
                                         task_id, test_case_id):
-        """按端点 URL 分组维度"""
+        """按端点 URL 分组维度
+
+        3b: 分组键改为 (endpoint_url, parent_dimension_id)，
+        同一父维度下的子维度分到同一组，发一个请求给 eval_server。
+        父维度自身（dimension_type=main）用自身 id 作为 parent。
+        """
         endpoint_groups = {}
         no_endpoint_groups = []
 
@@ -50,7 +55,6 @@ class TaskDispatcherMixin:
             dim_id = dim_data['id']
             endpoints = dim_data.get('api_endpoints', [])
             api_url = dim_data.get('api_url')
-            task_type_code = dim_data.get('task_type_code')
 
             endpoint_url = None
             if endpoints and isinstance(endpoints, list) and len(endpoints) > 0:
@@ -70,7 +74,14 @@ class TaskDispatcherMixin:
                     no_endpoint_groups.append((dim_data, dimension_result_id))
                 continue
 
-            group_key = (endpoint_url, task_type_code)
+            # 分组键：(endpoint_url, parent_dimension_id)
+            # 同一父维度下的子维度分到同一组，发一个请求给 eval_server
+            # 父维度自身（dimension_type=main）用自身 id 作为 parent
+            dim_type = dim_data.get('dimension_type', 'main')
+            parent_id = dim_data.get('parent_dimension_id')
+            if dim_type == 'main':
+                parent_id = dim_id  # 主维度自己一组
+            group_key = (endpoint_url, parent_id)
             if group_key not in endpoint_groups:
                 endpoint_groups[group_key] = []
 
@@ -85,8 +96,11 @@ class TaskDispatcherMixin:
                             field_mapper, ref_texts, rounds_list, flat_eval_fields):
         """遍历端点分组，为每组创建 worker 并提交评估任务"""
         for group_key, group_items in endpoint_groups.items():
-            endpoint_url, task_type_code = group_key
+            endpoint_url, _ = group_key
             representative_dim_data = group_items[0][0]
+            # task_type 用主维度的 task_type_code（parent_task_type_code），
+            # 子维度各自的 task_type_code 提取为 sub_tasks 注入 payload
+            task_type_code = representative_dim_data.get('parent_task_type_code') or representative_dim_data.get('task_type_code')
 
             worker = self._get_or_create_worker(endpoint_url, representative_dim_data)
 
@@ -138,13 +152,23 @@ class TaskDispatcherMixin:
         output_field_keys = field_mapper.get_mapped_device_output_field_keys(algorithm_type)
         algo_results = {}
         if isinstance(algorithm_result, dict):
+            # 多轮评估取值修正：单轮评估(round_number有值)取 rounds[round_number]，
+            # 多轮整体(round_number=None)取 rounds[-1]，替代原来固定取 rounds[0]
             rounds_data = algorithm_result.get('rounds', [])
-            first_output = rounds_data[0].get('output', {}) if rounds_data and isinstance(rounds_data[0], dict) else {}
+            if rounds_data:
+                idx = round_number if round_number is not None else -1
+                if 0 <= idx < len(rounds_data) and isinstance(rounds_data[idx], dict):
+                    ref_output = rounds_data[idx].get('output', {})
+                else:
+                    ref_output = {}
+            else:
+                ref_output = {}
             for key in output_field_keys:
                 val = algorithm_result.get(key)
-                if val is None and first_output:
-                    val = first_output.get(key)
-                algo_results[key] = val if val is not None else ''
+                if val is None and ref_output:
+                    val = ref_output.get(key)
+                # 保留 None 而非转为空串，让维度级默认值有机会覆盖
+                algo_results[key] = val
 
         for key, value in algo_results.items():
             if key not in task_data:
@@ -156,4 +180,4 @@ class TaskDispatcherMixin:
         return task_data
 
     def _submit_to_endpoint_worker(self, task_data, worker):
-        worker.task_queue.put(task_data)
+        worker.put_task(task_data)

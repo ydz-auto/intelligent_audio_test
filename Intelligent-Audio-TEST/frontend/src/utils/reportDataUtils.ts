@@ -49,7 +49,7 @@ export const buildMetricDecimalPlacesMap = (allMetrics: any[]): Record<string, n
   const list = Array.isArray(allMetrics) ? allMetrics : [];
   list.forEach((m: any) => {
     if (!m || !m.name) return;
-    const dp = m.decimalPlaces ?? m.decimal_places;
+    const dp = m.decimal_places;
     if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp;
   });
   return map;

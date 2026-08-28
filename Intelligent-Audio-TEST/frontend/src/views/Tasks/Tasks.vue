@@ -175,8 +175,8 @@
           
           <div class="sort-options">
             <span>排序：</span>
-            <div class="sort-item" :class="{ active: sortConfig.field === 'createdAt' }" @click="toggleSort('createdAt')">
-              创建时间 <i class="fas" :class="sortConfig.field === 'createdAt' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
+            <div class="sort-item" :class="{ active: sortConfig.field === 'created_at' }" @click="toggleSort('created_at')">
+              创建时间 <i class="fas" :class="sortConfig.field === 'created_at' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
             </div>
             <div class="sort-item" :class="{ active: sortConfig.field === 'status' }" @click="toggleSort('status')">
               状态 <i class="fas" :class="sortConfig.field === 'status' ? (sortConfig.order === 'asc' ? 'fa-sort-up' : 'fa-sort-down') : 'fa-sort'"></i>
@@ -239,14 +239,14 @@
               description: task.description,
               type: task.type,
               status: task.status,
-              createdAt: formatDate(task.createdAt),
+              createdAt: formatDate(task.created_at),
               tags: task.tags,
-              deviceCount: task.deviceCount,
-              caseCount: task.caseCount,
-              completedCases: task.completedCases,
-              totalCases: task.totalCases,
-              algorithmType: task.algorithmType,
-              algorithmParams: task.algorithmParams
+              deviceCount: task.device_count,
+              caseCount: task.case_count,
+              completedCases: task.completed_cases,
+              totalCases: task.total_cases,
+              algorithmType: task.algorithm_type,
+              algorithmParams: task.algorithm_params
             }))"
             :is-selected="(task: any) => selectedTasks.has(task.id)"
             :show-checkbox="true"
@@ -258,11 +258,12 @@
             :actions="[
               { id: 'view-details', label: '查看详情', icon: 'fa-eye', type: 'secondary' },
               { id: 'view-report', label: '查看报告', icon: 'fa-file-alt', type: 'primary' },
-              { id: 'pause', label: '暂停', icon: 'fa-pause', type: 'secondary', show: (task: any) => task.status === 'running', disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'resume', label: '继续', icon: 'fa-play', type: 'secondary', show: (task: any) => ['paused', 'stopped'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => ['running', 'paused', 'queued'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'retry', label: '重新执行', icon: 'fa-redo', type: 'success', show: (task: any) => ['pending', 'failed', 'completed', 'stopped'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
-              { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => ['completed', 'failed', 'stopped', 'paused', 'skipped', 'merged'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'regenerate-report', label: '重新生成报告', icon: 'fa-sync', type: 'warning', show: (task: any) => [...FINISHED_STATUSES].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'pause', label: '暂停', icon: 'fa-pause', type: 'secondary', show: (task: any) => task.status === TaskStatus.RUNNING, disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'resume', label: '继续', icon: 'fa-play', type: 'secondary', show: (task: any) => [TaskStatus.PAUSED, TaskStatus.STOPPED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'stop', label: '停止', icon: 'fa-stop', type: 'danger', show: (task: any) => [TaskStatus.RUNNING, TaskStatus.PAUSED, 'queued'].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'retry', label: '重新执行', icon: 'fa-redo', type: 'success', show: (task: any) => [TaskStatus.PENDING, TaskStatus.FAILED, TaskStatus.COMPLETED, TaskStatus.STOPPED].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
+              { id: 'reevaluate', label: '重新评估', icon: 'fa-sync-alt', type: 'info', show: (task: any) => [...FINISHED_STATUSES].includes(task.status), disabled: (task: any) => isControlling.has(task.id) },
               { id: 'delete', label: '删除', icon: 'fa-trash', type: 'danger', disabled: (task: any) => isControlling.has(task.id) }
             ]"
             :search-query="searchTerm"
@@ -313,6 +314,7 @@
 
 <script setup lang="ts">
 import { useTasks } from './tasks';
+import { TaskStatus, FINISHED_STATUSES } from '@/shared/types/enums';
 import TaskListWithPagination from '../../components/task/TaskListWithPagination.vue';
 import TaskComparisonReport from './TaskComparisonReport.vue';
 import TaskTypeModal from '../../components/common/modal/TaskTypeModal.vue';

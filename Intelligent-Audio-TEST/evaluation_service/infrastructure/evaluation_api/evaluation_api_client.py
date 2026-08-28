@@ -12,6 +12,8 @@ from evaluation_service.infrastructure.evaluation_api.api_request_handler import
 from evaluation_service.infrastructure.evaluation_api.payload_builder import PayloadBuilder
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin, get_endpoint_url, get_endpoint_field
 from shared.utils.config_manager import config_manager
+from shared.utils.distributed_coordinator import DistributedSemaphore
+from shared.models.common_enums import RedisKeyPrefix
 
 
 class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMixin):
@@ -31,6 +33,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         # 从统一配置文件加载并发配置
         self.max_queue_size = config_manager.get_value('evaluation_service', 'max_queue_size', 100)  # 每个端点的最大队列长度
         self.max_wait_time = config_manager.get_value('evaluation_service', 'max_wait_time', 30)  # 任务在队列中的最大等待时间（秒）
+        # 并发参数配置化：端点未配置并发数时的默认值
+        self.default_max_concurrent = config_manager.get_value('evaluation_service', 'default_max_concurrent', 10)
 
     def load_endpoint_configs(self, dimensions):
         """
@@ -49,7 +53,8 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                     if endpoint_url:
                         # 如果端点已经存在配置，不覆盖，确保配置的一致性
                         if endpoint_url not in self.endpoint_configs:
-                            max_process = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', 1)
+                            # 并发参数配置化：端点未配置并发数时用 config_manager 默认值
+                            max_process = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', self.default_max_concurrent)
                             self.endpoint_configs[endpoint_url] = max_process
                             self._log(
                                 level='debug',
@@ -98,29 +103,35 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             )
 
     def _get_or_create_semaphore(self, endpoint, max_process):
-        """
-        获取或创建端点的信号量
+        """获取或创建端点的分布式信号量
+
+        Phase 3.3 改造：使用 DistributedSemaphore 替代 threading.Semaphore。
+        DistributedSemaphore 内部基于 Redis Lua 原子 INCR/DECR 实现，
+        Redis 不可用时自动降级放行（返回 True），不阻塞业务。
 
         Args:
             endpoint: 端点URL
             max_process: 最大并发数
 
         Returns:
-            threading.Semaphore: 端点信号量
+            DistributedSemaphore: 分布式信号量实例
         """
         with self.global_lock:
             if endpoint not in self.endpoint_semaphores:
-                self.endpoint_semaphores[endpoint] = threading.Semaphore(max_process)
+                sem_key = f"{RedisKeyPrefix.EVAL_SEMAPHORE.value}:{endpoint}"
+                self.endpoint_semaphores[endpoint] = DistributedSemaphore(
+                    key=sem_key,
+                    max_count=max_process
+                )
                 self._log(
                     level='DEBUG',
                     category='system',
-                    content=f'为端点 {endpoint} 创建信号量，最大并发数: {max_process}'
+                    content=f'为端点 {endpoint} 创建分布式信号量(key={sem_key})，最大并发数: {max_process}'
                 )
             return self.endpoint_semaphores[endpoint]
 
     def acquire_endpoint_slot(self, endpoint, timeout=None):
-        """
-        获取端点的并发槽位，使用信号量实现
+        """获取端点的并发槽位，使用分布式信号量实现
 
         Args:
             endpoint: 端点URL
@@ -133,39 +144,37 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
 
         with self.global_lock:
             if endpoint not in self.endpoint_configs:
-                self.endpoint_configs[endpoint] = 1
+                # 并发参数配置化：未配置的端点用默认并发数
+                self.endpoint_configs[endpoint] = self.default_max_concurrent
 
         max_process = self.endpoint_configs[endpoint]
         semaphore = self._get_or_create_semaphore(endpoint, max_process)
 
-        start_time = time.time()
-        remaining_time = wait_timeout
-
-        while remaining_time > 0:
-            try:
-                acquired = semaphore.acquire(blocking=True, timeout=min(0.5, remaining_time))
-                if acquired:
-                    return True
-
-                elapsed_time = time.time() - start_time
-                remaining_time = wait_timeout - elapsed_time
-            except Exception:
-                return False
+        try:
+            # DistributedSemaphore.acquire 内部自带 Redis 降级逻辑：
+            # Redis 不可用时返回 True（放行），不阻塞业务
+            acquired = semaphore.acquire(timeout=int(wait_timeout))
+            if acquired:
+                return True
+        except Exception as e:
+            self._log(
+                level='WARNING',
+                category='system',
+                content=f'端点 {endpoint} 分布式信号量获取异常: {e}'
+            )
 
         return False
 
     def release_endpoint_slot(self, endpoint):
-        """
-        释放端点的并发槽位
-        """
+        """释放端点的并发槽位"""
         if endpoint in self.endpoint_semaphores:
             try:
                 self.endpoint_semaphores[endpoint].release()
-            except ValueError:
+            except Exception as e:
                 self._log(
                     level='WARNING',
                     category='system',
-                    content=f'端点 {endpoint} 信号量释放失败（可能已超过最大值）'
+                    content=f'端点 {endpoint} 信号量释放失败: {e}'
                 )
 
     def select_endpoint(self, endpoints):
@@ -290,7 +299,11 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
                 )
                 resp_data = {'__error__': error_msg}
         else:
-            error_msg = create_response.get('msg', '创建任务失败') if isinstance(create_response, dict) else str(create_response)
+            if isinstance(create_response, dict):
+                # 优先取 __error__（网络异常等场景），其次取 msg，最后兜底
+                error_msg = create_response.get('__error__') or create_response.get('msg', '创建任务失败')
+            else:
+                error_msg = str(create_response)
             self._log(
                 level='ERROR',
                 category='execution',
@@ -329,7 +342,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
         self._log(
             level='DEBUG',
             category='execution',
-            content=f"任务已创建，释放端点 {selected_url} 并发槽位，开始轮询结果",
+            content=f"create_task 请求已发送，释放端点 {selected_url} 并发槽位，开始处理响应",
             task_id=task_id,
             test_case_id=test_case_id,
             api_id=api_id
@@ -413,7 +426,7 @@ class evaluationApiClient(ApiRequestHandler, PayloadBuilder, EvaluationLoggerMix
             self._log(
                 level='INFO',
                 category='execution',
-                content=f"端点 {selected_url} 调用成功，响应：{str(resp_data)}，获取评估结果",
+                content=f"端点 {selected_url} 请求完成，响应：{str(resp_data)}",
                 task_id=task_id,
                 test_case_id=test_case_id,
                 api_id=api_id

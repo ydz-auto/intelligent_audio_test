@@ -3,20 +3,27 @@ import { useModalControl, MODAL_TYPES } from '../../composables/modal/useModal'
 import { normalizeParamFields, normalizeCaseParamFields } from './algorithmParamHelpers'
 import type { AlgorithmRecord, AlgorithmGroup, Dimension } from './algorithmTypes'
 
+// source 合法值校验：仅允许 case/reference/device/api
+const VALID_SOURCES = ['case', 'reference', 'device', 'api']
+
 export function normalizeMappings(raw: any): { device: any[]; api: any[]; evaluation: any[] } {
   const empty = { device: [], api: [], evaluation: [] }
   if (!raw) return empty
-  const convert = (arr: any[]) => (arr || []).map((m: any) => ({
-    id: m.id,
-    source: m.source,
-    source_param: m.sourceParam ?? m.source_param ?? '',
-    param_name: m.paramName ?? m.param_name ?? m.sourceParam ?? m.source_param ?? '',
-    dimension_id: m.dimensionId ?? m.dimension_id ?? null,
-    dimension_name: m.dimensionName ?? m.dimension_name ?? '',
-    target_param: m.targetParam ?? m.target_param ?? '',
-    transform_type: m.transformType ?? m.transform_type ?? 'none',
-    source_direction: m.sourceDirection ?? m.source_direction ?? 'output'
-  }))
+  const convert = (arr: any[]) => (arr || []).map((m: any) => {
+    // source 非法值修复：非合法值默认归为 'case'
+    const source = (!m.source || !VALID_SOURCES.includes(m.source)) ? 'case' : m.source
+    return {
+      id: m.id,
+      source,
+      source_param: m.source_param ?? m.sourceParam ?? '',
+      param_name: m.param_name ?? m.paramName ?? m.source_param ?? m.sourceParam ?? '',
+      dimension_id: m.dimension_id ?? m.dimensionId ?? null,
+      dimension_name: m.dimension_name ?? m.dimensionName ?? '',
+      target_param: m.target_param ?? m.targetParam ?? '',
+      transform_type: m.transform_type ?? m.transformType ?? 'none',
+      source_direction: m.source_direction ?? m.sourceDirection ?? 'output'
+    }
+  })
   return {
     device: convert(raw.device),
     api: convert(raw.api),
@@ -180,31 +187,31 @@ export function useAlgorithmCrudOps(
     try {
       const result = await algorithmApi.getDefinition(record.type)
       if (result) {
-        const editData = result
-        const deviceParams = ((editData.deviceParams ?? editData.device_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-        const apiParams = ((editData.apiParams ?? editData.api_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-        const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(normalizeCaseParamFields).map(p => ({ ...p }))
+        const editData = result as any
+        const deviceParams = ((editData.device_params ?? editData.deviceParams) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+        const apiParams = ((editData.api_params ?? editData.apiParams) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+        const caseParams = ((editData.case_params ?? editData.caseParams) || []).map(normalizeCaseParamFields).map((p: any) => ({ ...p }))
         const refConfig = editData.reference_params ?? editData.referenceConfig ?? editData.reference_config ?? editData.referenceParams
 
         Object.assign(formState, {
           type: editData.type,
           name: editData.name,
-          group_id: editData.groupId ?? editData.group_id ?? null,
+          group_id: editData.group_id ?? editData.groupId ?? null,
           description: editData.description || '',
           status: editData.status as 'online' | 'offline',
           statusSwitch: editData.status === 'online',
           icon: editData.icon || '',
-          display_order: (editData.displayOrder ?? editData.display_order) || 0,
+          display_order: (editData.display_order ?? editData.displayOrder) || 0,
           device_params: deviceParams,
           api_params: apiParams,
           case_params: caseParams,
           params: editData.params || [],
           mappings: normalizeMappings(editData.mappings),
-          associated_dimensions: ((editData.associatedDimensions ?? editData.associated_dimensions) || []).map((d: any) => ({
+          associated_dimensions: ((editData.associated_dimensions ?? editData.associatedDimensions) || []).map((d: any) => ({
             id: d.id,
-            dimension_id: d.dimensionId ?? d.dimension_id,
+            dimension_id: d.dimension_id ?? d.dimensionId,
             weight: d.weight ?? 1.0,
-            is_default: d.isDefault ?? d.is_default ?? false
+            is_default: d.is_default ?? d.isDefault ?? false
           })),
           reference_params: (refConfig || []).map((p: any) => ({
             id: p.id,

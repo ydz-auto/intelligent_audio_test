@@ -5,6 +5,7 @@ from collections import deque
 
 from shared.utils.event_manager import EventManager
 from shared.utils.config_manager import config_manager
+from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 
 # 导入所有 Mixin
 from task_service.core.execution_engine._scheduler_mixin import SchedulerMixin
@@ -93,7 +94,96 @@ class ExecutionEngine(SchedulerMixin, ProgressMixin, TaskControlMixin, CaseExecu
                     max_workers=2,
                     thread_name_prefix='ref_refresh_'
                 )
+
+                # 事件总线订阅（监听用例完成事件，替代 DB 轮询）
+                cls._instance._event_bus = EventBus()
+                cls._instance._event_subscriber_thread = None
         return cls._instance
+
+    def _on_case_event(self, payload):
+        """处理用例级事件（执行完成/评估完成/失败）
+
+        事件驱动改造: 各服务完成后发布事件，此处订阅后唤醒等待线程，
+        替代 DB 轮询。同时保留 DB 轮询作为兜底。
+        """
+        try:
+            task_id = payload.get('task_id')
+            if not task_id:
+                return
+            # 尝试转换为 int（task_id 在事件中被序列化为 str）
+            try:
+                task_id = int(task_id)
+            except (ValueError, TypeError):
+                pass
+
+            # 唤醒等待该任务完成的线程
+            completion_event = self.task_completion_events.get(task_id)
+            if completion_event:
+                completion_event.set()
+
+            # 触发进度更新
+            self._emit_progress(task_id, force=True)
+
+            # 触发调度器检查（可能有 pending 任务需要继续）
+            self.trigger_scheduler_check()
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"处理用例事件失败: {e}")
+
+    def _on_task_event(self, payload):
+        """处理任务级事件（任务完成/失败）
+
+        事件驱动改造: 评估服务在任务状态变更时发布事件，此处订阅后更新本地缓存。
+        """
+        try:
+            task_id = payload.get('task_id')
+            if not task_id:
+                return
+            try:
+                task_id = int(task_id)
+            except (ValueError, TypeError):
+                pass
+
+            # 唤醒等待该任务完成的线程
+            completion_event = self.task_completion_events.get(task_id)
+            if completion_event:
+                completion_event.set()
+
+            # 触发进度更新
+            self._emit_progress(task_id, force=True)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"处理任务事件失败: {e}")
+
+    def start_event_subscribers(self):
+        """启动事件总线订阅线程（在 _log 方法定义后调用）"""
+        if self._event_subscriber_thread is not None:
+            return
+
+        # 订阅用例级事件
+        self._event_bus.start_subscriber(
+            EventChannel.CASE_EVENTS,
+            {
+                EventType.CASE_EXECUTION_COMPLETED: self._on_case_event,
+                EventType.CASE_EVALUATION_COMPLETED: self._on_case_event,
+                EventType.CASE_FAILED: self._on_case_event,
+            },
+            name='TaskEventSub-CaseEvents',
+        )
+
+        # 订阅任务级事件
+        self._event_bus.start_subscriber(
+            EventChannel.TASK_EVENTS,
+            {
+                EventType.TASK_COMPLETED: self._on_task_event,
+                EventType.TASK_FAILED: self._on_task_event,
+                EventType.TASK_STOPPED: self._on_task_event,
+            },
+            name='TaskEventSub-TaskEvents',
+        )
+
+        self._event_subscriber_thread = True  # 标记已启动
+        self._log(level='INFO', content="事件总线订阅线程已启动")
 
     def shutdown(self):
         if hasattr(self, '_reference_refresh_pool') and self._reference_refresh_pool:

@@ -76,8 +76,18 @@ def generate_task_report(_: None = require_permission('report:create')):
     return _handle(ReportCommandService.generate_task_report())
 
 
+@router.post('/{report_id}/regenerate')
+def regenerate_report(report_id: int, _: None = require_permission('report:create')):
+    return _handle(ReportCommandService.regenerate_report(report_id))
+
+
 @router.post('/export')
 def export(_: None = require_permission('report:read')):
+    return _handle(ReportQueryService.export())
+
+
+@router.get('/export')
+def export_get(_: None = require_permission('report:read')):
     return _handle(ReportQueryService.export())
 
 

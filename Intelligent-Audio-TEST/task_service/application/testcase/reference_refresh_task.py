@@ -56,17 +56,34 @@ class ReferenceRefreshTask:
         self.completed_at = None
 
     def _persist(self):
-        """把当前进度写入 Redis（HASH）。"""
-        _store().save_task(_task_key(self.task_id), {
+        """把当前进度写入 Redis（HASH），同时通过 PubSub 推送进度，前端 WebSocket 可实时感知。"""
+        total = len(self.case_ids)
+        fields = {
             'task_id': self.task_id,
             'status': self.status,
-            'total': len(self.case_ids),
+            'total': total,
             'updated': self.updated_count,
             'failed': self.failed_count,
             'started_at': self.started_at.isoformat() if self.started_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'failed_cases': self.failed_cases[:10],
-        }, ttl_seconds=_TASK_TTL_SECONDS)
+        }
+        _store().save_task(_task_key(self.task_id), fields, ttl_seconds=_TASK_TTL_SECONDS)
+        # 推送进度到 WebSocket 通道（降级：Redis 不可用时只打日志，不影响刷新主流程）
+        try:
+            from shared.utils.redis_pubsub import RedisPubSub
+            progress = 0
+            if total and isinstance(total, int) and total > 0:
+                progress = int((self.updated_count + self.failed_count) / total * 100)
+            RedisPubSub().publish_progress(self.task_id, {
+                'status': self.status,
+                'total': total,
+                'updated': self.updated_count,
+                'failed': self.failed_count,
+                'progress': progress,
+            })
+        except Exception as e:
+            logger.warning(f"[ReferenceRefreshTask-{self.task_id}] 推送进度失败，降级忽略: {e}")
 
     def run(self, refresher=None):
         """在新线程中执行刷新任务

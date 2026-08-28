@@ -281,8 +281,8 @@ def audios_changed(old_config: dict, new_config: dict) -> bool:
     """比较两个 config 中的音频配置是否发生变化"""
     old_audios = collect_audios(old_config)
     new_audios = collect_audios(new_config)
-    old_ids = sorted([a.get('audio_id') for a in old_audios if isinstance(a, dict) and a.get('audio_id')])
-    new_ids = sorted([a.get('audio_id') for a in new_audios if isinstance(a, dict) and a.get('audio_id')])
+    old_ids = sorted([str(a.get('audio_id')) for a in old_audios if isinstance(a, dict) and a.get('audio_id')])
+    new_ids = sorted([str(a.get('audio_id')) for a in new_audios if isinstance(a, dict) and a.get('audio_id')])
     return old_ids != new_ids
 
 

@@ -58,6 +58,18 @@ async def lifespan(app: FastAPI):
     from evaluation_service.infrastructure.evaluation_service_host import evaluation_service
     logger.info("评估服务初始化完成")
 
+    # 启动维度配置热更新订阅：监听 DimensionConfigChanged 事件，热加载端点配置（无需重启服务）
+    try:
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+        EventBus().start_subscriber(
+            EventChannel.CONFIG_EVENTS,
+            {EventType.DIMENSION_CONFIG_CHANGED: lambda _payload: evaluation_service.reload_endpoint_configs()},
+            name='DimensionConfigSub',
+        )
+        logger.info("维度配置热更新订阅线程已启动")
+    except Exception as e:
+        logger.warning("维度配置热更新订阅启动失败，降级为重启后加载: %s", e)
+
     # 服务注册
     registry = RedisServiceRegistry()
     registry.register('evaluation_service', Config.SERVICE_HOST, Config.PORT)

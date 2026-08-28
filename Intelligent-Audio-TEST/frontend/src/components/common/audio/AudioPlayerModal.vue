@@ -71,6 +71,7 @@ interface Props {
   visible: boolean;
   title?: string;
   audioId?: string | number | null;
+  audioPath?: string;
   audioTitle?: string;
   audioType?: string;
   selectedDevices?: PlaybackDevice[];
@@ -86,6 +87,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   title: '音频播放',
   audioId: null,
+  audioPath: '',
   audioTitle: '未知音频',
   audioType: 'dry',
   selectedDevices: () => [],

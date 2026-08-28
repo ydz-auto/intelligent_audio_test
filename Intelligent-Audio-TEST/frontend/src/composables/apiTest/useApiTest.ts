@@ -14,12 +14,15 @@ export function useApiTest() {
     tags,
     isLoading,
     paginationInfo,
-    tagViewData
+    tagViewData,
+    tagViewPagination,
+    tagViewLoading
   } = storeToRefs(testCaseStore);
 
   const {
     fetchTestCases,
     fetchTagView,
+    loadMoreTagView,
     addTestCase,
     updateTestCase,
     deleteTestCase,
@@ -37,7 +40,7 @@ export function useApiTest() {
     if (caseItem.deleted) return false;
     
     // 优先检查记录级 testType 字段
-    const recordType = (caseItem.testType || caseItem.test_type || caseItem.type || '').toLowerCase();
+    const recordType = (caseItem.test_type || caseItem.type || '').toLowerCase();
     if (recordType === 'api' || recordType === 'api_test') return true;
     
     // 回退：检查 config 中是否有音频（支持 rounds 格式）
@@ -49,7 +52,7 @@ export function useApiTest() {
     }
     // 旧 flat 格式
     const audios = config.audios || [];
-    return audios.some((a: any) => (a.testType || a.test_type) === 'api');
+    return audios.some((a: any) => (a.test_type) === 'api');
   };
 
   const apiTestCases = computed(() => {
@@ -155,12 +158,33 @@ export function useApiTest() {
     }
   };
 
+  const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
+    fetchTagView({
+      keyword: filters.keyword,
+      testType: 'api',
+      algorithmType: filters.algorithmType,
+      dimensionId: filters.dimensionId,
+    });
+  };
+
+  // 分组视图筛选变化时重新请求数据（固定 testType=api）
+  const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
+    fetchTestCases({
+      keyword: filters.keyword,
+      testType: 'api',
+      algorithmType: filters.algorithmType,
+      dimensionId: filters.dimensionId,
+    });
+  };
+
   return {
     isLoading,
     apiTestCases,
     apiTestCaseGroups,
     tags,
     tagViewData,
+    tagViewPagination,
+    tagViewLoading,
     paginationInfo,
     initializeApiTests,
     runApiTest,
@@ -173,6 +197,9 @@ export function useApiTest() {
     openAddApiTestCaseModal,
     handleApiTestCaseSave,
     handleTestCaseAction,
-    fetchTagView
+    fetchTagView,
+    loadMoreTagView,
+    handleTagFilterChange,
+    handleGroupFilterChange
   };
 }

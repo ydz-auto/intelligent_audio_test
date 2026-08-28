@@ -12,6 +12,7 @@ import time
 import numpy as np
 import os
 import traceback
+import ctypes
 import logging
 from abc import ABC, abstractmethod
 from pydub import AudioSegment
@@ -218,13 +219,11 @@ class PyAudioDriver(AudioDriver):
         Returns:
             tuple: (resampled_files, resampled_rates, temp_files_to_clean)
         """
-        resample_temp_dir = None
+        default_resample_temp_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample')
         if app:
-            resample_temp_dir = getattr(app, 'config', {}).get('RESAMPLE_TEMP_PATH', os.environ.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample')))
+            resample_temp_dir = getattr(app, 'config', {}).get('RESAMPLE_TEMP_PATH', os.environ.get('RESAMPLE_TEMP_PATH', default_resample_temp_dir))
         else:
-            resample_temp_dir = os.environ.get('RESAMPLE_TEMP_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'temp_resample'))
-            if not os.environ.get('RESAMPLE_TEMP_PATH'):
-                log_and_emit('WARNING', 'audio_engine', f"[play_multi] os.environ.get('RESAMPLE_TEMP_PATH') not set, using fallback: {resample_temp_dir}", category='audio')
+            resample_temp_dir = os.environ.get('RESAMPLE_TEMP_PATH', default_resample_temp_dir)
 
         os.makedirs(resample_temp_dir, exist_ok=True)
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Pre-resampling audio files to target rate {target_rate}, temp_dir={resample_temp_dir}", category='audio')
@@ -242,7 +241,18 @@ class PyAudioDriver(AudioDriver):
                 try:
                     wf.rewind()
                     audio_data = wf.readframes(wf.getnframes())
-                    audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+                    sampwidth = wf.getsampwidth()
+                    # 根据采样宽度选择 dtype，统一归一化到 int16 幅度范围 [-32768, 32767]
+                    if sampwidth == 1:
+                        audio_np = np.frombuffer(audio_data, dtype=np.uint8).astype(np.float32)
+                        audio_np = (audio_np - 128.0) * 256.0  # uint8 中心在128，转到 int16 范围
+                    elif sampwidth == 2:
+                        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+                    elif sampwidth == 4:
+                        audio_np = np.frombuffer(audio_data, dtype=np.int32).astype(np.float32)
+                        audio_np = audio_np / 65536.0  # int32 -> int16 范围
+                    else:
+                        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
 
                     resampled_np = self.resample_audio_data(audio_np, file_rate, target_rate)
                     resampled_np = np.clip(resampled_np, -32768, 32767).astype(np.int16)
@@ -287,6 +297,14 @@ class PyAudioDriver(AudioDriver):
         dry_finished_list = [False] * len(wave_files)
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] dry_finished_list initialized with length: {len(wave_files)}, wave_files: {len(wave_files)}, audio_is_noise_list: {audio_is_noise_list}, audio_is_noise_list_len: {len(audio_is_noise_list) if audio_is_noise_list else 'None'}, audio_delays: {audio_delays}", category='audio')
 
+        # 预取每个文件的采样宽度，用于正确解析原始字节数据
+        file_sampwidths = []
+        for wf in wave_files:
+            try:
+                file_sampwidths.append(wf.getsampwidth())
+            except Exception:
+                file_sampwidths.append(2)
+
         def callback(in_data, frame_count, time_info, status):
             try:
                 if parent_stop_event and parent_stop_event.is_set():
@@ -309,8 +327,9 @@ class PyAudioDriver(AudioDriver):
                         audio_delays[i] = max(0, delay - elapsed_time)
 
                     current_delay = audio_delays[i] if i < len(audio_delays) else 0
+                    sampwidth = file_sampwidths[i] if i < len(file_sampwidths) else 2
                     if current_delay > 0:
-                        data = bytes(frame_count * 2)
+                        data = bytes(frame_count * sampwidth * file_channels_list[i])
                     else:
                         data = wf.readframes(frame_count)
 
@@ -322,16 +341,26 @@ class PyAudioDriver(AudioDriver):
                                 continue
                         elif not use_loop:
                             if dry_finished_list[i]:
-                                data = bytes(frame_count * 2)
+                                data = bytes(frame_count * sampwidth * file_channels_list[i])
                                 continue
                             dry_finished_list[i] = True
-                            data = bytes(frame_count * 2)
+                            data = bytes(frame_count * sampwidth * file_channels_list[i])
                             continue
 
                     if not is_noise and not use_loop:
                         all_empty = False
 
-                    audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                    # 根据采样宽度正确解析字节数据，统一归一化到 int16 幅度范围
+                    if sampwidth == 1:
+                        audio_data = np.frombuffer(data, dtype=np.uint8).astype(np.float32)
+                        audio_data = (audio_data - 128.0) * 256.0
+                    elif sampwidth == 2:
+                        audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                    elif sampwidth == 4:
+                        audio_data = np.frombuffer(data, dtype=np.int32).astype(np.float32)
+                        audio_data = audio_data / 65536.0  # int32 -> int16 范围
+                    else:
+                        audio_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
                     file_ch = file_channels_list[i]
                     actual_frames = len(audio_data) // file_ch
 
@@ -434,6 +463,17 @@ class PyAudioDriver(AudioDriver):
         if not audio_configs or len(audio_configs) < 1:
             return
 
+        # WASAPI 需要线程内 COM 初始化，线程池工作线程默认不初始化
+        _com_initialized = False
+        try:
+            ole32 = ctypes.windll.ole32
+            hr = ole32.CoInitializeEx(None, 0x0)  # COINIT_MULTITHREADED
+            # S_OK=0x00000000, S_FALSE=0x00000001（已初始化也算成功）
+            if hr in (0, 1):
+                _com_initialized = True
+        except Exception:
+            pass
+
         caller_info = traceback.format_stack()[-3].strip() if len(traceback.format_stack()) > 2 else 'unknown'
         log_and_emit('DEBUG', 'audio_engine', f"[play_multi] ENTRY: device={device_index}, configs={len(audio_configs)}, caller={caller_info}", category='audio')
 
@@ -463,6 +503,8 @@ class PyAudioDriver(AudioDriver):
         stream = None
         try:
             dev_lock = self._get_device_lock(device_index)
+            # dev_lock 只保护 stream 的 open/close，不保护 while stream.is_active() 循环
+            # 否则背景噪声等长时间播放会持有锁，导致同设备的其他播放永久阻塞
             with dev_lock:
                 target_rate = default_sample_rate
                 needs_resample = any(file_rate != target_rate for file_rate in audio_file_rates)
@@ -473,7 +515,7 @@ class PyAudioDriver(AudioDriver):
                     )
                     original_rate = target_rate
 
-                # 5. 尝试打开流并播放
+                # 5. 尝试打开流
                 candidate_configs = {(max_channels, target_rate), (2, target_rate)}
                 configs = list(candidate_configs)
                 log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Trying {len(configs)} unique configurations: {configs}", category='audio')
@@ -498,25 +540,30 @@ class PyAudioDriver(AudioDriver):
                     device_index, configs, formats_to_try, callback_factory_kwargs
                 )
 
-                if not stream:
-                    log_and_emit('ERROR', 'audio_engine', f"Failed to open multi audio stream after all attempts: {last_err}", category='audio')
-                    return
-
-                log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Stream opened successfully, starting playback", category='audio')
-
+            if not stream:
+                log_and_emit('ERROR', 'audio_engine', f"Failed to open multi audio stream after all attempts: {last_err}", category='audio')
+                # 流打开失败时仍需设置 started 事件，否则 play_round 会永久等待
                 if playback_started_event:
                     playback_started_event.set()
+                return
 
-                while stream.is_active():
-                    if stop_event and stop_event.is_set():
-                        break
-                    threading.Event().wait(0.1)
+            log_and_emit('DEBUG', 'audio_engine', f"[play_multi] Stream opened successfully, starting playback", category='audio')
+
+            if playback_started_event:
+                playback_started_event.set()
+
+            while stream.is_active():
+                if stop_event and stop_event.is_set():
+                    break
+                threading.Event().wait(0.1)
 
         finally:
             if stream:
                 try:
-                    stream.stop_stream()
-                    stream.close()
+                    dev_lock = self._get_device_lock(device_index)
+                    with dev_lock:
+                        stream.stop_stream()
+                        stream.close()
                 except Exception:
                     logger.debug("关闭音频流失败", exc_info=True)
             # 通知播放已完成（无论正常结束还是被停止）
@@ -543,3 +590,9 @@ class PyAudioDriver(AudioDriver):
                 except Exception as e:
                     log_and_emit('WARNING', 'audio_engine', f"[play_multi] Failed to delete downloaded source temp file {src_temp}: {e}", category='audio')
             log_and_emit('DEBUG', 'audio_engine', "Multi audio playback resources released", category='audio')
+            # 释放 COM
+            if _com_initialized:
+                try:
+                    ctypes.windll.ole32.CoUninitialize()
+                except Exception:
+                    pass

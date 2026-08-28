@@ -1,4 +1,4 @@
-import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted, inject } from 'vue';
 import { sanitizeConclusion } from '../../utils/sanitize';
 
 export function useTaskReportPanel(props: any, emit: any) {
@@ -9,6 +9,17 @@ export function useTaskReportPanel(props: any, emit: any) {
   const activeSection = ref('section-overview')
   const progressHeight = ref('0%')
 
+  // 导出模式：导出时展开所有折叠区块
+  const isExporting = inject('isExporting', ref(false))
+
+  // 导出时强制展开所有折叠区块
+  watch(isExporting, (exporting) => {
+    if (exporting) {
+      isAnalysisCollapsed.value = false
+      isDevicesCollapsed.value = false
+    }
+  }, { immediate: true })
+
   const toggleAnalysisCollapse = () => {
     isAnalysisCollapsed.value = !isAnalysisCollapsed.value
   }
@@ -18,12 +29,12 @@ export function useTaskReportPanel(props: any, emit: any) {
   }
 
   const deviceStats = computed(() => {
-    const stats = props.report?.summary?.deviceStats || props.report?.summary?.device_stats || []
+    const stats = props.report?.summary?.device_stats || []
     return Array.isArray(stats) ? stats : []
   })
 
   const apiStats = computed(() => {
-    const stats = props.report?.summary?.apiStats || props.report?.summary?.api_stats || []
+    const stats = props.report?.summary?.api_stats || []
     return Array.isArray(stats) ? stats : []
   })
 
@@ -32,7 +43,7 @@ export function useTaskReportPanel(props: any, emit: any) {
   })
 
   const allMetrics = computed(() => {
-    const metrics = props.report?.summary?.allMetrics || props.report?.summary?.all_metrics || []
+    const metrics = props.report?.summary?.all_metrics || []
     return Array.isArray(metrics) ? metrics : []
   })
 
@@ -171,6 +182,7 @@ export function useTaskReportPanel(props: any, emit: any) {
     localIsEditing,
     isAnalysisCollapsed,
     isDevicesCollapsed,
+    isExporting,
     activeSection,
     progressHeight,
     toggleAnalysisCollapse,

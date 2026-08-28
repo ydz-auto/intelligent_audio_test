@@ -142,6 +142,12 @@ class GetTestCaseRefParamsQuery(Query):
     round_number: int = 1
 
 
+@dataclass(frozen=True)
+class FetchCaseIdsQuery(Query):
+    """按筛选条件返回全量用例ID查询（不分页）。委托 testcase_query_service.fetch_case_ids。"""
+    data: dict = None
+
+
 # ==================== tag 域查询（gRPC servicer 用） ====================
 
 

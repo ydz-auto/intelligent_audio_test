@@ -46,25 +46,76 @@ class ConfigManager:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 self.config = json.load(f)
         except FileNotFoundError:
+            # 并发参数配置化：缺少配置文件时的默认值
             self.config = {
                 "api_executor": {
                     "max_queue_size": 100,
-                    "max_wait_time": 300
+                    "max_wait_time": 300,
+                    "default_max_process": 5
                 },
                 "evaluation_service": {
                     "max_queue_size": 100,
-                    "max_wait_time": 30
+                    "max_wait_time": 300,
+                    "default_max_concurrent": 10,
+                    "poll_interval": 5,
+                    "eval_max_wait_time": 600,
+                    "redis_queue_brpop_timeout": 1,
+                    "redis_result_callback_timeout": 5
+                },
+                "execution_engine": {
+                    "max_queue_size": 100,
+                    "test_case_wait_time": 3000,
+                    "api_task_max_workers": 10,
+                    "device_control_max_workers": 5,
+                    "audio_playback_max_workers": 12
+                },
+                "grpc": {
+                    "report_service_workers": 10,
+                    "algorithm_service_workers": 10,
+                    "task_service_workers": 10,
+                    "auth_service_workers": 10,
+                    "evaluation_service_workers": 10,
+                    "device_service_workers": 5,
+                    "audio_service_workers": 5,
+                    "e2e_test_service_workers": 5,
+                    "api_adapter_service_workers": 8,
+                    "api_test_service_workers": 8
                 }
             }
         except json.JSONDecodeError:
             self.config = {
                 "api_executor": {
                     "max_queue_size": 100,
-                    "max_wait_time": 300
+                    "max_wait_time": 300,
+                    "default_max_process": 5
                 },
                 "evaluation_service": {
                     "max_queue_size": 100,
-                    "max_wait_time": 30
+                    "max_wait_time": 300,
+                    "default_max_concurrent": 10,
+                    "poll_interval": 5,
+                    "eval_max_wait_time": 600,
+                    "redis_queue_brpop_timeout": 1,
+                    "redis_result_callback_timeout": 5
+                },
+                "execution_engine": {
+                    "max_queue_size": 100,
+                    "test_case_wait_time": 3000,
+                    "api_task_max_workers": 10,
+                    "device_control_max_workers": 5,
+                    "audio_playback_max_workers": 12
+                },
+                "grpc": {
+                    "report_service_workers": 10,
+                    "algorithm_service_workers": 10,
+                    "task_service_workers": 10,
+                    "auth_service_workers": 10,
+                    "evaluation_service_workers": 10,
+                    "device_service_workers": 5,
+                    "audio_service_workers": 5,
+                    "e2e_test_service_workers": 5,
+                    "api_adapter_service_workers": 8,
+                    "api_test_service_workers": 8
                 }
             }
 

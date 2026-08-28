@@ -29,7 +29,7 @@ class TestCaseQueryService:
 
     def list_testcases(self, page=1, per_page=10, keyword=None, tag=None,
                        group_id=None, test_type=None, algorithm_type=None,
-                       view=None, include_deleted=False) -> dict:
+                       view=None, include_deleted=False, dimension_id=None) -> dict:
         """查询测试用例列表。"""
         from shared.utils import testcase_helpers as common
 
@@ -37,12 +37,14 @@ class TestCaseQueryService:
             # 标签视图
             if view == 'tag':
                 return self._get_tag_view(page, per_page, keyword,
-                                          test_type, algorithm_type, include_deleted, common)
+                                          test_type, algorithm_type, include_deleted, common,
+                                          dimension_id=dimension_id)
 
             pagination = self.repo.query_testcases(
                 page=page, per_page=per_page, keyword=keyword, tag=tag,
                 group_id=group_id, test_type=test_type,
                 algorithm_type=algorithm_type, include_deleted=include_deleted,
+                dimension_id=dimension_id,
             )
             test_cases = pagination.items
 
@@ -102,7 +104,7 @@ class TestCaseQueryService:
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def _get_tag_view(self, page, per_page, keyword, test_type,
-                      algorithm_type, include_deleted, common):
+                      algorithm_type, include_deleted, common, dimension_id=None):
         """标签视图：按标签聚合用例。"""
         tag_pagination = self.repo.list_tags_paginated(page=page, per_page=per_page)
         page_tags = tag_pagination.items
@@ -125,6 +127,7 @@ class TestCaseQueryService:
         test_cases = self.repo.query_testcases_by_tag_ids(
             tag_ids, keyword=keyword, test_type=test_type,
             algorithm_type=algorithm_type, include_deleted=include_deleted,
+            dimension_id=dimension_id,
         )
 
         audio_ids = set()
@@ -297,6 +300,28 @@ class TestCaseQueryService:
             return {'success': True, 'message': '', 'data': {'items': tag_names}}
         except Exception as e:
             logger.error(f"获取标签列表失败: {e}", exc_info=True)
+            return {'success': False, 'message': str(e), 'data': None, 'code': 500}
+
+    def fetch_case_ids(self, data: dict) -> dict:
+        """按筛选条件返回全量用例ID（不分页）。
+
+        Args:
+            data: {group, test_type, search, tag}
+        Returns:
+            {success, message, data: {'ids': [...]}}
+        """
+        try:
+            group = data.get('group')
+            test_type = data.get('test_type')
+            search = data.get('search')
+            tag = data.get('tag')
+
+            ids = self.repo.fetch_case_ids(
+                group=group, test_type=test_type, search=search, tag=tag,
+            )
+            return {'success': True, 'message': '', 'data': {'ids': ids}}
+        except Exception as e:
+            logger.error(f"查询用例ID失败: {e}", exc_info=True)
             return {'success': False, 'message': str(e), 'data': None, 'code': 500}
 
     def get_testcase_ref_params(self, tc_id: str, round_number: int) -> dict:

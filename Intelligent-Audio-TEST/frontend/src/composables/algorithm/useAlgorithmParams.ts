@@ -150,7 +150,7 @@ export function useAlgorithmParams() {
       if (!Array.isArray(entry.params)) {
         entry.params = [];
       }
-      const existingCodes = new Set(entry.params.map((p: any) => p.field_code ?? p.fieldCode));
+      const existingCodes = new Set(entry.params.map((p: any) => p.field_code));
       for (const p of extracted) {
         if (p.field_code && !existingCodes.has(p.field_code)) {
           entry.params.push(p);

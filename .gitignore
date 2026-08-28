@@ -160,3 +160,9 @@ dump.rdb
 # Graphify output
 graphify-out/
 Intelligent-Audio-TEST/graphify-out/
+
+# Root-level static runtime data
+/static/eval_server/
+
+# Temp diff scratch files
+**/_tmp_*_diff.txt

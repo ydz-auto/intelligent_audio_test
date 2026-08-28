@@ -1,7 +1,7 @@
 import logging
 
 from api_gateway.infrastructure.request_adapter import request
-from api_gateway.utils.response import success_response, error_response, convert_keys_to_camel
+from api_gateway.utils.response import success_response, error_response
 from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.infrastructure.acl import TaskConfigAclRepositoryImpl
 from shared.utils.grpc_json import loads as _loads
@@ -17,11 +17,17 @@ from api_gateway.schemas.task import (
     TaskApiBrief,
     TaskReportItem,
     TaskReportsData,
+    TaskListQuery,
 )
 
 logger = logging.getLogger(__name__)
 
 _task_acl = TaskConfigAclRepositoryImpl()
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 class TaskQueryService:
@@ -34,14 +40,15 @@ class TaskQueryService:
     # 获取所有任务，支持分页和过滤
     @staticmethod
     def get_all():
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
-        status = request.args.get('status')
-        type_ = request.args.get('type')
-        algorithm_type = request.args.get('algorithm_type')
-        search = request.args.get('search')
-        start_date = request.args.get('start_date')
-        end_date = request.args.get('end_date')
+        query = _parse_query_params(TaskListQuery)
+        page = query.page
+        per_page = query.per_page
+        status = query.status
+        type_ = query.type
+        algorithm_type = query.algorithm_type
+        search = query.search
+        start_date = query.start_date
+        end_date = query.end_date
 
         result = _task_acl.list_tasks(
             page=page,
@@ -74,9 +81,9 @@ class TaskQueryService:
                     description=item.get('description'),
                     status=item.get('status'),
                     type=item.get('type'),
-                    config=convert_keys_to_camel(item.get('config')) if item.get('config') else {},
+                    config=item.get('config') if item.get('config') else {},
                     algorithm_type=item.get('algorithm_type'),
-                    algorithm_params=convert_keys_to_camel(item.get('algorithm_params')) if item.get('algorithm_params') else None,
+                    algorithm_params=item.get('algorithm_params') if item.get('algorithm_params') else None,
                     started_at=item.get('started_at'),
                     completed_at=item.get('completed_at'),
                     total_cases=item.get('total_cases'),
@@ -138,6 +145,8 @@ class TaskQueryService:
                 completed_at=c.get('completed_at'),
                 duration=c.get('duration'),
                 error_message=c.get('error_message'),
+                group_name=c.get('group_name'),
+                tags=c.get('tags', []),
             )
             for c in item.get('cases', [])
         ]
@@ -155,9 +164,9 @@ class TaskQueryService:
                 description=item.get('description'),
                 status=item.get('status'),
                 type=item.get('type'),
-                config=convert_keys_to_camel(item.get('config')) if item.get('config') else {},
+                config=item.get('config') if item.get('config') else {},
                 algorithm_type=item.get('algorithm_type'),
-                algorithm_params=convert_keys_to_camel(item.get('algorithm_params')) if item.get('algorithm_params') else None,
+                algorithm_params=item.get('algorithm_params') if item.get('algorithm_params') else None,
                 started_at=item.get('started_at'),
                 completed_at=item.get('completed_at'),
                 expected_total_time=item.get('expected_total_time'),

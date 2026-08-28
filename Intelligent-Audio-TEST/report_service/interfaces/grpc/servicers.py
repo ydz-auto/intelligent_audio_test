@@ -201,10 +201,19 @@ class ReportServicer(report_grpc.ReportConfigServiceServicer):
                 report_id=getattr(request, 'report_id'),
             )
             deleted = self.command_handler.handle_delete(command)
+            # 查询报告关联的 task_id，用于重新生成
+            task_id = None
+            if deleted:
+                try:
+                    aggregate = self.query_handler.handle_get(GetReportQuery(report_id=command.report_id))
+                    if aggregate:
+                        task_id = aggregate.task_id
+                except Exception:
+                    pass
             return self._resp(
                 deleted,
                 'ok' if deleted else 'report not found',
-                {'report_id': command.report_id, 'deleted': deleted},
+                {'report_id': command.report_id, 'deleted': deleted, 'task_id': task_id},
             )
         except Exception as e:
             logger.exception("DeleteReport failed")

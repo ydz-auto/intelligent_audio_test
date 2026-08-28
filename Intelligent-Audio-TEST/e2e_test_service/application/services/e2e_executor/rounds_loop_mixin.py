@@ -42,10 +42,16 @@ class RoundsLoopMixin:
             all_round_results.extend(tagged_results)
             if round_result.get('round_data'):
                 rounds_data.append(round_result['round_data'])
-            if not round_result.get('success', True):
-                execution_success = False
             if round_result.get('adjusted_ref_params'):
                 last_adjusted_ref_params = round_result['adjusted_ref_params']
+
+            # 本轮失败：设备状态已损坏，后续轮次无法正常执行，直接结束
+            if not round_result.get('success', True):
+                execution_success = False
+                self._log(level='ERROR',
+                          content=f"第 {round_number} 轮失败，跳过剩余 {len(rounds) - round_idx - 1} 轮",
+                          task_id=task_id, test_case_id=test_case_id)
+                break
 
         return all_round_results, rounds_data, execution_success, last_adjusted_ref_params
 
@@ -58,12 +64,22 @@ class RoundsLoopMixin:
 
         env_states = self._device_manager.setup_env_devices_for_round(round_algo_params, task_id)
         self._register_voiceprint(task_id, tc_rel_id, round_algo_params, test_case_id)
-        self._device_manager.pre_process_devices(
+        pre_ok = self._device_manager.pre_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
             extra_params={'round_number': round_idx,
                           'total_rounds': len(rounds),
                           **round_algo_params},
         )
+        if not pre_ok:
+            self._log(level='ERROR', content=f"第 {round_number} 轮设备预处理失败，跳过本轮",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
+                'adjusted_ref_params': None,
+            }
 
         play_result = PlaybackAclRepositoryImpl().play_round(
             round_config=round_config, task_id=task_id,
@@ -108,10 +124,20 @@ class RoundsLoopMixin:
                     for p in detail
                 ]
 
-        self._device_manager.post_process_devices(
+        post_ok = self._device_manager.post_process_devices(
             device_info_list, task_id, test_case_id=test_case_id,
             extra_params=post_extra_params,
         )
+        if not post_ok:
+            self._log(level='ERROR', content=f"第 {round_number} 轮设备后处理失败，跳过采集",
+                      task_id=task_id, test_case_id=test_case_id)
+            self._device_manager.teardown_env_devices_for_round(env_states, task_id)
+            return {
+                'success': False,
+                'tagged_results': [],
+                'round_data': {'round': round_idx, 'input': {}, 'output': {}, 'latency': None, 'evaluation': {}},
+                'adjusted_ref_params': None,
+            }
 
         # 采集结果
         collect_result = self._collector.collect_results(
@@ -213,15 +239,25 @@ class RoundsLoopMixin:
             task_id=task_id, test_case_id=test_case_id,
         )
 
-        self._evaluate_result(
-            task_id=task_id, result_id=result_id, test_case_id=test_case_id,
-            algo_result=current_algo_result, case_config=case_config or {},
-            case_reference_params=case_reference_params,
-            algorithm_type=algorithm_type, test_type='e2e',
-            case_algorithm_params=data.get('case_algorithm_params'),
-            round_number=round_idx,
-            reference_params_col=data.get('reference_params_col')
-        )
+        # 检查本轮 evaluation.enabled 开关，enabled 为 False 时跳过单轮评估
+        _round_eval_enabled = True
+        if case_config:
+            _case_rounds = case_config.get('rounds', [])
+            if _case_rounds and round_idx < len(_case_rounds):
+                _round_eval = _case_rounds[round_idx].get('evaluation', {})
+                if isinstance(_round_eval, dict) and _round_eval.get('enabled', True) is False:
+                    _round_eval_enabled = False
+
+        if _round_eval_enabled:
+            self._evaluate_result(
+                task_id=task_id, result_id=result_id, test_case_id=test_case_id,
+                algo_result=current_algo_result, case_config=case_config or {},
+                case_reference_params=case_reference_params,
+                algorithm_type=algorithm_type, test_type='e2e',
+                case_algorithm_params=data.get('case_algorithm_params'),
+                round_number=round_idx,
+                reference_params_col=data.get('reference_params_col')
+            )
 
         return round_data
 

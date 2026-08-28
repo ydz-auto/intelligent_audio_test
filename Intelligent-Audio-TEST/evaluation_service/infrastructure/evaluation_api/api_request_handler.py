@@ -4,8 +4,11 @@ import json
 import logging
 import requests
 import traceback
+import threading
 from shared.infrastructure.storage import storage
 from evaluation_service.infrastructure.evaluation_mixin import EvaluationLoggerMixin
+from shared.models.common_enums import RedisKeyPrefix, EvalTaskStatus
+from shared.utils.config_manager import config_manager
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +144,10 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 self._extract_single_file(key, value, files, form_fields_fallback=form_fields, fallback_key=key, fallback_value=value)
             elif isinstance(value, (dict, list)):
                 form_fields[key] = json.dumps(value)
+            elif isinstance(value, bool):
+                # multipart 上传会把 Python bool 序列化成 "True"/"False"（首字母大写），
+                # eval_server 白名单只认小写 'true'/'false'，这里统一转小写
+                form_fields[key] = 'true' if value else 'false'
             else:
                 form_fields[key] = value
 
@@ -279,16 +286,122 @@ class ApiRequestHandler(EvaluationLoggerMixin):
         result_url = f"{url}/api/get_final_result/{eval_task_id}"
         return self.make_api_request(result_url, 'GET', {}, {}, timeout)
 
-    def wait_for_task_completion(self, url, eval_task_id, max_wait_time=300, poll_interval=5, test_case_id=None, api_id=None, task_id=None):
+    def _get_redis_client(self):
+        """获取 Redis 客户端，不可用时返回 None"""
+        try:
+            from shared.utils.redis_pubsub import RedisPubSub
+            client = RedisPubSub().redis_client
+            client.ping()
+            return client
+        except Exception:
+            return None
+
+    def _wait_for_redis_callback(self, eval_task_id, max_wait_time, task_id=None, test_case_id=None, api_id=None):
+        """通过 Redis Pub/Sub 回调消费评估结果
+
+        eval_server 完成后会将结果推送到 eval:result:{eval_task_id} 频道。
+        此方法阻塞等待该消息，超时返回 None 表示需要降级到 HTTP 轮询。
+
+        Returns:
+            dict 或 None: 收到结果则返回，超时返回 None
         """
-        等待评估任务完成，定期查询状态
+        redis_client = self._get_redis_client()
+        if redis_client is None:
+            return None
+
+        callback_channel = f"{RedisKeyPrefix.EVAL_RESULT.value}:{eval_task_id}"
+        self._log('info', f'尝试 Redis 回调消费: channel={callback_channel}, timeout={max_wait_time}秒',
+                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+
+        pubsub = None
+        try:
+            pubsub = redis_client.pubsub()
+            pubsub.subscribe(callback_channel)
+
+            # 消费已有的订阅消息，带超时
+            deadline = time.time() + max_wait_time
+            while time.time() < deadline:
+                message = pubsub.get_message(timeout=1.0)
+                if message and message.get('type') == 'message':
+                    data = message.get('data')
+                    if isinstance(data, bytes):
+                        data = data.decode('utf-8')
+                    try:
+                        result = json.loads(data)
+                        self._log('info', f'Redis 回调收到结果: eval_task_id={eval_task_id}',
+                                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                        return result
+                    except (json.JSONDecodeError, TypeError):
+                        self._log('warning', f'Redis 回调消息解析失败: {data}',
+                                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                        return None
+                time.sleep(0.1)
+
+            # 超时，未收到回调
+            self._log('info', f'Redis 回调消费超时，降级为 HTTP 轮询: eval_task_id={eval_task_id}',
+                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+            return None
+        except Exception as e:
+            self._log('warning', f'Redis 回调消费异常，降级为 HTTP 轮询: {e}',
+                      task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+            return None
+        finally:
+            if pubsub is not None:
+                try:
+                    pubsub.unsubscribe()
+                    pubsub.close()
+                except Exception:
+                    pass
+
+    def wait_for_task_completion(self, url, eval_task_id, max_wait_time=None, poll_interval=None, test_case_id=None, api_id=None, task_id=None):
+        """等待评估任务完成
+
+        优先使用 Redis Pub/Sub 回调消费模式（Phase 3.2）：
+        - 提交任务时 eval_server 完成后会推送结果到 eval:result:{eval_task_id} 频道
+        - 如果 Redis 不可用或回调超时，降级为 HTTP 轮询
+
+        Args:
+            url: eval_server 地址
+            eval_task_id: 评估任务ID
+            max_wait_time: 最大等待时间（秒），None 时从 config_manager 读取
+            poll_interval: 轮询间隔（秒），None 时从 config_manager 读取
+            test_case_id: 用例ID
+            api_id: API ID
+            task_id: 应用任务ID
         """
-        self._log('info', f'开始等待评估任务完成: eval_task_id={eval_task_id}, max_wait_time={max_wait_time}秒', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+        # 配置化：参数从 config_manager 读取
+        effective_max_wait = max_wait_time or config_manager.get_value('evaluation_service', 'eval_max_wait_time', 600)
+        effective_poll_interval = poll_interval or config_manager.get_value('evaluation_service', 'poll_interval', 5)
+        redis_callback_timeout = config_manager.get_value('evaluation_service', 'redis_result_callback_timeout', 5)
+
+        self._log('info', f'开始等待评估任务完成: eval_task_id={eval_task_id}, max_wait_time={effective_max_wait}秒',
+                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+
+        # 1. 优先尝试 Redis 回调消费模式
+        redis_result = self._wait_for_redis_callback(
+            eval_task_id, redis_callback_timeout,
+            task_id=task_id, test_case_id=test_case_id, api_id=api_id
+        )
+        if redis_result is not None:
+            # Redis 回调收到结果
+            if isinstance(redis_result, dict):
+                if redis_result.get('status') == EvalTaskStatus.FAILED.value:
+                    error_msg = redis_result.get('error_msg', 'Task failed')
+                    self._log('error', f'评估任务失败(Redis回调): eval_task_id={eval_task_id}, error={error_msg}',
+                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                    return {'__error__': error_msg}
+                # 成功结果直接返回
+                return redis_result
+            return redis_result
+
+        # 2. Redis 不可用或回调超时，降级为 HTTP 轮询
+        self._log('info', f'降级为 HTTP 轮询模式: eval_task_id={eval_task_id}, poll_interval={effective_poll_interval}秒',
+                  task_id=task_id, test_case_id=test_case_id, api_id=api_id)
 
         start_time = time.time()
         poll_count = 0
 
-        while time.time() - start_time < max_wait_time:
+        while time.time() - start_time < effective_max_wait:
             poll_count += 1
             status_response = self.get_task_status(url, eval_task_id)
 
@@ -297,21 +410,25 @@ class ApiRequestHandler(EvaluationLoggerMixin):
                 status = data.get('status', '')
                 elapsed_time = int(time.time() - start_time)
 
-                if status == 'completed':
-                    self._log('info', f'评估任务完成: eval_task_id={eval_task_id}, 耗时={elapsed_time}秒', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                if status == EvalTaskStatus.COMPLETED.value:
+                    self._log('info', f'评估任务完成: eval_task_id={eval_task_id}, 耗时={elapsed_time}秒',
+                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
                     result_response = self.get_task_result(url, eval_task_id)
                     return result_response
-                elif status == 'failed':
+                elif status == EvalTaskStatus.FAILED.value:
                     error_msg = data.get('error_msg', 'Task failed')
-                    self._log('error', f'评估任务失败: eval_task_id={eval_task_id}, error={error_msg}', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                    self._log('error', f'评估任务失败: eval_task_id={eval_task_id}, error={error_msg}',
+                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
                     return {'__error__': error_msg}
                 else:
-                    self._log('info', f'等待评估任务: eval_task_id={eval_task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                    self._log('info', f'等待评估任务: eval_task_id={eval_task_id}, status={status}, 已等待={elapsed_time}秒, 第{poll_count}次查询',
+                              task_id=task_id, test_case_id=test_case_id, api_id=api_id)
             else:
-                self._log('warning', f'查询评估任务状态失败: eval_task_id={eval_task_id}, response={status_response}', task_id=task_id, test_case_id=test_case_id, api_id=api_id)
+                self._log('warning', f'查询评估任务状态失败: eval_task_id={eval_task_id}, response={status_response}',
+                          task_id=task_id, test_case_id=test_case_id, api_id=api_id)
 
-            time.sleep(poll_interval)
+            time.sleep(effective_poll_interval)
 
-        timeout_msg = f"评估任务超时: eval_task_id={eval_task_id}, 等待时间超过{max_wait_time}秒"
+        timeout_msg = f"评估任务超时: eval_task_id={eval_task_id}, 等待时间超过{effective_max_wait}秒"
         self._log('error', timeout_msg, task_id=task_id, test_case_id=test_case_id, api_id=api_id)
         return {'__error__': timeout_msg}

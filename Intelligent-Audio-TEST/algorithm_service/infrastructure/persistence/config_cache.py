@@ -42,6 +42,41 @@ _REDIS_KEY = 'algo_config_cache'
 _RELOAD_CHANNEL = 'algo_config_invalidate'
 
 
+def _resolve_actual_source(algo_type: str, source: str, source_param: str) -> str:
+    """当 source 为 'evaluation' 或其他非法值时，根据 source_param 查对应参数表反推真实来源。"""
+    valid_sources = ('case', 'reference', 'device', 'api')
+    if source in valid_sources:
+        return source
+    if not source_param:
+        return 'case'
+    # 依次在 case/reference/device/api 参数表里查找 source_param
+    from algorithm_service.infrastructure.persistence.models import (
+        CaseAlgorithmParam as CaseAlgorithmParamPO,
+        AlgorithmReferenceParam as AlgorithmReferenceParamPO,
+        AlgorithmDeviceParam as AlgorithmDeviceParamPO,
+        AlgorithmApiParam as AlgorithmApiParamPO,
+    )
+    from shared.models.database import get_db_session
+    session = get_db_session()
+    if session.query(CaseAlgorithmParamPO).filter_by(
+        algorithm_type=algo_type, param_code=source_param, deleted=False
+    ).first():
+        return 'case'
+    if session.query(AlgorithmReferenceParamPO).filter_by(
+        algorithm_type=algo_type, code=source_param, deleted=False
+    ).first():
+        return 'reference'
+    if session.query(AlgorithmDeviceParamPO).filter_by(
+        algorithm_type=algo_type, param_code=source_param, deleted=False
+    ).first():
+        return 'device'
+    if session.query(AlgorithmApiParamPO).filter_by(
+        algorithm_type=algo_type, param_code=source_param, deleted=False
+    ).first():
+        return 'api'
+    return 'case'
+
+
 def _get_redis():
     """获取 Redis 连接（惰性创建，连接失败返回 None）"""
     try:
@@ -269,22 +304,52 @@ class AlgorithmConfigCache:
 
     @staticmethod
     def _serialize_mappings(mappings) -> Dict[str, Any]:
+        # 合法来源值
+        VALID_SOURCES = {'case', 'reference', 'device', 'api'}
         result = {'device': [], 'api': [], 'case': [], 'reference': []}
         if isinstance(mappings, list):
             for m in mappings:
                 if not isinstance(m, dict):
                     continue
                 source = m.get('source') or m.get('source_type') or 'api'
-                source_key = source if source in result else 'api'
-                result[source_key].append({
-                    'source': source,
-                    'source_param': m.get('source_param') or m.get('source_field'),
-                    'source_direction': m.get('source_direction') or m.get('direction'),
-                    'dimension_id': m.get('dimension_id'),
-                    'dimension_name': m.get('dimension_name'),
-                    'target_param': m.get('target_param') or m.get('target_field'),
-                    'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
-                })
+                # 修复历史脏数据：source='evaluation' 或其他非法值时反推真实来源
+                if source not in VALID_SOURCES:
+                    source = _resolve_actual_source(
+                        m.get('algorithm_type', ''),
+                        source,
+                        m.get('source_param') or m.get('source_field') or '',
+                    )
+                # 评估维度映射（dimension_id 非空）归入 evaluation 分组
+                if m.get('dimension_id') is not None:
+                    result.setdefault('evaluation', []).append({
+                        'source': source,
+                        'source_param': m.get('source_param') or m.get('source_field'),
+                        'source_direction': m.get('source_direction') or m.get('direction'),
+                        'dimension_id': m.get('dimension_id'),
+                        'dimension_name': m.get('dimension_name'),
+                        'target_param': m.get('target_param') or m.get('target_field'),
+                        'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
+                    })
+                elif source in result:
+                    result[source].append({
+                        'source': source,
+                        'source_param': m.get('source_param') or m.get('source_field'),
+                        'source_direction': m.get('source_direction') or m.get('direction'),
+                        'dimension_id': m.get('dimension_id'),
+                        'dimension_name': m.get('dimension_name'),
+                        'target_param': m.get('target_param') or m.get('target_field'),
+                        'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
+                    })
+                else:
+                    result.setdefault('evaluation', []).append({
+                        'source': source,
+                        'source_param': m.get('source_param') or m.get('source_field'),
+                        'source_direction': m.get('source_direction') or m.get('direction'),
+                        'dimension_id': m.get('dimension_id'),
+                        'dimension_name': m.get('dimension_name'),
+                        'target_param': m.get('target_param') or m.get('target_field'),
+                        'transform_type': m.get('transform_type') or m.get('transform_rule') or 'none',
+                    })
         return result
 
     # ---- 公开 API ----

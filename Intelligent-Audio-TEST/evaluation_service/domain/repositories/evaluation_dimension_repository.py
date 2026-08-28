@@ -69,6 +69,16 @@ class EvaluationDimensionRepository(ABC):
         """读取待评估的维度评分"""
         ...
 
+    @abstractmethod
+    def find_score(
+        self, result_id: int, dimension_id: int, round_number: Optional[int] = None
+    ) -> Optional[DimensionScore]:
+        """按 result_id + dimension_id + round_number 查找已存在的维度评分记录。
+
+        round_number 为 None 时匹配 round_number IS NULL。
+        """
+        ...
+
     # ========== DimensionScore 写 ==========
 
     @abstractmethod
@@ -91,6 +101,15 @@ class EvaluationDimensionRepository(ABC):
         self, score_id: int, evaluation_status: str, error_message: Optional[str] = None
     ) -> None:
         """快速更新评估状态（含 flush，未 commit）。"""
+        ...
+
+    @abstractmethod
+    def reset_score_to_pending(self, score_id: int) -> None:
+        """重置维度评分记录为 pending（含 commit）。
+
+        清空 score/error_message/api_request_body/api_raw_response，
+        evaluation_status 置为 pending，供重新评估复用。
+        """
         ...
 
     @abstractmethod

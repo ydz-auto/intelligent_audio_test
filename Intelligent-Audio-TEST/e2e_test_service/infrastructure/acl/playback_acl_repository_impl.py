@@ -75,3 +75,38 @@ class PlaybackAclRepositoryImpl(PlaybackAclRepository):
         except Exception as e:
             logger.error("play_round 失败: %s", e)
             return None
+
+    def start_background_noise(self, case_config: Dict, task_id: str) -> bool:
+        """启动全局背景噪声（跨轮次持续播放）"""
+        from shared.clients.grpc_clients import get_playback_service_stub
+        from shared.proto import audio_service_pb2 as audio_pb
+        try:
+            stub = get_playback_service_stub()
+            playback_config = {
+                'action': 'start_background_noise',
+                'case_config': case_config,
+            }
+            resp = stub.StartPlayback(audio_pb.StartPlaybackRequest(
+                task_id=str(task_id),
+                playback_config=json.dumps(playback_config),
+            ))
+            return resp.success
+        except Exception as e:
+            logger.error("start_background_noise 失败: %s", e)
+            return False
+
+    def stop_background_noise(self, task_id: str) -> None:
+        """停止全局背景噪声"""
+        from shared.clients.grpc_clients import get_playback_service_stub
+        from shared.proto import audio_service_pb2 as audio_pb
+        try:
+            stub = get_playback_service_stub()
+            playback_config = {
+                'action': 'stop_background_noise',
+            }
+            stub.StartPlayback(audio_pb.StartPlaybackRequest(
+                task_id=str(task_id),
+                playback_config=json.dumps(playback_config),
+            ))
+        except Exception as e:
+            logger.error("stop_background_noise 失败: %s", e)

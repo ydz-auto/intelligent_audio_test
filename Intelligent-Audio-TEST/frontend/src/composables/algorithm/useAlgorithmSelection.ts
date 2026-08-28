@@ -40,8 +40,8 @@ export function useAlgorithmSelection(options: UseAlgorithmSelectionOptions = {}
         // 后端 options 经响应层转为 camelCase，这里补回 snake_case 别名，供卡片/筛选读取
         algorithmList.value = (result.data.algorithms || []).map((a: any) => ({
           ...a,
-          group_id: a.groupId ?? a.group_id,
-          group_name: a.groupName ?? a.group_name,
+          group_id: a.group_id,
+          group_name: a.group_name,
         }))
       }
     } catch (error) {

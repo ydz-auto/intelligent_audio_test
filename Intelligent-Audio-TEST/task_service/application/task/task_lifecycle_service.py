@@ -20,6 +20,7 @@ import logging
 from datetime import datetime
 
 from shared.utils.result_data_store import load_full_result_data
+from shared.utils.json_utils import deserialize_algorithm_result
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
 
@@ -321,14 +322,7 @@ class TaskLifecycleService:
                         task_repository.commit_task_case(tc)
                         continue
 
-                    algo_result = result.algorithm_result or {}
-                    while isinstance(algo_result, str):
-                        try:
-                            algo_result = json.loads(algo_result)
-                        except (json.JSONDecodeError, ValueError):
-                            algo_result = {}
-                    if not isinstance(algo_result, dict):
-                        algo_result = {}
+                    algo_result = deserialize_algorithm_result(result.algorithm_result or {})
 
                     full_data = load_full_result_data(
                         result.result_data, getattr(result, 'result_data_path', None)

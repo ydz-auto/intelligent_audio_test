@@ -4,17 +4,24 @@ import os
 import tempfile
 import shutil
 
-from hypium.model import UiParam
+try:
+    from hypium.model import UiParam
+except ImportError:
+    UiParam = None
 
 from .harmony_driver import HarmonyDriver
 from .device_config import get_device_config
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
 from device_service.config.config import Config
 from shared.infrastructure.storage import storage
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
 
+
+@register_driver
 class XiaoyilivechatV2(HarmonyDriver):
-    """小艺通话 live 态驱动
+    """小艺通话 live 态驱动 v2
 
     与 harmony_xiaoyichat 的差异:
     - 用户提问由音箱播放音频完成(驱动不负责播放, 假设进 post_process 前已播完)
@@ -24,6 +31,13 @@ class XiaoyilivechatV2(HarmonyDriver):
     通话状态流:
         打开通话live态 → 正在听(用户说/音箱在播) → 说话可打断(=小艺说话中) → 正在听(小艺说完回到听)
     """
+
+    # —— 驱动元数据 ——
+    app_type = AppType.XIAOYI_LIVECHAT
+    version = AppVersion.V2
+    platform = DevicePlatform.HARMONYOS
+    display_name = "小艺通话聊天 v2"
+    dependencies = ["hypium"]
 
 
     def __init__(self):

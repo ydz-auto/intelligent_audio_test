@@ -5,17 +5,34 @@ import re
 import tempfile
 import shutil
 
-from hypium.model import UiParam
+try:
+    from hypium.model import UiParam
+except ImportError:
+    UiParam = None
 
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
 from device_service.config.config import Config
 from shared.infrastructure.storage import storage
 from shared.utils.time_utils import ms_to_utc8_str, MS_FMT
 
+
+@register_driver
 class Xiaoyilivechat(HarmonyDriver):
+    """小艺通话聊天专用驱动 v1"""
+
+    # —— 驱动元数据 ——
+    app_type = AppType.XIAOYI_LIVECHAT
+    version = AppVersion.V1
+    platform = DevicePlatform.HARMONYOS
+    display_name = "小艺通话聊天 v1"
+    dependencies = ["hypium"]
+
     RECORDER_BUNDLE = 'com.huawei.hmos.screenrecorder'
     RECORDER_ABILITY = 'com.huawei.hmos.screenrecorder.ServiceExtAbility'
+    MUSIC_BUNDLE = 'com.huawei.hmsapp.music'
 
     def __init__(self):
         super().__init__()
@@ -52,10 +69,16 @@ class Xiaoyilivechat(HarmonyDriver):
         )
 
     def _list_device_mp4_set(self, device_sn):
-        """获取设备录屏目录下所有 mp4 文件路径集合（用于区分新增文件）"""
+        """获取设备录屏目录下最近 20 分钟内新增的 mp4 文件路径集合。
+
+        设备 Photo 目录有 16 个子目录、近千个历史 mp4, find 全量返回会被
+        hdc shell 输出截断, 导致 _start_recorder 的 before/after diff 漏掉
+        新文件。改用 -mmin -20 只返回最近 20 分钟内修改过的文件, 量级可控
+        且覆盖 case 模式多轮对话的时长(单用例最长约 10 分钟)。
+        """
         r = self._hdc_shell(
             device_sn, 'find', '/storage/media/100/local/files/Photo',
-            '-name', '*.mp4', '-type', 'f'
+            '-name', '*.mp4', '-type', 'f', '-mmin', '-20'
         )
         if r.returncode != 0:
             return set()
@@ -119,7 +142,7 @@ class Xiaoyilivechat(HarmonyDriver):
         self._recorder_first_frame_ms = first_frame_ms
         return True
 
-    def _stop_recorder(self, device_sn):
+    def _stop_recorder(self, device_sn, task_id=None, test_case_id=None):
         """停止录屏服务
 
         说明: 与 _start_recorder 同理, aa dump -l 的二次校验不可靠,
@@ -129,7 +152,9 @@ class Xiaoyilivechat(HarmonyDriver):
         self._hdc_shell(device_sn, 'aa', 'start', '-b', self.RECORDER_BUNDLE, '-a', self.RECORDER_ABILITY)
         return True
 
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
+        self._record_device_path = None  # 重置: 避免上个用例的 VID 路径残留
         if not super().initialize(device_sn, task_id=task_id, test_case_id=test_case_id, **kwargs):
             return False
         driver = self._get_driver(device_sn)
@@ -165,8 +190,29 @@ class Xiaoyilivechat(HarmonyDriver):
 
         return True
 
+    def _stop_music_app(self, device_sn, task_id=None, test_case_id=None):
+        """停止华为音乐 app。测试中小艺有时会把播放的音频误识别为"播放音乐"指令而拉起音乐，
+        污染录屏/pcm。pre_process 开局与 teardown 兜底各 force-stop 一次兜住。"""
+        driver = self._get_driver(device_sn)
+        if not driver:
+            self._log(level='WARNING',
+                      content=f"stop_music: 无 UiDriver,跳过 {self.MUSIC_BUNDLE}",
+                      task_id=task_id, test_case_id=test_case_id)
+            return
+        try:
+            driver.stop_app(self.MUSIC_BUNDLE)
+            self._log(level='DEBUG', content=f"stop_app {self.MUSIC_BUNDLE} 完成",
+                      task_id=task_id, test_case_id=test_case_id)
+        except Exception as e:
+            self._log(level='WARNING',
+                      content=f"stop_app {self.MUSIC_BUNDLE} 失败(忽略,不阻断用例): {e}",
+                      task_id=task_id, test_case_id=test_case_id)
+
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
+        # 开局兜底停止华为音乐，防止误识别"播放音乐"指令拉起音乐污染录屏/pcm
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
         # 开启通话聊天
 
         driver.touch(By.isAfter(By.key('ChatTitleMenu')).isBefore(By.key('title_bar.broadcastType.icon')).type(
@@ -191,6 +237,7 @@ class Xiaoyilivechat(HarmonyDriver):
         time.sleep(2)
         return True
 
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
         # 打印接收到的播放时间戳（验证链路）
@@ -225,7 +272,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 timeout=60, interval=1, operation_name="post_process_正在听"
             )
         # 停止录屏
-        if not self._stop_recorder(device_sn):
+        if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
             self._log(level='WARNING', content="停止录屏失败,服务仍在运行", task_id=task_id, test_case_id=test_case_id)
         else:
             self._log(level='INFO', content="停止录屏成功", task_id=task_id, test_case_id=test_case_id)
@@ -284,6 +331,10 @@ class Xiaoyilivechat(HarmonyDriver):
         local_path = ''
         recv_result = None
         try:
+            if not device_path:
+                self._log(level='WARNING',
+                          content=f"录屏设备路径为空（录屏启动时未发现新 mp4），回退 mediatool query: {record_file_name}",
+                          task_id=task_id, test_case_id=test_case_id)
             query = self._hdc_shell(device_sn, 'mediatool', 'query', record_file_name, '-u')
             lines = query.stdout.strip().split('\n')
             device_path = lines[1].strip() if len(lines) > 1 else ''
@@ -293,6 +344,10 @@ class Xiaoyilivechat(HarmonyDriver):
                     check=False, capture_output=True, text=True, timeout=120
                 )
                 device_path = f'/data/local/tmp/{record_file_name}'
+            if not device_path:
+                self._log(level='ERROR',
+                          content=f"录屏文件设备路径为空，无法拉取: record_file_name={record_file_name}, mediatool stdout={query.stdout if query else 'N/A'}",
+                          task_id=task_id, test_case_id=test_case_id)
             # 改造为 OSS 存储：先写本地临时目录，采集完上传 OSS 后清理本地临时
             task_id_path = str(task_id) if task_id else 'default_task_id'
             test_case_id_path = str(test_case_id) if test_case_id else 'default_id'
@@ -309,6 +364,7 @@ class Xiaoyilivechat(HarmonyDriver):
                     'success': False,
                     'message': f'录屏文件拉取失败: {recv_result.stderr}',
                     'record_path': '',
+                    'record_device_path': device_path or '',
                     'wav_path': '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
@@ -335,6 +391,7 @@ class Xiaoyilivechat(HarmonyDriver):
                 'success': True,
                 'message': 'Success',
                 'record_path': storage.build_path('case_result', record_oss_key),
+                'record_device_path': device_path or '',
                 'wav_path': storage.build_path('case_result', wav_oss_key) if wav_oss_key else '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
@@ -369,6 +426,7 @@ class Xiaoyilivechat(HarmonyDriver):
                             f"query_stdout={query_out!r} | "
                             f"recv_stderr={recv_err!r}"),
                 'record_path': local_path,
+                'record_device_path': device_path or '',
                 'wav_path': '',
                 'start_ms': ts['start_ms'],
                 'end_ms': ts['end_ms'],
@@ -389,7 +447,7 @@ class Xiaoyilivechat(HarmonyDriver):
         # 1. 兜底停止录屏（仅在仍在录屏时执行，避免 toggle 把已停止的录屏又打开）
         if getattr(self, '_recording', False):
             try:
-                if not self._stop_recorder(device_sn):
+                if not self._stop_recorder(device_sn, task_id=task_id, test_case_id=test_case_id):
                     self._log(level='WARNING', content="teardown: 兜底停止录屏失败,服务仍在运行",
                               task_id=task_id, test_case_id=test_case_id)
                 else:
@@ -421,7 +479,10 @@ class Xiaoyilivechat(HarmonyDriver):
         except Exception as e:
             self._log(level='WARNING', content=f"teardown: 回桌面失败: {e}", task_id=task_id, test_case_id=test_case_id)
 
-        # 4. 停止小艺 APP（彻底释放）
+        # 4. 兜底停止华为音乐（防止误识别"播放音乐"指令拉起音乐污染录屏/pcm）
+        self._stop_music_app(device_sn, task_id=task_id, test_case_id=test_case_id)
+
+        # 5. 停止小艺 APP（彻底释放）
         try:
             driver.stop_app(self.app_name)
             self._log(level='DEBUG', content="teardown: 已停止小艺 APP", task_id=task_id, test_case_id=test_case_id)

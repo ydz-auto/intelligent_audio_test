@@ -7,6 +7,13 @@
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.infrastructure.acl import ApiConfigAclRepositoryImpl
+from api_gateway.schemas.api import ApiListQuery
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
+
 
 _api_acl = ApiConfigAclRepositoryImpl()
 
@@ -18,18 +25,14 @@ class ApiQueryService:
 
     @staticmethod
     def get_all():
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
-        keyword = request.args.get('keyword')
-        status = request.args.get('status')
-        algorithm_type = request.args.get('algorithm_type')
+        query = _parse_query_params(ApiListQuery)
 
         result = _api_acl.get_all(
-            page=page,
-            per_page=per_page,
-            keyword=keyword,
-            status=status,
-            algorithm_type=algorithm_type,
+            page=query.page,
+            per_page=query.per_page,
+            keyword=query.keyword,
+            status=query.status,
+            algorithm_type=query.algorithm_type,
         )
 
         if not result.get('success'):

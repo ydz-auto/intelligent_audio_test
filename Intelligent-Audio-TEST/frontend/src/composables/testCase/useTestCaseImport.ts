@@ -28,8 +28,8 @@ export function useTestCaseImport(store: {
       error.value = null
       const result: any = await testcasesApi.importCases(formData)
 
-      const importedCount = Number(result?.importedCount ?? result?.imported_count ?? 0)
-      const updatedCount = Number(result?.updatedCount ?? result?.updated_count ?? 0)
+      const importedCount = Number(result?.imported_count ?? 0)
+      const updatedCount = Number(result?.updated_count ?? 0)
       const errors = Array.isArray(result?.errors) ? result.errors : []
 
       if (errors.length > 0) {

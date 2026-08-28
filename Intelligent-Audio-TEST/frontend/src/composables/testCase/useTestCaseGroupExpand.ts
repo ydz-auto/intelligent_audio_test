@@ -25,7 +25,11 @@ export function useTestCaseGroupExpand(
   paginatedGroups: Ref<string[]>,
   paginatedTags: Ref<string[]>,
   hasMoreGroups: Ref<boolean>,
-  hasMoreTags: Ref<boolean>
+  hasMoreTags: Ref<boolean>,
+  tagViewLoading?: Ref<boolean>,
+  onLoadMoreTags?: () => void,
+  dimensionFilter?: Ref<number | 'all'>,
+  searchQuery?: Ref<string>
 ) {
   const expandedCategories = ref<Record<string, boolean>>({});
   const expandedTagCategories = ref<Record<string, boolean>>({});
@@ -50,11 +54,13 @@ export function useTestCaseGroupExpand(
       const store = useTestCaseStore();
       const groupInfo = store.groupsList.find(g => g.name === group);
       if (groupInfo && (!store.loadedGroupCases[groupInfo.id] || store.loadedGroupCases[groupInfo.id].length === 0)) {
-        // 传当前算法/测试类型过滤值,使拉取的用例与徽标计数(按算法+测试类型统计)及 filteredTestCases 过滤一致,
+        // 传当前算法/测试类型/搜索关键词/维度过滤值,使拉取的用例与徽标计数及 filteredTestCases 过滤一致,
         // 否则拉取的是分组下所有用例,经筛选后可能为空(显示"已加载 0/N 条")。
         const algorithmType = algorithmTypeFilter.value === 'all' ? undefined : algorithmTypeFilter.value;
         const testType = testTypeFilter.value === 'all' ? undefined : testTypeFilter.value;
-        await store.fetchCasesByGroup(groupInfo.id, { algorithmType, testType });
+        const keyword = searchQuery?.value || undefined;
+        const dimensionId = dimensionFilter && dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined;
+        await store.fetchCasesByGroup(groupInfo.id, { algorithmType, testType, keyword, dimensionId });
       }
     }
   };
@@ -106,8 +112,13 @@ export function useTestCaseGroupExpand(
   const handleScroll = (event: Event) => {
     const target = event.target as HTMLElement;
     const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight;
-    if (scrollBottom < 100 && hasMore.value && !isLoadingMore.value) {
-      loadMoreGroups();
+    const tagLoading = tagViewLoading?.value ?? false;
+    if (scrollBottom < 100 && hasMore.value && !isLoadingMore.value && !tagLoading) {
+      if (innerViewMode.value === 'tag' && onLoadMoreTags) {
+        onLoadMoreTags();
+      } else {
+        loadMoreGroups();
+      }
     }
   };
 
@@ -117,10 +128,15 @@ export function useTestCaseGroupExpand(
   const setupLoadMoreObserver = () => {
     if (typeof IntersectionObserver === 'undefined') return;
     if (loadMoreObserver) loadMoreObserver.disconnect();
+    const tagLoading = tagViewLoading?.value ?? false;
     loadMoreObserver = new IntersectionObserver((entries) => {
       entries.forEach((entry) => {
-        if (entry.isIntersecting && hasMore.value && !isLoadingMore.value) {
-          loadMoreGroups();
+        if (entry.isIntersecting && hasMore.value && !isLoadingMore.value && !tagLoading) {
+          if (innerViewMode.value === 'tag' && onLoadMoreTags) {
+            onLoadMoreTags();
+          } else {
+            loadMoreGroups();
+          }
         }
       });
     }, { rootMargin: '100px' });
@@ -131,7 +147,7 @@ export function useTestCaseGroupExpand(
 
   // 哨兵是 v-if 元素，每次加载后会重新挂载，需重新观察；
   // 分组/标签视图切换时哨兵也会换元素，需一并重新观察。
-  watch([hasMore, isLoadingMore, () => paginatedGroups.value.length, () => paginatedTags.value.length, innerViewMode], () => {
+  watch([hasMore, isLoadingMore, () => paginatedGroups.value.length, () => paginatedTags.value.length, innerViewMode, () => tagViewLoading?.value], () => {
     nextTick(setupLoadMoreObserver);
   });
 

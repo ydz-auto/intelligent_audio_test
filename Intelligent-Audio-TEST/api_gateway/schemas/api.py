@@ -18,11 +18,19 @@ class ApiEndpointItem(APIModel):
     description: Optional[str] = Field(None)
 
 
+class ApiListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(10)
+    keyword: Optional[str] = Field(None)
+    status: Optional[str] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+
+
 class ApiItem(APIModel):
     id: int = Field(...)
     name: str = Field(...)
     vendor: Optional[str] = Field(None)
-    api_url: str = Field(...)
+    api_url: Optional[str] = Field(None)
     description: Optional[str] = Field(None)
     status: Optional[str] = Field(None)
     meta: Dict[str, Any] = Field(default_factory=dict)

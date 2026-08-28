@@ -17,14 +17,14 @@ export function useCaseTagComparison(props) {
   // Data
   const getTags = (data) => {
     if (!data) return []
-    const tags = data.allTags || data.summary?.allTags || data.allCaseTags || data.summary?.allCaseTags || []
+    const tags = data.all_case_tags || data.summary?.all_case_tags || data.all_tags || data.summary?.all_tags || []
     if (!Array.isArray(tags)) return []
     return tags.map(tag => typeof tag === 'object' ? tag.name : tag)
   }
 
   const getCategories = (data) => {
     if (!data) return []
-    const categories = data.caseCategories || data.summary?.caseCategories || []
+    const categories = data.case_categories || data.summary?.case_categories || []
     if (!Array.isArray(categories)) return []
     return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
   }
@@ -78,7 +78,7 @@ export function useCaseTagComparison(props) {
   })
 
   // Metrics configuration
-  const allMetrics = ref(props.reportData.allMetrics || props.reportData.summary?.allMetrics || [])
+  const allMetrics = ref(props.reportData.all_metrics || props.reportData.summary?.all_metrics || [])
 
   const selectedMetrics = ref([])
 
@@ -108,7 +108,7 @@ export function useCaseTagComparison(props) {
     const list = Array.isArray(allMetrics.value) ? allMetrics.value : []
     list.forEach(m => {
       if (!m || !m.name) return
-      const dp = m.decimalPlaces ?? m.decimal_places
+      const dp = m.decimal_places
       if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
     })
     return map
@@ -153,8 +153,8 @@ export function useCaseTagComparison(props) {
     }
 
     let tags = [
-      ...(reportData.allTags || reportData.summary?.allTags || []),
-      ...(reportData.allCaseTags || reportData.summary?.allCaseTags || [])
+      ...(reportData.all_tags || reportData.summary?.all_tags || []),
+      ...(reportData.all_case_tags || reportData.summary?.all_case_tags || [])
     ];
 
     tags = tags.map(tag => typeof tag === 'object' ? tag.name : tag);
@@ -164,18 +164,18 @@ export function useCaseTagComparison(props) {
     const extractedTags = Object.keys(extractedTagMetricData);
 
     let detailedTags = [];
-    if (reportData.detailedResults) {
-      reportData.detailedResults.forEach(result => {
-        if (result.testCase?.tags) {
-          const caseTags = result.testCase.tags.map(tag => typeof tag === 'object' ? tag.name : tag);
+    if (reportData.detailed_results) {
+      reportData.detailed_results.forEach(result => {
+        if (result.test_case?.tags) {
+          const caseTags = result.test_case.tags.map(tag => typeof tag === 'object' ? tag.name : tag);
           detailedTags = [...detailedTags, ...caseTags];
         }
       });
     }
 
-    if (reportData.detailedResults) {
-      const hasUntaggedCase = reportData.detailedResults.some(r => {
-        const tags = r?.testCase?.tags
+    if (reportData.detailed_results) {
+      const hasUntaggedCase = reportData.detailed_results.some(r => {
+        const tags = r?.test_case?.tags
         return !Array.isArray(tags) || tags.length === 0
       })
       if (hasUntaggedCase) detailedTags = [...detailedTags, '未标记']
@@ -185,15 +185,15 @@ export function useCaseTagComparison(props) {
 
     allTags.value = mergedTags;
 
-    const categories = reportData.caseCategories || reportData.summary?.caseCategories || [];
+    const categories = reportData.case_categories || reportData.summary?.case_categories || [];
     const mappedCategories = categories.map(cat => typeof cat === 'object' ? cat.name : cat);
-    if (reportData.detailedResults) {
-      const hasUncategorized = reportData.detailedResults.some(r => !r?.testCaseGroup)
+    if (reportData.detailed_results) {
+      const hasUncategorized = reportData.detailed_results.some(r => !r?.test_case_group)
       if (hasUncategorized && !mappedCategories.includes('未分类')) mappedCategories.push('未分类')
     }
     caseCategories.value = mappedCategories;
 
-    allMetrics.value = reportData.allMetrics || reportData.summary?.allMetrics || [];
+    allMetrics.value = reportData.all_metrics || reportData.summary?.all_metrics || [];
     tagMetricData.value = extractedTagMetricData;
     devices.value = getValidResources(reportData);
 
@@ -235,7 +235,7 @@ export function useCaseTagComparison(props) {
 
     const report = props.reportData || {}
     const summary = report.summary || report
-    const headers = summary.resourceHeaders || summary.resource_headers || report.resourceHeaders || report.resource_headers || []
+    const headers = summary.resource_headers || report.resource_headers || []
     if (Array.isArray(headers)) {
       const target = headers.find(h => h && (h.key === resourceKey || h.resource === resourceKey))
       if (target) {
@@ -268,7 +268,7 @@ export function useCaseTagComparison(props) {
 
     const report = props.reportData || {}
     const summary = report.summary || report
-    const tags = summary.allCaseTags || summary.all_case_tags || summary.allTags || summary.all_tags || report.allCaseTags || report.all_case_tags || []
+    const tags = summary.all_case_tags || summary.all_tags || report.all_case_tags || []
     if (Array.isArray(tags)) {
       const target = tags.find(t => t && typeof t === 'object' && t.name === oldName)
       if (target) target.name = next
@@ -373,7 +373,7 @@ export function useCaseTagComparison(props) {
 
     try {
       const reportData = props.reportData || {}
-      const reportId = reportData.id || reportData.reportId || reportData.report_id
+      const reportId = reportData.id || reportData.report_id
 
       if (reportId) {
         const selectedTagList = selectedTags.value || []
@@ -394,7 +394,7 @@ export function useCaseTagComparison(props) {
         return
       }
 
-      const taskId = reportData.taskId || reportData.summary?.taskId;
+      const taskId = reportData.task_id || reportData.summary?.task_id;
       if (taskId) {
         const result = await reportsApi.getCaseAveragesByFilters(taskId, {
           tags: selectedTags.value,

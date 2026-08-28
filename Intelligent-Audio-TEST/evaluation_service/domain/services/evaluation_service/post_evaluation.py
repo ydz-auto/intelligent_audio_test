@@ -53,6 +53,19 @@ class PostEvaluationMixin:
                     tc.status = new_status or tc.status or TaskCaseStatus.COMPLETED
                     tc.evaluation_status = EvaluationStatus.COMPLETED
                     any_updated = True
+            elif (tc.evaluation_status == EvaluationStatus.COMPLETED
+                    and tc.status == TaskCaseStatus.PENDING
+                    and tc.execution_status in [ExecutionStatus.COMPLETED, ExecutionStatus.FAILED]):
+                # 已完成评估的用例：同步 status 字段（覆盖服务重启后 status 停留在 pending 的情况）
+                new_status = tc.execution_status
+                ok = self._task_acl_repo.update_task_case_status(
+                    task_id=task_id,
+                    case_id=str(tc.test_case_id),
+                    status=new_status,
+                )
+                if ok:
+                    tc.status = new_status
+                    any_updated = True
 
         # 3. 统计已处理/失败/完成的用例数
         total_cases = len(tc_rels)
@@ -93,9 +106,26 @@ class PostEvaluationMixin:
         return task
 
     def _notify_engine_completion(self, task_id, test_case_id, task):
-        """发送进度更新并通知执行引擎某个用例的评估已完成"""
+        """发送进度更新并通知执行引擎某个用例的评估已完成
+
+        事件驱动改造: 同时发布 CaseEvaluationCompleted 事件到 Redis 事件总线，
+        task_service 订阅后唤醒等待线程，替代 gRPC 同步通知的强依赖。
+        gRPC 调用保留作为同步路径，事件作为异步通知补充。
+        """
         # P0-1: 通过依赖注入的 ABC 通知，domain 层不 import shared.clients.grpc_clients
         self._task_acl_repo.notify_task_progress(task_id, force=True)
 
-        # 通过 gRPC 通知 task_service 唤醒等待线程
+        # 通过 gRPC 通知 task_service 唤醒等待线程（同步路径，保留兼容）
         self._task_acl_repo.notify_case_completed(task_id)
+
+        # 发布用例评估完成事件到事件总线（异步通知 task_service）
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+        EventBus().publish(
+            EventChannel.CASE_EVENTS,
+            EventType.CASE_EVALUATION_COMPLETED,
+            {
+                'task_id': str(task_id),
+                'test_case_id': str(test_case_id) if test_case_id else None,
+                'success': True,
+            }
+        )

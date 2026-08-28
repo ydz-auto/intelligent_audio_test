@@ -49,7 +49,7 @@ import {
   publishReport
 } from './reportApi';
 
-import { viewTaskReport, batchCompare } from './reportView';
+import { viewTaskReport, regenerateTaskReport, batchCompare } from './reportView';
 import { parseMultiRoundResult, getMetricValue } from './reportHelpers';
 
 export const reportService = {
@@ -70,6 +70,7 @@ export const reportService = {
   exportReport,
   publishReport,
   viewTaskReport,
+  regenerateTaskReport,
   batchCompare,
   formatStatsForCharts,
   getDefaultStats,

@@ -22,7 +22,7 @@ export function createDownloadLogic(deps: {
 
   async function downloadCaseLogZip(caseItem: any) {
     const notification = useNotification()
-    const reportId = props.reportData?.id || props.reportData?.reportId
+    const reportId = props.reportData?.id || props.reportData?.report_id
     if (!reportId) {
       console.error('无法获取报告ID')
       notification.error('无法获取报告ID')

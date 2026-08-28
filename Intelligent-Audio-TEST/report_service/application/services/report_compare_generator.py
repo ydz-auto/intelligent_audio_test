@@ -35,6 +35,7 @@ from report_service.infrastructure.persistence.report_repository import report_r
 from report_service.infrastructure.clients.grpc_clients import (
     _grpc_list_testcases_by_ids, _dim_id, _dim_name, _dim_weight,
     _dim_score_unit, _dim_decimal_places,
+    _grpc_algo_get_field_mapping,
 )
 
 

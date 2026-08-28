@@ -65,6 +65,8 @@
           :test-case-groups="testCaseGroups"
           :tag-view-data="tagViewData"
           :tags="tags"
+          :tag-view-pagination="tagViewPagination"
+          :tag-view-loading="tagViewLoading"
           :algorithm-type-filter="selectedAlgorithmType || 'all'"
           :test-type-filter="testType"
           :is-loading="isLoading || false"
@@ -78,6 +80,8 @@
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
           @tag-filter-change="handleTagFilterChange"
+          @group-filter-change="handleGroupFilterChange"
+          @load-more-tags="loadMoreTagView"
         />
       </TestStepContainer>
 
@@ -95,7 +99,7 @@
             <button class="btn btn-primary" @click="handleAddResource">
               <i class="fas fa-plus"></i> {{ addResourceLabel }}
             </button>
-            <button v-if="testType === 'e2e'" class="btn btn-secondary" @click.stop="scanDevices('test')">
+            <button v-if="testType === TestType.E2E" class="btn btn-secondary" @click.stop="scanDevices('test')">
               <i class="fas fa-search"></i> 扫描设备
             </button>
             <div class="search-box">
@@ -154,8 +158,8 @@
             expectedTotalTime: estimatedTime,
             usedTime: elapsedTime,
             expectedCompleteTime: expectedCompleteTime,
-            deviceCount: testType === 'e2e' ? associatedDevices.length : undefined,
-            apiCount: testType === 'api' ? selectedAPIIds.length : undefined,
+            deviceCount: testType === TestType.E2E ? associatedDevices.length : undefined,
+            apiCount: testType === TestType.API ? selectedAPIIds.length : undefined,
             totalTestCases: totalTestCases,
             concurrentTasks: concurrentTasks,
             testDate: new Date().toLocaleDateString(),
@@ -266,6 +270,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from 'vue'
+import { TestType } from '@/shared/types/enums'
 import { useTestFlow } from '../../composables/shared/useTestFlow'
 import ProgressNav from '../../components/layout/ProgressNav.vue'
 import TestCaseListContainer from '../../components/common/test-case/TestCaseListContainer.vue'
@@ -279,7 +284,7 @@ import AlgorithmSelectionPanel from '../../components/algorithm/AlgorithmSelecti
 import TaskReportPanel from '../../components/report/TaskReportPanel.vue'
 
 const props = defineProps<{
-  testType: 'e2e' | 'api'
+  testType: (typeof TestType)[keyof typeof TestType]
 }>()
 
 const showTaskNameModal = ref(false)
@@ -291,7 +296,7 @@ const flow = useTestFlow(props.testType)
 const {
   currentStep, taskName, activeTab, concurrentTasks,
   selectedAPIIds, selectedDeviceIdsList,
-  testCaseGroups, tags, tagViewData, isLoading,
+  testCaseGroups, tags, tagViewData, tagViewPagination, tagViewLoading, isLoading,
   algorithmList, selectedAlgorithmType, algorithmModalVisible, algorithmModalMode,
   algorithmEditData, algorithmSearchQuery,
   apis, apiSearchQuery, apiFilter,
@@ -308,7 +313,8 @@ const {
   selectAlgorithm, openCreateAlgorithmModal, openAlgorithmConfigModal,
   handleDeleteGroup, handleDeleteTestCase, openAddTestCaseModal, handleOpenEditModal,
   openCreateGroupModal, openEditGroupModal, openImportTestCaseModal, openExportTestCaseModal,
-  updateSelectedCases, handleTagFilterChange,
+  updateSelectedCases, handleTagFilterChange, handleGroupFilterChange,
+  loadMoreTagView,
   toggleResourceSelection, handleResourceAction, handleAddResource,
   handlePageChange, handlePageSizeChange, handlePrevPage, handleNextPage,
   scanDevices,
@@ -319,39 +325,39 @@ const {
 } = flow
 
 // ============ 计算属性：根据 testType 派生 ============
-const pageTitle = computed(() => props.testType === 'e2e' ? '端到端测试' : 'API测试')
-const pageTitleIcon = computed(() => props.testType === 'e2e' ? 'fas fa-project-diagram' : 'fas fa-exchange-alt')
-const pageDescription = computed(() => props.testType === 'e2e' ? '通过完整的测试流程验证语音产品的功能和性能' : '测试语音服务API的功能和性能，验证接口响应和数据正确性')
-const stepLabels = computed(() => props.testType === 'e2e'
+const pageTitle = computed(() => props.testType === TestType.E2E ? '端到端测试' : 'API测试')
+const pageTitleIcon = computed(() => props.testType === TestType.E2E ? 'fas fa-project-diagram' : 'fas fa-exchange-alt')
+const pageDescription = computed(() => props.testType === TestType.E2E ? '通过完整的测试流程验证语音产品的功能和性能' : '测试语音服务API的功能和性能，验证接口响应和数据正确性')
+const stepLabels = computed(() => props.testType === TestType.E2E
   ? ['选择算法', '选择测试用例', '选择测试设备', '执行测试', '查看结果']
   : ['选择算法', '选择测试用例', '选择被测API', '执行测试', '查看结果'])
-const step2Tooltip = computed(() => props.testType === 'e2e' ? '选择要使用的测试设备' : '选择要测试的API端点')
-const step2Title = computed(() => props.testType === 'e2e' ? '选择测试设备' : '选择被测API')
-const addResourceLabel = computed(() => props.testType === 'e2e' ? '新增设备' : '新增API')
-const searchPlaceholder = computed(() => props.testType === 'e2e' ? '搜索设备名称或型号...' : '搜索API名称或端点...')
-const emptyResourceText = computed(() => props.testType === 'e2e' ? '未找到相关设备' : '未找到相关API')
-const testTypeLabel = computed(() => props.testType === 'e2e' ? 'E2E' : 'API')
+const step2Tooltip = computed(() => props.testType === TestType.E2E ? '选择要使用的测试设备' : '选择要测试的API端点')
+const step2Title = computed(() => props.testType === TestType.E2E ? '选择测试设备' : '选择被测API')
+const addResourceLabel = computed(() => props.testType === TestType.E2E ? '新增设备' : '新增API')
+const searchPlaceholder = computed(() => props.testType === TestType.E2E ? '搜索设备名称或型号...' : '搜索API名称或端点...')
+const emptyResourceText = computed(() => props.testType === TestType.E2E ? '未找到相关设备' : '未找到相关API')
+const testTypeLabel = computed(() => props.testType === TestType.E2E ? 'E2E' : 'API')
 
 // 统一资源项
-const resourceItems = computed(() => props.testType === 'e2e' ? algorithmFilteredDevices.value : filteredAPIs.value)
+const resourceItems = computed(() => props.testType === TestType.E2E ? algorithmFilteredDevices.value : filteredAPIs.value)
 // 统一搜索 query
 const resourceSearchQuery = computed({
-  get: () => props.testType === 'e2e' ? deviceSearchQuery.value : apiSearchQuery.value,
+  get: () => props.testType === TestType.E2E ? deviceSearchQuery.value : apiSearchQuery.value,
   set: (val: string) => {
-    if (props.testType === 'e2e') (deviceSearchQuery as any).value = val
+    if (props.testType === TestType.E2E) (deviceSearchQuery as any).value = val
     else (apiSearchQuery as any).value = val
   },
 })
 // 统一状态筛选
 const resourceStatusFilter = computed({
-  get: () => props.testType === 'e2e' ? selectedDeviceStatus.value : apiFilter.value,
+  get: () => props.testType === TestType.E2E ? selectedDeviceStatus.value : apiFilter.value,
   set: (val: string) => {
-    if (props.testType === 'e2e') (selectedDeviceStatus as any).value = val
+    if (props.testType === TestType.E2E) (selectedDeviceStatus as any).value = val
     else (apiFilter as any).value = val
   },
 })
 // 资源显示字段
-const resourceDisplayFields = computed(() => props.testType === 'e2e'
+const resourceDisplayFields = computed(() => props.testType === TestType.E2E
   ? [
       { label: '设备名称', key: 'name' },
       { label: '型号', key: 'model' },
@@ -365,7 +371,7 @@ const resourceDisplayFields = computed(() => props.testType === 'e2e'
 
 // ============ 任务名称模态窗 ============
 const handleStartTask = () => {
-  const prefix = props.testType === 'e2e' ? 'E2E测试任务' : 'API测试任务'
+  const prefix = props.testType === TestType.E2E ? 'E2E测试任务' : 'API测试任务'
   localTaskName.value = `${prefix}_${new Date().toLocaleString()}`
   showTaskNameModal.value = true
 }

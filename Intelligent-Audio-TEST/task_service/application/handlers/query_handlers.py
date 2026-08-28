@@ -24,6 +24,7 @@ from task_service.application.queries.task_queries import (
     GetTestCaseStatsQuery,
     GetTestCaseTagsQuery,
     GetTestCaseRefParamsQuery,
+    FetchCaseIdsQuery,
     ListTagCategoriesQuery,
     GetTagCategoryQuery,
     ListTagsQuery,
@@ -222,6 +223,10 @@ class TaskQueryHandler:
         return self.testcase_query_service.get_testcase_ref_params(
             query.tc_id, query.round_number
         )
+
+    def handle_fetch_case_ids(self, query: FetchCaseIdsQuery) -> Dict[str, Any]:
+        """处理按筛选条件返回全量用例ID查询。委托 testcase_crud_service.fetch_case_ids。"""
+        return self.testcase_query_service.fetch_case_ids(query.data or {})
 
     # ==================================================================
     # tag 域查询（gRPC servicer 入口）

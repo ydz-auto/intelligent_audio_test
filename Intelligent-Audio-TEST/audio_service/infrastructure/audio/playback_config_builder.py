@@ -141,48 +141,111 @@ def resolve_dry_audios(audios, round_config=None):
     return result
 
 
+def _find_playback_device_by_name(dev_name):
+    """通过 ACL 仓储 ListPlaybackDevices 按 name 查找（返回 dict 或 None）。"""
+    try:
+        from audio_service.infrastructure.acl.playback_acl_repository import (
+            PlaybackConfigACLRepositoryImpl,
+        )
+        _playback_acl = PlaybackConfigACLRepositoryImpl()
+        return _playback_acl.find_playback_device_by_name(dev_name)
+    except Exception:
+        return None
+
+
+def _find_audio_by_name(audio_name):
+    """通过 AudioRepository 按 name/original_filename 查找音频对象。"""
+    try:
+        from audio_service.infrastructure.persistence.audio_repository import AudioRepository
+        _repo = AudioRepository()
+        return _repo.find_audio_by_name(audio_name)
+    except Exception:
+        return None
+
+
 def build_noise_info(round_config, case_config):
-    """解析本轮噪声 audio_info + 噪声设备列表。"""
+    """解析本轮噪声 audio_info + 噪声设备列表。
+
+    优先级：case 级（整个用例）背景噪声 > round 级（轮次内）背景噪声。
+    当 case 级存在且有效时，round 级背景噪声不播放。
+    """
     from audio_service.infrastructure.persistence.audio_repository import AudioRepository
     _repo = AudioRepository()
 
-    # 兼容 round 级 / case 级
-    bg_noise = round_config.get('background_noise') or {}
-    if not bg_noise and case_config:
-        bg_noise = case_config.get('background_noise') or {}
+    def _resolve_bg_noise(bg_noise):
+        """解析单个 background_noise 配置块，返回 (noise_audio, noise_spl, noise_devices)。"""
+        if not bg_noise:
+            return None, 0, []
 
-    noise_audio = None
-    noise_spl = 0
-    audio_id = bg_noise.get('audio_id')
-    if audio_id:
-        try:
-            noise_audio = _repo.get_audio(audio_id)
-        except Exception:
-            noise_audio = None
-        noise_spl = bg_noise.get('spl', 0)
+        noise_audio = None
+        noise_spl = bg_noise.get('spl', 0) or 0
+        audio_id = bg_noise.get('audio_id')
+        if audio_id:
+            try:
+                noise_audio = _repo.get_audio(audio_id)
+            except Exception:
+                noise_audio = None
+        # 兼容统一标注文件：audio 字段为文件名（字符串），按 name/original_filename 查库
+        if not noise_audio:
+            _audio_name = bg_noise.get('audio') or bg_noise.get('audio_name') or ''
+            if _audio_name:
+                try:
+                    noise_audio = _repo.find_audio_by_name(_audio_name)
+                except Exception:
+                    noise_audio = None
 
-    device_ids = bg_noise.get('device_ids') or []
-    noise_devices = []
-    for did in device_ids:
-        dev = None
-        try:
-            if isinstance(did, str):
-                # 先尝试作为主键 ID 查询（若为纯数字字符串）
-                try_num = int(did)
-                dev = _get_playback_device_via_grpc(try_num)
-                if dev and dev.get('is_deleted'):
-                    dev = None
-                if not dev:
-                    dev = _find_playback_device_by_unique_id(did)
-            else:
-                dev = _get_playback_device_via_grpc(did)
-        except (ValueError, TypeError):
-            dev = _find_playback_device_by_unique_id(did)
-        except Exception:
+        # 兼容两种设备字段：device_ids（ID 列表）或 playback_device_names（名称列表）
+        device_ids = bg_noise.get('device_ids') or []
+        device_names = bg_noise.get('playback_device_names') or bg_noise.get('device_names') or []
+        # 单设备兼容：playback_device_name（单个字符串）
+        if not device_names:
+            _single_name = bg_noise.get('playback_device_name') or bg_noise.get('device_name')
+            if _single_name:
+                device_names = [_single_name]
+        noise_devices = []
+        for did in device_ids:
             dev = None
-        if dev:
-            noise_devices.append(dev)
+            try:
+                if isinstance(did, str):
+                    # 先尝试作为主键 ID 查询（若为纯数字字符串）
+                    try_num = int(did)
+                    dev = _get_playback_device_via_grpc(try_num)
+                    if dev and dev.get('is_deleted'):
+                        dev = None
+                    if not dev:
+                        dev = _find_playback_device_by_unique_id(did)
+                else:
+                    dev = _get_playback_device_via_grpc(did)
+            except (ValueError, TypeError):
+                dev = _find_playback_device_by_unique_id(did)
+            except Exception:
+                dev = None
+            if dev:
+                noise_devices.append(dev)
+        # 按设备名查表
+        for dev_name in device_names:
+            if not dev_name:
+                continue
+            try:
+                dev = _find_playback_device_by_name(dev_name)
+                if dev:
+                    noise_devices.append(dev)
+            except Exception:
+                pass
 
+        return noise_audio, noise_spl, noise_devices
+
+    # 优先 case 级（整个用例）背景噪声；不存在时回退 round 级（轮次内）背景噪声
+    case_bg = case_config.get('background_noise') if case_config else None
+    if case_bg:
+        noise_audio, noise_spl, noise_devices = _resolve_bg_noise(case_bg)
+        if noise_audio and noise_devices:
+            return ({'spl': noise_spl, 'audio_id': getattr(noise_audio, 'id', None)},
+                    noise_audio), noise_devices
+
+    # round 级背景噪声
+    round_bg = round_config.get('background_noise')
+    noise_audio, noise_spl, noise_devices = _resolve_bg_noise(round_bg)
     if noise_audio and noise_devices:
         return ({'spl': noise_spl, 'audio_id': getattr(noise_audio, 'id', None)},
                 noise_audio), noise_devices
@@ -360,16 +423,26 @@ def build_interferer_configs(task_id, interferer_config, audio_service,
         # 兼容两种存储结构：
         # - 嵌套（前端 syncStructuredFields 生成）：{audio:{id,name}, device:{id}, start_delay, ...}
         # - 扁平（algorithm_params 独立列原样存储）：{audio_id, audio_name, playback_device_id, start_delay, ...}
+        # - 扁平名称（统一标注文件导入）：{audio:"文件名.wav", playback_device_name:"设备名", spl, ...}
         audio_info = interferer.get('audio')
         device_cfg = interferer.get('device')
-        if not audio_info:
+        # 字符串 audio（文件名）不是嵌套结构，需走扁平分支
+        if not isinstance(audio_info, dict):
+            audio_info = None
+        if not isinstance(device_cfg, dict):
+            device_cfg = None
+        if not audio_info or not audio_info.get('id') and not audio_info.get('name'):
             _aid = interferer.get('audio_id')
-            if _aid:
+            _aname = interferer.get('audio_name') or ''
+            # 兼容统一标注文件的 audio 字段（文件名字符串）
+            if not _aid and not _aname and isinstance(interferer.get('audio'), str):
+                _aname = interferer.get('audio')
+            if _aid or _aname:
                 audio_info = {
                     'id': _aid,
-                    'name': interferer.get('audio_name') or '',
+                    'name': _aname,
                 }
-        if not device_cfg:
+        if not device_cfg or not device_cfg.get('id'):
             _did = interferer.get('playback_device_id')
             if _did:
                 device_cfg = {'id': _did}
@@ -498,17 +571,34 @@ def prepare_preview_playback_info(audio_configs, case_config):
         n_ca, n_audio = noise_case_audio_info
         noise_audio = n_audio
         noise_spl = n_ca.get('spl', 0)
-    elif case_config and case_config.get('background_noise', {}).get('audio_id'):
+    elif case_config and case_config.get('background_noise'):
         bg = case_config['background_noise']
-        try:
-            noise_audio = _repo.get_audio(bg['audio_id'])
-        except Exception:
-            noise_audio = None
+        audio_id = bg.get('audio_id')
+        if audio_id:
+            try:
+                noise_audio = _repo.get_audio(audio_id)
+            except Exception:
+                noise_audio = None
+        # 兼容文件名
+        if not noise_audio:
+            _audio_name = bg.get('audio') or bg.get('audio_name') or ''
+            if _audio_name:
+                try:
+                    noise_audio = _repo.find_audio_by_name(_audio_name)
+                except Exception:
+                    noise_audio = None
         noise_spl = bg.get('spl', 0)
 
     device_ids = []
+    device_names = []
     if case_config:
-        device_ids = (case_config.get('background_noise') or {}).get('device_ids', [])
+        bg = case_config.get('background_noise') or {}
+        device_ids = bg.get('device_ids', [])
+        device_names = bg.get('playback_device_names') or bg.get('device_names') or []
+        if not device_names:
+            _single = bg.get('playback_device_name') or bg.get('device_name')
+            if _single:
+                device_names = [_single]
 
     all_noise_devices = []
     for did in device_ids:
@@ -521,6 +611,15 @@ def prepare_preview_playback_info(audio_configs, case_config):
             dev = None
         if dev:
             all_noise_devices.append(dev)
+    for dev_name in device_names:
+        if not dev_name:
+            continue
+        try:
+            dev = _find_playback_device_by_name(dev_name)
+            if dev:
+                all_noise_devices.append(dev)
+        except Exception:
+            pass
 
     noise_audio_info = None
     if noise_audio and all_noise_devices:

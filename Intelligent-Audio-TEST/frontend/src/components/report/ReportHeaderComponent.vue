@@ -4,7 +4,7 @@
       <h1 class="report-title">{{ report.title }}</h1>
       <div class="report-meta">
         <span class="report-type" :class="`report-type-${report.type}`">{{ reportTypeLabel }}</span>
-        <span class="report-date">{{ formatDate(report.createdAt) }}</span>
+        <span class="report-date">{{ formatDate(report.created_at) }}</span>
         <span class="report-status" :class="`report-status-${report.status}`">{{ reportStatusLabel }}</span>
       </div>
     </div>
@@ -37,7 +37,7 @@ export default {
   props: {
     report: {
       type: Object, required: true, default: () => ({
-        id: '', title: '报告标题', type: 'task', status: 'draft', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+        id: '', title: '报告标题', type: 'task', status: 'draft', created_at: new Date().toISOString(), updated_at: new Date().toISOString()
       })
     }
   },

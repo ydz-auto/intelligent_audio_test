@@ -39,6 +39,9 @@ if TYPE_CHECKING:
 
 
 class TestCaseAudioConfigItem(APIModel):
+    # extra='allow' 保留前端传入的 interferers、background_noise 等额外字段
+    model_config = ConfigDict(extra='allow')
+
     id: Optional[int] = Field(None)
     audio_id: Optional[Union[int, str]] = Field(None)
     audio_name: Optional[str] = Field(None)
@@ -46,6 +49,10 @@ class TestCaseAudioConfigItem(APIModel):
     playback_device_id: Optional[Union[int, str]] = Field(None)
     playback_device_name: Optional[str] = Field(None)
     play_order: Optional[int] = Field(None)
+    # 轮次级背景噪声（segment 级，case 级存在时不播放）
+    background_noise: Optional[Dict[str, Any]] = Field(None)
+    # 干扰人（segment 级）
+    interferers: Optional[List[Dict[str, Any]]] = Field(None)
 
     @field_validator('spl', mode='before')
     @classmethod
@@ -59,9 +66,19 @@ class TestCaseAudioConfigItem(APIModel):
 
 
 class TestCaseBackgroundNoiseItem(APIModel):
+    # extra='allow' 保留 audio(文件名)、playback_device_names(设备名数组)、playback_device_name(单个设备名) 等
+    model_config = ConfigDict(extra='allow')
+
     audio_id: Optional[Union[int, str]] = Field(None)
+    audio: Optional[str] = Field(None)
+    audio_name: Optional[str] = Field(None)
     spl: Optional[float] = Field(None)
     device_ids: Optional[List[Union[int, str]]] = Field(None)
+    # 设备名数组（多设备同时播放）
+    playback_device_names: Optional[List[str]] = Field(None)
+    # 单设备名（兼容旧格式）
+    playback_device_name: Optional[str] = Field(None)
+    device_names: Optional[List[str]] = Field(None)
     loop: Optional[bool] = Field(True)
 
 
@@ -238,6 +255,25 @@ class TagUpdateSchema(APIModel):
     description: Optional[str] = Field(None)
     color: Optional[str] = Field(None)
     category_id: Optional[int] = Field(None)
+
+
+class TagCategoryListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(20)
+    keyword: Optional[str] = Field(None)
+
+
+class TagListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(20)
+    category_id: Optional[int] = Field(None)
+    keyword: Optional[str] = Field(None)
+
+
+class TagNameListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(100)
+    keyword: Optional[str] = Field(None)
 
 
 class TestCaseExportJsonData(APIModel):
@@ -475,8 +511,15 @@ class TestCaseBatchActionRequest(APIModel):
     group_name: Optional[str] = Field(None)
     tags: Optional[List[str]] = Field(None)
     dimensions: Optional[List[Dict[str, Any]]] = Field(None)
+    round_dimensions: Optional[Dict[str, Any]] = Field(None, alias='round_dimensions', validation_alias=AliasChoices('round_dimensions', 'roundDimensions'))
+    multi_dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='multi_dimensions', validation_alias=AliasChoices('multi_dimensions', 'multiDimensions'))
     old_tag_name: Optional[str] = Field(None)
     new_tag_name: Optional[str] = Field(None)
+    # 批量操作轮次范围
+    round_mode: Optional[str] = Field('all', alias='round_mode', validation_alias='roundMode')
+    round_numbers: Optional[List[int]] = Field(None, alias='round_numbers', validation_alias='roundNumbers')
+    # 批量操作应用层级（声压/设备/噪声用）
+    targets: Optional[List[str]] = None
 
 
 class TestCaseExportRequest(APIModel):
@@ -549,3 +592,15 @@ class TestCaseUpdateSchema(APIModel):
         if isinstance(self.reference_params, list):
             return self.reference_params
         return None
+
+
+class TestCaseListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(10)
+    keyword: Optional[str] = Field(None)
+    tag: Optional[str] = Field(None)
+    group_id: Optional[str] = Field(None)
+    test_type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'test_type', 'testType'))
+    algorithm_type: Optional[str] = Field(None)
+    view: Optional[str] = Field(None)
+    include_deleted: bool = Field(False)

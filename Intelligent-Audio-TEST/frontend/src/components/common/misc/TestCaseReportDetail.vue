@@ -132,6 +132,7 @@
       v-if="showAudioModal && currentPlayingAudio"
       :visible="showAudioModal"
       :audioId="currentPlayingAudio.id"
+      :audioPath="currentPlayingAudio.path"
       :audioTitle="currentPlayingAudio.label || '音频播放'"
       :audioType="currentPlayingAudio.type || 'api'"
       :spl="currentPlayingAudio.spl"
@@ -144,60 +145,137 @@
       <h4 class="section-title"><i class="fas fa-play-circle"></i> 执行结果</h4>
 
       <div class="execution-results-container">
-        <!-- 参考文本字段 -->
+        <!-- 参考数据表格 -->
         <div v-if="referenceTextFields.length > 0" class="result-subsection">
-          <div class="subsection-label">参考数据</div>
-          <div class="text-comparison-grid reference-row">
-            <div class="text-group" v-for="field in referenceTextFields" :key="'ref_' + field.param_code">
-              <div class="text-item">
-                <div class="result-label">{{ field.label || field.param_code }}</div>
-                <div class="text-card reference">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts['ref_' + field.param_code] }">
-                    <div class="text-content">{{ field.text }}</div>
-                    <div v-if="(field.text || '').length > 100" class="expand-toggle" @click="toggleText('ref_' + field.param_code)">
-                      {{ expandedTexts['ref_' + field.param_code] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </div>
+          <div class="subsection-label"><i class="fas fa-bookmark"></i> 参考数据</div>
+          <div class="kv-table">
+            <div class="kv-table-row" v-for="field in referenceTextFields" :key="'ref_' + field.param_code">
+              <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+              <div class="kv-table-value">
+                <pre v-if="isJsonString(field.text)" class="json-formatted">{{ formatJson(field.text) }}</pre>
+                <span v-else-if="(field.text || '').length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['ref_' + field.param_code] }">
+                  <span class="text-content">{{ field.text }}</span>
+                  <span class="expand-toggle" @click="toggleText('ref_' + field.param_code)">
+                    {{ expandedTexts['ref_' + field.param_code] ? '收起' : '展开' }}
+                  </span>
+                </span>
+                <span v-else>{{ field.text }}</span>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 结果文本字段 -->
-        <div v-if="resultTextFields.length > 0" class="result-subsection">
-          <div v-if="referenceTextFields.length > 0" class="subsection-label">结果数据</div>
-          <div v-if="!isComparison" class="device-result-row">
-            <div class="text-comparison-grid">
-              <div class="text-item" v-for="field in resultTextFields" :key="'res_' + field.param_code">
-                <div class="result-label">{{ field.label || field.param_code }}</div>
-                <div class="text-card">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts['default_' + field.param_code] }">
-                    <div class="text-content">{{ field.getValue('default') }}</div>
-                    <div v-if="(field.getValue('default')).length > 100" class="expand-toggle" @click="toggleText('default_' + field.param_code)">
+        <!-- 评估结果（维度 tab 切换） -->
+        <div v-if="dimResultGroups.length" class="result-subsection">
+          <div class="subsection-label"><i class="fas fa-clipboard-list"></i> 评估结果</div>
+          <div class="dim-tab-container">
+            <div class="dim-tab-bar sub">
+              <button
+                v-for="(group, idx) in dimResultGroups"
+                :key="group.key"
+                class="dim-tab-btn sub"
+                :class="{ active: activeDimTab === idx }"
+                @click="activeDimTab = idx"
+              >
+                {{ group.label }}
+              </button>
+            </div>
+            <div class="dim-tab-content">
+              <!-- 对比模式：按设备列 -->
+              <template v-if="isComparison">
+                <div v-for="device in devices" :key="device" class="device-block">
+                  <div class="device-block-title">{{ getDeviceName(device) }}</div>
+                  <div class="kv-table">
+                    <div class="kv-table-row" v-for="field in dimResultGroups[activeDimTab]?.fields" :key="device + '_' + field.param_code">
+                      <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+                      <div class="kv-table-value">
+                        <button v-if="field.param_type === 'audio_file'" class="audio-play-btn" @click="openPathAudio(field.getValue(device))">
+                          <i class="fas fa-play-circle"></i> 播放音频
+                        </button>
+                        <pre v-else-if="isJsonString(field.getValue(device))" class="json-formatted">{{ formatJson(field.getValue(device)) }}</pre>
+                        <span v-else-if="String(field.getValue(device)).length > 200" class="collapsible-text" :class="{ expanded: expandedTexts[device + '_' + field.param_code] }">
+                          <span class="text-content">{{ field.getValue(device) }}</span>
+                          <span class="expand-toggle" @click="toggleText(device + '_' + field.param_code)">
+                            {{ expandedTexts[device + '_' + field.param_code] ? '收起' : '展开' }}
+                          </span>
+                        </span>
+                        <span v-else>{{ field.getValue(device) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              <!-- 单设备模式 -->
+              <template v-else>
+                <div class="kv-table">
+                  <div class="kv-table-row" v-for="field in dimResultGroups[activeDimTab]?.fields" :key="'res_' + field.param_code">
+                    <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+                    <div class="kv-table-value">
+                      <button v-if="field.param_type === 'audio_file'" class="audio-play-btn" @click="openPathAudio(field.getValue('default'))">
+                        <i class="fas fa-play-circle"></i> 播放音频
+                      </button>
+                      <pre v-else-if="isJsonString(field.getValue('default'))" class="json-formatted">{{ formatJson(field.getValue('default')) }}</pre>
+                      <span v-else-if="String(field.getValue('default')).length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['default_' + field.param_code] }">
+                        <span class="text-content">{{ field.getValue('default') }}</span>
+                        <span class="expand-toggle" @click="toggleText('default_' + field.param_code)">
+                          {{ expandedTexts['default_' + field.param_code] ? '收起' : '展开' }}
+                        </span>
+                      </span>
+                      <span v-else>{{ field.getValue('default') }}</span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- 设备/API 执行结果（独立区域） -->
+        <div v-if="generalResultGroup.fields.length" class="result-subsection">
+          <div class="subsection-label"><i class="fas fa-mobile-alt"></i> 设备/API 执行结果</div>
+          <template v-if="isComparison">
+            <div v-for="device in devices" :key="device" class="device-block">
+              <div class="device-block-title">{{ getDeviceName(device) }}</div>
+              <div class="kv-table">
+                <div class="kv-table-row" v-for="field in generalResultGroup.fields" :key="device + '_' + field.param_code">
+                  <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+                  <div class="kv-table-value">
+                    <button v-if="field.param_type === 'audio_file'" class="audio-play-btn" @click="openPathAudio(field.getValue(device))">
+                      <i class="fas fa-play-circle"></i> 播放音频
+                    </button>
+                    <pre v-else-if="isJsonString(field.getValue(device))" class="json-formatted">{{ formatJson(field.getValue(device)) }}</pre>
+                    <span v-else-if="String(field.getValue(device)).length > 200" class="collapsible-text" :class="{ expanded: expandedTexts[device + '_' + field.param_code] }">
+                      <span class="text-content">{{ field.getValue(device) }}</span>
+                      <span class="expand-toggle" @click="toggleText(device + '_' + field.param_code)">
+                        {{ expandedTexts[device + '_' + field.param_code] ? '收起' : '展开' }}
+                      </span>
+                    </span>
+                    <span v-else>{{ field.getValue(device) }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="kv-table">
+              <div class="kv-table-row" v-for="field in generalResultGroup.fields" :key="'res_' + field.param_code">
+                <div class="kv-table-key">{{ field.label || field.param_code }}</div>
+                <div class="kv-table-value">
+                  <button v-if="field.param_type === 'audio_file'" class="audio-play-btn" @click="openPathAudio(field.getValue('default'))">
+                    <i class="fas fa-play-circle"></i> 播放音频
+                  </button>
+                  <pre v-else-if="isJsonString(field.getValue('default'))" class="json-formatted">{{ formatJson(field.getValue('default')) }}</pre>
+                  <span v-else-if="String(field.getValue('default')).length > 200" class="collapsible-text" :class="{ expanded: expandedTexts['default_' + field.param_code] }">
+                    <span class="text-content">{{ field.getValue('default') }}</span>
+                    <span class="expand-toggle" @click="toggleText('default_' + field.param_code)">
                       {{ expandedTexts['default_' + field.param_code] ? '收起' : '展开' }}
-                    </div>
-                  </div>
+                    </span>
+                  </span>
+                  <span v-else>{{ field.getValue('default') }}</span>
                 </div>
               </div>
             </div>
-          </div>
-          <div v-else v-for="device in devices" :key="device" class="device-result-row">
-            <div class="device-row-title">{{ getDeviceName(device) }}</div>
-            <div class="text-comparison-grid">
-              <div class="text-item" v-for="field in resultTextFields" :key="device + '_' + field.param_code">
-                <div class="result-label">{{ field.label || field.param_code }}</div>
-                <div class="text-card">
-                  <div class="collapsible-text" :class="{ expanded: expandedTexts[device + '_' + field.param_code] }">
-                    <div class="text-content">{{ field.getValue(device) }}</div>
-                    <div v-if="(field.getValue(device)).length > 100" class="expand-toggle" @click="toggleText(device + '_' + field.param_code)">
-                      {{ expandedTexts[device + '_' + field.param_code] ? '收起' : '展开' }}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          </template>
         </div>
 
         <!-- 时间轴对比 -->
@@ -295,14 +373,21 @@ const {
   showAudioModal,
   currentPlayingAudio,
   closeAudioModal,
+  openPathAudio,
   hasExecutionResults,
   referenceTextFields,
   resultTextFields,
+  groupedResultTextFields,
+  dimResultGroups,
+  generalResultGroup,
+  activeDimTab,
   getDeviceName,
   hasTimelineData,
   hasAudio,
   audioListWithTimeline,
   hasResultAudioData,
+  isJsonString,
+  formatJson,
 } = useTestCaseReportDetail(props)
 </script>
 

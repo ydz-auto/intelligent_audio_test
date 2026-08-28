@@ -145,6 +145,20 @@ class TaskDataServiceServicer(task_grpc.TaskDataServiceServicer):
             logger.exception('UpdateTestResultAlgorithmResult failed')
             return self._resp(False, str(e))
 
+    def UpdateTestResultData(self, request, context=None):
+        """更新 TestResult 的 result_data 和 result_data_path（evaluation_service 预提取 algorithm_results 快照时调用）"""
+        try:
+            data = _loads(request.result_data, None)
+            ok = test_result_repository.update_result_data(
+                request.result_id, data, request.result_data_path or None
+            )
+            if not ok:
+                return self._resp(False, f'TestResult {request.result_id} not found')
+            return self._resp(True, 'ok', {'result_id': request.result_id})
+        except Exception as e:
+            logger.exception('UpdateTestResultData failed')
+            return self._resp(False, str(e))
+
     def GetTestResultsByTaskAndCase(self, request, context=None):
         """按 task_id + test_case_id 批量读取 TestResult"""
         try:

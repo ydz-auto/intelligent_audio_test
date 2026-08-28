@@ -2,13 +2,14 @@ import threading
 # P1.4: Task/TaskCase/TestResult/TestCase 改为通过 gRPC 调 task_service
 # P1-1 DDD: 通过 Repository 访问自有 PO，不再直接 import orm_models / get_db_session
 # P0-2 DDD: 业务规则下沉到 domain/services/reevaluation_service.py
-from evaluation_service.infrastructure.acl import task_acl_repository
+from evaluation_service.infrastructure.acl import task_acl_repository, device_result_acl_repository
 from evaluation_service.infrastructure.persistence.evaluation_dimension_repository import evaluation_dimension_repository
 from shared.utils.log_handler import log_and_emit
 from evaluation_service.infrastructure.evaluation_service_host import evaluation_service
 from evaluation_service.domain.services.reevaluation_service import reevaluation_service
 from shared.utils.result_data_store import load_full_result_data
 from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus
+from shared.models.common_enums import TestType
 from sqlalchemy import and_
 
 
@@ -193,7 +194,7 @@ class ReevaluationExecutor:
             algo_result = reevaluation_service.deserialize_algorithm_result(
                 result.algorithm_result or {}
             )
-            self._remap_fields_from_raw(algo_result, full_data, result.test_case_id)
+            self._remap_fields_from_raw(algo_result, full_data, result.test_case_id, result.id)
             result.algorithm_result = algo_result
 
             tc_rels = task_acl_repository.get_task_case_by_ids(task_id=task_id, case_ids=[tc_id])
@@ -220,7 +221,7 @@ class ReevaluationExecutor:
             algo_result = reevaluation_service.deserialize_algorithm_result(
                 result.algorithm_result or {}
             )
-            self._remap_fields_from_raw(algo_result, full_data, result.test_case_id)
+            self._remap_fields_from_raw(algo_result, full_data, result.test_case_id, result.id)
             result.algorithm_result = algo_result
 
             tc_rels = task_acl_repository.get_task_case_by_ids(task_id=task_id, case_ids=[tc_id])
@@ -231,7 +232,7 @@ class ReevaluationExecutor:
             test_results, full_data_map, task_case_map, reextract_device_output
         )
 
-    def _remap_fields_from_raw(self, algo_result, full_data, test_case_id):
+    def _remap_fields_from_raw(self, algo_result, full_data, test_case_id, result_id=None):
         """从 raw_results 重新映射字段（Infrastructure 编排，涉及 ACL 仓储 + field_mapper）"""
         raw_results_list = full_data.get('raw_results_list') if full_data else None
         if not raw_results_list:
@@ -258,10 +259,18 @@ class ReevaluationExecutor:
                             dim_val = remapped.get(dim_key)
                             if dim_val is not None:
                                 round_output[dim_key] = dim_val
+                        # 通用 key：重新评估时无条件用 raw_results_list 的值覆盖
                         val = remapped.get(target)
                         if val is not None:
-                            if target not in round_output or not round_output[target]:
-                                round_output[target] = val
+                            round_output[target] = val
+
+        # 写回数据库：raw_results_list 重新映射后的 algo_result 需要持久化
+        # JSON 字段应直接存 dict，避免双重序列化
+        if result_id is not None:
+            task_acl_repository.update_test_result_algorithm_result(
+                result_id=result_id,
+                algorithm_result=algo_result if isinstance(algo_result, dict) else {},
+            )
 
     def _submit_cases_for_reevaluation(self, task_id, cases_to_reevaluate):
         """提交用例进行重新评估
@@ -278,7 +287,7 @@ class ReevaluationExecutor:
             try:
                 # P1.4: 通过 gRPC 读 Task
                 task = task_acl_repository.get_task_by_id(task_id)
-                test_type = task.type if task and task.type else 'api'
+                test_type = task.type if task and task.type else TestType.API.value
 
                 # P1.4: 通过 gRPC 读 TestCase
                 test_case = task_acl_repository.get_test_case_detail(str(test_case_id))
@@ -326,7 +335,7 @@ class ReevaluationExecutor:
         """
         algorithm_result = reevaluation_service.deserialize_algorithm_result(algorithm_result)
         rounds = algorithm_result.get('rounds', [])
-        is_e2e = test_type == 'e2e'
+        is_e2e = test_type == TestType.E2E.value
 
         # 清理旧的维度评估记录（通过 Repository，不直连 DB）
         evaluation_dimension_repository.delete_scores_by_result_id(result)
@@ -369,7 +378,12 @@ class ReevaluationExecutor:
 
         # E2E: 一次性评估所有轮（不传 round_number，evaluate_case 构建完整 rounds_list）
         algo_params = {}
-        if test_case and test_case.config:
+        algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
+        if algorithm_params_col:
+            from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
+            algo_params = ParamNormalizerService.normalize_algorithm_params(
+                ParamNormalizerService.get_round_algo_params(algorithm_params_col, 1))
+        elif test_case and test_case.config:
             config = test_case.config
             config_rounds = config.get('rounds', [])
             if config_rounds and isinstance(config_rounds[0], dict):
@@ -389,6 +403,8 @@ class ReevaluationExecutor:
             eval_params['test_type'] = test_type
             if reference_params_col is not None:
                 eval_params['reference_params_col'] = reference_params_col
+            if algorithm_params_col is not None:
+                eval_params['algorithm_params_col'] = algorithm_params_col
 
             evaluation_service.evaluate_case(
                 task_id=task_id,
@@ -424,7 +440,12 @@ class ReevaluationExecutor:
                 continue
 
             algo_params = {}
-            if test_case and test_case.config:
+            algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
+            if algorithm_params_col:
+                from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
+                algo_params = ParamNormalizerService.normalize_algorithm_params(
+                    ParamNormalizerService.get_round_algo_params(algorithm_params_col, round_idx + 1))
+            elif test_case and test_case.config:
                 config = test_case.config
                 config_rounds = config.get('rounds', [])
                 if round_idx < len(config_rounds) and isinstance(config_rounds[round_idx], dict):
@@ -444,6 +465,8 @@ class ReevaluationExecutor:
                 eval_params['test_type'] = test_type
                 if reference_params_col is not None:
                     eval_params['reference_params_col'] = reference_params_col
+                if algorithm_params_col is not None:
+                    eval_params['algorithm_params_col'] = algorithm_params_col
 
                 evaluation_service.evaluate_case(
                     task_id=task_id,
@@ -494,9 +517,14 @@ class ReevaluationExecutor:
         # P1.4: 通过 gRPC 读 TestCase
         test_case = task_acl_repository.get_test_case_detail(str(test_case_id))
 
-        # 从 rounds[0].algorithm_params 读取
+        # 优先从独立列读取 algorithm_params（按轮分组），兼容旧数据从 config.rounds 读取
         algo_params = {}
-        if test_case and test_case.config:
+        algorithm_params_col = getattr(test_case, 'algorithm_params', None) if test_case else None
+        if algorithm_params_col:
+            from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
+            algo_params = ParamNormalizerService.normalize_algorithm_params(
+                ParamNormalizerService.get_round_algo_params(algorithm_params_col, 1))
+        elif test_case and test_case.config:
             config = test_case.config
             rounds = config.get('rounds', [])
             if rounds and isinstance(rounds[0], dict):
@@ -516,6 +544,8 @@ class ReevaluationExecutor:
         eval_params['test_type'] = test_type
         if reference_params_col is not None:
             eval_params['reference_params_col'] = reference_params_col
+        if algorithm_params_col is not None:
+            eval_params['algorithm_params_col'] = algorithm_params_col
 
         evaluation_service.evaluate_case(
             task_id=task_id,

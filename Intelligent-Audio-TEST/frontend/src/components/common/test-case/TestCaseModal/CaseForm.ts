@@ -156,6 +156,18 @@ export function useCaseForm(props: any, emit: any) {
     const raw = props.formData || {};
     // 当外部锁定 testType 时，强制使用该类型
     const forcedTestType = isTestTypeLocked.value ? (props.testType as 'api' | 'e2e') : null;
+    // 后端 success_response 会递归将 snake_case 键转为 camelCase，此处归一化回 snake_case 供下游组件统一使用
+    const rawAlgParams = (raw as any).algorithm_params;
+    const normalizedAlgParams = Array.isArray(rawAlgParams)
+      ? rawAlgParams.map((e: any) => ({
+          round_number: e.round_number ?? e.roundNumber,
+          params: (e.params || []).map((p: any) => ({
+            field_code: p.field_code ?? p.fieldCode,
+            field_value: p.field_value ?? p.fieldValue,
+          })),
+        }))
+      : [];
+    // 新设计：algorithm_params 作为 test_cases 独立列（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
     localFormData.value = {
       id: raw.id,
       name: raw.name || '',
@@ -164,22 +176,14 @@ export function useCaseForm(props: any, emit: any) {
       tags: raw.tags || [],
       algorithmType: raw.algorithmType || raw.algorithm_type || '',
       test_type: forcedTestType || raw.test_type || 'api',
-      config: raw.config?.rounds ? raw.config : {
+      config: raw.config?.rounds ? {
+        ...raw.config,
+        // 归一化全局背景噪声：camelCase → snake_case
+        background_noise: (raw.config as any).background_noise,
+      } : {
         rounds: [{ roundNumber: 1, audios: [] }],
         dimensions: [],
       },
-      // 后端 success_response 会递归将 snake_case 键转为 camelCase，此处归一化回 snake_case 供下游组件统一使用
-      const rawAlgParams = (raw as any).algorithmParams || (raw as any).algorithm_params;
-      const normalizedAlgParams = Array.isArray(rawAlgParams)
-        ? rawAlgParams.map((e: any) => ({
-            round_number: e.round_number ?? e.roundNumber,
-            params: (e.params || []).map((p: any) => ({
-              field_code: p.field_code ?? p.fieldCode,
-              field_value: p.field_value ?? p.fieldValue,
-            })),
-          }))
-        : [];
-      // 新设计：algorithm_params 作为 test_cases 独立列（按轮分组 [{round_number, params:[{field_code, field_value}]}]）
       algorithm_params: normalizedAlgParams,
     };
     // 从独立列读取第一个 round 的 params，用于 AlgorithmSelector 的 initial-params（单轮编辑器）
@@ -228,20 +232,18 @@ export function useCaseForm(props: any, emit: any) {
       };
 
       // ---- 声纹注册 → config.voiceprint_config ----
-      const vpEnabled = getParam('voiceprintEnabled');
-      const vpAudioId = getParam('voiceprintAudioId');
-      const vpDeviceId = getParam('voiceprintPlaybackDeviceId');
-      const vpSpl = getParam('voiceprintSpl');
-      const vpWaitTime = getParam('voiceprintWaitTime');
-
-      if (vpEnabled !== undefined || vpAudioId !== undefined) {
+      // voiceprint 是单个对象 { audio_id, spl, playback_device_id, voiceprint_wait_time }
+      const vpObj = getParam('voiceprint');
+      if (vpObj && typeof vpObj === 'object' && !Array.isArray(vpObj)) {
         config.voiceprint_config = {
-          enabled: vpEnabled === true || vpEnabled === 'true',
-          audio: vpAudioId ? { id: String(vpAudioId) } : {},
-          device: vpDeviceId ? { id: String(vpDeviceId) } : {},
-          spl: vpSpl !== undefined ? Number(vpSpl) : undefined,
-          waitTime: vpWaitTime !== undefined ? Number(vpWaitTime) * 1000 : undefined, // 秒→毫秒
+          enabled: true,
+          audio: vpObj.audio_id ? { id: String(vpObj.audio_id) } : {},
+          device: vpObj.playback_device_id ? { id: String(vpObj.playback_device_id) } : {},
+          spl: vpObj.spl !== undefined ? Number(vpObj.spl) : undefined,
+          waitTime: vpObj.voiceprint_wait_time !== undefined ? Number(vpObj.voiceprint_wait_time) * 1000 : undefined, // 秒→毫秒
         };
+      } else {
+        delete config.voiceprint_config;
       }
 
       // ---- 干扰人 → round.interferers ----
@@ -253,12 +255,12 @@ export function useCaseForm(props: any, emit: any) {
         } else if (Array.isArray(interferersRaw)) {
           interfererList = interferersRaw;
         }
-        // 转换为后端期望的嵌套结构
+        // 转换为后端期望的嵌套结构（兼容 snake_case 和 camelCase）
         round.interferers = interfererList.map((item: any) => ({
-          audio: item.audioId ? { id: String(item.audioId), name: item.audioName || '' } : {},
-          device: item.playbackDeviceId ? { id: String(item.playbackDeviceId) } : {},
+          audio: (item.audio_id || item.audioId) ? { id: String(item.audio_id || item.audioId), name: item.audio_name || item.audioName || '' } : {},
+          device: (item.playback_device_id || item.playbackDeviceId) ? { id: String(item.playback_device_id || item.playbackDeviceId) } : {},
           spl: item.spl !== undefined ? Number(item.spl) : undefined,
-          startDelay: item.startDelay !== undefined ? Number(item.startDelay) * 1000 : 0, // 秒→毫秒
+          startDelay: (item.start_delay ?? item.startDelay) !== undefined ? Number(item.start_delay ?? item.startDelay) * 1000 : 0, // 秒→毫秒
           loop: item.loop ?? false,
         }));
       } else {

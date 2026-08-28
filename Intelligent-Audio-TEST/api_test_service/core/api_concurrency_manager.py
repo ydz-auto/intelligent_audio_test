@@ -1,22 +1,25 @@
 """API 并发控制：信号量、执行权获取/释放、任务锁"""
 import time
-import threading
 from threading import Lock
 
 from shared.utils.config_manager import config_manager
 from shared.utils import distributed_coordinator as dc
 
 
+# 分布式信号量 key 前缀
+_API_SEM_KEY_PREFIX = 'api:sem:'
+
+
 class APIConcurrencyManager:
     """API 并发管理器
 
-    单实例下用进程内 threading.Semaphore；
-    多实例下叠加 Redis 分布式信号量，限制同一 API 的全局并发数。
+    纯 Redis 分布式信号量：去掉进程内 threading.Semaphore，
+    同一 API 的全局并发数由 DistributedSemaphore 统一限制，支持多实例部署。
+    Redis 不可用时分布式信号量降级放行（见 DistributedSemaphore 实现）。
     """
 
     def __init__(self, executor):
         self._executor = executor
-        self.api_semaphores = {}
         self.api_waiting_counts = {}
         self.global_lock = Lock()
         self.task_locks = {}
@@ -59,18 +62,6 @@ class APIConcurrencyManager:
         for task_id in completed:
             self.cleanup_task_lock(task_id)
 
-    def _get_or_create_semaphore(self, api_id, max_process):
-        """获取或创建 API 的信号量"""
-        with self.global_lock:
-            if api_id not in self.api_semaphores:
-                self.api_semaphores[api_id] = threading.Semaphore(max_process)
-                self._log(
-                    level='DEBUG',
-                    content=f"为 API {api_id} 创建信号量，最大并发数: {max_process}",
-                    api_id=api_id
-                )
-            return self.api_semaphores[api_id]
-
     def _inc_waiting(self, api_id):
         with self.global_lock:
             self.api_waiting_counts[api_id] = self.api_waiting_counts.get(api_id, 0) + 1
@@ -85,11 +76,14 @@ class APIConcurrencyManager:
             self.api_waiting_counts[api_id] = current - 1
             return self.api_waiting_counts[api_id]
 
-    def acquire(self, api_id, task_id, current_test_case_id, max_process=5, timeout=None):
-        """获取 API 执行权
+    def acquire(self, api_id, task_id, current_test_case_id, max_process=None, timeout=None):
+        """获取 API 执行权（纯 Redis 分布式信号量）
 
-        单实例下用进程内信号量；多实例下先抢分布式信号量，再抢进程内信号量。
+        去掉进程内 threading.Semaphore，全局并发数由 DistributedSemaphore 统一限制。
         """
+        # 并发参数配置化：max_process 缺省时从 config_manager 取默认值
+        if max_process is None:
+            max_process = config_manager.get_value('api_executor', 'default_max_process', 5)
         wait_timeout = timeout or self.max_wait_time
         self._log(
             level='DEBUG',
@@ -98,35 +92,20 @@ class APIConcurrencyManager:
             api_id=api_id
         )
 
-        # 分布式信号量（多实例下限制全局并发数）
-        dist_sem = dc.DistributedSemaphore(f'api:sem:{api_id}', max_process)
-        if not dist_sem.acquire(timeout=wait_timeout):
-            self._log(
-                level='WARNING',
-                content=f"获取 API {api_id} 的分布式执行权超时",
-                task_id=task_id,
-                api_id=api_id
-            )
-            return False
-
-        # 注意：dist_sem 在成功获取进程内信号量时由 release() 释放，
-        # 失败/异常时由 finally 块释放
-        local_acquired = False
-
-        semaphore = self._get_or_create_semaphore(api_id, max_process)
+        # 纯分布式信号量：限制同一 API 的全局并发数
+        dist_sem = dc.DistributedSemaphore(f'{_API_SEM_KEY_PREFIX}{api_id}', max_process)
         start_time = time.time()
         waiting_incremented = False
 
         try:
-            acquired = semaphore.acquire(blocking=False)
-            if acquired:
+            # 非阻塞尝试：立即获取成功则无需进入等待队列
+            if dist_sem.acquire(timeout=0):
                 self._log(
                     level='INFO',
                     content=f"成功获取 API {api_id} 的执行权 (无需等待)",
                     task_id=task_id,
                     api_id=api_id
                 )
-                local_acquired = True
                 return True
 
             waiting_now = self._inc_waiting(api_id)
@@ -138,6 +117,7 @@ class APIConcurrencyManager:
                 api_id=api_id
             )
 
+            # 阻塞轮询获取，期间响应停止/暂停控制
             while True:
                 self._executor._handle_control(task_id)
 
@@ -155,8 +135,7 @@ class APIConcurrencyManager:
                     return False
 
                 try:
-                    acquired = semaphore.acquire(blocking=True, timeout=min(0.5, remaining_time))
-                    if acquired:
+                    if dist_sem.acquire(timeout=min(0.5, remaining_time)):
                         elapsed_time = time.time() - start_time
                         self._log(
                             level='INFO',
@@ -164,7 +143,7 @@ class APIConcurrencyManager:
                             task_id=task_id,
                             api_id=api_id
                         )
-                        local_acquired = True
+                        waiting_incremented = False
                         return True
                 except Exception as e:
                     self._dec_waiting(api_id)
@@ -187,30 +166,16 @@ class APIConcurrencyManager:
                 api_id=api_id
             )
             return False
-        finally:
-            # 失败/异常路径：释放分布式信号量
-            # 成功路径：dist_sem 由 release() 释放
-            if not local_acquired:
-                dist_sem.release()
 
     def release(self, api_id, task_id):
-        """释放 API 执行权"""
-        # 释放分布式信号量
-        dc.DistributedSemaphore(f'api:sem:{api_id}', 0).release()
-        if api_id in self.api_semaphores:
-            try:
-                self.api_semaphores[api_id].release()
-                self._dec_waiting(api_id)
-                self._log(
-                    level='DEBUG',
-                    content=f"释放 API {api_id} 的执行权",
-                    task_id=task_id,
-                    api_id=api_id
-                )
-            except ValueError:
-                self._log(
-                    level='WARNING',
-                    content=f"尝试释放 API {api_id} 的执行权，但信号量已达到最大值",
-                    task_id=task_id,
-                    api_id=api_id
-                )
+        """释放 API 执行权（纯 Redis 分布式信号量）"""
+        # 释放分布式信号量（max_process=0 的占位实例仅用于 release）
+        dc.DistributedSemaphore(f'{_API_SEM_KEY_PREFIX}{api_id}', 0).release()
+        self._dec_waiting(api_id)
+        self._log(
+            level='DEBUG',
+            content=f"释放 API {api_id} 的执行权",
+            task_id=task_id,
+            api_id=api_id
+        )
+

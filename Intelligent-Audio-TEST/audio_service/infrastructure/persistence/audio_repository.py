@@ -705,9 +705,16 @@ class AudioRepository(AudioRepositoryInterface):
         }
 
     def find_audio_by_name(self, name: str) -> Optional[AudioAggregate]:
-        """按文件名查音频（用于补全 rounds_config 中的 audio_id），返回 AudioAggregate。"""
+        """按文件名查音频（用于补全 rounds_config 中的 audio_id），返回 AudioAggregate。
+
+        先按 name 查，未命中再按 original_filename 查（兼容统一标注文件格式）。
+        """
         session = get_db_session()
         po = session.query(Audio).filter_by(name=name, deleted=False).first()
+        if po is None:
+            po = session.query(Audio).filter_by(
+                original_filename=name, deleted=False
+            ).first()
         if po is None:
             return None
         return _audio_po_to_entity(po)

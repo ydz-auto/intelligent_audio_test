@@ -8,6 +8,7 @@ from datetime import timezone, timedelta
 
 from shared.utils.dto_utils import dto_to_dict
 from shared.utils.status_constants import ExecutionStatus
+from shared.utils.config_manager import config_manager
 from api_test_service.infrastructure.acl import (
     TaskDataAclRepositoryImpl,
     AudioConfigAclRepositoryImpl,
@@ -64,7 +65,8 @@ class APISessionExecutor:
             self._executor._handle_control(task_id)
             api_id = api_config.id
 
-            max_process = getattr(api_config, 'default_max_process', 5) or 5
+            # 并发参数配置化：api_config 未配置时回退到 config_manager 默认值
+            max_process = getattr(api_config, 'default_max_process', None) or config_manager.get_value('api_executor', 'default_max_process', 5)
             if not self._executor._concurrency.acquire(api_id, task_id, tc_rel_id, max_process=max_process):
                 self._log(level='ERROR', content=f"API {api_id} 执行权获取失败，跳过",
                           task_id=task_id, api_id=api_id)

@@ -176,14 +176,7 @@ class RoundAggregator(EvaluationLoggerMixin):
             return
 
         result_data = test_result.algorithm_result
-        # 循环反序列化，处理可能的双重序列化旧数据
-        while isinstance(result_data, str):
-            try:
-                result_data = json.loads(result_data)
-            except (json.JSONDecodeError, TypeError):
-                result_data = {}
-        if not isinstance(result_data, dict):
-            result_data = {}
+        result_data = deserialize_algorithm_result(result_data)
 
         result_data['aggregated'] = aggregated
 

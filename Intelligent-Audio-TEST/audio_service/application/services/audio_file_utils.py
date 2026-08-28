@@ -54,7 +54,14 @@ def _convert_to_wav(file_path):
     audio_seg = AudioSegment.from_file(file_path)
     original_sample_rate = audio_seg.frame_rate
     original_channels = audio_seg.channels
-    original_bits_per_sample = audio_seg.frame_width * 8
+
+    # 多声道只保留第一个声道（转为单声道）
+    if original_channels > 1:
+        audio_seg = audio_seg.split_to_mono()[0]
+        original_channels = 1
+
+    # 位深信息通过 sample_width 获取（bytes per sample per channel）
+    original_bits_per_sample = audio_seg.sample_width * 8
 
     directory = os.path.dirname(file_path)
     filename = os.path.splitext(os.path.basename(file_path))[0]

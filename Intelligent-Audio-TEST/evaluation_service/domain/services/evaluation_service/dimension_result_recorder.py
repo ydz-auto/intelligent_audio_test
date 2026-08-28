@@ -33,7 +33,35 @@ class DimensionResultRecorderMixin:
     def _create_dimension_results(self, dimension_data_list, result_id, task_id, test_case_id, algorithm_type, kwargs):
         """为每个维度创建 TestResultDimension 记录"""
         dimension_result_map = {}
+        round_number = kwargs.get('round_number')
         for dim_data in dimension_data_list:
+            dim_id = dim_data['id']
+            # 检查是否已存在同一 result_id + dim_id + round_number 的记录
+            existing = self._evaluation_dimension_repo.find_score(
+                result_id, dim_id, round_number
+            )
+            if existing:
+                # 已存在记录：复用，非 pending 则重置为 pending 以便重新评估
+                dimension_result_id = existing.id
+                if existing.evaluation_status == EvaluationStatus.PENDING:
+                    self._log(
+                        level='DEBUG',
+                        content=f"复用已有 pending 维度记录: dim_id={dim_id}, dr_id={dimension_result_id}",
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
+                else:
+                    # 重置为 pending 以便重新评估
+                    self._evaluation_dimension_repo.reset_score_to_pending(existing.id)
+                    self._log(
+                        level='DEBUG',
+                        content=f"重置已有维度记录为 pending: dim_id={dim_id}, dr_id={dimension_result_id}",
+                        task_id=task_id,
+                        test_case_id=test_case_id
+                    )
+                dimension_result_map[dim_id] = dimension_result_id
+                continue
+
             dimension_result_id = self._create_single_dimension_result(
                 result_id, dim_data, task_id, test_case_id, algorithm_type, kwargs
             )

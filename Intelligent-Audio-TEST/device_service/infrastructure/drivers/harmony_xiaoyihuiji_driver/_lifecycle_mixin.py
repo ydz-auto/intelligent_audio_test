@@ -1,7 +1,7 @@
 import time
 import subprocess
 
-from ..utils import check_stop, By
+from ..utils import check_stop, By, with_rpc_retry
 from ._constants import LOG_DEVICE_PATH
 
 
@@ -9,6 +9,7 @@ class LifecycleMixin:
     """设备初始化与生命周期处理方法（initialize / pre_process / post_process）"""
 
     @check_stop("initialize")
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化小艺慧记设备"""
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...", task_id=task_id, test_case_id=test_case_id)
@@ -48,6 +49,7 @@ class LifecycleMixin:
             return False
 
     @check_stop("pre_process")
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """开始处理：进入前台等准备动作"""
         self._log(level='INFO', content=f"--- Starting pre-process for {device_sn} ---", task_id=task_id, test_case_id=test_case_id)
@@ -68,6 +70,7 @@ class LifecycleMixin:
             return False
 
     @check_stop("post_process")
+    @with_rpc_retry()
     def post_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """结束处理：清理或日志记录"""
         self._log(level='INFO', content=f"--- Finished post-process for {device_sn} ---", task_id=task_id, test_case_id=test_case_id)

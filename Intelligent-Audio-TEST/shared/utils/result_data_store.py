@@ -29,7 +29,7 @@ _RESULT_BUCKET = 'case_result'
 
 
 def _sanitize_path(s):
-    return re.sub(r'[^a-zA-Z0-9_]', '_', str(s))
+    return re.sub(r'[^a-zA-Z0-9_-]', '_', str(s))
 
 
 def _build_result_key(task_id, test_case_id, device_sn, filename='result_data.json'):

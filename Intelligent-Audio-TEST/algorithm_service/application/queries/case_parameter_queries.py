@@ -92,7 +92,17 @@ class CaseParameterQueryHandler:
         dimension_ids: List[int] = None,
         algorithm_result: Dict[str, Any] = None,
         test_type: str = 'api',
+        round_number: int = None,
     ) -> Dict[str, Any]:
+        """获取评估参数
+
+        Args:
+            case_config: 用例配置
+            dimension_ids: 评估维度ID列表
+            algorithm_result: 算法执行结果（可选，用于从device/api来源获取值）
+            test_type: 测试类型 ('api' 或 'e2e')
+            round_number: 轮次编号（单轮评估时为0-indexed，多轮整体评估时为None）
+        """
         algorithm_type = CaseParameterQueryHandler.get_algorithm_type(case_config)
         cache = get_config_cache()
         mappings = cache.get_param_mapping(algorithm_type, 'evaluation')
@@ -120,6 +130,17 @@ class CaseParameterQueryHandler:
                     value = algorithm_result[source].get(source_param)
                 else:
                     value = case_config.get(source_param)
+                # 多轮评估取值修正：顶层没有设备输出字段时，从对应轮次的 output 取
+                # 单轮评估(round_number有值)取 rounds[round_number]，
+                # 多轮整体(round_number=None)取 rounds[-1]
+                # output 的 key 是 target_param 名（build_algorithm_result 已映射）
+                if value is None and isinstance(algorithm_result, dict):
+                    rounds_data = algorithm_result.get('rounds', [])
+                    if rounds_data:
+                        idx = round_number if round_number is not None else -1
+                        if 0 <= idx < len(rounds_data) and isinstance(rounds_data[idx], dict):
+                            output = rounds_data[idx].get('output', {})
+                            value = output.get(target_param)
             elif source == 'adjusted_reference':
                 ref_params_col = case_config.get('reference_params')
                 ref_params = ReferenceParamsGeneratorQueryHandler.get_all_reference_params(ref_params_col)

@@ -46,11 +46,13 @@ export function useTestCaseFilters(
     tagFilter: Ref<string>;
     sortBy: Ref<string>;
     sortOrder: Ref<string>;
+    dimensionFilter: Ref<number | 'all'>;
   },
   options: {
     currentPage: Ref<number>;
     innerViewMode: Ref<'group' | 'tag'>;
-    emitTagFilterChange: (filters: { keyword?: string; testType?: string; algorithmType?: string }) => void;
+    emitTagFilterChange: (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => void;
+    emitGroupFilterChange: (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => void;
   }
 ) {
   const {
@@ -60,7 +62,8 @@ export function useTestCaseFilters(
     groupFilter,
     tagFilter,
     sortBy,
-    sortOrder
+    sortOrder,
+    dimensionFilter
   } = refs;
 
   const debouncedSearchQuery = useDebounce(searchQuery, 300);
@@ -86,23 +89,51 @@ export function useTestCaseFilters(
   // 筛选条件变化时通知父组件重新请求后端:
   // - 标签视图:刷新标签聚合数据
   // - 分组视图:刷新分组列表(test_case_count 按筛选统计),否则徽标计数不随筛选更新
-  watch([debouncedSearchQuery, testTypeFilter, algorithmTypeFilter], () => {
-    options.emitTagFilterChange({
+  // 使用 suppressFilterEmit 标志抑制 resetFilters 后防抖 watch 的重复触发
+  let suppressFilterEmit = false;
+  watch([debouncedSearchQuery, testTypeFilter, algorithmTypeFilter, dimensionFilter, options.innerViewMode], () => {
+    if (suppressFilterEmit) return;
+    const filters = {
       keyword: debouncedSearchQuery.value || undefined,
       testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
       algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
-    });
+      dimensionId: dimensionFilter.value !== 'all' ? dimensionFilter.value : undefined,
+    };
+    if (options.innerViewMode.value === 'tag') {
+      options.emitTagFilterChange(filters);
+    } else {
+      options.emitGroupFilterChange(filters);
+    }
   });
 
   const resetFilters = () => {
+    // 抑制防抖 watch 的重复触发（searchQuery 清空后 300ms 防抖会再次触发）
+    suppressFilterEmit = true;
     searchQuery.value = '';
-    testTypeFilter.value = 'all';
-    algorithmTypeFilter.value = 'all';
+    // testTypeFilter 和 algorithmTypeFilter 由 props 控制（E2E/APITest 固定 e2e/api），
+    // resetFilters 不重置它们，避免被 props watch 立即覆盖导致抖动。
     groupFilter.value = 'all';
     tagFilter.value = 'all';
+    dimensionFilter.value = 'all';
     sortBy.value = 'count';
     sortOrder.value = 'desc';
-    options.currentPage.value = 1; // Reset to first page
+    options.currentPage.value = 1;
+
+    // 立即触发后端刷新（不等防抖），用当前实际有效的筛选条件
+    const filters = {
+      keyword: undefined,
+      testType: testTypeFilter.value !== 'all' ? testTypeFilter.value : undefined,
+      algorithmType: algorithmTypeFilter.value !== 'all' ? algorithmTypeFilter.value : undefined,
+      dimensionId: undefined,
+    };
+    if (options.innerViewMode.value === 'tag') {
+      options.emitTagFilterChange(filters);
+    } else {
+      options.emitGroupFilterChange(filters);
+    }
+
+    // 防抖延迟过后恢复 watch 响应
+    setTimeout(() => { suppressFilterEmit = false; }, 350);
   };
 
   return {
@@ -114,6 +145,7 @@ export function useTestCaseFilters(
     tagFilter,
     sortBy,
     sortOrder,
+    dimensionFilter,
     resetFilters
   };
 }

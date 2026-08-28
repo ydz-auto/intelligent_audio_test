@@ -396,6 +396,7 @@ class AudioCommandHandler:
                 inherit_tags=cmd.inherit_tags,
                 raw_annotations=cmd.raw_annotations,
                 noise_device_ids=cmd.noise_device_ids,
+                case_background_noise=cmd.case_background_noise,
             )
             self.repo.commit()
             return _ok(data={

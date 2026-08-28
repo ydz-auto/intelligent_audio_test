@@ -56,7 +56,7 @@ export interface ParamMapping {
   algorithm_type: string;
   component_type: 'device' | 'api' | 'evaluation';
   direction?: 'input' | 'output';
-  field_type?: 'text' | 'audio' | 'number' | 'boolean' | 'json';
+  field_type?: 'text' | 'audio' | 'number' | 'boolean' | 'json' | 'timestamp';
   source_param: string;
   target_key: string;
   mapped_from?: string;

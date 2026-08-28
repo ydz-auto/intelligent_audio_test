@@ -35,3 +35,14 @@ class GroupMoveCasesRequest(APIModel):
 
 class GroupListData(PaginatedData[GroupItem]):
     pass
+
+
+class GroupListQuery(APIModel):
+    page: int = Field(1)
+    per_page: Optional[int] = Field(None, validation_alias=AliasChoices('per_page', 'perPage', 'page_size', 'pageSize'))
+    algorithm_type: Optional[str] = Field(None)
+    test_type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'test_type', 'testType'))
+
+
+class GroupDeleteQuery(APIModel):
+    cascade: bool = Field(False)

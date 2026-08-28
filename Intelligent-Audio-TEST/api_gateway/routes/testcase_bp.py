@@ -69,6 +69,12 @@ def batch_action(_: None = require_permission('testcase:read')):
     return to_response(TestCaseCommandService.batch_action())
 
 
+@router.post('/ids')
+def fetch_case_ids(_: None = require_permission('testcase:read')):
+    """按筛选条件返回全量用例ID（不分页）"""
+    return to_response(TestCaseQueryService.fetch_case_ids())
+
+
 @router.post('/export')
 def export_cases():
     return to_response(TestCaseImportExportService.export_cases())

@@ -232,7 +232,7 @@ class TestCaseCrudService:
                 try:
                     from api_gateway.application.services.stats_cache import refresh_stats_cache
                     refresh_stats_cache()
-    1236666     except Exception:
+                except Exception:
                     logger.warning("创建测试用例后刷新统计缓存失败", exc_info=True)
 
                 return {'success': True, 'message': '测试用例创建成功', 'data': {'id': tc_id}, 'code': 201}
@@ -563,6 +563,10 @@ class TestCaseCrudService:
     def get_testcase_tags(self) -> dict:
         """获取所有标签名列表（委托 TestCaseQueryService）。"""
         return self._query_service.get_testcase_tags()
+
+    def fetch_case_ids(self, data: dict) -> dict:
+        """按筛选条件返回全量用例ID（不分页，委托 TestCaseQueryService）。"""
+        return self._query_service.fetch_case_ids(data)
 
     def get_testcase_ref_params(self, tc_id: str, round_number: int) -> dict:
         """获取指定用例指定轮的参考参数文件内容（委托 TestCaseQueryService）。"""

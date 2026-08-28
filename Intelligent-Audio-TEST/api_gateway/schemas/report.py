@@ -218,7 +218,7 @@ class ReportBatchDeleteRequest(APIModel):
 
 class ReportExportRequest(APIModel):
     ids: List[int] = Field(...)
-    format: str = Field('csv')
+    format: str = Field('csv')  # csv / excel / pdf / html
 
 
 class ReportUpdateSummaryField(APIModel):
@@ -294,7 +294,22 @@ class ReportCaseListQuery(APIModel):
 class ReportSearchCasesRequest(APIModel):
     keyword: Optional[str] = Field(None)
     category: Optional[str] = Field(None)
+    # 多分类筛选（与 category 单分类并存，categories 有值时按 IN 过滤）
+    categories: Optional[List[str]] = Field(None)
     include_untagged: Optional[bool] = Field(None)
     tags: Optional[List[str]] = Field(None)
+    # 按指标名筛选（case 的 metrics 中包含该指标名）
+    metrics: Optional[List[str]] = Field(None)
+    # 排序字段：name/category/createdat/metric
+    sort_by: Optional[str] = Field('name')
+    # 当 sort_by='metric' 时指定按哪个指标排序
+    sort_metric: Optional[str] = Field(None)
+    # 排序方向 asc/desc
+    sort_order: Optional[str] = Field('asc')
     page: int = Field(1)
     per_page: int = Field(20)
+
+
+class ReportExportQuery(APIModel):
+    ids: str = Field('')
+    format: str = Field('csv')

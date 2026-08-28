@@ -1,8 +1,6 @@
-import { ref, computed } from 'vue';
-import { API_CONFIG } from '../../../utils/config';
+import { ref, computed, watch } from 'vue';
+import { buildAudioUrl, normalizeAudioItem } from '../../../utils/audioUtils';
 import reportService from '../../../services/reportService';
-
-const apiBaseUrl = API_CONFIG.baseUrl;
 
 export function useTestCaseReportDetail(props) {
   const multiRoundAlgorithmResult = computed(() => {
@@ -137,38 +135,7 @@ export function useTestCaseReportDetail(props) {
     return num.toFixed(2);
   };
 
-  const getAudioUrl = (audio) => {
-    if (!audio) return '';
-
-    // 如果直接传入的是字符串（OSS key），通过 stream-by-path 获取预签名 URL
-    if (typeof audio === 'string') {
-      return `${apiBaseUrl.replace('/v1', '')}/audio/stream-by-path?path=${encodeURIComponent(audio)}`;
-    }
-
-    // 如果有完整URL（后端直接返回的），直接返回
-    if (audio.url && audio.url.startsWith('http')) {
-      return audio.url;
-    }
-    if (audio.url && audio.url.startsWith('/')) {
-      if (audio.url.includes('/audios/play/')) {
-        return audio.url;
-      }
-      return `${apiBaseUrl.replace('/v1', '')}${audio.url}`;
-    }
-
-    // 优先使用 ID 获取音频
-    if (audio.id) {
-      const taskType = audio.type || 'api';
-      return `${apiBaseUrl}/audios/${audio.id}/stream?task_type=${taskType}`;
-    }
-
-    // 回退：用 path（OSS key）通过 stream-by-path 获取
-    if (audio.path) {
-      return `${apiBaseUrl.replace('/v1', '')}/audio/stream-by-path?path=${encodeURIComponent(audio.path)}`;
-    }
-
-    return '';
-  };
+  const getAudioUrl = buildAudioUrl;
 
   const hasAudio = computed(() => props.audioPath || props.audioList.length > 0);
 
@@ -252,6 +219,7 @@ export function useTestCaseReportDetail(props) {
       param_code: i.param_code ?? i.paramCode,
       param_type: i.param_type ?? i.paramType,
       round_number: i.round_number ?? i.roundNumber,
+      dimension_name: i.dimension_name ?? i.dimensionName,
     }));
 
     // 1. 从 algorithmResults 中提取所有 text 类型项（包含 question@round / answer@round）
@@ -266,33 +234,38 @@ export function useTestCaseReportDetail(props) {
       'context_mode', 'contextMode',
       'error',
     ]);
+    // 支持的显示类型：文本、时间戳、数值、布尔、JSON、音频文件
+    const DISPLAY_TYPES = new Set(['text', 'timestamp', 'number', 'boolean', 'json', 'audio_file']);
     const textItems = [];
     const seenCodes = new Set();
     for (const item of algoResults) {
       const code = item.param_code;
-      if (item.param_type === 'text' && code && !META_CODES.has(code) && !code.startsWith('rounds') && !seenCodes.has(code)) {
+      if (DISPLAY_TYPES.has(item.param_type) && code && !META_CODES.has(code) && !code.startsWith('rounds') && !seenCodes.has(code)) {
         seenCodes.add(code);
         textItems.push({
           param_code: code,
           label: item.label || code,
-          param_type: 'text',
+          param_type: item.param_type,
           round_number: item.round_number,
+          dimension_name: item.dimension_name,
           getValue: (device) => getResultTextValue(device, code)
         });
       }
     }
 
-    // 2. 补充 fieldMapping 里定义的 text 字段（跳过 algorithmResults 已覆盖的）
+    // 2. 补充 fieldMapping 里定义的 text/timestamp/number 字段（跳过 algorithmResults 已覆盖的）
+    //    仅补充 algorithmResults 中有对应值的字段，避免显示"无数据"
     const fmFields = (props.fieldMapping?.result || [])
       .map(f => ({
         ...f,
         param_code: f.param_code ?? f.paramCode,
         param_type: f.param_type ?? f.paramType ?? 'text',
       }))
-      .filter(f => f.param_type === 'text'
+      .filter(f => DISPLAY_TYPES.has(f.param_type)
         && f.param_code && !META_CODES.has(f.param_code) && !f.param_code.startsWith('rounds'));
+    const allResultCodes = new Set(algoResults.map(i => i.param_code));
     for (const f of fmFields) {
-      if (!seenCodes.has(f.param_code)) {
+      if (!seenCodes.has(f.param_code) && allResultCodes.has(f.param_code)) {
         seenCodes.add(f.param_code);
         textItems.push({
           ...f,
@@ -311,6 +284,61 @@ export function useTestCaseReportDetail(props) {
     return textItems;
   });
 
+  // 按维度分组结果文本字段
+  const groupedResultTextFields = computed(() => {
+    const groups = {};
+    const order = [];
+
+    for (const field of resultTextFields.value) {
+      const dimName = field.dimension_name || null;
+      if (!groups[dimName]) {
+        groups[dimName] = [];
+        order.push(dimName);
+      }
+      groups[dimName].push(field);
+    }
+
+    // 通用分组（dimension_name 为 null 的）放最后
+    const result = [];
+    for (const key of order) {
+      if (key !== null) {
+        result.push({
+          key: key,
+          label: key,
+          fields: groups[key]
+        });
+      }
+    }
+    if (groups[null]) {
+      result.push({
+        key: '_general',
+        label: '其他结果',
+        fields: groups[null]
+      });
+    }
+    return result;
+  });
+
+  // 有维度归属的结果分组（维度评估结果）
+  const dimResultGroups = computed(() => {
+    return groupedResultTextFields.value.filter(g => g.key !== '_general');
+  });
+
+  // 无维度归属的结果分组（设备/API 执行结果）
+  const generalResultGroup = computed(() => {
+    const found = groupedResultTextFields.value.find(g => g.key === '_general');
+    return found || { key: '_general', label: '设备/API 执行结果', fields: [] };
+  });
+
+  // 维度 tab 状态
+  const activeDimTab = ref(0);
+
+  watch(dimResultGroups, (newGroups) => {
+    if (activeDimTab.value >= newGroups.length) {
+      activeDimTab.value = 0;
+    }
+  }, { flush: 'post' });
+
   // 是否有结果音频
   const hasResultAudioData = computed(() => {
     return props.resultAudios && Object.keys(props.resultAudios).length > 0;
@@ -322,15 +350,7 @@ export function useTestCaseReportDetail(props) {
 
     // 只做字段归一化，不再自行计算时间轴位置
     // 后端已根据 overlap_rate/overlap_time 计算好 timelineStart/timelineEnd
-    return list.map(a => ({
-      ...a,
-      timelineStart: a.timelineStart ?? a.timeline_start ?? 0,
-      timelineEnd: a.timelineEnd ?? a.timeline_end ?? ((a.timelineStart ?? a.timeline_start ?? 0) + (a.duration || 0)),
-      testType: a.testType ?? a.test_type ?? a.audio_type ?? 'api',
-      playOrder: a.playOrder ?? a.play_order,
-      playbackDeviceName: a.playbackDeviceName ?? a.device_name ?? a.playback_device_name,
-      roundNumber: a.roundNumber ?? a.round_number ?? a.round ?? 1,
-    }));
+    return list.map(a => normalizeAudioItem(a));
   });
 
   const hasTimelineData = computed(() => {
@@ -554,23 +574,89 @@ export function useTestCaseReportDetail(props) {
       param_code: i.param_code ?? i.paramCode,
       param_type: i.param_type ?? i.paramType,
     });
+    const normed = items.map(norm);
     let item;
     if (props.isComparison && device !== 'default') {
-      item = items.map(norm).find(i => i.device === device && i.param_code === paramCode);
+      // 先尝试精确匹配，再回退到包含匹配（快照可能使用完整资源名如 "1-小艺通话-1.0.0"）
+      item = normed.find(i => i.device === device && i.param_code === paramCode)
+           || normed.find(i => i.device && (i.device.includes(device) || device.includes(i.device)) && i.param_code === paramCode);
     } else {
-      item = items.map(norm).find(i => i.param_code === paramCode);
+      item = normed.find(i => i.param_code === paramCode);
     }
     if (!item || item.value === undefined || item.value === null) return '无数据';
     const data = item.value;
-    if (typeof data === 'string') return data;
+    // 时间戳类型：尝试格式化为可读时间
+    if (item.param_type === 'timestamp') {
+      const ts = typeof data === 'string' ? data : String(data);
+      // 纯数字时间戳（秒或毫秒）
+      if (/^\d{10,13}$/.test(ts.trim())) {
+        const ms = ts.trim().length === 10 ? Number(ts.trim()) * 1000 : Number(ts.trim());
+        const d = new Date(ms);
+        if (!isNaN(d.getTime())) {
+          const pad = n => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+      }
+      // ISO 格式字符串
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+      return ts;
+    }
+    // 数值类型：格式化数字
+    if (item.param_type === 'number') {
+      if (typeof data === 'number') {
+        return Number.isInteger(data) ? String(data) : data.toFixed(2);
+      }
+      const num = Number(data);
+      if (!isNaN(num)) {
+        return Number.isInteger(num) ? String(num) : num.toFixed(2);
+      }
+      return String(data);
+    }
+    // 布尔类型
+    if (item.param_type === 'boolean') {
+      if (typeof data === 'boolean') return data ? '是' : '否';
+      return String(data);
+    }
+    if (typeof data === 'string') {
+      // 尝试解析 JSON 字符串并格式化
+      try {
+        const parsed = JSON.parse(data);
+        if (typeof parsed === 'object' && parsed !== null) {
+          return JSON.stringify(parsed, null, 2);
+        }
+      } catch {}
+      return data;
+    }
     if (data.text) return data.text;
     if (data.value) return data.value;
-    return JSON.stringify(data);
+    return JSON.stringify(data, null, 2);
   };
 
   const expandedTexts = ref({});
   const toggleText = (key) => {
     expandedTexts.value[key] = !expandedTexts.value[key];
+  };
+
+  // JSON 格式化辅助
+  const isJsonString = (val) => {
+    if (!val || typeof val !== 'string') return false;
+    const s = val.trim();
+    if (!s) return false;
+    return (s.startsWith('{') && s.endsWith('}')) || (s.startsWith('[') && s.endsWith(']'));
+  };
+
+  const formatJson = (val) => {
+    if (!val) return val;
+    try {
+      const parsed = typeof val === 'string' ? JSON.parse(val) : val;
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return val;
+    }
   };
 
   const showAudioModal = ref(false);
@@ -610,6 +696,16 @@ export function useTestCaseReportDetail(props) {
     currentPlayingAudio.value = null;
   };
 
+  // 打开音频路径（通过 stream-by-path）
+  const openPathAudio = (path) => {
+    currentPlayingAudio.value = {
+      path: path,
+      label: path.split('\\').pop().split('/').pop(),
+      type: 'api'
+    };
+    showAudioModal.value = true;
+  };
+
   return {
     hasMetrics,
     comparisonTableColumns,
@@ -633,13 +729,20 @@ export function useTestCaseReportDetail(props) {
     showAudioModal,
     currentPlayingAudio,
     closeAudioModal,
+    openPathAudio,
     hasExecutionResults,
     referenceTextFields,
     resultTextFields,
+    groupedResultTextFields,
+    dimResultGroups,
+    generalResultGroup,
+    activeDimTab,
     getDeviceName,
     hasTimelineData,
     hasAudio,
     audioListWithTimeline,
     hasResultAudioData,
+    isJsonString,
+    formatJson,
   };
 }

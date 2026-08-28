@@ -163,13 +163,13 @@ class BatchActionInput(APIModel):
 
 
 class FileImportInput(APIModel):
-    update_existing: bool = Field(False, validation_alias=AliasChoices('update_existing', 'updateExisting'))
+    update_existing: bool = Field(False)
 
 
 class TaskReevaluateInput(APIModel):
-    task_id: int = Field(..., validation_alias=AliasChoices('task_id', 'taskId'))
-    reevaluate_type: str = Field('all', validation_alias=AliasChoices('reevaluate_type', 'reevaluateType'))
-    reextract_device_output: bool = Field(False, validation_alias=AliasChoices('reextract_device_output', 'reextractDeviceOutput'))
+    task_id: int = Field(...)
+    reevaluate_type: str = Field('all')
+    reextract_device_output: bool = Field(False)
 
 
 class TaskReevaluateResult(APIModel):
@@ -177,3 +177,19 @@ class TaskReevaluateResult(APIModel):
     queued_cases: int = Field(...)
     reextracted_cases: int = Field(0)
     message: str = Field(...)
+
+
+class DimensionListQuery(APIModel):
+    category_id: Optional[int] = Field(None)
+    page: int = Field(1)
+    per_page: int = Field(10)
+    search: str = Field('')
+
+
+class DimensionOptionsQuery(APIModel):
+    algorithm_type: str = Field('')
+
+
+class DimensionExportQuery(APIModel):
+    format: str = Field('json')
+    ids: Optional[str] = Field(None)

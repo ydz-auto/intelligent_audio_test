@@ -153,6 +153,9 @@ class TaskCommandHandler:
                 task_id=task_id,
             )
 
+            # 推入 Redis 任务队列，供调度器 BRPOP 零延迟消费
+            self.engine.enqueue_task(task_id)
+
             return True, 'ok', {
                 'task_id': task_id,
                 'name': cmd.name,

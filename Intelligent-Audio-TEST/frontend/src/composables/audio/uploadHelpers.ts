@@ -12,7 +12,8 @@ export interface FilePickContext extends UploadProcessContext {
     ctx: UploadProcessContext,
     files: any[],
     folderGroupMappings?: Record<string, string>,
-    unifiedRounds?: any[],
+    unifiedRoundsByGroup?: Record<string, any>,
+    testCaseGroupsData?: Record<string, any>,
     onUploadComplete?: () => void
   ) => Promise<void>;
 }
@@ -41,7 +42,7 @@ export async function pickFiles(
     const files = e.target.files;
     if (files && files.length > 0) {
       ctx.selectedFilesForUpload.value = Array.from(files);
-      await ctx.startUploadProcess(ctx, ctx.selectedFilesForUpload.value, undefined, undefined, onUploadComplete);
+      await ctx.startUploadProcess(ctx, ctx.selectedFilesForUpload.value, undefined, undefined, undefined, onUploadComplete);
     }
   };
   input.click();
@@ -82,20 +83,20 @@ export function updateUploadOptionsFromModal(
     ? data.options
     : ((data && typeof data === 'object' && data.config && typeof data.config === 'object') ? data.config : data);
 
-  if (options?.audioType !== undefined) uploadOptions.audioType = options.audioType;
-  if (options?.createTestCase !== undefined) uploadOptions.createTestCase = options.createTestCase;
+  if (options?.audioType !== undefined) uploadOptions.audio_type = options.audioType;
+  if (options?.createTestCase !== undefined) uploadOptions.create_test_case = options.createTestCase;
   if (data?.tags !== undefined) uploadOptions.tags = data.tags;
-  if (options?.testTypes !== undefined) uploadOptions.testTypes = options.testTypes;
-  if (options?.playbackDeviceId !== undefined) (uploadOptions as any).playbackDeviceId = options.playbackDeviceId;
+  if (options?.testTypes !== undefined) uploadOptions.test_types = options.testTypes;
+  if (options?.playbackDeviceId !== undefined) (uploadOptions as any).playback_device_id = options.playbackDeviceId;
   if (options?.defaultSpl !== undefined) (uploadOptions as any).spl = options.defaultSpl;
-  if (options?.groupNameType !== undefined) (uploadOptions as any).groupNameType = options.groupNameType;
-  if (options?.customGroupName !== undefined) (uploadOptions as any).customGroupName = options.customGroupName;
-  if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
+  if (options?.groupNameType !== undefined) (uploadOptions as any).group_name_type = options.groupNameType;
+  if (options?.customGroupName !== undefined) (uploadOptions as any).custom_group_name = options.customGroupName;
+  if (options?.inheritTags !== undefined) uploadOptions.inherit_tags = options.inheritTags;
   expandDimensions(uploadOptions, options);
-  if (options?.noiseAudioId !== undefined) (uploadOptions as any).noiseAudioId = options.noiseAudioId;
-  if (options?.noiseSpl !== undefined) (uploadOptions as any).noiseSpl = options.noiseSpl;
-  if (options?.algorithmType !== undefined) uploadOptions.algorithmType = options.algorithmType;
-  if (options?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = options.algorithmRelations;
-  if (options?.algorithmParams !== undefined) uploadOptions.algorithmParams = options.algorithmParams;
-  if (data?.algorithmRelations !== undefined) uploadOptions.algorithmRelations = data.algorithmRelations;
+  if (options?.noiseAudioId !== undefined) (uploadOptions as any).noise_audio_id = options.noiseAudioId;
+  if (options?.noiseSpl !== undefined) (uploadOptions as any).noise_spl = options.noiseSpl;
+  if (options?.algorithmType !== undefined) uploadOptions.algorithm_type = options.algorithmType;
+  if (options?.algorithmRelations !== undefined) uploadOptions.algorithm_relations = options.algorithmRelations;
+  if (options?.algorithmParams !== undefined) uploadOptions.algorithm_params = options.algorithmParams;
+  if (data?.algorithmRelations !== undefined) uploadOptions.algorithm_relations = data.algorithmRelations;
 }

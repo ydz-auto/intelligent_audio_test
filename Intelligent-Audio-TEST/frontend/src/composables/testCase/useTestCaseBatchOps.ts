@@ -31,10 +31,17 @@ export function useTestCaseBatchOps(store: {
     handleError
   } = store
 
-  const batchUpdateAlgorithmParams = async (ids: (string | number)[], algorithmParams: Record<string, any>) => {
+  const batchUpdateAlgorithmParams = async (
+    ids: (string | number)[],
+    algorithmParams: Record<string, any>,
+    options?: { roundMode?: string; roundNumbers?: number[] }
+  ) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('update_algorithm_params', ids, { algorithmParams })
+      const payload: Record<string, any> = { algorithmParams }
+      if (options?.roundMode) payload.round_mode = options.roundMode
+      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
+      await testcasesApi.batchAction('update_algorithm_params', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
@@ -49,15 +56,25 @@ export function useTestCaseBatchOps(store: {
     }
   }
 
-  const batchUpdatePlaybackDevices = async (ids: (string | number)[], playbackDevices: Record<string, any>) => {
+  const batchUpdatePlaybackDevices = async (
+    ids: (string | number)[],
+    playbackDevices: Record<string, any>,
+    options?: { targets?: string[]; roundMode?: string; roundNumbers?: number[] }
+  ) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('update_playback_devices', ids, { playbackDevices })
+      const payload: Record<string, any> = { playbackDevices }
+      if (options?.targets) payload.targets = options.targets
+      if (options?.roundMode) payload.round_mode = options.roundMode
+      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
+      await testcasesApi.batchAction('update_playback_devices', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
         if (tc && tc.config) {
           const config = { ...tc.config }
+          const targets = options?.targets || ['audio']
+          const deviceId = playbackDevices.deviceId
           // Rounds-based format
           if (config.rounds && Array.isArray(config.rounds)) {
             config.rounds = config.rounds.map((round: any) => ({
@@ -65,7 +82,7 @@ export function useTestCaseBatchOps(store: {
               audios: Array.isArray(round.audios)
                 ? round.audios.map((audio: any) => ({
                     ...audio,
-                    playbackDeviceId: playbackDevices.deviceId
+                    ...(targets.includes('audio') && deviceId ? { playbackDeviceId: deviceId } : {})
                   }))
                 : round.audios
             }))
@@ -73,7 +90,7 @@ export function useTestCaseBatchOps(store: {
           // Legacy flat format fallback
           else if (config.audios) {
             ;(config as any).audios = (config as any).audios.map((audio: any) => {
-              const audioType = (audio.testType || audio.test_type || '').toLowerCase()
+              const audioType = (audio.test_type || '').toLowerCase()
               if (audioType === 'e2e') {
                 return { ...audio, testType: 'e2e', playbackDeviceId: playbackDevices.deviceId }
               }
@@ -90,25 +107,46 @@ export function useTestCaseBatchOps(store: {
     }
   }
 
-  const batchUpdateSPL = async (ids: (string | number)[], spl: Record<string, any>) => {
+  const batchUpdateSPL = async (
+    ids: (string | number)[],
+    spl: Record<string, any>,
+    options?: { targets?: string[]; roundMode?: string; roundNumbers?: number[] }
+  ) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('update_spl', ids, { spl })
+      const payload: Record<string, any> = { spl }
+      if (options?.targets) payload.targets = options.targets
+      if (options?.roundMode) payload.round_mode = options.roundMode
+      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
+      await testcasesApi.batchAction('update_spl', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
         if (tc && tc.config) {
           const config = { ...tc.config }
+          const targets = options?.targets || ['audio']
+          const roundMode = options?.roundMode || 'all'
+          const roundNumbers = options?.roundNumbers || []
+          const splValue = typeof spl === 'object' ? spl.value : spl
           if (config.rounds && Array.isArray(config.rounds)) {
-            config.rounds = config.rounds.map((round: any) => ({
-              ...round,
-              audios: Array.isArray(round.audios)
-                ? round.audios.map((audio: any) => ({ ...audio, spl: spl.value }))
-                : round.audios
-            }))
+            config.rounds = config.rounds.map((round: any) => {
+              const rn = round.roundNumber || round.round_number
+              if (roundMode === 'specific' && rn && !roundNumbers.includes(rn)) return round
+              const newRound = { ...round }
+              if (Array.isArray(newRound.audios)) {
+                newRound.audios = newRound.audios.map((audio: any) => {
+                  const a = { ...audio }
+                  if (targets.includes('audio') && splValue !== undefined) {
+                    a.spl = splValue
+                  }
+                  return a
+                })
+              }
+              return newRound
+            })
           } else if (config.audios) {
             ;(config as any).audios = (config as any).audios.map((audio: any) => {
-              const audioType = (audio.testType || audio.test_type || '').toLowerCase()
+              const audioType = (audio.test_type || '').toLowerCase()
               if (audioType === 'e2e') {
                 return { ...audio, testType: 'e2e', spl: spl.value }
               }
@@ -136,8 +174,8 @@ export function useTestCaseBatchOps(store: {
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
         if (tc) {
-          tc.groupId = groupId
-          tc.groupName = groupName
+          tc.group_id = groupId
+          tc.group_name = groupName
         }
       })
       organizeTestCasesByGroup()
@@ -158,26 +196,80 @@ export function useTestCaseBatchOps(store: {
     }
   }
 
-  const batchUpdateDimensions = async (ids: (string | number)[], dimensions: any[], testType: string) => {
+  const batchUpdateDimensions = async (
+    ids: (string | number)[],
+    dimensions: any[],
+    testType: string,
+    options?: { roundMode?: string; roundNumbers?: number[]; targets?: string[]; roundDimensions?: Record<number, any[]>; multiDimensions?: any[] }
+  ) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('update_dimensions', ids, { dimensions, test_type: testType })
+      const payload: Record<string, any> = { dimensions, test_type: testType }
+      if (options?.roundMode) payload.round_mode = options.roundMode
+      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
+      if (options?.targets) payload.targets = options.targets
+      if (options?.roundDimensions) payload.round_dimensions = options.roundDimensions
+      if (options?.multiDimensions) payload.multi_dimensions = options.multiDimensions
+      await testcasesApi.batchAction('update_dimensions', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
         if (tc && tc.config) {
           const config = { ...tc.config }
-          // Both rounds and legacy formats store dimensions at top level
-          config.dimensions = dimensions
-          // For rounds format, also update evaluation within each round
-          if (config.rounds && Array.isArray(config.rounds)) {
-            config.rounds = config.rounds.map((round: any) => ({
-              ...round,
-              evaluation: round.evaluation
-                ? { ...round.evaluation, dimensions: dimensions }
-                : { dimensions: dimensions }
-            }))
+          const hasMulti = !!(options?.multiDimensions && options.multiDimensions.length > 0)
+
+          if (options?.roundMode === 'per_round' && options.roundDimensions) {
+            // 逐轮设置模式：每个轮次独立设置维度
+            if (config.rounds && Array.isArray(config.rounds)) {
+              const lastRn = config.rounds.length
+              config.rounds = config.rounds.map((round: any) => {
+                const rn = round.roundNumber || round.round_number
+                // 先查精确轮次，-1 代表最后一轮，按实际轮次数解析
+                let roundDims = options.roundDimensions![rn] || []
+                if (rn === lastRn && options.roundDimensions![-1]) {
+                  // 最后一轮的维度叠加到该轮
+                  const lastDims = options.roundDimensions![-1] || []
+                  // 合并去重：以 last_round 的配置为准补充
+                  const existingIds = new Set(roundDims.map((d: any) => d.id))
+                  for (const d of lastDims) {
+                    if (!existingIds.has(d.id)) roundDims = [...roundDims, d]
+                  }
+                }
+                return {
+                  ...round,
+                  evaluation: round.evaluation
+                    ? { ...round.evaluation, dimensions: roundDims }
+                    : { dimensions: roundDims }
+                }
+              })
+            }
+          } else if (dimensions && dimensions.length > 0) {
+            // 统一模式
+            if (config.rounds && Array.isArray(config.rounds)) {
+              const lastRn = config.rounds.length
+              config.rounds = config.rounds.map((round: any) => {
+                const rn = round.roundNumber || round.round_number
+                // 指定轮次模式下只更新选中的轮次（含 -1 = 最后一轮）
+                if (options?.roundMode === 'specific' && options.roundNumbers) {
+                  const isSelected = options.roundNumbers.includes(rn) ||
+                    (rn === lastRn && options.roundNumbers.includes(-1))
+                  if (!isSelected) return round
+                }
+                return {
+                  ...round,
+                  evaluation: round.evaluation
+                    ? { ...round.evaluation, dimensions: dimensions }
+                    : { dimensions: dimensions }
+                }
+              })
+            }
           }
+
+          // 多轮整体评估维度：有 multiDimensions 字段就写入（空数组=清空）
+          if (options?.multiDimensions !== undefined) {
+            config.dimensions = options.multiDimensions
+          }
+
           tc.config = config
         }
       })
@@ -188,10 +280,24 @@ export function useTestCaseBatchOps(store: {
     }
   }
 
-  const batchUpdateNoise = async (ids: (string | number)[], audioId: string, spl: number, deviceIds: string[]) => {
+  const batchUpdateNoise = async (
+    ids: (string | number)[],
+    audioId: string,
+    spl: number,
+    deviceIds: string[],
+    options?: { targets?: string[]; roundMode?: string; roundNumbers?: number[] }
+  ) => {
     try {
       error.value = null
-      await testcasesApi.batchAction('update_noise', ids, { noise_audio_id: audioId, noise_spl: spl, noise_device_ids: deviceIds })
+      const payload: Record<string, any> = {
+        noise_audio_id: audioId,
+        noise_spl: spl,
+        noise_device_ids: deviceIds
+      }
+      if (options?.targets) payload.targets = options.targets
+      if (options?.roundMode) payload.round_mode = options.roundMode
+      if (options?.roundNumbers) payload.round_numbers = options.roundNumbers
+      await testcasesApi.batchAction('update_noise', ids, payload)
 
       ids.forEach(id => {
         const tc = testCases.value.find(t => t.id === id)
@@ -357,6 +463,22 @@ export function useTestCaseBatchOps(store: {
   // 但当前批量操作本身不直接调用 notification，因此这里保留引用以避免被 tree-shake 误删。
   void notification
 
+  const fetchCaseIdsByFilter = async (filters: {
+    group?: string
+    testType?: string
+    search?: string
+    tag?: string
+    algorithmType?: string
+  }): Promise<(string | number)[]> => {
+    try {
+      const result: any = await testcasesApi.getIdsByFilter(filters)
+      return (result as any)?.ids || []
+    } catch (err: any) {
+      console.error('[fetchCaseIdsByFilter] 获取用例ID失败:', err)
+      return []
+    }
+  }
+
   return {
     batchUpdateAlgorithmParams,
     batchUpdatePlaybackDevices,
@@ -370,6 +492,7 @@ export function useTestCaseBatchOps(store: {
     batchRemoveTags,
     batchRenameTag,
     batchRefreshReference,
-    pollRefreshTaskStatus
+    pollRefreshTaskStatus,
+    fetchCaseIdsByFilter
   }
 }

@@ -2,6 +2,7 @@ import time
 import logging
 from datetime import datetime, timezone, timedelta
 from shared.models.database import get_db_session
+from shared.models.common_enums import TestType
 from shared.utils.event_manager._common import get_socketio
 
 logger = logging.getLogger(__name__)
@@ -98,7 +99,7 @@ class ProgressMixin:
                     current_case_data = {
                         "caseId": str(cc.get('case_id', cc.get('caseId', ''))),
                         "name": cc.get('name', '未知用例'),
-                        "step": cc.get('step', 'playing' if task_type == 'e2e' else 'evaluating'),
+                        "step": cc.get('step', 'playing' if task_type == TestType.E2E.value else 'evaluating'),
                         "startTime": int(datetime.fromisoformat(cc['started_at']).timestamp() * 1000) if cc.get('started_at') else int(time.time() * 1000),
                     }
                 else:
@@ -160,7 +161,7 @@ class ProgressMixin:
                 # API 资源状态：gRPC 提供 pending_cases/completed_cases/avg_response_time，
                 # 但 currentConcurrent 和 maxConcurrent 需要从 in-memory load_balancer 补充
                 api_resources_status = []
-                if task_type == 'api':
+                if task_type == TestType.API.value:
                     raw_api_status = grpc_progress.get('api_resource_status', [])
                     for api_info in raw_api_status:
                         # 从内存态 load_balancer 补充 currentConcurrent
@@ -262,7 +263,7 @@ class ProgressMixin:
                     current_case_data = {
                         "caseId": str(current_tc.test_case_id),
                         "name": case_info.name if case_info else "未知用例",
-                        "step": "playing" if db_task.type == 'e2e' else "evaluating",
+                        "step": "playing" if db_task.type == TestType.E2E.value else "evaluating",
                         "startTime": int(current_tc.started_at.timestamp() * 1000) if current_tc.started_at else int(time.time() * 1000)
                     }
                     self._log(level='DEBUG', content=f"当前执行用例: {current_case_data.get('name', '未知')} (ID: {current_case_data.get('caseId', '未知')})", task_id=task_id)
@@ -323,7 +324,7 @@ class ProgressMixin:
                 ).count()
 
                 api_resources_status = []
-                if db_task.type == 'api':
+                if db_task.type == TestType.API.value:
                     from task_service.infrastructure.persistence.models import TaskAPI
                     from api_test_service.infrastructure.persistence.models import API
                     task_api = local_db_session.query(TaskAPI).filter_by(task_id=db_task.id).first()

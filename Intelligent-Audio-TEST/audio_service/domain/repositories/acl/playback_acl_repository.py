@@ -34,3 +34,8 @@ class PlaybackConfigACLRepository(ABC):
     def find_playback_device_by_unique_id(self, device_unique_id: str) -> dict:
         """通过 gRPC ListPlaybackDevices 按 device_unique_id 查找（返回 dict 或 None）。"""
         ...
+
+    @abstractmethod
+    def find_playback_device_by_name(self, name: str) -> dict:
+        """通过 gRPC ListPlaybackDevices 按 name 查找（返回 dict 或 None）。"""
+        ...

@@ -1,16 +1,27 @@
 import threading
+import json
 from task_service.infrastructure.persistence.models import Task
 from shared.models.database import get_db_session
 from shared.utils.config_manager import config_manager
 from shared.utils.status_constants import TaskStatus
+from shared.utils.redis_pubsub import RedisPubSub
 
 import logging
 
 logger = logging.getLogger(__name__)
 
+# Redis 任务队列 key
+TASK_QUEUE_KEY = 'task:queue'
+# BRPOP 超时时间（秒），超时后回退到 DB 轮询兜底
+BRPOP_TIMEOUT = 5
+
 
 class SchedulerMixin:
-    """调度器相关的逻辑：初始化、启动、停止、主循环、pending 任务调度"""
+    """调度器相关的逻辑：初始化、启动、停止、主循环、pending 任务调度
+
+    事件驱动改造: 任务创建时 LPUSH 到 Redis 队列，调度器用 BRPOP 阻塞消费，
+    实现零延迟调度。同时保留 DB 轮询作为兜底（防止 Redis 队列丢失或服务重启后遗漏）。
+    """
 
     def _init_scheduler(self):
         """初始化并启动后台调度线程（在 _log 方法定义后调用）"""
@@ -25,7 +36,7 @@ class SchedulerMixin:
         )
         self.scheduler_thread.start()
         self._scheduler_initialized = True
-        self._log(level='INFO', content="任务调度器已启动")
+        self._log(level='INFO', content="任务调度器已启动（Redis 队列 + DB 兜底）")
 
     def _start_scheduler(self):
         """启动后台调度线程，用于自动检查和启动 pending 状态的任务"""
@@ -43,31 +54,91 @@ class SchedulerMixin:
         """触发调度器立即检查，用于事件驱动"""
         self.scheduler_event.set()
 
+    def enqueue_task(self, task_id):
+        """将任务推入 Redis 队列，供调度器 BRPOP 消费
+
+        在任务创建时调用，实现零延迟调度。
+        """
+        try:
+            client = RedisPubSub().redis_client
+            client.lpush(TASK_QUEUE_KEY, str(task_id))
+        except Exception as e:
+            logger.warning(f"推入 Redis 任务队列失败 (task_id={task_id}): {e}，依赖 DB 兜底")
+
     def _scheduler_loop(self):
-        """调度器主循环，定期检查并启动 pending 任务，支持事件驱动"""
+        """调度器主循环：优先用 BRPOP 消费 Redis 队列，超时后 DB 兜底"""
         if self.scheduler_stop_event is None:
             return
 
-        check_interval = config_manager.get_value('execution_engine', 'scheduler_interval', 3)
+        db_check_interval = config_manager.get_value('execution_engine', 'scheduler_interval', 30)
 
         while not self.scheduler_stop_event.is_set():
             try:
+                # 优先尝试从 Redis 队列消费（阻塞最多 BRPOP_TIMEOUT 秒）
+                self._consume_redis_queue()
+            except Exception as e:
+                logger.warning(f"[Scheduler] Redis 队列消费异常: {e}")
+
+            # DB 兜底：定期检查是否有遗漏的 pending 任务
+            try:
                 self._schedule_pending_tasks()
             except Exception as e:
-                print(f"[Scheduler] 调度器检查任务时发生错误: {str(e)}")
+                logger.error(f"[Scheduler] DB 兜底调度检查失败: {e}")
             finally:
-                # 每轮循环结束清理本线程 DB session，防止连接泄漏
                 try:
                     from shared.models.database import remove_db_session
                     remove_db_session()
                 except Exception:
                     logger.debug("调度器循环结束清理 DB session 失败", exc_info=True)
 
-            self.scheduler_event.wait(timeout=check_interval)
+            # 等待下一轮（DB 兜底间隔较长，Redis 队列靠 BRPOP 阻塞实现低延迟）
+            self.scheduler_event.wait(timeout=db_check_interval)
             self.scheduler_event.clear()
 
+    def _consume_redis_queue(self):
+        """从 Redis 队列 BRPOP 消费任务 ID，立即尝试启动"""
+        if self.scheduler_stop_event is not None and self.scheduler_stop_event.is_set():
+            return
+
+        try:
+            client = RedisPubSub().redis_client
+            # BRPOP 阻塞等待，超时后返回 None
+            result = client.brpop(TASK_QUEUE_KEY, timeout=BRPOP_TIMEOUT)
+            if result is None:
+                return
+
+            # result = (key_bytes, value_bytes)
+            _, task_id_bytes = result
+            task_id_str = task_id_bytes.decode('utf-8') if isinstance(task_id_bytes, bytes) else task_id_bytes
+
+            try:
+                task_id = int(task_id_str)
+            except ValueError:
+                logger.warning(f"[Scheduler] Redis 队列收到无效 task_id: {task_id_str}")
+                return
+
+            # 检查任务是否已在运行或队列中
+            if task_id in self.workers and self.workers[task_id].is_alive():
+                return
+
+            with self.queue_lock:
+                if any(t['id'] == task_id for t in self.task_queue):
+                    return
+
+            # 尝试启动任务
+            try:
+                success, message = self.start_task(task_id)
+                if success:
+                    self._log(level='INFO', content=f"任务 {task_id} 从 Redis 队列消费并启动成功")
+                else:
+                    self._log(level='DEBUG', content=f"任务 {task_id} 从 Redis 队列消费但启动失败: {message}")
+            except Exception as e:
+                logger.error(f"[Scheduler] Redis 队列消费启动任务 {task_id} 失败: {e}")
+        except Exception as e:
+            logger.warning(f"[Scheduler] BRPOP 消费异常: {e}")
+
     def _schedule_pending_tasks(self):
-        """检查并自动启动 pending 状态的任务
+        """DB 兜底：检查并自动启动 pending 状态的任务
 
         调度规则：
         - E2E 任务：同时只能运行一个
@@ -114,13 +185,11 @@ class SchedulerMixin:
                     try:
                         success, message = self.start_task(task_id)
                         if success:
-                            print(f"[Scheduler] 任务 {task_id} ({task.type}) 自动启动成功")
-                        else:
-                            print(f"[Scheduler] 任务 {task_id} 自动启动失败: {message}")
+                            self._log(level='INFO', content=f"任务 {task_id} ({task.type}) DB兜底调度启动成功")
                     except Exception as e:
-                        print(f"[Scheduler] 自动启动任务 {task_id} 时发生错误: {str(e)}")
+                        logger.error(f"[Scheduler] DB兜底自动启动任务 {task_id} 失败: {e}")
 
         except Exception as e:
-            print(f"[Scheduler] 调度器处理任务时发生错误: {str(e)}")
+            logger.error(f"[Scheduler] DB兜底调度处理失败: {e}")
         finally:
             local_db_session.close()

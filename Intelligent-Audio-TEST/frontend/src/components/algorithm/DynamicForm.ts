@@ -131,7 +131,8 @@ export function useDynamicForm(props: Props, emit: any) {
       'boolean': false,
       'select': '',
       'multiselect': [],
-      'json': '{}'
+      'json': '{}',
+      'timestamp': ''
     }
     return defaults[fieldType] ?? ''
   }

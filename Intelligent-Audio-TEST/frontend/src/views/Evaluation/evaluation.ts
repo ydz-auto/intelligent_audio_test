@@ -107,6 +107,7 @@ export function useEvaluation() {
 
     // 计算属性（来自维度模块）
     filteredDimensions: dimensionsModule.filteredDimensions,
+    hierarchicalDimensions: dimensionsModule.hierarchicalDimensions,
     isAllSelected: dimensionsModule.isAllSelected,
 
     // 数据获取（来自维度模块）

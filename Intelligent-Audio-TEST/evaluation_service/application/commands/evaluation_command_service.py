@@ -27,6 +27,25 @@ from evaluation_service.infrastructure.persistence.evaluation_repository import 
 
 logger = logging.getLogger(__name__)
 
+
+def _publish_dimension_config_changed(action: str, dim_id=None):
+    """维度配置变更后发布事件，订阅方（EndpointWorker）热加载维度配置，无需重启服务。
+
+    降级：Redis 不可用时 EventBus.publish 内部只打日志不抛异常，不影响写操作主流程。
+    """
+    try:
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+        payload = {'action': action}
+        if dim_id is not None:
+            payload['dimension_id'] = dim_id
+        EventBus().publish(
+            EventChannel.CONFIG_EVENTS,
+            EventType.DIMENSION_CONFIG_CHANGED,
+            payload,
+        )
+    except Exception as e:
+        logger.warning(f"发布维度配置变更事件失败，降级忽略: {e}")
+
 # Dimension 模型可赋值字段
 _DIMENSION_MODEL_FIELDS = [
     'name', 'keywords', 'description', 'category_id', 'api_url',
@@ -285,6 +304,9 @@ class EvaluationCommandService:
             except Exception:
                 logger.warning("创建评分维度后刷新统计缓存失败", exc_info=True)
 
+            # 发布维度配置变更事件，触发 EndpointWorker 热加载
+            _publish_dimension_config_changed('create', dim_id=new_dim.id)
+
             return {
                 'success': True,
                 'message': '评分维度创建成功',
@@ -481,6 +503,9 @@ class EvaluationCommandService:
             except Exception:
                 logger.warning("更新评分维度后刷新统计缓存失败", exc_info=True)
 
+            # 发布维度配置变更事件，触发 EndpointWorker 热加载
+            _publish_dimension_config_changed('update', dim_id=dim_id)
+
             return {'success': True, 'message': '评分维度更新成功'}
         except Exception as e:
             self.repo.rollback()
@@ -502,6 +527,9 @@ class EvaluationCommandService:
                 refresh_stats_cache()
             except Exception:
                 logger.warning("删除评分维度后刷新统计缓存失败", exc_info=True)
+
+            # 发布维度配置变更事件，触发 EndpointWorker 热加载
+            _publish_dimension_config_changed('delete', dim_id=dim_id)
 
             return {'success': True, 'message': '评分维度已删除'}
         except Exception as e:
@@ -551,6 +579,9 @@ class EvaluationCommandService:
                 refresh_stats_cache()
             except Exception:
                 logger.warning("批量操作后刷新统计缓存失败", exc_info=True)
+
+            # 批量操作变更维度配置，发布事件触发 EndpointWorker 热加载
+            _publish_dimension_config_changed(f'batch_{action}')
 
             return {'success': True, 'message': f'批量操作 {action} 执行成功'}
         except Exception as e:

@@ -1,5 +1,5 @@
 from typing import Any, List, Optional
-from pydantic import Field
+from pydantic import Field, AliasChoices
 
 from api_gateway.schemas.base import APIModel
 from api_gateway.schemas.common import PaginatedData
@@ -18,6 +18,13 @@ class PlaybackDeviceItem(APIModel):
     current_spl_mapping_id: Optional[int] = Field(None)
     created_at: Optional[str] = Field(None)
     updated_at: Optional[str] = Field(None)
+
+
+class PlaybackDeviceListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(10)
+    keyword: Optional[str] = Field(None)
+    device_type: Optional[str] = Field(None, validation_alias=AliasChoices('type', 'device_type', 'deviceType'))
 
 
 class PlaybackDeviceListData(PaginatedData[PlaybackDeviceItem]):

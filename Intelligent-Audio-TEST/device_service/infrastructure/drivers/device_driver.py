@@ -4,5 +4,10 @@
 #     from device_service.infrastructure.drivers.base_driver import BaseDeviceDriver
 from .driver_factory import DeviceDriverFactory
 
+# 新体系：类型化注册
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import driver_registry, register_driver
+from .contracts import AppDriver, DriverContext
+
 # 预创建工厂实例，方便直接调用
 device_driver_factory = DeviceDriverFactory()

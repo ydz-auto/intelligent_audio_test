@@ -86,8 +86,8 @@ export function useTaskCard(props: any, emit: any) {
   }
 
   const calculateCompletionRate = (task) => {
-    const completed = task.completedCases || 0
-    const total = task.totalCases || task.caseCount || 0
+    const completed = task.completed_cases || 0
+    const total = task.total_cases || task.case_count || 0
     if (total === 0) return 0
     return Math.round((completed / total) * 100)
   }

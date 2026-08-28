@@ -14,7 +14,16 @@ from api_gateway.schemas.testcase import (
     TagItem,
     TagDetailListData,
     TagListData,
+    TagCategoryListQuery,
+    TagListQuery,
+    TagNameListQuery,
 )
+
+
+def _parse_query_params(model_cls):
+    """从 request.args 提取查询参数并通过 APIModel 校验"""
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 class TagCategoryQueryService:
@@ -22,14 +31,12 @@ class TagCategoryQueryService:
 
     @staticmethod
     def get_all():
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        keyword = request.args.get('keyword', type=str)
+        query = _parse_query_params(TagCategoryListQuery)
 
         result = _tag_acl.list_categories(
-            page=page,
-            per_page=per_page,
-            keyword=keyword,
+            page=query.page,
+            per_page=query.per_page,
+            keyword=query.keyword,
         )
 
         if not result.get('success'):
@@ -61,16 +68,13 @@ class TagQueryService:
 
     @staticmethod
     def get_all():
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
-        category_id = request.args.get('category_id', type=int)
-        keyword = request.args.get('keyword', type=str)
+        query = _parse_query_params(TagListQuery)
 
         result = _tag_acl.list_tags(
-            page=page,
-            per_page=per_page,
-            category_id=category_id,
-            keyword=keyword,
+            page=query.page,
+            per_page=query.per_page,
+            category_id=query.category_id,
+            keyword=query.keyword,
         )
 
         if not result.get('success'):
@@ -85,14 +89,12 @@ class TagQueryService:
 
     @staticmethod
     def get_all_names():
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 100, type=int)
-        keyword = request.args.get('keyword', type=str)
+        query = _parse_query_params(TagNameListQuery)
 
         result = _tag_acl.list_tag_names(
-            page=page,
-            per_page=per_page,
-            keyword=keyword,
+            page=query.page,
+            per_page=query.per_page,
+            keyword=query.keyword,
         )
 
         if not result.get('success'):

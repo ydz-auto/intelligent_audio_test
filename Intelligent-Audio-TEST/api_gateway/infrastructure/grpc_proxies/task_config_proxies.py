@@ -551,6 +551,22 @@ class _TestCaseConfigProxy:
             error_msg_prefix='获取参考参数失败',
         )
 
+    def fetch_case_ids(self, data):
+        from shared.proto import task_service_pb2 as task_pb
+
+        def _call():
+            stub = get_testcase_config_service_stub()
+            resp = stub.FetchCaseIds(task_pb.FetchCaseIdsRequest(
+                data=json.dumps(data or {}, ensure_ascii=False, default=str),
+            ))
+            return self._resp(resp)
+
+        return _grpc_call(
+            _call,
+            default_return=lambda e: {'success': False, 'message': f'查询用例ID失败: {e}', 'data': None, 'code': 500},
+            error_msg_prefix='查询用例ID失败',
+        )
+
 
 # TestCase 配置 CRUD 模块级单例
 testcase_config_service = _TestCaseConfigProxy()

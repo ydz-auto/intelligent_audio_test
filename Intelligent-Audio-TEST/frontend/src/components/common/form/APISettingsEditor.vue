@@ -42,7 +42,7 @@
 
       <div class="api-settings-right">
         <div class="editor-section preview-section">
-          <h4>body_template JSON</h4>
+          <h4>bodyTemplate JSON</h4>
           <span class="section-hint">rounds 内的字段由左侧表单管理，rounds 外的字段（如 model/prompt）可直接在此编辑</span>
           <textarea
             v-model="bodyTemplateJson"
@@ -65,7 +65,7 @@ const props = defineProps({
     default: () => ({
       method: 'POST',
       headers: {},
-      body_template: {},
+      bodyTemplate: {},
       timeout: 30000
     })
   }
@@ -87,11 +87,11 @@ watch(() => props.modelValue, (newVal) => {
   const val = (newVal && typeof newVal === 'object') ? newVal : {}
   localValue.method = val.method || 'POST'
   localValue.headers = val.headers ? { ...val.headers } : {}
-  localValue.body_template = val.body_template ? JSON.parse(JSON.stringify(val.body_template)) : {}
+  localValue.bodyTemplate = val.bodyTemplate ? JSON.parse(JSON.stringify(val.bodyTemplate)) : {}
   localValue.timeout = val.timeout || 30000
 
   headersJson.value = JSON.stringify(localValue.headers, null, 2)
-  bodyTemplateJson.value = JSON.stringify(localValue.body_template, null, 2)
+  bodyTemplateJson.value = JSON.stringify(localValue.bodyTemplate, null, 2)
 }, { immediate: true, deep: true })
 
 function parseHeaders() {
@@ -105,7 +105,7 @@ function parseHeaders() {
 function parseBodyTemplate() {
   try {
     const parsed = JSON.parse(bodyTemplateJson.value || '{}')
-    localValue.body_template = parsed
+    localValue.bodyTemplate = parsed
     handleChange()
   } catch (e) {
     // JSON 解析失败时不做操作，等用户修好

@@ -111,11 +111,11 @@ export function useDeviceScanning() {
       }
       
       availableSerials.value = fetchedDevices.map(device => ({
-        serial: device.serial || device.serialNumber || device.deviceId || device.id || device.deviceUniqueId || device.deviceUniqueId,
+        serial: device.serial || device.serial_number || device.device_id || device.id || device.device_unique_id,
         name: device.name || device.model || '未知设备',
         system: device.system || device.platform || 'android',
         model: device.model || '未知设备',
-        systemVersion: device.systemVersion || device.version || device.osVersion || '1.0.0'
+        systemVersion: device.system_version || device.version || device.os_version || '1.0.0'
       }))
       
       await fetchAddedTestDevices()
@@ -132,7 +132,6 @@ export function useDeviceScanning() {
   const getPlaybackDevicesDisplay = (currentDeviceId, isEditMode) => {
     const addedIds = new Set()
     addedPlaybackDevices.value.forEach(d => {
-      if (d.deviceUniqueId) addedIds.add(d.deviceUniqueId)
       if (d.device_unique_id) addedIds.add(d.device_unique_id)
       if (d.id) addedIds.add(d.id)
       if (d.name) addedIds.add(d.name)
@@ -144,18 +143,17 @@ export function useDeviceScanning() {
       const seen = new Set()
       devices = scanResults.value
         .filter(device => {
-          const id = device.deviceUniqueId || device.device_unique_id || device.id || device.name
+          const id = device.device_unique_id || device.id || device.name
           if (seen.has(id)) return false
           seen.add(id)
           return true
         })
         .map((device, index) => {
-          const deviceId = device.deviceUniqueId || device.device_unique_id || device.id || device.name
+          const deviceId = device.device_unique_id || device.id || device.name
           let isAdded = false
           const deviceIdentifiers = new Set()
           if (deviceId) deviceIdentifiers.add(deviceId)
           if (device.name) deviceIdentifiers.add(device.name)
-          if (device.deviceUniqueId) deviceIdentifiers.add(device.deviceUniqueId)
           if (device.device_unique_id) deviceIdentifiers.add(device.device_unique_id)
           if (device.id) deviceIdentifiers.add(device.id)
           
@@ -171,8 +169,8 @@ export function useDeviceScanning() {
             deviceUniqueId: deviceId,
             name: device.name || `播放设备 ${index + 1}`,
             model: device.model || '未知型号',
-            sampleRate: device.sampleRate || device.sample_rate,
-            channelIndex: device.channelIndex || device.channel_index,
+            sampleRate: device.sample_rate,
+            channelIndex: device.channel_index,
             index: index,
             isAdded: isAdded,
             isCurrent: currentDeviceId === deviceId || currentDeviceId === device.name ||
@@ -185,18 +183,17 @@ export function useDeviceScanning() {
       const seen = new Set()
       devices = apiPlaybackDevices.value
         .filter(device => {
-          const id = device.deviceUniqueId || device.device_unique_id || device.id || device.name
+          const id = device.device_unique_id || device.id || device.name
           if (seen.has(id)) return false
           seen.add(id)
           return true
         })
         .map((device, index) => {
-          const deviceId = device.deviceUniqueId || device.device_unique_id || device.id || device.name
+          const deviceId = device.device_unique_id || device.id || device.name
           let isAdded = false
           const deviceIdentifiers = new Set()
           if (deviceId) deviceIdentifiers.add(deviceId)
           if (device.name) deviceIdentifiers.add(device.name)
-          if (device.deviceUniqueId) deviceIdentifiers.add(device.deviceUniqueId)
           if (device.device_unique_id) deviceIdentifiers.add(device.device_unique_id)
           if (device.id) deviceIdentifiers.add(device.id)
           
@@ -212,8 +209,8 @@ export function useDeviceScanning() {
             deviceUniqueId: deviceId,
             name: device.name || `播放设备 ${index + 1}`,
             model: device.model || '未知型号',
-            sampleRate: device.sampleRate || device.sample_rate,
-            channelIndex: device.channelIndex || device.channel_index,
+            sampleRate: device.sample_rate,
+            channelIndex: device.channel_index,
             index: index,
             isAdded: isAdded,
             isCurrent: currentDeviceId === deviceId || currentDeviceId === device.name ||
@@ -223,8 +220,7 @@ export function useDeviceScanning() {
     }
     
     if (isEditMode && currentDeviceId && !devices.find(d => d.displayKey === currentDeviceId)) {
-      const currentDevice = addedPlaybackDevices.value.find(d => 
-        d.deviceUniqueId === currentDeviceId || 
+      const currentDevice = addedPlaybackDevices.value.find(d =>
         d.device_unique_id === currentDeviceId ||
         d.id === currentDeviceId ||
         d.name === currentDeviceId
@@ -235,8 +231,8 @@ export function useDeviceScanning() {
           deviceUniqueId: currentDeviceId,
           name: currentDevice.name || currentDeviceId,
           model: currentDevice.model || '未知型号',
-          sampleRate: currentDevice.sampleRate || currentDevice.sample_rate,
-          channelIndex: currentDevice.channelIndex || currentDevice.channel_index,
+          sampleRate: currentDevice.sample_rate,
+          channelIndex: currentDevice.channel_index,
           index: -1,
           isAdded: true,
           isCurrent: true
@@ -246,19 +242,19 @@ export function useDeviceScanning() {
     
     const displayedDeviceIds = new Set(devices.map(d => d.displayKey))
     const missingAddedDevices = addedPlaybackDevices.value.filter(d => {
-      const deviceId = d.deviceUniqueId || d.device_unique_id || d.id || d.name
+      const deviceId = d.device_unique_id || d.id || d.name
       return !displayedDeviceIds.has(deviceId)
     })
-    
+
     missingAddedDevices.forEach((d, index) => {
-      const deviceId = d.deviceUniqueId || d.device_unique_id || d.id || d.name
+      const deviceId = d.device_unique_id || d.id || d.name
       devices.push({
         displayKey: deviceId,
         deviceUniqueId: deviceId,
         name: d.name || `播放设备 ${index + 1}`,
         model: d.model || '未知型号',
-        sampleRate: d.sampleRate || d.sample_rate,
-        channelIndex: d.channelIndex || d.channel_index,
+        sampleRate: d.sample_rate,
+        channelIndex: d.channel_index,
         index: devices.length + index,
         isAdded: true,
         isCurrent: currentDeviceId === deviceId
@@ -274,7 +270,6 @@ export function useDeviceScanning() {
     const addedIds = new Set()
     addedTestDevices.value.forEach(d => {
       if (d.serial) addedIds.add(d.serial)
-      if (d.deviceUniqueId) addedIds.add(d.deviceUniqueId)
       if (d.device_unique_id) addedIds.add(d.device_unique_id)
       if (d.id) addedIds.add(d.id)
       if (d.name) addedIds.add(d.name)
@@ -285,21 +280,20 @@ export function useDeviceScanning() {
     if (availableSerials.value && availableSerials.value.length > 0) {
       const seen = new Set()
       const uniqueSerials = availableSerials.value.filter(device => {
-        const serial = typeof device === 'object' ? (device.serial || device.deviceUniqueId || device.device_unique_id || device.id || device.name) : device
+        const serial = typeof device === 'object' ? (device.serial || device.device_unique_id || device.id || device.name) : device
         if (seen.has(serial)) return false
         seen.add(serial)
         return true
       })
       
       devices = uniqueSerials.map((device, index) => {
-        const serial = typeof device === 'object' ? (device.serial || device.deviceUniqueId || device.device_unique_id || device.id || device.name) : device
-        const deviceId = typeof device === 'object' ? (device.deviceUniqueId || device.device_unique_id || device.id || device.name) : serial
+        const serial = typeof device === 'object' ? (device.serial || device.device_unique_id || device.id || device.name) : device
+        const deviceId = typeof device === 'object' ? (device.device_unique_id || device.id || device.name) : serial
         
         const isAdded = addedIds.has(serial) || addedIds.has(deviceId) ||
-                      (typeof device === 'object' && 
-                       (addedIds.has(device.name || '') || 
-                        addedIds.has(device.serial || '') || 
-                        addedIds.has(device.deviceUniqueId || '') || 
+                      (typeof device === 'object' &&
+                       (addedIds.has(device.name || '') ||
+                        addedIds.has(device.serial || '') ||
                         addedIds.has(device.device_unique_id || '')))
         
         return {
@@ -309,7 +303,7 @@ export function useDeviceScanning() {
           name: typeof device === 'object' ? (device.name || `测试设备 ${index + 1}`) : `测试设备 ${index + 1}`,
           model: typeof device === 'object' ? (device.model || '未知型号') : '未知型号',
           system: typeof device === 'object' ? device.system : undefined,
-          systemVersion: typeof device === 'object' ? device.systemVersion : undefined,
+          systemVersion: typeof device === 'object' ? device.system_version : undefined,
           index: index,
           isAdded: isAdded,
           isCurrent: currentDeviceId === serial || currentDeviceId === deviceId
@@ -318,9 +312,8 @@ export function useDeviceScanning() {
     }
     
     if (isEditMode && currentDeviceId && !devices.find(d => d.displayKey === currentDeviceId)) {
-      const currentDevice = addedTestDevices.value.find(d => 
-        d.serial === currentDeviceId || 
-        d.deviceUniqueId === currentDeviceId || 
+      const currentDevice = addedTestDevices.value.find(d =>
+        d.serial === currentDeviceId ||
         d.device_unique_id === currentDeviceId ||
         d.id === currentDeviceId ||
         d.name === currentDeviceId
@@ -329,11 +322,11 @@ export function useDeviceScanning() {
         devices.unshift({
           displayKey: currentDeviceId,
           serial: currentDeviceId,
-          deviceUniqueId: currentDevice.deviceUniqueId || currentDevice.device_unique_id || currentDevice.id || currentDevice.name,
+          deviceUniqueId: currentDevice.device_unique_id || currentDevice.id || currentDevice.name,
           name: currentDevice.name || currentDeviceId,
           model: currentDevice.model || '未知型号',
           system: currentDevice.system,
-          systemVersion: currentDevice.systemVersion || currentDevice.system_version || '未知版本',
+          systemVersion: currentDevice.system_version || '未知版本',
           index: -1,
           isAdded: true,
           isCurrent: true

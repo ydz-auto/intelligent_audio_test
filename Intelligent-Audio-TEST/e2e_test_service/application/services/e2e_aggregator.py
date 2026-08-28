@@ -48,12 +48,7 @@ class E2EAggregator:
                 return
 
             algo_result = test_result.algorithm_result
-            # 循环反序列化，处理可能的双重序列化旧数据
-            while isinstance(algo_result, str):
-                try:
-                    algo_result = json.loads(algo_result)
-                except (json.JSONDecodeError, TypeError):
-                    algo_result = {}
+            algo_result = deserialize_algorithm_result(algo_result)
 
             # DEBUG: 检查 record_file 是否存在
             _rounds_debug = algo_result.get('rounds', []) if isinstance(algo_result, dict) else []
@@ -157,10 +152,27 @@ class E2EAggregator:
     def process_results(self, task_id, case_name, tc_rel_id, test_case_id, all_results, case_config=None,
                         case_reference_params=None, case_algorithm_params=None,
                         adjusted_case_reference_params=None, **kwargs):
-        """处理 E2E 测试结果 — 更新 TaskCase 状态，提交非多轮场景的评估"""
+        """处理 E2E 测试结果 — 更新 TaskCase 状态，提交非多轮场景的评估
+
+        事件驱动改造: 完成后发布 CaseExecutionCompleted 事件到 Redis 事件总线，
+        task_service 订阅后唤醒等待线程，替代 gRPC 同步通知的强依赖。
+        """
         algorithm_type = kwargs.get('algorithm_type', 'translation')
         precreated_result_id = kwargs.get('precreated_result_id')
         precomputed_execution_success = kwargs.get('precomputed_execution_success')
+
+        def _publish_case_event(success):
+            """发布用例执行完成事件到事件总线"""
+            from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+            EventBus().publish(
+                EventChannel.CASE_EVENTS,
+                EventType.CASE_EXECUTION_COMPLETED if success else EventType.CASE_FAILED,
+                {
+                    'task_id': str(task_id),
+                    'test_case_id': str(test_case_id),
+                    'success': success,
+                }
+            )
 
         if adjusted_case_reference_params:
             self._log(
@@ -235,6 +247,7 @@ class E2EAggregator:
                         evaluation_status=EvaluationStatus.FAILED,
                     )
 
+                _publish_case_event(execution_success)
                 return execution_success
             else:
                 result = self._executor._process_results_base(
@@ -294,6 +307,7 @@ class E2EAggregator:
                             round_number=item.get('round_number')
                         )
 
+                _publish_case_event(execution_success)
                 return execution_success
         except Exception as e:
             self._log(

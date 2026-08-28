@@ -432,22 +432,22 @@ export function useDeviceManagement(deviceType: 'test' | 'playback' | 'api' = 't
           formData = {
             name: scannedDevice.name,
             model: scannedDevice.model,
-            serialNumber: scannedDevice.serial || scannedDevice.serial_number || scannedDevice.serialNumber,
-            ip: scannedDevice.ip_address || scannedDevice.ip || scannedDevice.ipAddress,
+            serialNumber: scannedDevice.serial || scannedDevice.serial_number,
+            ip: scannedDevice.ip_address || scannedDevice.ip,
             system: system,
-            systemVersion: scannedDevice.systemVersion || 'Unknown',
-            appName: scannedDevice.appName || 'Default App',
-            appVersion: scannedDevice.appVersion || '1.0.0',
+            systemVersion: scannedDevice.system_version || 'Unknown',
+            appName: scannedDevice.app_name || 'Default App',
+            appVersion: scannedDevice.app_version || '1.0.0',
             status: 'online'
           };
         } else if (targetType === 'playback') {
           formData = {
             name: scannedDevice.name,
             model: scannedDevice.model,
-            deviceUniqueId: scannedDevice.deviceUniqueId || scannedDevice.device_unique_id,
-            channelIndex: scannedDevice.channelIndex !== undefined ? scannedDevice.channelIndex : (scannedDevice.channel_index !== undefined ? scannedDevice.channel_index : 0),
-            sampleRate: scannedDevice.sampleRate || scannedDevice.sample_rate || 48000,
-            deviceType: scannedDevice.deviceType || scannedDevice.device_type || scannedDevice.type || 'dry',
+            deviceUniqueId: scannedDevice.device_unique_id,
+            channelIndex: scannedDevice.channel_index !== undefined ? scannedDevice.channel_index : 0,
+            sampleRate: scannedDevice.sample_rate || 48000,
+            deviceType: scannedDevice.device_type || scannedDevice.type || 'dry',
             status: 'online'
           };
         } else if (targetType === 'api') {

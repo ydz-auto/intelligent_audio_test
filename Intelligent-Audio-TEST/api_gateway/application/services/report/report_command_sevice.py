@@ -194,3 +194,34 @@ class ReportCommandService:
             return success_response(data)
         except Exception as e:
             return error_response(f'生成任务报告失败: {str(e)}')
+
+    # ------------------------------------------------------------------
+    # 重新生成报告（删除旧报告后异步重新生成）
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def regenerate_report(report_id):
+        """重新生成报告：先删除旧报告（级联删除子表），再异步重新生成。"""
+        try:
+            stub = report_config_service.stub
+            # 复用 GenerateTaskReport RPC，通过 report_id 查找关联的 task_id
+            # 先删除旧报告
+            del_resp = stub.DeleteReport(report_pb.DeleteReportRequest(
+                report_id=int(report_id)))
+            if not del_resp.success:
+                return error_response(del_resp.message or '删除旧报告失败')
+            # 通过 gRPC 获取报告关联的 task_id 并重新生成
+            data = _loads(del_resp.data, {}) or {}
+            task_id = data.get('task_id')
+            if not task_id:
+                return error_response('无法确定报告关联的任务ID', 400)
+            resp = stub.GenerateTaskReport(report_pb.GenerateTaskReportRequest(
+                task_id=int(task_id),
+                name='',
+                description=''))
+            if not resp.success:
+                return error_response(resp.message or '重新生成报告失败')
+            result = _loads(resp.data, {}) or {}
+            return success_response(result)
+        except Exception as e:
+            return error_response(f'重新生成报告失败: {str(e)}')

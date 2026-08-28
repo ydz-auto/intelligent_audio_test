@@ -4,6 +4,7 @@ from task_service.infrastructure.persistence.models import Task, TaskCase, TestC
 from shared.models.database import get_db_session
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
+from shared.utils.config_manager import config_manager
 
 import logging
 
@@ -136,13 +137,15 @@ class TaskRunnerMixin:
                         available_endpoints.sort(key=lambda x: x.get('priority', 0), reverse=True)
 
                     # 确定最大工作线程数
+                    # 并发参数配置化：端点未配置 max_process 时回退到 config_manager 默认值
+                    default_max_process = config_manager.get_value('api_executor', 'default_max_process', 5)
                     if available_endpoints:
                         # 计算所有可用端点的最大进程数之和
-                        max_workers = sum(ep.get('max_process', 5) for ep in available_endpoints)
+                        max_workers = sum(ep.get('max_process', default_max_process) for ep in available_endpoints)
                     elif api_config:
-                        max_workers = api_config.get('default_max_process', 5)
+                        max_workers = api_config.get('default_max_process') or default_max_process
                     else:
-                        max_workers = 5
+                        max_workers = default_max_process
 
                     # 保存API配置和可用端点到任务对象
                     task._api_config = api_config

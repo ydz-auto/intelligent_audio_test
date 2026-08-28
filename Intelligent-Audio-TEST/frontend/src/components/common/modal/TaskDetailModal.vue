@@ -287,7 +287,10 @@ async function fetchTaskDetails() {
           status: transformed.status,
           duration: tc.duration || '',
           executionStatus: transformed.executionStatus,
-          evaluationStatus: transformed.evaluationStatus
+          evaluationStatus: transformed.evaluationStatus,
+          groupName: tc.groupName,
+          tags: tc.tags,
+          algorithmType: tc.algorithmType
         };
       });
     }

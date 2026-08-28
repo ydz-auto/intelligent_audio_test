@@ -3,6 +3,8 @@ from pydantic import ValidationError
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.schemas.audio import (
+    AudioPresignPartQuery,
+    AudioUploadProgressQuery,
     CompleteDirectUploadRequest,
     InitUploadTaskRequest,
     MergeChunksRequest,
@@ -14,6 +16,12 @@ from api_gateway.schemas.audio import (
 from api_gateway.infrastructure.acl import AudioAclRepositoryImpl
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
+
 
 _audio_acl = AudioAclRepositoryImpl()
 
@@ -52,8 +60,9 @@ class AudioUploadService:
                 return error_response(f"参数验证失败: {e}")
 
             # 从 query params 获取 oss_key 和 category
-            oss_key = request.args.get('oss_key')
-            category = request.args.get('category', 'raw_chunks')
+            query = _parse_query_params(AudioPresignPartQuery)
+            oss_key = query.oss_key
+            category = query.category
             if not oss_key:
                 return error_response("缺少 oss_key 参数")
 
@@ -183,9 +192,10 @@ class AudioUploadService:
     @staticmethod
     def get_upload_progress():
         """获取上传任务进度"""
-        
+
         try:
-            task_id = request.args.get('task_id')
+            query = _parse_query_params(AudioUploadProgressQuery)
+            task_id = query.task_id
             if not task_id:
                 return error_response("缺少任务ID")
 

@@ -96,6 +96,7 @@ export const MODAL_TYPES = {
     BATCH_DIMENSION: 'batchDimension',
     BATCH_NOISE: 'batchNoise',
     BATCH_TAGS: 'batchTags',
+    BATCH_REFRESH_REFERENCE: 'batchRefreshReference',
     TAG_CATEGORY: 'tagCategory',
     TAG_EDIT: 'tagEdit'
 } as const;

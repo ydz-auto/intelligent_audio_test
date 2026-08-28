@@ -16,8 +16,14 @@ from shared.utils.query_utils import now_cst
 from shared.infrastructure.storage import storage
 from api_gateway.schemas.log import (
     LogItem, LogListData, LogRefreshData, LogRefreshRequest,
-    LogExportRequest,
+    LogExportRequest, LogListQuery, LogStatsQuery, LogArchiveQuery, LogExportQuery,
 )
+
+
+def _parse_query_params(model_cls):
+    """从 request.args 提取查询参数并通过 APIModel 校验"""
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 class LogQueryService:
@@ -30,62 +36,45 @@ class LogQueryService:
     @staticmethod
     def get_logs():
         try:
-            page = request.args.get('page', 1, type=int)
-            per_page = request.args.get('per_page', 50, type=int)
-            level = request.args.get('level')
-            module = request.args.get('module')
-            category = request.args.get('category')
-            keyword = request.args.get('keyword')
-            content_include = request.args.get('content_include')
-            content_exclude = request.args.get('content_exclude')
-            start_time = request.args.get('start_time')
-            end_time = request.args.get('end_time')
-            mark = request.args.get('mark') # 'true' or 'false'
-            device_id = request.args.get('device_id', type=int)
-            task_id = request.args.get('task_id', type=int)
-            api_id = request.args.get('api_id', type=int)
-            test_case_id = request.args.get('test_case_id')
-            # 处理额外的参数，避免传递到查询中
-            thread_id = request.args.get('thread_id')
-            algorithm_type = request.args.get('algorithm_type')
+            query = _parse_query_params(LogListQuery)
 
             # 通过 gRPC 查询 Log 列表（task_id/level/日期由服务端过滤，其余条件客户端过滤）
             from api_gateway.infrastructure.grpc_proxies import task_data_service
             resp = task_data_service.list_logs(
-                task_id=task_id,
-                level=level.split(',')[0].strip() if level else None,
-                page=page,
-                per_page=per_page,
-                start_date=start_time,
-                end_date=end_time,
+                task_id=query.task_id,
+                level=query.level.split(',')[0].strip() if query.level else None,
+                page=query.page,
+                per_page=query.per_page,
+                start_date=query.start_time,
+                end_date=query.end_time,
             )
             logs = resp.get('items') or []
             total = resp.get('total', 0)
 
             # 客户端过滤：gRPC ListLogs 仅支持 task_id/level/日期，其余条件在此过滤
             def _match(log):
-                if module and (log.get('module') or '').lower() != module.lower():
+                if query.module and (log.get('module') or '').lower() != query.module.lower():
                     return False
-                if category and category != 'all' and (log.get('category') or '').lower() != category.lower():
+                if query.category and query.category != 'all' and (log.get('category') or '').lower() != query.category.lower():
                     return False
-                if mark and log.get('mark') != mark:
+                if query.mark and log.get('mark') != query.mark:
                     return False
-                if device_id and log.get('device_id') != device_id:
+                if query.device_id and log.get('device_id') != query.device_id:
                     return False
-                if api_id and log.get('api_id') != api_id:
+                if query.api_id and log.get('api_id') != query.api_id:
                     return False
-                if test_case_id and log.get('test_case_id') != test_case_id:
+                if query.test_case_id and log.get('test_case_id') != query.test_case_id:
                     return False
-                if thread_id and thread_id not in (log.get('thread_id') or ''):
+                if query.thread_id and query.thread_id not in (log.get('thread_id') or ''):
                     return False
                 content = log.get('content') or ''
-                if keyword and keyword not in content:
+                if query.keyword and query.keyword not in content:
                     return False
-                if content_include and content_include not in content:
+                if query.content_include and query.content_include not in content:
                     return False
-                if content_exclude and content_exclude in content:
+                if query.content_exclude and query.content_exclude in content:
                     return False
-                if algorithm_type and algorithm_type != 'all' and log.get('algorithm_type') != algorithm_type:
+                if query.algorithm_type and query.algorithm_type != 'all' and log.get('algorithm_type') != query.algorithm_type:
                     return False
                 return True
 
@@ -116,9 +105,9 @@ class LogQueryService:
                 LogListData(
                     items=data,
                     total=total,
-                    page=page,
-                    per_page=per_page,
-                    pages=(total + per_page - 1) // per_page if per_page else 1,
+                    page=query.page,
+                    per_page=query.per_page,
+                    pages=(total + query.per_page - 1) // query.per_page if query.per_page else 1,
                 )
             )
         except Exception as e:
@@ -131,35 +120,24 @@ class LogQueryService:
     @staticmethod
     def get_stats():
         try:
-            start_time = request.args.get('start_time')
-            end_time = request.args.get('end_time')
-            level = request.args.get('level')
-            module = request.args.get('module')
-            category = request.args.get('category')
-            keyword = request.args.get('keyword')
-            mark = request.args.get('mark')
-            device_id = request.args.get('device_id', type=int)
-            task_id = request.args.get('task_id', type=int)
-            content_include = request.args.get('content_include')
-            content_exclude = request.args.get('content_exclude')
-            algorithm_type = request.args.get('algorithm_type')
+            query = _parse_query_params(LogStatsQuery)
 
             # P0-3: 通过 gRPC 聚合查询日志统计
             from api_gateway.infrastructure.grpc_proxies import task_data_service
             from api_gateway.schemas.log import LogStatsData
             stats_dict = task_data_service.get_log_stats(
-                level=level,
-                module=module if module != 'all' else None,
-                category=category if category != 'all' else None,
-                mark=mark,
-                device_id=device_id,
-                task_id=task_id,
-                keyword=keyword,
-                content_include=content_include,
-                content_exclude=content_exclude,
-                start_time=start_time,
-                end_time=end_time,
-                algorithm_type=algorithm_type if algorithm_type != 'all' else None,
+                level=query.level,
+                module=query.module if query.module != 'all' else None,
+                category=query.category if query.category != 'all' else None,
+                mark=query.mark,
+                device_id=query.device_id,
+                task_id=query.task_id,
+                keyword=query.keyword,
+                content_include=query.content_include,
+                content_exclude=query.content_exclude,
+                start_time=query.start_time,
+                end_time=query.end_time,
+                algorithm_type=query.algorithm_type if query.algorithm_type != 'all' else None,
             )
 
             log_stats = LogStatsData(
@@ -216,10 +194,10 @@ class LogQueryService:
             new_count=len(data_list),
             last_id=data_list[-1].id if data_list else req.last_id,
         )
-        payload_dict = payload.model_dump(by_alias=True, exclude_none=True)
-        payload_dict['dbMaxId'] = db_max_id
+        payload_dict = payload.model_dump(exclude_none=True)
+        payload_dict['db_max_id'] = db_max_id
         if req.last_id > db_max_id:
-            payload_dict['resetRequired'] = True
+            payload_dict['reset_required'] = True
         return success_response(payload_dict)
 
     # 导出日志
@@ -227,15 +205,14 @@ class LogQueryService:
     def export_logs():
         import os
         req = LogExportRequest.model_validate(request.get_json() or {})
+        query = _parse_query_params(LogExportQuery)
 
         # P0-3: 通过 gRPC 查询日志（按 id 列表或条件）
         from api_gateway.infrastructure.grpc_proxies import task_data_service
-        level = request.args.get('level')
-        module = request.args.get('module')
         resp = task_data_service.get_logs_for_export(
             log_ids=req.log_ids if req.log_ids else None,
-            level=level,
-            module=module,
+            level=query.level,
+            module=query.module,
         )
         logs = resp.get('items', [])
 
@@ -311,10 +288,9 @@ class LogQueryService:
     # 获取归档日志
     @staticmethod
     def get_archived_logs():
-        task_id = request.args.get('task_id', type=int)
-        test_case_id = request.args.get('test_case_id')
+        query = _parse_query_params(LogArchiveQuery)
 
-        if not task_id and not test_case_id:
+        if not query.task_id and not query.test_case_id:
             return error_response("需要提供 task_id 或 test_case_id 参数", code=400)
 
         try:
@@ -334,14 +310,14 @@ class LogQueryService:
                         continue
                 return result
 
-            if task_id:
-                if test_case_id:
+            if query.task_id:
+                if query.test_case_id:
                     # tasks/{task_id}/{case_id}/*.json
-                    prefix = f'tasks/{task_id}/{test_case_id}/'
+                    prefix = f'tasks/{query.task_id}/{query.test_case_id}/'
                     logs.extend(load_oss_json_files(prefix))
                 else:
                     # tasks/{task_id}/*.json + tasks/{task_id}/*/*.json
-                    prefix = f'tasks/{task_id}/'
+                    prefix = f'tasks/{query.task_id}/'
                     keys = storage.list_objects('archives', prefix=prefix)
                     for key in keys:
                         if not key.endswith('.json'):
@@ -352,8 +328,8 @@ class LogQueryService:
                         except Exception:
                             continue
 
-            if test_case_id and not task_id:
-                prefix = f'cases/{test_case_id}/'
+            if query.test_case_id and not query.task_id:
+                prefix = f'cases/{query.test_case_id}/'
                 logs.extend(load_oss_json_files(prefix))
 
             logs.sort(key=lambda x: x.get('time', '') or '', reverse=True)

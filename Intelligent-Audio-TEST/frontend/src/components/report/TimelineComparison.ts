@@ -39,7 +39,7 @@ export function useTimelineComparison(props) {
       const fields = (fm[fieldType] || []).filter(
         f => ['rttm', 'stm', 'json'].includes(f.param_type)
       )
-      return fields.map(f => f.param_code || f.source_param).filter(Boolean)
+      return fields.map(f => f.paramCode || f.param_code || f.source_param || f.sourceParam).filter(Boolean);
     }
 
     const timelineTypes = ['rttm', 'stm', 'json']

@@ -17,14 +17,14 @@ export function useCaseCategoryComparison(props) {
   // Data
   const getCategories = (data) => {
     if (!data) return []
-    const categories = data.caseCategories || data.summary?.caseCategories || []
+    const categories = data.case_categories || data.summary?.case_categories || []
     if (!Array.isArray(categories)) return []
     return categories.map(cat => typeof cat === 'object' ? cat.name : cat)
   }
 
   const getTags = (data) => {
     if (!data) return []
-    const tags = data.allCaseTags || data.summary?.allCaseTags || []
+    const tags = data.all_case_tags || data.summary?.all_case_tags || []
     if (!Array.isArray(tags)) return []
     return tags.map(tag => typeof tag === 'object' ? tag.name : tag)
   }
@@ -80,7 +80,7 @@ export function useCaseCategoryComparison(props) {
   })
 
   // Metrics configuration
-  const allMetrics = ref(props.reportData.allMetrics || props.reportData.summary?.allMetrics || [])
+  const allMetrics = ref(props.reportData.all_metrics || props.reportData.summary?.all_metrics || [])
 
   const selectedMetrics = ref([])
 
@@ -110,7 +110,7 @@ export function useCaseCategoryComparison(props) {
     const list = Array.isArray(allMetrics.value) ? allMetrics.value : []
     list.forEach(m => {
       if (!m || !m.name) return
-      const dp = m.decimalPlaces ?? m.decimal_places
+      const dp = m.decimal_places
       if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
     })
     return map
@@ -154,7 +154,7 @@ export function useCaseCategoryComparison(props) {
     console.log('[CaseCategoryComparisonComponent] reportData变化:', newReportData);
     allAvailableCategories.value = getCategories(newReportData)
     allAvailableTags.value = getTags(newReportData)
-    allMetrics.value = newReportData.allMetrics || newReportData.summary?.allMetrics || []
+    allMetrics.value = newReportData.all_metrics || newReportData.summary?.all_metrics || []
     metricData.value = extractInitialMetricData(newReportData);
     devices.value = getValidResources(newReportData);
 
@@ -203,7 +203,7 @@ export function useCaseCategoryComparison(props) {
 
     const report = props.reportData || {}
     const summary = report.summary || report
-    const headers = summary.resourceHeaders || summary.resource_headers || report.resourceHeaders || report.resource_headers || []
+    const headers = summary.resource_headers || report.resource_headers || []
     if (Array.isArray(headers)) {
       const target = headers.find(h => h && (h.key === resourceKey || h.resource === resourceKey))
       if (target) {
@@ -236,7 +236,7 @@ export function useCaseCategoryComparison(props) {
 
     const report = props.reportData || {}
     const summary = report.summary || report
-    const cats = summary.caseCategories || summary.case_categories || report.caseCategories || report.case_categories || []
+    const cats = summary.case_categories || report.case_categories || []
     if (Array.isArray(cats)) {
       const target = cats.find(c => c && typeof c === 'object' && c.name === oldName)
       if (target) target.name = next
@@ -307,9 +307,7 @@ export function useCaseCategoryComparison(props) {
 
       const reportData = props.reportData || {}
       const taskId =
-        reportData.taskId ||
         reportData.task_id ||
-        reportData.summary?.taskId ||
         reportData.summary?.task_id
 
       if (taskId) {
@@ -323,7 +321,7 @@ export function useCaseCategoryComparison(props) {
         return
       }
 
-      const reportId = reportData.id || reportData.reportId || reportData.report_id
+      const reportId = reportData.id || reportData.report_id
       if (reportId) {
         const body = {
           page: 1,

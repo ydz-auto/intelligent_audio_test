@@ -59,6 +59,16 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     return (storeRefs!.tagViewData.value || {}) as any
   })
 
+  const tagViewPagination = computed(() => {
+    if (testType === 'e2e') return (e2eTest!.tagViewPagination.value || {}) as any
+    return (storeRefs!.tagViewPagination.value || {}) as any
+  })
+
+  const tagViewLoading = computed(() => {
+    if (testType === 'e2e') return !!e2eTest!.tagViewLoading.value
+    return !!storeRefs!.tagViewLoading.value
+  })
+
   const isLoading = computed(() => {
     if (testType === 'e2e') return !!e2eTest!.isLoading.value
     return !!storeRefs!.isLoading.value
@@ -87,13 +97,41 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     }
   }
 
+  /** 统一的 loadMoreTagView（标签视图后端分页追加加载） */
+  const loadMoreTagView = async () => {
+    if (testType === 'e2e') {
+      await e2eTest!.loadMoreTagView()
+    } else {
+      await testCaseStore.loadMoreTagView()
+    }
+  }
+
   /** 标签筛选变化（仅 testType 不同） */
-  const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string }) => {
+  const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     fetchTagView({
       keyword: filters.keyword,
       testType,
       algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
+      dimensionId: filters.dimensionId,
     })
+  }
+
+  /** 分组视图筛选变化时重新请求数据 */
+  const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
+    if (testType === 'e2e') {
+      e2eTest!.initializeE2eTests(
+        filters.algorithmType || selectedAlgorithmType.value || undefined,
+        filters.keyword,
+        filters.dimensionId
+      )
+    } else {
+      testCaseStore.fetchTestCases({
+        keyword: filters.keyword,
+        testType,
+        algorithmType: filters.algorithmType || selectedAlgorithmType.value || undefined,
+        dimensionId: filters.dimensionId,
+      })
+    }
   }
 
   /** 删除分组 */
@@ -146,21 +184,21 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
       editingTestCase.value = testCase
 
       const normalized = normalizeTestCaseConfig(testCase.config || {})
-      const testCaseType = (testCase as any).test_type || (testCase as any).testType || 'e2e'
+      const testCaseType = (testCase as any).test_type || 'e2e'
 
       formData.value = {
         id: testCase.id,
         name: testCase.name || '',
-        group: testCase.groupName || '',
-        groupId: testCase.groupId || '',
+        group: testCase.group_name || '',
+        groupId: testCase.group_id || '',
         description: testCase.description || '',
         tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
         tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
         config: normalized as TestCaseFormData['config'],
-        algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
+        algorithmType: (testCase as any).algorithm_type || '',
         test_type: testCaseType as 'api' | 'e2e',
-        algorithm_params: Array.isArray((testCase as any).algorithmParams || (testCase as any).algorithm_params)
-          ? ((testCase as any).algorithmParams || (testCase as any).algorithm_params)
+        algorithm_params: Array.isArray((testCase as any).algorithm_params)
+          ? ((testCase as any).algorithm_params)
           : [],
       } as TestCaseFormData
 
@@ -204,12 +242,16 @@ export function useTestCaseOps(options: UseTestCaseOpsOptions) {
     testCaseGroups,
     tags,
     tagViewData,
+    tagViewPagination,
+    tagViewLoading,
     isLoading,
     casePaginationInfo,
     e2eTestCases: computed(() => e2eTest?.e2eTestCases.value || []),
     initializeTestCases,
     fetchTagView,
+    loadMoreTagView,
     handleTagFilterChange,
+    handleGroupFilterChange,
     handleDeleteGroup,
     handleDeleteTestCase,
     handleSaveModal,

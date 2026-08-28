@@ -15,3 +15,5 @@ class Config(BaseConfig):
     PORT = int(os.environ.get('PORT', 5006))
     GRPC_PORT = int(os.environ.get('GRPC_PORT', 50068))
     SERVICE_NAME = 'report_service'
+    # 静态文件根路径，用于 audio_file 路径规范化
+    STATIC_BASE_PATH = os.environ.get('STATIC_BASE_PATH', '')

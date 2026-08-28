@@ -48,7 +48,7 @@ class AudioTestCaseCreationService:
                                     dimensions_data=None, algorithm_type=None,
                                     algorithm_params=None, rounds_config=None,
                                     inherit_tags=True, raw_annotations=None,
-                                    noise_device_ids=None):
+                                    noise_device_ids=None, case_background_noise=None):
         """从音频创建测试用例
 
         通过 ACL 仓储调用 gRPC TestCaseConfigService 创建测试用例（含分组/标签/参考参数），
@@ -80,7 +80,20 @@ class AudioTestCaseCreationService:
                     "但未找到可用设备。请先在设备管理中配置播放设备。"
                 )
 
-        base_name = f"测试用例_{audio.name}"
+        # 秒传场景下 audio.name 可能是旧的改名（如 "1.wav"），
+        # 优先用 rounds_config 里前端传的 audio_name 作为用例名
+        tc_audio_name = audio.name
+        if rounds_config:
+            for r in rounds_config:
+                if not isinstance(r, dict):
+                    continue
+                for a in r.get('audios', []):
+                    if isinstance(a, dict) and a.get('audio_name'):
+                        tc_audio_name = a['audio_name']
+                        break
+                if tc_audio_name != audio.name:
+                    break
+        base_name = f"测试用例_{tc_audio_name}"
         if not test_types:
             test_types = ['api']
 
@@ -115,9 +128,17 @@ class AudioTestCaseCreationService:
                 rounds_resolved, raw_annotations, algorithm_type, tt, algo_params_col
             )
 
+            # 解析 segment 级背景噪声和干扰人：文件名→audio_id，设备名→device_ids/playback_device_id
+            self._resolve_bg_noise_and_interferers_ids(rounds_resolved)
+
+            # case 级背景噪声（rounds 外层）ID 解析
+            if case_background_noise and isinstance(case_background_noise, dict):
+                self._resolve_audio_field(case_background_noise)
+                self._resolve_device_fields(case_background_noise)
+
             config = self._build_config_and_apply_dimensions(
                 audio, rounds_resolved, dimensions_data, tt, noise_spl, noise_audio_id,
-                noise_device_ids
+                noise_device_ids, case_background_noise
             )
 
             # 通过 ACL 仓储创建测试用例
@@ -199,7 +220,13 @@ class AudioTestCaseCreationService:
             if round_algorithm_params:
                 algo_params_col = [{'round_number': 1, 'params': round_algorithm_params}]
 
+        # 秒传场景下已有音频的 name 可能与前端传的 audio_name 不一致（之前上传时可能改名），
+        # 所以额外用 original_filename 和 md5 兜底匹配
         audio_name_for_match = audio.name
+        audio_original_for_match = getattr(audio, 'original_filename', None) or audio.name
+        audio_md5_for_match = getattr(audio, 'md5', None) or ''
+        # 预查所有 audio_name → audio_id 映射（避免循环里重复查库）
+        # 按 name / original_filename / md5 三重匹配
         audio_name_to_id = {}
         for round_item in rounds_resolved:
             if not isinstance(round_item, dict):
@@ -209,9 +236,12 @@ class AudioTestCaseCreationService:
                     continue
                 item_name = audio_item.get('audio_name') or ''
                 if item_name and not audio_item.get('audio_id') and item_name not in audio_name_to_id:
+                    # 查库：按文件名找已入库的音频
                     found = self.repo.find_audio_by_name(item_name)
                     if found:
                         audio_name_to_id[item_name] = found.id
+        # 第一轮：按 name / original_filename / md5 / 预查映射 匹配
+        unmatched_items = []
         for round_item in rounds_resolved:
             if not isinstance(round_item, dict):
                 continue
@@ -225,10 +255,21 @@ class AudioTestCaseCreationService:
                 if audio_item.get('audio_id'):
                     continue
                 item_name = audio_item.get('audio_name') or ''
-                if item_name == audio_name_for_match or not item_name:
+                # 优先用当前音频匹配（name / original_filename / md5 三重匹配）
+                if (item_name == audio_name_for_match
+                        or item_name == audio_original_for_match
+                        or (audio_md5_for_match and item_name == audio_md5_for_match)
+                        or not item_name):
                     audio_item['audio_id'] = audio_id
+                # 其次用预查映射补全
                 elif item_name in audio_name_to_id:
                     audio_item['audio_id'] = audio_name_to_id[item_name]
+                else:
+                    unmatched_items.append(audio_item)
+        # 第二轮兜底：剩余唯一未匹配项直接用当前 audio_id
+        # （秒传场景下当前 audio_id 就是已有音频 ID，无论单轮多轮都适用）
+        if len(unmatched_items) == 1:
+            unmatched_items[0]['audio_id'] = audio_id
 
         return rounds_resolved, algo_params_col
 
@@ -322,6 +363,9 @@ class AudioTestCaseCreationService:
         if not scoped_params:
             return
 
+        # 预查音频文件名→ID、设备名→ID 映射，用于 interferers 的 ID 解析
+        audio_name_to_id_map, dev_name_to_id = self._build_name_to_id_maps()
+
         for round_item in rounds_resolved:
             if not isinstance(round_item, dict):
                 continue
@@ -369,10 +413,26 @@ class AudioTestCaseCreationService:
                                     _get_seg_field(seg, field_key) for seg in arr
                                     if isinstance(seg, dict) and _get_seg_field(seg, field_key) is not None
                                 ]
+                                # 过滤掉空数组/空字符串（如 interferers: [] 不应算作有效值）
+                                collected = [c for c in collected if not (isinstance(c, (list, str, dict)) and len(c) == 0)]
                                 if collected:
                                     value = collected[0] if len(collected) == 1 else collected
                                     break
                 if value is not None:
+                    # 如果是 interferers 字段，对提取出的每个干扰人做 ID 解析
+                    # （audio 文件名→audio_id, playback_device_name→playback_device_id）
+                    if param_code == 'interferers' and isinstance(value, list):
+                        for _itf in value:
+                            if not isinstance(_itf, dict):
+                                continue
+                            if not _itf.get('audio_id'):
+                                _fn = _itf.get('audio') or _itf.get('audio_name')
+                                if _fn and _fn in audio_name_to_id_map:
+                                    _itf['audio_id'] = audio_name_to_id_map[_fn]
+                            if not _itf.get('playback_device_id'):
+                                _dn = _itf.get('playback_device_name')
+                                if _dn and _dn in dev_name_to_id:
+                                    _itf['playback_device_id'] = dev_name_to_id[_dn]
                     extracted_params.append({'field_code': param_code, 'field_value': value})
 
             round_number = round_item.get('round_number', 1)
@@ -390,15 +450,162 @@ class AudioTestCaseCreationService:
                     round_ap_entry.setdefault('params', []).append(p)
                     existing_codes.add(p['field_code'])
 
+    def _build_name_to_id_maps(self):
+        """预查音频文件名→ID、设备名→ID 映射（用于 interferers/background_noise 的 ID 解析）。
+
+        通过 ACL 仓储获取设备列表，避免直接 import PO。
+        音频列表通过仓储分页获取前 1000 条构建映射，超出部分逐个查库兜底。
+        """
+        # 设备名→ID 映射
+        dev_name_to_id = {}
+        devices = self._playback_acl.list_playback_devices()
+        for dev in devices:
+            if not dev.get('is_deleted'):
+                dev_name_to_id.setdefault(dev.get('name'), dev.get('id'))
+        # 音频文件名→ID 映射（通过仓储批量查库，取前 1000 条）
+        audio_name_to_id_map = {}
+        try:
+            pagination = self.repo.list_audios({'page': 1, 'per_page': 1000})
+            items = getattr(pagination, 'items', []) or []
+            for _a in items:
+                _name = getattr(_a, 'name', None)
+                if _name:
+                    audio_name_to_id_map.setdefault(_name, getattr(_a, 'id', None))
+                _orig = getattr(_a, 'original_filename', None)
+                if _orig:
+                    audio_name_to_id_map.setdefault(_orig, getattr(_a, 'id', None))
+        except Exception:
+            pass
+        return audio_name_to_id_map, dev_name_to_id
+
+    def _resolve_audio_field(self, payload, audio_name_to_id_map=None):
+        """把 payload 里的 audio(文件名)/audio_name 转成 audio_id。"""
+        if not isinstance(payload, dict):
+            return
+        if not payload.get('audio_id'):
+            _fn = payload.get('audio') or payload.get('audio_name')
+            if _fn:
+                # 优先用预查映射
+                if audio_name_to_id_map and _fn in audio_name_to_id_map:
+                    payload['audio_id'] = audio_name_to_id_map[_fn]
+                else:
+                    # 逐个查库兜底
+                    try:
+                        found = self.repo.find_audio_by_name(_fn)
+                        if found:
+                            payload['audio_id'] = getattr(found, 'id', None)
+                    except Exception:
+                        pass
+
+    def _resolve_device_fields(self, payload, dev_name_to_id=None):
+        """把 payload 里的 playback_device_name(s)/device_names 转成 device_ids。"""
+        if not isinstance(payload, dict):
+            return
+        if not payload.get('device_ids'):
+            names = (
+                payload.get('playback_device_names')
+                or payload.get('device_names')
+            )
+            if names and isinstance(names, list):
+                ids = []
+                for n in names:
+                    if not n:
+                        continue
+                    # 优先用预查映射
+                    if dev_name_to_id and n in dev_name_to_id:
+                        ids.append(dev_name_to_id[n])
+                    else:
+                        # 逐个查库兜底
+                        try:
+                            dev = self._playback_acl.find_playback_device_by_name(n)
+                            if dev:
+                                ids.append(dev.get('id'))
+                        except Exception:
+                            pass
+                if ids:
+                    payload['device_ids'] = ids
+            else:
+                single = payload.get('playback_device_name')
+                if single:
+                    if dev_name_to_id and single in dev_name_to_id:
+                        payload['device_ids'] = [dev_name_to_id[single]]
+                    else:
+                        try:
+                            dev = self._playback_acl.find_playback_device_by_name(single)
+                            if dev:
+                                payload['device_ids'] = [dev.get('id')]
+                        except Exception:
+                            pass
+
+    def _resolve_bg_noise_and_interferers_ids(self, rounds_resolved):
+        """解析 segment 级背景噪声和干扰人：文件名→audio_id，设备名→device_ids/playback_device_id。
+
+        无论 raw_annotations 是否存在都执行（前端可能已直接在 rounds_config 中传入）。
+        """
+        audio_name_to_id_map, dev_name_to_id = self._build_name_to_id_maps()
+
+        for round_item in rounds_resolved:
+            if not isinstance(round_item, dict):
+                continue
+            # 轮次级背景噪声（round 级）
+            _r_bg = round_item.get('background_noise')
+            if isinstance(_r_bg, dict):
+                self._resolve_audio_field(_r_bg, audio_name_to_id_map)
+                self._resolve_device_fields(_r_bg, dev_name_to_id)
+            for audio_item in round_item.get('audios', []):
+                if not isinstance(audio_item, dict):
+                    continue
+                # segment 级背景噪声
+                _seg_bg = audio_item.get('background_noise')
+                if isinstance(_seg_bg, dict):
+                    self._resolve_audio_field(_seg_bg, audio_name_to_id_map)
+                    self._resolve_device_fields(_seg_bg, dev_name_to_id)
+                # segment 级干扰人：audio→audio_id，playback_device_name→playback_device_id
+                _interferers = audio_item.get('interferers')
+                if isinstance(_interferers, list):
+                    for _itf in _interferers:
+                        if not isinstance(_itf, dict):
+                            continue
+                        # audio 文件名 → audio_id
+                        if not _itf.get('audio_id'):
+                            _fn = _itf.get('audio') or _itf.get('audio_name')
+                            if _fn:
+                                if _fn in audio_name_to_id_map:
+                                    _itf['audio_id'] = audio_name_to_id_map[_fn]
+                                else:
+                                    try:
+                                        found = self.repo.find_audio_by_name(_fn)
+                                        if found:
+                                            _itf['audio_id'] = getattr(found, 'id', None)
+                                    except Exception:
+                                        pass
+                        # playback_device_name → playback_device_id
+                        if not _itf.get('playback_device_id'):
+                            _dn = _itf.get('playback_device_name')
+                            if _dn:
+                                if _dn in dev_name_to_id:
+                                    _itf['playback_device_id'] = dev_name_to_id[_dn]
+                                else:
+                                    try:
+                                        dev = self._playback_acl.find_playback_device_by_name(_dn)
+                                        if dev:
+                                            _itf['playback_device_id'] = dev.get('id')
+                                    except Exception:
+                                        pass
+
     def _build_config_and_apply_dimensions(self, audio, rounds_resolved, dimensions_data, tt,
-                                            noise_spl, noise_audio_id, noise_device_ids=None):
+                                            noise_spl, noise_audio_id, noise_device_ids=None,
+                                            case_background_noise=None):
         """构建 config 字典，应用噪声配置和评估维度"""
         config = {
             'source_audio': audio.name,
             'auto_generated': True,
             'rounds': rounds_resolved,
         }
-        if (noise_spl and noise_spl > 0) or noise_audio_id:
+        # 噪声配置：case 级背景噪声（rounds 外层）优先，其次顶层 noise_audio_id/noise_spl
+        if case_background_noise:
+            config['background_noise'] = case_background_noise
+        elif (noise_spl and noise_spl > 0) or noise_audio_id:
             config['background_noise'] = {
                 'audio_id': noise_audio_id,
                 'spl': noise_spl if noise_spl else 60.0,
@@ -513,6 +720,9 @@ class AudioTestCaseCreationService:
                     rounds = config.get('rounds', [])
                     algo_params_col = tc.get('algorithm_params') or []
 
+                    # 预查音频文件名→ID、设备名→ID 映射，用于 interferers 的 ID 解析
+                    _audio_name_to_id_map, _dev_name_to_id = self._build_name_to_id_maps()
+
                     for round_item in rounds:
                         if not isinstance(round_item, dict):
                             continue
@@ -578,10 +788,26 @@ class AudioTestCaseCreationService:
                                                 _get_seg_field(seg, field_key) for seg in arr
                                                 if isinstance(seg, dict) and _get_seg_field(seg, field_key) is not None
                                             ]
+                                            # 过滤掉空数组/空字符串（如 interferers: [] 不应算作有效值）
+                                            collected = [c for c in collected if not (isinstance(c, (list, str, dict)) and len(c) == 0)]
                                             if collected:
                                                 value = collected[0] if len(collected) == 1 else collected
                                                 break
                             if value is not None:
+                                # 如果是 interferers 字段，对提取出的每个干扰人做 ID 解析
+                                # （audio 文件名→audio_id, playback_device_name→playback_device_id）
+                                if param_code == 'interferers' and isinstance(value, list):
+                                    for _itf in value:
+                                        if not isinstance(_itf, dict):
+                                            continue
+                                        if not _itf.get('audio_id'):
+                                            _fn = _itf.get('audio') or _itf.get('audio_name')
+                                            if _fn and _fn in _audio_name_to_id_map:
+                                                _itf['audio_id'] = _audio_name_to_id_map[_fn]
+                                        if not _itf.get('playback_device_id'):
+                                            _dn = _itf.get('playback_device_name')
+                                            if _dn and _dn in _dev_name_to_id:
+                                                _itf['playback_device_id'] = _dev_name_to_id[_dn]
                                 extracted_params.append({
                                     'field_code': param_code,
                                     'field_value': value

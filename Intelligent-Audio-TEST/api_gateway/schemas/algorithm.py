@@ -419,7 +419,7 @@ class EvaluationDimensionParamCreate(APIModel):
     param_code: str = Field(..., min_length=1, max_length=50, description='参数代码')
     param_name: Optional[str] = Field(None, max_length=100, description='参数显示名称')
     label: Optional[str] = Field(None, max_length=100, description='字段显示名称')
-    field_type: str = Field(default='text', description='字段类型：text, audio, number, boolean, json')
+    field_type: str = Field(default='text', description='字段类型：text, audio, number, boolean, json, timestamp')
     param_direction: str = Field(default='input', description='参数方向：input, output')
     field_path: Optional[str] = Field(None, description='结果提取路径（output专用）')
     agg_role: Optional[str] = Field(None, description='聚合角色（output专用）：numerator/denominator/value')
@@ -699,3 +699,12 @@ class AlgorithmMappingListQuery(APIModel):
     algorithm_type: Optional[str] = Field(None)
     source_type: Optional[str] = Field(None)
     dimension_id: Optional[int] = Field(None)
+
+
+class AlgorithmCaseParamListQuery(APIModel):
+    algorithm_type: Optional[str] = Field(None)
+    scope: Optional[str] = Field(None)
+
+
+class AlgorithmReferenceParamListQuery(APIModel):
+    algorithm_type: Optional[str] = Field(None)

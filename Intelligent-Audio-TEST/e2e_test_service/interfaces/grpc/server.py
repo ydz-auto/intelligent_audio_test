@@ -16,12 +16,14 @@ import grpc
 
 from shared.proto import e2e_test_service_pb2_grpc as e2e_grpc
 from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
+from shared.utils.config_manager import config_manager
+from shared.config.service_ports import E2E_TEST_GRPC_PORT
 from e2e_test_service.interfaces.grpc.servicers import ExecutionServiceServicer
 
 logger = logging.getLogger(__name__)
 
 
-def start_grpc_server(port=50051):
+def start_grpc_server(port=E2E_TEST_GRPC_PORT):
     """启动 e2e_test_service 的 gRPC server
 
     Args:
@@ -30,8 +32,10 @@ def start_grpc_server(port=50051):
     Returns:
         grpc.Server: 已启动的 server 实例，调用方持有引用以防被 GC 回收
     """
+    # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.e2e_test_service_workers
+    _max_workers = config_manager.get_value('grpc', 'e2e_test_service_workers', 5)
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=5),
+        futures.ThreadPoolExecutor(max_workers=_max_workers),
         interceptors=[server_db_scope_interceptor, server_log_interceptor],
     )
     e2e_grpc.add_ExecutionServiceServicer_to_server(ExecutionServiceServicer(), server)

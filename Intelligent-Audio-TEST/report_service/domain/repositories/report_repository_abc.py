@@ -209,3 +209,14 @@ class ReportRepositoryABC(ABC):
         Returns:
             list[dict]: 每条含 report_id/name/created_at/pass_rate/duration
         """
+
+    @abstractmethod
+    def hard_delete(self, report_id: int) -> bool:
+        """硬删除报告及其所有子表记录。
+
+        级联删除 ReportSummary、ReportSummaryMeta、ReportRawData、
+        ReportCase、ReportMetricStats、ReportComparisonMatrix。
+
+        Returns:
+            True 表示删除成功，False 表示报告不存在。
+        """

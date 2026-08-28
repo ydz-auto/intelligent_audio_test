@@ -1330,6 +1330,11 @@ class TestCaseConfigServiceStub:
                 request_serializer=task__service__pb2.GetTestCaseRefParamsRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
                 _registered_method=True)
+        self.FetchCaseIds = channel.unary_unary(
+                '/task_service.TestCaseConfigService/FetchCaseIds',
+                request_serializer=task__service__pb2.FetchCaseIdsRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TestCaseConfigResponse.FromString,
+                _registered_method=True)
 
 
 class TestCaseConfigServiceServicer:
@@ -1404,6 +1409,13 @@ class TestCaseConfigServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def FetchCaseIds(self, request, context):
+        """按筛选条件返回全量用例ID（不分页）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_TestCaseConfigServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -1460,6 +1472,11 @@ def add_TestCaseConfigServiceServicer_to_server(servicer, server):
             'GetTestCaseRefParams': grpc.unary_unary_rpc_method_handler(
                     servicer.GetTestCaseRefParams,
                     request_deserializer=task__service__pb2.GetTestCaseRefParamsRequest.FromString,
+                    response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
+            ),
+            'FetchCaseIds': grpc.unary_unary_rpc_method_handler(
+                    servicer.FetchCaseIds,
+                    request_deserializer=task__service__pb2.FetchCaseIdsRequest.FromString,
                     response_serializer=task__service__pb2.TestCaseConfigResponse.SerializeToString,
             ),
     }
@@ -1760,6 +1777,33 @@ class TestCaseConfigService:
             target,
             '/task_service.TestCaseConfigService/GetTestCaseRefParams',
             task__service__pb2.GetTestCaseRefParamsRequest.SerializeToString,
+            task__service__pb2.TestCaseConfigResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def FetchCaseIds(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TestCaseConfigService/FetchCaseIds',
+            task__service__pb2.FetchCaseIdsRequest.SerializeToString,
             task__service__pb2.TestCaseConfigResponse.FromString,
             options,
             channel_credentials,
@@ -4179,6 +4223,11 @@ class TaskDataServiceStub:
                 request_serializer=task__service__pb2.UpdateTestResultAlgorithmResultRequest.SerializeToString,
                 response_deserializer=task__service__pb2.TaskDataResponse.FromString,
                 _registered_method=True)
+        self.UpdateTestResultData = channel.unary_unary(
+                '/task_service.TaskDataService/UpdateTestResultData',
+                request_serializer=task__service__pb2.UpdateTestResultDataRequest.SerializeToString,
+                response_deserializer=task__service__pb2.TaskDataResponse.FromString,
+                _registered_method=True)
         self.GetTestResultsByTaskAndCase = channel.unary_unary(
                 '/task_service.TaskDataService/GetTestResultsByTaskAndCase',
                 request_serializer=task__service__pb2.GetTestResultsByTaskAndCaseRequest.SerializeToString,
@@ -4353,6 +4402,13 @@ class TaskDataServiceServicer:
 
     def UpdateTestResultAlgorithmResult(self, request, context):
         """更新 TestResult 的 algorithm_result（evaluation_service 多轮聚合后调用）
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateTestResultData(self, request, context):
+        """更新 TestResult 的 result_data 和 result_data_path（evaluation_service 预提取 algorithm_results 快照时调用）
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -4559,6 +4615,11 @@ def add_TaskDataServiceServicer_to_server(servicer, server):
             'UpdateTestResultAlgorithmResult': grpc.unary_unary_rpc_method_handler(
                     servicer.UpdateTestResultAlgorithmResult,
                     request_deserializer=task__service__pb2.UpdateTestResultAlgorithmResultRequest.FromString,
+                    response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
+            ),
+            'UpdateTestResultData': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateTestResultData,
+                    request_deserializer=task__service__pb2.UpdateTestResultDataRequest.FromString,
                     response_serializer=task__service__pb2.TaskDataResponse.SerializeToString,
             ),
             'GetTestResultsByTaskAndCase': grpc.unary_unary_rpc_method_handler(
@@ -4895,6 +4956,33 @@ class TaskDataService:
             target,
             '/task_service.TaskDataService/UpdateTestResultAlgorithmResult',
             task__service__pb2.UpdateTestResultAlgorithmResultRequest.SerializeToString,
+            task__service__pb2.TaskDataResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateTestResultData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/task_service.TaskDataService/UpdateTestResultData',
+            task__service__pb2.UpdateTestResultDataRequest.SerializeToString,
             task__service__pb2.TaskDataResponse.FromString,
             options,
             channel_credentials,

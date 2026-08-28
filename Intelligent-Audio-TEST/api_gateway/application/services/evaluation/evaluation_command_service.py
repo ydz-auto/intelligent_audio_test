@@ -31,7 +31,13 @@ from api_gateway.schemas.evaluation import (
     TaskReevaluateResult,
     ScoreCalculateInput,
     ScoreData,
+    DimensionExportQuery,
 )
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 _evaluation_acl = EvaluationConfigAclRepositoryImpl()
@@ -230,8 +236,9 @@ class EvaluationCommandService:
     # 导出到文件
     @staticmethod
     def export_to_file():
-        format_type = request.args.get('format', 'json').lower()
-        ids = request.args.get('ids')
+        query = _parse_query_params(DimensionExportQuery)
+        format_type = query.format.lower()
+        ids = query.ids
 
         # 通过 gRPC 代理获取维度数据，避免直接访问 DB
         result = _evaluation_acl.list_dimensions()

@@ -161,6 +161,8 @@ export interface InterfererConfigItem {
   audioId?: string;
   audioName?: string;
   playbackDeviceId?: string;
+  /** 设备名（统一标注文件导入时无 ID，仅设备名） */
+  playbackDeviceName?: string;
   spl: number;
   startDelay: number;
   loop: boolean;
@@ -205,8 +207,8 @@ export interface TestCaseConfig {
     spl?: number;
     waitTime?: number;
   };
-  /** 全局背景噪声（所有轮次共享，轮次内未配置时回退使用） */
-  background_noise?: BackgroundNoiseConfig | Record<string, unknown>;
+  /** case 级全局背景噪声（跨所有轮次持续播放，优先于 round 级） */
+  background_noise?: BackgroundNoiseConfig;
   /** 源音频路径 */
   source_audio?: string;
   /** 是否自动生成 */

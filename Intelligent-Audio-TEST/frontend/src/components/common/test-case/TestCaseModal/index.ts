@@ -112,7 +112,9 @@ export function useTestCaseModal(props: any, emit: any) {
   }
 
   function openNoiseDeviceSelectModal() {
-    audioConfig.noiseInitialSelectedDevices.value = caseFormData.value.config?.backgroundNoise?.deviceIds || [];
+    // 优先读取 case 级全局背景噪声的设备，兼容旧 backgroundNoise 字段
+    const bg = (caseFormData.value.config as any)?.background_noise ?? (caseFormData.value.config as any)?.backgroundNoise;
+    audioConfig.noiseInitialSelectedDevices.value = bg?.deviceIds || [];
     audioConfig.showNoiseDeviceModal.value = true;
   }
 
@@ -211,7 +213,18 @@ export function useTestCaseModal(props: any, emit: any) {
 
   function handleNoiseDeviceSelect(selectedDevices: string[]) {
     if (caseFormData.value.config) {
-      audioConfig.handleNoiseDeviceSelect(selectedDevices, caseFormData.value.config.backgroundNoise);
+      const cfg = caseFormData.value.config as any;
+      // 优先写入 case 级全局背景噪声
+      if (cfg.background_noise || cfg.backgroundNoise) {
+        const bg = cfg.background_noise ?? cfg.backgroundNoise;
+        bg.deviceIds = selectedDevices;
+      } else {
+        // 回退到旧版 backgroundNoise 字段
+        if (!cfg.backgroundNoise) {
+          cfg.backgroundNoise = { audioId: '', deviceIds: [], spl: 0 };
+        }
+        cfg.backgroundNoise.deviceIds = selectedDevices;
+      }
       caseFormRef.value?.syncConfigFromParent();
     }
   }
@@ -440,6 +453,23 @@ export function useTestCaseModal(props: any, emit: any) {
     }
     if (config.backgroundNoise?.audioId) {
       ids.push(config.backgroundNoise.audioId);
+    }
+
+    // algorithm_params 中的 voiceprint 和 interferers 的 audio_id
+    const algoParams = config.algorithm_params;
+    if (algoParams) {
+      const vpObj = algoParams.find?.((p: any) => p.field_code === 'voiceprint')?.field_value;
+      if (vpObj) {
+        const vpAudioId = vpObj.audio_id || vpObj.audioId;
+        if (vpAudioId) ids.push(vpAudioId);
+      }
+      const interferers = algoParams.find?.((p: any) => p.field_code === 'interferers')?.field_value;
+      if (Array.isArray(interferers)) {
+        interferers.forEach((inf: any) => {
+          const infAudioId = inf.audio_id || inf.audioId;
+          if (infAudioId) ids.push(infAudioId);
+        });
+      }
     }
 
     return ids;

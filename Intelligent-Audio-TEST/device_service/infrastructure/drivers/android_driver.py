@@ -3,14 +3,23 @@ import subprocess
 import logging
 from .base_driver import BaseDeviceDriver
 from .device_config import get_device_config
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
 from .utils import check_stop, u2, log_and_emit
 import re
 
 logger = logging.getLogger(__name__)
 
 
+@register_driver
 class AndroidDriver(BaseDeviceDriver):
-    """安卓设备驱动实现"""
+    """安卓设备驱动实现 — Android 平台基础驱动"""
+
+    # —— 驱动元数据 ——
+    app_type = AppType.ANDROID_BASE
+    version = AppVersion.V1
+    platform = DevicePlatform.ANDROID
+    display_name = "Android 基础驱动"
 
     def __init__(self):
         super().__init__()

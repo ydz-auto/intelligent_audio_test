@@ -12,8 +12,15 @@ from api_gateway.schemas.evaluation import (
     DimensionHealthCheckData,
     DimensionItem,
     DimensionListData,
+    DimensionListQuery,
+    DimensionOptionsQuery,
     HealthCheckResultItem,
 )
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 _evaluation_acl = EvaluationConfigAclRepositoryImpl()
@@ -42,9 +49,9 @@ class EvaluationQueryService:
     # 获取维度选项列表（用于下拉选择，包含关联的算法信息）
     @staticmethod
     def get_dimension_options():
-        algorithm_type = request.args.get('algorithm_type', '')
+        query = _parse_query_params(DimensionOptionsQuery)
 
-        result = _evaluation_acl.get_dimension_options(algorithm_type=algorithm_type)
+        result = _evaluation_acl.get_dimension_options(algorithm_type=query.algorithm_type)
 
         if not result.get('success'):
             return error_response(result.get('message', '获取维度选项失败'))
@@ -54,16 +61,13 @@ class EvaluationQueryService:
     # 获取所有评分维度
     @staticmethod
     def get_all():
-        category_id = request.args.get('category_id', type=int)
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
-        search = request.args.get('search', '')
+        query = _parse_query_params(DimensionListQuery)
 
         result = _evaluation_acl.list_dimensions(
-            category_id=category_id,
-            page=page,
-            per_page=per_page,
-            search=search,
+            category_id=query.category_id,
+            page=query.page,
+            per_page=query.per_page,
+            search=query.search,
         )
 
         if not result.get('success'):
@@ -77,8 +81,8 @@ class EvaluationQueryService:
             DimensionListData(
                 items=items,
                 total=raw.get('total', len(items)) if isinstance(raw, dict) else len(items),
-                page=raw.get('page', page) if isinstance(raw, dict) else page,
-                per_page=raw.get('per_page', per_page) if isinstance(raw, dict) else per_page,
+                page=raw.get('page', query.page) if isinstance(raw, dict) else query.page,
+                per_page=raw.get('per_page', query.per_page) if isinstance(raw, dict) else query.per_page,
                 pages=raw.get('pages', 1) if isinstance(raw, dict) else 1,
             )
         )

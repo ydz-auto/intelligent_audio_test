@@ -53,6 +53,8 @@ class PlaybackOrchestrator:
 
     def __init__(self, audio_service=None):
         self.audio_service = audio_service or _default_audio_service
+        # 全局背景噪声 player 标识，用于独立启停
+        self._bg_noise_player_type = 'global_noise'
 
     # ------------------------------------------------------------------ #
     #                           高层 API                                  #
@@ -93,7 +95,14 @@ class PlaybackOrchestrator:
                 return None
 
             # 2. 解析噪声配置
-            noise_audio_info, noise_devices = build_noise_info(round_config, case_config)
+            # 存在有效的全局背景噪声时，轮次级背景噪声不播放（由 start_background_noise 跨轮次持续播放）
+            if self.has_background_noise(case_config):
+                noise_audio_info, noise_devices = None, []
+                self._log('DEBUG',
+                          f'[play_round {round_tag}] 全局背景噪声已启动，跳过轮次级背景噪声',
+                          task_id=task_id)
+            else:
+                noise_audio_info, noise_devices = build_noise_info(round_config, case_config)
 
             # 3. 构建主讲人 audio_to_play 配置
             #    playback_device_id 指向 PlaybackDevice 表，build_dry_configs 内部从 DB 加载
@@ -124,6 +133,22 @@ class PlaybackOrchestrator:
                 task_id, interferers, self.audio_service,
                 audio_local_paths=audio_local_paths,
             )
+
+            # 5.1 跳过与全局背景噪声使用相同设备的干扰人音频
+            # 同一设备无法同时打开两个 PortAudio 输出流，会导致 dev_lock 死锁
+            bg_noise_devices = self._get_background_noise_device_indices(task_id)
+            if bg_noise_devices and interferer_configs:
+                original_count = len(interferer_configs)
+                interferer_configs = [
+                    c for c in interferer_configs
+                    if c.get('device_index') not in bg_noise_devices
+                ]
+                skipped = original_count - len(interferer_configs)
+                if skipped > 0:
+                    self._log('WARNING',
+                              f'[play_round {round_tag}] 跳过 {skipped} 个与全局背景噪声设备冲突的干扰人音频 '
+                              f'(bg_devices={bg_noise_devices})',
+                              task_id=task_id)
 
             # 6. 构建时间轴（主讲人 + speaker 感知）
             app = self._get_flask_app()
@@ -177,7 +202,7 @@ class PlaybackOrchestrator:
                     task_id=task_id,
                 )
                 time.sleep(total_duration)
-                self.audio_service.stop_task_audio(task_id)
+                self.audio_service.stop_task_audio(task_id, player_type='device_*')
                 # 等待所有设备流真正关闭
                 for evt in playback_finished_events:
                     evt.wait(timeout=10)
@@ -212,6 +237,157 @@ class PlaybackOrchestrator:
         except Exception as e:
             self._log('ERROR', f'[play_round {round_tag}] failed: {e}', task_id=task_id)
             return None
+
+    def start_background_noise(self, case_config, task_id):
+        """启动用例级全局背景噪声（跨所有轮次持续播放）。
+
+        在 _prepare_rounds 之后、_run_rounds_loop 之前调用。
+        仅当 case_config.background_noise 有效（含音频和设备）时启动。
+        使用独立 player_type 注册到 audio_service，与轮次内播放隔离，
+        轮次结束时 stop_task_audio 不会影响全局背景噪声。
+
+        Args:
+            case_config: 用例全局配置 dict，含 background_noise
+            task_id: 任务ID
+
+        Returns:
+            True: 已启动 / 无需启动
+            False: 启动失败
+        """
+        if not case_config:
+            return True
+        case_bg = case_config.get('background_noise')
+        if not case_bg:
+            return True
+
+        # 复用 build_noise_info 的解析逻辑：传入空 round_config，强制取 case 级
+        noise_audio_info, noise_devices = build_noise_info({}, case_config)
+        if not noise_audio_info or not noise_devices:
+            self._log('WARNING',
+                      '全局背景噪声配置无效或缺少音频/设备，跳过启动',
+                      task_id=task_id)
+            return True
+
+        noise_configs = build_noise_play_configs(
+            noise_audio_info, noise_devices, self.audio_service
+        )
+        if not noise_configs:
+            self._log('WARNING', '全局背景噪声配置构建失败，跳过启动', task_id=task_id)
+            return True
+
+        try:
+            # 用独立 player_type 注册，避免被 stop_task_audio(task_id) 无差别清空
+            for cfg in noise_configs:
+                cfg['loop'] = True
+                cfg['is_noise'] = True
+                cfg['type'] = 'noise'
+
+            self._log('INFO',
+                      f'启动全局背景噪声: devices={len(noise_devices)}, configs={len(noise_configs)}',
+                      task_id=task_id)
+
+            # 直接提交到线程池，不走 play_overlap（play_overlap 要求至少 1 个干声）
+            pool = self.audio_service._get_audio_pool()
+            task_id_key = str(task_id)
+            if task_id_key not in self.audio_service.active_players:
+                self.audio_service.active_players[task_id_key] = {}
+
+            # 按设备分组：同一设备的多个 channel 合并为一个 play_multi 调用
+            # PortAudio 不允许同一设备同时打开多个输出流，必须合并
+            from collections import defaultdict
+            device_configs_map = defaultdict(list)
+            for cfg in noise_configs:
+                device_configs_map[cfg['device_index']].append((cfg, 0))
+
+            for device_index, audio_list_with_delays in device_configs_map.items():
+                stop_event = threading.Event()
+                playback_started_event = threading.Event()
+                future = pool.submit(
+                    self.audio_service._play_device_audios,
+                    device_index,
+                    audio_list_with_delays,
+                    0, 0, True, stop_event, False, None,
+                    playback_started_event, None,
+                )
+                player_key = f'{self._bg_noise_player_type}_{device_index}'
+                self.audio_service.active_players[task_id_key][player_key] = {
+                    "future": future,
+                    "stop_event": stop_event,
+                    "playback_started_event": playback_started_event,
+                    "playback_finished_event": None,
+                }
+
+            # 等待真正开始播放（每个设备一个事件）
+            for device_index in device_configs_map:
+                player_key = f'{self._bg_noise_player_type}_{device_index}'
+                evt = self.audio_service.active_players[task_id_key].get(player_key, {}).get('playback_started_event')
+                if evt:
+                    evt.wait(timeout=60)
+
+            self._log('INFO', '全局背景噪声已启动', task_id=task_id)
+            return True
+        except Exception as e:
+            self._log('ERROR', f'启动全局背景噪声失败: {e}', task_id=task_id)
+            return False
+
+    def _get_background_noise_device_indices(self, task_id):
+        """获取全局背景噪声占用的设备索引集合"""
+        task_id_key = str(task_id)
+        players = self.audio_service.active_players.get(task_id_key, {})
+        devices = set()
+        for k, v in players.items():
+            if k.startswith(self._bg_noise_player_type):
+                # player_key 格式: global_noise_<device_index>
+                parts = k.rsplit('_', 1)
+                if len(parts) == 2:
+                    try:
+                        devices.add(int(parts[1]))
+                    except ValueError:
+                        pass
+        return devices
+
+    def stop_background_noise(self, task_id):
+        """停止用例级全局背景噪声。
+
+        在 _finalize_rounds 之后或 finally 中调用。
+        仅停止 self._bg_noise_player_type 注册的 player，不影响其他播放。
+        """
+        task_id_key = str(task_id)
+        players = self.audio_service.active_players.get(task_id_key, {})
+        keys_to_stop = [k for k in players if k.startswith(self._bg_noise_player_type)]
+        if not keys_to_stop:
+            return
+        for k in keys_to_stop:
+            stop_event = players[k].get('stop_event')
+            if stop_event:
+                stop_event.set()
+            players.pop(k, None)
+        self._log('INFO', '全局背景噪声已停止', task_id=task_id)
+
+    def has_background_noise(self, case_config):
+        """判断 case_config 是否配置了有效的全局背景噪声。
+
+        供 play_round 决定是否跳过轮次级背景噪声使用。
+        """
+        if not case_config:
+            return False
+        case_bg = case_config.get('background_noise')
+        if not case_bg:
+            return False
+        # 只判断配置是否存在，不查库（查库由 start_background_noise 负责）
+        audio_id = case_bg.get('audio_id')
+        audio_name = case_bg.get('audio') or case_bg.get('audio_name')
+        device_ids = case_bg.get('device_ids') or []
+        device_names = (
+            case_bg.get('playback_device_names')
+            or case_bg.get('device_names')
+            or []
+        )
+        if not device_names:
+            single = case_bg.get('playback_device_name') or case_bg.get('device_name')
+            if single:
+                device_names = [single]
+        return bool((audio_id or audio_name) and (device_ids or device_names))
 
     def preview(self, audio_configs, case_config, task_id,
                 offset=0, overlap_rate=0, overlap_time=0):

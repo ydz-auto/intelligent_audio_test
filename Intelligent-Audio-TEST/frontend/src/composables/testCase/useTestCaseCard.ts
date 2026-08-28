@@ -75,22 +75,22 @@ export function useTestCaseCard() {
     editingTestCase.value = testCase;
     
     const normalized = normalizeTestCaseConfig(testCase.config || {});
-    const testCaseType = (testCase as any).test_type || (testCase as any).testType || 'e2e';
+    const testCaseType = (testCase as any).test_type || 'e2e';
     
     formData.value = {
       id: testCase.id,
       name: testCase.name || '',
-      group: testCase.groupName || '',
-      groupId: testCase.groupId || '',
+      group: testCase.group_name || '',
+      groupId: testCase.group_id || '',
       description: testCase.description || '',
       tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(','),
       config: normalized as TestCaseFormData['config'],
-      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
+      algorithmType: (testCase as any).algorithm_type || '',
       test_type: testCaseType as 'api' | 'e2e',
       // 新设计：algorithm_params 独立列（后端返回驼峰 algorithmParams）
-      algorithm_params: Array.isArray((testCase as any).algorithmParams || (testCase as any).algorithm_params)
-        ? ((testCase as any).algorithmParams || (testCase as any).algorithm_params)
+      algorithm_params: Array.isArray((testCase as any).algorithm_params)
+        ? ((testCase as any).algorithm_params)
         : [],
     } as TestCaseFormData;
     
@@ -129,7 +129,7 @@ export function useTestCaseCard() {
         groupFormData.value = {
           name: found.name || groupName,
           description: found.description || '',
-          algorithmType: found.algorithmType || ''
+          algorithmType: found.algorithm_type || ''
         };
       }
     } catch (e) {

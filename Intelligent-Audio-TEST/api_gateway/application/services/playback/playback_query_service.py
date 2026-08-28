@@ -3,8 +3,15 @@ import logging
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.infrastructure.acl import PlaybackConfigAclRepositoryImpl
+from api_gateway.schemas.playback import PlaybackDeviceListQuery
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
+
 
 _playback_acl = PlaybackConfigAclRepositoryImpl()
 
@@ -35,16 +42,13 @@ class PlaybackQueryService:
     # 获取所有播放设备
     @staticmethod
     def get_all():
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 10, type=int)
-        keyword = request.args.get('keyword')
-        device_type = request.args.get('type')
+        query = _parse_query_params(PlaybackDeviceListQuery)
 
         result = _playback_acl.get_all(
-            page=page,
-            per_page=per_page,
-            keyword=keyword,
-            device_type=device_type,
+            page=query.page,
+            per_page=query.per_page,
+            keyword=query.keyword,
+            device_type=query.device_type,
         )
 
         if not result.get('success'):

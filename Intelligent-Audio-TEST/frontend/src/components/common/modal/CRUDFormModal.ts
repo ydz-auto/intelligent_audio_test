@@ -92,7 +92,7 @@ export function useCRUDFormModal(props, emit) {
 
   const displayDevices = computed(() => {
     const currentDeviceId = props.mode === 'edit' 
-      ? (props.formData?.deviceUniqueId || props.formData?.device_unique_id || props.formData?.serialNumber)
+      ? (props.formData?.device_unique_id || props.formData?.serialNumber)
       : selectedDeviceId.value
   
     if (isPlaybackDeviceForm(props.fields)) {

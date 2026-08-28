@@ -2,7 +2,6 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { testcasesApi } from '../utils/api'
 import { convertTestCaseFormData } from '../utils/utils'
-import { snakeToCamelObject } from '../utils/fieldNaming'
 import { useNotification } from '../composables/modal/useNotification'
 import { useTestCaseBatchOps } from '../composables/testCase/useTestCaseBatchOps'
 import { useTestCaseGroups } from '../composables/testCase/useTestCaseGroups'
@@ -26,6 +25,8 @@ interface GroupPaginationInfo {
   perPage: number;
   total: number;
   algorithmType?: string;
+  keyword?: string;
+  dimensionId?: number;
 }
 
 export const useTestCaseStore = defineStore('testCase', () => {
@@ -113,9 +114,9 @@ export const useTestCaseStore = defineStore('testCase', () => {
     testCases.value.forEach(caseItem => {
       if (caseItem.deleted) return;
 
-      const groupId = caseItem.groupId || 'default';
+      const groupId = caseItem.group_id || 'default';
       const group = fullGroupsMap.value[groupId.toString()];
-      const groupName = group?.name || caseItem.groupName || '默认分组';
+      const groupName = group?.name || caseItem.group_name || '默认分组';
 
       if (!groups[groupName]) {
         groups[groupName] = [];
@@ -125,8 +126,8 @@ export const useTestCaseStore = defineStore('testCase', () => {
 
     for (const groupName in groups) {
       groups[groupName].sort((a, b) => {
-        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : (a.updatedAt ? new Date(a.updatedAt).getTime() : 0);
-        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : (b.updatedAt ? new Date(b.updatedAt).getTime() : 0);
+        const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.updated_at ? new Date(a.updated_at).getTime() : 0);
+        const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.updated_at ? new Date(b.updated_at).getTime() : 0);
         return timeB - timeA;
       });
     }
@@ -163,7 +164,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
 
       const [groupsResponse, testCasesResponse] = await Promise.all([
-        testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType, type: params.testType }),
+        testcasesApi.getGroups({ page: 1, perPage: 1000, algorithm_type: params.algorithmType, type: params.testType, keyword: params.keyword, dimension_id: params.dimensionId }),
         testcasesApi.getAll({
           page,
           perPage,
@@ -172,6 +173,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           group_id: params.groupId,
           type: params.testType,
           algorithm_type: params.algorithmType,
+          dimension_id: params.dimensionId,
           include_deleted: params.includeDeleted || false
         })
       ]);
@@ -197,7 +199,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
           id,
           name: group.name || `未命名分组-${id}`,
           description: group.description,
-          testCaseCount: group.testCaseCount ?? group.test_case_count ?? 0
+          testCaseCount: group.test_case_count ?? 0
         };
       });
 
@@ -215,11 +217,10 @@ export const useTestCaseStore = defineStore('testCase', () => {
       };
 
       testCases.value = testCasesData.map(tc => {
-        const normalized = snakeToCamelObject(tc);
         return {
-          ...normalized,
-          type: normalized.type || 'api',
-          deleted: normalized.deleted || false
+          ...tc,
+          type: tc.type || 'api',
+          deleted: tc.deleted || false
         } as TestCase;
       });
 
@@ -237,14 +238,20 @@ export const useTestCaseStore = defineStore('testCase', () => {
     }
   };
 
-  // 标签视图：调用 GET /testcases?view=tag，返回按标签聚合的数据
+  // 标签视图：调用 GET /testcases?view=tag，返回按标签聚合的数据。
+  // 后端按 Tag 分页，前端通过 fetchTagView（重置）+ loadMoreTagView（追加）实现滚动加载。
+  const tagViewLoading = ref(false);
+  const tagViewLastParams = ref<Record<string, any>>({});
+
   const fetchTagView = async (params: Record<string, any> = {}) => {
     try {
+      tagViewLoading.value = true;
       isLoading.value = true;
       error.value = null;
 
       const page = params.page || 1;
       const perPage = params.perPage || DEFAULT_FETCH_PAGE_SIZE;
+      tagViewLastParams.value = { ...params };
 
       const response = await testcasesApi.getAll({
         page,
@@ -253,6 +260,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
         keyword: params.keyword,
         type: params.testType,
         algorithm_type: params.algorithmType,
+        dimension_id: params.dimensionId,
         include_deleted: params.includeDeleted || false
       });
 
@@ -263,10 +271,11 @@ export const useTestCaseStore = defineStore('testCase', () => {
       items.forEach(item => {
         const tagName = item.tag || '未分类';
         groups[tagName] = Array.isArray(item.testCases)
-          ? item.testCases.map((tc: any) => snakeToCamelObject(tc) as TestCase)
+          ? item.testCases.map((tc: any) => tc as TestCase)
           : [];
       });
 
+      // 重置时替换全部数据
       tagViewData.value = groups;
       tagViewPagination.value = {
         page: (response as any)?.page || 1,
@@ -280,15 +289,74 @@ export const useTestCaseStore = defineStore('testCase', () => {
       items.forEach(item => {
         if (item.tag) tagSet.add(item.tag);
       });
-      if (tagSet.size > 0) {
-        tags.value = Array.from(tagSet);
-      }
+      tags.value = Array.from(tagSet);
     } catch (err: any) {
       console.error('获取标签视图数据失败:', err);
       error.value = err.message || '获取标签视图数据失败';
       tagViewData.value = {};
     } finally {
+      tagViewLoading.value = false;
       isLoading.value = false;
+    }
+  };
+
+  const loadMoreTagView = async () => {
+    const pagination = tagViewPagination.value;
+    if (tagViewLoading.value || pagination.page >= pagination.pages) return;
+
+    try {
+      tagViewLoading.value = true;
+      const nextPage = pagination.page + 1;
+      const params = tagViewLastParams.value;
+      const perPage = pagination.perPage || DEFAULT_FETCH_PAGE_SIZE;
+
+      const response = await testcasesApi.getAll({
+        page: nextPage,
+        perPage,
+        view: 'tag',
+        keyword: params.keyword,
+        type: params.testType,
+        algorithm_type: params.algorithmType,
+        dimension_id: params.dimensionId,
+        include_deleted: params.includeDeleted || false
+      });
+
+      const items: Array<{ tag: string; testCases: TestCase[] }> =
+        response && Array.isArray((response as any).items) ? (response as any).items : [];
+
+      // 追加到已有数据
+      const merged = { ...tagViewData.value };
+      items.forEach(item => {
+        const tagName = item.tag || '未分类';
+        const newCases = Array.isArray(item.testCases)
+          ? item.testCases.map((tc: any) => tc as TestCase)
+          : [];
+        if (merged[tagName]) {
+          merged[tagName] = [...merged[tagName], ...newCases];
+        } else {
+          merged[tagName] = newCases;
+        }
+      });
+      tagViewData.value = merged;
+
+      tagViewPagination.value = {
+        page: (response as any)?.page || nextPage,
+        pages: (response as any)?.pages || pagination.pages,
+        perPage: (response as any)?.perPage || perPage,
+        total: typeof (response as any)?.total === 'number' ? (response as any).total : pagination.total
+      };
+
+      // 累积标签列表
+      const tagSet = new Set<string>(tags.value);
+      items.forEach(item => {
+        if (item.tag) tagSet.add(item.tag);
+      });
+      tags.value = Array.from(tagSet);
+    } catch (err: any) {
+      console.error('加载更多标签视图数据失败:', err);
+      error.value = err.message || '加载更多标签视图数据失败';
+    } finally {
+      tagViewLoading.value = false;
     }
   };
 
@@ -461,6 +529,32 @@ export const useTestCaseStore = defineStore('testCase', () => {
     groupPagination.value = {};
   };
 
+  // 按筛选条件拉取全量用例ID（用于分组/标签全选）
+  const fetchCaseIdsByFilter = async (filters: {
+    group?: string;
+    testType?: string;
+    search?: string;
+    tag?: string;
+    algorithmType?: string;
+    dimensionId?: number;
+  }): Promise<(string | number)[]> => {
+    try {
+      // 后端期望 snake_case 键名
+      const payload: Record<string, any> = {};
+      if (filters.group) payload.group = filters.group;
+      if (filters.testType) payload.test_type = filters.testType;
+      if (filters.search) payload.search = filters.search;
+      if (filters.tag) payload.tag = filters.tag;
+      if (filters.algorithmType) payload.algorithm_type = filters.algorithmType;
+      if (filters.dimensionId) payload.dimension_id = filters.dimensionId;
+      const result: any = await testcasesApi.getIdsByFilter(payload);
+      return result?.ids || [];
+    } catch (error) {
+      console.error('获取用例ID列表失败:', error);
+      return [];
+    }
+  };
+
   return {
     // 核心状态
     testCases,
@@ -477,9 +571,11 @@ export const useTestCaseStore = defineStore('testCase', () => {
     groupPagination,
     tagViewData,
     tagViewPagination,
+    tagViewLoading,
     // 核心 CRUD + 本地状态操作
     fetchTestCases,
     fetchTagView,
+    loadMoreTagView,
     isGroupLoading,
     hasMoreGroupCases,
     getGroupPagination,
@@ -493,6 +589,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     organizeTestCasesByGroup,
     extractTags,
     resetGroupCache,
+    fetchCaseIdsByFilter,
     // 委托：批量操作
     ...batchOps,
     // 委托：分组管理

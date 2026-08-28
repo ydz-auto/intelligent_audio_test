@@ -10,7 +10,15 @@ from api_gateway.infrastructure.acl import AlgorithmConfigAclRepositoryImpl
 from api_gateway.schemas.algorithm import (
     AlgorithmListQuery,
     AlgorithmParamListQuery,
+    AlgorithmMappingListQuery,
+    AlgorithmCaseParamListQuery,
+    AlgorithmReferenceParamListQuery,
 )
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 _algorithm_acl = AlgorithmConfigAclRepositoryImpl()
@@ -83,14 +91,12 @@ class AlgorithmQueryService:
     @staticmethod
     def list_mappings():
         """获取参数映射列表"""
-        algorithm_type = request.args.get('algorithm_type')
-        source_type = request.args.get('source_type')
-        dimension_id = request.args.get('dimension_id', type=int)
+        query = _parse_query_params(AlgorithmMappingListQuery)
 
         result = _algorithm_acl.list_mappings(
-            algorithm_type=algorithm_type,
-            source_type=source_type,
-            dimension_id=dimension_id,
+            algorithm_type=query.algorithm_type,
+            source_type=query.source_type,
+            dimension_id=query.dimension_id,
         )
 
         if result.get('success'):
@@ -102,12 +108,11 @@ class AlgorithmQueryService:
     @staticmethod
     def list_case_params():
         """获取用例专属参数列表"""
-        algorithm_type = request.args.get('algorithm_type')
-        scope = request.args.get('scope')
+        query = _parse_query_params(AlgorithmCaseParamListQuery)
 
         result = _algorithm_acl.list_case_params(
-            algorithm_type=algorithm_type,
-            scope=scope,
+            algorithm_type=query.algorithm_type,
+            scope=query.scope,
         )
 
         if result.get('success'):
@@ -128,12 +133,12 @@ class AlgorithmQueryService:
     @staticmethod
     def list_reference_params():
         """获取参考参数列表"""
-        algorithm_type = request.args.get('algorithm_type')
+        query = _parse_query_params(AlgorithmReferenceParamListQuery)
 
-        if not algorithm_type:
+        if not query.algorithm_type:
             return error_response('algorithm_type is required')
 
-        result = _algorithm_acl.list_reference_params(algorithm_type=algorithm_type)
+        result = _algorithm_acl.list_reference_params(algorithm_type=query.algorithm_type)
 
         if result.get('success'):
             return success_response(result.get('data'))

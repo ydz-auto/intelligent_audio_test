@@ -899,6 +899,23 @@ class TaskRepository(SoftDeleteMixin, TaskRepositoryABC, TaskCaseRepositoryABC):
             else:
                 query.delete(synchronize_session=False)
             session.commit()
+
+            # 同时清理 case_pcm 目录下的旧 pcm/wav 文件，防止旧残留干扰新一轮采集
+            import os
+            import shutil
+            try:
+                from task_service.config.config import Config
+                static_base = getattr(Config, 'STATIC_BASE_PATH', '')
+                if static_base:
+                    for tc_id in case_ids:
+                        pcm_dir = os.path.join(static_base, 'case_pcm', str(task_id), str(tc_id))
+                        if os.path.exists(pcm_dir):
+                            try:
+                                shutil.rmtree(pcm_dir)
+                            except Exception as e:
+                                logger.warning(f"删除用例 {tc_id} pcm文件失败: {e}")
+            except ImportError:
+                pass
         except Exception:
             session.rollback()
             raise

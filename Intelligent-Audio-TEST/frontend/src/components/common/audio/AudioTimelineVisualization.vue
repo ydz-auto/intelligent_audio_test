@@ -194,7 +194,7 @@ const getSegmentStyle = (audio) => {
 const getAudioLabel = (audio) => {
   const base = audio.label || audio.filename || `音频 ${audio.id || ''}`;
   // 多轮场景：在标签前加轮次前缀
-  const rn = audio.roundNumber ?? audio.round_number;
+  const rn = audio.round_number;
   if (rn !== undefined && rn !== null && rn > 1) return `[第${rn}轮] ${base}`;
   return base;
 };
@@ -203,7 +203,7 @@ const getAudioTooltip = (audio) => {
   const lines = [
     `名称: ${audio.filename || audio.label || '未知'}`,
   ];
-  const rn = audio.roundNumber ?? audio.round_number;
+  const rn = audio.round_number;
   if (rn !== undefined && rn !== null) lines.push(`轮次: 第${rn}轮`);
   lines.push(`时间: ${formatTime(audio.timelineStart)} - ${formatTime(audio.timelineEnd)}`);
   lines.push(`时长: ${formatDuration(audio.duration)}`);

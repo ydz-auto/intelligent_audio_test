@@ -77,10 +77,11 @@ class WorkerManagementMixin:
             if endpoint_url not in self.endpoint_workers:
                 max_timeout = self._get_timeout_from_dim_config(dim_data, 30)
                 endpoints = dim_data.get('api_endpoints', [])
-                max_concurrent = 1
+                # 并发参数配置化：端点未配置并发数时用 api_client 默认值
+                max_concurrent = self.api_client.default_max_concurrent
                 if endpoints and isinstance(endpoints, list) and len(endpoints) > 0:
                     endpoint_item = endpoints[0]
-                    max_concurrent = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', 1)
+                    max_concurrent = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', self.api_client.default_max_concurrent)
                 if endpoint_url in self.api_client.endpoint_configs:
                     max_concurrent = self.api_client.endpoint_configs[endpoint_url]
                 from evaluation_service.infrastructure.evaluation_api.endpoint_worker import EndpointWorker
@@ -111,15 +112,28 @@ class WorkerManagementMixin:
                         if endpoint_url:
                             timeout = get_endpoint_field(endpoint_item, 'max_timeout', 'maxTimeout', 30)
                             if endpoint_url not in self.endpoint_workers:
-                                worker = EndpointWorker(endpoint_url, self, max_timeout=timeout)
+                                # 并发参数配置化：预创建时也读取端点配置的并发数
+                                max_concurrent = get_endpoint_field(endpoint_item, 'max_process', 'maxProcess', self.api_client.default_max_concurrent)
+                                worker = EndpointWorker(endpoint_url, self, max_timeout=timeout, max_concurrent=max_concurrent)
                                 self.endpoint_workers[endpoint_url] = worker
                                 worker.start()
                                 self._log(
                                     level='INFO',
-                                    content=f"预创建端点Worker: {endpoint_url}, 超时: {timeout}秒"
+                                    content=f"预创建端点Worker: {endpoint_url}, 超时: {timeout}秒, 并发: {max_concurrent}"
                                 )
         except Exception as e:
             self._log(level='error', content=f"加载维度配置失败: {str(e)}", category='system')
+
+    def reload_endpoint_configs(self):
+        """热加载维度端点配置（订阅 DimensionConfigChanged 事件后调用）。
+
+        复用 _load_all_endpoint_configs 的加载逻辑：重新从 Repository 拉取维度，
+        刷新 api_client 端点配置并补建新端点的 EndpointWorker。
+        已存在的 EndpointWorker 不会被销毁重建（避免中断在跑任务），仅新增缺失端点。
+        """
+        self._log(level='info', content='收到维度配置变更事件，开始热加载端点配置', category='system')
+        self._load_all_endpoint_configs()
+        self._log(level='info', content='端点配置热加载完成', category='system')
 
     def shutdown(self):
         self._log(level='info', content='开始关闭评估服务', category='system')

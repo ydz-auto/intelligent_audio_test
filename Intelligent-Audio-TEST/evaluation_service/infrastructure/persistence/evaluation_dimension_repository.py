@@ -202,6 +202,25 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
         ).all()
         return [_trd_po_to_entity(po) for po in pos]
 
+    def find_score(
+        self, result_id: int, dimension_id: int, round_number: Optional[int] = None
+    ) -> Optional[DimensionScore]:
+        """按 result_id + dimension_id + round_number 查找已存在的维度评分记录。
+
+        round_number 为 None 时匹配 round_number IS NULL。
+        """
+        session = get_db_session()
+        q = session.query(TestResultDimensionPO).filter(
+            TestResultDimensionPO.test_result_id == result_id,
+            TestResultDimensionPO.dimension_id == dimension_id,
+        )
+        if round_number is not None:
+            q = q.filter(TestResultDimensionPO.round_number == round_number)
+        else:
+            q = q.filter(TestResultDimensionPO.round_number.is_(None))
+        po = q.first()
+        return _trd_po_to_entity(po) if po else None
+
     # ========== DimensionScore 写 ==========
 
     def create_score(self, score: DimensionScore) -> int:
@@ -274,6 +293,28 @@ class EvaluationDimensionRepository(EvaluationDimensionRepositoryABC):
             TestResultDimensionPO.id == score_id,
         ).update(update_fields, synchronize_session=False)
         session.flush()
+
+    def reset_score_to_pending(self, score_id: int) -> None:
+        """重置维度评分记录为 pending（含 commit）。
+
+        清空 score/error_message/api_request_body/api_raw_response，
+        evaluation_status 置为 pending，供重新评估复用。
+        """
+        session = get_db_session()
+        reset_fields = {
+            'evaluation_status': EvaluationStatus.PENDING,
+            'score': None,
+            'error_message': None,
+            'api_request_body': None,
+            'api_raw_response': None,
+        }
+        # 仅重置 PO 上存在的列，避免列名不存在报错
+        existing_cols = {c.name for c in TestResultDimensionPO.__table__.columns}
+        safe_fields = {k: v for k, v in reset_fields.items() if k in existing_cols}
+        session.query(TestResultDimensionPO).filter(
+            TestResultDimensionPO.id == score_id,
+        ).update(safe_fields, synchronize_session=False)
+        session.commit()
 
     def mark_result_dimensions_completed(self, result_id: int) -> int:
         """将某 TestResult 的所有维度评分标记为 completed（用于无维度的兜底）。

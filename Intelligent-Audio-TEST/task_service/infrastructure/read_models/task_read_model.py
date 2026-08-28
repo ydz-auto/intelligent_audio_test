@@ -6,6 +6,7 @@ CQRS 读侧：直接查询 DB，支持过滤、分页、聚合统计。
 """
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List, Optional  # noqa: F401
 
@@ -13,6 +14,7 @@ from shared.models.database import get_db_session
 from task_service.infrastructure.persistence.models import Task, TaskCase
 from shared.utils.query_utils import now_cst
 from shared.utils.status_constants import TaskStatus, ExecutionStatus, EvaluationStatus, TaskCaseStatus
+from shared.models.common_enums import TestType
 from sqlalchemy import and_, or_
 
 logger = logging.getLogger(__name__)
@@ -323,7 +325,7 @@ class TaskReadModel:
 
             # API 资源状态
             api_resource_status = []
-            if task.type == 'api':
+            if task.type == TestType.API.value:
                 from task_service.infrastructure.persistence.models import TaskAPI
                 task_api = session.query(TaskAPI).filter_by(task_id=task_id).first()
                 if task_api:
@@ -503,7 +505,7 @@ class TaskReadModel:
 
             case_info = session.get(TestCase, case_id)
             task = session.get(Task, task_id)
-            test_type = task.type if task else 'api'
+            test_type = task.type if task else TestType.API.value
 
             results = session.query(TestResult).filter_by(
                 task_id=task_id, test_case_id=case_id
@@ -527,6 +529,9 @@ class TaskReadModel:
                 full_result_data = load_full_result_data(
                     result.result_data, getattr(result, 'result_data_path', None)
                 )
+                # 兼容历史双重序列化数据：algorithm_result 可能是 str
+                algo_result = result.algorithm_result
+                algo_result = deserialize_algorithm_result(algo_result)
                 processed_results.append({
                     "id": result.id,
                     "device_id": result.device_id,
@@ -535,9 +540,9 @@ class TaskReadModel:
                     "api_name": api_name,
                     "execution_status": result.execution_status,
                     "response_time": result.response_time,
-                    "algorithm_result": result.algorithm_result,
-                    "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
-                    "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
+                    "algorithm_result": algo_result,
+                    "asr_result": algo_result.get('asr_result'),
+                    "translation_result": algo_result.get('translation_result'),
                     "result_data": full_result_data,
                     "error_message": result.error_message,
                     "dimensions": dim_data,
@@ -596,6 +601,9 @@ class TaskReadModel:
 
                 dim_data = dim_map.get(result.id, [])
 
+                # 兼容历史双重序列化数据：algorithm_result 可能是 str
+                algo_result = result.algorithm_result
+                algo_result = deserialize_algorithm_result(algo_result)
                 processed_results.append({
                     "id": result.id,
                     "device_id": result.device_id,
@@ -604,9 +612,9 @@ class TaskReadModel:
                     "api_name": api_name,
                     "execution_status": result.execution_status,
                     "response_time": result.response_time,
-                    "algorithm_result": result.algorithm_result,
-                    "asr_result": result.algorithm_result.get('asr_result') if result.algorithm_result else None,
-                    "translation_result": result.algorithm_result.get('translation_result') if result.algorithm_result else None,
+                    "algorithm_result": algo_result,
+                    "asr_result": algo_result.get('asr_result'),
+                    "translation_result": algo_result.get('translation_result'),
                     "result_data": load_full_result_data(result.result_data, getattr(result, 'result_data_path', None)),
                     "error_message": result.error_message,
                     "dimensions": dim_data,
@@ -746,11 +754,20 @@ class TaskReadModel:
     def _to_detail_dto(self, task: Task, session) -> Dict[str, Any]:
         """含关联的详情 DTO。"""
         from task_service.infrastructure.persistence.models import TestCase, TaskDevice, TaskAPI
+        from task_service.infrastructure.persistence.models.testcase_models import TestCaseGroup
 
         cases = []
         task_cases = session.query(TaskCase).filter_by(task_id=task.id).all()
+        # 预取分组名映射，避免逐条查询
+        group_ids = {tc.test_case_id for tc in task_cases}
+        case_infos = {c.id: c for c in session.query(TestCase).filter(TestCase.id.in_(list(group_ids))).all()} if group_ids else {}
+        group_name_map = {}
+        for ci in case_infos.values():
+            if ci.group_id and ci.group_id not in group_name_map:
+                g = session.get(TestCaseGroup, ci.group_id)
+                group_name_map[ci.group_id] = g.name if g else None
         for tc in task_cases:
-            case_info = session.get(TestCase, tc.test_case_id)
+            case_info = case_infos.get(tc.test_case_id)
             cases.append({
                 'case_id': tc.test_case_id,
                 'name': case_info.name if case_info else "未知用例",
@@ -761,6 +778,8 @@ class TaskReadModel:
                 'completed_at': tc.completed_at.isoformat() if tc.completed_at else None,
                 'duration': tc.duration,
                 'error_message': tc.error_message,
+                'group_name': group_name_map.get(case_info.group_id) if case_info else None,
+                'tags': [t.name for t in case_info.tags] if case_info and case_info.tags else [],
             })
 
         # P3 改造：task.devices / task.apis 关系已移除，

@@ -223,6 +223,22 @@ class PlaybackServiceServicer(e2e_grpc.PlaybackServiceServicer):
             playback_config = _loads(request.playback_config, {})
             task_id = request.task_id
             mode = playback_config.get('mode', 'round')
+            action = playback_config.get('action')
+
+            # 基于 action 的分派（全局背景噪声启停）
+            if action == 'start_background_noise':
+                case_config = playback_config.get('case_config', {})
+                result = self.orchestrator.start_background_noise(case_config, task_id)
+                return e2e_pb.StartPlaybackResponse(
+                    success=True, message="ok",
+                    data=_dumps({"result": result, "action": action}),
+                )
+            if action == 'stop_background_noise':
+                self.orchestrator.stop_background_noise(task_id)
+                return e2e_pb.StartPlaybackResponse(
+                    success=True, message="ok",
+                    data=_dumps({"result": True, "action": action}),
+                )
 
             if mode == 'preview':
                 audio_configs = playback_config.get('audio_configs', [])

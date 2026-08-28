@@ -40,7 +40,7 @@ export function useTaskLogs(filteredTasks: Ref<Task[]>) {
 
     if (taskLogFilter.value === 'current' && filteredTasks.value.length > 0) {
       const taskIds = new Set(filteredTasks.value.map(task => task.id));
-      result = result.filter(log => taskIds.has((log as any).taskId));
+      result = result.filter(log => taskIds.has((log as any).task_id));
     }
 
     filteredTaskLogs.value = result;

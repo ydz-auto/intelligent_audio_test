@@ -32,7 +32,7 @@
               <input 
                 type="text" 
                 class="filter-input" 
-                placeholder="输入用例名称关键词" 
+                placeholder="输入用例ID或名称关键词"
                 v-model="searchKeyword"
               />
             </div>
@@ -173,16 +173,10 @@
                   <select class="filter-select" v-model="sortDimension">
                     <option value="name">按名称</option>
                     <option value="category">按分组</option>
-                    <option value="tags">按用例标签</option>
                     <option value="createdAt">按创建时间</option>
                     <option value="评估维度">按评估维度</option>
-                    <option value="多维度值">按多维度值</option>
                   </select>
-                  <select class="filter-select" v-model="selectedSortMetric" v-if="sortDimension === '评估维度' || sortDimension === '多维度值'">
-                    <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
-                  </select>
-                  <select class="filter-select" v-model="secondSortMetric" v-if="sortDimension === '多维度值'">
-                    <option value="">无</option>
+                  <select class="filter-select" v-model="selectedSortMetric" v-if="sortDimension === '评估维度'">
                     <option v-for="metric in actualAllMetrics" :key="metric.name" :value="metric.name">{{ metric.name }}</option>
                   </select>
                   <select class="filter-select" v-model="sortOrder">
@@ -302,6 +296,7 @@
             :algorithmResults="caseItem._preparedAlgorithmResults"
             :referenceParams="caseItem._preparedReferenceParams"
             :algorithmType="caseItem._preparedAlgorithmType"
+            :fieldMapping="caseItem._preparedFieldMapping"
             :results="caseItem.results || []"
           />
         </div>
@@ -309,14 +304,15 @@
     </div>
 
     <PaginationComponent
-      v-if="unpinnedFilteredCases.length > 0"
+      v-if="totalCases > 0"
       class="specific-case-pagination"
       :currentPage="currentPage"
       :pageSize="pageSize"
-      :totalItems="unpinnedFilteredCases.length"
+      :totalItems="totalCases"
       @prev-page="handlePrevPage"
       @next-page="handleNextPage"
       @go-to-page="handleGoToPage"
+      @page-size-change="handlePageSizeChange"
     />
 
     <!-- Case Detail Modal -->
@@ -343,6 +339,7 @@
             :algorithmResults="currentCaseDetailWithPreparedData._preparedAlgorithmResults"
             :referenceParams="currentCaseDetailWithPreparedData._preparedReferenceParams"
             :algorithmType="currentCaseDetailWithPreparedData._preparedAlgorithmType"
+            :fieldMapping="currentCaseDetailWithPreparedData._preparedFieldMapping"
             :results="currentCaseDetailWithPreparedData.results || []"
           />
 
@@ -449,7 +446,6 @@ const {
   totalMetricPages,
   sortDimension,
   selectedSortMetric,
-  secondSortMetric,
   sortOrder,
   actualAllMetrics,
   resetFilters,
@@ -466,11 +462,13 @@ const {
   expandedCases,
   allDevices,
   unpinnedFilteredCases,
+  totalCases,
   currentPage,
   pageSize,
   handlePrevPage,
   handleNextPage,
   handleGoToPage,
+  handlePageSizeChange,
   currentCaseDetailWithPreparedData,
   closeCaseDetail,
   isDownloadingLog,

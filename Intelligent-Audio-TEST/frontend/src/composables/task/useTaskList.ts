@@ -36,7 +36,7 @@ export function useTaskList(options?: UseTaskListOptions) {
   const currentPage = ref(1);
   const pageSize = ref(10);
   const totalItems = ref(0);
-  const sortConfig = ref({ field: 'createdAt', order: 'desc' });
+  const sortConfig = ref({ field: 'created_at', order: 'desc' });
   const selectedTags = ref<string[]>([]);
   const searchTerm = ref('');
   const filters = ref<TaskFilters>({

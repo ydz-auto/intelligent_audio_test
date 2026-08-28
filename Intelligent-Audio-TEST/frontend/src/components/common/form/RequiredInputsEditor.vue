@@ -24,24 +24,25 @@
           <span class="row-index">{{ index + 1 }}</span>
           <input
             type="text"
-            v-model="input.param_code"
+            v-model="input.paramCode"
             placeholder="如: asr_result"
             class="key-input"
             @input="handleChange"
           />
           <input
             type="text"
-            v-model="input.param_name"
+            v-model="input.paramName"
             placeholder="如: ASR识别结果"
             class="label-input"
             @input="handleChange"
           />
-          <select v-model="input.field_type" @change="handleChange" class="source-select">
+          <select v-model="input.fieldType" @change="handleChange" class="source-select">
             <option value="text">文本</option>
             <option value="number">数字</option>
             <option value="audio">音频</option>
             <option value="boolean">布尔</option>
             <option value="json">JSON</option>
+            <option value="timestamp">时间戳</option>
           </select>
           <label class="checkbox-wrapper">
             <input
@@ -52,14 +53,14 @@
           </label>
           <input
             type="text"
-            v-model="input.default_value"
+            v-model="input.defaultValue"
             placeholder="如: 0 或空字符串"
             class="default-input"
             @input="handleChange"
           />
           <input
             type="text"
-            v-model="input.help_text"
+            v-model="input.helpText"
             placeholder="参数说明"
             class="desc-input"
             @input="handleChange"
@@ -106,12 +107,12 @@ function addInput() {
     localValue.value = []
   }
   localValue.value.push({
-    param_code: '',
-    param_name: '',
-    field_type: 'text',
+    paramCode: '',
+    paramName: '',
+    fieldType: 'text',
     required: true,
-    default_value: '',
-    help_text: ''
+    defaultValue: '',
+    helpText: ''
   })
   handleChange()
 }

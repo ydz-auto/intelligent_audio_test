@@ -22,14 +22,14 @@ export function useTestCaseManager() {
   } = useTestCaseCard();
 
   const store = useTestCaseStore();
-  const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination } = storeToRefs(store);
-  const { fetchTestCases, fetchTagView, deleteGroup: deleteGroupFromStore, deleteTestCase, resetGroupCache } = store;
+  const { testCaseGroups, tagViewData, tags, paginationInfo, isLoading, tagViewPagination, tagViewLoading } = storeToRefs(store);
+  const { fetchTestCases, fetchTagView, loadMoreTagView, deleteGroup: deleteGroupFromStore, deleteTestCase, resetGroupCache } = store;
 
   // 视图模式：'group' 分组视图 | 'tag' 标签视图
   const viewMode = ref<'group' | 'tag'>('group');
 
   // 当前筛选条件（由 TestCaseListContainer 上报）
-  const currentFilters = ref<{ keyword?: string; testType?: string; algorithmType?: string }>({});
+  const currentFilters = ref<{ keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }>({});
 
   const refreshCurrentView = async () => {
     if (viewMode.value === 'tag') {
@@ -37,12 +37,14 @@ export function useTestCaseManager() {
         keyword: currentFilters.value.keyword,
         testType: currentFilters.value.testType,
         algorithmType: currentFilters.value.algorithmType,
+        dimensionId: currentFilters.value.dimensionId,
       });
     } else {
       await fetchTestCases({
         keyword: currentFilters.value.keyword,
         testType: currentFilters.value.testType,
         algorithmType: currentFilters.value.algorithmType,
+        dimensionId: currentFilters.value.dimensionId,
       });
     }
   };
@@ -52,23 +54,30 @@ export function useTestCaseManager() {
     await refreshCurrentView();
   });
 
-  // 由 TestCaseListContainer 上报筛选条件变化
-  const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string }) => {
+  // 由 TestCaseListContainer 上报筛选条件变化（标签视图）
+  const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
     currentFilters.value = filters;
     if (viewMode.value === 'tag') {
       fetchTagView({
         keyword: filters.keyword,
         testType: filters.testType,
         algorithmType: filters.algorithmType,
+        dimensionId: filters.dimensionId,
       });
-    } else {
-      // 分组视图:按筛选重新拉取分组列表,使徽标计数(test_case_count)与筛选一致。
+    }
+  };
+
+  // 由 TestCaseListContainer 上报筛选条件变化（分组视图）
+  const handleGroupFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {
+    currentFilters.value = filters;
+    if (viewMode.value === 'group') {
       // 清空已加载分组用例,避免展开时显示旧筛选下的缓存数据。
       resetGroupCache();
       fetchTestCases({
         keyword: filters.keyword,
         testType: filters.testType,
         algorithmType: filters.algorithmType,
+        dimensionId: filters.dimensionId,
       });
     }
   };
@@ -133,6 +142,7 @@ export function useTestCaseManager() {
     tags,
     paginationInfo,
     tagViewPagination,
+    tagViewLoading,
     isLoading,
     viewMode,
     handleDeleteGroup,
@@ -147,6 +157,8 @@ export function useTestCaseManager() {
     handleSaveModal,
     handleTestCaseAction,
     refreshCurrentView,
-    handleTagFilterChange
+    handleTagFilterChange,
+    handleGroupFilterChange,
+    loadMoreTagView
   };
 }

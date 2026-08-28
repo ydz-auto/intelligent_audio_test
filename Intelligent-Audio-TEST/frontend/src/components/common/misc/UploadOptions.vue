@@ -216,20 +216,20 @@ const {
           <label>测试类型</label>
           <div class="checkbox-group">
             <label class="checkbox-label">
-              <input 
-                type="checkbox" 
-                value="api" 
-                v-model="uploadConfig.testTypes"
-              >
-              <span class="checkbox-text">API测试</span>
-            </label>
-            <label class="checkbox-label">
-              <input 
-                type="checkbox" 
-                value="e2e" 
+              <input
+                type="checkbox"
+                value="e2e"
                 v-model="uploadConfig.testTypes"
               >
               <span class="checkbox-text">E2E测试</span>
+            </label>
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                value="api"
+                v-model="uploadConfig.testTypes"
+              >
+              <span class="checkbox-text">API测试</span>
             </label>
           </div>
           <p class="option-hint">选择要生成的测试用例类型，可多选</p>

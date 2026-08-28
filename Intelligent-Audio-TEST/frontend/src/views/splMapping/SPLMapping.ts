@@ -53,24 +53,24 @@ export function useSplMapping() {
       result = result.filter(m => 
         m.name.toLowerCase().includes(term) || 
         (m.description && m.description.toLowerCase().includes(term)) ||
-        ((m.device?.name && m.device.name.toLowerCase().includes(term)) || (m.deviceName && m.deviceName.toLowerCase().includes(term)))
+        ((m.device?.name && m.device.name.toLowerCase().includes(term)) || (m.device_name && m.device_name.toLowerCase().includes(term)))
       );
     }
     
     if (calibrationFilter.value !== 'all') {
-      result = result.filter(m => 
-        m.calibrationStatus === calibrationFilter.value
+      result = result.filter(m =>
+        m.calibration_status === calibrationFilter.value
       );
     }
-    
+
     if (deviceFilter.value !== 'all') {
-      result = result.filter(m => 
-        m.deviceId?.toString() === deviceFilter.value
+      result = result.filter(m =>
+        m.device_id?.toString() === deviceFilter.value
       );
     }
     
     return result.map(m => {
-      const points = m.calibrationData?.points || [];
+      const points = m.calibration_data?.points || [];
       
       const validPoints = points.filter((p: any) => p && typeof p === 'object' && p.gainOffset !== undefined && p.spl !== undefined);
       
@@ -102,7 +102,7 @@ export function useSplMapping() {
         baseLevel: baseLevel,
         finalLevelMin: finalLevelMin,
         finalLevelMax: finalLevelMax,
-        measurementDate: m.updatedAt ? new Date(m.updatedAt).toLocaleDateString() : undefined
+        measurementDate: m.updated_at ? new Date(m.updated_at).toLocaleDateString() : undefined
       };
     });
   });
@@ -156,10 +156,10 @@ export function useSplMapping() {
     try {
       const params : SPLQueryParams = {
         keyword: searchTerm.value,
-        calibrationStatus: calibrationFilter.value === 'all' ? undefined : calibrationFilter.value,
-        deviceId: deviceFilter.value === 'all' ? undefined : deviceFilter.value,
+        calibration_status: calibrationFilter.value === 'all' ? undefined : calibrationFilter.value,
+        device_id: deviceFilter.value === 'all' ? undefined : deviceFilter.value,
         page: 1,
-        perPage: 100
+        per_page: 100
       };
       const response = await splApi.getAll(params);
       if (response && response.items) {
@@ -284,11 +284,11 @@ export function useSplMapping() {
     Object.assign(formData, {
       name: mapping.name,
       description: mapping.description || '',
-      deviceId: String(mapping.deviceId || ''),
-      deviceUniqueId: mapping.device?.deviceUniqueId || '',
+      deviceId: String(mapping.device_id || ''),
+      deviceUniqueId: mapping.device?.device_unique_id || '',
       distance: mapping.distance || 1,
-      testFrequency: mapping.testFrequency || 1000,
-      calibrationPoints: mapping.calibrationData?.points || [{ digital_gain: null, spl: null }]
+      testFrequency: mapping.test_frequency || 1000,
+      calibrationPoints: mapping.calibration_data?.points || [{ digital_gain: null, spl: null }]
     });
     showModal.value = true;
 
@@ -410,8 +410,8 @@ export function useSplMapping() {
   }
 
   function generateChartData(mapping: SPLMapping) {
-    const calibrationStatus = mapping.calibrationStatus;
-    const calibrationData = mapping.calibrationData;
+    const calibrationStatus = mapping.calibration_status;
+    const calibrationData = mapping.calibration_data;
 
     const hasCalibrationData = calibrationData && calibrationData.points && calibrationData.points.length > 0;
 

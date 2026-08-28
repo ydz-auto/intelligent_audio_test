@@ -80,3 +80,48 @@ class LogArchiveResult(APIModel):
     archive_file: Optional[str] = None
     remaining_count: int
 
+
+class LogListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(50)
+    level: Optional[str] = Field(None)
+    module: Optional[str] = Field(None)
+    category: Optional[str] = Field(None)
+    keyword: Optional[str] = Field(None)
+    content_include: Optional[str] = Field(None)
+    content_exclude: Optional[str] = Field(None)
+    start_time: Optional[str] = Field(None)
+    end_time: Optional[str] = Field(None)
+    mark: Optional[str] = Field(None)
+    device_id: Optional[int] = Field(None)
+    task_id: Optional[int] = Field(None)
+    api_id: Optional[int] = Field(None)
+    test_case_id: Optional[str] = Field(None)
+    thread_id: Optional[str] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+
+
+class LogStatsQuery(APIModel):
+    start_time: Optional[str] = Field(None)
+    end_time: Optional[str] = Field(None)
+    level: Optional[str] = Field(None)
+    module: Optional[str] = Field(None)
+    category: Optional[str] = Field(None)
+    keyword: Optional[str] = Field(None)
+    mark: Optional[str] = Field(None)
+    device_id: Optional[int] = Field(None)
+    task_id: Optional[int] = Field(None)
+    content_include: Optional[str] = Field(None)
+    content_exclude: Optional[str] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+
+
+class LogArchiveQuery(APIModel):
+    task_id: Optional[int] = Field(None)
+    test_case_id: Optional[str] = Field(None)
+
+
+class LogExportQuery(APIModel):
+    level: Optional[str] = Field(None)
+    module: Optional[str] = Field(None)
+

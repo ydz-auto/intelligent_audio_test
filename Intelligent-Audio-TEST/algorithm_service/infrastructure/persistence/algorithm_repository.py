@@ -30,6 +30,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from shared.models.database import get_db_session
+from shared.models.common_enums import FieldType
 from algorithm_service.infrastructure.persistence.models import (
     AlgorithmGroup as AlgorithmGroupPO,
     AlgorithmDefinition as AlgorithmDefinitionPO,
@@ -674,7 +675,7 @@ class DimensionParamRepository(IDimensionParamRepository):
         session = get_db_session()
         audio_params = session.query(EvaluationDimensionParamPO).filter(
             EvaluationDimensionParamPO.dimension_id.in_(dimension_ids),
-            EvaluationDimensionParamPO.field_type == "audio",
+            EvaluationDimensionParamPO.field_type == FieldType.AUDIO.value,
             EvaluationDimensionParamPO.param_direction == "input",
             EvaluationDimensionParamPO.deleted == False,  # noqa: E712
         ).all()

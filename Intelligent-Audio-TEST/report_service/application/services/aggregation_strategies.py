@@ -16,24 +16,9 @@ from typing import List, Dict, Any, Optional
 import json
 import logging
 
+from shared.utils.path_extractor import extract_by_path
+
 logger = logging.getLogger(__name__)
-
-
-def _extract_by_path(data: Dict[str, Any], path: str) -> Optional[Any]:
-    """简单路径提取，支持 a.b.c 格式。"""
-    if not path or not data:
-        return None
-    try:
-        for part in path.split('.'):
-            if isinstance(data, dict):
-                data = data.get(part)
-            elif isinstance(data, list) and part.isdigit():
-                data = data[int(part)]
-            else:
-                return None
-        return data
-    except Exception:
-        return None
 
 
 def _parse_raw_response(raw: Any) -> Optional[dict]:
@@ -99,6 +84,82 @@ class SimpleAverageStrategy(AggregationStrategy):
         return sum(values) / len(values)
 
 
+def _parse_numeric(value: Any) -> Optional[float]:
+    """把 default_value / 字段值解析成 float，失败返回 None。"""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    try:
+        return float(str(value).strip())
+    except (ValueError, TypeError):
+        return None
+
+
+class PassRateStrategy(AggregationStrategy):
+    """
+    达标率/占比：达标用例数 / 分组总用例数。
+
+    通过 output_params 的 agg_role 判断达标条件（读取该 param 的 pass_threshold 作为阈值/目标值）：
+      - pass_le: dimension_value <= pass_threshold（及格线型，越低越好，如 WER ≤ 0.1）
+      - pass_ge: dimension_value >= pass_threshold（及格线型，越高越好，如 准确率 ≥ 0.9）
+      - pass_eq: dimension_value == pass_threshold（精确匹配型，如 唤醒成功率 == 1.0）
+
+    若未配置上述任一 agg_role 或 pass_threshold 为空，则回退到 value > 0 判定。
+    """
+
+    def aggregate(self, items: List[Dict[str, Any]], output_params: List[Dict[str, Any]] = None) -> Optional[float]:
+        threshold, compare_op = _find_pass_condition(output_params)
+
+        # 只统计 dimension_value 非 None 的条目，null 值既不计入达标数也不计入总数
+        valid_items = [item for item in items if _parse_numeric(item.get('dimension_value')) is not None]
+        total = len(valid_items)
+        if total == 0:
+            return None
+
+        pass_count = 0
+        for item in valid_items:
+            val = item.get('dimension_value')
+            num_val = _parse_numeric(val)
+            if num_val is None:
+                continue
+            if _is_pass(num_val, threshold, compare_op):
+                pass_count += 1
+
+        # 转为百分比制 (0~100)，配合 score_unit='%' 显示为 "75%"
+        return round(pass_count / total * 100, 2)
+
+
+def _find_pass_condition(output_params: List[Dict[str, Any]]) -> tuple:
+    """
+    从 output_params 中查找达标条件。
+
+    返回 (threshold, compare_op)：
+      compare_op ∈ {'le', 'ge', 'eq', 'gt0'}
+      threshold 为 float（gt0 时为 0.0）
+    优先级：pass_eq > pass_ge > pass_le > 默认(value>0)
+    """
+    for role, op in (('pass_eq', 'eq'), ('pass_ge', 'ge'), ('pass_le', 'le')):
+        for p in output_params or []:
+            if p.get('agg_role') == role:
+                threshold = _parse_numeric(p.get('pass_threshold'))
+                if threshold is not None:
+                    return threshold, op
+    return 0.0, 'gt0'
+
+
+def _is_pass(value: float, threshold: float, compare_op: str) -> bool:
+    """按比较算符判定是否达标。"""
+    if compare_op == 'le':
+        return value <= threshold
+    if compare_op == 'ge':
+        return value >= threshold
+    if compare_op == 'eq':
+        return value == threshold
+    # 默认: value > 0
+    return value > 0
+
+
 class WeightedSumRatioStrategy(AggregationStrategy):
     """
     加权比率：Σ(numerator) / Σ(denominator)。
@@ -119,8 +180,8 @@ class WeightedSumRatioStrategy(AggregationStrategy):
             if not result_obj:
                 continue
 
-            num_val = _extract_by_path(result_obj, numerator_path)
-            den_val = _extract_by_path(result_obj, denominator_path)
+            num_val = extract_by_path(result_obj, numerator_path)
+            den_val = extract_by_path(result_obj, denominator_path)
 
             if num_val is not None and den_val is not None and den_val > 0:
                 total_num += num_val
@@ -139,6 +200,7 @@ class WeightedSumRatioStrategy(AggregationStrategy):
 _REGISTRY: Dict[str, AggregationStrategy] = {
     'average': SimpleAverageStrategy(),
     'weighted_wer': WeightedSumRatioStrategy(),
+    'pass_rate': PassRateStrategy(),
 }
 
 

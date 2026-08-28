@@ -95,6 +95,7 @@ class ReportSummaryMeta(Base):
     resources = Column(JSON, comment='资源列表')
     resource_headers = Column(JSON, comment='资源头信息')
     all_metrics = Column(JSON, comment='评估维度列表')
+    field_mappings = Column(JSON, comment='算法字段映射快照 {algorithm_type: {result: [...], reference: [...]}}')
     created_by_user_id = Column(BigInteger, nullable=True, index=True, comment='创建者用户ID')
     updated_by_user_id = Column(BigInteger, nullable=True, comment='最后更新者用户ID')
     created_at = Column(DateTime, default=utc8now, nullable=False, comment='创建时间')

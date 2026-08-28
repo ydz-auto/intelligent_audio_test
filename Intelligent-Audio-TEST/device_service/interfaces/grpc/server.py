@@ -19,6 +19,8 @@ import grpc
 
 from shared.proto import device_service_pb2_grpc as device_grpc
 from shared.infrastructure.grpc_interceptors import server_log_interceptor, server_db_scope_interceptor
+from shared.utils.config_manager import config_manager
+from shared.config.service_ports import DEVICE_SERVICE_GRPC_PORT
 from device_service.interfaces.grpc.servicers import (
     DeviceServiceServicer,
     DeviceResultServiceServicer,
@@ -35,7 +37,7 @@ _inject_logging_port()
 logger = logging.getLogger(__name__)
 
 
-def start_grpc_server(port=50053):
+def start_grpc_server(port=DEVICE_SERVICE_GRPC_PORT):
     """启动 device_service 的 gRPC server
 
     Args:
@@ -53,8 +55,10 @@ def start_grpc_server(port=50053):
     _cleaner = get_soft_delete_cleaner()
     _cleaner.start()
 
+    # gRPC 线程池大小配置化：优先读取 concurrency_config.json 中的 grpc.device_service_workers
+    _max_workers = config_manager.get_value('grpc', 'device_service_workers', 5)
     server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=5),
+        futures.ThreadPoolExecutor(max_workers=_max_workers),
         interceptors=[server_db_scope_interceptor, server_log_interceptor],
     )
     device_grpc.add_DeviceServiceServicer_to_server(DeviceServiceServicer(), server)

@@ -11,10 +11,11 @@ P3 改造：Audio / AudioTag / DeviceTag 已改为通过 e2e_test_service gRPC �
 """
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import func
+from sqlalchemy import Text, func
 from sqlalchemy.orm import joinedload
 
 from shared.models.database import get_db_session
+from shared.models.common_enums import TestType
 from task_service.infrastructure.persistence.models import Tag, TagCategory, TestCase, TestCaseGroup
 from shared.utils.query_utils import now_cst
 from task_service.domain.repositories.testcase_group_repository import TestCaseGroupRepositoryABC
@@ -185,21 +186,57 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         session.flush()
         return group
 
-    def list_groups(self, algorithm_type: str = '', search: str = '') -> list:
-        """查询 TestCaseGroup 列表（过滤逻辑删除，返回 dict 列表）。"""
+    def list_groups(self, algorithm_type: str = '', search: str = '',
+                    test_type: str = None, dimension_id: int = None,
+                    keyword: str = None) -> list:
+        """查询 TestCaseGroup 列表（过滤逻辑删除，返回 dict 列表）。
+
+        多维筛选：algorithm_type / test_type / dimension_id / keyword
+        其中 test_type / dimension_id / keyword 按用例级条件统计各分组下匹配的用例数，
+        只返回含匹配用例的分组。
+        """
         session = get_db_session()
         try:
             query = session.query(TestCaseGroup).filter(TestCaseGroup.deleted == False)  # noqa: E712
             if algorithm_type:
                 query = query.filter(TestCaseGroup.algorithm_type == algorithm_type)
-            if search:
-                query = query.filter(TestCaseGroup.name.ilike(f'%{search}%'))
+
+            # 多维筛选：按用例级条件过滤分组
+            if test_type or dimension_id or keyword:
+                case_filters = [TestCase.deleted == False]  # noqa: E712
+                if test_type and test_type in [TestType.API.value, TestType.E2E.value]:
+                    case_filters.append(TestCase.test_type == test_type)
+                if dimension_id:
+                    dim_str = str(dimension_id)
+                    case_filters.append(
+                        TestCase.config.cast(Text).like(f'"id": {dim_str}') |
+                        TestCase.config.cast(Text).like(f'"id":{dim_str}') |
+                        TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
+                        TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
+                    )
+                if keyword:
+                    case_filters.append(
+                        (TestCase.id.like(f'%{keyword}%')) |
+                        (TestCase.name.like(f'%{keyword}%')) |
+                        (TestCase.description.like(f'%{keyword}%'))
+                    )
+                # 按筛选条件统计各分组下匹配的用例数
+                counts_query = session.query(
+                    TestCase.group_id,
+                    func.count(TestCase.id)
+                ).filter(*case_filters).group_by(TestCase.group_id).all()
+                case_counts = {str(gid): count for gid, count in counts_query}
+                query = query.filter(TestCaseGroup.id.in_(list(case_counts.keys())))
+            else:
+                case_counts = {}
+
             rows = query.all()
             return [{
                 'id': str(r.id),
                 'name': r.name,
                 'description': getattr(r, 'description', ''),
                 'algorithm_type': getattr(r, 'algorithm_type', ''),
+                'test_case_count': case_counts.get(str(r.id), 0),
             } for r in rows]
         finally:
             session.close()
@@ -400,8 +437,12 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         return self.delete_group_and_commit(group_id, cascade=cascade)
 
     def get_testcase_stats(self, algorithm_type: str = '', group_id: str = '',
-                           group_by: str = '') -> dict:
-        """聚合统计 TestCase — count / group_by。"""
+                           group_by: str = '', test_type: str = None,
+                           dimension_id: int = None) -> dict:
+        """聚合统计 TestCase — count / group_by。
+
+        多维筛选：algorithm_type / test_type / dimension_id / group_id
+        """
         from sqlalchemy import func as _func
         session = get_db_session()
         try:
@@ -410,6 +451,16 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
                 query = query.filter(TestCase.algorithm_type == algorithm_type)
             if group_id:
                 query = query.filter(TestCase.group_id == group_id)
+            if test_type and test_type in [TestType.API.value, TestType.E2E.value]:
+                query = query.filter(TestCase.test_type == test_type)
+            if dimension_id:
+                dim_str = str(dimension_id)
+                query = query.filter(
+                    TestCase.config.cast(Text).like(f'"id": {dim_str}') |
+                    TestCase.config.cast(Text).like(f'"id":{dim_str}') |
+                    TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
+                    TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
+                )
 
             if group_by:
                 allowed = {'algorithm_type': TestCase.algorithm_type,
@@ -424,6 +475,16 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
                     rows = rows.filter(TestCase.algorithm_type == algorithm_type)
                 if group_id:
                     rows = rows.filter(TestCase.group_id == group_id)
+                if test_type and test_type in [TestType.API.value, TestType.E2E.value]:
+                    rows = rows.filter(TestCase.test_type == test_type)
+                if dimension_id:
+                    dim_str = str(dimension_id)
+                    rows = rows.filter(
+                        TestCase.config.cast(Text).like(f'"id": {dim_str}') |
+                        TestCase.config.cast(Text).like(f'"id":{dim_str}') |
+                        TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
+                        TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
+                    )
                 rows = rows.group_by(col).all()
                 items = [{'key': str(k) if k is not None else '', 'count': int(c)} for k, c in rows]
                 return {'items': items}
@@ -779,6 +840,7 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         test_type: str = None,
         algorithm_type: str = None,
         include_deleted: bool = False,
+        dimension_id: int = None,
     ):
         """分页查询测试用例（带 group/tags 预加载）。"""
         session = get_db_session()
@@ -791,7 +853,9 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
             query = query.filter(TestCase.deleted == False)  # noqa: E712
 
         if keyword:
+            # 关键字搜索：除名称/描述外，也按用例 ID 模糊匹配
             query = query.filter(
+                (TestCase.id.like(f'%{keyword}%')) |
                 (TestCase.name.like(f'%{keyword}%')) |
                 (TestCase.description.like(f'%{keyword}%'))
             )
@@ -805,8 +869,18 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         if algorithm_type:
             query = query.filter(TestCase.algorithm_type == algorithm_type)
 
-        if test_type and test_type in ['api', 'e2e']:
+        if test_type and test_type in [TestType.API.value, TestType.E2E.value]:
             query = query.filter(TestCase.test_type == test_type)
+
+        # 按评估维度过滤：搜索 config JSON 中包含该 dimension_id 的用例
+        if dimension_id:
+            dim_str = str(dimension_id)
+            query = query.filter(
+                TestCase.config.cast(Text).like(f'"id": {dim_str}') |
+                TestCase.config.cast(Text).like(f'"id":{dim_str}') |
+                TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
+                TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
+            )
 
         return query.paginate(page=page, per_page=per_page, error_out=False)
 
@@ -817,6 +891,7 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         test_type: str = None,
         algorithm_type: str = None,
         include_deleted: bool = False,
+        dimension_id: int = None,
     ) -> List[TestCase]:
         """按标签 ID 列表查询关联的测试用例（带 group/tags 预加载）。"""
         session = get_db_session()
@@ -828,16 +903,84 @@ class TestCaseRepository(TestCaseGroupRepositoryABC):
         if not include_deleted:
             tc_query = tc_query.filter(TestCase.deleted == False)  # noqa: E712
         if keyword:
+            # 关键字搜索：除名称/描述外，也按用例 ID 模糊匹配
             tc_query = tc_query.filter(
+                (TestCase.id.like(f'%{keyword}%')) |
                 (TestCase.name.like(f'%{keyword}%')) |
                 (TestCase.description.like(f'%{keyword}%'))
             )
-        if test_type and test_type in ['api', 'e2e']:
+        if test_type and test_type in [TestType.API.value, TestType.E2E.value]:
             tc_query = tc_query.filter(TestCase.test_type == test_type)
         if algorithm_type:
             tc_query = tc_query.filter(TestCase.algorithm_type == algorithm_type)
 
+        # 按评估维度过滤
+        if dimension_id:
+            dim_str = str(dimension_id)
+            tc_query = tc_query.filter(
+                TestCase.config.cast(Text).like(f'"id": {dim_str}') |
+                TestCase.config.cast(Text).like(f'"id":{dim_str}') |
+                TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
+                TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
+            )
+
         return tc_query.all()
+
+    def fetch_case_ids(self, group=None, test_type=None, search=None, tag=None,
+                       include_deleted: bool = False, algorithm_type: str = None,
+                       dimension_id: int = None) -> List[str]:
+        """按筛选条件查询全量用例ID（不分页）。
+
+        Args:
+            group: 分组名（通过 group_name 查 group_id）
+            test_type: 用例类型（api/e2e）
+            search: 名称/ID 模糊搜索
+            tag: 标签名
+            algorithm_type: 算法类型
+            dimension_id: 评估维度ID（按 config JSON 模糊匹配）
+        Returns:
+            用例 ID 列表
+        """
+        session = get_db_session()
+        query = session.query(TestCase.id).filter(TestCase.deleted == False)  # noqa: E712
+
+        if group:
+            group_obj = session.query(TestCaseGroup).filter_by(name=group).first()
+            if group_obj:
+                query = query.filter(TestCase.group_id == group_obj.id)
+            else:
+                # 未找到分组则返回空
+                return []
+
+        if test_type:
+            query = query.filter(TestCase.test_type == test_type)
+
+        if algorithm_type:
+            query = query.filter(TestCase.algorithm_type == algorithm_type)
+
+        if dimension_id:
+            dim_str = str(dimension_id)
+            query = query.filter(
+                TestCase.config.cast(Text).like(f'"id": {dim_str}') |
+                TestCase.config.cast(Text).like(f'"id":{dim_str}') |
+                TestCase.config.cast(Text).like(f'"id": "{dim_str}"') |
+                TestCase.config.cast(Text).like(f'"id":"{dim_str}"')
+            )
+
+        if search:
+            keyword = f"%{search}%"
+            # 搜索：除名称外，也按用例 ID 和描述模糊匹配
+            query = query.filter(
+                (TestCase.id.like(keyword)) |
+                (TestCase.name.like(keyword)) |
+                (TestCase.description.like(keyword))
+            )
+
+        if tag:
+            # 按标签筛选
+            query = query.join(TestCase.tags).filter(Tag.name == tag)
+
+        return [row[0] for row in query.all()]
 
     def count_testcases(self) -> int:
         """统计未删除测试用例总数。"""

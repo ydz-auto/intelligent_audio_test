@@ -49,7 +49,7 @@ export function useDisplayTypes() {
 
 /** 保存摘要（reportId computed + scheduleSaveSummary 防抖） */
 export function useSaveSummary(props: any, logTag = 'ReportComparison') {
-  const reportId = computed(() => props.reportData?.id || props.reportData?.reportId)
+  const reportId = computed(() => props.reportData?.id || props.reportData?.report_id)
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null
   const scheduleSaveSummary = (partialSummary: any) => {
@@ -148,9 +148,7 @@ export function useResourceHeaders(props: any) {
   const resourceHeaderMap = computed(() => {
     const data = props.reportData || {}
     const headers =
-      data.resourceHeaders ||
       data.resource_headers ||
-      data.summary?.resourceHeaders ||
       data.summary?.resource_headers ||
       []
 
@@ -184,7 +182,7 @@ export function useMetricFormat(allMetrics: () => any[]) {
     const map: Record<string, number> = {}
     allMetrics().forEach((m: any) => {
       if (m && m.name) {
-        const decimals = m.decimalPlaces ?? m.decimal_places
+        const decimals = m.decimal_places
         if (decimals !== undefined && decimals !== null) {
           map[m.name] = Number(decimals)
         }

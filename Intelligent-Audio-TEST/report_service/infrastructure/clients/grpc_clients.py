@@ -169,6 +169,11 @@ def _grpc_algo_get_reference_params_for_report(reference_params_col=None):
     return _dto_to_dict(_algo.get_reference_params_for_report(reference_params_col))
 
 
+def _grpc_algo_get_field_mapping(algorithm_type=None):
+    """通过 gRPC (algorithm_service.AlgorithmQueryService) 获取算法字段映射快照。"""
+    return _dto_to_dict(_algo.get_full_field_mapping(algorithm_type or ''))
+
+
 # ======================================================================
 # TestCaseConfigService —— 测试用例查询
 # ======================================================================

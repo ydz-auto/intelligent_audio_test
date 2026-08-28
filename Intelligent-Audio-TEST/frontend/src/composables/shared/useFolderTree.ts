@@ -49,7 +49,7 @@ export function useFolderTree() {
       duration: file.duration || 0,
       size: file.size || 0,
       audio_type: file.audio_type || file.audioType || file.type || 'dry',
-      type: file.type || file.audio_type || file.audioType || 'dry',
+      type: file.type || file.audio_type || 'dry',
       created_at: file.created_at || file.createdAt || '',
     };
   }

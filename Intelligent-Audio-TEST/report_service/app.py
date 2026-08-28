@@ -59,6 +59,14 @@ async def lifespan(app: FastAPI):
     _soft_delete_cleaner = get_soft_delete_cleaner()
     _soft_delete_cleaner.start()
 
+    # 启动事件订阅：监听 TaskCompleted 事件，自动触发报告生成（事件驱动补充手动触发）
+    from report_service.application.services.report_task_generator import ReportTaskGenerator
+    try:
+        ReportTaskGenerator.start_event_subscriber()
+        logger.info("report_service 事件订阅已启动，监听 TaskCompleted 事件")
+    except Exception as e:
+        logger.warning("report_service 事件订阅启动失败，将仅依赖手动触发: %s", e)
+
     logger.info("report_service FastAPI app started")
     yield
 

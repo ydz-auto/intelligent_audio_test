@@ -225,6 +225,26 @@ class AudioQueryHandler:
         if not oss_key:
             return _fail('未提供路径')
 
+        # 安全检查：仅允许音频文件扩展名
+        import os
+        ext = os.path.splitext(oss_key)[1].lower().replace('.', '')
+        if ext:
+            allowed_exts = {'wav', 'mp3', 'flac', 'aac', 'ogg', 'm4a', 'wma', 'opus'}
+            if ext not in allowed_exts:
+                return _fail('不支持的文件类型', 403)
+
+        # 路径安全检查：防止路径遍历攻击
+        # 简化为单一 STATIC_BASE_PATH 校验，用 os.path.realpath 解析符号链接
+        if os.path.isabs(oss_key):
+            from audio_service.config.config import Config
+            static_base = getattr(Config, 'STATIC_BASE_PATH', '')
+
+            normalized_path = os.path.realpath(oss_key)
+            if static_base:
+                real_base = os.path.realpath(static_base)
+                if not (normalized_path == real_base or normalized_path.startswith(real_base + os.sep)):
+                    return _fail('路径不在允许的目录范围内', 403)
+
         try:
             presigned_url = storage.get_url(oss_key, expires=3600)
             return _ok(data={'url': presigned_url})

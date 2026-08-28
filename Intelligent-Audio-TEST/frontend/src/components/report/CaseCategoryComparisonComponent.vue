@@ -271,6 +271,7 @@
 </template>
 
 <script setup>
+import { inject, watch } from 'vue'
 import ChartComponent from './ChartComponent.vue'
 import DataTable from '../common/data/DataTable.vue'
 import '../../assets/styles/components/report-filter-card.css'
@@ -281,6 +282,9 @@ const props = defineProps({
     type: Object, default: () => ({})
   }
 })
+
+// 导出模式：导出时展开所有折叠区块
+const isExporting = inject('isExporting', false)
 
 const {
   isCollapsed,
@@ -325,6 +329,15 @@ const {
   resetFilters,
   applyFilters
 } = useCaseCategoryComparison(props)
+
+// 导出模式：展开本区块 + 展开所有维度卡片 + 强制使用表格模式（canvas 图表无法克隆到静态 HTML）
+watch(isExporting, (exporting) => {
+  if (exporting) {
+    isCollapsed.value = false
+    collapsedMetrics.value = {}
+    activeDisplayType.value = 'table'
+  }
+}, { immediate: true })
 </script>
 
 <style scoped>

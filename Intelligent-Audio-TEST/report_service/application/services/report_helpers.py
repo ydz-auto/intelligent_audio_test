@@ -13,6 +13,7 @@
 
 import logging
 
+from shared.models.common_enums import TestType
 from shared.utils.log_handler import log_not_emit
 from report_service.application.services.report_utils import ReportUtils
 from report_service.application.services.report_query_builder import ReportQueryBuilder
@@ -53,6 +54,9 @@ class ReportHelpers:
             return 'stm'
         if 'audio' in key_lower:
             return 'audio'
+        # 当 key 包含 time 或 timestamp 时，返回 timestamp 类型
+        if 'time' in key_lower or 'timestamp' in key_lower:
+            return 'timestamp'
         return 'text'
 
     # 公共函数：构建报告音频列表（统一 task 和 compare 两种模式）
@@ -114,7 +118,7 @@ class ReportHelpers:
                 dev_map = _grpc_get_playback_devices_by_ids(list(all_device_ids))
                 devices = {k: v.get('name') for k, v in dev_map.items()}
 
-        tc_test_type = test_case.test_type or 'api'
+        tc_test_type = test_case.test_type or TestType.API.value
 
         per_round_dry = []
         noise_audios = []
@@ -328,7 +332,7 @@ class ReportHelpers:
             return []
 
         results = []
-        tc_test_type = test_case.test_type if hasattr(test_case, 'test_type') else (test_case.get('test_type') if isinstance(test_case, dict) else 'api')
+        tc_test_type = test_case.test_type if hasattr(test_case, 'test_type') else (test_case.get('test_type') if isinstance(test_case, dict) else TestType.API.value)
 
         # 如果指定了类型且不匹配记录类型，直接返回空
         if test_type is not None and test_type != tc_test_type:

@@ -70,7 +70,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
 
       let matchesAlgorithm = true
       if (selectedAlgorithmType.value) {
-        matchesAlgorithm = api.algorithmType === selectedAlgorithmType.value
+        matchesAlgorithm = api.algorithm_type === selectedAlgorithmType.value
       }
 
       let matchesStatus = true
@@ -84,7 +84,7 @@ export function useResourceSelection(options: UseResourceSelectionOptions) {
         const query = apiSearchQuery.value.toLowerCase()
         matchesSearch = Boolean(
           (api.name && api.name.toLowerCase().includes(query)) ||
-          (api.apiEndpoints && api.apiEndpoints.some((ep: any) => {
+          (api.api_endpoints && api.api_endpoints.some((ep: any) => {
             const urlValue = ep.url || ep.endpoint || ''
             return urlValue.toLowerCase().includes(query)
           }))

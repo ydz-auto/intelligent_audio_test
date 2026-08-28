@@ -8,6 +8,7 @@ from evaluation_service.infrastructure.acl import task_acl_repository
 from shared.models.database import get_db_session
 from shared.utils.status_utils import derive_task_case_status
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus, TaskCaseStatus, TaskStatus
+from shared.models.common_enums import TestType
 from evaluation_service.domain.services.evaluation_utils import extract_by_path, calculate_score
 from evaluation_service.infrastructure.persistence.round_aggregator import RoundAggregator
 from evaluation_service.infrastructure.evaluation_mixin import update_task_case_status_in_db
@@ -39,6 +40,23 @@ class EvaluationResultProcessor(RoundAggregator):
             category='database',
             content=f"标记 TestResult {result_id} 为完成状态: {'成功' if ok else '失败'}"
         )
+
+        # 预提取 algorithm_results 快照（无评估维度场景）
+        if ok:
+            try:
+                tr = task_acl_repository.get_test_result_by_id(result_id)
+                if tr:
+                    self._build_and_store_algorithm_results(
+                        result_id,
+                        getattr(tr, 'task_id', None),
+                        getattr(tr, 'test_case_id', None)
+                    )
+            except Exception as e:
+                self._log(
+                    level='WARNING',
+                    category='execution',
+                    content=f"预提取 algorithm_results 失败: {e}",
+                )
 
     def parse_dimension_result(self, resp_data, dim_data):
         """
@@ -245,7 +263,7 @@ class EvaluationResultProcessor(RoundAggregator):
     def _get_expected_result_count(self, task_id, task):
         """获取预期结果数量（P1.4: gRPC）"""
         expected_count = 0
-        if task.type == 'e2e':
+        if task.type == TestType.E2E.value:
             devices = task_acl_repository.get_task_devices(task_id=task_id)
             expected_count = len(devices)
         else:
@@ -368,7 +386,13 @@ class EvaluationResultProcessor(RoundAggregator):
         return case_all_finished, case_any_failed
 
     def _apply_final_status(self, task_id, test_case_id, new_status, new_evaluation_status, task):
-        """应用最终状态（P1.4: 通过 gRPC 更新 TaskCase 和 Task）"""
+        """应用最终状态
+
+        P1.4: 通过 gRPC 更新 TaskCase 和 Task
+        事件驱动改造: 同时发布 CaseEvaluated 事件到 Redis 事件总线，
+        消费方（task_service）订阅后更新状态，替代 gRPC 同步回传的强依赖。
+        gRPC 调用保留作为同步路径，事件作为异步通知补充。
+        """
         # 更新TaskCase状态（P1.4: 通过 gRPC）
         update_count = update_task_case_status_in_db(
             None, task_id, test_case_id, new_status, new_evaluation_status
@@ -382,7 +406,22 @@ class EvaluationResultProcessor(RoundAggregator):
             test_case_id=test_case_id
         )
 
-        # P1.4: 通过 gRPC 更新 Task 状态
+        # 发布用例评估完成事件到事件总线（异步通知 task_service）
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+        is_success = new_evaluation_status == EvaluationStatus.COMPLETED
+        EventBus().publish(
+            EventChannel.CASE_EVENTS,
+            EventType.CASE_EVALUATION_COMPLETED if is_success else EventType.CASE_FAILED,
+            {
+                'task_id': str(task_id),
+                'test_case_id': str(test_case_id),
+                'evaluation_status': new_evaluation_status,
+                'case_status': new_status,
+                'success': is_success,
+            }
+        )
+
+        # P1.4: 通过 gRPC 更新 Task 状态（同步路径，保留兼容）
         if task and task.status in (TaskStatus.EVALUATING, TaskStatus.REEVALUATING):
             ok = task_acl_repository.update_task_status(task_id, new_status)
             self._log(
@@ -393,7 +432,22 @@ class EvaluationResultProcessor(RoundAggregator):
                 test_case_id=test_case_id
             )
 
-            # 通过 gRPC 调用 task_service 通知进度
+            # 发布任务级事件（评估阶段完成）
+            task_event_type = EventType.TASK_COMPLETED if new_status == TaskStatus.COMPLETED else (
+                EventType.TASK_FAILED if new_status == TaskStatus.FAILED else None
+            )
+            if task_event_type:
+                EventBus().publish(
+                    EventChannel.TASK_EVENTS,
+                    task_event_type,
+                    {
+                        'task_id': str(task_id),
+                        'status': new_status,
+                        'test_case_id': str(test_case_id) if test_case_id else None,
+                    }
+                )
+
+            # 通过 gRPC 调用 task_service 通知进度（同步路径，保留兼容）
             from evaluation_service.infrastructure.acl.task_acl_repository import task_acl_repository
             task_acl_repository.notify_task_progress(task_id, force=True)
 
@@ -448,7 +502,7 @@ class EvaluationResultProcessor(RoundAggregator):
         finally:
             local_db_session.close()
 
-    def process_group_dimension_results(self, resp_data, group_items, task_id, test_case_id, result_id, api_request_body, test_type='api'):
+    def process_group_dimension_results(self, resp_data, group_items, task_id, test_case_id, result_id, api_request_body, test_type=TestType.API.value):
         """
         处理一组维度的评估结果
 
@@ -505,6 +559,11 @@ class EvaluationResultProcessor(RoundAggregator):
             # 循环结束后统一提交
             local_db_session.commit()
 
+            # 预提取 algorithm_results 快照，存入 result_data['algorithm_results']
+            self._build_and_store_algorithm_results(
+                result_id, task_id, test_case_id, test_type
+            )
+
             # 检查是否所有维度都已完成评估，如果是，更新TaskCase状态
             if result_id and test_case_id:
                 if self.check_all_dimensions_completed(result_id, task_id):
@@ -545,3 +604,133 @@ class EvaluationResultProcessor(RoundAggregator):
         except Exception as e:
             self._log(level='ERROR', content=f"检查维度完成状态失败: {str(e)}", task_id=task_id)
             return False
+
+    def _build_and_store_algorithm_results(self, result_id, task_id, test_case_id, test_type=TestType.API.value):
+        """预提取 algorithm_results 扁平列表并存入 result_data['algorithm_results']。
+
+        在评估完成后调用，报告页和详情页可直接读取，无需重复提取。
+        """
+        if not result_id:
+            return
+        try:
+            test_result = task_acl_repository.get_test_result_by_id(result_id)
+            if not test_result:
+                return
+
+            # 获取 algorithm_type 和 resource
+            algorithm_type = ''
+            # algorithm_type 通过 TestResult 获取（若 DTO 不含则从 Task/TestCase 推断）
+            algo_result = deserialize_algorithm_result(test_result.algorithm_result)
+
+            task = task_acl_repository.get_task_by_id(task_id) if task_id else None
+
+            # 获取 resource name
+            device_id = test_result.device_id
+            api_id = test_result.api_id
+            # 通过 gRPC 获取设备/API 名称
+            resource = f'result_{result_id}'
+            try:
+                if device_id:
+                    from shared.clients.grpc_clients import get_device_config_service_stub
+                    from shared.proto import device_service_pb2 as dev_pb
+                    from shared.utils.grpc_json import loads as _grpc_loads
+                    dev_stub = get_device_config_service_stub()
+                    dev_resp = dev_stub.GetDevice(dev_pb.GetDeviceRequest(device_id=device_id))
+                    if dev_resp.success:
+                        dev_data = _grpc_loads(dev_resp.data, {})
+                        resource = dev_data.get('name') or f'device_{device_id}'
+                elif api_id:
+                    from shared.clients.grpc_clients import get_api_test_service_stub
+                    from shared.proto import api_test_service_pb2 as api_pb
+                    from shared.utils.grpc_json import loads as _grpc_loads
+                    api_stub = get_api_test_service_stub()
+                    api_resp = api_stub.GetAPIConfig(api_pb.GetAPIConfigRequest(api_id=api_id))
+                    if api_resp.success:
+                        api_data = _grpc_loads(api_resp.data, {})
+                        resource = api_data.get('name') or f'api_{api_id}'
+            except Exception:
+                pass
+
+            # 加载 algo_res 和 result_data
+            from shared.utils.result_data_store import load_full_result_data, write_result_data_file, split_result_data
+            result_data = load_full_result_data(test_result.result_data, test_result.result_data_path)
+            if not isinstance(result_data, dict):
+                result_data = {}
+
+            if not (algo_result or result_data):
+                return
+
+            # 查询 dim_result_rows（含 api_raw_response，本地 DB）
+            local_db_session = get_db_session()
+            try:
+                dim_result_rows = local_db_session.query(
+                    TestResultDimension
+                ).filter(TestResultDimension.test_result_id == result_id).all()
+            finally:
+                local_db_session.close()
+
+            # 查询 aux_params_map（通过 gRPC 调 algorithm_service）
+            all_dim_ids = set(dr.dimension_id for dr in dim_result_rows if dr.dimension_id)
+            aux_params_map = {}
+            if all_dim_ids:
+                try:
+                    from evaluation_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
+                    _algo_repo = AlgorithmRepository()
+                    for dim_id in all_dim_ids:
+                        params = _algo_repo.get_dimension_params(dim_id)
+                        if not params:
+                            continue
+                        for p in params:
+                            if not isinstance(p, dict):
+                                continue
+                            if p.get('param_direction') != 'output':
+                                continue
+                            if p.get('output_role') != 'aux':
+                                continue
+                            if not p.get('visible_in_report'):
+                                continue
+                            dim_name = p.get('dimension_name') or ''
+                            if dim_id not in aux_params_map:
+                                aux_params_map[dim_id] = []
+                            aux_params_map[dim_id].append({'param': p, 'dimension_name': dim_name})
+                except Exception:
+                    pass
+
+            # 查询 output_fields
+            output_fields = []
+            if algorithm_type:
+                try:
+                    from evaluation_service.infrastructure.acl.algorithm_acl_repository import AlgorithmRepository
+                    _algo_repo = AlgorithmRepository()
+                    output_fields = _algo_repo.get_output_fields(algorithm_type) or []
+                except Exception:
+                    pass
+
+            # 调用公共方法构建 algorithm_results
+            from report_service.application.services.report_data_builder import ReportDataBuilder
+            algorithm_results = ReportDataBuilder.build_algorithm_results_for_result(
+                test_result, resource, algo_result, result_data,
+                aux_params_map, dim_result_rows, output_fields, algorithm_type
+            )
+
+            # 存入 result_data['algorithm_results']
+            result_data['algorithm_results'] = algorithm_results if algorithm_results else None
+
+            # 写回：大字段存文件，轻量部分存 DB
+            lightweight, has_heavy = split_result_data(result_data)
+            result_data_path = None
+            if has_heavy:
+                device_sn = str(api_id or result_id)
+                result_data_path = write_result_data_file(task_id, test_case_id, device_sn, result_data)
+
+            task_acl_repository.update_test_result_data(
+                result_id, lightweight, result_data_path
+            )
+
+        except Exception as e:
+            self._log(
+                level='WARNING',
+                category='execution',
+                content=f"预提取 algorithm_results 失败: {e}",
+                task_id=task_id, test_case_id=test_case_id
+            )

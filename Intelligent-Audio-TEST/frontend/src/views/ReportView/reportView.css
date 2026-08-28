@@ -454,36 +454,84 @@
 /* 浮动操作按钮 */
 .floating-actions {
   position: fixed;
-  bottom: 20px;
-  right: 24px;
+  right: 32px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 9999;
+  z-index: 14000;
 }
 
 .action-btn {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: white;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
   border: 1px solid #e2e8f0;
+  box-shadow: 0 2px 10px rgba(255, 106, 0, 0.15);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: 18px;
-  color: #64748b;
-  transition: all 0.2s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  font-size: 16px;
+  color: #FF6A00;
+  transition: all 0.25s ease;
 }
 
 .action-btn:hover {
-  background: #1677FF;
-  color: white;
-  border-color: #1677FF;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(22, 119, 255, 0.3);
+  transform: scale(1.06);
+  border-color: #ffb380;
+  box-shadow: 0 4px 14px rgba(255, 106, 0, 0.25);
+  color: #e55f00;
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+}
+
+/* 导出下拉菜单 */
+.export-dropdown-wrapper {
+  position: relative;
+}
+
+.export-dropdown {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  min-width: 160px;
+  z-index: 15000;
+}
+
+.export-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: white;
+  color: #1e293b;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.export-menu-item:hover {
+  background: #fff4e6;
+}
+
+.export-menu-item i {
+  font-size: 15px;
+  color: #FF6A00;
+  width: 18px;
+  text-align: center;
 }
 
 .copy-toast {

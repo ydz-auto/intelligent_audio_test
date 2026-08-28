@@ -102,6 +102,7 @@ class TestCaseDetailDTO:
     config: Any = None
     algorithm_type: Optional[str] = None
     reference_params: Any = None
+    algorithm_params: Any = None  # 按轮分组 [{round_number, params:[{field_code, field_value}]}]
 
 
 @dataclass

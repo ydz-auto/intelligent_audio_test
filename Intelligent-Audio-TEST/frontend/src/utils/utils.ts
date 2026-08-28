@@ -10,10 +10,10 @@ export function stripAlgorithmParamSchema(params: any): any[] {
   const SCHEMA_KEYS = new Set(['caseAlgorithmParams', 'algorithmFormSchema']);
   if (Array.isArray(params)) {
     return params
-      .filter((p: any) => !SCHEMA_KEYS.has(p.field_code ?? p.fieldCode))
+      .filter((p: any) => !SCHEMA_KEYS.has(p.field_code))
       .map((p: any) => ({
-        field_code: p.field_code ?? p.fieldCode,
-        field_value: p.field_value ?? p.fieldValue
+        field_code: p.field_code,
+        field_value: p.field_value
       }))
       .filter((p: any) => p.field_code);
   }
@@ -74,7 +74,20 @@ export function throttle<T extends (...args: any[]) => any>(func: T, limit: numb
 
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
-    await navigator.clipboard.writeText(text);
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    if (!ok) throw new Error('execCommand copy failed');
     return true;
   } catch (err) {
     console.error('复制到剪贴板失败:', err);
@@ -144,74 +157,128 @@ export interface FormField {
   disabled?: boolean;
 }
 
+/**
+ * 归一化背景噪声配置，兼容多种存储格式：
+ * - 标准 ID 格式：{audio_id, spl, device_ids, loop}
+ * - 统一标注文件格式：{audio:"文件名.wav", spl, playback_device_names:["设备名1","设备名2"]}
+ * - 旧单设备格式：{audio:"文件名.wav", spl, playback_device_name:"设备名"}
+ * 输出统一为 {audioId, audioName, spl, deviceIds, deviceNames, loop, audio(文件名)}
+ */
+export function normalizeBackgroundNoise(bg: any) {
+  if (!bg || typeof bg !== 'object') return undefined;
+  const audioId = bg.audio_id ?? '';
+  const audioName = bg.audio_name ?? '';
+  const audioFile = typeof bg.audio === 'string' ? bg.audio : '';
+  // 设备 ID 列表：优先 device_ids，其次从设备名反查（由调用方注入 devNameToId）
+  const deviceIds: string[] = Array.isArray(bg.deviceIds)
+    ? bg.deviceIds.map(String)
+    : (Array.isArray(bg.device_ids) ? bg.device_ids.map(String) : []);
+  // 设备名列表（统一标注文件格式）
+  let deviceNames: string[] = [];
+  if (Array.isArray(bg.playback_device_names)) {
+    deviceNames = bg.playback_device_names;
+  } else if (Array.isArray(bg.playbackDeviceNames)) {
+    deviceNames = bg.playbackDeviceNames;
+  } else if (Array.isArray(bg.device_names)) {
+    deviceNames = bg.device_names;
+  } else if (bg.playback_device_name) {
+    deviceNames = [bg.playback_device_name];
+  }
+  return {
+    audioId: String(audioId || ''),
+    audioName: String(audioName || audioFile || ''),
+    audio: audioFile, // 保留文件名（用于运行时解析或 UI 显示兜底）
+    spl: bg.spl ?? null,
+    deviceIds,
+    deviceNames, // 保留设备名（用于 UI 显示兜底 / 反查 ID）
+    loop: bg.loop ?? false,
+  };
+}
+
 export function normalizeTestCaseConfig(config: Record<string, any>) {
   const rawConfig = config || {};
 
   // ---- rounds-based format (new architecture) ----
   if (rawConfig.rounds && Array.isArray(rawConfig.rounds)) {
-    const normalizedRounds = rawConfig.rounds.map((round: any) => ({
-      roundNumber: round.roundNumber ?? round.round_number ?? 1,
-      audios: Array.isArray(round.audios)
-        ? round.audios.map((audio: any) => ({
-            audioId: audio?.audioId ?? audio?.audio_id ?? '',
-            playbackDeviceId: audio?.playbackDeviceId ?? audio?.playback_device_id ?? '',
-            spl: audio?.spl ?? 65,
-            playOrder: audio?.playOrder ?? audio?.play_order ?? 0,
-          }))
-        : [],
-      backgroundNoise: round.backgroundNoise ?? round.background_noise
-        ? {
-            audioId: (round.backgroundNoise ?? round.background_noise)?.audioId
-              ?? (round.backgroundNoise ?? round.background_noise)?.audio_id ?? null,
-            spl: (round.backgroundNoise ?? round.background_noise)?.spl ?? null,
-            deviceIds: (round.backgroundNoise ?? round.background_noise)?.deviceIds
-              ?? (round.backgroundNoise ?? round.background_noise)?.device_ids ?? [],
-            loop: (round.backgroundNoise ?? round.background_noise)?.loop ?? false,
-          }
-        : undefined,
-      evaluation: round.evaluation ?? undefined,
-      algorithmParams: Array.isArray(round.algorithmParams ?? round.algorithm_params)
-        ? (round.algorithmParams ?? round.algorithm_params).map((p: any) => ({
-            field_code: p.field_code ?? p.fieldCode ?? '',
-            field_value: p.field_value ?? p.fieldValue ?? null,
-          }))
-        : [],
-      referenceParamsPath: round.referenceParamsPath ?? round.reference_params_path ?? '',
-    }));
+    // case 级背景噪声（rounds 外层），优先级高于轮次级
+    const caseBgNoise = rawConfig.background_noise;
+
+    const normalizedRounds = rawConfig.rounds.map((round: any) => {
+      // 轮次级背景噪声：case 级存在时直接用 case 级（轮次级不播放）
+      const roundBgSrc = caseBgNoise ?? round.background_noise;
+      // 归一化背景噪声：兼容 audio(文件名) / playback_device_names(设备名数组) / playback_device_name(单个)
+      const bgNormalized = roundBgSrc ? normalizeBackgroundNoise(roundBgSrc) : undefined;
+
+      return {
+        roundNumber: round.round_number ?? 1,
+        audios: Array.isArray(round.audios)
+          ? round.audios.map((audio: any) => {
+              const item: any = {
+                audioId: audio?.audio_id ?? '',
+                playbackDeviceId: audio?.playback_device_id ?? '',
+                spl: audio?.spl ?? 65,
+                playOrder: audio?.play_order ?? 0,
+              };
+              // 保留 segment 级背景噪声（归一化后）
+              const segBg = audio?.background_noise;
+              if (segBg) {
+                item.backgroundNoise = normalizeBackgroundNoise(segBg);
+              }
+              // 保留 segment 级干扰人原值（交由 InterfererConfigEditor 兼容）
+              if (Array.isArray(audio?.interferers) && audio.interferers.length > 0) {
+                item.interferers = audio.interferers;
+              }
+              return item;
+            })
+          : [],
+        backgroundNoise: bgNormalized,
+        evaluation: round.evaluation ?? undefined,
+        algorithmParams: Array.isArray(round.algorithm_params)
+          ? round.algorithm_params.map((p: any) => ({
+              field_code: p.field_code ?? '',
+              field_value: p.field_value ?? null,
+            }))
+          : [],
+        referenceParamsPath: round.reference_params_path ?? '',
+      };
+    });
 
     const rawDimensions = rawConfig.dimensions;
     const normalizedDimensions = Array.isArray(rawDimensions)
       ? rawDimensions
       : (rawDimensions?.dimensions ?? []);
 
-    return {
+    const result: Record<string, any> = {
       rounds: normalizedRounds,
       dimensions: normalizedDimensions || [],
+      // case 级背景噪声也写入顶层（供 syncStructuredFields / 后端保存时使用）
+      background_noise: caseBgNoise,
     };
+    // 透传顶层非结构化字段（record_mode / voiceprint_config 等）
+    for (const [k, v] of Object.entries(rawConfig)) {
+      if (!(k in result) && k !== 'rounds' && k !== 'dimensions' && k !== 'audios' && k !== 'backgroundNoise' && k !== 'background_noise') {
+        result[k] = v;
+      }
+    }
+    return result;
   }
 
   // ---- legacy flat format fallback (audios + backgroundNoise) ----
   const rawBackgroundNoise =
     rawConfig.backgroundNoise ??
-    (rawConfig.background_noise
-      ? {
-          audioId: rawConfig.background_noise.audioId ?? rawConfig.background_noise.audio_id ?? null,
-          spl: rawConfig.background_noise.spl ?? null,
-          deviceIds: rawConfig.background_noise.deviceIds ?? rawConfig.background_noise.device_ids ?? []
-        }
-      : undefined);
+    (rawConfig.background_noise ? normalizeBackgroundNoise(rawConfig.background_noise) : undefined);
 
   const rawAudios: any[] = Array.isArray(rawConfig.audios) ? rawConfig.audios : [];
   const normalizedAudios = rawAudios.map((audio) => ({
-    audioId: audio?.audioId ?? audio?.audio_id ?? '',
-    playbackDeviceId: audio?.playbackDeviceId ?? audio?.playback_device_id ?? null,
+    audioId: audio?.audio_id ?? '',
+    playbackDeviceId: audio?.playback_device_id ?? null,
     spl: audio?.spl ?? 65,
-    playOrder: audio?.playOrder ?? audio?.play_order ?? 0,
+    playOrder: audio?.play_order ?? 0,
   }));
 
   // Convert legacy flat audios into rounds grouped by testType
-  const apiAudios = normalizedAudios.filter((a: any) => (a.testType ?? a.test_type ?? 'api') === 'api');
-  const e2eAudios = normalizedAudios.filter((a: any) => (a.testType ?? a.test_type) === 'e2e');
+  const apiAudios = normalizedAudios.filter((a: any) => (a.test_type ?? 'api') === 'api');
+  const e2eAudios = normalizedAudios.filter((a: any) => (a.test_type) === 'e2e');
   const legacyRounds: any[] = [];
   if (apiAudios.length > 0) {
     legacyRounds.push({

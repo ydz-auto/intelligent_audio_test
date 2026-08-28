@@ -10,11 +10,17 @@ from api_gateway.schemas.task import (
     TaskUpdateCasesRequest,
     TaskBatchActionRequest,
     TaskUpdateCasesData,
+    TaskBatchExportQuery,
 )
 
 logger = logging.getLogger(__name__)
 
 _task_acl = TaskConfigAclRepositoryImpl()
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 class TaskCommandService:
@@ -79,7 +85,8 @@ class TaskCommandService:
         data_dict = req.model_dump(by_alias=False, exclude_none=True)
         # 导出时需要 format 参数
         if req.action == 'export':
-            data_dict['format'] = request.args.get('format', 'json')
+            query = _parse_query_params(TaskBatchExportQuery)
+            data_dict['format'] = query.format
 
         result = _task_acl.batch_action(data_dict)
 

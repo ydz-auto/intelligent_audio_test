@@ -82,3 +82,4 @@ class CreateTestCaseFromAudioCommand:
     rounds_config: Any = None
     inherit_tags: bool = True
     raw_annotations: Any = None
+    case_background_noise: Any = None

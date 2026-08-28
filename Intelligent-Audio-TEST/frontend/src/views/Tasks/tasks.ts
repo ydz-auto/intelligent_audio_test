@@ -192,6 +192,7 @@ export function useTasks() {
     stopTask: controlModule.stopTask,
     viewTaskDetails: controlModule.viewTaskDetails,
     viewTaskReport: controlModule.viewTaskReport,
+    regenerateReport: controlModule.regenerateReport,
     editTask: controlModule.editTask,
     updateTaskName: controlModule.updateTaskName,
     retryTask: controlModule.retryTask,

@@ -37,18 +37,21 @@
           <!-- 干扰音频 — 音频卡片样式 -->
           <div class="intf-field">
             <label class="intf-field-label">干扰音频</label>
-            <div v-if="item.audioId" class="intf-audio-card">
+            <div v-if="item.audioId || item.audioName" class="intf-audio-card">
               <div class="intf-audio-card-info">
                 <div class="intf-audio-card-row">
                   <i class="fas fa-music intf-audio-card-icon"></i>
-                  <span class="intf-audio-card-name" :title="getAudioName(item.audioId)">
-                    {{ getAudioName(item.audioId) }}
+                  <span class="intf-audio-card-name" :title="interfererAudioDisplayName(item)">
+                    {{ interfererAudioDisplayName(item) }}
                   </span>
-                  <span class="intf-audio-card-duration" v-if="getAudioDuration(item.audioId) > 0">
+                  <span class="intf-audio-card-duration" v-if="item.audioId && getAudioDuration(item.audioId) > 0">
                     <i class="fas fa-clock"></i> {{ formatDuration(getAudioDuration(item.audioId)) }}
                   </span>
+                  <span v-if="!item.audioId && item.audioName" class="intf-audio-card-warn" :title="'导入时未匹配到音频ID，保存后后端会按文件名解析'">
+                    <i class="fas fa-exclamation-triangle"></i> 未匹配ID
+                  </span>
                 </div>
-                <div class="intf-audio-card-tags" v-if="getAudioTags(item.audioId)">
+                <div class="intf-audio-card-tags" v-if="item.audioId && getAudioTags(item.audioId)">
                   <span class="intf-audio-tag" v-for="tag in getNormalizedTags(getAudioTags(item.audioId))" :key="tag">{{ tag }}</span>
                 </div>
               </div>
@@ -56,7 +59,7 @@
                 <button type="button" class="btn btn-sm btn-outline-primary" @click="openAudioModal(index)">
                   <i class="fas fa-exchange-alt"></i> 更换
                 </button>
-                <button type="button" class="btn btn-sm btn-outline-info" @click="previewAudio(item.audioId)">
+                <button type="button" class="btn btn-sm btn-outline-info" v-if="item.audioId" @click="previewAudio(item.audioId)">
                   <i class="fas fa-play"></i> 试听
                 </button>
                 <button type="button" class="btn btn-sm btn-outline-danger" @click="updateItem(index, 'audioId', ''); updateItem(index, 'audioName', '')">
@@ -75,8 +78,8 @@
             <label class="intf-field-label">播放设备</label>
             <select
               class="form-control form-control-sm"
-              :value="item.playbackDeviceId || ''"
-              @change="updateItem(index, 'playbackDeviceId', ($event.target as HTMLSelectElement).value)"
+              :value="interfererDeviceSelectedValue(item)"
+              @change="onInterfererDeviceChange(index, ($event.target as HTMLSelectElement).value)"
             >
               <option value="">请选择设备...</option>
               <option
@@ -85,6 +88,9 @@
                 :value="String(dev.id)"
               >{{ dev.name }}</option>
             </select>
+            <span v-if="!item.playbackDeviceId && item.playbackDeviceName" class="intf-hint">
+              <i class="fas fa-exclamation-triangle"></i> 导入设备名"{{ item.playbackDeviceName }}"未匹配到ID
+            </span>
           </div>
 
           <!-- 声压级 -->
@@ -207,16 +213,20 @@ function setParam(fieldCode: string, value: unknown) {
 // - 扁平 snake_case（{audio_id, audio_name, playback_device_id, start_delay, ...}）
 function normalizeInterfererItem(item: any): InterfererConfigItem {
   if (!item || typeof item !== 'object') return {
-    audioId: '', audioName: '', playbackDeviceId: '', spl: 70, startDelay: 0, loop: true,
+    audioId: '', audioName: '', playbackDeviceId: '', playbackDeviceName: '', spl: 70, startDelay: 0, loop: true,
   }
   // 嵌套结构
   const audioId = item.audio?.id ?? item.audioId ?? item.audio_id ?? ''
-  const audioName = item.audio?.name ?? item.audioName ?? item.audio_name ?? ''
+  // 兼容 audio 为文件名字符串（统一标注文件格式）
+  const audioName = item.audio?.name ?? item.audioName ?? item.audio_name ?? (typeof item.audio === 'string' ? item.audio : '')
   const playbackDeviceId = item.device?.id ?? item.playbackDeviceId ?? item.playback_device_id ?? ''
+  // 兼容 playback_device_name（设备名，统一标注文件格式）
+  const playbackDeviceName = item.device?.name ?? item.playbackDeviceName ?? item.playback_device_name ?? ''
   return {
     audioId: String(audioId),
     audioName: String(audioName),
     playbackDeviceId: String(playbackDeviceId),
+    playbackDeviceName: String(playbackDeviceName),
     spl: item.spl ?? 70,
     startDelay: item.startDelay ?? item.start_delay ?? 0,
     loop: item.loop ?? true,
@@ -271,6 +281,37 @@ function openAudioModal(index: number) {
 
 function previewAudio(audioId: string) {
   emit('previewAudio', audioId)
+}
+
+// 干扰人音频显示名：优先 audioId 反查，其次 audioName，兜底提示
+function interfererAudioDisplayName(item: InterfererConfigItem): string {
+  if (item.audioId) {
+    const name = getAudioName(item.audioId)
+    if (name && name !== item.audioId) return name
+  }
+  return item.audioName || '(未选择音频)'
+}
+
+// 干扰人设备 select 的选中值：优先 playbackDeviceId，其次从设备名反查
+function interfererDeviceSelectedValue(item: InterfererConfigItem): string {
+  if (item.playbackDeviceId) return String(item.playbackDeviceId)
+  if (item.playbackDeviceName) {
+    const dev = playbackDevices.find((d: PlaybackDevice) => d.name === item.playbackDeviceName)
+    if (dev) return String(dev.id)
+  }
+  return ''
+}
+
+// 干扰人设备 select change 处理：更新 playbackDeviceId 和 playbackDeviceName
+function onInterfererDeviceChange(index: number, deviceId: string) {
+  const list = [...interferers.value]
+  const dev = deviceId ? playbackDevices.find((d: PlaybackDevice) => String(d.id) === deviceId) : null
+  list[index] = {
+    ...list[index],
+    playbackDeviceId: deviceId,
+    playbackDeviceName: dev?.name || '',
+  }
+  interferers.value = list
 }
 </script>
 
@@ -478,5 +519,14 @@ function previewAudio(audioId: string) {
   border-color: #6366f1;
   color: #6366f1;
   background: #f8f9ff;
+}
+
+/* 未匹配音频ID 警告样式 */
+.intf-audio-card-warn {
+  font-size: 11px;
+  color: #d48806;
+  display: flex;
+  align-items: center;
+  gap: 3px;
 }
 </style>

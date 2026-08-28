@@ -117,6 +117,8 @@ class TestCaseUploadConfig(APIModel):
     inherit_tags: Optional[bool] = Field(True)
     # 算法参数：接受 list（标准 [{field_code, field_value}]）或 dict（{field_code: field_value}），由 controller 归一化
     algorithm_params: Optional[Any] = Field(None)
+    # case 级背景噪声（rounds 外层），优先级高于轮次级 background_noise
+    background_noise: Optional[Any] = Field(None)
 
 
 class MergeChunksRequest(APIModel):
@@ -244,3 +246,43 @@ class BatchUpdateAnnotationsRequest(APIModel):
     items: List[BatchAnnotationItem] = Field(default_factory=list)
     algorithm_type: Optional[str] = Field(None)
     refresh_test_cases: Optional[bool] = Field(True)
+
+
+class AudioListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(10)
+    keyword: Optional[str] = Field(None)
+    format: Optional[str] = Field(None)
+    audio_type: Optional[str] = Field(None)
+    folder: Optional[str] = Field(None)
+    sample_rate: Optional[str] = Field(None)
+    duration: Optional[str] = Field(None)
+    tags: Optional[List[str]] = Field(default_factory=list)
+    direction: Optional[str] = Field(None)
+
+
+class AudioIdQuery(APIModel):
+    keyword: Optional[str] = Field(None)
+    format: Optional[str] = Field(None)
+    audio_type: Optional[str] = Field(None)
+    sample_rate: Optional[str] = Field(None)
+    duration: Optional[str] = Field(None)
+    tags: Optional[List[str]] = Field(default_factory=list)
+    direction: Optional[str] = Field(None)
+
+
+class AudioStreamQuery(APIModel):
+    task_type: str = Field('api')
+
+
+class AudioStreamByPathQuery(APIModel):
+    path: str = Field(...)
+
+
+class AudioUploadProgressQuery(APIModel):
+    task_id: Optional[str] = Field(None)
+
+
+class AudioPresignPartQuery(APIModel):
+    oss_key: Optional[str] = Field(None)
+    category: str = Field('raw_chunks')

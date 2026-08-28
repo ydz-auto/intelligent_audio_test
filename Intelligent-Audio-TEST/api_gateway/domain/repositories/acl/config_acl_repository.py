@@ -132,6 +132,9 @@ class TestCaseConfigAclRepository(ABC):
     @abstractmethod
     def get_testcase_ref_params(self, tc_id, round_number) -> CommandResultDTO: ...
 
+    @abstractmethod
+    def fetch_case_ids(self, data) -> CommandResultDTO: ...
+
 
 class TagConfigAclRepository(ABC):
     """task_service.TagConfigService 实体 ACL 接口。"""

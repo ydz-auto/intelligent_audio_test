@@ -181,6 +181,10 @@ class TestCaseConfigAclRepositoryImpl(TestCaseConfigAclRepository):
         from api_gateway.infrastructure.grpc_proxies import testcase_config_service
         return _wrap(testcase_config_service.get_testcase_ref_params(tc_id, round_number))
 
+    def fetch_case_ids(self, data) -> CommandResultDTO:
+        from api_gateway.infrastructure.grpc_proxies import testcase_config_service
+        return _wrap(testcase_config_service.fetch_case_ids(data))
+
 
 class TagConfigAclRepositoryImpl(TagConfigAclRepository):
     """task_service.TagConfigService 实体 ACL 实现。"""

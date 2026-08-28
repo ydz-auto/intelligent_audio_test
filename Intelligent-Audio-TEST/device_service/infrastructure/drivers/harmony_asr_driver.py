@@ -3,20 +3,37 @@ import subprocess
 import os
 import re
 
-from nacl.pwhash import PASSWD_MAX
+try:
+    from nacl.pwhash import PASSWD_MAX
+except ImportError:
+    PASSWD_MAX = None
 
 from .base_driver import BaseDeviceDriver
 from .harmony_driver import HarmonyDriver
-from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit
-from hypium import UiDriver, BY
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
+from .utils import check_stop, UiDriver, By, MatchPattern, log_and_emit, with_rpc_retry
+try:
+    from hypium import UiDriver as _HypiumUiDriver, BY
+except ImportError:
+    _HypiumUiDriver = None
+    BY = None
 
 
 # 日志目录路径
 LOG_DEVICE_PATH = "/data/app/el2/100/base/com.huawei.hmos.vassistant/haps/voice_pc/files/log"
 
 
+@register_driver
 class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
     """鸿蒙小艺输入法驱动"""
+
+    # —— 驱动元数据 ——
+    app_type = AppType.XIAOYI_INPUT_METHOD
+    version = AppVersion.V1
+    platform = DevicePlatform.HARMONYOS
+    display_name = "鸿蒙小艺输入法 ASR v1"
+    dependencies = ["hypium"]
 
     def is_locked(self, device_sn):
         """
@@ -63,6 +80,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
         time.sleep(1)
 
     @check_stop("initialize")
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """打开备忘录"""
         package_name = 'com.huawei.hmos.notepad'
@@ -99,6 +117,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
             return False
 
     @check_stop("pre_process")
+    @with_rpc_retry()
     def pre_process(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         driver = self._get_driver(device_sn)
         # 创建备忘录
@@ -118,6 +137,7 @@ class HarmonyHardenXiaoyi_Input_MethodDriver(HarmonyDriver):
         return True
 
     @check_stop("get_results")
+    @with_rpc_retry()
     def get_results(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> dict:
         driver = self._get_driver(device_sn)
         if driver:

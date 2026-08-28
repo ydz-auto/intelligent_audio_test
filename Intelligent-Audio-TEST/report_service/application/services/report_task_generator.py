@@ -20,12 +20,17 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_devices_by_ids,
     _grpc_get_apis_by_ids,
     _grpc_list_dimensions_all,
+    _grpc_algo_get_field_mapping,
     _dim_id,
 )
 from report_service.infrastructure.persistence.report_repository import report_repository
 from shared.models.common_enums import TaskStatus
 from shared.utils.log_handler import log_and_emit
 from shared.utils.query_utils import now_cst
+from shared.utils.distributed_coordinator import DistributedLock
+
+import os
+import json
 
 
 def _emit_report_event(event_name, data):
@@ -38,10 +43,27 @@ def _emit_report_event(event_name, data):
         _log.getLogger(__name__).warning(f"SSE event emit failed: {_e}")
 
 
-# 异步报告生成线程池与并发去重锁，保持与原实现一致
+# 异步报告生成线程池
 _report_executor = ThreadPoolExecutor(max_workers=3, thread_name_prefix='report_gen')
-_generating_tasks = set()
-_generating_lock = threading.Lock()
+# 报告生成去重锁 key 前缀与 TTL（分布式锁，替代原进程内 set+threading.Lock）
+_REPORT_GEN_LOCK_PREFIX = 'report:gen:'
+# 30 分钟兜底 TTL，防止持有者崩溃后死锁；正常路径在 finally 中主动释放
+_GENERATION_LOCK_TTL = 1800
+
+
+def _acquire_generation_lock(task_id):
+    """非阻塞获取报告生成去重锁（分布式）。
+
+    成功返回 DistributedLock 实例（调用方需在 finally 中 release）；
+    已被其它实例占用（正在生成）返回 None。Redis 不可用时降级放行（返回锁实例）。
+    """
+    lock = DistributedLock(
+        key=f'{_REPORT_GEN_LOCK_PREFIX}{task_id}',
+        ttl=_GENERATION_LOCK_TTL,
+    )
+    if lock.acquire(blocking=False):
+        return lock
+    return None
 
 
 class ReportTaskGenerator:
@@ -74,19 +96,132 @@ class ReportTaskGenerator:
         if task_status not in [TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.MERGED.value]:
             return {'success': False, 'data': None, 'message': '只有任务状态为completed、failed或merged时才能生成报告'}
 
-        with _generating_lock:
-            if task_id in _generating_tasks:
-                return {'success': True, 'data': {'taskId': task_id, 'status': 'generating'}, 'message': '报告正在生成中'}
-            _generating_tasks.add(task_id)
+        # 分布式去重锁：防止多实例并发重复生成同一任务的报告
+        lock = _acquire_generation_lock(task_id)
+        if lock is None:
+            return {'success': True, 'data': {'taskId': task_id, 'status': 'generating'}, 'message': '报告正在生成中'}
 
         log_and_emit('INFO', 'report', f'[generate_task_report] Submitting async task for task_id={task_id}', task_id=task_id)
         _report_executor.submit(
             ReportTaskGenerator._generate_task_report_async,
-            task_id, name, description
+            task_id, name, description, lock
         )
         log_and_emit('INFO', 'report', f'[generate_task_report] Async task submitted for task_id={task_id}', task_id=task_id)
 
         return {'success': True, 'data': {'taskId': task_id, 'status': 'generating'}, 'message': '报告生成中，请稍后刷新'}
+
+    # ===== 事件驱动：订阅 TaskCompleted 事件，自动触发报告生成 =====
+
+    @staticmethod
+    def _on_task_completed(payload: dict) -> None:
+        """处理 TaskCompleted 事件，自动触发报告生成。
+
+        收到事件后调用 generate_task_report，复用既有生成逻辑（含去重）。
+        事件驱动只是补充手段，手动触发能力保持不变。
+        """
+        task_id = payload.get('task_id')
+        if task_id is None:
+            log_and_emit('WARNING', 'report', '[on_task_completed] 事件缺少 task_id 字段，已忽略')
+            return
+        # 事件 payload 中 task_id 可能为字符串，统一转为 int 以匹配 generate_task_report 签名
+        try:
+            task_id = int(task_id)
+        except (TypeError, ValueError):
+            log_and_emit('WARNING', 'report', f'[on_task_completed] task_id 无法转换为整数: {task_id}，已忽略')
+            return
+
+        log_and_emit(
+            'INFO', 'report',
+            f'[on_task_completed] 收到 TaskCompleted 事件，自动触发报告生成 task_id={task_id}',
+            task_id=task_id
+        )
+        ReportTaskGenerator.generate_task_report(task_id)
+
+    @staticmethod
+    def start_event_subscriber() -> threading.Thread:
+        """启动事件订阅线程，监听 TaskCompleted 事件。
+
+        在 report_service 启动时调用，后台守护线程阻塞监听 Redis 频道，
+        Redis 不可用时自动重连，不影响主服务启动。
+        """
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+
+        event_bus = EventBus()
+        thread = event_bus.start_subscriber(
+            EventChannel.TASK_EVENTS,
+            {EventType.TASK_COMPLETED: ReportTaskGenerator._on_task_completed},
+            name='ReportEventSub'
+        )
+        log_and_emit('INFO', 'report', '[start_event_subscriber] 事件订阅线程已启动，监听 TaskCompleted 事件')
+        return thread
+
+    @staticmethod
+    def regenerate_report(report_id: int) -> dict:
+        """重新生成报告：删除旧报告数据，基于原 task_id 重新生成。
+
+        流程：
+        1. 查询旧报告获取 task_id
+        2. 检查是否正在生成
+        3. 删除旧报告（级联删除 summary_meta, raw_data, cases, metric_stats）
+        4. 异步重新生成
+        """
+        # 查询旧报告
+        aggregate = report_repository.get_by_id(report_id)
+        if aggregate is None:
+            return {'success': False, 'data': None, 'message': '未找到测试报告'}
+
+        task_id = aggregate.task_id
+        if not task_id:
+            return {'success': False, 'data': None, 'message': '报告未关联任务，无法重新生成'}
+
+        # 分布式去重锁：检查是否正在生成
+        lock = _acquire_generation_lock(task_id)
+        if lock is None:
+            return {'success': True, 'data': {'taskId': task_id, 'status': 'generating'}, 'message': '报告正在生成中'}
+
+        # 删除旧报告（级联删除子表）
+        try:
+            report_repository.hard_delete(report_id)
+            log_and_emit('INFO', 'report', f'[regenerate_report] Deleted old report {report_id}, regenerating for task_id={task_id}', task_id=task_id)
+        except Exception as e:
+            lock.release()
+            log_and_emit('ERROR', 'report', f'[regenerate_report] Failed to delete old report: {e}', task_id=task_id)
+            return {'success': False, 'data': None, 'message': '删除旧报告失败，请稍后重试'}
+
+        # 异步重新生成
+        _report_executor.submit(
+            ReportTaskGenerator._generate_task_report_async,
+            task_id, None, None, lock
+        )
+        log_and_emit('INFO', 'report', f'[regenerate_report] Async task submitted for task_id={task_id}', task_id=task_id)
+
+        return {'success': True, 'data': {'taskId': task_id, 'status': 'generating'}, 'message': '报告重新生成中，请稍后刷新'}
+
+    @staticmethod
+    def _collect_field_mappings_snapshot(test_cases, results):
+        """收集报告内涉及的所有算法类型，获取字段映射快照。
+
+        返回 {algorithm_type: {result: [...], reference: [...]}} 映射。
+        """
+        algorithm_types = set()
+        for tc in test_cases:
+            algo_type = tc.get('algorithm_type') if isinstance(tc, dict) else getattr(tc, 'algorithm_type', None)
+            if algo_type:
+                algorithm_types.add(algo_type)
+        for r in results:
+            algo_type = r.get('algorithm_type') if isinstance(r, dict) else getattr(r, 'algorithm_type', None)
+            if algo_type:
+                algorithm_types.add(algo_type)
+
+        field_mappings = {}
+        for algo_type in algorithm_types:
+            try:
+                mapping = _grpc_algo_get_field_mapping(algo_type)
+                if mapping:
+                    field_mappings[algo_type] = mapping
+            except Exception as e:
+                log_and_emit('WARNING', 'report', f'[_collect_field_mappings] Failed to get field mapping for {algo_type}: {e}')
+        return field_mappings
 
     @staticmethod
     def _prepare_report_data(task, task_id, results):
@@ -168,6 +303,9 @@ class ReportTaskGenerator:
                 if st_id is not None:
                     tasks_map[st_id] = st
 
+        # 收集算法字段映射快照
+        field_mappings = ReportTaskGenerator._collect_field_mappings_snapshot(test_cases, results)
+
         core_metrics = ReportUtils.calculate_core_metrics(
             results=results,
             all_dimensions=all_dimensions,
@@ -223,6 +361,7 @@ class ReportTaskGenerator:
             "case_categories_list": case_categories_list,
             "case_tags_list": case_tags_list,
             "source_task_ids": source_task_ids,
+            "field_mappings": field_mappings,
         }
 
     @staticmethod
@@ -262,26 +401,26 @@ class ReportTaskGenerator:
             "case_type_stats": data_dict["case_type_stats"],
             "cases": data_dict["cases"],
             "source_task_ids": data_dict["source_task_ids"],
-            "is_merged": bool(data_dict["source_task_ids"])
+            "is_merged": bool(data_dict["source_task_ids"]),
+            "field_mappings": data_dict.get("field_mappings", {}),
         }
 
         summary = ReportUtils.normalize_summary_metrics(summary)
         return summary
 
     @staticmethod
-    def _generate_task_report_async(task_id, name, description):
+    def _generate_task_report_async(task_id, name, description, lock):
         """异步生成任务报告。
 
         迁移说明：去掉手动的 commit/rollback，仓储方法自行管理事务；
         _create_report_record 等由 ReportDataBuilder 委托仓储完成写入。
+        去重锁由调用方传入，在 finally 中释放（分布式锁替代原进程内 set）。
         """
         try:
             log_and_emit('INFO', 'report', f'[generate_task_report_async] Starting for task_id={task_id}', task_id=task_id)
 
             task, results, error = ReportDataBuilder._validate_task_and_get_results(task_id)
             if error:
-                with _generating_lock:
-                    _generating_tasks.discard(task_id)
                 _emit_report_event('report_generated', {
                     'taskId': task_id,
                     'success': False,
@@ -291,8 +430,6 @@ class ReportTaskGenerator:
 
             existing_report = report_repository.get_report_by_task_id_raw(task_id)
             if existing_report:
-                with _generating_lock:
-                    _generating_tasks.discard(task_id)
                 _emit_report_event('report_generated', {
                     'taskId': task_id,
                     'reportId': existing_report.id,
@@ -322,6 +459,13 @@ class ReportTaskGenerator:
 
             report_id = new_report.id
 
+            # 报告生成完成，设置状态为 published
+            try:
+                report_repository.update_status(report_id, 'published')
+                log_and_emit('INFO', 'report', f'[generate_task_report_async] Report status set to published, report_id={report_id}', task_id=task_id)
+            except Exception as status_err:
+                log_and_emit('WARNING', 'report', f'[generate_task_report_async] Failed to set published status: {status_err}', task_id=task_id)
+
             log_and_emit('INFO', 'report', f'[generate_task_report_async] Report generated successfully, report_id={report_id}', task_id=task_id)
 
             emit_data = {
@@ -343,5 +487,6 @@ class ReportTaskGenerator:
             log_and_emit('INFO', 'report', f'[generate_task_report_async] Emitting error: {emit_data}', task_id=task_id)
             _emit_report_event('report_generated', emit_data)
         finally:
-            with _generating_lock:
-                _generating_tasks.discard(task_id)
+            # 释放分布式去重锁（替代原进程内 set.discard）
+            if lock is not None:
+                lock.release()

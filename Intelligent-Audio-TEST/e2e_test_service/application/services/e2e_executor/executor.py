@@ -108,6 +108,9 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
                 case_field_values, rounds, test_case_id
             )
 
+            # 启动全局背景噪声（跨轮次持续播放，在轮次循环前启动）
+            self._playback_repo.start_background_noise(case_config, task_id)
+
             # ── 阶段二：多轮循环 ──
             all_round_results, rounds_data, execution_success, last_adjusted_ref_params = \
                 self._run_rounds_loop(
@@ -115,6 +118,11 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
                     algorithm_type, test_case_id, rounds,
                     device_info_list, result_id, case_reference_params
                 )
+
+            if not execution_success:
+                error_msg = "执行失败，跳过评估" if not all_round_results else "执行过程中部分轮次失败"
+                self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
+                return False
 
             if not all_round_results:
                 error_msg = "所有轮次均未产生有效结果"
@@ -139,12 +147,27 @@ class E2EExecutor(PreparationMixin, RoundsLoopMixin, FinalizationMixin, BaseExec
             self._update_tc_rel_status(tc_rel_id, task_id=task_id, execution_status=ExecutionStatus.FAILED, status=TaskCaseStatus.FAILED, error_message=error_msg)
             return False
         finally:
+            # 停止全局背景噪声（与 start_background_noise 对称）
+            try:
+                self._playback_repo.stop_background_noise(task_id)
+            except Exception as bg_err:
+                self._log(
+                    level='WARNING',
+                    content=f"停止全局背景噪声异常（忽略）: {bg_err}",
+                    task_id=task_id, test_case_id=test_case_id,
+                )
             # ── 阶段四：设备驱动 teardown（与 initialize 对称）──
             if device_info_list:
                 try:
-                    self._device_manager.teardown_devices(
+                    teardown_ok = self._device_manager.teardown_devices(
                         device_info_list, task_id, test_case_id=test_case_id
                     )
+                    if not teardown_ok:
+                        self._log(
+                            level='WARNING',
+                            content="设备 teardown 部分失败（忽略）",
+                            task_id=task_id, test_case_id=test_case_id
+                        )
                 except Exception as teardown_err:
                     self._log(
                         level='WARNING',

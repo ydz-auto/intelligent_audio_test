@@ -1,5 +1,4 @@
 import { testcasesApi, groupsApi } from '../../utils/api'
-import { snakeToCamelObject } from '../../utils/fieldNaming'
 import { useNotification } from '../modal/useNotification'
 import type { TestCase, TestCaseGroup, GroupFormData } from '../../shared/types'
 
@@ -16,7 +15,9 @@ interface GroupPaginationInfo {
   perPage: number;
   total: number;
   algorithmType?: string;
-  testType?: string;
+  test_type?: string;
+  keyword?: string;
+  dimension_id?: number;
 }
 
 /**
@@ -91,7 +92,7 @@ export function useTestCaseGroups(store: {
           id: g.id,
           name: g.name,
           description: g.description,
-          testCaseCount: g.testCaseCount ?? g.test_case_count ?? 0
+          testCaseCount: g.test_case_count ?? 0
         }))
 
         fullGroupsMap.value = response.items.reduce((map: Record<string, TestCaseGroup>, g: any) => {
@@ -140,18 +141,18 @@ export function useTestCaseGroups(store: {
         keyword: params.keyword,
         tag: params.tag,
         algorithm_type: params.algorithmType,
-        type: params.testType,
-        include_deleted: params.includeDeleted || false
+        type: params.test_type,
+        dimension_id: params.dimension_id,
+        include_deleted: params.include_deleted || false
       })
 
       let casesData: TestCase[] = []
       if (response && response.items) {
         casesData = response.items.map((tc: any) => {
-          const normalized = snakeToCamelObject(tc)
           return {
-            ...normalized,
-            type: normalized.type || 'api',
-            deleted: normalized.deleted || false
+            ...tc,
+            type: tc.type || 'api',
+            deleted: tc.deleted || false
           } as TestCase
         })
       }
@@ -171,7 +172,9 @@ export function useTestCaseGroups(store: {
         perPage: response?.perPage || perPage,
         total: response?.total || 0,
         algorithmType: params.algorithmType,
-        testType: params.testType
+        test_type: params.test_type,
+        keyword: params.keyword,
+        dimension_id: params.dimension_id
       }
 
       const group = fullGroupsMap.value[groupKey]
@@ -214,7 +217,9 @@ export function useTestCaseGroups(store: {
     return fetchCasesByGroup(groupId, {
       page: currentPagination.page + 1,
       algorithmType: currentPagination.algorithmType,
-      testType: currentPagination.testType
+      test_type: currentPagination.test_type,
+      keyword: currentPagination.keyword,
+      dimension_id: currentPagination.dimension_id
     })
   }
 
@@ -270,7 +275,7 @@ export function useTestCaseGroups(store: {
         fullGroupsMap.value[groupId.toString()].name = data.name
         fullGroupsMap.value[groupId.toString()].description = data.description
         if (data.algorithmType !== undefined) {
-          fullGroupsMap.value[groupId.toString()].algorithmType = data.algorithmType
+          fullGroupsMap.value[groupId.toString()].algorithm_type = data.algorithmType
         }
       }
       organizeTestCasesByGroup()
@@ -310,7 +315,7 @@ export function useTestCaseGroups(store: {
       await testcasesApi.deleteGroup(groupId)
 
       delete fullGroupsMap.value[groupId.toString()]
-      testCases.value = testCases.value.filter(tc => tc.groupId?.toString() !== groupId.toString())
+      testCases.value = testCases.value.filter(tc => tc.group_id?.toString() !== groupId.toString())
 
       organizeTestCasesByGroup()
       notification.success('删除分组成功')

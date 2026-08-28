@@ -182,8 +182,8 @@
               <div class="report-card-meta-tags">
                 <span class="report-card-type">{{ getReportTypeLabel(report.type) }}</span>
                 <span class="report-card-status published">已发布</span>
-                <span v-if="report.algorithmType" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithmType) }}</span>
-                <span v-if="report.taskName" class="report-card-test-type">{{ report.taskName }}</span>
+                <span v-if="report.algorithm_type" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithm_type) }}</span>
+                <span v-if="report.task_name" class="report-card-test-type">{{ report.task_name }}</span>
               </div>
             </div>
             <div class="card-actions">
@@ -203,22 +203,22 @@
             <div class="report-card-meta">
               <span class="report-card-meta-item">
                 <i class="fas fa-calendar-alt"></i>
-                {{ formatDate(report.createdAt) }}
+                {{ formatDate(report.created_at) }}
               </span>
               <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison'">
                 <span class="report-card-meta-item">
                   <i class="fas fa-cubes"></i>
-                  {{ report.summary?.taskCount || 0 }} 个任务对比
+                  {{ report.summary?.task_count || 0 }} 个任务对比
                 </span>
               </template>
               <template v-else>
                 <span class="report-card-meta-item">
                   <i class="fas fa-list-check"></i>
-                  {{ report.summary?.totalCases || report.summary?.totalTests || report.summary?.total_cases || 0 }} 个测试用例
+                  {{ report.summary?.total_cases || report.summary?.total_tests || 0 }} 个测试用例
                 </span>
                 <span class="report-card-meta-item">
                   <i class="fas fa-check-circle"></i>
-                  {{ report.summary?.overallSuccessRate || report.summary?.passRate || report.summary?.overall_success_rate || 0 }}% 通过率
+                  {{ report.summary?.overall_success_rate || report.summary?.pass_rate || 0 }}% 通过率
                 </span>
               </template>
             </div>
@@ -253,8 +253,8 @@
               <div class="report-card-meta-tags">
                 <span class="report-card-type">{{ getReportTypeLabel(report.type) }}</span>
                 <span class="report-card-status draft">草稿</span>
-                <span v-if="report.algorithmType" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithmType) }}</span>
-                <span v-if="report.taskName" class="report-card-test-type">{{ report.taskName }}</span>
+                <span v-if="report.algorithm_type" class="report-card-algorithm-type">{{ getAlgorithmTypeLabel(report.algorithm_type) }}</span>
+                <span v-if="report.task_name" class="report-card-test-type">{{ report.task_name }}</span>
               </div>
             </div>
             <div class="card-actions">
@@ -277,22 +277,22 @@
             <div class="report-card-meta">
               <span class="report-card-meta-item">
                 <i class="fas fa-calendar-alt"></i>
-                {{ formatDate(report.createdAt) }}
+                {{ formatDate(report.created_at) }}
               </span>
               <template v-if="report.type === 'comparison' || report.type === 'secondaryComparison'">
                 <span class="report-card-meta-item">
                   <i class="fas fa-cubes"></i>
-                  {{ report.summary?.taskCount || 0 }} 个任务对比
+                  {{ report.summary?.task_count || 0 }} 个任务对比
                 </span>
               </template>
               <template v-else>
                 <span class="report-card-meta-item">
                   <i class="fas fa-list-check"></i>
-                  {{ report.summary?.totalCases || report.summary?.totalTests || report.summary?.total_cases || 0 }} 个测试用例
+                  {{ report.summary?.total_cases || report.summary?.total_tests || 0 }} 个测试用例
                 </span>
                 <span class="report-card-meta-item">
                   <i class="fas fa-check-circle"></i>
-                  {{ report.summary?.overallSuccessRate || report.summary?.passRate || report.summary?.overall_success_rate || 0 }}% 通过率
+                  {{ report.summary?.overall_success_rate || report.summary?.pass_rate || 0 }}% 通过率
                 </span>
               </template>
             </div>

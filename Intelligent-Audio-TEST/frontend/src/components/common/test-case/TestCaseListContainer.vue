@@ -73,6 +73,15 @@
             </div>
           </div>
           <div class="filter-section">
+            <label for="dimensionFilter">评估维度:</label>
+            <div class="filter-select">
+              <select id="dimensionFilter" class="form-input" v-model="dimensionFilter">
+                <option value="all">所有维度</option>
+                <option v-for="dim in dimensionOptions" :key="dim.id" :value="dim.id">{{ dim.name }}</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-section">
             <label for="groupFilter">用例分组:</label>
             <div class="filter-select">
               <select id="groupFilter" class="form-input" v-model="groupFilter">
@@ -209,12 +218,16 @@
       <!-- ===== 标签视图 ===== -->
       <template v-else>
         <div
-          v-for="tagName in paginatedTags"
+          v-for="tagName in sortedTags"
           :key="tagName"
           class="category-card"
         >
           <div class="category-header" @click="() => toggleTagCategory(tagName)">
             <div class="category-info">
+              <input type="checkbox" class="group-checkbox"
+                     @change="() => toggleTagSelection(tagName)"
+                     @click.stop
+                     :checked="tagSelectionStates[tagName]">
               <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedTagCategories[tagName] }"></i>
               <i class="fas fa-tag" style="color: var(--primary-color, #4a90e2); margin-right: 6px;"></i>
               <h4 class="category-title">{{ tagName }}</h4>
@@ -237,26 +250,26 @@
           </div>
         </div>
 
-        <div v-if="paginatedTags.length === 0" class="empty-state">
+        <div v-if="sortedTags.length === 0" class="empty-state">
           <i class="fas fa-tags"></i>
           <p>没有找到标签分组的测试用例</p>
           <p class="empty-state-hint">请为测试用例添加标签</p>
         </div>
 
-        <div v-if="isLoadingMore" class="loading-more">
+        <div v-if="tagViewLoading" class="loading-more">
           <i class="fas fa-spinner fa-spin"></i>
           <span>加载更多标签...</span>
         </div>
 
-        <div v-if="hasMoreTags && !isLoadingMore && paginatedTags.length > 0" class="load-more-trigger" ref="loadMoreTriggerRef">
-          <span class="load-more-hint">已显示 {{ paginatedTags.length }} / {{ sortedTags.length }} 个标签</span>
-          <button class="btn btn-secondary btn-sm" @click="loadMoreGroups">
+        <div v-if="hasMoreTagsFromBackend && !tagViewLoading && sortedTags.length > 0" class="load-more-trigger" ref="loadMoreTriggerRef">
+          <span class="load-more-hint">已加载 {{ sortedTags.length }} / {{ props.tagViewPagination?.total || sortedTags.length }} 个标签</span>
+          <button class="btn btn-secondary btn-sm" @click="emit('loadMoreTags')">
             <i class="fas fa-chevron-down"></i> 加载更多
           </button>
         </div>
 
-        <div v-if="!hasMoreTags && paginatedTags.length > 0" class="all-loaded">
-          <span>已加载全部 {{ sortedTags.length }} 个标签</span>
+        <div v-if="!hasMoreTagsFromBackend && sortedTags.length > 0" class="all-loaded">
+          <span>已加载全部 {{ props.tagViewPagination?.total || sortedTags.length }} 个标签</span>
         </div>
       </template>
     </div>
@@ -333,6 +346,8 @@ const props = defineProps<{
   tagViewData?: Record<string, TestCase[]>;
   tags?: string[];
   paginationInfo?: PaginationInfo;
+  tagViewPagination?: { page: number; pages: number; perPage: number; total: number };
+  tagViewLoading?: boolean;
   isLoading?: boolean;
   algorithmTypeFilter?: string;
   testTypeFilter?: string;
@@ -350,7 +365,9 @@ const emit = defineEmits<{
   (e: 'openExportModal'): void;
   (e: 'updateSelectedCases', selectedCases: (string | number)[]): void;
   (e: 'update:viewMode', mode: 'group' | 'tag'): void;
-  (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string }): void;
+  (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
+  (e: 'groupFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
+  (e: 'loadMoreTags'): void;
 }>();
 
 const {
@@ -366,6 +383,8 @@ const {
   tagFilter,
   sortBy,
   sortOrder,
+  dimensionFilter,
+  dimensionOptions,
   hasMoreGroups,
   expandedCategories,
   expandedTagCategories,
@@ -422,8 +441,9 @@ const {
   filteredTagCases,
   formattedTagCases,
   sortedTags,
-  paginatedTags,
-  hasMoreTags,
+  hasMoreTagsFromBackend,
+  tagSelectionStates,
+  toggleTagSelection,
   getTagDurationStats,
   getTestCaseActions,
   toggleTestCaseSelection,

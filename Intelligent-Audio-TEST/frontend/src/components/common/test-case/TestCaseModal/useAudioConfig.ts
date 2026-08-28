@@ -61,8 +61,8 @@ export function useAudioConfig() {
         console.log('[useAudioConfig] first audio tags:', (audios[0] as any).tags, (audios[0] as any).tag);
       }
 
-      let dryAudioList: AudioItem[] = audios.filter((a: AudioItem) => a.audioType === 'dry');
-      let noiseAudioList: AudioItem[] = audios.filter((a: AudioItem) => a.audioType === 'noise');
+      let dryAudioList: AudioItem[] = audios.filter((a: AudioItem) => a.audio_type === 'dry' || a.type === 'dry');
+      let noiseAudioList: AudioItem[] = audios.filter((a: AudioItem) => a.audio_type === 'noise' || a.type === 'noise');
 
       const firstPageIds = new Set(audios.map((a: AudioItem) => a.id));
       const missingAudioIds = configuredAudioIds.filter(id => !firstPageIds.has(id));
@@ -75,9 +75,9 @@ export function useAudioConfig() {
             : (missingAudiosRes?.data ? missingAudiosRes.data : []);
 
           for (const missingAudio of missingAudios) {
-            if (missingAudio.audioType === 'dry') {
+            if (missingAudio.audio_type === 'dry' || missingAudio.type === 'dry') {
               dryAudioList.push(missingAudio);
-            } else if (missingAudio.audioType === 'noise') {
+            } else if (missingAudio.audio_type === 'noise' || missingAudio.type === 'noise') {
               noiseAudioList.push(missingAudio);
             } else {
               dryAudioList.push(missingAudio);
@@ -149,7 +149,7 @@ export function useAudioConfig() {
   function getDeviceName(deviceId: string | number): string {
     const device = playbackDevices.value.find(d => String(d.id) === String(deviceId));
     if (device) {
-      return `${device.name} (通道 ${device.channelIndex})`;
+      return `${device.name} (通道 ${device.channel_index})`;
     }
     const deviceIdStr = String(deviceId);
     const scanDeviceMatch = deviceIdStr.match(/^(.*)-(\d+)$/);

@@ -213,7 +213,7 @@ const filteredCaseParams = computed(() => {
 })
 
 const hasVoiceprintParam = computed(() =>
-  filteredCaseParams.value.some((p: any) => p.param_code === 'voiceprintEnabled')
+  filteredCaseParams.value.some((p: any) => p.param_code === 'voiceprint')
 )
 const hasInterfererParam = computed(() =>
   filteredCaseParams.value.some((p: any) => p.param_code === 'interferers')

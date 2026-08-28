@@ -15,7 +15,10 @@
 
 from shared.models.common_enums import TaskStatus
 from shared.utils.response import success_response, error_response
-from shared.utils.result_data_store import load_full_result_data
+from shared.utils.result_data_store import load_full_result_data, write_result_data_file, split_result_data
+from shared.utils.path_extractor import extract_by_path
+from shared.constants.device_fields import DEVICE_FIELDS
+from shared.utils.audio_path_utils import normalize_audio_path
 from report_service.infrastructure.clients.grpc_clients import _grpc_algo_get_reference_params_for_report
 
 from report_service.application.services.report_utils import ReportUtils
@@ -29,6 +32,7 @@ from report_service.infrastructure.clients.grpc_clients import (
     _grpc_get_dimension_results_by_result_ids as _grpc_get_dim_results,
     _grpc_list_dimensions_all,
     _grpc_list_testcases_by_ids,
+    _grpc_get_dimension_params,
     _dim_id, _dim_name,
     _grpc_get_device, _grpc_get_devices_by_ids,
     _grpc_get_api, _grpc_get_apis_by_ids,
@@ -39,6 +43,7 @@ from report_service.infrastructure.clients.grpc_clients import (
 )
 
 import json
+import os
 
 
 class ReportDataBuilder:
@@ -182,7 +187,257 @@ class ReportDataBuilder:
             return 'default'
 
     @staticmethod
-    def _build_case_basic_info(tc, results, task):
+    def _get_aux_params_batch(dim_ids):
+        """批量查询维度的 aux output 参数（visible_in_report=True）。
+
+        通过 gRPC 逐维度查询 EvaluationDimensionParam，筛选 output_role='aux'
+        且 visible_in_report=True 的参数。
+
+        返回 {dimension_id: [{param: dict, dimension_name: str}, ...]} 映射。
+        """
+        if not dim_ids:
+            return {}
+        aux_map = {}
+        for dim_id in dim_ids:
+            try:
+                params = _grpc_get_dimension_params(dim_id)
+                if not params:
+                    continue
+                for p in params:
+                    if not isinstance(p, dict):
+                        continue
+                    if p.get('param_direction') != 'output':
+                        continue
+                    if p.get('output_role') != 'aux':
+                        continue
+                    if not p.get('visible_in_report'):
+                        continue
+                    dim_name = p.get('dimension_name') or ''
+                    if dim_id not in aux_map:
+                        aux_map[dim_id] = []
+                    aux_map[dim_id].append({
+                        'param': p,
+                        'dimension_name': dim_name,
+                    })
+            except Exception:
+                continue
+        return aux_map
+
+    @staticmethod
+    def build_algorithm_results_for_result(
+        result, resource, algo_res, result_data, aux_params_map,
+        dim_result_rows, output_fields, algorithm_type
+    ):
+        """为单个 TestResult 构建 algorithm_results 扁平列表。
+
+        合并 aux 辅助参数 + 设备/API 原始结果，供报告页和详情页共用。
+
+        Args:
+            result: TestResult 对象（dict 或 ORM，仅用于取 result.id）
+            resource: 设备/API 名称
+            algo_res: algorithm_result (dict)
+            result_data: 完整 result_data (dict 或 None)
+            aux_params_map: {dimension_id: [{param, dimension_name}, ...]}
+            dim_result_rows: 该 TestResult 的 TestResultDimension 行列表
+            output_fields: 算法输出字段列表
+            algorithm_type: 算法类型
+
+        Returns:
+            list[dict]: algorithm_results 扁平列表
+        """
+        algorithm_results = []
+
+        if not (algo_res or result_data):
+            return algorithm_results
+
+        # ── 1. 构建 param_code → (dimension_name, field_type) 全局映射 ──
+        param_to_dim = {}
+        param_to_type = {}
+        if aux_params_map:
+            for _dim_id, aux_list in aux_params_map.items():
+                for aux_info in aux_list:
+                    p = aux_info['param']
+                    param_code = p.get('param_code') if isinstance(p, dict) else getattr(p, 'param_code', None)
+                    if param_code:
+                        param_to_dim[param_code] = aux_info['dimension_name']
+                        param_to_type[param_code] = p.get('field_type', 'text') if isinstance(p, dict) else getattr(p, 'field_type', 'text')
+
+        # ── 2. 提取 aux 辅助参数值 ──
+        aux_values = {}
+
+        # 2a. 从 evaluation_data 提取
+        if result_data:
+            eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
+            if isinstance(eval_data, dict):
+                for param_code in param_to_dim:
+                    if param_code in eval_data:
+                        aux_values[param_code] = eval_data[param_code]
+
+        # 2b. 从 api_raw_response 补充
+        for dr in dim_result_rows:
+            raw_resp = dr.get('api_raw_response') if isinstance(dr, dict) else getattr(dr, 'api_raw_response', None)
+            if not raw_resp:
+                continue
+            if isinstance(raw_resp, str):
+                try:
+                    raw_resp = json.loads(raw_resp)
+                except Exception:
+                    continue
+            dim_id = dr.get('dimension_id') if isinstance(dr, dict) else getattr(dr, 'dimension_id', None)
+            for aux_info in (aux_params_map.get(dim_id, []) if aux_params_map else []):
+                p = aux_info['param']
+                param_code = p.get('param_code') if isinstance(p, dict) else getattr(p, 'param_code', None)
+                if not param_code or param_code in aux_values:
+                    continue
+                field_path = p.get('field_path') if isinstance(p, dict) else getattr(p, 'field_path', None)
+                value = extract_by_path(raw_resp, field_path)
+                if value is not None:
+                    aux_values[param_code] = value
+
+        # 输出 aux 参数
+        for param_code, param_value in aux_values.items():
+            if param_value is None:
+                continue
+            algorithm_results.append({
+                'device': resource,
+                'param_code': param_code,
+                'param_type': param_to_type.get(param_code, 'text'),
+                'label': param_code,
+                'value': param_value,
+                'dimension_name': param_to_dim.get(param_code),
+            })
+
+        # ── 3. 提取设备/API 原始执行结果 ──
+        combined_data = {**(algo_res or {}), **(result_data or {})}
+
+        if algorithm_type == 'voice_llm':
+            # voice_llm：按 output_fields 映射，rounds 数组展开
+            for field in output_fields:
+                param_key = field.get('target_param') or field.get('source_param')
+                if not param_key or not combined_data.get(param_key):
+                    continue
+                if param_key == 'rounds':
+                    rounds_arr = combined_data.get('rounds') or []
+                    if isinstance(rounds_arr, list):
+                        for r_idx, r_item in enumerate(rounds_arr):
+                            raw_round = r_item.get('round')
+                            rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
+                            out = r_item.get('output') or {}
+                            if isinstance(out, dict):
+                                for sub_key, val in out.items():
+                                    if val is None or sub_key == 'evaluation':
+                                        continue
+                                    sub_type = DEVICE_FIELDS.get(sub_key, 'text')
+                                    if sub_type == 'audio_file' and isinstance(val, str) and val:
+                                        val = ReportDataBuilder._normalize_audio_path(val)
+                                    algorithm_results.append({
+                                        'device': resource,
+                                        'param_code': f'{sub_key}@round:{rn}',
+                                        'param_type': sub_type,
+                                        'label': f'{sub_key} (第{rn}轮)',
+                                        'value': val,
+                                        'round_number': rn,
+                                        'dimension_name': None,
+                                    })
+                    algorithm_results.append({
+                        'device': resource,
+                        'param_code': param_key,
+                        'param_type': field.get('param_type', 'json'),
+                        'label': field.get('dimension_name') or param_key,
+                        'value': combined_data[param_key],
+                        'dimension_name': None,
+                    })
+                else:
+                    algorithm_results.append({
+                        'device': resource,
+                        'param_code': param_key,
+                        'param_type': field.get('param_type', 'text'),
+                        'label': field.get('dimension_name') or param_key,
+                        'value': combined_data[param_key],
+                        'dimension_name': None,
+                    })
+        else:
+            # 非 voice_llm：按 output_fields 映射
+            for field in output_fields:
+                param_key = field.get('target_param') or field.get('source_param')
+                if not param_key or not combined_data.get(param_key):
+                    continue
+                algorithm_results.append({
+                    'device': resource,
+                    'param_code': param_key,
+                    'param_type': field.get('param_type', 'text'),
+                    'label': field.get('dimension_name') or param_key,
+                    'value': combined_data[param_key],
+                    'dimension_name': None,
+                })
+
+            # 补充固定设备字段
+            device_values = {}
+            if isinstance(algo_res, dict):
+                rounds = algo_res.get('rounds') or []
+                if rounds and isinstance(rounds, list) and isinstance(rounds[0], dict):
+                    output = rounds[0].get('output') or {}
+                    if isinstance(output, dict):
+                        for k, v in output.items():
+                            if k in DEVICE_FIELDS and v is not None:
+                                device_values[k] = v
+                agg = algo_res.get('aggregated') or {}
+                if isinstance(agg, dict):
+                    for k, v in agg.items():
+                        if v is not None:
+                            agg_type = 'number' if isinstance(v, (int, float)) else 'text'
+                            device_values['agg_' + k] = {'value': v, 'type': agg_type}
+
+            if result_data:
+                rrl = result_data.get('raw_results_list') or []
+                if rrl and isinstance(rrl, list) and isinstance(rrl[0], dict):
+                    raw_item = rrl[0]
+                    raw_res = raw_item.get('raw_results') or {}
+                    if isinstance(raw_res, dict):
+                        for k, v in raw_res.items():
+                            if k in DEVICE_FIELDS and v is not None and k not in device_values:
+                                device_values[k] = v
+                    for k in ['round_number', 'success']:
+                        if k in raw_item and raw_item[k] is not None and k not in device_values:
+                            device_values[k] = raw_item[k]
+
+            existing_codes = {item['param_code'] for item in algorithm_results if item['device'] == resource}
+            for param_code, param_value in device_values.items():
+                if param_value is None or param_value == '':
+                    continue
+                if param_code in existing_codes:
+                    continue
+                if param_code.startswith('agg_') and isinstance(param_value, dict) and 'value' in param_value:
+                    actual_value = param_value['value']
+                    param_type = param_value.get('type', 'text')
+                else:
+                    actual_value = param_value
+                    param_type = DEVICE_FIELDS.get(param_code, 'text')
+                if param_type == 'audio_file' and isinstance(actual_value, str) and actual_value:
+                    actual_value = ReportDataBuilder._normalize_audio_path(actual_value)
+                algorithm_results.append({
+                    'device': resource,
+                    'param_code': param_code,
+                    'param_type': param_type,
+                    'label': param_code,
+                    'value': actual_value,
+                    'dimension_name': None,
+                })
+
+        return algorithm_results
+
+    @staticmethod
+    def _normalize_audio_path(abs_path):
+        """将音频文件的绝对路径转换为相对 STATIC_BASE_PATH 的相对路径。"""
+        try:
+            from shared.infrastructure.config import Config
+            static_base = getattr(Config, 'STATIC_BASE_PATH', '')
+            return normalize_audio_path(abs_path, static_base)
+        except Exception:
+            return abs_path
+
+    @staticmethod
+    def _build_case_basic_info(tc, results, task, aux_params_map=None, dim_results_map=None):
         """构建用例基本信息。"""
         case_results = results
         test_type = 'api' if case_results and (case_results[0].get('api_id') if isinstance(case_results[0], dict) else case_results[0].api_id) else 'e2e'
@@ -221,31 +476,42 @@ class ReportDataBuilder:
                 **ReportHelpers.build_result_info(result),
             })
 
-            algo_res = result.get('algorithm_result') if isinstance(result, dict) else result.algorithm_result
+            # 优先读取预提取的 algorithm_results（存在 result_data 里）
             result_data_raw = result.get('result_data') if isinstance(result, dict) else result.result_data
             result_data_path = result.get('result_data_path') if isinstance(result, dict) else getattr(result, 'result_data_path', None)
             result_data = load_full_result_data(result_data_raw, result_data_path)
             if not isinstance(result_data, dict):
                 result_data = None
 
-            if algo_res or result_data:
-                combined_data = {}
-                if algo_res:
-                    combined_data.update(algo_res)
-                if result_data:
-                    combined_data.update(result_data)
+            snapshot = result_data.get('algorithm_results') if result_data else None
+            if snapshot:
+                case_obj["algorithm_results"].extend(snapshot)
+                continue
 
-                # 扁平列表格式，与 task_controller.py 一致
-                for param_key, param_value in combined_data.items():
-                    if param_key and param_value is not None:
-                        param_type = ReportHelpers._infer_param_type(param_key)
-                        case_obj["algorithm_results"].append({
-                            'device': resource,
-                            'param_code': param_key,
-                            'param_type': param_type,
-                            'label': param_key,
-                            'value': param_value
-                        })
+            # 快照为空时回退到实时提取（兼容旧数据）
+            algo_res = result.get('algorithm_result') if isinstance(result, dict) else result.algorithm_result
+
+            if algo_res or result_data:
+                algorithm_type = tc_algo_type or ''
+                # 获取 output_fields（通过 gRPC 调 algorithm_service）
+                output_fields = []
+                if algorithm_type:
+                    try:
+                        from shared.clients.grpc_clients import algo_get_output_fields
+                        output_fields = algo_get_output_fields(algorithm_type) or []
+                    except Exception:
+                        pass
+
+                r_id = result.get('id') if isinstance(result, dict) else result.id
+                result_dim_rows = dim_results_map.get(r_id, []) if dim_results_map else []
+
+                case_obj["algorithm_results"].extend(
+                    ReportDataBuilder.build_algorithm_results_for_result(
+                        result, resource, algo_res, result_data,
+                        aux_params_map, result_dim_rows,
+                        output_fields, algorithm_type
+                    )
+                )
 
         return case_obj
 
@@ -268,9 +534,12 @@ class ReportDataBuilder:
             if result_data and isinstance(result_data, dict):
                 eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
                 if isinstance(eval_data, dict):
-                    for dim_name, dim_value in eval_data.items():
-                        if dim_name not in dim_values or dim_values.get(dim_name) is None:
-                            dim_values[dim_name] = dim_value
+                    # 只合并属于维度名称的键，跳过 aux 辅助参数
+                    dim_name_set = {_dim_name(d) for d in all_dimensions}
+                    for eval_key, eval_val in eval_data.items():
+                        if eval_key in dim_name_set:
+                            if eval_key not in dim_values or dim_values.get(eval_key) is None:
+                                dim_values[eval_key] = eval_val
 
             resource_metrics = []
             for dim_name, dim_value in dim_values.items():
@@ -306,13 +575,25 @@ class ReportDataBuilder:
                 results_by_case[tc_id] = []
             results_by_case[tc_id].append(result)
 
+        # 批量查询 aux 参数
+        all_dim_ids = set()
+        for drs in (dim_results_map.values() if dim_results_map else []):
+            for dr in drs:
+                dim_id = dr.get('dimension_id') if isinstance(dr, dict) else getattr(dr, 'dimension_id', None)
+                if dim_id is not None:
+                    all_dim_ids.add(dim_id)
+        aux_params_map = ReportDataBuilder._get_aux_params_batch(list(all_dim_ids))
+
         cases = []
 
         for test_case in test_cases:
             tc_id = test_case.get('id') if isinstance(test_case, dict) else test_case.id
             case_results = results_by_case.get(tc_id, [])
 
-            case_obj = ReportDataBuilder._build_case_basic_info(test_case, case_results, task)
+            case_obj = ReportDataBuilder._build_case_basic_info(
+                test_case, case_results, task,
+                aux_params_map=aux_params_map, dim_results_map=dim_results_map
+            )
 
             metrics_list = ReportDataBuilder._build_case_metrics(
                 test_case, case_results, all_dimensions, dim_results_map, task
@@ -498,6 +779,7 @@ class ReportDataBuilder:
             'resources': json.dumps(summary.get('resources', []), ensure_ascii=False),
             'resource_headers': json.dumps(summary.get('resource_headers', []), ensure_ascii=False),
             'all_metrics': json.dumps(summary.get('all_metrics', []), ensure_ascii=False),
+            'field_mappings': summary.get('field_mappings', {}),
         }
         meta_id = report_repository.add_summary_meta(report_id, meta_data)
 

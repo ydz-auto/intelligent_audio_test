@@ -14,12 +14,18 @@ from api_gateway.schemas.report import (
     ReportSearchCasesRequest,
     ReportExportRequest,
     GetCaseAveragesRequest,
+    ReportExportQuery,
 )
 from api_gateway.infrastructure.grpc_proxies import report_config_service
 from shared.proto import report_service_pb2 as report_pb
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 class ReportQueryService:
@@ -124,8 +130,13 @@ class ReportQueryService:
                 data=_dumps({
                     'keyword': req.keyword or '',
                     'category': req.category or '',
+                    'categories': req.categories or [],
                     'tags': req.tags or [],
                     'include_untagged': req.include_untagged or False,
+                    'metrics': req.metrics or [],
+                    'sort_by': req.sort_by or 'name',
+                    'sort_metric': req.sort_metric or '',
+                    'sort_order': req.sort_order or 'asc',
                     'page': req.page,
                     'per_page': req.per_page,
                 })))
@@ -149,13 +160,14 @@ class ReportQueryService:
                 report_ids = req.ids
                 format_type = req.format
             else:
-                ids_str = request.args.get('ids', '')
+                query = _parse_query_params(ReportExportQuery)
+                ids_str = query.ids
                 if not ids_str:
                     return error_response('缺少必要参数: ids', 400)
                 report_ids = [int(rid.strip()) for rid in str(ids_str).split(',') if rid.strip()]
                 if not report_ids:
                     return error_response('无效的报告 ID 列表', 400)
-                format_type = request.args.get('format', 'csv')
+                format_type = query.format
         except Exception as e:
             return error_response(f'参数错误: {str(e)}', 400)
 

@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):
     # 初始化任务调度器
     from task_service.core.execution_engine import execution_engine
     execution_engine._init_scheduler()
+    execution_engine.start_event_subscribers()
     logger.info("任务调度器初始化完成")
 
     # 注：评估服务已迁移至 evaluation_service 微服务，通过 gRPC 调用
@@ -106,6 +107,10 @@ def create_app(config_name='default') -> FastAPI:
             'status': 'ok',
             'service': 'task_service',
         }
+
+    # 挂载管理路由
+    from task_service.interfaces.api.admin import setup_admin_routes
+    setup_admin_routes(app)
 
     return app
 

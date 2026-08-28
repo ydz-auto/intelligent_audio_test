@@ -10,11 +10,18 @@ interface RoundProgress {
 
 interface AssociatedCase {
   id: string | number;
+  name?: string;
   status: string;
   executionStatus: string;
   evaluationStatus: string;
   duration?: string;
   roundProgress?: RoundProgress;
+  /** 用例分组名，用于"用例分组视图" */
+  groupName?: string;
+  /** 用例标签，用于"标签视图" */
+  tags?: string[] | { id: number; name: string }[];
+  /** 算法类型 */
+  algorithm_type?: string;
 }
 
 interface APIResource {
@@ -92,13 +99,13 @@ export function useTaskProgress(options: TaskProgressOptions) {
 
     const newLog: Log = {
       id: logId || Date.now(),
-      taskId: logData.taskId || currentTaskId.value,
+      task_id: logData.task_id || currentTaskId.value,
       level: logData.level || 'info',
       content,
       time: formattedTime || new Date().toLocaleTimeString(),
       timestamp: logData.timestamp ? new Date(logData.timestamp).toISOString() : new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      testCaseId: logData.testCaseId
+      created_at: new Date().toISOString(),
+      test_case_id: logData.test_case_id
     }
 
     if (newLog.content) {
@@ -109,9 +116,9 @@ export function useTaskProgress(options: TaskProgressOptions) {
   const handleTaskProgress = async (progressData: any) => {
     console.log('[handleTaskProgress] 收到原始数据:', JSON.stringify(progressData, null, 2))
     
-    if (String(progressData.taskId) !== String(currentTaskId.value)) {
+    if (String(progressData.task_id) !== String(currentTaskId.value)) {
       console.log('[handleTaskProgress] taskId 不匹配，跳过处理')
-      console.log('  期望:', currentTaskId.value, '实际:', progressData.taskId)
+      console.log('  期望:', currentTaskId.value, '实际:', progressData.task_id)
       return
     }
 
@@ -217,9 +224,9 @@ export function useTaskProgress(options: TaskProgressOptions) {
       console.log('  总进度:', progressPercentage.value + '%')
     } else {
       // 如果没有testCases数据，使用提供的计数
-      if (progressData.completedCount !== undefined) {
+      if (progressData.completed_count !== undefined) {
         // 只接受真正完成的数量，不包括失败
-        completedTests.value = Math.min(totalCount, Math.max(0, progressData.completedCount))
+        completedTests.value = Math.min(totalCount, Math.max(0, progressData.completed_count))
       }
 
       if (progressData.inProgressCount !== undefined) {
@@ -310,7 +317,7 @@ export function useTaskProgress(options: TaskProgressOptions) {
   }
 
   const taskLogHandler = (data: any) => {
-    if (String(data.taskId) === String(currentTaskId.value)) {
+    if (String(data.task_id) === String(currentTaskId.value)) {
       addLog(data.log)
     }
   }

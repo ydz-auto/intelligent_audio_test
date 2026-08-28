@@ -10,9 +10,9 @@ P0-2 DDD 改造：从 application/handlers/reevaluation_executor.py 下沉的业
 
 纯业务逻辑，不依赖 infrastructure 层。ACL 访问由 Application 层编排时注入。
 """
-import json
 from typing import Any, Dict, List, Optional
 from shared.utils.status_constants import ExecutionStatus, EvaluationStatus
+from shared.utils.json_utils import deserialize_algorithm_result
 
 
 class ReevaluationService:
@@ -21,15 +21,7 @@ class ReevaluationService:
     @staticmethod
     def deserialize_algorithm_result(raw: Any) -> dict:
         """反序列化 algorithm_result，处理可能的双重序列化旧数据。"""
-        result = raw
-        while isinstance(result, str):
-            try:
-                result = json.loads(result)
-            except (json.JSONDecodeError, ValueError):
-                result = {}
-        if not isinstance(result, dict):
-            result = {}
-        return result
+        return deserialize_algorithm_result(raw)
 
     @staticmethod
     def collect_cases_all(

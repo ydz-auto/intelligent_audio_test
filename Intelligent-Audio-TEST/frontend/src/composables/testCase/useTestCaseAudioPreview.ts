@@ -47,7 +47,7 @@ export function useTestCaseAudioPreview(
 
     // In dual-record architecture, test_type is at the record level
     // 后端列表接口返回字段名为 type，兼容 test_type / testType
-    const recordTestType = ((testCase as any).test_type || (testCase as any).testType || (testCase as any).type || 'api').toLowerCase();
+    const recordTestType = ((testCase as any).test_type || (testCase as any).type || 'api').toLowerCase();
     const isApi = recordTestType === 'api';
     const isE2e = recordTestType === 'e2e' || recordTestType === 'e2e_test';
 

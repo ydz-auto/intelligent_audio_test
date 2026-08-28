@@ -40,7 +40,8 @@ class DeviceAclRepository:
             if not resp.success:
                 _logger.warning("GetDeviceStatuses gRPC 失败: %s", resp.message)
                 return []
-            return _loads(resp.data, []) or []
+            payload = _loads(resp.data, {}) or {}
+            return payload.get('items', []) if isinstance(payload, dict) else (payload if isinstance(payload, list) else [])
         except Exception as e:
             _logger.warning("GetDeviceStatuses gRPC 异常: %s", e)
             return []

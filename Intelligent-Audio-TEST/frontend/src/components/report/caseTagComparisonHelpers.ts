@@ -5,8 +5,7 @@ export function extractInitialTagMetricData(reportData: any) {
   }
 
   // 1. 优先使用后端预计算的 tagMetricData
-  const preCalculatedRows = reportData.tagMetricData || reportData.summary?.tagMetricData ||
-                           reportData.tag_metric_data || reportData.summary?.tag_metric_data;
+  const preCalculatedRows = reportData.tag_metric_data || reportData.summary?.tag_metric_data;
 
   if (Array.isArray(preCalculatedRows) && preCalculatedRows.length > 0) {
     const mergedData = {};
@@ -16,7 +15,7 @@ export function extractInitialTagMetricData(reportData: any) {
         const resourceKey = row.resource || '0-默认资源';
         row.tags.forEach(t => {
           if (!t) return;
-          const tag = t.tagName || t.tag_name || t.tagId || t.tag_id || '未标记';
+          const tag = t.tag_name || t.tag_id || '未标记';
           if (!mergedData[tag]) mergedData[tag] = {};
           if (!mergedData[tag][resourceKey]) mergedData[tag][resourceKey] = {};
           (t.metrics || []).forEach(m => {
@@ -25,7 +24,7 @@ export function extractInitialTagMetricData(reportData: any) {
           });
         });
       } else {
-        const tag = row.tagName || row.tag_name || row.tagId || row.tag_id || '未标记';
+        const tag = row.tag_name || row.tag_id || '未标记';
         const resourceKey = row.resource || '0-默认资源';
         if (!mergedData[tag]) mergedData[tag] = {};
         if (!mergedData[tag][resourceKey]) mergedData[tag][resourceKey] = {};
@@ -42,8 +41,7 @@ export function extractInitialTagMetricData(reportData: any) {
       }
     });
 
-    const rawRows = reportData.rawData || reportData.summary?.rawData ||
-                   reportData.raw_data || reportData.summary?.raw_data || [];
+    const rawRows = reportData.raw_data || reportData.summary?.raw_data || [];
     if (Array.isArray(rawRows) && rawRows.length > 0) {
       const rawMap = {};
       rawRows.forEach(r => {
@@ -152,18 +150,18 @@ export function extractInitialTagMetricData(reportData: any) {
     return reconstructedData;
   }
 
-  // 2. 如果没有预计算数据，则从 detailedResults 中提取 (原有逻辑)
-  const detailedResults = reportData.detailedResults || reportData.summary?.detailedResults || [];
+  // 2. 如果没有预计算数据，则从 detailed_results 中提取 (原有逻辑)
+  const detailedResults = reportData.detailed_results || reportData.summary?.detailed_results || [];
   if (detailedResults && detailedResults.length > 0) {
     const dataAccumulator = {};
 
     detailedResults.forEach(result => {
-      const testCaseId = result.testCaseId;
+      const testCaseId = result.test_case_id;
       let tagObjects = [];
       let tags = [];
 
-      if (result.testCaseTags && result.testCaseTags.length > 0) {
-        tagObjects = result.testCaseTags;
+      if (result.test_case_tags && result.test_case_tags.length > 0) {
+        tagObjects = result.test_case_tags;
         tags = tagObjects.map(tag => tag.name);
       }
       else if (reportData.cases) {
@@ -174,14 +172,14 @@ export function extractInitialTagMetricData(reportData: any) {
         }
       }
 
-      if (result.testCase?.tags && result.testCase.tags.length > 0) {
-        tags = result.testCase.tags;
+      if (result.test_case?.tags && result.test_case.tags.length > 0) {
+        tags = result.test_case.tags;
         tagObjects = tags.map(tag => ({ id: tag, name: tag }));
       }
 
       if (tags.length === 0) {
-        if (result.asr?.referenceText) {
-          const defaultTag = result.asr.referenceText.slice(0, 5);
+        if (result.asr?.reference_text) {
+          const defaultTag = result.asr.reference_text.slice(0, 5);
           tags = [defaultTag];
           tagObjects = [{ id: defaultTag, name: defaultTag }];
         } else {
@@ -220,17 +218,17 @@ export function extractInitialTagMetricData(reportData: any) {
           };
         }
 
-        if (result.dimensionScores) {
-          result.dimensionScores.forEach(dim => {
-            if (!dataAccumulator[tagName][resourceKey].counts[dim.dimensionName]) {
-              dataAccumulator[tagName][resourceKey].counts[dim.dimensionName] = 0;
-              dataAccumulator[tagName][resourceKey].sums[dim.dimensionName] = 0;
-              dataAccumulator[tagName][resourceKey].values[dim.dimensionName] = [];
+        if (result.dimension_scores) {
+          result.dimension_scores.forEach(dim => {
+            if (!dataAccumulator[tagName][resourceKey].counts[dim.dimension_name]) {
+              dataAccumulator[tagName][resourceKey].counts[dim.dimension_name] = 0;
+              dataAccumulator[tagName][resourceKey].sums[dim.dimension_name] = 0;
+              dataAccumulator[tagName][resourceKey].values[dim.dimension_name] = [];
             }
 
-            dataAccumulator[tagName][resourceKey].counts[dim.dimensionName]++;
-            dataAccumulator[tagName][resourceKey].sums[dim.dimensionName] += dim.score;
-            dataAccumulator[tagName][resourceKey].values[dim.dimensionName].push(dim.score);
+            dataAccumulator[tagName][resourceKey].counts[dim.dimension_name]++;
+            dataAccumulator[tagName][resourceKey].sums[dim.dimension_name] += dim.score;
+            dataAccumulator[tagName][resourceKey].values[dim.dimension_name].push(dim.score);
           });
         } else if (result.metrics) {
           Object.entries(result.metrics).forEach(([dimName, value]) => {

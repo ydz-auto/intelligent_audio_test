@@ -103,15 +103,24 @@
                   </tr>
                 </thead>
                 <tbody id="dimensionsTable">
-                  <tr v-for="dimension in filteredDimensions" :key="dimension.id" @click="toggleDimensionSelection(dimension.id)">
+                  <tr v-for="dimension in hierarchicalDimensions" :key="dimension.id" :class="{ 'sub-dimension-row': dimension._level === 1 }" @click="toggleDimensionSelection(dimension.id)">
                     <td class="checkbox-column"><input type="checkbox" class="dimension-checkbox" v-model="selectedDimensions" :value="dimension.id" @click.stop></td>
-                    <td class="dimension-name-col" @click.stop="openEditModal(dimension.id)">{{ dimension.name }}</td>
+                    <td class="dimension-name-col" @click.stop="openEditModal(dimension.id)">
+                      <div class="dimension-name-cell" :style="{ paddingLeft: dimension._level === 1 ? '28px' : '0' }">
+                        <span v-if="dimension._level === 1" class="tree-branch">└</span>
+                        <span class="dimension-type-badge" :class="dimension._isMain ? 'main-dim-badge' : 'sub-dim-badge'">
+                          {{ dimension._isMain ? '主' : '子' }}
+                        </span>
+                        <span class="dimension-name-text">{{ dimension.name }}</span>
+                        <span v-if="dimension._level === 1 && dimension._parentName" class="parent-name-hint">（{{ dimension._parentName }}）</span>
+                      </div>
+                    </td>
                     <td class="dimension-description-col text-truncate" :title="dimension.description">{{ dimension.description || '-' }}</td>
                     <td class="dimension-category-col">{{ dimension.category || dimension.type }}</td>
                     <td class="dimension-algorithms-col">
-                      <div class="algorithm-tags" v-if="dimension.associatedAlgorithms && dimension.associatedAlgorithms.length > 0">
-                        <span class="algo-tag" v-for="algo in dimension.associatedAlgorithms" :key="algo.algorithmType" :class="{ 'is-default': algo.isDefault }">
-                          {{ getAlgorithmLabel(algo.algorithmType) }}
+                      <div class="algorithm-tags" v-if="dimension.associated_algorithms && dimension.associated_algorithms.length > 0">
+                        <span class="algo-tag" v-for="algo in dimension.associated_algorithms" :key="algo.algorithm_type" :class="{ 'is-default': algo.is_default }">
+                          {{ getAlgorithmLabel(algo.algorithm_type) }}
                         </span>
                       </div>
                       <span v-else class="text-muted">-</span>
@@ -126,8 +135,8 @@
                       <span v-if="isLlmJudge(dimension)" class="api-status llm-judge">
                         <i class="fas fa-robot"></i> LLM Judge
                       </span>
-                      <span v-else class="api-status" :class="dimension.apiStatus">
-                        <i class="fas fa-circle" :class="dimension.apiStatus === 'online' ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.apiStatus === 'online' ? '在线' : '离线' }}
+                      <span v-else class="api-status" :class="dimension.api_status">
+                        <i class="fas fa-circle" :class="dimension.api_status === 'online' ? 'online-indicator' : 'offline-indicator'"></i> {{ dimension.api_status === 'online' ? '在线' : '离线' }}
                       </span>
                     </td>
                     <td class="dimension-status-col"><span class="status-badge" :class="dimension.status ? 'active' : 'inactive'">{{ dimension.status ? '启用' : '禁用' }}</span></td>
@@ -203,6 +212,7 @@ const {
   editingCategory,
   editingDimension,
   filteredDimensions,
+  hierarchicalDimensions,
   totalPages,
   totalItems,
   isAllSelected,

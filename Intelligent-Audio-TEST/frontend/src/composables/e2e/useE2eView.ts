@@ -75,7 +75,7 @@ export function useE2eView() {
   } = useTestCaseCard();
 
   const modalManager = useModalControl()
-  const { isLoading: testCasesLoading, e2eTestCaseGroups, e2eTestCases, tags, initializeE2eTests, paginationInfo, tagViewData, fetchTagView } = useE2eTest()
+  const { isLoading: testCasesLoading, e2eTestCaseGroups, e2eTestCases, tags, initializeE2eTests, paginationInfo, tagViewData, tagViewPagination, tagViewLoading, fetchTagView, loadMoreTagView } = useE2eTest()
 
   const currentStep = ref(0)
   const currentTaskId = ref<number | null>(null)
@@ -301,11 +301,21 @@ export function useE2eView() {
         throw new Error('请选择至少一个测试设备')
       }
 
-      const selectedCaseIds = selectedTestCaseIds.value.length > 0 ? selectedTestCaseIds.value : e2eTestCases.value.map((c: any) => c.id)
+      let selectedCaseIds: (string | number)[] = []
+      if (selectedTestCaseIds.value.length > 0) {
+        selectedCaseIds = selectedTestCaseIds.value
+      } else {
+        // 没勾选 → 从后端按筛选条件拉取全量ID
+        const store = useTestCaseStore()
+        selectedCaseIds = await store.fetchCaseIdsByFilter({
+          testType: 'e2e',
+          algorithmType: selectedAlgorithmType.value || undefined,
+        })
+      }
       console.log('[startTest] selectedCaseIds数量:', selectedCaseIds.length, 'selectedTestCaseIds:', selectedTestCaseIds.value.length, 'e2eTestCases:', e2eTestCases.value.length)
       if (selectedCaseIds.length === 0) {
         console.log('[startTest] 没有可用的E2E测试用例')
-        throw new Error('没有可用的E2E测试用例')
+        throw new Error('当前筛选条件下没有可用的E2E测试用例，请选择用例或调整筛选条件')
       }
 
       const nonOnlineDevices = associatedDevices.value.filter((d: any) => d.status !== 'online')
@@ -340,13 +350,19 @@ export function useE2eView() {
       console.log('[E2E测试] selectedTestCaseIds:', selectedTestCaseIds.value)
       console.log('[E2E测试] e2eTestCases数量:', e2eTestCases.value.length)
       
-      associatedCases.value = selectedCaseIds.map((id: any) => ({
-        id: id,
-        name: e2eTestCases.value.find((c: any) => String(c.id) === String(id))?.name || `用例 ${id}`,
-        status: 'pending',
-        executionStatus: 'pending',
-        evaluationStatus: 'pending'
-      }))
+      associatedCases.value = selectedCaseIds.map((id: any) => {
+        const tc = e2eTestCases.value.find((c: any) => String(c.id) === String(id))
+        return {
+          id: id,
+          name: tc?.name || `用例 ${id}`,
+          groupName: tc?.groupName,
+          tags: tc?.tags,
+          algorithmType: tc?.algorithmType,
+          status: 'pending',
+          executionStatus: 'pending',
+          evaluationStatus: 'pending'
+        }
+      })
       
       console.log('[E2E测试] associatedCases:', associatedCases.value)
       totalTestCases.value = associatedCases.value.length
@@ -394,7 +410,7 @@ export function useE2eView() {
     editingTestCase.value = testCase
     
     const normalized = normalizeTestCaseConfig(testCase.config || {})
-    const testCaseType = (testCase as any).test_type || (testCase as any).testType || 'e2e'
+    const testCaseType = (testCase as any).test_type || 'e2e'
     
     formData.value = {
       id: testCase.id,
@@ -405,11 +421,11 @@ export function useE2eView() {
       tags: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name),
       tagsInput: (testCase.tags || []).map(t => typeof t === 'string' ? t : t.name).join(', '),
       config: normalized as TestCaseFormData['config'],
-      algorithmType: (testCase as any).algorithmType || (testCase as any).algorithm_type || '',
+      algorithmType: (testCase as any).algorithm_type || '',
       test_type: testCaseType as 'api' | 'e2e',
       // 新设计：algorithm_params 独立列（后端返回驼峰 algorithmParams）
-      algorithm_params: Array.isArray((testCase as any).algorithmParams || (testCase as any).algorithm_params)
-        ? ((testCase as any).algorithmParams || (testCase as any).algorithm_params)
+      algorithm_params: Array.isArray((testCase as any).algorithm_params)
+        ? ((testCase as any).algorithm_params)
         : [],
     } as TestCaseFormData
     
@@ -644,6 +660,8 @@ export function useE2eView() {
     testCaseGroups: e2eTestCaseGroups,
     tags,
     tagViewData,
+    tagViewPagination,
+    tagViewLoading,
     isLoading: testCasesLoading,
     progressPercentage,
     completedTests,
@@ -740,6 +758,8 @@ export function useE2eView() {
     algorithmSearchQuery,
     searchAlgorithms,
     filteredAlgorithmList,
-    fetchTagView
+    fetchTagView,
+    loadMoreTagView,
+    initializeE2eTests
   }
 }

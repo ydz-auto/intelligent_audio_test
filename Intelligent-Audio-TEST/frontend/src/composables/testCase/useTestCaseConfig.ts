@@ -61,8 +61,8 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
   ]
 
   const testTypeOptions: TestTypeOption[] = [
-    { label: 'API测试', value: 'api' },
-    { label: 'E2E测试', value: 'e2e' }
+    { label: 'E2E测试', value: 'e2e' },
+    { label: 'API测试', value: 'api' }
   ]
 
   const updateDimensionFilter = (ids: number[]) => {
@@ -171,7 +171,7 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
 
 export function createDefaultUploadConfig() {
   return {
-    testTypes: ['api'] as ('api' | 'e2e')[],
+    testTypes: ['e2e'] as ('api' | 'e2e')[],
     apiDimensions: [] as SelectedDimension[],
     e2eDimensions: [] as SelectedDimension[],
     apiScopes: ['single'] as ('single' | 'multi')[],

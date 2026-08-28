@@ -110,16 +110,16 @@ export function useAlgorithmConfigPage() {
   function normalizeAlgorithmFields(algo: any) {
     return {
       ...algo,
-      group_id: algo.groupId ?? algo.group_id,
-      group_name: algo.groupName ?? algo.group_name,
-      display_order: algo.displayOrder ?? algo.display_order,
-      device_params: algo.deviceParams ?? algo.device_params ?? [],
-      api_params: algo.apiParams ?? algo.api_params ?? [],
-      case_params: algo.caseParams ?? algo.case_params ?? [],
+      group_id: algo.group_id,
+      group_name: algo.group_name,
+      display_order: algo.display_order,
+      device_params: algo.device_params ?? [],
+      api_params: algo.api_params ?? [],
+      case_params: algo.case_params ?? [],
       params: algo.params ?? [],
       mappings: algo.mappings ?? { device: [], api: [], evaluation: [] },
-      associated_dimensions: algo.associatedDimensions ?? algo.associated_dimensions ?? [],
-      reference_params: algo.referenceParams ?? algo.reference_params ?? []
+      associated_dimensions: algo.associated_dimensions ?? [],
+      reference_params: algo.reference_params ?? []
     }
   }
 

@@ -112,12 +112,34 @@ class DimensionLoaderMixin:
                 'input_params': input_param_map.get(dim_id, [])
             }
 
-            # 子维度继承父维度的API配置——P5+DOMAIN: 父维度需通过 Repository 单独加载
-            # 这里直接使用 snap 中已存的父维度字段（Repository 在 list 时未加载父维度，
-            # 故 parent 字段为空；若下游确实需要父维度配置，可后续在 Repository 补 join）
-            if snap.dimension_type == 'sub' and not dim_dict.get('api_endpoints') and not dim_dict.get('api_url'):
-                # 子维度自身无 API 配置，task_type_code 已在 snap 中
-                pass
+            # 子维度继承父维度的API配置和 input_params（output_params 不继承，各子维度自己挂）
+            if snap.dimension_type == 'sub':
+                parent_dim = None
+                parent_id = snap.parent_dimension_id
+                if parent_id:
+                    # 通过 Repository 加载父维度聚合根
+                    parent_aggs = self._evaluation_dimension_repo.list_active_dimensions_by_ids([parent_id])
+                    parent_dim = parent_aggs[0] if parent_aggs else None
+                if parent_dim:
+                    parent_snap = parent_dim.snapshot
+                    # API 配置：仅当子维度缺 api_endpoints/api_url 时继承
+                    # 注意 api_endpoints 可能为空列表 [] 或包含空URL的列表
+                    sub_endpoints = dim_dict.get('api_endpoints')
+                    has_valid_endpoint = False
+                    if sub_endpoints and isinstance(sub_endpoints, list):
+                        for ep in sub_endpoints:
+                            if isinstance(ep, dict) and (ep.get('url') or ep.get('endpoint')):
+                                has_valid_endpoint = True
+                                break
+                    if not has_valid_endpoint and not dim_dict.get('api_url'):
+                        # api_endpoints/api_url/api_settings 继承父维度
+                        # task_type_code 不继承：子维度各自独立（如 tor/false_takeover/takeover_latency），
+                        # 发请求时 task_type 用主维度的 turn_taking，sub_tasks 从子维度 task_type_code 提取
+                        for k in ['api_endpoints', 'api_url', 'api_settings']:
+                            if not dim_dict.get(k):
+                                dim_dict[k] = getattr(parent_snap, k, None)
+                    # 子维度继承主维度的 task_type_code，用于发请求时 task_type=turn_taking
+                    dim_dict['parent_task_type_code'] = getattr(parent_snap, 'task_type_code', None)
 
             dimension_data_list.append(dim_dict)
 

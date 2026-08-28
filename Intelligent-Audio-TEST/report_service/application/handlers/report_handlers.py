@@ -278,10 +278,7 @@ class ReportQueryHandler:
     # ---- 报告用例查询 / 搜索 / 导出 / 平均值 / 日志下载 ----
 
     def handle_get_report_cases(self, report_id: int, params_dict: dict) -> dict:
-        """处理查询报告用例列表。
-
-        加载报告聚合根及子实体（cases），按 keyword/category/tags 过滤后分页，
-        对 voice_llm 多轮场景做 question/answer 与参考参数展开。
+        """处理查询报告用例列表（薄处理器：解析参数 -> 调用服务 -> 格式化响应）。
 
         Args:
             report_id: 报告 ID
@@ -290,88 +287,30 @@ class ReportQueryHandler:
         Returns:
             dict: {items, total, page, perPage, pages}
         """
-        from report_service.application.services.report_helpers import ReportHelpers
+        from report_service.application.services.report_aggregation_service import ReportAggregationService
 
         aggregate = self.repository.get_by_id(report_id)
         if aggregate is None:
             return {'items': [], 'total': 0, 'page': 1, 'perPage': 20, 'pages': 1}
-        # 加载用例子实体
         aggregate.cases = self.repository.load_cases(report_id)
 
-        all_cases = []
-        for c in aggregate.cases:
-            rs = c.result_summary or {}
-            case_dict = {
-                'test_case_id': c.test_case_id,
-                'name': rs.get('name'),
-                'description': rs.get('description'),
-                'category': rs.get('category'),
-                'tags': rs.get('tags') or [],
-                'metrics': rs.get('metrics') or {},
-                'results': rs.get('results') or [],
-                'audios': rs.get('audios') or [],
-                'reference_params': rs.get('reference_params') or {},
-                'algorithm_results': rs.get('algorithm_results') or {},
-                'algorithm_type': rs.get('algorithm_type'),
-                'logs': rs.get('logs'),
-            }
-            all_cases.append(case_dict)
+        # 构建用例字典列表
+        all_cases = [ReportAggregationService.build_case_dict_from_entity(c) for c in aggregate.cases]
 
+        # 客户端过滤
         keyword = params_dict.get('keyword')
         category = params_dict.get('category')
         tags = params_dict.get('tags') or []
+        filtered = ReportAggregationService.filter_cases(all_cases, keyword, category, tags)
 
-        # 客户端过滤
-        filtered = []
-        for case in all_cases:
-            if not isinstance(case, dict):
-                continue
-            if keyword:
-                kw = str(keyword).lower()
-                case_name = str(case.get('name') or '').lower()
-                case_desc = str(case.get('description') or '').lower()
-                if kw not in case_name and kw not in case_desc:
-                    continue
-            if category:
-                if str(case.get('category')) != str(category):
-                    continue
-            if tags:
-                case_tags = case.get('tags') or []
-                if not all(str(t) in [str(ct) for ct in case_tags] for t in tags):
-                    continue
-            filtered.append(case)
-
+        # 分页
         page = max(int(params_dict.get('page') or 1), 1)
         per_page = max(int(params_dict.get('per_page') or 20), 1)
-        total = len(filtered)
-        start = (page - 1) * per_page
-        end = start + per_page
-        paged_cases = filtered[start:end]
+        paged_cases, total, pages = ReportAggregationService.paginate(filtered, page, per_page)
 
-        items = []
-        for case in paged_cases:
-            raw_algo_results = case.get('algorithm_results')
-            raw_ref_params = case.get('reference_params')
-            expanded_algo = ReportQueryHandler._expand_algorithm_results_for_report(
-                raw_algo_results, case.get('algorithm_type')
-            )
-            expanded_ref = ReportQueryHandler._expand_reference_params_for_report(raw_ref_params)
-            items.append({
-                "id": case.get('test_case_id'),
-                "name": case.get('name'),
-                "description": case.get('description') or "",
-                "category": case.get('category'),
-                "tags": case.get('tags') or [],
-                "metrics": case.get('metrics') or {},
-                "results": case.get('results') or [],
-                "audios": case.get('audios') or [],
-                "referenceParams": expanded_ref,
-                "algorithmResults": expanded_algo,
-                "algorithmType": case.get('algorithm_type'),
-                "logs": case.get('logs')
-            })
+        # 构建前端用例项
+        items = [ReportAggregationService.build_case_item(case) for case in paged_cases]
 
-        pages = (total + per_page - 1) // per_page if per_page > 0 else 1
         return {
             "items": items,
             "total": total,
@@ -381,114 +320,43 @@ class ReportQueryHandler:
         }
 
     def handle_search_report_cases(self, report_id: int, params_dict: dict) -> dict:
-        """处理搜索报告用例。
-
-        与 handle_get_report_cases 类似，但支持 include_untagged 参数，
-        tags 可以是逗号分隔字符串或列表。
-
-        Args:
-            report_id: 报告 ID
-            params_dict: 搜索参数，含 keyword/category/tags/include_untagged/page/per_page
-
-        Returns:
-            dict: {items, total, page, perPage, pages}
-        """
-        from report_service.application.services.report_helpers import ReportHelpers
+        """处理搜索报告用例（薄处理器：解析参数 -> 调用服务 -> 格式化响应）。"""
+        from report_service.application.services.report_aggregation_service import ReportAggregationService
 
         aggregate = self.repository.get_by_id(report_id)
         if aggregate is None:
             return {'items': [], 'total': 0, 'page': 1, 'perPage': 20, 'pages': 1}
         aggregate.cases = self.repository.load_cases(report_id)
 
-        all_cases = []
-        for c in aggregate.cases:
-            rs = c.result_summary or {}
-            case_dict = {
-                'test_case_id': c.test_case_id,
-                'name': rs.get('name'),
-                'description': rs.get('description'),
-                'category': rs.get('category'),
-                'tags': rs.get('tags') or [],
-                'metrics': rs.get('metrics') or {},
-                'results': rs.get('results') or [],
-                'audios': rs.get('audios') or [],
-                'reference_params': rs.get('reference_params') or {},
-                'algorithm_results': rs.get('algorithm_results') or {},
-                'algorithm_type': rs.get('algorithm_type'),
-                'logs': rs.get('logs'),
-            }
-            all_cases.append(case_dict)
+        # 构建用例字典列表
+        all_cases = [ReportAggregationService.build_case_dict_from_entity(c) for c in aggregate.cases]
 
+        # 解析搜索参数
         keyword = params_dict.get('keyword')
         category = params_dict.get('category')
+        categories = params_dict.get('categories') or []
         include_untagged = params_dict.get('include_untagged') or False
+        metrics_filter = params_dict.get('metrics') or []
+        tags = ReportAggregationService.parse_tags(params_dict.get('tags') or [])
 
-        raw_tags = params_dict.get('tags') or []
-        tags = []
-        if isinstance(raw_tags, list):
-            for t in raw_tags:
-                if t is None:
-                    continue
-                parts = [p.strip() for p in str(t).split(',') if p.strip()]
-                tags.extend(parts)
-        else:
-            tags = [t.strip() for t in str(raw_tags).split(',') if t.strip()]
+        # 高级过滤
+        filtered = ReportAggregationService.filter_cases_advanced(
+            all_cases, keyword, category, categories, tags, include_untagged, metrics_filter
+        )
 
-        # 客户端过滤
-        filtered = []
-        tag_set = set(str(t) for t in tags)
-        for case in all_cases:
-            if not isinstance(case, dict):
-                continue
-            if keyword:
-                kw = str(keyword).lower()
-                case_name = str(case.get('name') or '').lower()
-                case_desc = str(case.get('description') or '').lower()
-                if kw not in case_name and kw not in case_desc:
-                    continue
-            if category:
-                if str(case.get('category')) != str(category):
-                    continue
-            case_tags = case.get('tags') or []
-            if include_untagged and not tag_set:
-                if case_tags:
-                    continue
-            elif tag_set:
-                if not all(str(t) in [str(ct) for ct in case_tags] for t in tags):
-                    continue
-            filtered.append(case)
-
+        # 排序与分页
         page = max(int(params_dict.get('page') or 1), 1)
         per_page = max(int(params_dict.get('per_page') or 20), 1)
-        total = len(filtered)
-        start = (page - 1) * per_page
-        end = start + per_page
-        paged_cases = filtered[start:end]
+        sort_by = (params_dict.get('sort_by') or 'name').lower()
+        sort_order = (params_dict.get('sort_order') or 'asc').lower()
+        sort_metric = params_dict.get('sort_metric')
+        paged_cases, total, pages = ReportAggregationService.sort_and_paginate_cases(
+            filtered, sort_by, sort_order, sort_metric, page, per_page
+        )
 
-        items = []
-        for case in paged_cases:
-            raw_algo_results = case.get('algorithm_results')
-            raw_ref_params = case.get('reference_params')
-            expanded_algo = ReportQueryHandler._expand_algorithm_results_for_report(
-                raw_algo_results, case.get('algorithm_type')
-            )
-            expanded_ref = ReportQueryHandler._expand_reference_params_for_report(raw_ref_params)
-            items.append({
-                "id": case.get('test_case_id'),
-                "name": case.get('name'),
-                "description": case.get('description') or "",
-                "category": case.get('category'),
-                "tags": case.get('tags') or [],
-                "metrics": case.get('metrics') or {},
-                "results": case.get('results') or [],
-                "audios": case.get('audios') or [],
-                "referenceParams": expanded_ref,
-                "algorithmResults": expanded_algo,
-                "algorithmType": case.get('algorithm_type'),
-                "logs": case.get('logs')
-            })
+        # 构建前端用例项
+        items = [ReportAggregationService.build_case_item(case) for case in paged_cases]
 
-        pages = (total + per_page - 1) // per_page if per_page > 0 else 1
         return {
             "items": items,
             "total": total,
@@ -498,23 +366,25 @@ class ReportQueryHandler:
         }
 
     def handle_export_reports(self, report_ids: list, format_type: str) -> dict:
-        """处理导出报告。
-
-        按 report_ids 拉取报告及摘要信息，构建导出数据列表，
-        根据 format_type 生成 Excel/PDF/CSV 文件并以 base64 编码返回。
+        """处理导出报告（薄处理器：解析参数 -> 调用服务 -> 格式化响应）。
 
         Args:
             report_ids: 报告 ID 列表
-            format_type: 导出格式（excel/pdf/csv）
+            format_type: 导出格式（excel/pdf/csv/html）
 
         Returns:
             dict: {filename, format, content_base64, mime_type}
         """
-        export_data = self._query_export_data(report_ids)
+        # HTML 导出：完整报告详情（所见即所得），仅支持单个报告
+        if format_type == 'html':
+            return self._build_html_export(report_ids)
+
+        from report_service.application.services.report_aggregation_service import ReportAggregationService
+        export_data = ReportAggregationService.build_export_data(report_ids, self.repository)
         if export_data is None:
             return {'success': False, 'message': '未找到指定报告'}
 
-        return self._build_export_payload(export_data, format_type)
+        return ReportAggregationService.build_export_payload(export_data, format_type)
 
     def handle_get_case_averages(self, params_dict: dict) -> dict:
         """处理按分组和标签查询用例平均值。
@@ -587,237 +457,80 @@ class ReportQueryHandler:
     # ---- 导出 / 平均值 / 日志下载 私有辅助方法 ----
 
     @staticmethod
+    def _normalize_audio_paths_in_results(algorithm_results):
+        """将 algorithm_results 中 audio_file 路径规范化（委托服务层）。"""
+        from report_service.application.services.report_aggregation_service import ReportAggregationService
+        return ReportAggregationService._normalize_audio_paths_in_results(algorithm_results)
+
+    @staticmethod
     def _expand_algorithm_results_for_report(algorithm_results, algorithm_type=None):
-        """报告页 algorithm_results 后处理：
-
-        对 voice_llm 多轮场景，把 rounds 数组展开成
-        question@round:N / answer@round:N 文本字段。
-
-        Args:
-            algorithm_results: 算法结果列表
-            algorithm_type: 算法类型
-
-        Returns:
-            展开后的 algorithm_results 列表
-        """
-        if not isinstance(algorithm_results, list):
-            return algorithm_results
-        # 找到 rounds 字段
-        rounds_item = None
-        for item in algorithm_results:
-            if not isinstance(item, dict):
-                continue
-            code = item.get('paramCode') or item.get('param_code')
-            if code == 'rounds':
-                rounds_item = item
-                break
-        if not rounds_item:
-            return algorithm_results
-        rounds_value = rounds_item.get('value')
-        if not isinstance(rounds_value, list) or not rounds_value:
-            return algorithm_results
-
-        # 构建展开后的新列表：保留非 rounds 字段，rounds 替换为 question@round:N/answer@round:N
-        expanded = []
-        device = rounds_item.get('device', 'default')
-        for item in algorithm_results:
-            if item is rounds_item:
-                continue
-            expanded.append(item)
-
-        for r_idx, r_item in enumerate(rounds_value):
-            if not isinstance(r_item, dict):
-                continue
-            raw_round = r_item.get('roundNumber')
-            if raw_round is None:
-                raw_round = r_item.get('round')
-            rn = (raw_round + 1) if isinstance(raw_round, int) else (r_idx + 1)
-            output = r_item.get('output') or {}
-            for sub_key in ('question', 'answer'):
-                val = output.get(sub_key)
-                if val:
-                    expanded.append({
-                        'device': device,
-                        'param_code': f'{sub_key}@round:{rn}',
-                        'paramCode': f'{sub_key}@round:{rn}',
-                        'param_type': 'text',
-                        'paramType': 'text',
-                        'label': f'{sub_key} (第{rn}轮)',
-                        'value': val,
-                        'round_number': rn,
-                        'roundNumber': rn,
-                    })
-        # rounds 整体保留（标记为 json）
-        rounds_item_copy = dict(rounds_item)
-        rounds_item_copy['param_type'] = 'json'
-        rounds_item_copy['paramType'] = 'json'
-        expanded.append(rounds_item_copy)
-        return expanded
+        """报告页 algorithm_results 后处理（委托服务层）。"""
+        from report_service.application.services.report_aggregation_service import ReportAggregationService
+        return ReportAggregationService._expand_algorithm_results_for_report(algorithm_results, algorithm_type)
 
     @staticmethod
     def _expand_reference_params_for_report(reference_params):
-        """报告页 reference_params 后处理：
+        """报告页 reference_params 后处理（委托服务层）。"""
+        from report_service.application.services.report_aggregation_service import ReportAggregationService
+        return ReportAggregationService._expand_reference_params_for_report(reference_params)
 
-        调用 algo_get_reference_params_for_report 做多轮展开，
-        兼容 reference_params 是字典（已是报告格式）或 DB 原始列格式。
+    def _build_html_export(self, report_ids: list) -> dict:
+        """构建 HTML 导出响应。
 
-        Args:
-            reference_params: 参考参数（dict 或 list）
-
-        Returns:
-            展开后的参考参数字典
-        """
-        if not reference_params:
-            return {}
-        try:
-            from report_service.infrastructure.clients.grpc_clients import _grpc_algo_get_reference_params_for_report
-            # 如果已经是扁平字典格式（code -> {code, type, value}），直接原样返回
-            if isinstance(reference_params, dict):
-                # 判断是否是 reference_params_col 格式（list of {round_number, reference_params_path}）
-                if any(isinstance(v, dict) and ('reference_params_path' in v or 'referenceParamsPath' in v) for v in reference_params.values()):
-                    return _grpc_algo_get_reference_params_for_report(reference_params)
-                # 已经是展开后的字典格式或含 round_number 多轮格式
-                return reference_params
-            if isinstance(reference_params, list):
-                return _grpc_algo_get_reference_params_for_report(reference_params)
-        except Exception:
-            logger.debug("gRPC 展开参考参数失败", exc_info=True)
-        return reference_params
-
-    def _query_export_data(self, report_ids: list) -> list:
-        """查询指定报告及其摘要信息，构建导出数据列表。
+        HTML 导出仅支持单个报告，复用完整报告数据（所见即所得）。
+        通过 report_repository.load_full_report_data 获取摘要/元数据/统计等，
+        再调用 HtmlReportRenderer.render 渲染为自包含 HTML。
 
         Args:
-            report_ids: 报告 ID 列表
+            report_ids: 报告 ID 列表（仅取第一个）
 
         Returns:
-            list[dict]: 导出数据列表；无数据时返回 None
-        """
-        export_data = []
-        for rid in report_ids:
-            try:
-                aggregate = self.repository.get_by_id(int(rid))
-                if aggregate is None:
-                    continue
-                # 加载摘要以取 total_cases / pass_rate
-                summaries = self.repository.load_summaries(int(rid))
-            except Exception:
-                continue
-
-            summary_info = summaries[0].metadata if summaries else {}
-            if summary_info:
-                total_cases = summary_info.get('total_cases') or 0
-                pass_rate = summary_info.get('pass_rate') or 0
-            else:
-                total_cases = 0
-                pass_rate = 0
-            created_at = aggregate.created_at
-            if created_at:
-                try:
-                    from datetime import datetime
-                    dt = datetime.fromisoformat(str(created_at).replace('Z', '+00:00'))
-                    gen_time = dt.strftime('%Y-%m-%d %H:%M:%S')
-                except Exception:
-                    gen_time = "N/A"
-            else:
-                gen_time = "N/A"
-            export_data.append({
-                "报告ID": str(aggregate.id),
-                "报告名称": aggregate.config.get('name') if aggregate.config else None,
-                "报告类型": aggregate.report_type,
-                "生成时间": gen_time,
-                "总用例数": str(total_cases),
-                "成功率": f"{pass_rate}%",
-                "分析结论": (aggregate.config.get('analysis') if aggregate.config else None) or "无"
-            })
-        return export_data if export_data else None
-
-    @staticmethod
-    def _build_export_payload(export_data: list, format_type: str) -> dict:
-        """根据格式类型构建导出响应，返回包含 base64 编码文件内容的字典。
-
-        Args:
-            export_data: 导出数据列表
-            format_type: 导出格式（excel/pdf/csv）
-
-        Returns:
-            dict: {filename, format, content_base64, mime_type}
+            dict: {filename, format, content_base64, mime_type} 或 {success: False, message}
         """
         import base64
-        import io as _io
         from shared.utils.query_utils import now_cst
+        from report_service.application.services.html_report_renderer import HtmlReportRenderer
 
-        if format_type == 'excel':
-            import pandas as pd
-            df = pd.DataFrame(export_data)
-            output = _io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='报告')
-            output.seek(0)
-            filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.xlsx"
-            mime_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            return {
-                'filename': filename,
-                'format': 'excel',
-                'content_base64': base64.b64encode(output.getvalue()).decode('utf-8'),
-                'mime_type': mime_type,
-            }
-        elif format_type == 'pdf':
-            from reportlab.lib import colors
-            from reportlab.lib.pagesizes import A4, landscape
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
+        if not report_ids or len(report_ids) != 1:
+            return {'success': False, 'message': 'HTML 导出仅支持单个报告，请选择一个报告'}
 
-            output = _io.BytesIO()
-            doc = SimpleDocTemplate(output, pagesize=landscape(A4))
-            elements = []
+        report_id = int(report_ids[0])
+        aggregate = self.repository.get_by_id(report_id)
+        if aggregate is None:
+            return {'success': False, 'message': '未找到指定报告'}
 
-            data = [list(export_data[0].keys())]
-            for item in export_data:
-                data.append(list(item.values()))
+        summary_data = self.repository.load_full_report_data(report_id)
+        if summary_data is None:
+            return {'success': False, 'message': '报告数据未迁移，请先运行迁移脚本'}
 
-            table = Table(data)
-            style = TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.gray),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 0), (-1, 0), 12),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ])
-            table.setStyle(style)
-            elements.append(table)
+        # 组装报告数据（与 get_one API 返回的 data 字段结构一致）
+        config = aggregate.config or {}
+        report_data = {
+            'id': aggregate.id,
+            'name': config.get('name', '未命名报告'),
+            'type': aggregate.report_type,
+            'task_id': aggregate.task_id,
+            'task_name': config.get('task_name', ''),
+            'summary': summary_data,
+            'description': config.get('description', ''),
+            'status': aggregate.status,
+            'analysis': config.get('analysis', ''),
+            'created_at': str(aggregate.created_at) if aggregate.created_at else None,
+        }
 
-            doc.build(elements)
-            output.seek(0)
-            filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.pdf"
-            mime_type = 'application/pdf'
-            return {
-                'filename': filename,
-                'format': 'pdf',
-                'content_base64': base64.b64encode(output.getvalue()).decode('utf-8'),
-                'mime_type': mime_type,
-            }
-        else:
-            # CSV
-            buf = _io.BytesIO()
-            buf.write('\ufeff'.encode('utf-8-sig'))
-            headers = list(export_data[0].keys())
-            buf.write((",".join(headers) + "\n").encode('utf-8-sig'))
-            for row in export_data:
-                csv_row = [row[h] for h in headers]
-                csv_row = [f'"{r}"' if ',' in str(r) else str(r) for r in csv_row]
-                buf.write((",".join(csv_row) + "\n").encode('utf-8-sig'))
-            buf.seek(0)
-            filename = f"reports_export_{now_cst().strftime('%Y%m%d')}.csv"
-            mime_type = 'text/csv'
-            return {
-                'filename': filename,
-                'format': 'csv',
-                'content_base64': base64.b64encode(buf.getvalue()).decode('utf-8'),
-                'mime_type': mime_type,
-            }
+        html_content = HtmlReportRenderer.render(report_data)
+
+        # 清理文件名中的非法字符
+        report_name = config.get('name', f'report_{report_id}')
+        filename = f"report_{report_id}_{report_name}_{now_cst().strftime('%Y%m%d')}.html"
+        filename = filename.replace('/', '_').replace('\\', '_').replace(':', '_').replace('"', '_')
+
+        return {
+            'filename': filename,
+            'format': 'html',
+            'content_base64': base64.b64encode(html_content.encode('utf-8')).decode('utf-8'),
+            'mime_type': 'text/html; charset=utf-8',
+        }
 
     def _query_case_logs(self, report_id: int, case_id: str):
         """查询用例日志相关数据。
@@ -1103,7 +816,7 @@ class ReportQueryHandler:
         return filtered_case_ids, test_results
 
     def _calculate_averages(self, task, filtered_case_ids: list, test_results: list, task_id: int) -> dict:
-        """计算平均值、正态分布、资源列表等统计信息。
+        """计算平均值、正态分布、资源列表等统计信息（委托服务层）。
 
         Args:
             task: 任务对象
@@ -1114,220 +827,5 @@ class ReportQueryHandler:
         Returns:
             dict: 统计信息字典
         """
-        from report_service.application.services.report_helpers import ReportHelpers
-        from report_service.application.services.report_utils import ReportUtils
-        from report_service.infrastructure.clients.grpc_clients import (
-            _grpc_list_dimensions_all,
-            _grpc_get_dimension_params,
-            _grpc_get_dimension_results_by_result_ids as _grpc_get_dim_results,
-            _grpc_get_task_devices,
-            _grpc_get_task_apis,
-            _grpc_get_devices_by_ids,
-            _grpc_get_apis_by_ids,
-            _grpc_list_testcases_by_ids,
-            _dim_id, _dim_name,
-        )
-
-        def _r_get(r, key, default=None):
-            if isinstance(r, dict):
-                return r.get(key, default)
-            return getattr(r, key, default)
-
-        all_dimensions_all = _grpc_list_dimensions_all()
-        used_dim_ids = set()
-        res_ids = [_r_get(r, 'id') for r in test_results]
-        res_ids = [rid for rid in res_ids if rid is not None]
-        if res_ids:
-            dim_map = _grpc_get_dim_results(res_ids)
-            for rid, items in dim_map.items():
-                for it in items:
-                    if isinstance(it, dict):
-                        dim_id = it.get('dimension_id')
-                        if dim_id is not None:
-                            used_dim_ids.add(dim_id)
-
-        all_dimensions = [d for d in all_dimensions_all if _dim_id(d) in used_dim_ids] if used_dim_ids else all_dimensions_all
-
-        # 过滤掉 visible_in_report=False 的维度
-        all_output_dim_ids = set()
-        visible_dim_ids = set()
-        for dim in all_dimensions_all:
-            dim_id = _dim_id(dim)
-            if dim_id is None:
-                continue
-            params = _grpc_get_dimension_params(dim_id)
-            for p in params:
-                if not isinstance(p, dict):
-                    continue
-                if p.get('param_direction') != 'output':
-                    continue
-                if p.get('deleted', False):
-                    continue
-                all_output_dim_ids.add(dim_id)
-                if p.get('visible_in_report', True):
-                    visible_dim_ids.add(dim_id)
-
-        # 有 output 参数但没有任何 visible=True 的维度 → 隐藏
-        hidden_dim_ids = all_output_dim_ids - visible_dim_ids
-        if hidden_dim_ids:
-            all_dimensions = [d for d in all_dimensions if _dim_id(d) not in hidden_dim_ids]
-        metric_name_to_id = {str(_dim_name(dim)): int(_dim_id(dim)) for dim in all_dimensions if _dim_id(dim) is not None and _dim_name(dim) is not None}
-
-        dimension_scores = {}
-        dimension_counts = {}
-
-        for result in test_results:
-            result_id = _r_get(result, 'id')
-            dim_values = ReportHelpers.extract_dimension_values(result_id, all_dimensions)
-            for dim_name, score in dim_values.items():
-                if score is not None:
-                    if dim_name not in dimension_scores:
-                        dimension_scores[dim_name] = 0
-                        dimension_counts[dim_name] = 0
-                    dimension_scores[dim_name] += score
-                    dimension_counts[dim_name] += 1
-
-        averages_map = {dim_name: (total / dimension_counts[dim_name]) for dim_name, total in dimension_scores.items() if dimension_counts[dim_name] > 0}
-        overall_averages = [
-            {"id": metric_name_to_id.get(str(dim_name)), "metric": str(dim_name), "value": value}
-            for dim_name, value in sorted(averages_map.items(), key=lambda kv: kv[0])
-        ]
-
-        # 通过 gRPC 查询 TaskDevice / TaskAPI
-        task_devices = _grpc_get_task_devices(task_id)
-        task_apis = _grpc_get_task_apis(task_id)
-
-        # 收集 device_ids / api_ids
-        device_ids = [td.get('device_id') if isinstance(td, dict) else getattr(td, 'device_id', None) for td in task_devices]
-        device_ids = [did for did in device_ids if did is not None]
-        api_ids = [ta.get('api_id') if isinstance(ta, dict) else getattr(ta, 'api_id', None) for ta in task_apis]
-        api_ids = [aid for aid in api_ids if aid is not None]
-
-        # 通过 gRPC 批量查询 Device / API
-        devices_map = _grpc_get_devices_by_ids(device_ids) if device_ids else {}
-        apis_map = _grpc_get_apis_by_ids(api_ids) if api_ids else {}
-
-        # 构建带时间前缀的资源列表
-        time_prefix = ReportHelpers.get_task_time_prefix(task)
-        resources = []
-        resource_headers = []
-        for td in task_devices:
-            td_device_id = td.get('device_id') if isinstance(td, dict) else getattr(td, 'device_id', None)
-            d = devices_map.get(td_device_id) if td_device_id else None
-            if d:
-                d_id = d.get('id') if isinstance(d, dict) else getattr(d, 'id', None)
-                d_name = d.get('name') if isinstance(d, dict) else getattr(d, 'name', '')
-                d_app_version = d.get('app_version') if isinstance(d, dict) else getattr(d, 'app_version', None)
-                key = f"{time_prefix}-{d_id}-{str(d_name).lower()}"
-                resources.append(key)
-                resource_headers.append(
-                    {
-                        "key": key,
-                        "label": ReportUtils._format_resource_label(task, d_name, d_app_version, use_time_prefix=False) or key,
-                        "type": "device",
-                        "id": int(d_id) if d_id is not None else None,
-                        "name": str(d_name),
-                        "version": str(d_app_version) if d_app_version is not None else None,
-                        "editable": True,
-                    }
-                )
-        for ta in task_apis:
-            ta_api_id = ta.get('api_id') if isinstance(ta, dict) else getattr(ta, 'api_id', None)
-            a = apis_map.get(ta_api_id) if ta_api_id else None
-            if a:
-                a_id = a.get('id') if isinstance(a, dict) else getattr(a, 'id', None)
-                a_name = a.get('name') if isinstance(a, dict) else getattr(a, 'name', '')
-                key = f"{time_prefix}-{a_id}-{str(a_name).lower()}"
-                resources.append(key)
-                version = ReportUtils._extract_api_version(a)
-                resource_headers.append(
-                    {
-                        "key": key,
-                        "label": ReportUtils._format_resource_label(task, a_name, version, use_time_prefix=False) or key,
-                        "type": "api",
-                        "id": int(a_id) if a_id is not None else None,
-                        "name": str(a_name),
-                        "version": version,
-                        "editable": True,
-                    }
-                )
-
-        # 通过 gRPC 批量查询 TestCase（用于获取 group.name）
-        test_case_ids_to_fetch = set()
-        for result in test_results:
-            tc_id = _r_get(result, 'test_case_id')
-            if tc_id is not None:
-                test_case_ids_to_fetch.add(tc_id)
-        test_cases_map = {}
-        if test_case_ids_to_fetch:
-            tcs = _grpc_list_testcases_by_ids(list(test_case_ids_to_fetch))
-            for tc in tcs.values() if isinstance(tcs, dict) else tcs:
-                tc_id = tc.get('id') if isinstance(tc, dict) else getattr(tc, 'id', None)
-                if tc_id is not None:
-                    test_cases_map[tc_id] = tc
-
-        metric_data = {}
-        dim_names = [_dim_name(dim) for dim in all_dimensions]
-        raw_data = {res: {dn: [] for dn in dim_names} for res in resources}
-
-        accumulator = {}
-
-        for result in test_results:
-            # 使用带时间前缀的资源名称
-            resource = ReportHelpers.get_resource_name(result, task, use_time_prefix=False)
-            if resource not in resources:
-                continue
-
-            result_tc_id = _r_get(result, 'test_case_id')
-            test_case = test_cases_map.get(result_tc_id) if result_tc_id else None
-            if not test_case:
-                continue
-
-            # 获取 group name
-            if isinstance(test_case, dict):
-                g = test_case.get('group')
-                if isinstance(g, dict):
-                    cat_name = g.get('name') or "未分类"
-                elif g is not None:
-                    cat_name = getattr(g, 'name', None) or "未分类"
-                else:
-                    cat_name = "未分类"
-            else:
-                g = getattr(test_case, 'group', None)
-                cat_name = getattr(g, 'name', None) if g else "未分类"
-
-            if cat_name not in accumulator:
-                accumulator[cat_name] = {}
-            if resource not in accumulator[cat_name]:
-                accumulator[cat_name][resource] = {dn: {'sum': 0, 'count': 0} for dn in dim_names}
-
-            result_id = _r_get(result, 'id')
-            dim_values = ReportHelpers.extract_dimension_values(result_id, all_dimensions)
-            for dim_name, score in dim_values.items():
-                if score is not None:
-                    accumulator[cat_name][resource][dim_name]['sum'] += score
-                    accumulator[cat_name][resource][dim_name]['count'] += 1
-                    if dim_name in raw_data[resource]:
-                        raw_data[resource][dim_name].append(score)
-
-        for cat_name, res_data in accumulator.items():
-            metric_data[cat_name] = {}
-            for res, dims in res_data.items():
-                metric_data[cat_name][res] = {}
-                for dim_name, stats in dims.items():
-                    metric_data[cat_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
-
-        normal_distribution_data = ReportHelpers.calculate_normal_distribution(raw_data)
-
-        return {
-            'filtered_case_ids': filtered_case_ids,
-            'test_results': test_results,
-            'overall_averages': overall_averages,
-            'averages_map': averages_map,
-            'metric_data': metric_data,
-            'raw_data': raw_data,
-            'normal_distribution_data': normal_distribution_data,
-            'resources': resources,
-            'resource_headers': resource_headers,
-            'metric_name_to_id': metric_name_to_id,
-        }
+        from report_service.application.services.report_aggregation_service import ReportAggregationService
+        return ReportAggregationService.calculate_averages(task, filtered_case_ids, test_results, task_id)

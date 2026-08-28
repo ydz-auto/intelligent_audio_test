@@ -77,3 +77,22 @@ class PlaybackConfigACLRepositoryImpl(PlaybackConfigACLRepository):
             return None
         except Exception:
             return None
+
+    def find_playback_device_by_name(self, name: str) -> dict:
+        """通过 gRPC ListPlaybackDevices 按 name 查找（返回 dict 或 None）。"""
+        try:
+            from shared.clients.grpc_clients import get_playback_config_service_stub
+            from shared.proto import device_service_pb2 as _e2e_pb
+            from shared.utils.grpc_json import loads as _grpc_loads
+
+            stub = get_playback_config_service_stub()
+            resp = stub.ListPlaybackDevices(_e2e_pb.ListPlaybackDevicesRequest())
+            if resp.success:
+                data = _grpc_loads(resp.data, {}) or {}
+                devices = data.get('devices', []) or data.get('items', []) or []
+                for dev in devices:
+                    if dev.get('name') == name and not dev.get('is_deleted'):
+                        return dev
+            return None
+        except Exception:
+            return None

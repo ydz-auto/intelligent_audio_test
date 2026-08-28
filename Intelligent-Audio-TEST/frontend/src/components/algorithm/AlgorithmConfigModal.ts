@@ -64,9 +64,8 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
 
   const { fetchAllDimensions } = useDimensions()
 
-  const mainDimensions = computed(() => {
-    return availableDimensions.value.filter(d => d.dimensionType === 'main' || !d.dimensionType)
-  })
+  // 不再按 dimensionType 过滤，返回全部维度
+  const mainDimensions = computed(() => availableDimensions.value)
 
   const formState = reactive({
     type: '',
@@ -219,32 +218,33 @@ export function useAlgorithmConfigModal(props: ModalProps, emit: any) {
     }
   })
 
-  watch(() => [props.mode, props.editData], ([mode, editData]) => {
+  watch(() => [props.mode, props.editData] as const, ([mode, editData]) => {
     console.log('watch mode:', mode, 'editData:', editData)
     if (mode === 'edit' && editData) {
-      const deviceParams = ((editData.deviceParams ?? editData.device_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-      const apiParams = ((editData.apiParams ?? editData.api_params) || []).map(normalizeParamFields).map(p => ({ ...p }))
-      const caseParams = ((editData.caseParams ?? editData.case_params) || []).map(normalizeCaseParamFields).map(p => ({ ...p }))
-      const refConfig = editData.reference_params ?? editData.referenceConfig ?? editData.reference_config ?? editData.referenceParams
+      const data = editData as AlgorithmRecord
+      const deviceParams = ((data.device_params ?? data.deviceParams) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+      const apiParams = ((data.api_params ?? data.apiParams) || []).map(normalizeParamFields).map((p: any) => ({ ...p }))
+      const caseParams = ((data.case_params ?? data.caseParams) || []).map(normalizeCaseParamFields).map((p: any) => ({ ...p }))
+      const refConfig = data.reference_params ?? data.referenceConfig ?? data.reference_config ?? data.referenceParams
 
       Object.assign(formState, {
-        type: editData.type,
-        name: editData.name,
-        group_id: editData.groupId ?? editData.group_id ?? null,
-        description: editData.description || '',
-        status: editData.status as 'online' | 'offline',
-        statusSwitch: editData.status === 'online',
-        icon: editData.icon || '',
-        display_order: (editData.displayOrder ?? editData.display_order) || 0,
+        type: data.type,
+        name: data.name,
+        group_id: data.group_id ?? data.groupId ?? null,
+        description: data.description || '',
+        status: data.status as 'online' | 'offline',
+        statusSwitch: data.status === 'online',
+        icon: data.icon || '',
+        display_order: (data.display_order ?? data.displayOrder) || 0,
         device_params: deviceParams,
         api_params: apiParams,
         case_params: caseParams,
-        params: editData.params || [],
-        mappings: normalizeMappings(editData.mappings),
-        associated_dimensions: ((editData.associatedDimensions ?? editData.associated_dimensions) || []).map((d: any) => ({
-          dimension_id: d.dimensionId ?? d.dimension_id,
+        params: data.params || [],
+        mappings: normalizeMappings(data.mappings),
+        associated_dimensions: ((data.associated_dimensions ?? data.associatedDimensions) || []).map((d: any) => ({
+          dimension_id: d.dimension_id ?? d.dimensionId,
           weight: d.weight ?? 1.0,
-          is_default: d.isDefault ?? d.is_default ?? false
+          is_default: d.is_default ?? d.isDefault ?? false
         })),
         reference_params: (refConfig || []).map((p: any) => ({
           id: p.id,

@@ -37,6 +37,29 @@ class RequestAdapterMiddleware(BaseHTTPMiddleware):
         set_current_request(request)
 
         response = await call_next(request)
+
+        # 错误响应(>=400)记录响应体，方便排查问题
+        if response.status_code >= 400:
+            try:
+                resp_body = b""
+                async for chunk in response.body_iterator:
+                    resp_body += chunk
+                resp_text = resp_body.decode('utf-8', errors='replace')[:500]
+                logger.info(
+                    f"API Response - URL: {request.url.path} | Method: {request.method} | "
+                    f"Status: {response.status_code} | Body: {resp_text}"
+                )
+                # 重建 response（body 已被消费）
+                from starlette.responses import Response
+                response = Response(
+                    content=resp_body,
+                    status_code=response.status_code,
+                    headers=dict(response.headers),
+                    media_type=response.media_type,
+                )
+            except Exception:
+                pass
+
         # 清理
         set_current_request(None)
         return response

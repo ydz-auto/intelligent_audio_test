@@ -1,5 +1,5 @@
 """多轮评估数据构建混入：从 algorithm_result.rounds 提取/构建单轮评估数据"""
-import json
+from shared.utils.json_utils import deserialize_algorithm_result
 
 
 class RoundDataBuilderMixin:
@@ -18,14 +18,10 @@ class RoundDataBuilderMixin:
         Returns:
             dict: 单轮扁平数据，若轮次不存在返回 None
         """
-        # 循环反序列化，处理可能的双重序列化旧数据
-        while isinstance(algorithm_result, str):
-            try:
-                algorithm_result = json.loads(algorithm_result)
-            except (json.JSONDecodeError, TypeError):
-                return None
+        # 反序列化，兼容双重序列化的历史数据
+        algorithm_result = deserialize_algorithm_result(algorithm_result)
 
-        if not isinstance(algorithm_result, dict):
+        if not algorithm_result:
             return None
 
         rounds = algorithm_result.get('rounds', [])
@@ -43,11 +39,13 @@ class RoundDataBuilderMixin:
         return flat
 
     def _build_rounds_list(self, algorithm_result, reference_params_col,
-                            field_mapper, algorithm_type, test_type, task_id, test_case_id):
+                            field_mapper, algorithm_type, test_type, task_id, test_case_id,
+                            algorithm_params_col=None):
         """从 algo_result.rounds 构建 [{reference, hypothesis, ...}, ...] 列表
 
-        遍历 param_mappings，按 source 类型从每轮的 output（device/api）和
-        按轮加载的 reference_params（reference）取值，用 target_param 作为 key。
+        遍历 param_mappings，按 source 类型从每轮的 output（device/api）、
+        按轮加载的 reference_params（reference）和按轮加载的 case 参数（case）取值，
+        用 target_param 作为 key。
         """
         from evaluation_service.infrastructure.acl import algorithm_acl_repository
 
@@ -71,6 +69,7 @@ class RoundDataBuilderMixin:
                 test_type, algorithm_type, task_id, test_case_id,
                 algorithm_acl_repository.get_reference_params_list,
                 algorithm_acl_repository.load_reference_params_file,
+                algorithm_params_col=algorithm_params_col,
             )
             rounds_list.append(item)
 
@@ -109,7 +108,8 @@ class RoundDataBuilderMixin:
 
     def _build_single_round(self, round_item, reference_params_col, mappings,
                             test_type, algorithm_type, task_id, test_case_id,
-                            get_reference_params_fn, load_round_ref_file_fn):
+                            get_reference_params_fn, load_round_ref_file_fn,
+                            algorithm_params_col=None):
         """构建单轮评估数据 item
 
         按轮加载 reference_params，遍历 mappings 按 source 类型从 output / reference 取值。
@@ -134,7 +134,8 @@ class RoundDataBuilderMixin:
 
             if source in ('device', 'api'):
                 # output 的 key 是 target_param 名（build_algorithm_result 已映射）
-                value = output.get(target_param, '')
+                # 用 None 而非 '' 作为默认值，避免空串覆盖维度级默认值
+                value = output.get(target_param)
             elif source == 'reference':
                 # 从按轮加载的 reference 取
                 ref_item = round_ref_data.get(source_param)
@@ -146,8 +147,13 @@ class RoundDataBuilderMixin:
                             break
                     value = self._gen_reference_value(ref_item, test_type, ref_type)
             elif source == 'case':
-                # case 参数暂不按轮处理，跳过
-                pass
+                # 按轮从独立列加载 case 参数
+                # algo_result.rounds[].round 是 0-indexed，algorithm_params_col 用 1-indexed
+                if algorithm_params_col:
+                    from algorithm_service.domain.services.param_normalizer import ParamNormalizerService
+                    round_case_params = ParamNormalizerService.normalize_algorithm_params(
+                        ParamNormalizerService.get_round_algo_params(algorithm_params_col, round_number + 1))
+                    value = round_case_params.get(source_param)
 
             if value is not None:
                 item[target_param] = value

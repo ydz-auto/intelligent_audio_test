@@ -21,3 +21,11 @@ class PlaybackAclRepository(ABC):
                    test_case_id: str, round_number: int,
                    audio_local_paths: Optional[Dict] = None) -> Optional[Any]:
         """播放本轮音频"""
+
+    @abstractmethod
+    def start_background_noise(self, case_config: Dict, task_id: str) -> bool:
+        """启动全局背景噪声（跨轮次持续播放）"""
+
+    @abstractmethod
+    def stop_background_noise(self, task_id: str) -> None:
+        """停止全局背景噪声"""

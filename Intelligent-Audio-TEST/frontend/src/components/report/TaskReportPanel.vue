@@ -10,7 +10,7 @@
         <div class="hero-meta">
           <span class="meta-item">
             <i class="fas fa-calendar-alt"></i>
-            {{ formatDate(report.createdAt || report.created_at) }}
+            {{ formatDate(report.created_at) }}
           </span>
           <span class="meta-item status" :class="report.status">
             <i class="fas fa-circle"></i>
@@ -52,15 +52,15 @@
                 <div class="device-card-body">
                   <div class="stat-row">
                     <span class="stat-label">总用例数</span>
-                    <span class="stat-value">{{ device.totalCases || 0 }} 个</span>
+                    <span class="stat-value">{{ device.total_cases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">完成数</span>
-                    <span class="stat-value success">{{ device.completedCases || 0 }} 个</span>
+                    <span class="stat-value success">{{ device.completed_cases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">失败数</span>
-                    <span class="stat-value danger">{{ device.failedCases || 0 }} 个</span>
+                    <span class="stat-value danger">{{ device.failed_cases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">成功率</span>
@@ -91,15 +91,15 @@
                 <div class="api-card-body">
                   <div class="stat-row">
                     <span class="stat-label">总用例数</span>
-                    <span class="stat-value">{{ api.totalCases || 0 }} 个</span>
+                    <span class="stat-value">{{ api.total_cases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">完成数</span>
-                    <span class="stat-value success">{{ api.completedCases || 0 }} 个</span>
+                    <span class="stat-value success">{{ api.completed_cases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">失败数</span>
-                    <span class="stat-value danger">{{ api.failedCases || 0 }} 个</span>
+                    <span class="stat-value danger">{{ api.failed_cases || 0 }} 个</span>
                   </div>
                   <div class="stat-row">
                     <span class="stat-label">成功率</span>
@@ -149,11 +149,11 @@
         </div>
 
         <div v-for="(table, idx) in tables" :key="idx" class="report-section">
-          <ComparisonTableComponent 
+          <ComparisonTableComponent
             :title="table.title"
             :columns="table.columns"
             :data="table.data"
-            :defaultCollapsed="table.defaultCollapsed !== false"
+            :defaultCollapsed="isExporting ? false : (table.defaultCollapsed !== false)"
           />
         </div>
 
@@ -216,6 +216,7 @@ const {
   localIsEditing,
   isAnalysisCollapsed,
   isDevicesCollapsed,
+  isExporting,
   activeSection,
   progressHeight,
   toggleAnalysisCollapse,

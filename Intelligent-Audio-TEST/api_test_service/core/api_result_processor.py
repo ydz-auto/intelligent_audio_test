@@ -98,6 +98,19 @@ class APIResultProcessor:
                       content=f"更新 TaskCase 状态失败: {e}",
                       task_id=task_id, test_case_id=test_case_id)
 
+        # 发布用例执行完成事件到事件总线（异步通知 task_service）
+        from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+        EventBus().publish(
+            EventChannel.CASE_EVENTS,
+            EventType.CASE_EXECUTION_COMPLETED if success else EventType.CASE_FAILED,
+            {
+                'task_id': str(task_id),
+                'test_case_id': str(test_case_id),
+                'result_id': str(result_id) if result_id else None,
+                'success': success,
+            }
+        )
+
         return result_id
 
     def evaluate_test_result(self, task_id, result_id, test_case_id, case_name, case_config,

@@ -71,6 +71,8 @@ class TaskCaseBrief(APIModel):
     completed_at: Optional[str] = Field(None)
     duration: Optional[float] = Field(None)
     error_message: Optional[str] = Field(None)
+    group_name: Optional[str] = Field(None)
+    tags: List[str] = Field(default_factory=list)
 
 
 class TaskDetailData(APIModel):
@@ -180,3 +182,18 @@ class TaskBatchActionRequest(APIModel):
 
 class TaskMergeRequest(APIModel):
     task_ids: List[int] = Field(default_factory=list)
+
+
+class TaskListQuery(APIModel):
+    page: int = Field(1)
+    per_page: int = Field(10)
+    status: Optional[str] = Field(None)
+    type: Optional[str] = Field(None)
+    algorithm_type: Optional[str] = Field(None)
+    search: Optional[str] = Field(None)
+    start_date: Optional[str] = Field(None)
+    end_date: Optional[str] = Field(None)
+
+
+class TaskBatchExportQuery(APIModel):
+    format: str = Field('json')

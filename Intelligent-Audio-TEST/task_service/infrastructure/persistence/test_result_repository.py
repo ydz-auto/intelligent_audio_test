@@ -143,6 +143,31 @@ class TestResultRepository(TestResultRepositoryABC):
         finally:
             session.close()
 
+    def update_result_data(self, result_id: int, result_data: Any, result_data_path: str = None) -> bool:
+        """更新 TestResult 的 result_data 和 result_data_path。
+
+        用于 evaluation_service 预提取 algorithm_results 快照后写回。
+
+        Returns:
+            True 表示更新成功，False 表示结果不存在。
+        """
+        session = get_db_session()
+        try:
+            po = session.get(TestResult, result_id)
+            if po is None:
+                return False
+            po.result_data = result_data
+            if result_data_path is not None:
+                po.result_data_path = result_data_path
+            session.flush()
+            session.commit()
+            return True
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
     def update_status(self, result_id: int, execution_status: str) -> bool:
         """更新 TestResult 的 execution_status。
 

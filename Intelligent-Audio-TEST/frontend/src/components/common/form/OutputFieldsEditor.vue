@@ -26,36 +26,37 @@
           <span class="row-index">{{ index + 1 }}</span>
           <input
             type="text"
-            v-model="field.param_code"
+            v-model="field.paramCode"
             placeholder="如: wer"
             class="key-input"
             @input="handleChange"
           />
           <input
             type="text"
-            v-model="field.param_name"
+            v-model="field.paramName"
             placeholder="如: WER值"
             class="label-input"
             @input="handleChange"
           />
           <input
             type="text"
-            v-model="field.field_path"
+            v-model="field.fieldPath"
             placeholder="如: wer 或 data.result.wer"
             class="path-input"
             @input="handleChange"
           />
-          <select v-model="field.field_type" @change="handleChange" class="type-select">
+          <select v-model="field.fieldType" @change="handleChange" class="type-select">
             <option value="number">数字</option>
             <option value="text">文本</option>
             <option value="boolean">布尔</option>
             <option value="json">JSON</option>
+            <option value="timestamp">时间戳</option>
           </select>
-          <select v-model="field.output_role" @change="handleChange" class="role-select">
+          <select v-model="field.outputRole" @change="handleChange" class="role-select">
             <option value="main">主结果</option>
             <option value="aux">辅助字段</option>
           </select>
-          <select v-model="field.agg_role" @change="handleChange" class="agg-select">
+          <select v-model="field.aggRole" @change="handleChange" class="agg-select">
             <option value="">无</option>
             <option value="value">直接值</option>
             <option value="numerator">分子</option>
@@ -63,7 +64,7 @@
           </select>
           <input
             type="text"
-            v-model="field.default_value"
+            v-model="field.defaultValue"
             placeholder="如: 0 或空"
             class="default-input"
             @input="handleChange"
@@ -71,8 +72,8 @@
           <label class="visible-checkbox">
             <input
               type="checkbox"
-              :checked="field.visible_in_report !== false"
-              @change="field.visible_in_report = $event.target.checked; handleChange()"
+              :checked="field.visibleInReport !== false"
+              @change="field.visibleInReport = $event.target.checked; handleChange()"
             />
           </label>
           <button type="button" class="btn-remove" @click="removeField(index)">
@@ -117,14 +118,14 @@ function addField() {
     localValue.value = []
   }
   localValue.value.push({
-    param_code: '',
-    param_name: '',
-    field_path: '',
-    field_type: 'number',
-    output_role: 'main',
-    agg_role: '',
-    default_value: '',
-    visible_in_report: true
+    paramCode: '',
+    paramName: '',
+    fieldPath: '',
+    fieldType: 'number',
+    outputRole: 'main',
+    aggRole: '',
+    defaultValue: '',
+    visibleInReport: true
   })
   handleChange()
 }

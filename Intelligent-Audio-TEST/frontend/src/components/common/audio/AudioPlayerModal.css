@@ -8,7 +8,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: var(--z-index-modal-top);
+  z-index: 14000;
   animation: fadeIn 0.3s ease;
   opacity: 1;
   visibility: visible;

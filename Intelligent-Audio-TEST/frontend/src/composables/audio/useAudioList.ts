@@ -207,18 +207,18 @@ export function useAudioList() {
           size: audio.size || 0,
           duration: audio.duration || 0,
           format: audio.format || '',
-          sampleRate: audio.sample_rate || audio.sampleRate || 0,
+          sample_rate: audio.sample_rate || 0,
           channels: audio.channels || 0,
-          type: audio.audioType || audio.type || 'dry',
-          audioType: audio.audioType || audio.type || 'dry',
+          type: audio.audio_type || audio.audioType || audio.type || 'dry',
+          audio_type: audio.audio_type || audio.audioType || audio.type || 'dry',
           tags: audio.tags || [],
-          createdAt: audio.created_at || audio.createdAt || new Date().toISOString(),
-          updatedAt: audio.updated_at || audio.updatedAt || new Date().toISOString(),
-          asrText: audio.asr_text || audio.asrText || '',
+          created_at: audio.created_at || new Date().toISOString(),
+          updated_at: audio.updated_at || new Date().toISOString(),
+          asr_text: audio.asr_text || '',
           translations: audio.translations || [],
           annotations: audio.annotations || [],
           description: audio.description || '',
-          sourceLanguage: audio.source_language || audio.sourceLanguage || ''
+          source_language: audio.source_language || ''
         }));
         totalAudios.value = total;
         if (statsData) {
@@ -245,7 +245,7 @@ export function useAudioList() {
       // 搜索词过滤
       const matchesSearch = !searchQuery.value ||
         audio.name?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-        audio.asrText?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+        audio.asr_text?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
         audio.filename?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
         audio.filepath?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
         audio.filePath?.toLowerCase().includes(searchQuery.value.toLowerCase());
@@ -258,7 +258,7 @@ export function useAudioList() {
 
       // 采样率过滤
       const filterSampleRate = normalizeSampleRate(filters.value.sampleRate);
-      const audioSampleRate = normalizeSampleRate(audio.sampleRate);
+      const audioSampleRate = normalizeSampleRate(audio.sample_rate);
       const matchesSampleRate =
         filters.value.sampleRate === 'all' ||
         (filterSampleRate !== null && audioSampleRate !== null && audioSampleRate === filterSampleRate);

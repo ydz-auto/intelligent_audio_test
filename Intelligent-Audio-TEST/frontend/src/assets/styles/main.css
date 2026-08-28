@@ -111,26 +111,28 @@ input[type="text"].form-input {
 .floating-actions {
   position: fixed !important;
   right: 32px !important;
-  bottom: 32px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
   display: flex !important;
   flex-direction: column !important;
-  gap: 12px !important;
+  gap: 10px !important;
   z-index: 14000 !important;
 }
 
 .report-view-page .action-btn,
 .floating-actions .action-btn {
-  width: 52px !important;
-  height: 52px !important;
+  width: 44px !important;
+  height: 44px !important;
   border-radius: 50% !important;
-  background: linear-gradient(135deg, #1677FF 0%, #0958D9 100%) !important;
-  border: none !important;
-  box-shadow: 0 4px 16px rgba(22, 119, 255, 0.4) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 2px 10px rgba(255, 106, 0, 0.15) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  font-size: 18px !important;
-  color: white !important;
+  font-size: 16px !important;
+  color: #FF6A00 !important;
   cursor: pointer !important;
   transition: all 0.25s ease !important;
   position: relative !important;
@@ -138,8 +140,10 @@ input[type="text"].form-input {
 
 .report-view-page .action-btn:hover,
 .floating-actions .action-btn:hover {
-  transform: scale(1.1) !important;
-  box-shadow: 0 6px 24px rgba(22, 119, 255, 0.5) !important;
+  transform: scale(1.06) !important;
+  border-color: #ffb380 !important;
+  box-shadow: 0 4px 14px rgba(255, 106, 0, 0.25) !important;
+  color: #e55f00 !important;
 }
 
 .report-view-page .action-btn:active,

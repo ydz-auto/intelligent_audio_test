@@ -67,6 +67,7 @@ interface Props {
   title?: string
   caseCount?: number
   currentGroupId?: string
+  selectionMode?: string
 }
 
 interface Emits {
@@ -78,7 +79,8 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   title: '批量调整分组',
   caseCount: 0,
-  currentGroupId: ''
+  currentGroupId: '',
+  selectionMode: 'all'
 })
 
 const emit = defineEmits<Emits>()

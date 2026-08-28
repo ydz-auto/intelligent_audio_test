@@ -461,6 +461,14 @@ class PlaybackCommandService:
             if device_status_map:
                 try:
                     self.repo.batch_update_playback_status(device_status_map)
+                    # 状态变更后发布 DeviceStatusChanged 事件，订阅方可实时感知（降级：发布失败不影响主流程）
+                    from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
+                    for _dev_id, _new_status in device_status_map.items():
+                        EventBus().publish(
+                            EventChannel.DEVICE_EVENTS,
+                            EventType.DEVICE_STATUS_CHANGED,
+                            {'device_id': _dev_id, 'status': _new_status},
+                        )
                 except Exception as commit_error:
                     logger.error(f'提交设备状态更新时出错: {str(commit_error)}', exc_info=True)
 

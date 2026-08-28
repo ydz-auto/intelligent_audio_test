@@ -8,7 +8,7 @@ P1.4 新增。替代 evaluation_service 直接 `from shared.models.models import
 向上层（domain/services）返回 dataclass DTO（部分结构不固定的接口仍返回 dict），不返回 ORM 对象。
 """
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from evaluation_service.domain.dto import (
     TaskDTO,
@@ -201,6 +201,25 @@ class TaskAclRepository(_TaskAclRepositoryABC):
             return True
         except Exception as e:
             logger.exception('update_test_result_algorithm_result failed: %s', e)
+            return False
+
+    def update_test_result_data(
+        self, result_id: int, result_data: Any, result_data_path: str = None
+    ) -> bool:
+        """更新 TestResult.result_data 和 result_data_path（预提取 algorithm_results 快照后写回）。"""
+        try:
+            stub = get_task_data_service_stub()
+            resp = stub.UpdateTestResultData(task_pb.UpdateTestResultDataRequest(
+                result_id=result_id,
+                result_data=_dumps(result_data),
+                result_data_path=result_data_path or '',
+            ))
+            if not resp.success:
+                logger.warning('UpdateTestResultData failed: %s', resp.message)
+                return False
+            return True
+        except Exception as e:
+            logger.exception('update_test_result_data failed: %s', e)
             return False
 
     def get_test_results_by_task_and_case(

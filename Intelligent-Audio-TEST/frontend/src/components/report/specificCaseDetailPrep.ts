@@ -41,7 +41,7 @@ export function createCaseDetailPrep(deps: {
   }
 
   function getAlgorithmResults(caseItem: any) {
-    const algoResults = caseItem.algorithm_results || caseItem.algorithmResults;
+    const algoResults = caseItem.algorithm_results;
 
     if (Array.isArray(algoResults)) {
       return algoResults;
@@ -89,7 +89,7 @@ export function createCaseDetailPrep(deps: {
   }
 
   function prepareAudioList(caseItem: any) {
-    const taskType = props.reportData?.taskType || 'all'
+    const taskType = props.reportData?.task_type || 'all'
 
     if (!caseItem.audioList || !Array.isArray(caseItem.audioList) || caseItem.audioList.length === 0) {
       return []
@@ -106,18 +106,29 @@ export function createCaseDetailPrep(deps: {
     })
   }
 
+  /**
+   * 从 reportData.summary.fieldMappings 中按 algorithmType 获取 field_mapping 快照
+   */
+  function getFieldMapping(caseItem: any) {
+    const algoType = caseItem.algorithm_type || '';
+    if (!algoType) return { result: [], reference: [] };
+    const fieldMappings = props.reportData?.summary?.field_mappings || {};
+    return fieldMappings[algoType] || { result: [], reference: [] };
+  }
+
   function prepareCaseItem(caseItem: any) {
     return {
       ...caseItem,
       _preparedComparisonData: prepareComparisonData(caseItem),
       _preparedAudioList: prepareAudioList(caseItem),
-      _preparedReferenceAsr: caseItem.asr?.referenceText || caseItem.asr?.reference_text || '',
-      _preparedReferenceTrans: caseItem.translation?.referenceText || caseItem.translation?.reference_text || '',
+      _preparedReferenceAsr: caseItem.asr?.reference_text || '',
+      _preparedReferenceTrans: caseItem.translation?.reference_text || '',
       _preparedAlgorithmResults: getAlgorithmResults(caseItem),
-      _preparedReferenceParams: caseItem.referenceParams || caseItem.reference_params || {},
-      _preparedAlgorithmType: caseItem.algorithmType || caseItem.algorithm_type || ''
+      _preparedReferenceParams: caseItem.reference_params || {},
+      _preparedAlgorithmType: caseItem.algorithm_type || '',
+      _preparedFieldMapping: getFieldMapping(caseItem)
     }
   }
 
-  return { prepareComparisonData, getAlgorithmResults, prepareAudioList, prepareCaseItem }
+  return { prepareComparisonData, getAlgorithmResults, prepareAudioList, prepareCaseItem, getFieldMapping }
 }

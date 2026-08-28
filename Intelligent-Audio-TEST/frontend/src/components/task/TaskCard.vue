@@ -14,18 +14,18 @@
           <div class="task-title-with-status">
             <span class="task-status" :class="task.status">
               <i class="fas task-indicator" :class="{
-                'fa-clock': task.status === 'pending',
+                'fa-clock': task.status === TaskStatus.PENDING,
                 'fa-hourglass': task.status === 'queued',
-                'fa-spinner fa-spin': task.status === 'running',
+                'fa-spinner fa-spin': task.status === TaskStatus.RUNNING,
                 'fa-sync-alt fa-spin': task.status === 'evaluating',
                 'fa-sync-alt fa-spin': task.status === 'reevaluating',
                 'fa-hourglass-half': task.status === 'reevaluate_queued',
-                'fa-check-circle': task.status === 'completed',
-                'fa-times-circle': task.status === 'failed',
-                'fa-pause-circle': task.status === 'paused',
-                'fa-stop-circle': task.status === 'stopped',
-                'fa-minus-circle': task.status === 'skipped',
-                'fa-object-group': task.status === 'merged'
+                'fa-check-circle': task.status === TaskStatus.COMPLETED,
+                'fa-times-circle': task.status === TaskStatus.FAILED,
+                'fa-pause-circle': task.status === TaskStatus.PAUSED,
+                'fa-stop-circle': task.status === TaskStatus.STOPPED,
+                'fa-minus-circle': task.status === TaskStatus.SKIPPED,
+                'fa-object-group': task.status === TaskStatus.MERGED
               }"></i>
               {{ getStatusText(task.status) }}
             </span>
@@ -48,21 +48,21 @@
               <i class="fas fa-tag"></i>
               {{ getTaskTypeText(task.type) }}
             </span>
-            <span class="task-meta-item algorithm-type" v-if="task.algorithmType">
+            <span class="task-meta-item algorithm-type" v-if="task.algorithm_type">
               <i class="fas fa-microchip"></i>
-              {{ getAlgorithmTypeText(task.algorithmType) }}
+              {{ getAlgorithmTypeText(task.algorithm_type) }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-calendar-alt"></i>
-              {{ task.createdAt }}
+              {{ task.created_at }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-tasks"></i>
-              用例数{{ task.caseCount }}
+              用例数{{ task.case_count }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-desktop"></i>
-              设备数{{ task.deviceCount }}
+              设备数{{ task.device_count }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-chart-pie"></i>
@@ -78,26 +78,26 @@
         <div class="task-title-with-status">
           <span class="task-status" :class="task.status">
             <i class="fas task-indicator" :class="{
-              'fa-clock': task.status === 'pending',
+              'fa-clock': task.status === TaskStatus.PENDING,
               'fa-hourglass': task.status === 'queued',
-              'fa-spinner fa-spin': task.status === 'running',
+              'fa-spinner fa-spin': task.status === TaskStatus.RUNNING,
               'fa-sync-alt fa-spin': task.status === 'evaluating',
               'fa-sync-alt fa-spin': task.status === 'reevaluating',
               'fa-hourglass-half': task.status === 'reevaluate_queued',
-              'fa-check-circle': task.status === 'completed',
-              'fa-times-circle': task.status === 'failed',
-              'fa-pause-circle': task.status === 'paused',
-              'fa-stop-circle': task.status === 'stopped',
-              'fa-minus-circle': task.status === 'skipped',
-              'fa-object-group': task.status === 'merged'
+              'fa-check-circle': task.status === TaskStatus.COMPLETED,
+              'fa-times-circle': task.status === TaskStatus.FAILED,
+              'fa-pause-circle': task.status === TaskStatus.PAUSED,
+              'fa-stop-circle': task.status === TaskStatus.STOPPED,
+              'fa-minus-circle': task.status === TaskStatus.SKIPPED,
+              'fa-object-group': task.status === TaskStatus.MERGED
             }"></i>
             {{ getStatusText(task.status) }}
           </span>
           <div class="task-title" v-if="!isEditingName" @click.stop="startEditName" title="点击修改任务名称">{{ task.name || task.title || '未命名任务' }}</div>
           <div class="task-title-edit" v-else @click.stop>
-            <input 
-              type="text" 
-              v-model="editedName" 
+            <input
+              type="text"
+              v-model="editedName"
               @keydown="handleKeydown"
               @blur="saveEditName"
               ref="nameInput"
@@ -112,21 +112,21 @@
               <i class="fas fa-tag"></i>
               {{ getTaskTypeText(task.type) }}
             </span>
-            <span class="task-meta-item algorithm-type" v-if="task.algorithmType">
+            <span class="task-meta-item algorithm-type" v-if="task.algorithm_type">
               <i class="fas fa-microchip"></i>
-              {{ getAlgorithmTypeText(task.algorithmType) }}
+              {{ getAlgorithmTypeText(task.algorithm_type) }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-calendar-alt"></i>
-              {{ task.createdAt }}
+              {{ task.created_at }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-tasks"></i>
-              用例数{{ task.caseCount }}
+              用例数{{ task.case_count }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-desktop"></i>
-              设备数{{ task.deviceCount }}
+              设备数{{ task.device_count }}
             </span>
             <span class="task-meta-item">
               <i class="fas fa-chart-pie"></i>
@@ -177,6 +177,7 @@
 
 <script setup>
 import { useTaskCard } from './TaskCard'
+import { TaskStatus } from '@/shared/types/enums'
 
 const props = defineProps({
   task: {type: Object, required: true},

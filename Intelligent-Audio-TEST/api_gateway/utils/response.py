@@ -9,7 +9,6 @@ import math
 import functools
 from typing import Type, TypeVar, List, Any, Tuple, Dict, Optional, Callable
 from pydantic import BaseModel
-from pydantic.alias_generators import to_camel
 from api_gateway.utils.error_codes import ErrorCode
 from api_gateway.schemas.response import ApiResponse
 
@@ -45,47 +44,33 @@ def _normalize_payload_data(value):
         logger.debug("pandas 不可用或 NaN 检测失败", exc_info=True)
 
     if isinstance(value, BaseModel):
-        dumped = value.model_dump(by_alias=True, exclude_none=True)
+        dumped = value.model_dump(exclude_none=True)
         return _normalize_payload_data(dumped)
     if isinstance(value, list):
         return [_normalize_payload_data(v) for v in value]
     if isinstance(value, dict):
         new_data = {}
         for k, v in value.items():
-            if isinstance(k, str) and '_' in k:
-                new_key = to_camel(k)
-            else:
-                new_key = k
-            new_data[new_key] = _normalize_payload_data(v)
+            new_data[k] = _normalize_payload_data(v)
         return new_data
     return value
 
 
 def convert_keys_to_camel(data):
-    if isinstance(data, list):
-        return [convert_keys_to_camel(i) for i in data]
-    if isinstance(data, dict):
-        new_data = {}
-        for k, v in data.items():
-            if isinstance(k, str) and '_' in k:
-                new_key = to_camel(k)
-            else:
-                new_key = k
-            new_data[new_key] = convert_keys_to_camel(v)
-        return new_data
+    """已废弃：后端统一返回 snake_case，不再需要转换。保留函数名仅为向后兼容。"""
     return data
 
 
 def success_response(data=None, message="Success", code=ErrorCode.SUCCESS, http_code=200) -> Tuple[Dict, int]:
     formatted_data = _normalize_payload_data(data) if data is not None else None
     payload = ApiResponse.ok(data=formatted_data, message=message, code=int(code))
-    return payload.model_dump(by_alias=True, exclude_none=True), http_code
+    return payload.model_dump(exclude_none=True), http_code
 
 
 def error_response(message="Error", code=ErrorCode.OPERATION_FAILED, http_code=400, errors=None, detail=None) -> Tuple[Dict, int]:
     formatted_detail = _normalize_payload_data(detail) if detail is not None else None
     payload = ApiResponse.fail(message=message, code=int(code), detail=formatted_detail)
-    return payload.model_dump(by_alias=True, exclude_none=True), http_code
+    return payload.model_dump(exclude_none=True), http_code
 
 
 def wrap_grpc_response(

@@ -4,13 +4,22 @@ import os
 import logging
 from .base_driver import BaseDeviceDriver
 from .device_config import get_device_config
-from .utils import check_stop, UiDriver, By, MatchPattern
+from .driver_types import AppType, AppVersion, DevicePlatform
+from .registry import register_driver
+from .utils import check_stop, UiDriver, By, MatchPattern, with_rpc_retry
 
 logger = logging.getLogger(__name__)
 
 
+@register_driver
 class HarmonyDriver(BaseDeviceDriver):
-    """HarmonyOS设备驱动实现"""
+    """HarmonyOS设备驱动实现 — HarmonyOS 平台基础驱动"""
+
+    # —— 驱动元数据 ——
+    app_type = AppType.HARMONY_BASE
+    version = AppVersion.V1
+    platform = DevicePlatform.HARMONYOS
+    display_name = "HarmonyOS 基础驱动"
 
     def __init__(self):
         """初始化HarmonyOS驱动"""
@@ -39,6 +48,21 @@ class HarmonyDriver(BaseDeviceDriver):
                 self._log(level='ERROR', content=f"Failed to connect to Harmony device {device_sn}: {e}")
                 return None
         return self._drivers[device_sn]
+
+    def _reconnect_driver(self, device_sn):
+        """RPC 服务重启后重新建立 UiDriver 连接"""
+        try:
+            if device_sn in self._drivers:
+                old = self._drivers.pop(device_sn, None)
+                if old and hasattr(old, 'close'):
+                    try:
+                        old.close()
+                    except Exception:
+                        pass
+            self._drivers[device_sn] = UiDriver.connect(device_sn=device_sn)
+            self._log(level='INFO', content=f"Reconnected UiDriver for {device_sn}")
+        except Exception as e:
+            self._log(level='ERROR', content=f"Failed to reconnect UiDriver for {device_sn}: {e}")
 
     def get_driver(self, device_sn):
         return self._get_driver(device_sn)
@@ -188,6 +212,7 @@ class HarmonyDriver(BaseDeviceDriver):
         return devices
 
     @check_stop("initialize")
+    @with_rpc_retry()
     def initialize(self, device_sn, task_id=None, test_case_id=None, **kwargs) -> bool:
         """初始化鸿蒙设备"""
         self._log(level='INFO', content=f"Initializing HarmonyOS device {device_sn} for...")

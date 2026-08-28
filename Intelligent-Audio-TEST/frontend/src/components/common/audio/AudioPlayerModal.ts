@@ -150,13 +150,13 @@ export function useAudioPlayerModal(props: any, emit: any) {
           progressPercentage.value = Math.max(0, Math.min(100, (currentTime.value / duration.value) * 100));
         }
 
-        if (Math.floor(currentTime.value * 10) % 5 === 0) {
-          console.log('Audio time update:', {
-            currentTime: currentTime.value,
-            duration: duration.value,
-            progress: progressPercentage.value
-          });
-        }
+        console.log('Audio time update:', {
+          audioCurrentTime: currentAudioTime,
+          audioDuration: audioDuration,
+          displayCurrentTime: currentTime.value,
+          displayDuration: duration.value,
+          progress: progressPercentage.value
+        });
       }
     } catch (error) {
       console.error('Error in handleTimeUpdate:', error);
@@ -285,6 +285,9 @@ export function useAudioPlayerModal(props: any, emit: any) {
       if (props.isTestCasePreview) {
         console.log('TestCase Preview: calling /testcases/preview API with playbackMode:', props.playbackMode);
         await playTestCasePreview();
+      } else if (props.audioPath) {
+        console.log('Audio path provided: Playing directly from path');
+        await playAudioStream();
       } else if (props.audioType === 'api') {
         console.log('API audio: Playing directly on frontend speakers');
         await playAudioStream();
@@ -407,45 +410,51 @@ export function useAudioPlayerModal(props: any, emit: any) {
   };
 
   const playAudioStream = async () => {
-    if (audio.value && props.audioId) {
-      audio.value.addEventListener('error', (e) => {
-        console.error('Audio element error:', audio.value?.error);
-        if (audio.value?.error?.code === 4) {
-          playError.value = '音频格式不支持或服务器返回错误(400)。可能的原因：音频文件格式不正确或后端服务异常';
-        }
-      });
+    if (!audio.value) return;
 
-      try {
-        // 后端返回 OSS 预签名 URL，前端直接从 OSS 拉取音频
-        const streamApiUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
-        const resp = await fetch(streamApiUrl);
-        if (!resp.ok) {
-          playError.value = `获取音频失败 (${resp.status})`;
-          isPlaying.value = false;
-          return;
-        }
-        const data = await resp.json();
-        const presignedUrl = data?.data?.url || data?.url;
-        if (!presignedUrl) {
-          playError.value = '获取音频 URL 失败';
-          isPlaying.value = false;
-          return;
-        }
-        audio.value.src = presignedUrl;
-        await audio.value.load();
-        await audio.value.play();
-        console.log('Local audio playback started');
-      } catch (playError: any) {
-        console.error('Audio play error:', playError);
-        if (playError.name === 'NotSupportedError') {
-          playError.value = '浏览器不支持该音频格式，请尝试使用其他格式的音频文件';
-        } else if (playError.message && playError.message.includes('400')) {
-          playError.value = '服务器返回400错误，可能是音频文件不存在或格式不正确';
-        } else {
-          playError.value = '音频播放失败，请检查音频文件是否有效';
-        }
+    let audioStreamUrl = '';
+    if (props.audioId) {
+      audioStreamUrl = `${apiBaseUrl}/audios/${props.audioId}/stream`;
+    } else if (props.audioPath) {
+      audioStreamUrl = `${apiBaseUrl}/audios/stream-by-path?path=${encodeURIComponent(props.audioPath)}`;
+    } else {
+      console.warn('Cannot play audio: both audioId and audioPath are empty');
+      playError.value = '缺少音频ID或路径，无法播放';
+      isPlaying.value = false;
+      return;
+    }
+
+    audio.value.src = audioStreamUrl;
+
+    try {
+      // 后端返回 OSS 预签名 URL，前端直接从 OSS 拉取音频
+      const resp = await fetch(audioStreamUrl);
+      if (!resp.ok) {
+        playError.value = `获取音频失败 (${resp.status})`;
         isPlaying.value = false;
+        return;
       }
+      const data = await resp.json();
+      const presignedUrl = data?.data?.url || data?.url;
+      if (!presignedUrl) {
+        playError.value = '获取音频 URL 失败';
+        isPlaying.value = false;
+        return;
+      }
+      audio.value.src = presignedUrl;
+      await audio.value.load();
+      await audio.value.play();
+      console.log('Local audio playback started');
+    } catch (playError: any) {
+      console.error('Audio play error:', playError);
+      if (playError.name === 'NotSupportedError') {
+        playError.value = '浏览器不支持该音频格式，请尝试使用其他格式的音频文件';
+      } else if (playError.message && playError.message.includes('400')) {
+        playError.value = '服务器返回400错误，可能是音频文件不存在或格式不正确';
+      } else {
+        playError.value = '音频播放失败，请检查音频文件是否有效';
+      }
+      isPlaying.value = false;
     }
   };
 

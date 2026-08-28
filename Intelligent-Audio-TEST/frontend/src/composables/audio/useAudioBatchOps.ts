@@ -195,7 +195,7 @@ export function useAudioBatchOps(
     if (audio) {
       audioTitle.value = audio.name;
       currentPreviewAudioId.value = audio.id;
-      currentPreviewAudioType.value = audio.audioType || 'dry';
+      currentPreviewAudioType.value = audio.audio_type || audio.type || 'dry';
       showAudioPlayerModal.value = true;
     }
   }
@@ -225,12 +225,12 @@ export function useAudioBatchOps(
         id: audio.id,
         fileName: audio.name || '',
         category: audio.filepath || audio.filePath || audio.file_path || '',
-        audioType: audio.audioType || 'dry',
-        asrText: audio.asrText || '',
+        audioType: audio.audio_type || audio.type || 'dry',
+        asrText: audio.asr_text || '',
         tags: tagsArray.join(','),
         format: audio.format || '',
         duration: audio.duration || 0,
-        sourceLanguage: audio.sourceLanguage || '',
+        sourceLanguage: audio.source_language || '',
         size: audio.size || 0,
         translations: audio.translations || [],
         annotations: audio.annotations || []
@@ -292,7 +292,7 @@ export function useAudioBatchOps(
       convertAudioInfo.name = audio.name;
       convertAudioInfo.originalFileName = audio.filename || '';
       convertAudioInfo.originalFormat = audio.format || '';
-      convertAudioInfo.originalSampleRate = (audio.sampleRate || '').toString();
+      convertAudioInfo.originalSampleRate = (audio.sample_rate || '').toString();
       convertAudioInfo.originalChannels = (audio.channels || '').toString();
       convertAudioInfo.originalBitDepth = '';
 

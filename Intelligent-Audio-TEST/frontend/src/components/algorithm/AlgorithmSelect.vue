@@ -222,8 +222,8 @@ const loadAlgorithms = async () => {
     // 响应经层转为 camelCase，补回 snake_case 别名供分组/读取使用
     algorithms.value = (result.data || []).map((a: any) => ({
       ...a,
-      group_id: a.groupId ?? a.group_id,
-      group_name: a.groupName ?? a.group_name,
+      group_id: a.group_id ?? a.groupId,
+      group_name: a.group_name ?? a.groupName,
     }))
   } catch (error) {
     console.error('加载算法列表失败:', error)

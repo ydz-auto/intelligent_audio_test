@@ -7,12 +7,22 @@ from api_gateway.schemas.audio import (
     AudioListData,
     AudioListStats,
     TagListData as AudioTagListData,
+    AudioListQuery,
+    AudioIdQuery,
+    AudioStreamQuery,
+    AudioStreamByPathQuery,
 )
 from api_gateway.infrastructure.acl import AudioAclRepositoryImpl
 
 logger = logging.getLogger(__name__)
 
 _audio_acl = AudioAclRepositoryImpl()
+
+
+def _parse_query_params(model_cls):
+    """从 request.args 提取查询参数并通过 APIModel 校验"""
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
 
 
 class AudioQueryService:
@@ -29,50 +39,41 @@ class AudioQueryService:
 
     # 获取所有音频文件列表
     @staticmethod
-    def _parse_query_params():
+    def _parse_list_query_params():
         # 支持分页和过滤
         # 优先从 body 获取参数（POST），其次从 query 获取（GET）
         if request.method == 'POST' and request.is_json:
             data = request.get_json() or {}
-            page = data.get('page', 1)
-            per_page = data.get('perPage', data.get('per_page', 10))
-            keyword = data.get('keyword')
-            format_ = data.get('format')
-            audio_type = data.get('audioType', data.get('audio_type'))
-            folder = data.get('folder')
-            sample_rate = data.get('sampleRate', data.get('sample_rate'))
-            duration = data.get('duration')
-            tags_data = data.get('tags', [])
-            direction = data.get('direction')
+            query = AudioListQuery.model_validate(data)
         else:
-            page = request.args.get('page', 1, type=int)
-            per_page = request.args.get('per_page', 10, type=int)
-            keyword = request.args.get('keyword')
-            format_ = request.args.get('format')
-            audio_type = request.args.get('audio_type')
-            folder = request.args.get('folder')
-            sample_rate = request.args.get('sample_rate')
-            duration = request.args.get('duration')
-            tags = request.args.getlist('tags')
-            tags_data = [{'name': t, 'mode': 'and'} for t in tags] if tags else []
-            direction = request.args.get('direction')
+            query = _parse_query_params(AudioListQuery)
+
+        # tags 特殊处理：POST 时是 list of dict，GET 时是 list of str
+        tags_data = []
+        if query.tags:
+            if request.method == 'POST' and request.is_json:
+                data = request.get_json() or {}
+                tags_data = data.get('tags', [])
+            else:
+                tags_data = [{'name': t, 'mode': 'and'} for t in query.tags]
+
         return {
-            'page': page,
-            'per_page': per_page,
-            'keyword': keyword,
-            'format_': format_,
-            'audio_type': audio_type,
-            'folder': folder,
-            'sample_rate': sample_rate,
-            'duration': duration,
+            'page': query.page,
+            'per_page': query.per_page,
+            'keyword': query.keyword,
+            'format_': query.format,
+            'audio_type': query.audio_type,
+            'folder': query.folder,
+            'sample_rate': query.sample_rate,
+            'duration': query.duration,
             'tags_data': tags_data,
-            'direction': direction,
+            'direction': query.direction,
         }
 
     @staticmethod
     def get_all():
         
-        params = AudioQueryService._parse_query_params()
+        params = AudioQueryService._parse_list_query_params()
         result = _audio_acl.get_all(params)
         if result.get('success'):
             data = result.get('data') or {}
@@ -162,30 +163,27 @@ class AudioQueryService:
         # 优先从 body 获取参数（POST），其次从 query 获取（GET）
         if request.method == 'POST' and request.is_json:
             data = request.get_json() or {}
-            keyword = data.get('keyword')
-            format_ = data.get('format')
-            audio_type = data.get('audioType', data.get('audio_type'))
-            sample_rate = data.get('sampleRate', data.get('sample_rate'))
-            duration = data.get('duration')
-            tags_data = data.get('tags', [])
-            direction = data.get('direction')
+            query = AudioIdQuery.model_validate(data)
         else:
-            keyword = request.args.get('keyword')
-            format_ = request.args.get('format')
-            audio_type = request.args.get('audio_type')
-            sample_rate = request.args.get('sample_rate')
-            duration = request.args.get('duration')
-            tags = request.args.getlist('tags')
-            tags_data = [{'name': t, 'mode': 'and'} for t in tags] if tags else []
-            direction = request.args.get('direction')
+            query = _parse_query_params(AudioIdQuery)
+
+        # tags 特殊处理
+        tags_data = []
+        if query.tags:
+            if request.method == 'POST' and request.is_json:
+                data = request.get_json() or {}
+                tags_data = data.get('tags', [])
+            else:
+                tags_data = [{'name': t, 'mode': 'and'} for t in query.tags]
+
         return {
-            'keyword': keyword,
-            'format_': format_,
-            'audio_type': audio_type,
-            'sample_rate': sample_rate,
-            'duration': duration,
+            'keyword': query.keyword,
+            'format_': query.format,
+            'audio_type': query.audio_type,
+            'sample_rate': query.sample_rate,
+            'duration': query.duration,
             'tags_data': tags_data,
-            'direction': direction,
+            'direction': query.direction,
         }
 
     @staticmethod
@@ -203,8 +201,8 @@ class AudioQueryService:
     @staticmethod
     def stream(audio_id):
         
-        task_type = request.args.get('task_type', 'api')
-        result = _audio_acl.stream_audio(audio_id, {'task_type': task_type})
+        query = _parse_query_params(AudioStreamQuery)
+        result = _audio_acl.stream_audio(audio_id, {'task_type': query.task_type})
         if result.get('success'):
             data = result.get('data') or {}
             url = data.get('url')
@@ -220,11 +218,11 @@ class AudioQueryService:
     def stream_by_path():
         """通过 OSS key 获取预签名 URL 播放音频"""
         
-        oss_key = request.args.get('path')
-        if not oss_key:
+        query = _parse_query_params(AudioStreamByPathQuery)
+        if not query.path:
             return error_response("未提供路径", 400)
 
-        result = _audio_acl.stream_audio_by_path({'path': oss_key})
+        result = _audio_acl.stream_audio_by_path({'path': query.path})
         if result.get('success'):
             data = result.get('data') or {}
             url = data.get('url')

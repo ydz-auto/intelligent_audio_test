@@ -10,6 +10,7 @@ _logger = logging.getLogger(__name__)
 from api_test_service.clients.api_driver import APIDriver
 from shared.utils.dto_utils import dto_to_dict
 from api_test_service.infrastructure.acl import AlgorithmQueryAclRepositoryImpl
+from shared.utils.config_manager import config_manager
 
 # 跨服务出站 gRPC 经 ACL 仓储（返回 DTO），不返回 raw dict
 _algo_acl = AlgorithmQueryAclRepositoryImpl()
@@ -151,7 +152,8 @@ class APITaskRunner:
             if hasattr(api_config, 'api_endpoints') and api_config.api_endpoints:
                 endpoints = [ep for ep in api_config.api_endpoints if ep.get('endpoint')]
 
-            max_process = getattr(api_config, 'default_max_process', 5) or 5
+            # 并发参数配置化：api_config 未配置时回退到 config_manager 默认值
+            max_process = getattr(api_config, 'default_max_process', None) or config_manager.get_value('api_executor', 'default_max_process', 5)
             max_timeout = getattr(api_config, 'max_timeout', 30) or 30
 
             field_mappings = dto_to_dict(_algo_acl.get_field_mappings(algorithm_type)) or {}
@@ -242,11 +244,12 @@ class APITaskRunner:
     def wait_for_completion(self, task_id, api_task_id, api_config, api_specific_config, api_paths,
                             select_base_url, release_base_url, total_audio_duration):
         """异步轮询等待任务完成"""
-        import os
+        # 轮询参数改为从 config_manager 读取，支持运行时配置化（保留降级默认值）
         dynamic_max_wait_time = total_audio_duration * 1.5
-        default_max_wait_time = int(os.environ.get('API_MAX_WAIT_TIME', '43200'))
+        default_max_wait_time = config_manager.get_value('api_test', 'max_wait_time', 43200)
         max_wait_time = min(dynamic_max_wait_time, default_max_wait_time)
-        poll_interval = int(os.environ.get('API_POLL_INTERVAL', '5'))
+        poll_interval = config_manager.get_value('api_test', 'poll_interval', 5)
+        # 最大等待时间下限：保证至少能完成一次状态查询
         max_wait_time = max(max_wait_time, 30)
         max_wait_time = max(max_wait_time, poll_interval * 2)
         start_wait_time = time.time()

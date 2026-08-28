@@ -108,6 +108,19 @@ class PayloadBuilder(EvaluationLoggerMixin):
                         # rounds 结构：body_template 里声明了每轮的字段模板
                         round_template = v[0] if isinstance(v[0], dict) else {}
                         rounds_data = processed_context.get('rounds', [])
+                        # 若无 rounds_data，则从顶层 context 字段构建单轮数据
+                        if not rounds_data and round_template:
+                            single_round = {}
+                            for rk, rv in round_template.items():
+                                if isinstance(rv, str) and rv.startswith('{{') and rv.endswith('}}'):
+                                    placeholder_key = rv[2:-2]
+                                    if placeholder_key in processed_context:
+                                        single_round[rk] = processed_context[placeholder_key]
+                                    else:
+                                        single_round[rk] = ''
+                                else:
+                                    single_round[rk] = rv
+                            rounds_data = [single_round]
                         rendered_rounds = []
                         for rd in rounds_data:
                             rendered_rd = {}
@@ -121,14 +134,13 @@ class PayloadBuilder(EvaluationLoggerMixin):
                                     rendered_rd[rk] = rv
                             rendered_rounds.append(rendered_rd)
                         result['rounds'] = rendered_rounds
-                    elif k in processed_context:
+                    elif k in processed_context and processed_context[k] not in (None, ''):
                         result[k] = processed_context[k]
                     elif isinstance(v, str) and v.startswith('{{') and v.endswith('}}'):
                         placeholder_key = v[2:-2]
-                        if placeholder_key in processed_context:
+                        if placeholder_key in processed_context and processed_context[placeholder_key] not in (None, ''):
                             result[k] = processed_context[placeholder_key]
-                        else:
-                            result[k] = ''
+                        # context 中无值或为空时不设该字段，让 eval_server 使用自身配置
                     else:
                         result[k] = v
                 return result

@@ -5,8 +5,22 @@
 from api_gateway.infrastructure.request_adapter import request
 from api_gateway.utils.response import success_response, error_response
 from api_gateway.infrastructure.acl import TestCaseConfigAclRepositoryImpl
-from api_gateway.schemas.group import GroupItem, GroupListData, GroupCreateRequest, GroupUpdateRequest, GroupMoveCasesRequest
+from api_gateway.schemas.group import (
+    GroupCreateRequest,
+    GroupDeleteQuery,
+    GroupItem,
+    GroupListData,
+    GroupListQuery,
+    GroupMoveCasesRequest,
+    GroupUpdateRequest,
+)
 import uuid
+
+
+def _parse_query_params(model_cls):
+    params = {k: v[0] if isinstance(v, list) else v for k, v in request.args.to_dict().items()}
+    return model_cls.model_validate(params)
+
 
 _testcase_acl = TestCaseConfigAclRepositoryImpl()
 
@@ -16,10 +30,11 @@ class GroupService:
 
     @staticmethod
     def get_all():
-        page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', None, type=int) or request.args.get('page_size', 100, type=int)
-        algorithm_type = request.args.get('algorithm_type')
-        test_type = request.args.get('type') or request.args.get('test_type')
+        query = _parse_query_params(GroupListQuery)
+        page = query.page
+        per_page = query.per_page if query.per_page is not None else 100
+        algorithm_type = query.algorithm_type
+        test_type = query.test_type
 
         # 通过 gRPC 查询 TestCaseGroup 列表（替代直连 PO）
         try:
@@ -132,7 +147,8 @@ class GroupService:
     @staticmethod
     def delete(group_id):
         """通过 gRPC 软删除 TestCaseGroup"""
-        cascade = request.args.get('cascade', 'false').lower() == 'true'
+        query = _parse_query_params(GroupDeleteQuery)
+        cascade = query.cascade
 
         from api_gateway.infrastructure.grpc_proxies import task_data_service
         try:

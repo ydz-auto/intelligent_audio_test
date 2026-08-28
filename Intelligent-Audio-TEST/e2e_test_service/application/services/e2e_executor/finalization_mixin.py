@@ -58,6 +58,7 @@ class FinalizationMixin:
 
         # 整体评估
         # 检查是否有评估维度（从 rounds[].evaluation.dimensions 读单轮维度，从 config.dimensions 读多轮维度）
+        # 同时检查 evaluation.enabled 开关：enabled 为 False 时不提交评估
         _has_dims = False
         if case_config:
             rounds = case_config.get('rounds', [])
@@ -65,9 +66,12 @@ class FinalizationMixin:
                 for round_item in rounds:
                     if isinstance(round_item, dict):
                         evaluation = round_item.get('evaluation', {})
-                        if isinstance(evaluation, dict) and evaluation.get('dimensions'):
-                            _has_dims = True
-                            break
+                        if isinstance(evaluation, dict):
+                            if evaluation.get('enabled', True) is False:
+                                continue
+                            if evaluation.get('dimensions'):
+                                _has_dims = True
+                                break
             if not _has_dims and case_config.get('dimensions'):
                 _has_dims = True
 
@@ -91,8 +95,9 @@ class FinalizationMixin:
                 reference_params_col=data.get('reference_params_col')
             )
 
-        # 聚合各轮评估分数到 algo_result
-        self._aggregator.update_algorithm_result_evaluation(task_id, result_id)
+        # 聚合各轮评估分数到 algo_result（仅当有评估维度时才执行）
+        if _has_dims:
+            self._aggregator.update_algorithm_result_evaluation(task_id, result_id)
 
         # 更新 TaskCase 状态
         success = self._aggregator.process_results(

@@ -10,7 +10,7 @@
 - _get_report_helpers 延迟导入指向 report_service.application.services.report_helpers
 """
 
-from shared.models.common_enums import ReportStatus, ReportType, TaskStatus
+from shared.models.common_enums import ReportStatus, ReportType, TaskStatus, TestType
 from shared.utils.log_handler import log_not_emit, log_and_emit
 from shared.utils.query_utils import (
     escape_like_pattern, sanitize_keyword, normalize_sort_field,
@@ -485,10 +485,10 @@ class ReportCompareHelpers:
     @staticmethod
     def _get_task_type(tasks):
         included_task_types = {(t.get('type') if isinstance(t, dict) else getattr(t, "type", None)) for t in tasks if (t.get('type') if isinstance(t, dict) else getattr(t, "type", None))}
-        if included_task_types == {"api"}:
-            return "api"
-        elif included_task_types == {"e2e"}:
-            return "e2e"
+        if included_task_types == {TestType.API.value}:
+            return TestType.API.value
+        elif included_task_types == {TestType.E2E.value}:
+            return TestType.E2E.value
         return "all"
 
     @staticmethod

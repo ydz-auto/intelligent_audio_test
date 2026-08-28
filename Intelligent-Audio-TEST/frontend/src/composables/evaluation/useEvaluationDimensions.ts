@@ -77,11 +77,11 @@ export function useEvaluationDimensions() {
       headers: {
         'content-type': 'application/json'
       },
-      body_template: {
+      bodyTemplate: {
         rounds: [
           {
             answer: "{{answer}}",
-            correct_answer: "{{correct_answer}}"
+            correctAnswer: "{{correct_answer}}"
           }
         ]
       },
@@ -130,11 +130,11 @@ export function useEvaluationDimensions() {
       headers: {
         'content-type': 'application/json'
       },
-      body_template: {
+      bodyTemplate: {
         rounds: [
           {
             answer: "{{answer}}",
-            correct_answer: "{{correct_answer}}"
+            correctAnswer: "{{correct_answer}}"
           }
         ]
       },
@@ -185,7 +185,7 @@ export function useEvaluationDimensions() {
         (filterStatus.value === 'inactive' && !dim.status);
 
       const matchesCategory = filterCategory.value === 'all' ||
-        dim.categoryId === Number(filterCategory.value) ||
+        dim.category_id === Number(filterCategory.value) ||
         dim.type === filterCategory.value;
 
       return matchesSearch && matchesStatus && matchesCategory;
@@ -195,6 +195,38 @@ export function useEvaluationDimensions() {
   const isAllSelected = computed(() => {
     return filteredDimensions.value.length > 0 &&
       selectedDimensions.value.length === filteredDimensions.value.length;
+  });
+
+  // 层级维度：主维度在前，子维度紧跟其父维度
+  const hierarchicalDimensions = computed(() => {
+    const filtered = filteredDimensions.value;
+    const mainDims = filtered.filter(d => !d.parent_dimension_id && d.dimension_type !== 'sub');
+    const subDims = filtered.filter(d => d.parent_dimension_id || d.dimension_type === 'sub');
+
+    const result: any[] = [];
+    const placedIds = new Set<number | string>();
+
+    for (const main of mainDims) {
+      result.push({ ...main, _level: 0, _isMain: true, _parentName: '' });
+      placedIds.add(main.id);
+
+      const children = subDims.filter(s => s.parent_dimension_id === main.id);
+      for (const child of children) {
+        result.push({ ...child, _level: 1, _isMain: false, _parentName: main.name });
+        placedIds.add(child.id);
+      }
+    }
+
+    // 孤儿子维度：父维度不在当前筛选结果中
+    for (const sub of subDims) {
+      if (!placedIds.has(sub.id)) {
+        const parent = dimensions.value.find(d => d.id === sub.parent_dimension_id);
+        result.push({ ...sub, _level: 1, _isMain: false, _parentName: parent?.name || '' });
+        placedIds.add(sub.id);
+      }
+    }
+
+    return result;
   });
 
   const evaluationFields = computed(() => [
@@ -217,11 +249,11 @@ export function useEvaluationDimensions() {
     ], defaultValue: 'main', group: '层级配置' },
     { key: 'parentDimensionId', label: '所属主维度', type: 'select', required: false, options: [
       { value: '', label: '请选择所属主维度' },
-      ...dimensions.value.filter(d => d.dimensionType === 'main' || !d.dimensionType).map(d => ({
+      ...dimensions.value.filter(d => d.dimension_type === 'main' || !d.dimension_type).map(d => ({
         value: d.id,
         label: d.name,
-        taskTypeCode: d.taskTypeCode,
-        apiSettings: d.apiSettings,
+        taskTypeCode: d.task_type_code,
+        apiSettings: d.api_settings,
         requiredInputs: (d as any).required_inputs || []
       }))
     ], conditional: { field: 'dimensionType', value: 'sub' }, group: '层级配置' },
@@ -472,14 +504,14 @@ export function useEvaluationDimensions() {
             if (!dimensionData.apiSettings) {
               dimensionData.apiSettings = {};
             }
-            if (!dimensionData.apiSettings.body_template) {
-              dimensionData.apiSettings.body_template = {};
+            if (!dimensionData.apiSettings.bodyTemplate) {
+              dimensionData.apiSettings.bodyTemplate = {};
             }
-            // 确保 body_template 有 rounds 结构
-            if (!dimensionData.apiSettings.body_template.rounds) {
-              dimensionData.apiSettings.body_template.rounds = [{}];
+            // 确保 bodyTemplate 有 rounds 结构
+            if (!dimensionData.apiSettings.bodyTemplate.rounds) {
+              dimensionData.apiSettings.bodyTemplate.rounds = [{}];
             }
-            const roundTpl = dimensionData.apiSettings.body_template.rounds[0];
+            const roundTpl = dimensionData.apiSettings.bodyTemplate.rounds[0];
 
             dimensionData.requiredInputs.forEach((input: any) => {
               const inputKey = input.param_code || input.key;
@@ -570,8 +602,8 @@ export function useEvaluationDimensions() {
       // 处理子维度自动填充主维度的解析类型
       if (dimensionData.dimensionType === 'sub' && dimensionData.parentDimensionId && !dimensionData.taskTypeCode) {
         const parentDim = dimensions.value.find(d => d.id === dimensionData.parentDimensionId);
-        if (parentDim && parentDim.taskTypeCode) {
-          dimensionData.taskTypeCode = parentDim.taskTypeCode;
+        if (parentDim && parentDim.task_type_code) {
+          dimensionData.taskTypeCode = parentDim.task_type_code;
         }
       }
 
@@ -579,9 +611,9 @@ export function useEvaluationDimensions() {
       if (dimensionData.dimensionType === 'sub' && dimensionData.parentDimensionId) {
         if (!dimensionData.associatedAlgorithms || dimensionData.associatedAlgorithms.length === 0) {
           const parentDim = dimensions.value.find(d => d.id === dimensionData.parentDimensionId);
-          if (parentDim && parentDim.associatedAlgorithms && parentDim.associatedAlgorithms.length > 0) {
-            const parentAlgorithms = parentDim.associatedAlgorithms.map((item: any) =>
-              typeof item === 'string' ? item : item.algorithmType
+          if (parentDim && parentDim.associated_algorithms && parentDim.associated_algorithms.length > 0) {
+            const parentAlgorithms = parentDim.associated_algorithms.map((item: any) =>
+              typeof item === 'string' ? item : item.algorithm_type
             );
             dimensionData.associatedAlgorithms = parentAlgorithms;
           }
@@ -833,6 +865,7 @@ export function useEvaluationDimensions() {
     apiSettings,
     // 计算属性
     filteredDimensions,
+    hierarchicalDimensions,
     isAllSelected,
     evaluationFields,
     // 数据获取

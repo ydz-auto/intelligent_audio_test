@@ -1,5 +1,6 @@
-import { ref, computed, watch, onUnmounted } from 'vue'
+import { ref, computed, watch, onUnmounted, inject } from 'vue'
 import { useNotification } from '../../composables/modal/useNotification'
+import { debounce } from '../../utils/utils'
 import { useCollapse, useResourceHeaders } from './shared/useReportShared'
 import { getValidResources, toMetricsMap, toTextMap, createCaseDataHelpers } from './specificCaseDataHelpers'
 import { createDownloadLogic } from './specificCaseDownload'
@@ -7,6 +8,9 @@ import { createCaseDetailPrep } from './specificCaseDetailPrep'
 import { createCaseMetricsComputeds, createFilteredCases } from './specificCaseComputeds'
 
 export function useSpecificCaseComparison(props: any) {
+  // 导出模式：导出时展开所有用例、显示全部不分页
+  const isExporting = inject('isExporting', ref(false))
+
   // Audio player state
   const showAudioModal = ref(false)
   const currentAudioId = ref<any>(null)
@@ -37,9 +41,7 @@ export function useSpecificCaseComparison(props: any) {
   const resourceHeaders = computed(() => {
     const data = props.reportData || {}
     return (
-      data.resourceHeaders ||
       data.resource_headers ||
-      data.summary?.resourceHeaders ||
       data.summary?.resource_headers ||
       []
     )
@@ -88,7 +90,6 @@ export function useSpecificCaseComparison(props: any) {
   const selectedMetrics = ref<any[]>([])
   const sortDimension = ref('name')
   const selectedSortMetric = ref('')
-  const secondSortMetric = ref('')  // 第二个排序维度（用于多维度排序）
   const sortOrder = ref('asc')
   const expandedCases = ref<any[]>([])
   const pinnedCases = ref<any[]>([])
@@ -104,14 +105,17 @@ export function useSpecificCaseComparison(props: any) {
 
   // 从reportData中获取数据，优先使用reportData直接提供的数据，然后再使用summary中的数据
   // 注意：二次对比报告中用例分组存储在caseCategories字段中，而不是categories字段中
-  const categories = ref<any[]>(processCategories(props.reportData.categories || props.reportData.summary?.categories || props.reportData.summary?.caseCategories))
-  const allTags = ref<any[]>(processTags(props.reportData.allTags || props.reportData.summary?.allTags || props.reportData.summary?.allCaseTags))
+  const categories = ref<any[]>(processCategories(props.reportData.categories || props.reportData.summary?.categories || props.reportData.summary?.case_categories))
+  const allTags = ref<any[]>(processTags(props.reportData.all_tags || props.reportData.summary?.all_tags || props.reportData.summary?.all_case_tags))
 
   // 所有评测维度，确保至少有一个默认维度
-  const allMetrics = ref<any[]>(props.reportData.allMetrics || props.reportData.summary?.allMetrics || [])
+  const allMetrics = ref<any[]>(props.reportData.all_metrics || props.reportData.summary?.all_metrics || [])
 
   // 获取用例数据
   const cases = ref<any[]>([])
+  const totalCases = ref(0)
+  const pageSize = ref(10)
+  const currentPage = ref(1)
 
   // 计算实际使用的评测维度
   const { actualAllMetrics } = createCaseMetricsComputeds({ allMetrics, cases })
@@ -120,11 +124,21 @@ export function useSpecificCaseComparison(props: any) {
   const devices = ref<any[]>(getValidResources(props.reportData));
 
   // 使用提取的数据辅助函数
-  const { extractCasesFromReportData, loadCasesFromApi } = createCaseDataHelpers({
+  const { extractCasesFromReportData, loadCasesPage, loadAllCasesForExport } = createCaseDataHelpers({
     props,
     cases,
+    totalCases,
+    currentPage,
+    pageSize,
     casesLoading,
     casesLoadError,
+    searchKeyword,
+    selectedCategories,
+    selectedTags,
+    selectedMetrics,
+    sortDimension,
+    selectedSortMetric,
+    sortOrder,
     processTags
   })
 
@@ -174,23 +188,25 @@ export function useSpecificCaseComparison(props: any) {
     return (filteredCases.value || []).filter((c: any) => c && !pinnedIds.has(c.id))
   })
 
-  const pageSize = ref(10)
-  const currentPage = ref(1)
-
   const totalPages = computed(() => {
-    const total = unpinnedFilteredCases.value.length
-    return Math.max(1, Math.ceil(total / pageSize.value))
+    return Math.max(1, Math.ceil(totalCases.value / pageSize.value))
   })
 
-  watch([unpinnedFilteredCases, pageSize], () => {
-    if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
-    if (currentPage.value < 1) currentPage.value = 1
-  })
+  const paginatedCases = computed(() => filteredCases.value)
 
-  const paginatedCases = computed(() => {
-    const start = (currentPage.value - 1) * pageSize.value
-    return unpinnedFilteredCases.value.slice(start, start + pageSize.value)
-  })
+  // 导出模式：拉取全量用例并展开所有用例详情
+  watch(isExporting, async (exporting) => {
+    if (exporting) {
+      isCollapsed.value = false
+      const reportId = props.reportData?.id || props.reportData?.report_id
+      if (reportId) {
+        await loadAllCasesForExport(reportId)
+      }
+      // 展开所有用例详情，让 .case-details 渲染到 DOM 中
+      // 克隆后由 ReportView 的 generateExportZip 统一隐藏，JS 点击再展开
+      expandedCases.value = (unpinnedFilteredCases.value || []).map((c: any) => c.id)
+    }
+  }, { immediate: true })
 
   // 使用提取的case detail准备逻辑
   const { prepareComparisonData, getAlgorithmResults, prepareAudioList, prepareCaseItem } = createCaseDetailPrep({
@@ -247,21 +263,53 @@ export function useSpecificCaseComparison(props: any) {
   })
 
   const paginatedCasesWithPreparedData = computed(() => {
-    return paginatedCases.value.map((caseItem: any) => prepareCaseItem(caseItem))
+    const sourceCases = paginatedCases.value
+    return sourceCases.map((caseItem: any) => prepareCaseItem(caseItem))
   })
 
+  // 筛选/排序条件变化时重新请求后端
+  const debouncedReload = debounce(() => {
+    const reportId = props.reportData?.id || props.reportData?.report_id
+    if (reportId && !isExporting.value) {
+      currentPage.value = 1
+      loadCasesPage(reportId)
+    }
+  }, 300)
+
+  watch([searchKeyword, selectedCategories, selectedTags, selectedMetrics, sortDimension, selectedSortMetric, sortOrder], () => {
+    debouncedReload()
+  }, { deep: true })
+
+  // 翻页/改页大小
   const handlePrevPage = () => {
-    if (currentPage.value > 1) currentPage.value -= 1
+    if (currentPage.value > 1) {
+      currentPage.value -= 1
+      const reportId = props.reportData?.id || props.reportData?.report_id
+      if (reportId) loadCasesPage(reportId)
+    }
   }
 
   const handleNextPage = () => {
-    if (currentPage.value < totalPages.value) currentPage.value += 1
+    if (currentPage.value < totalPages.value) {
+      currentPage.value += 1
+      const reportId = props.reportData?.id || props.reportData?.report_id
+      if (reportId) loadCasesPage(reportId)
+    }
   }
 
   const handleGoToPage = (page: any) => {
     const p = Number(page)
     if (!Number.isFinite(p)) return
     currentPage.value = Math.min(Math.max(1, p), totalPages.value)
+    const reportId = props.reportData?.id || props.reportData?.report_id
+    if (reportId) loadCasesPage(reportId)
+  }
+
+  const handlePageSizeChange = (newSize: any) => {
+    pageSize.value = Number(newSize)
+    currentPage.value = 1
+    const reportId = props.reportData?.id || props.reportData?.report_id
+    if (reportId) loadCasesPage(reportId)
   }
 
   // Methods
@@ -341,7 +389,7 @@ export function useSpecificCaseComparison(props: any) {
   }
 
   const getCaseTaskId = (caseItem: any) => {
-    return caseItem.taskId || caseItem.task_id || props.reportData?.taskId || props.reportData?.summary?.taskId || ''
+    return caseItem.task_id || props.reportData?.task_id || props.reportData?.summary?.task_id || ''
   }
 
   const copyToClipboard = (text: string) => {
@@ -397,13 +445,13 @@ export function useSpecificCaseComparison(props: any) {
   }
 
   const applyFilters = () => {
+    // 筛选由 watch 自动触发后端请求，这里仅做日志
     console.log('应用筛选:', {
       searchKeyword: searchKeyword.value,
       selectedCategories: selectedCategories.value,
       selectedTags: selectedTags.value,
       selectedMetrics: selectedMetrics.value,
       sortDimension: sortDimension.value,
-      selectedSortMetric: selectedSortMetric.value,
       sortOrder: sortOrder.value
     })
   }
@@ -431,16 +479,16 @@ export function useSpecificCaseComparison(props: any) {
   // 监听reportData变化，更新内部状态
   watch([
     () => props.reportData?.id,
-    () => props.reportData?.reportId,
+    () => props.reportData?.report_id,
     () => props.reportData?.cases?.length,
-    () => props.reportData?.testReportsCases?.length,
+    () => props.reportData?.test_reports_cases?.length,
     () => props.reportData?.summary?.cases?.length
   ], async ([id, reportId, casesLen, testReportsCasesLen, summaryCasesLen]: any, [oldId, oldReportId]: any) => {
     const newReportData = props.reportData
 
-    categories.value = processCategories(newReportData.categories || newReportData.summary?.categories || newReportData.summary?.caseCategories)
-    allTags.value = processTags(newReportData.allTags || newReportData.summary?.allTags || newReportData.summary?.allCaseTags)
-    allMetrics.value = newReportData.allMetrics || newReportData.summary?.allMetrics || []
+    categories.value = processCategories(newReportData.categories || newReportData.summary?.categories || newReportData.summary?.case_categories)
+    allTags.value = processTags(newReportData.all_tags || newReportData.summary?.all_tags || newReportData.summary?.all_case_tags)
+    allMetrics.value = newReportData.all_metrics || newReportData.summary?.all_metrics || []
     devices.value = getValidResources(newReportData);
 
     const effectiveReportId = id || reportId
@@ -448,7 +496,8 @@ export function useSpecificCaseComparison(props: any) {
       if (effectiveReportId !== loadedReportId && effectiveReportId !== oldId && effectiveReportId !== oldReportId) {
         loadedReportId = effectiveReportId
         console.log('watch: 优先调用 /api/v1/reports/{id}/cases/search API 获取用例数据')
-        await loadCasesFromApi(effectiveReportId)
+        currentPage.value = 1
+        await loadCasesPage(effectiveReportId)
 
         if (!cases.value || cases.value.length === 0) {
           console.log('watch: API 返回空数据，尝试从本地数据提取')
@@ -484,13 +533,13 @@ export function useSpecificCaseComparison(props: any) {
     tagPage, tagPageSize, totalTagPages,
     selectedMetrics, metricSearchQuery, paginatedMetrics, toggleMetric,
     filteredMetricsForDisplay, metricPage, metricPageSize, totalMetricPages,
-    sortDimension, selectedSortMetric, secondSortMetric, sortOrder, actualAllMetrics,
+    sortDimension, selectedSortMetric, sortOrder, actualAllMetrics,
     resetFilters, applyFilters,
     pinnedCases, togglePin,
     getResourceLabel, resourceHeaders,
     paginatedCasesWithPreparedData, toggleCaseExpand, getOverallStatus,
     copyToClipboard, downloadCaseLogZip, expandedCases, allDevices,
-    unpinnedFilteredCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage,
+    unpinnedFilteredCases, totalCases, currentPage, pageSize, handlePrevPage, handleNextPage, handleGoToPage, handlePageSizeChange,
     currentCaseDetailWithPreparedData, closeCaseDetail, openCaseDetail,
     getResourceName, getCaseTaskId, formatTime,
     isDownloadingLog, downloadingCaseName, downloadProgress, downloadSpeed, downloadSize, downloadTotal

@@ -53,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, inject, watch } from 'vue'
 import DataTable from '../common/data/DataTable.vue'
 
 const props = defineProps({
@@ -62,18 +62,25 @@ const props = defineProps({
   }
 })
 
+// 导出模式：导出时展开
+const isExporting = inject('isExporting', ref(false))
+
 const isCollapsed = ref(false)
 
 const toggleCollapse = () => {
   isCollapsed.value = !isCollapsed.value
 }
 
+// 导出模式：展开
+watch(isExporting, (exporting) => {
+  if (exporting) isCollapsed.value = false
+}, { immediate: true })
+
 // metricData 格式（后端 flatten_metric_data 输出）:
 //   [{resource: "xxx", metrics: [{id, metric, value}]}]（resource 级别全局平均）
 // 旧格式兼容: {category: {resource: {metric: value}}}（dict）
 const getMetricData = () => {
-  return props.reportData?.metricData || props.reportData?.summary?.metricData ||
-         props.reportData?.metric_data || props.reportData?.summary?.metric_data || {}
+  return props.reportData?.metric_data || props.reportData?.summary?.metric_data || {}
 }
 
 // 把 metricData 归一化成 {resource: {metric: value}} 的 dict 格式
@@ -123,9 +130,7 @@ const getNormalizedMetricData = () => {
 const resourceHeaderMap = computed(() => {
   const data = props.reportData || {}
   const headers =
-    data.resourceHeaders ||
     data.resource_headers ||
-    data.summary?.resourceHeaders ||
     data.summary?.resource_headers ||
     []
 
@@ -196,7 +201,7 @@ const processedDevices = computed(() => {
 })
 
 const actualAllMetrics = computed(() => {
-  let metrics = props.reportData?.allMetrics || props.reportData?.summary?.allMetrics || []
+  let metrics = props.reportData?.all_metrics || props.reportData?.summary?.all_metrics || []
 
   // 如果 allMetrics 为空，从 metricData 中提取维度名
   if (metrics.length === 0) {
@@ -220,7 +225,7 @@ const actualAllMetrics = computed(() => {
   return metrics
 })
 
-const totalCases = computed(() => props.reportData?.summary?.totalCases || props.reportData?.summary?.total_cases || 0)
+const totalCases = computed(() => props.reportData?.summary?.total_cases || 0)
 const metricsCount = computed(() => actualAllMetrics.value.length)
 const devicesCount = computed(() => devices.value.length)
 
@@ -268,7 +273,7 @@ const metricDecimalPlacesMap = computed(() => {
   const list = Array.isArray(actualAllMetrics.value) ? actualAllMetrics.value : []
   list.forEach(m => {
     if (!m || !m.name) return
-    const dp = m.decimalPlaces ?? m.decimal_places
+    const dp = m.decimal_places
     if (Number.isInteger(dp) && dp >= 0) map[String(m.name)] = dp
   })
   return map

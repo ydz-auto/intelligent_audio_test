@@ -14,12 +14,15 @@ export function useE2eTest() {
     tags,
     isLoading,
     paginationInfo,
-    tagViewData
+    tagViewData,
+    tagViewPagination,
+    tagViewLoading
   } = storeToRefs(testCaseStore);
 
   const {
     fetchTestCases,
     fetchTagView,
+    loadMoreTagView,
     addTestCase,
     updateTestCase,
     deleteTestCase,
@@ -40,7 +43,7 @@ export function useE2eTest() {
   const isE2eTestCase = (caseItem: TestCase): boolean => {
     if (caseItem.deleted) return false;
     // 优先使用 test_type 字段（voice_llm 新架构）；后端列表接口返回的字段名为 type
-    const testType = ((caseItem as any).testType || (caseItem as any).test_type || (caseItem as any).type || '').toLowerCase();
+    const testType = ((caseItem as any).test_type || (caseItem as any).type || '').toLowerCase();
     if (testType) return testType === 'e2e' || testType === 'e2e_test';
     // 向后兼容：config 级别检查
     const config = (caseItem.config || {}) as any;
@@ -54,7 +57,7 @@ export function useE2eTest() {
     }
     // 旧 flat 格式
     const audios = config.audios || [];
-    return audios.some((a: any) => (a.testType || a.test_type) === 'e2e');
+    return audios.some((a: any) => (a.test_type) === 'e2e');
   };
 
   const e2eTestCases = computed(() => {
@@ -106,7 +109,7 @@ export function useE2eTest() {
   const openAddE2eTestCaseModal = (group = '默认分组') => {
     handleTestCaseAction({
       action: { id: 'add' },
-      testCase: { group: group, config: { type: 'e2e_test' } } as unknown as TestCase
+      testCase: { group: group, config: { type: 'e2e' } } as unknown as TestCase
     });
   };
 
@@ -140,15 +143,15 @@ export function useE2eTest() {
     openEditGroupModal(groupName);
   };
 
-  const initializeE2eTests = async (algorithmType?: string) => {
-    await fetchTestCases({ algorithmType });
+  const initializeE2eTests = async (algorithmType?: string, keyword?: string, dimensionId?: number) => {
+    await fetchTestCases({ algorithmType, keyword, testType: 'e2e', dimensionId });
   };
 
   const handleE2eTestCaseSave = async (data: TestCaseFormData & { id?: string }) => {
     try {
-      data.type = 'e2e_test';
+      data.type = 'e2e';
       if (!data.config) data.config = {};
-      data.config.type = 'e2e_test';
+      data.config.type = 'e2e';
 
       if (data.id) {
         return await updateE2eTestCase(data as unknown as TestCase);
@@ -169,6 +172,8 @@ export function useE2eTest() {
     e2eTestCaseGroups,
     tags,
     tagViewData,
+    tagViewPagination,
+    tagViewLoading,
     paginationInfo,
     initializeE2eTests,
     openAddE2eTestCaseModal,
@@ -184,6 +189,7 @@ export function useE2eTest() {
     copyE2eTestCase,
     deleteGroup,
     handleE2eTestCaseSave,
-    fetchTagView
+    fetchTagView,
+    loadMoreTagView
   };
 }
