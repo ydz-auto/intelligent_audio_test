@@ -653,13 +653,31 @@ const resultTextFields = computed(() => {
   return textItems;
 });
 
-// 按维度分组结果文本字段
+// 子维度名 → 父维度名映射（从 comparisonData 中提取）
+const subDimToParent = computed(() => {
+  const map = {};
+  Object.values(props.comparisonData).forEach(d => {
+    if (!d?.metrics) return;
+    Object.entries(d.metrics).forEach(([, info]) => {
+      if (info?.dimension_type === 'sub' && info.parent_dimension_name) {
+        map[info.metric || info.name] = info.parent_dimension_name;
+      }
+    });
+  });
+  return map;
+});
+
+// 按维度分组结果文本字段（子维度归入父维度组）
 const groupedResultTextFields = computed(() => {
   const groups = {};
   const order = [];
 
   for (const field of resultTextFields.value) {
-    const dimName = field.dimension_name || null;
+    let dimName = field.dimension_name || null;
+    // 子维度归入父维度组
+    if (dimName && subDimToParent.value[dimName]) {
+      dimName = subDimToParent.value[dimName];
+    }
     if (!groups[dimName]) {
       groups[dimName] = [];
       order.push(dimName);
