@@ -3,9 +3,10 @@
 qwen_omni_asr.py
 基于第三方模型的 ASR 转写脚本（通过 az.gptplus5.com 代理）。
 
-音频通过 base64 编码，以 OpenAI input_audio 格式发送。
-qwen3.5-omni-plus 在该代理不支持 input_audio 格式，
-实测 gemini-3.7-flash 可用，支持音频 base64 输入。
+音频通过 base64 编码发送，根据模型类型选择不同格式：
+- qwen3-asr-flash（纯 ASR）：input_audio + data URI（百炼 DashScope）
+- qwen3.5-omni-plus（omni）：image_url + data URI（第三方代理）
+- gemini 等非 Qwen 模型：input_audio + 纯 base64
 
 输出格式与本地 asr_server 一致：
     {"text": "全文", "chunks": [{"text": "段文本", "timestamp": [start_s, end_s]}, ...]}
@@ -112,6 +113,7 @@ def call_qwen_omni_asr(wav_path: str) -> Dict[str, Any]:
     is_dashscope = 'aliyuncs.com' in API_BASE
     is_qwen_model = 'qwen' in MODEL.lower()
     is_pure_asr = 'asr' in MODEL.lower() and 'omni' not in MODEL.lower()
+    is_omni = 'omni' in MODEL.lower()
 
     # Qwen 模型统一用 data URI 格式（百炼 + 代理都需要）
     # 非 Qwen 模型（如 gemini）用纯 base64
@@ -124,8 +126,15 @@ def call_qwen_omni_asr(wav_path: str) -> Dict[str, Any]:
         user_content = [
             {'type': 'input_audio', 'input_audio': {'data': audio_data}},
         ]
+    elif is_omni and not is_dashscope:
+        # omni 模型在第三方代理上不支持 input_audio 格式，
+        # 改用 image_url + data URI 方式发送音频（与 llm_judge_calculator.py 一致）
+        user_content = [
+            {'type': 'image_url', 'image_url': {'url': audio_data}},
+            {'type': 'text', 'text': ASR_PROMPT},
+        ]
     else:
-        # omni / 其他多模态模型：音频 + 文本 prompt
+        # omni 模型在百炼 DashScope / 其他多模态模型：input_audio + 文本 prompt
         user_content = [
             {'type': 'input_audio', 'input_audio': {'data': audio_data, 'format': audio_fmt}},
             {'type': 'text', 'text': ASR_PROMPT},
@@ -139,8 +148,6 @@ def call_qwen_omni_asr(wav_path: str) -> Dict[str, Any]:
     }
 
     # omni 模型需 modalities=['text']；百炼 DashScope 用非 stream + JSON 结构化输出
-    is_omni = 'omni' in MODEL.lower()
-    is_dashscope = 'aliyuncs.com' in API_BASE
     if is_omni:
         payload['modalities'] = ['text']
         if is_dashscope:
