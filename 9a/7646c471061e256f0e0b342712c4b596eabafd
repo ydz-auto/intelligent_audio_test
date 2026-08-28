@@ -1,0 +1,205 @@
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_0ab6dd6a87645b::t_5742ecc3a1dea4 671-672,687-690
+  s_0ab6dd6a87645b::t_5187d5cf4a830f 215-217
+  s_0ab6dd6a87645b::t_0e4fe29a24f43b 248,251,254,256-258
+  s_0ab6dd6a87645b::t_68217864317aa0 259
+Intelligent-Audio-TEST/backend/services/execution/e2e_executor.py
+  s_96d4678fb53ea1::t_0d76fd625b99de 690-693,704,706,708-709,711,713,729-730
+Intelligent-Audio-TEST/frontend/src/components/common/InfiniteScrollList.vue
+  s_07b5de6f144d26::t_cec3b9fc4b4fcf 1,6-7,10-11,14,16-26,29-45,47-51,53-54,56,59-60,62-87,92,109,124,132-138,140-144,147-243
+  s_07b5de6f144d26::t_3d22a37f74d778 3-5,8-9,12-13,15,27,55,145
+  s_07b5de6f144d26::t_421773c02acfe6 2,28,46,52,57-58,61,88-91,93-108,110-123,125-131,139,146
+Intelligent-Audio-TEST/frontend/src/components/common/modal/TestCaseDetailModal.vue
+  s_b959daee1bfa48::t_2db08da2979bf6 16,20-22
+  s_b959daee1bfa48::t_b12e0d0a0ea82b 18
+  s_0ab6dd6a87645b::t_16bd6cdbc57977 162-163
+Intelligent-Audio-TEST/frontend/src/components/common/TestCaseReportDetail.vue
+  s_0ab6dd6a87645b::t_fde4e71a5f3bcc 804-806
+  s_0ab6dd6a87645b::t_0de682be265ff5 925,930-941
+  s_0ab6dd6a87645b::t_00a9317ce2f4d2 950,962
+  s_0ab6dd6a87645b::t_87fed04bed8799 1383,1392-1394,1399-1400,1402,1404,1408-1411,1415,1419-1422
+  s_0ab6dd6a87645b::t_83eeebfcffd6bd 880,883-891,900-906
+  s_0ab6dd6a87645b::t_74533288d91255 875
+Intelligent-Audio-TEST/frontend/src/components/report/OverviewCardComponent.vue
+  s_0ab6dd6a87645b::t_e79e641a04fcd6 35,38-47
+  s_0ab6dd6a87645b::t_a32d52f5630090 440-460
+  s_0ab6dd6a87645b::t_d1b5dee99bc77e 267-274,276-293,302-318,321
+  s_0ab6dd6a87645b::t_b2a0637e6bf301 294-301
+Intelligent-Audio-TEST/frontend/src/components/TestExecutionComponent.vue
+  s_f49e9d2438df0d::t_2253eba088be3f 189,220
+  s_f49e9d2438df0d::t_f95ec0916afbb4 191-192,195,197
+  s_f49e9d2438df0d::t_86e279a943ed67 209-219
+  s_f49e9d2438df0d::t_f48ee89e76f89b 511,513-527
+  s_f49e9d2438df0d::t_d6739a7e8a54b5 190
+  s_f49e9d2438df0d::t_a4ca491e28b56a 464-465
+Intelligent-Audio-TEST/frontend/src/views/DeviceLogic/device.ts
+  s_07b5de6f144d26::t_5d075c0b9ca064 843-845
+Intelligent-Audio-TEST/frontend/src/components/report/SpecificCaseComparisonComponent.vue
+  s_0ab6dd6a87645b::t_6d256188f73c72 1443,1446,1449-1470,1474,1480
+  s_0ab6dd6a87645b::t_713c342d4cf888 1053-1059,1068-1073
+Intelligent-Audio-TEST/backend/utils/report/report_utils.py
+  s_0ab6dd6a87645b::t_38e06db872d8dc 1213-1276
+  s_0ab6dd6a87645b::t_36b2f067314c85 1277-1333
+  s_0ab6dd6a87645b::t_a90ed240064d9d 1345
+  s_0ab6dd6a87645b::t_89260462dfc0e2 1212,1346
+Intelligent-Audio-TEST/backend/controllers/report_controller.py
+  s_0ab6dd6a87645b::t_117e7a3da523cb 358-361,376
+  s_0ab6dd6a87645b::t_fe55814f9dbbd3 184-187,194
+Intelligent-Audio-TEST/frontend/src/views/Device.vue
+  s_07b5de6f144d26::t_66ec08896e74e4 588-590
+  s_07b5de6f144d26::t_9484cf796ce4a2 450-473,475-518,520-537,541-545,547-548
+  s_07b5de6f144d26::t_a502fd2d4fb40b 625-626,629
+  s_07b5de6f144d26::t_801a543a622015 281-304,306-361,363-389,393-397,399-400
+  s_07b5de6f144d26::t_1f12bba5bf8ac0 119-142,144-191,193-220,224-228,230-231
+  s_07b5de6f144d26::t_cdb27ffd6e8192 565
+Intelligent-Audio-TEST/frontend/src/views/EvaluationLogic/evaluation.ts
+  s_07b5de6f144d26::t_e7e2063cedc901 100-101,105,109,115,117-118
+Intelligent-Audio-TEST/backend/controllers/task_controller.py
+  s_0ab6dd6a87645b::t_5c1d701c36f721 466,470-471,474-475,481,493-494
+  s_0ab6dd6a87645b::t_ae2fde432afd4a 718,722-723,726-727,733,745-746
+Intelligent-Audio-TEST/frontend/src/components/report/CaseCategoryComparisonComponent.vue
+  s_d3680c91b83313::t_96b198201ac8c6 815
+Intelligent-Audio-TEST/frontend/src/views/Evaluation.vue
+  s_07b5de6f144d26::t_e1a71c95a5fd7b 191-192
+  s_07b5de6f144d26::t_d19da21b86f00a 639-664
+  s_07b5de6f144d26::t_6dc8eb4fbe3276 88-176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "9a7646c471061e256f0e0b342712c4b596eabafd",
+  "prompts": {},
+  "humans": {
+    "h_f411275616c284": {
+      "author": "lijiahao <lijiahao69@huawei.com>"
+    }
+  },
+  "sessions": {
+    "s_07b5de6f144d26": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a90f88b16b19a6e721cc71b",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "operation_id": "6a90fc6816b19a6e721ccad4",
+        "session_id": "6a90f88b16b19a6e721cc71b",
+        "external_session_id": "6a90f88b16b19a6e721cc71b",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "tool_use_id": "6a90fc6816b19a6e721ccad4",
+        "dedupe_key": "6a90f88b16b19a6e721cc71b:6a90fc6816b19a6e721ccad4:afterEdit:5cfbfbd7",
+        "tool_type": "builtin",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "tool_id": "icube:applyChatSnapshotPatch"
+      }
+    },
+    "s_0ab6dd6a87645b": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a90ecfc16b19a6e721cc308",
+        "model": "qwen3.8-max"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "tool_use_id": "6a91017316b19a6e721ccbc8",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "dedupe_key": "6a90ecfc16b19a6e721cc308:6a91017316b19a6e721ccbc8:afterEdit:35c7b7c4",
+        "client_type": "ide",
+        "source_scene": "agent",
+        "session_id": "6a90ecfc16b19a6e721cc308",
+        "operation_id": "6a91017316b19a6e721ccbc8",
+        "tool_type": "builtin",
+        "runtime_client": "trae-tob-git-ai",
+        "edit_kind": "file_edit",
+        "external_session_id": "6a90ecfc16b19a6e721cc308"
+      }
+    },
+    "s_96d4678fb53ea1": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a90f99b16b19a6e721cc85d",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "operation_id": "6a90fc1f16b19a6e721ccab9",
+        "dedupe_key": "6a90f99b16b19a6e721cc85d:6a90fc1f16b19a6e721ccab9:afterEdit:05968cfc",
+        "tool_use_id": "6a90fc1f16b19a6e721ccab9",
+        "source_scene": "agent",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "runtime_client": "trae-tob-git-ai",
+        "session_id": "6a90f99b16b19a6e721cc85d",
+        "edit_kind": "file_edit",
+        "external_session_id": "6a90f99b16b19a6e721cc85d",
+        "tool_type": "builtin",
+        "client_type": "ide"
+      }
+    },
+    "s_b959daee1bfa48": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a90ee2816b19a6e721cc455",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "tool_type": "builtin",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_use_id": "6a90f56e16b19a6e721cc688",
+        "source_scene": "agent",
+        "client_type": "ide",
+        "edit_kind": "file_edit",
+        "operation_id": "6a90f56e16b19a6e721cc688",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "session_id": "6a90ee2816b19a6e721cc455",
+        "dedupe_key": "6a90ee2816b19a6e721cc455:6a90f56e16b19a6e721cc688:afterEdit:e87d8707",
+        "external_session_id": "6a90ee2816b19a6e721cc455"
+      }
+    },
+    "s_d3680c91b83313": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a90fd1916b19a6e721ccae9",
+        "model": "qwen3.8-max"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "dedupe_key": "6a90fd1916b19a6e721ccae9:6a90fd6a16b19a6e721ccb4c:afterEdit:b1af853f",
+        "operation_id": "6a90fd6a16b19a6e721ccb4c",
+        "tool_type": "builtin",
+        "external_session_id": "6a90fd1916b19a6e721ccae9",
+        "edit_kind": "file_edit",
+        "session_id": "6a90fd1916b19a6e721ccae9",
+        "tool_use_id": "6a90fd6a16b19a6e721ccb4c",
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "client_type": "ide"
+      }
+    },
+    "s_f49e9d2438df0d": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a90f84916b19a6e721cc6c0",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "dedupe_key": "6a90f84916b19a6e721cc6c0:6a90fb0616b19a6e721cc9f2:afterEdit:51202b50",
+        "source_scene": "agent",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "session_id": "6a90f84916b19a6e721cc6c0",
+        "external_session_id": "6a90f84916b19a6e721cc6c0",
+        "edit_kind": "file_edit",
+        "tool_use_id": "6a90fb0616b19a6e721cc9f2",
+        "operation_id": "6a90fb0616b19a6e721cc9f2"
+      }
+    }
+  }
+}
