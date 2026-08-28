@@ -169,9 +169,14 @@ SEG_MERGE_GAP_S = 0.7  # 词合并为段的间隙阈值（秒）
 
 | 指标 | 含义 |
 |------|------|
-| stop_latency | 用户开始打断 → 模型当前语音段结束（停下） |
-| recovery_latency | 用户说完 → 模型重新开口（恢复段起点） |
+| stop_latency | 用户开始打断 → 模型当前语音段结束（停下），单位**毫秒(ms)** |
+| recovery_latency | 用户说完 → 模型重新开口（恢复段起点），单位**毫秒(ms)** |
+| overlap / silence_gap | 双方同时说话时长 / 模型停下到恢复的静默，单位**毫秒(ms)** |
 | success | 容差内停下 且 之后恢复 |
+
+> 时长指标（stop_latency/recovery_latency/overlap/silence_gap 及均值）输出为**毫秒**，
+> 字段名保留 `_s` 历史后缀以兼容既有维度 field_path，但值为毫秒；
+> 段边界（user_segment 等）与 ASR 词时间戳仍为秒。
 
 模型是否"说穿"：语音段结尾比用户打断结尾晚 `YIELD_GRACE_S`（0.5s）以上 → 无视打断继续说。
 

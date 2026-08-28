@@ -273,8 +273,8 @@ def calculate_xiaoyi_metrics(task_params):
                 f"model_chunks={len(model_asr.get('chunks', []))} "
                 f"success_rate={results['interruption'].get('interruption_success_rate')} "
                 f"n_events={results['interruption'].get('n_events')} "
-                f"avg_stop={results['interruption'].get('avg_stop_latency_s')}s "
-                f"avg_recovery={results['interruption'].get('avg_recovery_latency_s')}s "
+                f"avg_stop={results['interruption'].get('avg_stop_latency_s')}ms "
+                f"avg_recovery={results['interruption'].get('avg_recovery_latency_s')}ms "
                 f"msg={results['interruption'].get('message')}"
             )
         except Exception as e:
@@ -564,10 +564,10 @@ def _print_results_bilingual(results):
         f"     打断成功率 interruption_success_rate : {_x(it.get('interruption_success_rate'))}\n"
         f"     停下率 stop_rate                      : {_x(it.get('stop_rate'))}\n"
         f"     恢复率 resume_rate                    : {_x(it.get('resume_rate'))}\n"
-        f"     平均停下时延 avg_stop_latency_s      : {_x(it.get('avg_stop_latency_s'))}\n"
-        f"     平均恢复时延 avg_recovery_latency_s   : {_x(it.get('avg_recovery_latency_s'))}\n"
-        f"     平均重叠 avg_overlap_s               : {_x(it.get('avg_overlap_s'))}\n"
-        f"     平均静默 avg_silence_gap_s            : {_x(it.get('avg_silence_gap_s'))}\n"
+        f"     平均停下时延 avg_stop_latency_s(ms)    : {_x(it.get('avg_stop_latency_s'))}\n"
+        f"     平均恢复时延 avg_recovery_latency_s(ms): {_x(it.get('avg_recovery_latency_s'))}\n"
+        f"     平均重叠 avg_overlap_s(ms)             : {_x(it.get('avg_overlap_s'))}\n"
+        f"     平均静默 avg_silence_gap_s(ms)         : {_x(it.get('avg_silence_gap_s'))}\n"
         f"     事件数 n_events                       : {_x(it.get('n_events'))}\n"
         f"     用户段数 n_user_segments              : {_x(it.get('n_user_segments'))}\n"
         f"     仅恢复 n_recovery_only                : {_x(it.get('n_recovery_only'))}\n"
@@ -648,10 +648,10 @@ def calculate_interruption_metrics(task_params):
             'interruption_success_rate': float, 打断成功率
             'stop_rate': float,                 停下率
             'resume_rate': float,               恢复率
-            'avg_stop_latency_s': float|None,   平均打断检查时延(秒)
-            'avg_recovery_latency_s': float|None, 平均打断恢复时延(秒)
-            'avg_overlap_s': float|None,        平均双方同时说话时长(秒)
-            'avg_silence_gap_s': float|None,    平均静默时长(秒)
+            'avg_stop_latency_s': float|None,   平均打断检查时延(毫秒，字段名保留 _s)
+            'avg_recovery_latency_s': float|None, 平均打断恢复时延(毫秒)
+            'avg_overlap_s': float|None,        平均双方同时说话时长(毫秒)
+            'avg_silence_gap_s': float|None,    平均静默时长(毫秒)
             'n_events': int, 'n_user_segments': int,
             'n_recovery_only': int, 'n_no_model_speech': int,
             'per_event': list, 'message': str,
@@ -722,7 +722,7 @@ def calculate_interruption_metrics(task_params):
     logger.info(
         f"[interruption_metrics] success_rate={result['interruption_success_rate']} "
         f"stop_rate={result['stop_rate']} resume_rate={result['resume_rate']} "
-        f"avg_stop={result['avg_stop_latency_s']}s avg_recovery={result['avg_recovery_latency_s']}s "
+        f"avg_stop={result['avg_stop_latency_s']}ms avg_recovery={result['avg_recovery_latency_s']}ms "
         f"message={result['message']}"
     )
 

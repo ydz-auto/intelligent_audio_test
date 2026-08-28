@@ -277,10 +277,10 @@
   "interruption_success_rate": 0.75,   // 打断成功率（让出且恢复 / 有效打断事件）
   "stop_rate": 0.80,                  // 让出率（没说穿）
   "resume_rate": 0.90,               // 恢复率
-  "avg_stop_latency_s": 0.3,          // 平均打断检查时延（秒）
-  "avg_recovery_latency_s": 0.5,      // 平均打断恢复时延（秒）
-  "avg_overlap_s": 0.2,              // 平均双方同时说话时长（秒）
-  "avg_silence_gap_s": 0.15,         // 平均静默时长（秒）
+  "avg_stop_latency_s": 300,          // 平均打断检查时延（毫秒，字段名保留 _s 后缀）
+  "avg_recovery_latency_s": 500,      // 平均打断恢复时延（毫秒）
+  "avg_overlap_s": 200,              // 平均双方同时说话时长（毫秒）
+  "avg_silence_gap_s": 150,         // 平均静默时长（毫秒）
   "n_events": 4,                     // 有效打断事件数（event_type=interruption）
   "n_user_segments": 5,              // 用户语音段总数
   "n_recovery_only": 1,              // 退化事件数（只算到恢复时延）

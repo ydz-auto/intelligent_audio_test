@@ -16,7 +16,9 @@ interruption.py
     3. 打断成功率    (success)           : 在容差内停下 且 之后恢复（event_type='interruption' 才计入分母）
                                           参考 v1.0 eval_user_interruption.py 的 TOR↑
 
-时间单位: 秒（与项目 chunks 约定一致，timestamp=[start, end] 为秒）
+时间单位: ASR 时间戳/语音段为秒（timestamp=[start, end] 为秒）；
+     时长指标（stop_latency/recovery_latency/overlap/silence_gap 及其均值）输出为毫秒(ms)，
+     字段名保留 _s 历史后缀以便兼容既有维度 field_path，但值为毫秒。
 """
 import logging
 import re
@@ -195,7 +197,8 @@ def _evaluate_one_event(u: Dict[str, Any],
     # ── 情形 A：模型当时在说话（完整打断事件）──
     if m_active is not None:
         ov = _overlap(m_active, u)
-        result['overlap_s'] = round((ov[1] - ov[0]), 3) if ov else 0.0
+        # 时长指标以毫秒(ms)输出：内部时间戳/段为秒，差值 ×1000 转毫秒
+        result['overlap_s'] = round((ov[1] - ov[0]) * 1000, 1) if ov else 0.0
         # 被打断时模型正在说的尾巴（字词级 ASR）
         result['model_interrupted_text'] = m_active.get('text', '')
         result['model_interrupted_words'] = m_active.get('words', [])
@@ -215,10 +218,10 @@ def _evaluate_one_event(u: Dict[str, Any],
         stopped = resumed
         result['stopped'] = stopped
         result['resumed'] = resumed
-        result['stop_latency_s'] = round(stop_latency, 3) if stopped else None
+        result['stop_latency_s'] = round(stop_latency * 1000, 1) if stopped else None
         if m_next is not None:
-            result['recovery_latency_s'] = round(m_next['start'] - u_e, 3)
-            result['silence_gap_s'] = round(m_next['start'] - m_active['end'], 3)
+            result['recovery_latency_s'] = round((m_next['start'] - u_e) * 1000, 1)
+            result['silence_gap_s'] = round((m_next['start'] - m_active['end']) * 1000, 1)
             result['model_recovery_text'] = m_next.get('text', '')
             result['model_recovery_words'] = m_next.get('words', [])
 
@@ -228,7 +231,7 @@ def _evaluate_one_event(u: Dict[str, Any],
 
     # ── 情形 B：模型当时不在说话（model_asr 可能只含恢复段，或模型提前停了）──
     if m_next_after_user is not None:
-        result['recovery_latency_s'] = round(m_next_after_user['start'] - u_e, 3)
+        result['recovery_latency_s'] = round((m_next_after_user['start'] - u_e) * 1000, 1)
         result['silence_gap_s'] = None  # 无 m_active 尾巴，静默段无法定义
         result['resumed'] = True
         result['stopped'] = None  # 未知（缺被打断时的模型尾巴）
@@ -260,10 +263,10 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
             'interruption_success_rate': float, 打断成功率（让出且恢复 / 有效打断事件）
             'stop_rate': float,                 让出率（没说穿）
             'resume_rate': float,              恢复率
-            'avg_stop_latency_s': float|None,   平均打断检查时延（秒）
-            'avg_recovery_latency_s': float|None, 平均打断恢复时延（秒）
-            'avg_overlap_s': float|None,        平均双方同时说话时长（秒，越短越好）
-            'avg_silence_gap_s': float|None,    平均静默时长（秒）
+            'avg_stop_latency_s': float|None,   平均打断检查时延（毫秒；字段名保留 _s 历史后缀，值为 ms）
+            'avg_recovery_latency_s': float|None, 平均打断恢复时延（毫秒）
+            'avg_overlap_s': float|None,        平均双方同时说话时长（毫秒，越短越好）
+            'avg_silence_gap_s': float|None,    平均静默时长（毫秒）
             'n_events': int,                   有效打断事件数（interruption）
             'n_user_segments': int,            用户语音段总数
             'n_recovery_only': int,            退化事件数（只算到恢复时延）
@@ -379,7 +382,7 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         f"n_events={n} n_recovery_only={result['n_recovery_only']} "
         f"success_rate={result['interruption_success_rate']} "
         f"stop_rate={result['stop_rate']} resume_rate={result['resume_rate']} "
-        f"avg_stop={result['avg_stop_latency_s']}s avg_recovery={result['avg_recovery_latency_s']}s"
+        f"avg_stop={result['avg_stop_latency_s']}ms avg_recovery={result['avg_recovery_latency_s']}ms"
     )
     return result
 
