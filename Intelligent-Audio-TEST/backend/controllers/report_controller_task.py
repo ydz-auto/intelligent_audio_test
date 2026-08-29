@@ -357,6 +357,52 @@ class ReportControllerTask(ReportControllerBase):
 
                 snapshot = result_data.get('algorithm_results') if result_data else None
                 if snapshot:
+                    # 对快照注入轮次标记（快照中的评估结果字段需要带上 @round:N）
+                    result_dims = dim_results_map.get(result.id, [])
+                    is_multi_round = any(getattr(dr, 'round_number', None) is not None for dr in result_dims)
+                    if is_multi_round:
+                        # 构建 dimension_id → round_number 映射
+                        dim_id_to_round = {}
+                        for dr in result_dims:
+                            dim_id = getattr(dr, 'dimension_id', None)
+                            rn = getattr(dr, 'round_number', None)
+                            if dim_id is not None and dim_id not in dim_id_to_round:
+                                dim_id_to_round[dim_id] = rn
+                        # 构建 param_code → dimension_id 映射
+                        param_to_dim_id = {}
+                        for _dim_id, aux_list in aux_params_map.items():
+                            for aux_info in aux_list:
+                                p = aux_info['param']
+                                param_to_dim_id[p.param_code] = _dim_id
+                        # 遍历快照，给有 dimension_name 但没有轮次标记的字段注入 @round:N
+                        for item in snapshot:
+                            if not isinstance(item, dict):
+                                continue
+                            pc = item.get('param_code') or item.get('paramCode') or ''
+                            # 已经有轮次标记的跳过
+                            if '@round:' in pc or '@overall' in pc:
+                                continue
+                            dim_name = item.get('dimension_name')
+                            if not dim_name:
+                                continue
+                            # 通过 param_code 查 dimension_id，再查 round_number
+                            did = param_to_dim_id.get(pc)
+                            rn = dim_id_to_round.get(did)
+                            if rn is not None:
+                                new_pc = f'{pc}@round:{rn + 1}'
+                                item['param_code'] = new_pc
+                                if 'paramCode' in item:
+                                    item['paramCode'] = new_pc
+                                item['label'] = f'{pc} (第{rn + 1}轮)'
+                                item['round_number'] = rn + 1
+                                if 'roundNumber' in item:
+                                    item['roundNumber'] = rn + 1
+                            else:
+                                new_pc = f'{pc}@overall'
+                                item['param_code'] = new_pc
+                                if 'paramCode' in item:
+                                    item['paramCode'] = new_pc
+                                item['label'] = f'{pc} (整体)'
                     case_obj["algorithm_results"].extend(snapshot)
                     continue
 
@@ -425,17 +471,33 @@ class ReportControllerTask(ReportControllerBase):
         if not (algo_res or result_data):
             return algorithm_results
 
-        # ── 1. 构建 param_code → (dimension_name, field_type) 全局映射 ──
+        # ── 1. 构建 param_code → (dimension_name, dimension_id, field_type) 映射 ──
         param_to_dim = {}
         param_to_type = {}
+        param_to_dim_id = {}
         for _dim_id, aux_list in aux_params_map.items():
             for aux_info in aux_list:
                 p = aux_info['param']
                 param_to_dim[p.param_code] = aux_info['dimension_name']
                 param_to_type[p.param_code] = p.field_type
+                param_to_dim_id[p.param_code] = _dim_id
+
+        # 构建 dimension_id → round_number 映射（从 TRD 行中提取）
+        dim_id_to_round = {}
+        for dr in dim_result_rows:
+            dim_id = getattr(dr, 'dimension_id', None)
+            rn = getattr(dr, 'round_number', None)
+            if dim_id is not None and dim_id not in dim_id_to_round:
+                dim_id_to_round[dim_id] = rn
+
+        # 判断是否多轮场景（任一 dim_result_row 有非 None 的 round_number）
+        is_multi_round = any(getattr(dr, 'round_number', None) is not None for dr in dim_result_rows)
 
         # ── 2. 提取 aux 辅助参数值 ──
+        # aux_values: {param_code: value}
+        # aux_round_map: {param_code: round_number}（None=overall, int=具体轮次）
         aux_values = {}
+        aux_round_map = {}
 
         # 2a. 从 evaluation_data 提取
         if result_data:
@@ -444,8 +506,11 @@ class ReportControllerTask(ReportControllerBase):
                 for param_code in param_to_dim:
                     if param_code in eval_data:
                         aux_values[param_code] = eval_data[param_code]
+                        # 从 dimension_id → round_number 映射获取轮次
+                        did = param_to_dim_id.get(param_code)
+                        aux_round_map[param_code] = dim_id_to_round.get(did)
 
-        # 2b. 从 api_raw_response 补充
+        # 2b. 从 api_raw_response 补充（继承 dim_result_row 的 round_number）
         for dr in dim_result_rows:
             raw_resp = getattr(dr, 'api_raw_response', None)
             if not raw_resp:
@@ -455,6 +520,7 @@ class ReportControllerTask(ReportControllerBase):
                     raw_resp = json.loads(raw_resp)
                 except Exception:
                     continue
+            dr_round = getattr(dr, 'round_number', None)
             for aux_info in aux_params_map.get(dr.dimension_id, []):
                 p = aux_info['param']
                 param_code = p.param_code
@@ -463,17 +529,34 @@ class ReportControllerTask(ReportControllerBase):
                 value = extract_by_path(raw_resp, p.field_path)
                 if value is not None:
                     aux_values[param_code] = value
+                    aux_round_map[param_code] = dr_round
 
         # 输出 aux 参数
         for param_code, param_value in aux_values.items():
             if param_value is None:
                 continue
+            rn = aux_round_map.get(param_code)
+            # 多轮场景下，给 param_code 加上轮次后缀
+            if is_multi_round:
+                if rn is not None:
+                    out_code = f'{param_code}@round:{rn + 1}'
+                    out_label = f'{param_code} (第{rn + 1}轮)'
+                    out_round_number = rn + 1
+                else:
+                    out_code = f'{param_code}@overall'
+                    out_label = f'{param_code} (整体)'
+                    out_round_number = None
+            else:
+                out_code = param_code
+                out_label = param_code
+                out_round_number = None
             algorithm_results.append({
                 'device': resource,
-                'param_code': param_code,
+                'param_code': out_code,
                 'param_type': param_to_type.get(param_code, 'text'),
-                'label': param_code,
+                'label': out_label,
                 'value': param_value,
+                'round_number': out_round_number,
                 'dimension_name': param_to_dim.get(param_code),
             })
 
@@ -1167,7 +1250,7 @@ class ReportControllerTask(ReportControllerBase):
                 log_and_emit('DEBUG', 'report', f'[generate_task_report_async] Created detail data for report_id={new_report.id}', task_id=task_id)
 
                 report_id = new_report.id
-                new_report.status = ReportStatus.PUBLISHED.value
+                # 生成后保持 draft 状态，由用户在前端手动发布
                 db.session.commit()
                 
                 log_and_emit('INFO', 'report', f'[generate_task_report_async] Report generated successfully, report_id={report_id}', task_id=task_id)
