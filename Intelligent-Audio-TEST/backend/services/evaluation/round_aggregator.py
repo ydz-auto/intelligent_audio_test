@@ -109,6 +109,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                     ]
                     if completed:
                         avg_score = sum(r['score'] for r in completed) / len(completed)
+                        avg_raw = sum(r['raw_value'] for r in completed if r['raw_value'] is not None) / len([r for r in completed if r['raw_value'] is not None]) if any(r['raw_value'] is not None for r in completed) else None
                         aggregated[f'avg_{dim_name}'] = round(avg_score, 4)
 
                         # 创建/更新 round_number=NULL 的整体维度记录
@@ -124,6 +125,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                             # 仅在整体评估未产生分数时用算术平均兜底
                             if existing_overall.score is None:
                                 existing_overall.score = round(avg_score, 4)
+                                existing_overall.dimension_value = round(avg_raw, 4) if avg_raw is not None else None
                                 existing_overall.evaluation_status = 'completed'
                         else:
                             # 没有整体评估记录，创建一条聚合记录
@@ -133,6 +135,7 @@ class RoundAggregator(EvaluationLoggerMixin):
                                 algorithm_type=info.get('algorithm_type'),
                                 round_number=None,
                                 score=round(avg_score, 4),
+                                dimension_value=round(avg_raw, 4) if avg_raw is not None else None,
                                 status=None,
                                 evaluation_status='completed',
                                 error_message=None,
@@ -194,5 +197,10 @@ class RoundAggregator(EvaluationLoggerMixin):
         if not isinstance(result_data, dict):
             result_data = {}
 
-        result_data['aggregated'] = aggregated
+        # 合并到已有的 aggregated，而非覆盖
+        existing_aggregated = result_data.get('aggregated', {})
+        if not isinstance(existing_aggregated, dict):
+            existing_aggregated = {}
+        existing_aggregated.update(aggregated)
+        result_data['aggregated'] = existing_aggregated
         test_result.algorithm_result = result_data

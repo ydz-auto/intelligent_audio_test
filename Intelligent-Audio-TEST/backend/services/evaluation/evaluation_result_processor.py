@@ -105,14 +105,7 @@ class EvaluationResultProcessor(RoundAggregator):
                 main_field_path = p['field_path']
                 break
 
-        # 兜底：取第一个有 field_path 的 output 参数
-        if not main_field_path and output_params:
-            for p in output_params:
-                if p.get('field_path'):
-                    main_field_path = p['field_path']
-                    break
-
-        # 兼容旧字段 output_field_path
+        # 兼容旧字段 output_field_path（仅当显式配置了 main 角色时才有值）
         if not main_field_path:
             main_field_path = dim_data.get('output_field_path')
 
@@ -129,9 +122,6 @@ class EvaluationResultProcessor(RoundAggregator):
                 raw_value = resp_data.get(dim_name)
             elif isinstance(resp_data, dict) and 'results' in resp_data:
                 raw_value = resp_data['results'].get(dim_name, {}).get('value')
-            else:
-                # 尝试直接使用响应值
-                raw_value = list(resp_data.values())[0] if resp_data and isinstance(resp_data, dict) else None
 
         # 2. 计算得分
         score = calculate_score(raw_value, dim_data['rule'])
@@ -565,9 +555,6 @@ class EvaluationResultProcessor(RoundAggregator):
                 # 检查是否所有维度都已完成评估，如果是，更新TaskCase状态
                 if result_id and test_case_id:
                     if self.check_all_dimensions_completed(result_id, task_id):
-                        # Multi-round: aggregate before final status update
-                        if self.is_multi_round_result(result_id):
-                            self.aggregate_round_results(result_id, task_id, test_case_id)
                         self.update_task_case_status(result_id, True, task_id, test_case_id, test_type)
             finally:
                 local_db_session.close()

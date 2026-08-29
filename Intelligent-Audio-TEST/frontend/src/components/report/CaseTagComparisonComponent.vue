@@ -1239,8 +1239,8 @@ const getMetricValue = (tag, device, metricName) => {
     }
   }
 
-  // 如果没有真实数据，返回0作为默认值
-  return 0
+  // 如果没有真实数据，返回null作为默认值
+  return null
 }
 
 // 获取原始值数组（与getMetricValue相同的查找逻辑，但返回_raw数组）
@@ -1530,7 +1530,8 @@ const getChartData = (metricName) => {
       // 为每个设备生成数据，只包含筛选后的标签
       const data = filteredTags.value.map(tag => {
         // 调用getMetricValue获取数据，它会使用过滤后的tagMetricData
-        return parseFloat(getMetricValue(tag, device, metricName))
+        const val = getMetricValue(tag, device, metricName)
+        return val === null || val === undefined ? null : parseFloat(val)
       })
 
       return {

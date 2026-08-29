@@ -267,15 +267,22 @@ const formatPercent = (value) => {
   return `${num.toFixed(1)}%`
 }
 
-const formatMetricValue = (value) => {
+const getMetricDecimalPlaces = (metricName) => {
+  const metric = allMetrics.value.find(m => m.name === metricName)
+  const dp = metric?.decimal_places ?? metric?.decimalPlaces ?? 2
+  return dp
+}
+
+const formatMetricValue = (value, metricName) => {
   if (value === null || value === undefined) return '-'
   const num = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(num)) return String(value)
-  return num.toFixed(2)
+  const dp = metricName != null ? getMetricDecimalPlaces(metricName) : 2
+  return num.toFixed(dp)
 }
 
 const formatMetricWithUnit = (value, metricName) => {
-  const formattedValue = formatMetricValue(value)
+  const formattedValue = formatMetricValue(value, metricName)
   const unit = getMetricUnit(metricName)
   return unit ? `${formattedValue}${unit}` : formattedValue
 }

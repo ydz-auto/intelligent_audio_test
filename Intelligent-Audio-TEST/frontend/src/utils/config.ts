@@ -11,8 +11,8 @@ export const STATIC_CONFIG = {
 } as const;
 
 export const API_CONFIG = {
-  baseUrl: 'http://100.125.9.116:5000/api/v1',
-  wsBaseUrl: 'http://100.125.9.116:5000'
+  baseUrl: 'http://100.70.20.136:5000/api/v1',
+  wsBaseUrl: 'http://100.70.20.136:5000'
 } as const;
 
 export const APP_CONFIG = {

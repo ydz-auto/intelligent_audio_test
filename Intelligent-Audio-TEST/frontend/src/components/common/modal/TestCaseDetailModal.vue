@@ -155,7 +155,7 @@ const preparedComparisonData = computed(() => {
         }
         metricsMap[key] = {
           metric: d.name,
-          value: d.score ?? d.value,
+          value: d.value,
           round_number: rn,
           dimension_type: d.dimension_type ?? d.dimensionType ?? 'main',
           parent_dimension_id: d.parent_dimension_id ?? d.parentDimensionId ?? null,

@@ -307,7 +307,8 @@ const tableData = computed(() => {
       const row = { _rowId: `main_${rowSeq++}`, dimension: group.main.name, isSubDim: false, isGroupHeader: mainIsHeader }
       const unit = group.main.unit || ''
       devices.value.forEach((device, index) => {
-        row[`device-${index}`] = formatMetricValue(group.main.name, getAverageValue(group.main.name, device)) + unit
+        const val = formatMetricValue(group.main.name, getAverageValue(group.main.name, device))
+        row[`device-${index}`] = val === '-' ? '-' : val + unit
       })
       rows.push(row)
     }
@@ -316,7 +317,8 @@ const tableData = computed(() => {
       const row = { _rowId: `sub_${rowSeq++}`, dimension: sub.name, isSubDim: true }
       const unit = sub.unit || ''
       devices.value.forEach((device, index) => {
-        row[`device-${index}`] = formatMetricValue(sub.name, getAverageValue(sub.name, device)) + unit
+        const val = formatMetricValue(sub.name, getAverageValue(sub.name, device))
+        row[`device-${index}`] = val === '-' ? '-' : val + unit
       })
       rows.push(row)
     })
@@ -348,7 +350,7 @@ const formatMetricValue = (metricName, value) => {
 // metricData 已归一化为 {resource: {metric: value}}（resource 级别全局平均）
 const getAverageValue = (metricName, device) => {
   const metricData = getNormalizedMetricData()
-  if (!metricData || typeof metricData !== 'object') return 0
+  if (!metricData || typeof metricData !== 'object') return null
 
   const findValue = (resourceKey) => {
     if (resourceKey && metricData[resourceKey]) {
@@ -382,7 +384,7 @@ const getAverageValue = (metricName, device) => {
     }
   }
 
-  return 0
+  return null
 }
 </script>
 

@@ -47,6 +47,9 @@ POSTGRES_URI = os.environ.get(
     'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
 )
 
+# eval_server 微服务地址
+API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
+
 # ============================================================
 # 主维度定义：turn_taking（只配 input + api_settings + param_mappings，不配 output）
 # ============================================================
@@ -188,7 +191,7 @@ SUB_DIMENSIONS = [
         'result_type': 0,
         'result_min': 0.0,
         'result_max': 1.0,
-        'decimal_places': 2,
+        'decimal_places': 0,
         'weight': 1,
         'estimated_exec_time': 30,
         'score_unit': 'ms',
@@ -229,7 +232,7 @@ SUB_DIMENSIONS = [
         'result_type': 1,
         'result_min': 0.0,
         'result_max': None,
-        'decimal_places': 2,
+        'decimal_places': 0,
         'weight': 1,
         'estimated_exec_time': 30,
         'score_unit': 'ms',
@@ -418,34 +421,65 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
     if existing:
         dim_id = existing[0]
         print(f"  - {dimension_type} 维度已存在 (id={dim_id}, name={name})，更新")
-        conn.execute(text(
-            "UPDATE dimensions SET "
-            "  name = :name, keywords = :kw, description = :desc, "
-            "  type = :type, result_type = :rt, result_min = :rmin, "
-            "  result_max = :rmax, decimal_places = :dp, weight = :w, "
-            "  estimated_exec_time = :et, score_unit = :su, "
-            "  statistic_method = :sm, api_settings = :apis, "
-            "  rule = :rule, dimension_type = :dtype, "
-            "  parent_dimension_id = :pid, "
-            "  deleted = FALSE, updated_at = NOW() "
-            "WHERE id = :did"
-        ), {**common_fields, 'did': dim_id})
+        if dimension_type == 'main':
+            conn.execute(text(
+                "UPDATE dimensions SET "
+                "  name = :name, keywords = :kw, description = :desc, "
+                "  type = :type, result_type = :rt, result_min = :rmin, "
+                "  result_max = :rmax, decimal_places = :dp, weight = :w, "
+                "  estimated_exec_time = :et, score_unit = :su, "
+                "  statistic_method = :sm, api_settings = :apis, "
+                "  rule = :rule, dimension_type = :dtype, "
+                "  parent_dimension_id = :pid, api_url = :api_url, "
+                "  deleted = FALSE, updated_at = NOW() "
+                "WHERE id = :did"
+            ), {**common_fields, 'api_url': API_URL, 'did': dim_id})
+        else:
+            conn.execute(text(
+                "UPDATE dimensions SET "
+                "  name = :name, keywords = :kw, description = :desc, "
+                "  type = :type, result_type = :rt, result_min = :rmin, "
+                "  result_max = :rmax, decimal_places = :dp, weight = :w, "
+                "  estimated_exec_time = :et, score_unit = :su, "
+                "  statistic_method = :sm, api_settings = :apis, "
+                "  rule = :rule, dimension_type = :dtype, "
+                "  parent_dimension_id = :pid, "
+                "  deleted = FALSE, updated_at = NOW() "
+                "WHERE id = :did"
+            ), {**common_fields, 'did': dim_id})
     else:
-        result = conn.execute(text(
-            "INSERT INTO dimensions "
-            "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
-            "   type, result_type, result_min, result_max, decimal_places, "
-            "   weight, estimated_exec_time, rule, api_settings, status, "
-            "   api_status, score_unit, statistic_method, "
-            "   deleted, created_at, updated_at) "
-            "VALUES "
-            "  (:name, :kw, :dtype, :pid, :tc, :desc, "
-            "   :type, :rt, :rmin, :rmax, :dp, "
-            "   :w, :et, :rule, :apis, TRUE, "
-            "   'online', :su, :sm, "
-            "   FALSE, NOW(), NOW()) "
-            "RETURNING id"
-        ), {**common_fields, 'tc': task_code})
+        if dimension_type == 'main':
+            result = conn.execute(text(
+                "INSERT INTO dimensions "
+                "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
+                "   type, result_type, result_min, result_max, decimal_places, "
+                "   weight, estimated_exec_time, rule, api_settings, status, "
+                "   api_status, score_unit, statistic_method, api_url, "
+                "   deleted, created_at, updated_at) "
+                "VALUES "
+                "  (:name, :kw, :dtype, :pid, :tc, :desc, "
+                "   :type, :rt, :rmin, :rmax, :dp, "
+                "   :w, :et, :rule, :apis, TRUE, "
+                "   'online', :su, :sm, :api_url, "
+                "   FALSE, NOW(), NOW()) "
+                "RETURNING id"
+            ), {**common_fields, 'tc': task_code, 'api_url': API_URL})
+        else:
+            result = conn.execute(text(
+                "INSERT INTO dimensions "
+                "  (name, keywords, dimension_type, parent_dimension_id, task_type_code, description, "
+                "   type, result_type, result_min, result_max, decimal_places, "
+                "   weight, estimated_exec_time, rule, api_settings, status, "
+                "   api_status, score_unit, statistic_method, "
+                "   deleted, created_at, updated_at) "
+                "VALUES "
+                "  (:name, :kw, :dtype, :pid, :tc, :desc, "
+                "   :type, :rt, :rmin, :rmax, :dp, "
+                "   :w, :et, :rule, :apis, TRUE, "
+                "   'online', :su, :sm, "
+                "   FALSE, NOW(), NOW()) "
+                "RETURNING id"
+            ), {**common_fields, 'tc': task_code})
         dim_id = result.fetchone()[0]
         print(f"  + {dimension_type} 维度已插入 (id={dim_id}, name={name})")
     return dim_id

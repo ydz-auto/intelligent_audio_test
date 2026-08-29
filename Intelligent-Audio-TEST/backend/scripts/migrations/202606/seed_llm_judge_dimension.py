@@ -35,6 +35,9 @@ POSTGRES_URI = os.environ.get(
     'postgresql://intelligent_audio_test:intelligent_audio_test666@localhost:5432/intelligent_audio_test'
 )
 
+# eval_server 微服务地址
+API_URL = os.environ.get('EVAL_SERVER_URL', 'http://100.70.20.135:8888')
+
 
 def seed_llm_judge_dimension():
     engine = create_engine(POSTGRES_URI)
@@ -76,10 +79,12 @@ def seed_llm_judge_dimension():
             }, ensure_ascii=False)
             default_rule = json.dumps({'rules': [], 'defaultScore': 0}, ensure_ascii=False)
             conn.execute(text(
-                "UPDATE dimensions SET api_settings = :settings, rule = :rule, updated_at = NOW() "
+                "UPDATE dimensions SET api_settings = :settings, rule = :rule, "
+                "  api_url = :api_url, updated_at = NOW() "
                 "WHERE id = :did"
-            ), {'settings': default_api_settings, 'rule': default_rule, 'did': dim_id})
-            print(f"  + 已更新 llm_judge 维度 api_settings/rule (body_template 含 rounds 结构)")
+            ), {'settings': default_api_settings, 'rule': default_rule,
+                'api_url': API_URL, 'did': dim_id})
+            print(f"  + 已更新 llm_judge 维度 api_settings/rule/api_url (body_template 含 rounds 结构)")
         else:
             # 默认 body_template：rounds 外放维度级配置，rounds 内放数据字段
             default_api_settings = json.dumps({
@@ -108,7 +113,7 @@ def seed_llm_judge_dimension():
                 "  (name, keywords, dimension_type, task_type_code, description, "
                 "   type, result_type, result_min, result_max, decimal_places, "
                 "   weight, estimated_exec_time, rule, api_settings, status, "
-                "   api_status, score_unit, statistic_method, "
+                "   api_status, score_unit, statistic_method, api_url, "
                 "   deleted, created_at, updated_at) "
                 "VALUES "
                 "  ('LLM语义评分', 'llm_judge,语义,评分', 'main', 'llm_judge', "
@@ -116,12 +121,13 @@ def seed_llm_judge_dimension():
                 "   'auto', 1, 0.0, 5.0, 2, "
                 "   1, 120, "
                 "   :rule, :api_settings, TRUE, "
-                "   'online', '分', 'average', "
+                "   'online', '分', 'average', :api_url, "
                 "   FALSE, NOW(), NOW()) "
                 "RETURNING id"
             ), {
                 'rule': default_rule,
-                'api_settings': default_api_settings
+                'api_settings': default_api_settings,
+                'api_url': API_URL
             })
             dim_id = result.fetchone()[0]
             print(f"  + llm_judge 维度已插入 (id={dim_id})")
@@ -163,6 +169,12 @@ def seed_llm_judge_dimension():
             ('reasoning', '评分理由', '评分理由', 'text', 'output',
              'reasoning', None, 'aux', False,
              False, None, 'LLM 评分理由', 62),
+            ('llm_judge_enabled', '是否启用', 'LLM评估是否启用', 'boolean', 'output',
+             'enabled', None, 'aux', True,
+             False, None, 'LLM 评估是否正常执行(True/False)', 63),
+            ('llm_judge_model', 'LLM模型', '使用的LLM模型', 'text', 'output',
+             'model', None, 'aux', True,
+             False, None, '本次评估使用的 LLM 模型名', 64),
         ]
 
         param_inserted = 0

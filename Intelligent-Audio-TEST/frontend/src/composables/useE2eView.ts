@@ -617,9 +617,13 @@ export function useE2eView() {
   const showTestCaseDetails = (testCaseId: string | number) => {
     console.log('[showTestCaseDetails] 收到 testCaseId:', testCaseId, typeof testCaseId)
     console.log('[showTestCaseDetails] associatedCases:', associatedCases.value)
-    modalManager.open(MODAL_TYPES.TEST_CASE_DETAIL, { 
-      taskId: currentTaskId.value, 
-      caseId: testCaseId 
+    modalManager.open(MODAL_TYPES.TEST_CASE_DETAIL, {
+      title: '测试用例详情',
+      width: '1200px',
+      maxWidth: '95vw',
+      maxHeight: '90vh',
+      taskId: currentTaskId.value,
+      caseId: testCaseId
     })
   }
 

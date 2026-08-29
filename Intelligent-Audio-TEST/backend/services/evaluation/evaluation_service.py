@@ -294,7 +294,7 @@ class EvaluationService(EvaluationLoggerMixin):
 
         # 加载测试用例和参考文本
         case_data = self._load_test_case_and_refs(
-            test_case_id, field_mapper, kwargs, task_id
+            test_case_id, field_mapper, kwargs, task_id, round_number
         )
         if case_data is None:
             return False
@@ -364,8 +364,12 @@ class EvaluationService(EvaluationLoggerMixin):
 
         return True
 
-    def _load_test_case_and_refs(self, test_case_id, field_mapper, kwargs, task_id):
-        """加载测试用例、算法类型、参考文本和维度配置"""
+    def _load_test_case_and_refs(self, test_case_id, field_mapper, kwargs, task_id, round_number=None):
+        """加载测试用例、算法类型、参考文本和维度配置
+
+        round_number=None 时（整体评估）：合并所有轮次 dimensions + 顶层 dimensions
+        round_number=<int> 时（单轮评估）：只取该轮的 dimensions
+        """
         current_app = get_app()
         with current_app.app_context():
             local_db_session = db.session()
@@ -388,14 +392,15 @@ class EvaluationService(EvaluationLoggerMixin):
                 )
 
                 test_case_config = test_case.config or {}
-                # 从 rounds[].evaluation.dimensions 读取单轮维度
-                # 从 config.dimensions 读取多轮聚合维度
-                # 合并两者，使评估服务同时处理单轮和多轮维度
+                # 单轮评估：只取当前轮的 dimensions
+                # 整体评估：只取顶层 config.dimensions
                 dimensions_config = []
                 seen_dim_ids = set()
                 rounds = test_case_config.get('rounds', [])
-                if rounds and isinstance(rounds, list):
-                    for round_item in rounds:
+                if round_number is not None:
+                    # 单轮评估：只取指定轮的 dimensions
+                    if rounds and isinstance(rounds, list) and round_number < len(rounds):
+                        round_item = rounds[round_number]
                         if isinstance(round_item, dict):
                             evaluation = round_item.get('evaluation', {})
                             if isinstance(evaluation, dict):
@@ -405,13 +410,14 @@ class EvaluationService(EvaluationLoggerMixin):
                                     if dim_id and dim_id not in seen_dim_ids:
                                         seen_dim_ids.add(dim_id)
                                         dimensions_config.append(d)
-                # 合并顶层 config.dimensions（多轮聚合维度）
-                top_dims = test_case_config.get('dimensions', [])
-                for d in top_dims:
-                    dim_id = d.get('id') if isinstance(d, dict) else d
-                    if dim_id and dim_id not in seen_dim_ids:
-                        seen_dim_ids.add(dim_id)
-                        dimensions_config.append(d)
+                else:
+                    # 整体评估：只取顶层 config.dimensions
+                    top_dims = test_case_config.get('dimensions', [])
+                    for d in top_dims:
+                        dim_id = d.get('id') if isinstance(d, dict) else d
+                        if dim_id and dim_id not in seen_dim_ids:
+                            seen_dim_ids.add(dim_id)
+                            dimensions_config.append(d)
 
                 return {
                     'test_case': test_case,
@@ -517,7 +523,12 @@ class EvaluationService(EvaluationLoggerMixin):
                 dimension_data_list = []
                 for dim in dimensions:
                     dim_outputs = output_param_map.get(dim.id, [])
-                    output_field_path = dim_outputs[0]['field_path'] if dim_outputs else None
+                    # output_field_path 只从 output_role=main 的参数取，避免误取 aux 字段
+                    output_field_path = next(
+                        (p['field_path'] for p in dim_outputs
+                         if p.get('output_role') == 'main' and p.get('field_path')),
+                        None
+                    )
 
                     dim_dict = {
                         'id': dim.id,

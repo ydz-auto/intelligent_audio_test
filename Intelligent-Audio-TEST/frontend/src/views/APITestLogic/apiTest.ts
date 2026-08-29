@@ -577,9 +577,12 @@ export function useApiTest() {
   const showTestCaseDetails = (testCaseId: string | number) => {
     if (currentTaskId.value) {
       modalManager.open(MODAL_TYPES.TEST_CASE_DETAIL, {
+        title: '测试用例详情',
+        width: '1200px',
+        maxWidth: '95vw',
+        maxHeight: '90vh',
         taskId: currentTaskId.value,
-        caseId: testCaseId,
-        options: { width: '1200px' }
+        caseId: testCaseId
       });
     }
   }

@@ -201,7 +201,8 @@
                   <option value="in_progress">执行中</option>
                   <option value="calculating">计算指标中</option>
                   <option value="completed">已完成</option>
-                  <option value="failed">已失败</option>
+                  <option value="execution_failed">执行失败</option>
+                  <option value="evaluation_failed">评估失败</option>
                   <option value="skipped">已跳过</option>
                   <option value="stopped">已停止</option>
                 </select>
@@ -236,7 +237,7 @@
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
                     <div class="progress-time" style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
-                      {{ getCaseStatusLabel(testCase.status) }} ({{ testCase.duration || '' }})
+                      {{ getCaseStatusLabel(testCase) }} ({{ testCase.duration || '' }})
                       <CaseIdBadge :case-id="testCase.id" />
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
@@ -252,7 +253,7 @@
                   </div>
                   <div class="progress-actions" style="display: flex; align-items: center; gap: 8px;">
                     <div class="progress-status" style="display: flex; align-items: center; gap: 8px;">
-                      <i :class="getCaseStatusIcon(testCase.status).icon" :style="{ color: getCaseStatusIcon(testCase.status).color }"></i>
+                      <i :class="getCaseStatusIcon(testCase).icon" :style="{ color: getCaseStatusIcon(testCase).color }"></i>
                     </div>
                   </div>
                 </div>
@@ -279,7 +280,7 @@
                   <div class="progress-info" style="flex: 1; overflow: hidden;">
                     <div class="progress-name" style="font-weight: 500; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ testCase.name }}</div>
                     <div class="progress-time" style="font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 8px;">
-                      {{ getCaseStatusLabel(testCase.status) }} ({{ testCase.duration || '' }})
+                      {{ getCaseStatusLabel(testCase) }} ({{ testCase.duration || '' }})
                       <CaseIdBadge :case-id="testCase.id" />
                     </div>
                     <div v-if="testCase.roundProgress" class="round-progress" style="display: flex; align-items: center; gap: 6px; margin-top: 2px;">
@@ -294,7 +295,7 @@
                     </div>
                   </div>
                   <div class="progress-status" style="display: flex; align-items: center; gap: 8px;">
-                    <i :class="getCaseStatusIcon(testCase.status).icon" :style="{ color: getCaseStatusIcon(testCase.status).color }"></i>
+                    <i :class="getCaseStatusIcon(testCase).icon" :style="{ color: getCaseStatusIcon(testCase).color }"></i>
                   </div>
                 </div>
               </div>
@@ -483,12 +484,16 @@ const statusIconMap = {
   skipped: { icon: 'fas fa-forward', color: 'var(--warning-color)' },
   deleted: { icon: 'fas fa-trash', color: 'var(--danger-color, #FF4D4F)' },
   failed: { icon: 'fas fa-times', color: 'var(--danger-color, #FF4D4F)' },
+  execution_failed: { icon: 'fas fa-times-circle', color: 'var(--danger-color, #FF4D4F)' },
+  evaluation_failed: { icon: 'fas fa-exclamation-circle', color: 'var(--danger-color, #FF4D4F)' },
   stopped: { icon: 'fas fa-stop', color: 'var(--secondary-color)' }
 };
 
 const statusLabelMap = {
   completed: '已完成',
   failed: '已失败',
+  execution_failed: '执行失败',
+  evaluation_failed: '评估失败',
   in_progress: '执行中',
   calculating: '计算指标中',
   queued: '排队中',
@@ -498,8 +503,20 @@ const statusLabelMap = {
   deleted: '已删除'
 };
 
-const getCaseStatusIcon = (status) => statusIconMap[status] || statusIconMap.pending;
-const getCaseStatusLabel = (status) => statusLabelMap[status] || '等待中';
+const getCaseStatusIcon = (testCase) => {
+  if (testCase.status === 'failed') {
+    if (testCase.executionStatus === 'failed') return statusIconMap.execution_failed || statusIconMap.failed;
+    if (testCase.evaluationStatus === 'failed') return statusIconMap.evaluation_failed || statusIconMap.failed;
+  }
+  return statusIconMap[testCase.status] || statusIconMap.pending;
+};
+const getCaseStatusLabel = (testCase) => {
+  if (testCase.status === 'failed') {
+    if (testCase.executionStatus === 'failed') return statusLabelMap.execution_failed;
+    if (testCase.evaluationStatus === 'failed') return statusLabelMap.evaluation_failed;
+  }
+  return statusLabelMap[testCase.status] || '等待中';
+};
 
 // 将 tags 归一为字符串数组
 const normalizeCaseTags = (tags) => {
@@ -513,7 +530,13 @@ const filteredAssociatedCases = computed(() => {
   let list = props.associatedCases || [];
   // 状态筛选
   if (caseFilterStatus.value !== 'all') {
-    list = list.filter((c) => c.status === caseFilterStatus.value);
+    if (caseFilterStatus.value === 'execution_failed') {
+      list = list.filter((c) => c.executionStatus === 'failed');
+    } else if (caseFilterStatus.value === 'evaluation_failed') {
+      list = list.filter((c) => c.evaluationStatus === 'failed' && c.executionStatus !== 'failed');
+    } else {
+      list = list.filter((c) => c.status === caseFilterStatus.value);
+    }
   }
   // 搜索筛选（按名称或ID）
   const q = caseSearchQuery.value.trim().toLowerCase();

@@ -954,7 +954,33 @@ class ReportControllerBase:
                 # 判断是否是 reference_params_col 格式（list of {round_number, reference_params_path}）
                 if any(isinstance(v, dict) and ('reference_params_path' in v or 'referenceParamsPath' in v) for v in reference_params.values()):
                     return ReferenceParamsGenerator.get_reference_params_for_report(reference_params)
-                # 已经是展开后的字典格式（每个 value 是 {code, type, value}）或含 round_number 多轮格式
+                # 检查是否有多轮数据（value 中包含 round_number）
+                # 如果有，按 code 分组并展开为 code@round:N 格式
+                values_with_round = [v for v in reference_params.values()
+                                      if isinstance(v, dict) and v.get('round_number') is not None]
+                if len(values_with_round) > 1:
+                    # 按 code 分组，检测多轮
+                    by_code = {}
+                    for key, val in reference_params.items():
+                        if not isinstance(val, dict):
+                            continue
+                        code = val.get('code') or key.split('@round:')[0]
+                        by_code.setdefault(code, []).append((key, val))
+                    result = {}
+                    for code, items in by_code.items():
+                        has_multi_round = (len(items) > 1 and
+                                           any(v.get('round_number') is not None for _, v in items))
+                        for key, val in items:
+                            rn = val.get('round_number')
+                            if has_multi_round and rn is not None and '@round:' not in key:
+                                new_key = f'{code}@round:{rn}'
+                                val_copy = dict(val)
+                                val_copy['label'] = f'{code} (第{rn}轮)'
+                                result[new_key] = val_copy
+                            else:
+                                result[key] = val
+                    return result
+                # 已经是展开后的字典格式（每个 value 是 {code, type, value}）
                 # 直接原样返回
                 return reference_params
             if isinstance(reference_params, list):

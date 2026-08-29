@@ -1196,7 +1196,7 @@ const getMetricValue = (category, device, metricName) => {
     }
   }
 
-  return 0
+  return null
 }
 
 // 获取原始值数组（与getMetricValue相同的查找逻辑，但返回_raw数组）
@@ -1485,7 +1485,8 @@ const getChartData = (metricName) => {
       // 为每个设备生成数据
       const data = filteredCategories.value.map(category => {
         // 调用getMetricValue获取平均值数据
-        return parseFloat(getMetricValue(category, device, metricName))
+        const val = getMetricValue(category, device, metricName)
+        return val === null || val === undefined ? null : parseFloat(val)
       })
 
       return {

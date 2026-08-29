@@ -165,12 +165,25 @@
     <div v-if="hasExecutionResults" class="detail-section">
       <h4 class="section-title"><i class="fas fa-play-circle"></i> 执行结果</h4>
 
+      <!-- 多轮场景：轮次 Tab 控制执行结果与参考数据显示 -->
+      <div v-if="isMultiRoundFields && roundTabs.length > 1" class="round-tab-bar">
+        <button
+          v-for="(tab, idx) in roundTabs"
+          :key="tab.key"
+          class="round-tab-btn"
+          :class="{ active: activeRoundTab === idx }"
+          @click="activeRoundTab = idx"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
       <div class="execution-results-container">
         <!-- 参考数据表格 -->
-        <div v-if="referenceTextFields.length > 0" class="result-subsection">
+        <div v-if="currentRoundReferenceTextFields.length > 0" class="result-subsection">
           <div class="subsection-label"><i class="fas fa-bookmark"></i> 参考数据</div>
           <div class="kv-table">
-            <div class="kv-table-row" v-for="field in referenceTextFields" :key="'ref_' + field.param_code">
+            <div class="kv-table-row" v-for="field in currentRoundReferenceTextFields" :key="'ref_' + field.param_code">
               <div class="kv-table-key">{{ field.label || field.param_code }}</div>
               <div class="kv-table-value">
                 <pre v-if="isJsonString(field.text)" class="json-formatted">{{ formatJson(field.text) }}</pre>
@@ -531,6 +544,87 @@ const hasExecutionResults = computed(() => {
   return false;
 });
 
+// 从 referenceParams 中提取参考文本值
+const getReferenceTextValue = (paramCode) => {
+  const refParams = props.referenceParams || {};
+  const data = refParams[paramCode];
+  if (!data) return '';
+  if (typeof data === 'string') return data;
+  return data.text || data.value || '';
+};
+
+// 从结果数据中提取文本值（algorithmResults 现在是扁平数组）
+const getResultTextValue = (device, paramCode) => {
+  const items = props.algorithmResults || [];
+  const norm = i => ({
+    ...i,
+    param_code: i.param_code ?? i.paramCode,
+    param_type: i.param_type ?? i.paramType,
+  });
+  const normed = items.map(norm);
+  let item;
+  if (props.isComparison && device !== 'default') {
+    // 先尝试精确匹配，再回退到包含匹配（快照可能使用完整资源名如 "1-小艺通话-1.0.0"）
+    // 使用大小写不敏感比较，兼容 "HarmonyOS Harmony Device" vs "9-harmonyos harmony device-1.0.0"
+    const deviceLower = device.toLowerCase();
+    item = normed.find(i => i.device === device && i.param_code === paramCode)
+         || normed.find(i => i.device && (i.device.toLowerCase().includes(deviceLower) || deviceLower.includes(i.device.toLowerCase())) && i.param_code === paramCode);
+  } else {
+    item = normed.find(i => i.param_code === paramCode);
+  }
+  if (!item || item.value === undefined || item.value === null) return '无数据';
+  const data = item.value;
+  // 时间戳类型：尝试格式化为可读时间
+  if (item.param_type === 'timestamp') {
+    const ts = typeof data === 'string' ? data : String(data);
+    // 纯数字时间戳（秒或毫秒）
+    if (/^\d{10,13}$/.test(ts.trim())) {
+      const ms = ts.trim().length === 10 ? Number(ts.trim()) * 1000 : Number(ts.trim());
+      const d = new Date(ms);
+      if (!isNaN(d.getTime())) {
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+      }
+    }
+    // ISO 格式字符串
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) {
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+    }
+    return ts;
+  }
+  // 数值类型：格式化数字
+  if (item.param_type === 'number') {
+    if (typeof data === 'number') {
+      return Number.isInteger(data) ? String(data) : data.toFixed(2);
+    }
+    const num = Number(data);
+    if (!isNaN(num)) {
+      return Number.isInteger(num) ? String(num) : num.toFixed(2);
+    }
+    return String(data);
+  }
+  // 布尔类型
+  if (item.param_type === 'boolean') {
+    if (typeof data === 'boolean') return data ? '是' : '否';
+    return String(data);
+  }
+  if (typeof data === 'string') {
+    // 尝试解析 JSON 字符串并格式化
+    try {
+      const parsed = JSON.parse(data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return JSON.stringify(parsed, null, 2);
+      }
+    } catch {}
+    return data;
+  }
+  if (data.text) return data.text;
+  if (data.value) return data.value;
+  return JSON.stringify(data, null, 2);
+};
+
 // 动态参考文本字段
 const referenceTextFields = computed(() => {
   const refParams = props.referenceParams || {};
@@ -667,12 +761,62 @@ const subDimToParent = computed(() => {
   return map;
 });
 
-// 按维度分组结果文本字段（子维度归入父维度组）
+// 判断是否多轮场景：任一字段（结果/参考）带轮次标记
+const isMultiRoundFields = computed(() => {
+  return resultTextFields.value.some(fieldHasRoundTag)
+    || referenceTextFields.value.some(fieldHasRoundTag);
+});
+
+// 当前轮次 Tab 对应的结果文本字段
+const currentRoundResultTextFields = computed(() => {
+  const tab = roundTabs.value[activeRoundTab.value];
+  if (!tab) return resultTextFields.value;
+  // 非多轮场景：返回全部
+  if (!isMultiRoundFields.value) return resultTextFields.value;
+  // 整体 Tab：
+  // - 无维度归属的字段（设备/API执行结果）：显示所有轮次
+  // - 有维度归属的字段（评估结果）：只显示 roundTag === 'overall' 的字段
+  if (tab.roundTag === 'overall') {
+    return resultTextFields.value.filter(field => {
+      // 无维度归属 → 设备/API执行结果 → 显示所有轮次
+      if (!field.dimension_name) return true;
+      // 有维度归属 → 评估结果 → 只显示整体评估字段（@overall）
+      const roundTag = parseFieldRoundTag(field);
+      return roundTag === 'overall';
+    });
+  }
+  // 按轮次过滤
+  return resultTextFields.value.filter(field => {
+    const roundTag = parseFieldRoundTag(field);
+    if (tab.roundTag === null) return true;
+    // 有明确轮次标记的字段按轮次匹配
+    // 无轮次标记的字段在所有轮次 Tab 下都显示
+    return roundTag === null || roundTag === tab.roundTag;
+  });
+});
+
+// 当前轮次 Tab 对应的参考文本字段
+const currentRoundReferenceTextFields = computed(() => {
+  const tab = roundTabs.value[activeRoundTab.value];
+  if (!tab) return referenceTextFields.value;
+  if (!isMultiRoundFields.value) return referenceTextFields.value;
+  // 整体 Tab：显示所有轮次的参考数据
+  if (tab.roundTag === 'overall') return referenceTextFields.value;
+  return referenceTextFields.value.filter(field => {
+    const roundTag = parseFieldRoundTag(field);
+    if (tab.roundTag === null) return true;
+    // 有明确轮次标记的字段按轮次匹配
+    // 无轮次标记的字段在所有轮次 Tab 下都显示
+    return roundTag === null || roundTag === tab.roundTag;
+  });
+});
+
+// 按维度分组结果文本字段（子维度归入父维度组），按当前轮次过滤
 const groupedResultTextFields = computed(() => {
   const groups = {};
   const order = [];
 
-  for (const field of resultTextFields.value) {
+  for (const field of currentRoundResultTextFields.value) {
     let dimName = field.dimension_name || null;
     // 子维度归入父维度组
     if (dimName && subDimToParent.value[dimName]) {
@@ -812,6 +956,35 @@ const parseMetricKey = (k) => {
   return { base: m[1], roundTag: `round:${m[3]}` };
 };
 
+// 从结果/参考字段的 param_code 或 round_number 提取轮次标记
+// param_code 形如 "answer@round:1" → roundTag "round:1"
+// round_number 为数字(1-indexed) → roundTag "round:N"
+// round_number 为 null/undefined → 无轮次标记(null)
+const parseFieldRoundTag = (field) => {
+  // 优先从 param_code 提取
+  if (field.param_code) {
+    const m = field.param_code.match(/@round:(\d+)$/);
+    if (m) return `round:${m[1]}`;
+  }
+  // 回退到 round_number 字段（1-indexed）
+  const rn = field.round_number;
+  if (rn !== null && rn !== undefined && !isNaN(Number(rn))) {
+    return `round:${Number(rn)}`;
+  }
+  return null;
+};
+
+// 从 param_code 提取基础名（去掉 @round:N 后缀）
+const getFieldBaseName = (field) => {
+  if (field.param_code) {
+    return field.param_code.replace(/@round:\d+$/, '');
+  }
+  return field.param_code || field.label || '';
+};
+
+// 判断字段是否带轮次标记（用于区分多轮/单轮场景）
+const fieldHasRoundTag = (field) => parseFieldRoundTag(field) !== null;
+
 // 从 comparisonData 中获取某 key 对应的维度层级信息
 const getDimInfo = (k) => {
   for (const d of Object.values(props.comparisonData)) {
@@ -838,10 +1011,33 @@ const allMetricKeys = computed(() => {
   return Array.from(names);
 });
 
-// 轮次 Tab 列表：从指标 key 中提取出现的轮次
+// 获取指标原始值（在 roundTabs 之前声明，避免 temporal dead zone）
+const getMetricRawValue = (device, metricName) => {
+  const entry = props.comparisonData[device]?.metrics?.[metricName]
+  if (entry === undefined || entry === null) return '-'
+  if (typeof entry === 'object') return entry.value ?? '-'
+  return entry
+}
+
+// 判断指定轮次 Tab 是否有评估数据（至少一个设备有非空指标值）
+const tabHasMetricData = (roundTag) => {
+  const keys = allMetricKeys.value.filter(k => {
+    const { roundTag: rt } = parseMetricKey(k);
+    if (roundTag === null) return true;
+    return rt === roundTag;
+  });
+  if (keys.length === 0) return false;
+  return keys.some(k => props.devices.some(device => {
+    const raw = getMetricRawValue(device, k);
+    return raw !== '-' && raw !== null && raw !== undefined && raw !== '';
+  }));
+};
+
+// 轮次 Tab 列表：从指标 key + 执行结果/参考字段中提取出现的轮次
 const roundTabs = computed(() => {
   const tabs = [];
   const seen = new Set();
+  // 1. 从指标 key 中提取轮次
   allMetricKeys.value.forEach(k => {
     const { roundTag } = parseMetricKey(k);
     if (roundTag && !seen.has(roundTag)) {
@@ -854,20 +1050,29 @@ const roundTabs = computed(() => {
       }
     }
   });
-  // 如果有指标但没有任何 roundTag（全部无后缀），就放一个默认 tab
-  if (tabs.length === 0 && allMetricKeys.value.length > 0) {
+  // 2. 从执行结果/参考字段中提取轮次
+  [...resultTextFields.value, ...referenceTextFields.value].forEach(field => {
+    const roundTag = parseFieldRoundTag(field);
+    if (roundTag && !seen.has(roundTag)) {
+      seen.add(roundTag);
+      if (roundTag === 'overall') {
+        tabs.push({ key: 'overall', label: '整体', roundTag: 'overall', order: 9999 });
+      } else {
+        const rn = parseInt(roundTag.split(':')[1], 10);
+        tabs.push({ key: roundTag, label: `第${rn}轮`, roundTag, order: rn });
+      }
+    }
+  });
+  // 如果有指标或字段但没有任何 roundTag（全部无后缀），就放一个默认 tab
+  if (tabs.length === 0 && (allMetricKeys.value.length > 0 || resultTextFields.value.length > 0 || referenceTextFields.value.length > 0)) {
     tabs.push({ key: 'all', label: '指标', roundTag: null, order: 0 });
   }
   tabs.sort((a, b) => a.order - b.order);
-  return tabs;
+  // 过滤掉没有评估数据的"整体" Tab（只有配置了整体评估维度才显示）
+  return tabs.filter(tab => tab.roundTag !== 'overall' || tabHasMetricData('overall'));
 });
 
 const activeRoundTab = ref(0);
-watch(roundTabs, (newTabs) => {
-  if (activeRoundTab.value >= newTabs.length) {
-    activeRoundTab.value = 0;
-  }
-}, { flush: 'post' });
 
 // 当前轮次 Tab 对应的指标 key 列表
 const currentRoundMetricKeys = computed(() => {
@@ -875,7 +1080,9 @@ const currentRoundMetricKeys = computed(() => {
   if (!tab) return [];
   return allMetricKeys.value.filter(k => {
     const { roundTag } = parseMetricKey(k);
-    // roundTag 为 null 的指标在 'all' tab 或者唯一 tab 时显示
+    // roundTag 为 null 的指标（无轮次标记）在所有 Tab 下都显示
+    if (roundTag === null) return true;
+    // 'all' tab 显示全部
     if (tab.roundTag === null) return true;
     return roundTag === tab.roundTag;
   });
@@ -1013,22 +1220,31 @@ const formatMetricForDisplay = (metricName, value) => {
   if (value === '-' || value === null || value === undefined) return '-'
   const num = typeof value === 'number' ? value : Number(value)
   if (!Number.isFinite(num)) return String(value)
-  const dp = metricDecimalPlacesMap.value?.[String(metricName)]
+  // 从带轮次后缀的 key 中提取基础维度名（如 "WER@round:1" → "WER"）
+  const baseName = String(metricName).replace(/@round:\d+$|@overall$/, '')
+  const dp = metricDecimalPlacesMap.value?.[baseName] ?? metricDecimalPlacesMap.value?.[String(metricName)]
   if (Number.isInteger(dp) && dp >= 0) return num.toFixed(dp)
   return String(num)
-}
-
-const getMetricRawValue = (device, metricName) => {
-  const entry = props.comparisonData[device]?.metrics?.[metricName]
-  if (entry === undefined || entry === null) return '-'
-  // 兼容 { metric, value } 对象和裸值两种格式
-  if (typeof entry === 'object') return entry.value ?? '-'
-  return entry
 }
 
 const getMetricValue = (device, metricName) => {
   return formatMetricForDisplay(metricName, getMetricRawValue(device, metricName))
 }
+
+// 是否正在初始化（用于 watch 中判断是否需要自动选择第一个有评估数据的 Tab）
+const roundTabInitialized = ref(false);
+watch(roundTabs, (newTabs) => {
+  if (!roundTabInitialized.value) {
+    // 首次初始化时，选中第一个有评估数据的 Tab
+    const firstWithDataIdx = newTabs.findIndex(tab => tabHasMetricData(tab.roundTag));
+    activeRoundTab.value = firstWithDataIdx >= 0 ? firstWithDataIdx : 0;
+    roundTabInitialized.value = true;
+  } else if (activeRoundTab.value >= newTabs.length) {
+    // Tab 列表变化后，当前选中超出范围则重置
+    const firstWithDataIdx = newTabs.findIndex(tab => tabHasMetricData(tab.roundTag));
+    activeRoundTab.value = firstWithDataIdx >= 0 ? firstWithDataIdx : 0;
+  }
+}, { flush: 'post', immediate: true });
 
 const comparisonTableColumns = computed(() => {
   const columns = [
@@ -1095,87 +1311,6 @@ const singleTableData = computed(() => {
     }
   })
 })
-
-// 从 referenceParams 中提取参考文本值
-const getReferenceTextValue = (paramCode) => {
-  const refParams = props.referenceParams || {};
-  const data = refParams[paramCode];
-  if (!data) return '';
-  if (typeof data === 'string') return data;
-  return data.text || data.value || '';
-};
-
-// 从结果数据中提取文本值（algorithmResults 现在是扁平数组）
-const getResultTextValue = (device, paramCode) => {
-  const items = props.algorithmResults || [];
-  const norm = i => ({
-    ...i,
-    param_code: i.param_code ?? i.paramCode,
-    param_type: i.param_type ?? i.paramType,
-  });
-  const normed = items.map(norm);
-  let item;
-  if (props.isComparison && device !== 'default') {
-    // 先尝试精确匹配，再回退到包含匹配（快照可能使用完整资源名如 "1-小艺通话-1.0.0"）
-    // 使用大小写不敏感比较，兼容 "HarmonyOS Harmony Device" vs "9-harmonyos harmony device-1.0.0"
-    const deviceLower = device.toLowerCase();
-    item = normed.find(i => i.device === device && i.param_code === paramCode)
-         || normed.find(i => i.device && (i.device.toLowerCase().includes(deviceLower) || deviceLower.includes(i.device.toLowerCase())) && i.param_code === paramCode);
-  } else {
-    item = normed.find(i => i.param_code === paramCode);
-  }
-  if (!item || item.value === undefined || item.value === null) return '无数据';
-  const data = item.value;
-  // 时间戳类型：尝试格式化为可读时间
-  if (item.param_type === 'timestamp') {
-    const ts = typeof data === 'string' ? data : String(data);
-    // 纯数字时间戳（秒或毫秒）
-    if (/^\d{10,13}$/.test(ts.trim())) {
-      const ms = ts.trim().length === 10 ? Number(ts.trim()) * 1000 : Number(ts.trim());
-      const d = new Date(ms);
-      if (!isNaN(d.getTime())) {
-        const pad = n => String(n).padStart(2, '0');
-        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-      }
-    }
-    // ISO 格式字符串
-    const d = new Date(ts);
-    if (!isNaN(d.getTime())) {
-      const pad = n => String(n).padStart(2, '0');
-      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-    }
-    return ts;
-  }
-  // 数值类型：格式化数字
-  if (item.param_type === 'number') {
-    if (typeof data === 'number') {
-      return Number.isInteger(data) ? String(data) : data.toFixed(2);
-    }
-    const num = Number(data);
-    if (!isNaN(num)) {
-      return Number.isInteger(num) ? String(num) : num.toFixed(2);
-    }
-    return String(data);
-  }
-  // 布尔类型
-  if (item.param_type === 'boolean') {
-    if (typeof data === 'boolean') return data ? '是' : '否';
-    return String(data);
-  }
-  if (typeof data === 'string') {
-    // 尝试解析 JSON 字符串并格式化
-    try {
-      const parsed = JSON.parse(data);
-      if (typeof parsed === 'object' && parsed !== null) {
-        return JSON.stringify(parsed, null, 2);
-      }
-    } catch {}
-    return data;
-  }
-  if (data.text) return data.text;
-  if (data.value) return data.value;
-  return JSON.stringify(data, null, 2);
-};
 
 const expandedTexts = ref({});
 const toggleText = (key) => {
@@ -1415,6 +1550,10 @@ watch(dimResultGroups, (newGroups) => {
   border-bottom: 1px solid #e8e8e8;
   padding-left: 8px;
   flex-wrap: wrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--background-primary, #fff);
 }
 
 .round-tab-btn {
@@ -1428,7 +1567,7 @@ watch(dimResultGroups, (newGroups) => {
   color: var(--text-secondary);
   cursor: pointer;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease, background 0.2s ease;
   appearance: none;
   -webkit-appearance: none;
 }
@@ -1438,10 +1577,10 @@ watch(dimResultGroups, (newGroups) => {
 }
 
 .round-tab-btn.active {
-  background: rgba(255, 106, 0, 0.1);
-  color: #FF6A00;
-  border-color: rgba(255, 106, 0, 0.3);
-  font-weight: 500;
+  background: var(--primary-color) !important;
+  color: white !important;
+  border-color: var(--primary-color) !important;
+  font-weight: 600 !important;
 }
 
 .dim-value {

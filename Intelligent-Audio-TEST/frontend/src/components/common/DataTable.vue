@@ -188,18 +188,22 @@ const getCellValue = (row, column) => {
 
 // 格式化单元格值
 const formatCellValue = (value, column) => {
-  if (value === null || value === undefined) {
+  if (value === null || value === undefined || value === '-') {
     return column.placeholder || '-'
   }
   let formattedValue = value
   if (column.formatter) {
     formattedValue = column.formatter(value)
   }
-  
+
+  if (formattedValue === '-' || formattedValue === null || formattedValue === undefined) {
+    return '-'
+  }
+
   if (column.unit && column.key !== 'category' && column.key !== 'tag') {
     return `${formattedValue}${column.unit}`
   }
-  
+
   return formattedValue
 }
 

@@ -13,7 +13,7 @@ def run_server(port):
                    env=env, cwd=server_dir)
 
 def main():
-    ports = [8888]
+    ports = [5000]
     threads = []
     
     for port in ports:

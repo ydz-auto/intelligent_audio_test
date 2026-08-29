@@ -47,7 +47,7 @@ export function registerGlobalModals() {
   
   manager.registerModal(MODAL_TYPES.TEST_CASE_DETAIL, {
     component: TestCaseDetailModal,
-    defaultConfig: { title: '测试用例详情' }
+    defaultConfig: { title: '测试用例详情', width: '1200px', maxWidth: '95vw', maxHeight: '90vh' }
   });
   
   manager.registerModal(MODAL_TYPES.ADD_TEST_CASE, {

@@ -525,7 +525,8 @@ const {
   taskLogs, filteredTaskLogs, taskLogSearchTerm, taskLogLevelFilter, taskLogFilter,
   refreshTaskLogs, filterTaskLogs,
   // 算法选项
-  algorithmOptions
+  algorithmOptions,
+  loadAlgorithmOptions
 } = useTasks();
 
 // 监听图表容器ref变化，初始化图表
@@ -536,7 +537,7 @@ watch([taskTypeChartRef, taskTrendChartRef, taskStatusChartRef], () => {
 }, { deep: true });
 
 onMounted(async () => {
-  await fetchTasks();
+  await Promise.all([fetchTasks(), loadAlgorithmOptions()]);
   applyFilters();
   // 初始化时获取日志
   await refreshTaskLogs();

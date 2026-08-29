@@ -111,56 +111,74 @@ class ReportUtils:
     def extract_dimension_values(result_id, all_dimensions, dim_results_map=None):
         """
         提取测试结果的维度得分。
+
+        取值优先级：
+        1. 有 overall（round_number=None）记录 → 取 overall 的值
+        2. 无 overall → 取各轮（round_number != None）记录的算术平均
+        3. 只有一轮 → 取该轮的值
         """
-        values = {}
-        
         # 创建维度ID到名称的映射
         dim_id_to_name = {dim.id: dim.name for dim in all_dimensions}
-        
+
+        # 收集各维度的 overall 值和单轮值
+        dim_overall = {}   # dim_id -> value
+        dim_rounds = {}    # dim_id -> [value, ...]
+
         if dim_results_map and result_id in dim_results_map:
-            # 使用预加载的映射
             dim_results = dim_results_map[result_id]
             for dr in dim_results:
-                # 注意：这里 dr 可能是字典（推荐）或 tuple 或对象
-                
                 dim_id = None
                 dim_val = None
-                
-                # 情况1: dr 是字典 {"id": dimension_id, "value": dimension_value, "name": dimension_name}
+                dim_round = None
+
                 if isinstance(dr, dict):
                     dim_id = dr.get('id')
                     dim_val = dr.get('value')
-                
-                # 情况2: dr 是 TestResultDimension 对象
+                    dim_round = dr.get('round_number')
                 elif hasattr(dr, 'dimension_id'):
                     dim_id = dr.dimension_id
                     dim_val = dr.dimension_value
-                
-                # 情况3: dr 是 SQLAlchemy Row 或 namedtuple
+                    dim_round = getattr(dr, 'round_number', None)
                 elif hasattr(dr, '_fields') or isinstance(dr, tuple):
-                    if isinstance(dr, tuple) or hasattr(dr, '_fields'):
-                        if hasattr(dr, 'dimension_id'):
-                            dim_id = dr.dimension_id
-                            dim_val = dr.dimension_value
-                        elif hasattr(dr, 'id'):
-                            dim_id = dr.id
-                            dim_val = dr.value
-                
-                # 使用维度ID对应的名称作为键
+                    if hasattr(dr, 'dimension_id'):
+                        dim_id = dr.dimension_id
+                        dim_val = dr.dimension_value
+                        dim_round = getattr(dr, 'round_number', None)
+
                 if dim_id and dim_id in dim_id_to_name:
-                    values[dim_id_to_name[dim_id]] = dim_val
+                    if dim_round is None:
+                        dim_overall[dim_id] = dim_val
+                    else:
+                        if dim_id not in dim_rounds:
+                            dim_rounds[dim_id] = []
+                        if dim_val is not None:
+                            dim_rounds[dim_id].append(dim_val)
         else:
             # 数据库查询兜底
-            for dim in all_dimensions:
-                dim_result = TestResultDimension.query.filter_by(
-                    test_result_id=result_id, 
-                    dimension_id=dim.id
-                ).first()
-                
-                if dim_result:
-                    # 直接使用原始维度名称
-                    values[dim.name] = dim_result.dimension_value
-        
+            dim_all = TestResultDimension.query.filter_by(
+                test_result_id=result_id
+            ).all()
+            for dr in dim_all:
+                dim_id = dr.dimension_id
+                if dim_id and dim_id in dim_id_to_name:
+                    if dr.round_number is None:
+                        dim_overall[dim_id] = dr.dimension_value
+                    else:
+                        if dim_id not in dim_rounds:
+                            dim_rounds[dim_id] = []
+                        if dr.dimension_value is not None:
+                            dim_rounds[dim_id].append(dr.dimension_value)
+
+        values = {}
+        for dim_id, dim_name in dim_id_to_name.items():
+            if dim_id in dim_overall and dim_overall[dim_id] is not None:
+                values[dim_name] = dim_overall[dim_id]
+            elif dim_id in dim_rounds and dim_rounds[dim_id]:
+                scores = dim_rounds[dim_id]
+                values[dim_name] = round(sum(scores) / len(scores), 4)
+            else:
+                values[dim_name] = None
+
         return values
     
     @staticmethod
@@ -321,20 +339,42 @@ class ReportUtils:
 
                     # 对非 average 维度收集完整 item，用于后续策略聚合
                     if dim_name in custom_agg_dims:
-                        # 从 dim_results_map 拿 api_raw_response
-                        raw_resp = None
+                        # 从 dim_results_map 取该用例该维度的记录
+                        # 优先级：有 overall（round_number=None）→ 只取 overall 1 个 item
+                        #         无 overall → 取各轮独立 item
+                        target_dim_id = dim_id_to_name_inv.get(dim_name)
+                        collected_items = []
                         if dim_results_map and result.id in dim_results_map:
+                            overall_item = None
+                            round_items = []
                             for dr in dim_results_map[result.id]:
                                 dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
-                                if dr_dim_id and dim_name in dim_id_to_name_inv and dr_dim_id == dim_id_to_name_inv[dim_name]:
+                                if dr_dim_id and dr_dim_id == target_dim_id:
+                                    dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
+                                    dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
+                                    if dr_val is None:
+                                        continue
                                     raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
-                                    break
+                                    item = {'dimension_value': dr_val, 'api_raw_response': raw_resp, 'test_result_id': result.id}
+                                    if dr_round is None:
+                                        overall_item = item
+                                    else:
+                                        round_items.append(item)
+                            # 有 overall 只取 overall，无 overall 取各轮
+                            collected_items = [overall_item] if overall_item else round_items
 
-                        agg_item = {'dimension_value': score, 'api_raw_response': raw_resp, 'test_result_id': result.id}
-                        category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
-                        resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(agg_item)
-                        for tag in tags:
-                            tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(agg_item)
+                        if collected_items:
+                            for item in collected_items:
+                                category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(item)
+                                resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(item)
+                                for tag in tags:
+                                    tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(item)
+                        elif score is not None:
+                            agg_item = {'dimension_value': score, 'api_raw_response': None, 'test_result_id': result.id}
+                            category_agg_items.setdefault(dim_name, {}).setdefault(category, {}).setdefault(resource, []).append(agg_item)
+                            resource_agg_items.setdefault(dim_name, {}).setdefault(resource, []).append(agg_item)
+                            for tag in tags:
+                                tag_agg_items.setdefault(dim_name, {}).setdefault(tag, {}).setdefault(resource, []).append(agg_item)
 
         # 9. 计算平均值 (Metric Data & Tag Metric Data)
         # metric_data 改为 resource 级别全局平均（不按 category 分组，与 device_stats 口径一致）
@@ -353,12 +393,16 @@ class ReportUtils:
 
         # 9.5 计算按标签分类统计的数据
         tag_category_metric_data = ReportUtils._calculate_tag_category_averages(
-            tag_accumulator, tag_category_map
+            tag_accumulator, tag_category_map, tag_agg_items, dim_statistic_method, dim_name_to_output_params if custom_agg_dims else None
         )
 
         # 10. 计算 Case Type Stats (即按分组统计)
         # 优化：使用 calculate_case_type_stats_optimized 并传入 dim_results_map 提高性能
-        case_type_stats = ReportUtils.calculate_case_type_stats_optimized(results, all_dimensions, dim_results_map)
+        case_type_stats = ReportUtils.calculate_case_type_stats_optimized(
+            results, all_dimensions, dim_results_map,
+            dim_statistic_method=dim_statistic_method,
+            dim_output_params=dim_output_params
+        )
 
         return {
             "metric_data": metric_data,
@@ -380,7 +424,7 @@ class ReportUtils:
                 if res not in result_data[key]:
                     result_data[key][res] = {}
                 for dim_name, stats in dims.items():
-                    result_data[key][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
+                    result_data[key][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
         return result_data
 
     @staticmethod
@@ -396,7 +440,7 @@ class ReportUtils:
             if resource not in result_data:
                 result_data[resource] = {}
             for dim_name, stats in dims.items():
-                result_data[resource][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
+                result_data[resource][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
         return result_data
 
     @staticmethod
@@ -453,7 +497,7 @@ class ReportUtils:
                         metric_data[group_key][resource][dim_name] = agg_val
 
     @staticmethod
-    def _calculate_tag_category_averages(tag_accumulator, tag_category_map):
+    def _calculate_tag_category_averages(tag_accumulator, tag_category_map, tag_agg_items=None, dim_statistic_method=None, dim_name_to_output_params=None):
         """
         辅助函数：按标签分类计算平均值
 
@@ -509,7 +553,20 @@ class ReportUtils:
                     
                     tag_metrics = {}
                     for dim_name, stats in dims.items():
-                        tag_metrics[dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
+                        if dim_name == 'success_rate':
+                            tag_metrics[dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
+                            continue
+                        # 非平均维度用策略类聚合
+                        if tag_agg_items and dim_statistic_method and dim_name in dim_statistic_method:
+                            method = dim_statistic_method.get(dim_name, 'average')
+                            if method != 'average' and tag_agg_items.get(dim_name, {}).get(tag_name, {}).get(resource):
+                                from backend.utils.report.aggregation_strategies import get_strategy
+                                strategy = get_strategy(method)
+                                output_params = (dim_name_to_output_params or {}).get(dim_name, [])
+                                agg_val = strategy.aggregate(tag_agg_items[dim_name][tag_name][resource], output_params=output_params)
+                                tag_metrics[dim_name] = agg_val
+                                continue
+                        tag_metrics[dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
                     
                     result_data[resource]['categories'][cat_key]['tags'].append({
                         'tag_name': tag_name,
@@ -537,53 +594,126 @@ class ReportUtils:
                     if dim_values.get(dim.name) is not None:
                         dim_scores.append(dim_values[dim.name])
                 
-                type_metrics[dim.name] = (sum(dim_scores) / len(dim_scores)) if dim_scores else 0
+                type_metrics[dim.name] = (sum(dim_scores) / len(dim_scores)) if dim_scores else None
             stats[group_id] = type_metrics
         return stats
     
     @staticmethod
-    def calculate_case_type_stats_optimized(results, all_dimensions, dim_results_map=None):
+    def calculate_case_type_stats_optimized(results, all_dimensions, dim_results_map=None,
+                                           dim_statistic_method=None, dim_output_params=None):
         """
         计算按用例分组(Case Type)的统计数据。
+        非average维度使用聚合策略，average维度使用算术平均。
         """
-        group_scores = {} # {group_id: {dim_name: [scores]}}
-        
-        # 预加载所有 TestCase，避免循环内 N+1 查询
+        group_scores = {}   # {group_id: {dim_name: [scores]}}  for average dims
+        group_agg_items = {}  # {group_id: {dim_name: [items]}}  for non-average dims
+
+        # 维度名 -> statistic_method
+        if dim_statistic_method is None:
+            dim_statistic_method = {dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions}
+        custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
+
+        # dim_id -> name 反向映射
+        dim_id_to_name = {dim.id: dim.name for dim in all_dimensions}
+        dim_name_to_id = {dim.name: dim.id for dim in all_dimensions}
+
+        # 预加载所有 TestCase
         test_case_ids = list(set(r.test_case_id for r in results if r.test_case_id))
         test_cases_map = {}
         if test_case_ids:
             test_cases = TestCase.query.filter(TestCase.id.in_(test_case_ids)).all()
             test_cases_map = {tc.id: tc for tc in test_cases}
-        
+
         for result in results:
             test_case = test_cases_map.get(result.test_case_id)
             if not test_case:
                 continue
             group_id = test_case.group.id if test_case.group else "default_group"
-            
+            group_name = test_case.group.name if test_case.group else "default_group"
+
             if group_id not in group_scores:
-                # 直接使用原始维度名称初始化
-                group_scores[group_id] = {dim.name: [] for dim in all_dimensions}
-            
+                group_scores[group_id] = {'__name__': group_name, **{dim.name: [] for dim in all_dimensions}}
+                group_agg_items[group_id] = {dim.name: [] for dim in all_dimensions if dim.name in custom_agg_dims}
+
             dim_values = ReportUtils.extract_dimension_values(result.id, all_dimensions, dim_results_map)
-            
+
             for dim_name, score in dim_values.items():
                 if score is not None and dim_name in group_scores[group_id]:
                     group_scores[group_id][dim_name].append(score)
-        
-        # 计算平均分
+
+            # 非average维度收集每轮独立item
+            if dim_results_map and result.id in dim_results_map:
+                for dim_name in custom_agg_dims:
+                    target_dim_id = dim_name_to_id.get(dim_name)
+                    if not target_dim_id:
+                        continue
+                    overall_item = None
+                    round_items = []
+                    for dr in dim_results_map[result.id]:
+                        dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
+                        if dr_dim_id and dr_dim_id == target_dim_id:
+                            dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
+                            dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
+                            if dr_val is None:
+                                continue
+                            raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
+                            item = {'dimension_value': dr_val, 'api_raw_response': raw_resp, 'test_result_id': result.id}
+                            if dr_round is None:
+                                overall_item = item
+                            else:
+                                round_items.append(item)
+                    collected = [overall_item] if overall_item else round_items
+                    group_agg_items[group_id][dim_name].extend(collected)
+
+        # 计算统计值
         stats = {}
         for group_id, dims in group_scores.items():
-            stats[group_id] = {}
+            group_name = dims.pop('__name__', group_id)
+            stats[group_id] = {'group_name': group_name, 'metrics': {}}
             for dim_name, scores in dims.items():
-                stats[group_id][dim_name] = (sum(scores) / len(scores)) if scores else 0
+                if dim_name in custom_agg_dims and group_agg_items.get(group_id, {}).get(dim_name):
+                    from backend.utils.report.aggregation_strategies import get_strategy
+                    method = dim_statistic_method.get(dim_name, 'average')
+                    strategy = get_strategy(method)
+                    output_params = (dim_output_params or {}).get(dim_name_to_id.get(dim_name), [])
+                    agg_val = strategy.aggregate(group_agg_items[group_id][dim_name], output_params=output_params)
+                    stats[group_id]['metrics'][dim_name] = agg_val
+                else:
+                    stats[group_id]['metrics'][dim_name] = (sum(scores) / len(scores)) if scores else None
         return stats
     
     @staticmethod
-    def calculate_device_api_stats(results, all_dimensions, dim_results_map=None):
-        """
-        计算设备和API的统计数据。
-        """
+    def calculate_device_api_stats(results, all_dimensions, dim_results_map=None,
+                                  dim_statistic_method=None, dim_output_params=None):
+        # 维度名 -> statistic_method
+        if dim_statistic_method is None:
+            dim_statistic_method = {dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions}
+        custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
+
+        # 预加载非average维度的 output_params（如果未传入）
+        if dim_output_params is None and custom_agg_dims:
+            dim_output_params = {}
+            from backend.models.algorithm_models import EvaluationDimensionParam
+            output_dim_ids = [dim.id for dim in all_dimensions if dim.name in custom_agg_dims]
+            if output_dim_ids:
+                output_params = EvaluationDimensionParam.query.filter(
+                    EvaluationDimensionParam.dimension_id.in_(output_dim_ids),
+                    EvaluationDimensionParam.param_direction == 'output',
+                    EvaluationDimensionParam.deleted == False
+                ).all()
+                for p in output_params:
+                    dim_output_params.setdefault(p.dimension_id, []).append({
+                        'param_code': p.param_code,
+                        'field_path': p.field_path,
+                        'field_type': p.field_type,
+                        'agg_role': p.agg_role,
+                        'output_role': p.output_role,
+                        'visible_in_report': p.visible_in_report if p.visible_in_report is not None else True,
+                        'pass_threshold': p.pass_threshold
+                    })
+        elif dim_output_params is None:
+            dim_output_params = {}
+
         device_results = {}
         api_results = {}
         
@@ -603,10 +733,12 @@ class ReportUtils:
             device = db.session.get(Device, dev_id)
             if not device: continue
             
-            metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map)
+            metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map,
+                                                      dim_statistic_method=dim_statistic_method,
+                                                      dim_output_params=dim_output_params)
             total = len(res_list)
             completed = len([r for r in res_list if r.execution_status == 'completed'])
-            
+
             device_stats.append({
                 "id": device.id, "name": device.name, "model": device.model, "type": device.type,
                 "system": device.system, "system_version": device.system_version, "status": device.status,
@@ -619,7 +751,9 @@ class ReportUtils:
             api = db.session.get(API, api_id)
             if not api: continue
             
-            metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map)
+            metrics = ReportUtils._calc_list_metrics(res_list, all_dimensions, dim_results_map,
+                                                      dim_statistic_method=dim_statistic_method,
+                                                      dim_output_params=dim_output_params)
             total = len(res_list)
             completed = len([r for r in res_list if r.execution_status == 'completed'])
             
@@ -948,14 +1082,16 @@ class ReportUtils:
                         metric = m.get('metric')
                         if metric is None:
                             continue
-                        value = m.get('value', 0)
-                        by_category["metrics"][str(metric)] = 0 if value is None else value
+                        value = m.get('value')
+                        if value is not None:
+                            by_category["metrics"][str(metric)] = value
                 else:
                     metric = item.get('metric')
                     if metric is None:
                         continue
-                    value = item.get('value', 0)
-                    by_category["metrics"][str(metric)] = 0 if value is None else value
+                    value = item.get('value')
+                    if value is not None:
+                        by_category["metrics"][str(metric)] = value
             
             out = []
             for resource in sorted(grouped.keys(), key=lambda x: str(x)):
@@ -994,8 +1130,9 @@ class ReportUtils:
                 if not isinstance(resource_metrics, dict):
                     continue
                 metrics = [
-                    {"id": metric_name_to_id.get(k), "metric": k, "value": (0 if v is None else v)}
+                    {"id": metric_name_to_id.get(k), "metric": k, "value": v}
                     for k, v in sorted(resource_metrics.items(), key=lambda kv: kv[0])
+                    if v is not None
                 ]
                 out.append({"resource": str(resource), "metrics": metrics})
             return out
@@ -1019,9 +1156,8 @@ class ReportUtils:
                 )
                 for metric in sorted(resource_metrics.keys(), key=lambda x: str(x)):
                     value = resource_metrics.get(metric)
-                    if value is None:
-                        value = 0
-                    by_category["metrics"][str(metric)] = value
+                    if value is not None:
+                        by_category["metrics"][str(metric)] = value
 
         out = []
         for resource in sorted(grouped.keys(), key=lambda x: str(x)):
@@ -1099,14 +1235,16 @@ class ReportUtils:
                         metric = m.get('metric')
                         if metric is None:
                             continue
-                        value = m.get('value', 0)
-                        by_tag["metrics"][str(metric)] = 0 if value is None else value
+                        value = m.get('value')
+                        if value is not None:
+                            by_tag["metrics"][str(metric)] = value
                 else:
                     metric = item.get('metric')
                     if metric is None:
                         continue
-                    value = item.get('value', 0)
-                    by_tag["metrics"][str(metric)] = 0 if value is None else value
+                    value = item.get('value')
+                    if value is not None:
+                        by_tag["metrics"][str(metric)] = value
             
             out = []
             for resource in sorted(grouped.keys(), key=lambda x: str(x)):
@@ -1143,9 +1281,8 @@ class ReportUtils:
                 )
                 for metric in sorted(resource_metrics.keys(), key=lambda x: str(x)):
                     value = resource_metrics.get(metric)
-                    if value is None:
-                        value = 0
-                    by_tag["metrics"][str(metric)] = value
+                    if value is not None:
+                        by_tag["metrics"][str(metric)] = value
         
         out = []
         for resource in sorted(grouped.keys(), key=lambda x: str(x)):
@@ -1174,7 +1311,7 @@ class ReportUtils:
                 group_id = item.get('group_id') or item.get('groupId')
                 group_name = item.get('group_name') or item.get('groupName')
                 metric = item.get('metric')
-                value = item.get('value', 0)
+                value = item.get('value')
                 if group_id is None or metric is None:
                     continue
                 group_id = str(group_id)
@@ -1185,7 +1322,8 @@ class ReportUtils:
                         "metrics": [],
                     }
                 m = str(metric)
-                grouped[group_id]["metrics"].append({"id": metric_name_to_id.get(m), "metric": m, "value": value})
+                if value is not None:
+                    grouped[group_id]["metrics"].append({"id": metric_name_to_id.get(m), "metric": m, "value": value})
             for group in grouped.values():
                 group["metrics"] = sorted(group["metrics"], key=lambda x: x["metric"])
             return sorted(grouped.values(), key=lambda x: x["group_id"])
@@ -1202,10 +1340,9 @@ class ReportUtils:
             metrics = []
             for metric in sorted(group_data.keys(), key=lambda x: str(x)):
                 value = group_data.get(metric)
-                if value is None:
-                    value = 0
                 m = str(metric)
-                metrics.append({"id": metric_name_to_id.get(m), "metric": m, "value": value})
+                if value is not None:
+                    metrics.append({"id": metric_name_to_id.get(m), "metric": m, "value": value})
             grouped[group_id] = {"group_id": group_id, "group_name": group_name, "metrics": metrics}
         return list(grouped.values())
     
@@ -1354,7 +1491,8 @@ class ReportUtils:
                         for metric in sorted(dim_values.keys(), key=lambda x: str(x)):
                             value = dim_values.get(metric)
                             m = str(metric)
-                            metric_list.append({"id": metric_name_to_id.get(m), "metric": m, "value": 0 if value is None else value})
+                            if value is not None:
+                                metric_list.append({"id": metric_name_to_id.get(m), "metric": m, "value": value})
                         metric_groups.append({"resource": str(resource), "metrics": metric_list})
                     new_case['metrics'] = metric_groups
                 
@@ -1450,14 +1588,56 @@ class ReportUtils:
         return normalized
     
     @staticmethod
-    def _calc_list_metrics(results, all_dimensions, dim_results_map):
+    def _calc_list_metrics(results, all_dimensions, dim_results_map,
+                           dim_statistic_method=None, dim_output_params=None):
         metrics = {}
-        for dim in all_dimensions:
-            scores = []
+
+        # 维度名 -> statistic_method
+        if dim_statistic_method is None:
+            dim_statistic_method = {dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions}
+        custom_agg_dims = {name for name, m in dim_statistic_method.items() if m != 'average'}
+        dim_name_to_id = {dim.name: dim.id for dim in all_dimensions}
+
+        # 预收集非average维度的items
+        dim_agg_items = {}  # {dim_name: [items]}
+        for dim_name in custom_agg_dims:
+            dim_agg_items[dim_name] = []
+            target_dim_id = dim_name_to_id.get(dim_name)
+            if not target_dim_id or not dim_results_map:
+                continue
             for result in results:
-                vals = ReportUtils.extract_dimension_values(result.id, all_dimensions, dim_results_map)
-                # 直接使用原始维度名称获取值
-                if vals.get(dim.name) is not None:
-                    scores.append(vals[dim.name])
-            metrics[dim.name] = (sum(scores) / len(scores)) if scores else 0
+                if result.id not in dim_results_map:
+                    continue
+                overall_item = None
+                round_items = []
+                for dr in dim_results_map[result.id]:
+                    dr_dim_id = getattr(dr, 'dimension_id', None) or (dr.get('id') if isinstance(dr, dict) else None)
+                    if dr_dim_id and dr_dim_id == target_dim_id:
+                        dr_val = getattr(dr, 'dimension_value', None) if not isinstance(dr, dict) else dr.get('value')
+                        dr_round = getattr(dr, 'round_number', None) if not isinstance(dr, dict) else dr.get('round_number')
+                        if dr_val is None:
+                            continue
+                        raw_resp = getattr(dr, 'api_raw_response', None) or (dr.get('api_raw_response') if isinstance(dr, dict) else None)
+                        item = {'dimension_value': dr_val, 'api_raw_response': raw_resp, 'test_result_id': result.id}
+                        if dr_round is None:
+                            overall_item = item
+                        else:
+                            round_items.append(item)
+                collected = [overall_item] if overall_item else round_items
+                dim_agg_items[dim_name].extend(collected)
+
+        for dim in all_dimensions:
+            if dim.name in custom_agg_dims and dim_agg_items.get(dim.name):
+                from backend.utils.report.aggregation_strategies import get_strategy
+                method = dim_statistic_method.get(dim.name, 'average')
+                strategy = get_strategy(method)
+                output_params = (dim_output_params or {}).get(dim.id, [])
+                metrics[dim.name] = strategy.aggregate(dim_agg_items[dim.name], output_params=output_params)
+            else:
+                scores = []
+                for result in results:
+                    vals = ReportUtils.extract_dimension_values(result.id, all_dimensions, dim_results_map)
+                    if vals.get(dim.name) is not None:
+                        scores.append(vals[dim.name])
+                metrics[dim.name] = (sum(scores) / len(scores)) if scores else None
         return metrics

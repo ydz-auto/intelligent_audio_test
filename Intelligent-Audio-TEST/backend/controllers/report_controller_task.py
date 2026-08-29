@@ -88,6 +88,7 @@ class ReportControllerTask(ReportControllerBase):
             TestResultDimension.test_result_id,
             TestResultDimension.dimension_id,
             TestResultDimension.dimension_value,
+            TestResultDimension.round_number,
             TestResultDimension.api_raw_response,
             Dimension.name.label('dimension_name')
         ).join(Dimension, TestResultDimension.dimension_id == Dimension.id)\
@@ -227,45 +228,103 @@ class ReportControllerTask(ReportControllerBase):
             
             for result in case_results:
                 resource = ReportControllerBase.get_resource_name(result, task, use_time_prefix=False)
-                dim_values = ReportControllerBase.extract_dimension_values(
-                    result.id, all_dimensions, dim_results_map=dim_results_map
-                )
-                
+
+                # 直接从 dim_results_map 构建带轮次信息的指标，保留 round_number
+                result_dims = dim_results_map.get(result.id, [])
+                # 检测多轮：只要存在任何非 None 的 round_number 即为多轮
+                # 与任务详情前端的 isMultiRound 判断逻辑保持一致
+                is_multi_round = any(dr.round_number is not None for dr in result_dims)
+
+                # 从 result_data 补充 eval_data 中的维度值
                 result_data = load_full_result_data(result.result_data, getattr(result, 'result_data_path', None))
+                eval_data_dim_values = {}
                 if result_data and isinstance(result_data, dict):
                     eval_data = result_data.get('evaluation_data') or result_data.get('eval_data') or {}
                     if isinstance(eval_data, dict):
-                        # 只合并属于维度名称的键，跳过 aux 辅助参数
                         dim_name_set = {d.name for d in all_dimensions}
                         for eval_key, eval_val in eval_data.items():
                             if eval_key in dim_name_set:
-                                if eval_key not in dim_values or dim_values.get(eval_key) is None:
-                                    dim_values[eval_key] = eval_val
-                
+                                eval_data_dim_values[eval_key] = eval_val
+
                 resource_metrics = []
-                for dim_name, dim_value in dim_values.items():
-                    if dim_value is not None:
-                        dim_obj = None
-                        for dim in all_dimensions:
-                            if dim.name == dim_name:
-                                dim_obj = dim
-                                break
-                        resource_metrics.append({
-                            "id": dim_obj.id if dim_obj else None,
-                            "metric": dim_name,
-                            "value": dim_value,
-                            "dimension_type": dim_obj.dimension_type if dim_obj else 'main',
-                            "parent_dimension_id": dim_obj.parent_dimension_id if dim_obj else None,
-                            "parent_dimension_name": dim_id_to_name.get(dim_obj.parent_dimension_id) if dim_obj and dim_obj.parent_dimension_id else None
-                        })
+                # 按 (dim_name, round_number) 分组处理
+                for dr in result_dims:
+                    dim_name = dr.dimension_name
+                    dim_value = dr.dimension_value
+                    if dim_value is None and dim_name in eval_data_dim_values:
+                        dim_value = eval_data_dim_values[dim_name]
+
+                    dim_obj = None
+                    for dim in all_dimensions:
+                        if dim.name == dim_name:
+                            dim_obj = dim
+                            break
+
+                    rn = dr.round_number
+                    # 多轮场景：构建带轮次后缀的 metric key
+                    if is_multi_round:
+                        if rn is None:
+                            metric_key = f"{dim_name}@overall"
+                        else:
+                            metric_key = f"{dim_name}@round:{rn + 1}"
+                    else:
+                        metric_key = dim_name
+
+                    resource_metrics.append({
+                        "id": dim_obj.id if dim_obj else None,
+                        "metric": metric_key,
+                        "value": dim_value,
+                        "round_number": rn,
+                        "dimension_type": dim_obj.dimension_type if dim_obj else 'main',
+                        "parent_dimension_id": dim_obj.parent_dimension_id if dim_obj else None,
+                        "parent_dimension_name": dim_id_to_name.get(dim_obj.parent_dimension_id) if dim_obj and dim_obj.parent_dimension_id else None
+                    })
+
+                # 补充 eval_data 中存在但 dim_results_map 中缺失的维度
+                seen_dim_names = {dr.dimension_name for dr in result_dims}
+                for dim_name, dim_value in eval_data_dim_values.items():
+                    if dim_name in seen_dim_names:
+                        continue
+                    if dim_value is None:
+                        continue
+                    dim_obj = None
+                    for dim in all_dimensions:
+                        if dim.name == dim_name:
+                            dim_obj = dim
+                            break
+                    resource_metrics.append({
+                        "id": dim_obj.id if dim_obj else None,
+                        "metric": dim_name,
+                        "value": dim_value,
+                        "round_number": None,
+                        "dimension_type": dim_obj.dimension_type if dim_obj else 'main',
+                        "parent_dimension_id": dim_obj.parent_dimension_id if dim_obj else None,
+                        "parent_dimension_name": dim_id_to_name.get(dim_obj.parent_dimension_id) if dim_obj and dim_obj.parent_dimension_id else None
+                    })
+
                 if resource_metrics:
-                    resource_metrics_map[resource] = resource_metrics
-            
+                    if resource in resource_metrics_map:
+                        resource_metrics_map[resource].extend(resource_metrics)
+                    else:
+                        resource_metrics_map[resource] = resource_metrics
+
             metrics_list = []
             for resource, metrics_data in resource_metrics_map.items():
+                # 按 metric key 去重：优先保留非 None 值，如已有非 None 值则不用 None 覆盖
+                deduped = {}
+                for m in metrics_data:
+                    key = m.get('metric')
+                    if key not in deduped:
+                        deduped[key] = m
+                    else:
+                        existing_val = deduped[key].get('value')
+                        new_val = m.get('value')
+                        # 新值非 None 且旧值为 None 时覆盖；旧值非 None 时保留
+                        if new_val is not None and existing_val is None:
+                            deduped[key] = m
                 metrics_list.append({
                     "resource": resource,
-                    "metrics": metrics_data
+                    "metrics": list(deduped.values())
                 })
             
             case_obj = {
@@ -1045,7 +1104,9 @@ class ReportControllerTask(ReportControllerBase):
                 device_stats, api_stats = ReportUtils.calculate_device_api_stats(
                     results=results,
                     all_dimensions=all_dimensions,
-                    dim_results_map=dim_results_map
+                    dim_results_map=dim_results_map,
+                    dim_statistic_method={dim.name: getattr(dim, 'statistic_method', 'average') or 'average' for dim in all_dimensions},
+                    dim_output_params={}
                 )
 
                 cases = ReportControllerTask._build_case_data(

@@ -683,7 +683,7 @@ class ReportController(ReportControllerBase):
                 for res, dims in res_data.items():
                     metric_data[cat_name][res] = {}
                     for dim_name, stats in dims.items():
-                        metric_data[cat_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else 0
+                        metric_data[cat_name][res][dim_name] = (stats['sum'] / stats['count']) if stats['count'] > 0 else None
             
             normal_distribution_data = ReportControllerBase.calculate_normal_distribution(raw_data)
             

@@ -127,9 +127,10 @@ class E2EAggregator:
         return result
 
     def update_algorithm_result_evaluation(self, task_id, result_id):
-        """从 DB 查各轮评估分数，回填到 rounds[].evaluation，并计算 aggregated 汇总值
+        """从 DB 查各轮评估分数，回填到 rounds[].evaluation
 
-        此方法在所有轮次评估完成后调用，聚合各维度分数到 algo_result。
+        此方法在所有轮次评估完成后调用，仅回填每轮的维度分数到 algo_result.rounds[].evaluation。
+        聚合由报告层（report_utils）直接查 DB 完成，此处不重复计算。
         """
         local_db_session = db.session()
         try:
@@ -152,15 +153,6 @@ class E2EAggregator:
                 except (json.JSONDecodeError, TypeError):
                     algo_result = {}
 
-            # DEBUG: 检查 record_file 是否存在
-            _rounds_debug = algo_result.get('rounds', []) if isinstance(algo_result, dict) else []
-            _output_keys_debug = [list(r.get('output', {}).keys()) for r in _rounds_debug] if isinstance(_rounds_debug, list) else []
-            _rf_debug = [r.get('output', {}).get('record_file', '<MISSING>') for r in _rounds_debug] if isinstance(_rounds_debug, list) else []
-            self._log(
-                level='DEBUG',
-                content=f"[update_algorithm_result_evaluation READ] result_id={result_id}, rounds_count={len(_rounds_debug)}, output_keys={_output_keys_debug}, record_file={_rf_debug}",
-                task_id=task_id
-            )
             if not isinstance(algo_result, dict):
                 algo_result = {}
 
@@ -185,47 +177,20 @@ class E2EAggregator:
                 if round_idx < len(rounds_list):
                     rounds_list[round_idx]['evaluation'] = eval_data
 
-            all_wer = []
-            all_llm_judge = []
-            for rd in rounds_list:
-                ev = rd.get('evaluation', {})
-                if 'wer' in ev and ev['wer'] is not None:
-                    try:
-                        all_wer.append(float(ev['wer']))
-                    except (ValueError, TypeError):
-                        pass
-                if 'llm_judge' in ev and ev['llm_judge'] is not None:
-                    try:
-                        all_llm_judge.append(float(ev['llm_judge']))
-                    except (ValueError, TypeError):
-                        pass
-
-            aggregated = algo_result.get('aggregated', {})
-            aggregated['avg_wer'] = round(sum(all_wer) / len(all_wer), 4) if all_wer else None
-            aggregated['avg_llm_judge'] = round(sum(all_llm_judge) / len(all_llm_judge), 4) if all_llm_judge else None
-
             algo_result['rounds'] = rounds_list
-            algo_result['aggregated'] = aggregated
-            # DEBUG: 写回前检查 record_file
-            _rf_write_dbg = [r.get('output', {}).get('record_file', '<MISSING>') for r in rounds_list]
-            self._log(
-                level='DEBUG',
-                content=f"[update_algorithm_result_evaluation WRITE] result_id={result_id}, record_file={_rf_write_dbg}",
-                task_id=task_id
-            )
             test_result.algorithm_result = algo_result
             local_db_session.commit()
 
             self._log(
                 level='INFO',
-                content=f"[aggregate] 更新完成: result_id={result_id}, avg_wer={aggregated.get('avg_wer')}, avg_llm_judge={aggregated.get('avg_llm_judge')}",
+                content=f"[aggregate] 回填轮次评估完成: result_id={result_id}, rounds={len(round_evals)}",
                 task_id=task_id
             )
         except Exception as e:
             local_db_session.rollback()
             self._log(
                 level='ERROR',
-                content=f"[aggregate] 更新失败: result_id={result_id}, error={str(e)}",
+                content=f"[aggregate] 回填失败: result_id={result_id}, error={str(e)}",
                 task_id=task_id
             )
         finally:

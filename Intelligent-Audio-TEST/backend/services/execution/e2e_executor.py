@@ -501,13 +501,17 @@ class E2EExecutor(BaseExecutor):
         )
 
         # 检查本轮 evaluation.enabled 开关，enabled 为 False 时跳过单轮评估
+        # 同时检查本轮 dimensions 是否为空，为空时也跳过单轮评估
         _round_eval_enabled = True
         if case_config:
             _case_rounds = case_config.get('rounds', [])
             if _case_rounds and round_idx < len(_case_rounds):
                 _round_eval = _case_rounds[round_idx].get('evaluation', {})
-                if isinstance(_round_eval, dict) and _round_eval.get('enabled', True) is False:
-                    _round_eval_enabled = False
+                if isinstance(_round_eval, dict):
+                    if _round_eval.get('enabled', True) is False:
+                        _round_eval_enabled = False
+                    elif not _round_eval.get('dimensions'):
+                        _round_eval_enabled = False
 
         if _round_eval_enabled:
             self._evaluate_result(

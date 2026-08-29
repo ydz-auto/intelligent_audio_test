@@ -99,7 +99,7 @@ _COMMON_PARAMS = [
 
     # ─── 输出参数 ───
     ('evaluations', '裁判结果', 'LLM 裁判结果', 'json', 'output',
-     'evaluations', None, 'main', True,
+     'evaluations', None, 'aux', True,
      False, None, 'LLM 裁判结果列表 [{scene, behavior, reason}, ...]', 60),
     ('ej_model', '裁判模型', '使用的 LLM 模型', 'text', 'output',
      'model', None, 'aux', True,
@@ -111,8 +111,8 @@ _COMMON_PARAMS = [
      'evaluations.0.reason', None, 'aux', True,
      False, None, 'LLM裁判判定理由(取evaluations首条)', 62),
     ('ej_scene', '场景', '场景类型', 'text', 'output',
-     'scene', None, 'aux', True,
-     False, None, '场景类型(兼容旧 env_type)', 63),
+     'evaluations.0.scene', None, 'aux', True,
+     False, None, '场景类型(取evaluations首条，多场景仅显首条，完整数据在api_raw_response)', 63),
     ('ej_enabled', '是否启用', '裁判是否正常执行', 'text', 'output',
      'enabled', None, 'aux', True,
      False, None, '裁判是否正常执行(True/False)', 64),
@@ -163,7 +163,7 @@ DIMENSIONS = [
         'weight': 1,
         'estimated_exec_time': 120,  # LLM 调用
         'score_unit': '',
-        'statistic_method': 'none',
+        'statistic_method': 'average',
         'params': _COMMON_PARAMS,
         'param_mappings': _COMMON_PARAM_MAPPINGS,
     },
@@ -180,14 +180,14 @@ DIMENSIONS = [
             '由裁判模型对语音大模型的行为进行评判（回应/恢复/不确定询问/未知）。'
         ),
         'type': 'auto',
-        'result_type': 1,
+        'result_type': 1,  # 文本型，LLM 裁判输出为 JSON，evaluations 为 main
         'result_min': 0.0,
         'result_max': 0.0,
         'decimal_places': 2,
         'weight': 1,
-        'estimated_exec_time': 120,
+        'estimated_exec_time': 120,  # LLM 调用
         'score_unit': '',
-        'statistic_method': 'none',
+        'statistic_method': 'average',
         'params': _COMMON_PARAMS,
         'param_mappings': _COMMON_PARAM_MAPPINGS,
     },
@@ -207,12 +207,16 @@ _BEHAVIOR_FIELDS = [
 ]
 
 def _build_sub_dimensions(task_type_code, prefix):
-    """为主维度生成 4 个行为占比子维度定义。子维度 task_type_code 各自独立。"""
+    """为主维度生成 4 个行为占比子维度定义。
+
+    子维度 task_type_code 与父维度一致（如 rejection_judge）：
+    评估服务按 parent_dimension_id 分组，task_type 用代表维度的 task_type_code，
+    子维度仅按各自 field_path 从同一响应里提取不同输出字段。
+    """
     subs = []
     for i, (field, label, help) in enumerate(_BEHAVIOR_FIELDS):
-        sub_tc = f'{task_type_code}_{field}'
         subs.append({
-            'task_type_code': sub_tc,
+            'task_type_code': task_type_code,  # 与父维度一致
             'name': f'{prefix}{label}占比',
             'keywords': f'{task_type_code},{field},{label},占比',
             'description': f'子维度：{prefix}行为「{label}」的占比。output field_path = {field}',
@@ -253,12 +257,11 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
             "AND dimension_type = 'sub' AND deleted = FALSE"
         ), {'name': name}).fetchone()
         if existing:
-            # 如果旧记录 task_type_code 与当前定义不一致，原地更新 task_type_code
-            # 不软删+新建，避免 test_result_dimensions 里的 dimension_id 失效
+            # 子维度 task_type_code 应与父维度一致
             old_tc = conn.execute(text(
                 "SELECT task_type_code FROM dimensions WHERE id = :did"
             ), {'did': existing[0]}).scalar()
-            if old_tc and old_tc != task_code:
+            if old_tc != task_code:
                 print(f"  ! 检测到子维度 '{name}' task_type_code 变更: {old_tc} → {task_code}，原地更新 id={existing[0]}")
                 conn.execute(text(
                     "UPDATE dimensions SET task_type_code = :tc, updated_at = NOW() WHERE id = :did"
