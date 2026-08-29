@@ -368,9 +368,9 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         result['resume_rate'] = round(
             sum(1 for e in interruption_events if e['resumed']) / n, 3)
 
-    # 时延均值：interruption + recovery_only 都能贡献 recovery_latency；stop_latency 仅 interruption
+    # 时延均值：stop_latency/recovery_latency/overlap 仅统计 interruption 事件
     stop_lats = [e['stop_latency_s'] for e in interruption_events if e['stop_latency_s'] is not None]
-    recov_lats = [e['recovery_latency_s'] for e in per_event if e['recovery_latency_s'] is not None]
+    recov_lats = [e['recovery_latency_s'] for e in interruption_events if e['recovery_latency_s'] is not None]
     overlaps = [e['overlap_s'] for e in interruption_events if e['overlap_s'] is not None]
     silences = [e['silence_gap_s'] for e in per_event if e['silence_gap_s'] is not None]
 
