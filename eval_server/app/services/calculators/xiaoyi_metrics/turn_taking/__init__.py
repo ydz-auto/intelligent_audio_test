@@ -605,6 +605,8 @@ def _empty_interruption(message):
         'n_no_model_speech': 0,
         'per_event': [],
         'message': message,
+        'timing_success_rate': None,   # 本地时序启发式成功率(备份)
+        'llm_success_rate': None,     # LLM 语义判定成功率
         'llm_eval': {'enabled': False, 'message': '未启用 LLM 评估'},
         'llm_recovery_avg_coherence': None,
         'llm_recovery_avg_relevance': None,
@@ -711,25 +713,36 @@ def calculate_interruption_metrics(task_params):
         raise ValueError("interruption_metrics: 缺少 ai_wav 或 model_asr（模型恢复 wav 或 ASR）")
 
     stop_tol = task_params.get('stop_tolerance_s')
-    merge_gap = task_params.get('seg_merge_gap_s') or _r0.get('seg_merge_gap_s')
+    # 用户侧/模型侧用不同阈值合并字词为段（user 1.5s / model 0.7s）
+    user_gap_raw = task_params.get('user_seg_merge_gap_s') or _r0.get('user_seg_merge_gap_s')
+    model_gap_raw = task_params.get('model_seg_merge_gap_s') or _r0.get('model_seg_merge_gap_s')
 
     kwargs = {}
     if stop_tol is not None:
         # 兼容旧入参；当前 success 不再被容差门控，该值仅保留不报错
         logger.info("[interruption_metrics] stop_tolerance_s 已废弃（success 改为让出+恢复），忽略")
-    if merge_gap is not None:
-        # multipart 上传时标量字段是字符串('0.3')，需转 float；非法值则回退默认
+
+    def _parse_gap(raw, default, label):
+        # multipart 上传时标量字段是字符串('1.5')，需转 float；非法值回退默认
+        if raw is None:
+            return default
         try:
-            gap_val = float(merge_gap)
-            # 0.3 太严会拆段，强制最小 0.5
-            if gap_val < 0.5:
-                logger.info(f"[interruption_metrics] seg_merge_gap_s={gap_val} < 0.5，强制提升到 0.5")
-                gap_val = 0.5
-            kwargs['seg_merge_gap_s'] = gap_val
+            v = float(raw)
+            if v < 0.1:
+                logger.info(f"[interruption_metrics] {label}={v} < 0.1，强制提升到 0.1")
+                v = 0.1
+            return v
         except (TypeError, ValueError):
-            logger.warning(f"[interruption_metrics] seg_merge_gap_s 非数值({merge_gap!r})，用默认 0.5")
+            logger.warning(f"[interruption_metrics] {label} 非数值({raw!r})，用默认 {default}")
+            return default
+
+    from ..interruptbility.interruption import USER_SEG_MERGE_GAP_S, MODEL_SEG_MERGE_GAP_S
+    kwargs['user_seg_merge_gap_s'] = _parse_gap(user_gap_raw, USER_SEG_MERGE_GAP_S, 'user_seg_merge_gap_s')
+    kwargs['model_seg_merge_gap_s'] = _parse_gap(model_gap_raw, MODEL_SEG_MERGE_GAP_S, 'model_seg_merge_gap_s')
 
     result = compute_interruption_metrics(user_asr, model_asr, **kwargs)
+    # 本地时序启发式成功率备份（LLM 启用后会被 LLM 语义判定覆盖）
+    result['timing_success_rate'] = result.get('interruption_success_rate')
     logger.info(
         f"[interruption_metrics] success_rate={result['interruption_success_rate']} "
         f"stop_rate={result['stop_rate']} resume_rate={result['resume_rate']} "
@@ -737,12 +750,11 @@ def calculate_interruption_metrics(task_params):
         f"message={result['message']}"
     )
 
-    # ── 可选：大模型评估（语义复核"是否真的打断" + AI 回复打分）──
+    # ── 可选：大模型评估（语义判定"是否成功打断" + AI 回复打分）──
     # 触发条件：enable_llm_eval=True。LLM 直接吃 compute_interruption_metrics 富集后的
-    # per_event（含用户/模型字词级 ASR），不再依赖与 ASR 解耦的 rounds 文本。
-    # 数值指标（success_rate/时延等）全部本地算，LLM 不产出任何数值指标，
-    # 其 is_real_interruption 是对本地结论的语义复核，不回写覆盖本地 interruption_success_rate。
-    # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，不影响时序指标。
+    # per_event（含用户/模型字词级 ASR + 本地时延），先语义判定 success（覆盖本地启发式
+    # interruption_success_rate），再给三维打分。时延指标仍由本地数据算。
+    # 未配置 LLM_JUDGE_API_KEY 或评估异常时跳过，success_rate 回退本地时序启发式。
     # multipart 上传时 enable_llm_eval 可能是 "True"/"False"(首字母大写)、"true"/"false"、
     # 布尔 True/False、或 1/0；统一 str().lower() 归一化后判断，默认未传视为 True
     _raw = task_params.get('enable_llm_eval', True)
@@ -752,6 +764,10 @@ def calculate_interruption_metrics(task_params):
             from ..interruptbility.interruption_llm import evaluate_interruption_llm
             llm_result = evaluate_interruption_llm(result.get('per_event') or [], task_params)
             result['llm_eval'] = llm_result
+            # LLM 语义判定的成功率覆盖本地启发式 interruption_success_rate（本地值已存 timing_success_rate）
+            if llm_result.get('llm_success_rate') is not None:
+                result['interruption_success_rate'] = llm_result['llm_success_rate']
+                result['llm_success_rate'] = llm_result['llm_success_rate']
             # 顶层平铺关键聚合值，便于维度参数直接按 field_path 取值
             for k in (
                 'llm_recovery_avg_coherence', 'llm_recovery_avg_relevance',
@@ -761,6 +777,7 @@ def calculate_interruption_metrics(task_params):
                 'llm_return_avg_coherence', 'llm_return_avg_relevance',
                 'llm_return_avg_adaptability',
                 'llm_recovery_per_round', 'llm_return_scores_per_round',
+                'interruption_real_rate',
             ):
                 result[k] = llm_result.get(k)
             logger.info(

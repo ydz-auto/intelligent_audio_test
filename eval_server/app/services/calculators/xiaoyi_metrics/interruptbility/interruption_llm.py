@@ -85,8 +85,13 @@ def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '') -> str:
 
 (A) is_real_interruption：是否真的打断(用户确有打断意图且在 AI 说话期间插入、AI 确有让出/恢复)。给布尔+简短 interruption_reason。
     若用户只是应答词("嗯/好")、或未在 AI 说话期间插入、或 AI 全程未被影响，则不算。
-(B) 对【模型恢复回复】(AI 的话，非用户输入) 三维打分(0-5 整数，0 最差、5 最好；参考 Full-Duplex-Bench GPT-4o Score)，
-    每维各给一个简短理由(只解释该维为何这个分)：
+(B) success：模型是否【成功处理了打断】(语义判定，作为打断成功率依据)：
+    成功 = AI 合理让出/停下，并给出了与用户打断意图相符(或对打断有合理承接)的恢复回复；
+    失败 = AI 说穿/无视打断继续说、或恢复回复与打断意图无关/混乱/形同沉默。
+    给布尔 + 简短 success_reason(只解释为何成功/失败)。
+    注意：若【模型恢复回复】为空(AI 未给恢复回复，如说穿)，success 必为 false。
+(C) 对【模型恢复回复】(AI 的话，非用户输入) 三维打分(0-5 整数，0 最差、5 最好；参考 Full-Duplex-Bench GPT-4o Score)，
+    每维各给一个简短理由(只解释该维为何这个分)；若模型未给恢复回复，三维均给 0：
     1. coherence(连贯性)：回复与被打断尾巴、与打断内容的衔接是否连贯自然。
        0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
     2. relevance(相关性)：回复是否切合用户打断所表达的需求与意图。
@@ -95,7 +100,7 @@ def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '') -> str:
        0=完全未适应 1=未适应 2=略微适应 3=基本适应 4=适应良好 5=完美适应
 
 输出严格 JSON，不要输出 JSON 以外的任何内容，且必须只含下列键：
-{{"is_real_interruption": true, "interruption_reason": "", "coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "coherence_reason": "", "relevance_reason": "", "adaptability_reason": ""}}
+{{"is_real_interruption": true, "interruption_reason": "", "success": true, "success_reason": "", "coherence": 0, "relevance": 0, "adaptability": 0, "overall": 0, "coherence_reason": "", "relevance_reason": "", "adaptability_reason": ""}}
 其中 overall 为三维平均分(保留一位小数)；coherence_reason/relevance_reason/adaptability_reason 分别是对应维度的简短打分理由。"""
 
 
@@ -243,6 +248,7 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
 
     recovery_per_round: List[Dict[str, Any]] = []
     real_count = 0
+    success_count = 0
 
     for idx, ev in enumerate(events, 1):
         item: Dict[str, Any] = {
@@ -252,6 +258,8 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
             'model_recovery_text': ev.get('model_recovery_text', ''),
             'is_real_interruption': None,
             'interruption_reason': '',
+            'success': None,
+            'success_reason': '',
             'coherence': None,
             'relevance': None,
             'adaptability': None,
@@ -267,6 +275,8 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
             parsed = _parse_json(resp['content']) or {}
             item['is_real_interruption'] = _bool_field(parsed, 'is_real_interruption')
             item['interruption_reason'] = str(parsed.get('interruption_reason', ''))
+            item['success'] = _bool_field(parsed, 'success')
+            item['success_reason'] = str(parsed.get('success_reason', ''))
             item['coherence'] = _score_field(parsed, 'coherence')
             item['relevance'] = _score_field(parsed, 'relevance')
             item['adaptability'] = _score_field(parsed, 'adaptability')
@@ -280,6 +290,8 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
             item['adaptability_reason'] = str(parsed.get('adaptability_reason', ''))
             if item['is_real_interruption'] is True:
                 real_count += 1
+            if item['success'] is True:
+                success_count += 1
         except Exception as e:  # 单事件失败不阻断
             item['error'] = str(e)
             logger.warning(f"[interruption_llm] 第 {idx} 事件复核/打分失败: {e}")
@@ -288,6 +300,8 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
     # ── 聚合 ──
     n_eval = len(recovery_per_round)
     interruption_real_rate = round(real_count / n_eval, 3) if n_eval else None
+    # LLM 语义判定的打断成功率(成功事件 / 已评估事件)，由 orchestrator 覆盖本地 interruption_success_rate
+    llm_success_rate = round(success_count / n_eval, 3) if n_eval else None
 
     def _join_reasons(key: str) -> str:
         """把各事件的某维分项理由拼接成单段文本(用'；'连接)，供 seed 的 *_reason field_path 取值"""
@@ -311,8 +325,9 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
         'llm_return_avg_coherence': None,
         'llm_return_avg_relevance': None,
         'llm_return_avg_adaptability': None,
-        # LLM 语义复核汇总（折进 llm_eval json，不新增顶层维度字段）
+        # LLM 语义判定：是否真的打断占比 + 成功率(成功事件/已评估事件)
         'interruption_real_rate': interruption_real_rate,
+        'llm_success_rate': llm_success_rate,
         'n_events_evaluated': n_eval,
         'message': 'OK',
     }

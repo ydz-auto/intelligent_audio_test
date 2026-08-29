@@ -265,8 +265,9 @@
 | `ai_wav` | str | 二选一 | 模型恢复 wav 路径（内部调 ASR） |
 | `user_asr` | list/dict | 二选一 | 已对齐的用户 ASR 结果 |
 | `model_asr` | list/dict | 二选一 | 已对齐的模型 ASR 结果 |
-| `seg_merge_gap_s` | float | 否 | 同上，但强制最小 0.5 |
-| `enable_llm_eval` | bool | 否 | 是否启用 LLM 评估，默认 True。LLM 直接吃 per_event 字词级 ASR，做"是否真的打断"语义复核 + 回复打分 |
+| `user_seg_merge_gap_s` | float | 否 | 用户侧词合并为段的间隙阈值(秒)，默认 1.5 |
+| `model_seg_merge_gap_s` | float | 否 | 模型侧词合并为段的间隙阈值(秒)，默认 0.7。用户/模型用不同阈值 |
+| `enable_llm_eval` | bool | 否 | 是否启用 LLM 评估，默认 True。LLM 先语义判定是否成功打断(覆盖本地时序成功率)，再给回复三维打分 |
 | `original_topic` | str | 否 | 原始话题文本（透传给 LLM 作上下文） |
 | `rounds` | list[dict] | 否 | （已废弃）旧多轮文本数据；LLM 现改用 per_event 字词级 ASR，传入忽略 |
 
@@ -274,8 +275,10 @@
 
 ```json
 {
-  "interruption_success_rate": 0.75,   // 打断成功率（让出且恢复 / 有效打断事件）
-  "stop_rate": 0.80,                  // 让出率（没说穿）
+  "interruption_success_rate": 0.75,   // 打断成功率：LLM 启用时=语义判定(成功事件/已评估事件)；未启用=本地时序启发式(让出且恢复/有效打断事件)
+  "timing_success_rate": 0.75,          // 本地时序启发式成功率(备份，LLM 启用前与上同值)
+  "llm_success_rate": 0.75,            // LLM 语义判定的成功率(LLM 启用时才有值)
+  "stop_rate": 0.80,                  // 让出率(本地时序：没说穿)
   "resume_rate": 0.90,               // 恢复率
   "avg_stop_latency_s": 300,          // 平均打断检查时延（毫秒，字段名保留 _s 后缀）
   "avg_recovery_latency_s": 500,      // 平均打断恢复时延（毫秒）
@@ -328,11 +331,10 @@
 
 ## 8. interruption_llm —— 打断 LLM 评估
 
-> 数值指标（success_rate / 时延 / 让出率 / 恢复率等）**全部本地算**，本模块不产出任何数值指标。
-> LLM 直接吃 `compute_interruption_metrics` 富集后的 `per_event`（用户与模型的字词级 ASR），
-> 对每个 `event_type=='interruption'` 事件做：(A) 是否真的打断的语义复核 + 简短原因；
-> (B) 模型恢复回复的 连贯性/相关性/适应性 打分（0-5）+ **每维分项理由**（coherence_reason/relevance_reason/adaptability_reason）。
-> `is_real_interruption` 是对本地结论的语义复核，**不回写覆盖**本地 `interruption_success_rate`。
+> 数值指标（时延/让出率/恢复率等）**全部本地算**（用 user 1.5s / model 0.7s 两阈值合并段）；
+> LLM 先**语义判定 success（是否成功打断）**——覆盖本地时序启发式 `interruption_success_rate`，
+> 再给恢复回复的 连贯性/相关性/适应性 打分（0-5）+ 每维分项理由。
+> `is_real_interruption` 判"是否真打断"，`success` 判"是否成功处理打断"（成功率口径）。
 > **角色约束**：prompt 显式声明仅"用户打断"是人类输入，"模型被打断尾巴"与"模型恢复回复"都是 AI(语音助手)的话，
 > 防止 LLM 把 ai_wav 也当成用户输入；输出严格 JSON，仅含约定键。
 
@@ -359,7 +361,9 @@
       "model_recovery_text": "附近有一家川菜馆...",
       "is_real_interruption": true,   // (A) 是否真的打断（语义复核）
       "interruption_reason": "用户在模型推荐期间明确打断并切换话题，模型停止并响应",
-      "coherence": 5,                  // (B) 连贯性 0-5
+      "success": true,                 // (B) 是否成功处理打断(语义判定，成功率口径)；模型未给恢复回复时为 false
+      "success_reason": "AI成功让出话语权，准确承接了用户的新需求",
+      "coherence": 5,                  // (C) 连贯性 0-5
       "relevance": 5,                // 相关性 0-5
       "adaptability": 5,            // 适应性 0-5
       "overall": 5.0,              // 三维平均
@@ -377,6 +381,7 @@
   "llm_recovery_relevance_reason": "...",                      // 相关性分项理由拼接
   "llm_recovery_adaptability_reason": "...",                   // 适应性分项理由拼接
   "interruption_real_rate": 1.0,      // LLM 判定真正打断的事件占比
+  "llm_success_rate": 1.0,            // LLM 语义判定的打断成功率(成功事件/已评估事件)，覆盖 interruption_success_rate
   "n_events_evaluated": 3,
   // 回到原话题独立打分链路已移除，下列字段保留为空以兼容既有维度定义
   "llm_return_scores_per_round": [],

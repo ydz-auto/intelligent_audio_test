@@ -77,7 +77,8 @@ MAIN_DIMENSION = {
     'score_unit': '%',
     'statistic_method': 'pass_rate',
     'body_template': {
-        'seg_merge_gap_s': '{{seg_merge_gap_s}}',
+        'user_seg_merge_gap_s': '{{user_seg_merge_gap_s}}',
+        'model_seg_merge_gap_s': '{{model_seg_merge_gap_s}}',
         'enable_llm_eval': '{{enable_llm_eval}}',
         'llm_model': '{{llm_model}}',
         'original_topic': '{{original_topic}}',
@@ -99,26 +100,29 @@ MAIN_DIMENSION = {
         ('ai_wav', '模型恢复音频', '模型恢复语音 wav', 'audio', 'input',
          None, None, None, True,
          False, None, '模型恢复语音 wav 路径；与 user_wav 各调一次 ASR 后对齐算打断', 6),
-        ('seg_merge_gap_s', '词合并间隙', '词合并为段的间隙阈值(秒)', 'number', 'input',
+        ('user_seg_merge_gap_s', '用户侧合并间隙', '用户侧词合并为段的间隙阈值(秒)', 'number', 'input',
          None, None, None, False,
-         False, '3.0', '相邻词时间戳间隙小于该值则合并为同一段(秒)', 11),
+         False, '1.5', '用户侧相邻词时间戳间隙小于该值则合并为同一段(秒)，默认1.5', 11),
+        ('model_seg_merge_gap_s', '模型侧合并间隙', '模型侧词合并为段的间隙阈值(秒)', 'number', 'input',
+         None, None, None, False,
+         False, '0.7', '模型侧合并间隙(秒)，默认0.7，更敏感以识别打断后短停顿+恢复', 12),
 
         # ─── 输入参数: 大模型评估（可选）───
-        ('rounds', '多轮文本', '多轮对话文本结构(用于大模型评估)', 'json', 'input',
+        ('rounds', '多轮文本', '多轮对话文本结构(已废弃,LLM改吃per_event)', 'json', 'input',
          None, None, None, False,
          False, None,
          '多轮文本结构 [{query, answer, is_return_to_topic}]，'
-         '与 user_wav/ai_wav 解耦；enable_llm_eval=True 时才使用', 12),
-        ('enable_llm_eval', '启用LLM评估', '是否启用大模型评估', 'boolean', 'input',
+         '已废弃：LLM 现改吃 per_event 字词级 ASR，传入忽略', 13),
+        ('enable_llm_eval', '启用LLM评估', '是否启用大模型评估(语义判定成功打断+回复打分)', 'boolean', 'input',
          None, None, None, False,
-         False, 'true', '默认开启：对每轮打断后回复与回到原话题行为做 LLM 评估；'
-         '显式传 false 才关闭(需配置 LLM_JUDGE_API_KEY)', 13),
+         False, 'true', '默认开启：LLM 语义判定是否成功打断(覆盖本地时序成功率)+三维打分；'
+         '显式传 false 才关闭(回退本地时序启发式,需配置 LLM_JUDGE_API_KEY)', 14),
         ('llm_model', 'LLM模型', 'LLM 模型名称(覆盖默认)', 'text', 'input',
          None, None, None, False,
-         False, 'gemini-3.7-flash', '覆盖 config.LLM_JUDGE.default_model，留空用默认', 14),
+         False, 'gemini-3.7-flash', '覆盖 config.LLM_JUDGE.default_model，留空用默认', 15),
         ('original_topic', '原始话题', '原始话题文本', 'text', 'input',
          None, None, None, False,
-         False, None, '原始话题文本，供回到原话题行为判断/打分使用', 15),
+         False, None, '原始话题文本，供 LLM 打分作上下文', 16),
 
         # ─── 输出参数: 打断成功率（主分）───
         ('interruption_success_rate', '打断成功率', '打断成功率', 'number', 'output',
@@ -350,7 +354,8 @@ def _upsert_dimension(conn, dim_def, dimension_type, parent_id=None):
 
     # api_settings + body_template
     body_template = dim_def.get('body_template', {
-        'seg_merge_gap_s': '{{seg_merge_gap_s}}',
+        'user_seg_merge_gap_s': '{{user_seg_merge_gap_s}}',
+        'model_seg_merge_gap_s': '{{model_seg_merge_gap_s}}',
         'enable_llm_eval': '{{enable_llm_eval}}',
         'llm_model': '{{llm_model}}',
         'original_topic': '{{original_topic}}',

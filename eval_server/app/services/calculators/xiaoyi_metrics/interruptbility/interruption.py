@@ -27,9 +27,10 @@ from typing import Any, Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # ─────────── 阈值 ───────────
-SEG_MERGE_GAP_S = 3.0          # 合并相邻词为语音段的间隙阈值（秒），参考 v1.5 USER_MERGE_GAP
-                                  # 3.0：间隔<3s 视为同一段话，避免回复中 0.5~3s 的短暂停顿把同一句拆成
-                                  # 多段、导致同一句打断被重复计数（句内停顿不应拆段）
+# 用户侧/模型侧用不同阈值合并字词为语音段：用户 1.5s（句内停顿宽松），
+# 模型 0.7s（更敏感，以识别打断后短停顿 + 恢复，避免把"停下又恢复"并成一段而漏判）
+USER_SEG_MERGE_GAP_S = 1.5      # 用户侧：合并相邻词为语音段的间隙阈值(秒)
+MODEL_SEG_MERGE_GAP_S = 0.7     # 模型侧：合并相邻词为语音段的间隙阈值(秒)
 # 让出宽限：模型语音段结尾比用户打断结尾晚 YIELD_GRACE_S 以内，仍视为"让出"（模型把当前词说完的自然过延）；
 # 超过则视为"说穿"（模型无视打断继续说）。0.05 太严会把词尾过延误判成说穿。
 YIELD_GRACE_S = 0.5
@@ -83,7 +84,7 @@ def _valid_ts(ts: Any) -> Optional[Tuple[float, float]]:
     return s_f, e_f
 
 
-def _to_segments(chunks: List[Dict[str, Any]], gap: float = SEG_MERGE_GAP_S) -> List[Dict[str, Any]]:
+def _to_segments(chunks: List[Dict[str, Any]], gap: float = USER_SEG_MERGE_GAP_S) -> List[Dict[str, Any]]:
     """把词级 chunks 合并成语音段，返回 [{start, end, text, words}, ...]
 
     - 按时间排序、相邻间隙 < gap 的词合并为同一段
@@ -250,19 +251,25 @@ def _evaluate_one_event(u: Dict[str, Any],
 
 # ─────────── 主入口 ───────────
 def compute_interruption_metrics(user_asr: Any, model_asr: Any,
-                                  seg_merge_gap_s: float = SEG_MERGE_GAP_S) -> Dict[str, Any]:
-    """计算打断三项指标
+                                  user_seg_merge_gap_s: float = USER_SEG_MERGE_GAP_S,
+                                  model_seg_merge_gap_s: float = MODEL_SEG_MERGE_GAP_S) -> Dict[str, Any]:
+    """计算打断指标（时延类用数据算；成功率由调用方叠加 LLM 语义判定覆盖）
+
+    用户侧/模型侧用不同阈值合并字词为语音段（user 1.5s / model 0.7s），
+    避免共用一个阈值导致模型"短停顿+恢复"被并成一段而漏判。
 
     Args:
         user_asr: 用户提问/打断语音的 ASR 结果（chunks 列表 或 {text, chunks}）
         model_asr: 模型恢复语音的 ASR 结果（同上）。两路需在同一时间轴、等长
-        seg_merge_gap_s: 词合并为段的间隙阈值（秒），默认 3.0（间隔<3s 视为同一段话）
+        user_seg_merge_gap_s: 用户侧词合并为段的间隙阈值(秒)，默认 1.5
+        model_seg_merge_gap_s: 模型侧词合并为段的间隙阈值(秒)，默认 0.7
 
     Returns:
         dict: {
-            'interruption_success_rate': float, 打断成功率（让出且恢复 / 有效打断事件）
-            'stop_rate': float,                 让出率（没说穿）
-            'resume_rate': float,              恢复率
+            'interruption_success_rate': float, 打断成功率（本地时序启发式：让出且恢复 / 有效打断事件；
+                                              若 LLM 启用，由 calculate_interruption_metrics 用 LLM 语义判定覆盖）
+            'stop_rate': float,                 让出率（没说穿，时序启发式）
+            'resume_rate': float,              恢复率（时序启发式）
             'avg_stop_latency_s': float|None,   平均打断检查时延（毫秒；字段名保留 _s 历史后缀，值为 ms）
             'avg_recovery_latency_s': float|None, 平均打断恢复时延（毫秒）
             'avg_overlap_s': float|None,        平均双方同时说话时长（毫秒，越短越好）
@@ -295,6 +302,10 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         # ── 大模型评估（可选）：由 calculate_interruption_metrics 在
         # enable_llm_eval=True 且配置 API key 时填充，未启用时保持这些默认值 ──
         # 行为分类裁判（五类行为）已移除，改由 interruption_judge 维度承担
+        # 注：interruption_success_rate 是本地时序启发式(让出且恢复)；LLM 启用时由
+        #    calculate_interruption_metrics 用 LLM 语义判定覆盖，本地值存到 timing_success_rate
+        'timing_success_rate': None,   # 本地时序启发式成功率(备份)，LLM 启用前与 interruption_success_rate 同值
+        'llm_success_rate': None,     # LLM 语义判定的成功率(成功事件/已评估事件)
         'llm_eval': {'enabled': False, 'message': '未启用 LLM 评估'},
         'llm_recovery_avg_coherence': None,
         'llm_recovery_avg_relevance': None,
@@ -314,8 +325,8 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         logger.warning(result['message'])
         return result
 
-    u_segs = _to_segments(user_chunks, gap=seg_merge_gap_s)
-    m_segs = _to_segments(model_chunks, gap=seg_merge_gap_s)
+    u_segs = _to_segments(user_chunks, gap=user_seg_merge_gap_s)
+    m_segs = _to_segments(model_chunks, gap=model_seg_merge_gap_s)
 
     result['n_user_segments'] = len(u_segs)
     if not u_segs:
@@ -399,8 +410,10 @@ if __name__ == '__main__':
                         help='用户提问 ASR JSON 路径（{text, chunks} 或 chunks 列表）')
     parser.add_argument('--model_asr', required=True,
                         help='模型恢复 ASR JSON 路径（{text, chunks} 或 chunks 列表）')
-    parser.add_argument('--merge_gap', type=float, default=SEG_MERGE_GAP_S,
-                        help=f'词合并为段的间隙阈值(秒)，默认 {SEG_MERGE_GAP_S}')
+    parser.add_argument('--user_merge_gap', type=float, default=USER_SEG_MERGE_GAP_S,
+                        help=f'用户侧词合并为段的间隙阈值(秒)，默认 {USER_SEG_MERGE_GAP_S}')
+    parser.add_argument('--model_merge_gap', type=float, default=MODEL_SEG_MERGE_GAP_S,
+                        help=f'模型侧词合并为段的间隙阈值(秒)，默认 {MODEL_SEG_MERGE_GAP_S}')
     args = parser.parse_args()
 
     def _load(p):
@@ -409,6 +422,7 @@ if __name__ == '__main__':
 
     r = compute_interruption_metrics(
         _load(args.user_asr), _load(args.model_asr),
-        seg_merge_gap_s=args.merge_gap,
+        user_seg_merge_gap_s=args.user_merge_gap,
+        model_seg_merge_gap_s=args.model_merge_gap,
     )
     print(json.dumps(r, ensure_ascii=False, indent=2))
