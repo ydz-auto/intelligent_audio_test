@@ -38,60 +38,128 @@ LLM_DEFAULT_MAX_TOKENS = 1024
 
 
 # ─────────── prompt 构建 ───────────
-def _fmt_words(words: List[Dict[str, Any]]) -> str:
-    """把字词级 ASR chunks 格式化为 "词(start-end) 词2(s-e) ..." 便于 LLM 看文本+时间戳"""
-    if not words:
-        return ''
-    parts = []
-    for w in words:
+def _fmt_ts(t: Any) -> str:
+    """秒 → 2 位小数字符串"""
+    try:
+        return f'{float(t):.2f}'
+    except (TypeError, ValueError):
+        return '?'
+
+
+def _words_range(words: List[Dict[str, Any]]) -> Optional[List[float]]:
+    """从字词级 chunks 取 [start, end] 范围；无有效时间戳返回 None"""
+    starts: List[float] = []
+    ends: List[float] = []
+    for w in words or []:
         if not isinstance(w, dict):
             continue
-        txt = str(w.get('text', ''))
         ts = w.get('timestamp') or []
         if isinstance(ts, (list, tuple)) and len(ts) >= 2 and ts[0] is not None and ts[1] is not None:
             try:
-                parts.append(f'{txt}({round(float(ts[0]), 2)}-{round(float(ts[1]), 2)})')
-                continue
+                starts.append(float(ts[0]))
+                ends.append(float(ts[1]))
             except (TypeError, ValueError):
                 pass
-        parts.append(txt)
-    return ' '.join(parts)
+    if not starts:
+        return None
+    return [min(starts), max(ends)]
 
 
-def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '') -> str:
-    """单事件复核+打分 prompt
+def _seg_overlap(s: Dict[str, Any], rng: Any) -> bool:
+    """段 s 与区间 rng=[a,b] 是否重叠（边界相接不算）"""
+    try:
+        ss = float(s.get('start'))
+        se_ = float(s.get('end'))
+        a = float(rng[0])
+        b = float(rng[1])
+    except (TypeError, ValueError):
+        return False
+    return max(ss, a) < min(se_, b) - 1e-6
 
-    给 LLM：原始话题 + 用户打断字词级ASR + 模型被打断尾巴字词级ASR + 模型恢复回复字词级ASR
-    + 本地时序结论（success/stop_latency/recovery_latency，单位毫秒）作参考。
-    要求返回：是否真的打断+原因，以及回复三维打分+每维分项理由。
-    严格区分角色：仅"用户打断"是人类输入；其余两段是 AI(语音助手)的话。
+
+def _fmt_segments(segs: List[Dict[str, Any]], label: str,
+                  marks: Optional[Dict[int, str]] = None) -> str:
+    """把语音段列表格式化成时间线文本。
+
+    segs: [{start, end, text, words}, ...] —— 用整段 text（不再拆到字词级，太长）
+    label: 角色标签（'用户'/'AI'）
+    marks: {段索引: 标注文本}，在对应行尾追加 '  ← 标注'，用于高亮本事件相关段
+    """
+    if not segs:
+        return f'  （无 {label} 语音）'
+    lines = []
+    for i, s in enumerate(segs):
+        if not isinstance(s, dict):
+            continue
+        ts = f'[{_fmt_ts(s.get("start"))}-{_fmt_ts(s.get("end"))}]'
+        txt = str(s.get('text', '')).strip()
+        mark = (marks or {}).get(i)
+        mark_str = f'  ← {mark}' if mark else ''
+        lines.append(f'  {ts} {label}: {txt}{mark_str}')
+    return '\n'.join(lines)
+
+
+def _build_event_prompt(ev: Dict[str, Any], original_topic: str = '',
+                        user_segs: Optional[List[Dict[str, Any]]] = None,
+                        model_segs: Optional[List[Dict[str, Any]]] = None) -> str:
+    """单事件复核+打分 prompt（喂两路完整时间线）
+
+    给 LLM：原始话题 + 用户侧完整时间线 + 模型侧完整时间线（标注本事件相关段）
+    + 本地时序结论作参考。要求返回：是否真的打断+原因、success（只要 AI 停下）
+    +原因、回复三维打分+理由。严格区分角色：仅"用户打断"是人类输入；
+    模型侧时间线都是 AI(语音助手)的话。
     """
     topic_line = original_topic or '（未显式给出，可从对话推断）'
-    user_w = _fmt_words(ev.get('user_words')) or ev.get('user_text', '')
-    int_w = _fmt_words(ev.get('model_interrupted_words')) or ev.get('model_interrupted_text', '')
-    rec_w = _fmt_words(ev.get('model_recovery_words')) or ev.get('model_recovery_text', '')
+    user_segs = user_segs or []
+    model_segs = model_segs or []
+
+    # ── 标注本事件相关段，便于 LLM 在完整时间线里定位 ──
+    # 用户打断段：ev['user_segment'] = [u_s, u_e]
+    user_marks: Dict[int, str] = {}
+    u_seg = ev.get('user_segment')
+    if isinstance(u_seg, (list, tuple)) and len(u_seg) >= 2 and u_seg[0] is not None and u_seg[1] is not None:
+        for i, s in enumerate(user_segs):
+            if _seg_overlap(s, [u_seg[0], u_seg[1]]):
+                user_marks[i] = '本事件打断段'
+    # 模型被打断段 m_active / 恢复段 m_next：从 ev 的字词级 words 取范围匹配
+    model_marks: Dict[int, str] = {}
+    m_int_range = _words_range(ev.get('model_interrupted_words'))
+    m_rec_range = _words_range(ev.get('model_recovery_words'))
+    if m_int_range:
+        for i, s in enumerate(model_segs):
+            if _seg_overlap(s, m_int_range):
+                model_marks[i] = '被打断段(本事件)'
+    if m_rec_range:
+        for i, s in enumerate(model_segs):
+            if i in model_marks:
+                continue
+            if _seg_overlap(s, m_rec_range):
+                model_marks[i] = '恢复段(本事件)'
+
+    user_tl = _fmt_segments(user_segs, '用户', user_marks)
+    model_tl = _fmt_segments(model_segs, 'AI', model_marks)
 
     return f"""你是语音对话打断处理评估专家。请严格区分两个角色：
 - 用户(人类)：打断者，在 AI 说话时插入语音。
-- AI(语音助手，被评估对象)：被打断后停下，再给出恢复回复。
-【重要·角色区分】下面三段字词级 ASR 中，只有【用户打断】是人类说的话；
-【模型被打断尾巴】和【模型恢复回复】都是 AI(语音助手)说的话，**不是用户输入**，切勿把 AI 的话当成用户说的。
+- AI(语音助手，被评估对象)：被打断后停下，可能给出恢复回复。
+【重要·角色区分】下方【用户侧完整时间线】是人类说的话；【模型侧完整时间线】都是 AI(语音助手)说的话，**不是用户输入**，切勿把 AI 的话当成用户说的。
 
 【原始话题/上下文】：{topic_line}
-【用户打断 字词级ASR(人类)】：{user_w}
-【模型被打断尾巴 字词级ASR(AI)】：{int_w}
-【模型恢复回复 字词级ASR(AI)】：{rec_w}
-【本地时序结论(仅供参考，勿照搬)】：success={ev.get('success')} stop_latency_ms={ev.get('stop_latency_s')} recovery_latency_ms={ev.get('recovery_latency_s')}
+【用户侧完整时间线(人类)】：
+{user_tl}
+【模型侧完整时间线(AI)】：
+{model_tl}
+【本事件本地时序结论(仅供参考，勿照搬)】：user_interrupt_segment={ev.get('user_segment')} success={ev.get('success')} stop_latency_ms={ev.get('stop_latency_s')} recovery_latency_ms={ev.get('recovery_latency_s')}
 
-(A) is_real_interruption：是否真的打断(用户确有打断意图且在 AI 说话期间插入、AI 确有让出/恢复)。给布尔+简短 interruption_reason。
+(A) is_real_interruption：是否真的打断(用户确有打断意图且在 AI 说话期间插入、AI 确有让出/停下)。给布尔+简短 interruption_reason。
     若用户只是应答词("嗯/好")、或未在 AI 说话期间插入、或 AI 全程未被影响，则不算。
-(B) success：模型是否【成功处理了打断】(语义判定，作为打断成功率依据)：
-    成功 = AI 合理让出/停下，并给出了与用户打断意图相符(或对打断有合理承接)的恢复回复；
-    失败 = AI 说穿/无视打断继续说、或恢复回复与打断意图无关/混乱/形同沉默。
-    给布尔 + 简短 success_reason(只解释为何成功/失败)。
-    注意：若【模型恢复回复】为空(AI 未给恢复回复，如说穿)，success 必为 false。
+(B) success：模型是否【成功处理了打断】= 只要 AI 在被打断后**停止了输出(停下来)**即算成功，不要求是否恢复、也不看恢复回复质量。
+    成功 = AI 在用户打断后停下了当前输出(让出)；
+    失败 = AI 无视打断说穿(继续把原来的话说完，未停下)。
+    给布尔 + 简短 success_reason(只解释为何停下/说穿)。
+    注意：success 与下方(C)三维打分相互独立——即使 AI 未给恢复回复(三维为0)，只要停下了，success 仍为 true。
 (C) 对【模型恢复回复】(AI 的话，非用户输入) 三维打分(0-5 整数，0 最差、5 最好；参考 Full-Duplex-Bench GPT-4o Score)，
-    每维各给一个简短理由(只解释该维为何这个分)；若模型未给恢复回复，三维均给 0：
+    每维各给一个简短理由(只解释该维为何这个分)；若模型未给恢复回复(停下后没恢复)，三维均给 0，但不影响(B)的 success：
     1. coherence(连贯性)：回复与被打断尾巴、与打断内容的衔接是否连贯自然。
        0=完全断裂 1=几乎不连贯 2=略有衔接 3=基本连贯 4=连贯自然 5=完美衔接
     2. relevance(相关性)：回复是否切合用户打断所表达的需求与意图。
@@ -212,13 +280,18 @@ def _bool_field(parsed: dict, key: str) -> Optional[bool]:
 
 # ─────────── 主入口 ───────────
 def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
-                              task_params: Dict[str, Any]) -> Dict[str, Any]:
-    """打断对话的大模型评估主入口（吃字词级 ASR，语义复核 + 回复打分）
+                              task_params: Dict[str, Any],
+                              user_segments: Optional[List[Dict[str, Any]]] = None,
+                              model_segments: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
+    """打断对话的大模型评估主入口（吃两路完整时间线，语义复核 + 回复打分）
 
     Args:
         per_event: compute_interruption_metrics 产出的事件列表，每个 interruption 事件
             含 user_text/user_words、model_interrupted_text/words、model_recovery_text/words
             及本地时序结论（success/stop_latency_s/recovery_latency_s）
+        task_params: 任务参数，读取 original_topic / llm_model / max_tokens / temperature
+        user_segments: 用户侧完整语音段时间线（compute_interruption_metrics 导出，含 words）
+        model_segments: 模型侧完整语音段时间线（同上）
         task_params: 任务参数，读取 original_topic / llm_model / max_tokens / temperature
 
     Returns:
@@ -270,7 +343,7 @@ def evaluate_interruption_llm(per_event: List[Dict[str, Any]],
             'error': '',
         }
         try:
-            prompt = _build_event_prompt(ev, original_topic)
+            prompt = _build_event_prompt(ev, original_topic, user_segments, model_segments)
             resp = _call_llm_json(prompt, model, max_tokens, temperature)
             parsed = _parse_json(resp['content']) or {}
             item['is_real_interruption'] = _bool_field(parsed, 'is_real_interruption')

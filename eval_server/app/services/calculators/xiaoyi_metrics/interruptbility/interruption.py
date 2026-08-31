@@ -318,6 +318,10 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         'llm_return_avg_adaptability': None,
         'llm_recovery_per_round': [],
         'llm_return_scores_per_round': [],
+        # ── 两路完整语音段时间线（过滤开场白后，含字词级 words），
+        # 供 LLM 评估时看到模型/用户全局上下文，而非仅 per_event 里的两段切片 ──
+        'user_segments': [],
+        'model_segments': [],
     }
 
     if not user_chunks:
@@ -343,12 +347,17 @@ def compute_interruption_metrics(user_asr: Any, model_asr: Any,
         # 模型全程没说话：所有用户段都是 no_model_speech
         result['n_no_model_speech'] = len(u_segs)
         result['per_event'] = [_evaluate_one_event(u, []) for u in u_segs]
+        result['user_segments'] = u_segs   # 模型侧为空，保持默认 []
         result['message'] = 'model_asr 为空，模型全程未说话，无法计算打断指标'
         logger.warning(result['message'])
         return result
 
     per_event = [_evaluate_one_event(u, m_segs) for u in u_segs]
     result['per_event'] = per_event
+    # 导出两路完整时间线（u_segs/m_segs 已在上方过滤开场白，含字词级 words），
+    # 供 LLM 评估看到全局上下文，与本地判定使用同一份段数据
+    result['user_segments'] = u_segs
+    result['model_segments'] = m_segs
 
     # ── 聚合 ──
     interruption_events = [e for e in per_event if e['event_type'] == 'interruption']

@@ -619,6 +619,8 @@ def _empty_interruption(message):
         'llm_return_avg_adaptability': None,
         'llm_recovery_per_round': [],
         'llm_return_scores_per_round': [],
+        'user_segments': [],
+        'model_segments': [],
     }
 
 
@@ -762,7 +764,11 @@ def calculate_interruption_metrics(task_params):
     if enable_llm:
         try:
             from ..interruptbility.interruption_llm import evaluate_interruption_llm
-            llm_result = evaluate_interruption_llm(result.get('per_event') or [], task_params)
+            llm_result = evaluate_interruption_llm(
+                result.get('per_event') or [], task_params,
+                user_segments=result.get('user_segments') or [],
+                model_segments=result.get('model_segments') or [],
+            )
             result['llm_eval'] = llm_result
             # LLM 语义判定的成功率覆盖本地启发式 interruption_success_rate（本地值已存 timing_success_rate）
             if llm_result.get('llm_success_rate') is not None:
