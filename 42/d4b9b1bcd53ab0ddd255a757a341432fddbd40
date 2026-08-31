@@ -1,0 +1,57 @@
+Intelligent-Audio-TEST/frontend/src/views/ReportView.vue
+  s_9c19da314f8cc1::t_31d9fe1ac9d5f6 210
+Intelligent-Audio-TEST/frontend/src/components/common/test-case/TestCaseListContainer.vue
+  s_8d91bd4be1d8ff::t_ff8d8ca1dac1dc 147,149
+  s_8d91bd4be1d8ff::t_3c8b2b780bbec8 236,238
+  s_8d91bd4be1d8ff::t_c9e2acfe064575 795-803
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "42d4b9b1bcd53ab0ddd255a757a341432fddbd40",
+  "prompts": {},
+  "sessions": {
+    "s_8d91bd4be1d8ff": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a94e08081477c2f2cd1158f",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "edit_kind": "file_edit",
+        "external_session_id": "6a94e08081477c2f2cd1158f",
+        "tool_type": "agent",
+        "session_id": "6a94e08081477c2f2cd1158f",
+        "source_scene": "unknown",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_use_id": "6a94e18981477c2f2cd115b8",
+        "tool_id": "Edit",
+        "operation_id": "6a94e18981477c2f2cd115b8",
+        "dedupe_key": "6a94e08081477c2f2cd1158f:6a94e18981477c2f2cd115b8:afterEdit:33d13640",
+        "client_type": "ide"
+      }
+    },
+    "s_9c19da314f8cc1": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a928e0b81477c2f2cd11215",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "unknown",
+        "tool_id": "Edit",
+        "operation_id": "6a9292dd81477c2f2cd113a9",
+        "external_session_id": "6a928e0b81477c2f2cd11215",
+        "tool_type": "agent",
+        "edit_kind": "file_edit",
+        "session_id": "6a928e0b81477c2f2cd11215",
+        "dedupe_key": "6a928e0b81477c2f2cd11215:6a9292dd81477c2f2cd113a9:afterEdit:6d93637e",
+        "tool_use_id": "6a9292dd81477c2f2cd113a9",
+        "client_type": "ide"
+      }
+    }
+  }
+}
