@@ -207,7 +207,7 @@
     <!-- 底部浮动操作按钮 -->
     <teleport to="#global-fixed-elements" v-if="report">
       <div id="floating-report-actions" style="position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; justify-content: center; gap: 16px; z-index: 9999; padding: 16px 24px; background: rgba(255, 255, 255, 0.95); border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); backdrop-filter: blur(10px); border: 1px solid rgba(226, 232, 240, 0.8);">
-        <button class="btn btn-primary" @click="saveReport">
+        <button class="btn btn-primary" @click="saveReport" v-if="false">
           <i class="fas fa-save"></i> 保存
         </button>
         <button class="btn btn-success" @click="publishReport" v-if="report.status === 'draft'">

@@ -144,9 +144,9 @@
         <div class="category-header" @click="() => toggleCategory(group)">
           <div class="category-info">
             <input type="checkbox" class="group-checkbox"
-                   @change="() => toggleGroupCheck(group)"
+                   @change="() => { toggleGroupCheck(group); toggleGroupSelection(group); }"
                    @click.stop
-                   :checked="groupChecked[group] || false">
+                   :checked="groupSelectionStates[group] || false">
             <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedCategories[group] }"></i>
             <h4 class="category-title">{{ group }}</h4>
             <span class="category-count">{{ getGroupTotalCount(group) }}</span>
@@ -233,9 +233,9 @@
           <div class="category-header" @click="() => toggleTagCategory(tagName)">
             <div class="category-info">
               <input type="checkbox" class="group-checkbox"
-                     @change="() => toggleTagCheck(tagName)"
+                     @change="() => { toggleTagCheck(tagName); toggleTagSelection(tagName); }"
                      @click.stop
-                     :checked="tagChecked[tagName] || false">
+                     :checked="tagSelectionStates[tagName] || false">
               <i class="fas fa-chevron-down category-toggle" :class="{ expanded: expandedTagCategories[tagName] }"></i>
               <i class="fas fa-tag" style="color: var(--primary-color, #4a90e2); margin-right: 6px;"></i>
               <h4 class="category-title">{{ tagName }}</h4>
@@ -788,21 +788,19 @@ const groupSelectionStates = computed(() => {
 
   Object.keys(filteredValue).forEach((group: string) => {
     const groupCases = filteredValue[group];
-    // 用后端总数判断全选状态，而非已加载的用例数
     const totalCount = getGroupTotalCount(group);
     if (totalCount === 0) {
       result[group] = false;
     } else {
-      // 统计该分组下已选中的用例数
-      const selectedInGroup = groupCases.filter((tc: TestCase) => tc && tc.id && selectedSet.has(String(tc.id))).length;
-      // 如果已加载数 < 总数，只能判断部分选中；只有全部加载且全选才算全选
-      // 但 toggleGroupSelection 会从后端拉全量ID，所以已加载的用例数可能 < 选中数
-      // 此处用 totalCount === selectedInGroup 判断不够准确（selectedInGroup 只数已加载的）
-      // 改为：如果 selectedCases 长度 >= totalCount 且已加载的全部选中，则全选
-      result[group] = groupCases.length > 0 && groupCases
-        .filter((caseItem: TestCase) => caseItem && caseItem.id)
-        .every((caseItem: TestCase) => selectedSet.has(String(caseItem.id)))
-        && selectedInGroup >= totalCount;
+      // 已加载用例数（懒加载下可能 < totalCount）
+      const loadedCount = groupCases.filter((tc: TestCase) => tc && tc.id).length;
+      // 已加载用例中已选中的数量
+      const selectedInLoaded = groupCases.filter((tc: TestCase) => tc && tc.id && selectedSet.has(String(tc.id))).length;
+      // 全选条件：已加载的全部选中，且已选中总数 >= 后端总数
+      // （toggleGroupSelection 会从后端拉全量ID，所以 selectedInLoaded 可能 >= loadedCount）
+      result[group] = loadedCount > 0
+        && loadedCount === selectedInLoaded
+        && selectedCases.value.length >= totalCount;
     }
   });
 
