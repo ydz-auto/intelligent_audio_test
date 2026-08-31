@@ -74,10 +74,40 @@ def compute_takeover_latency_from_chunks(user_chunks, ai_chunks):
         return result
 
     # 1. 取 user 最后一字结束时间
+    #    如果 user_wav 包含 AI 回复之后的用户后续话语（全双工录音），
+    #    需要找到 AI 首词开始之前的 user 最后一词作为"用户结束说话"的时间点
     user_last_chunk = user_chunks[-1]
     user_last_end_s = user_last_chunk['timestamp'][-1]
     if user_last_end_s is None:
         user_last_end_s = 0.0
+
+    # 检查 AI 首词开始时间
+    ai_valid_starts = [
+        c['timestamp'][0] for c in ai_chunks
+        if c.get('timestamp') and c['timestamp'][0] is not None
+    ]
+    ai_first_start = min(ai_valid_starts) if ai_valid_starts else None
+
+    # 如果用户最后一词在 AI 首词之后，说明 user_wav 包含了 AI 回复之后的后续话语，
+    # 回退到 AI 首词之前的 user 最后一词（即用户提问的结束时间）
+    if ai_first_start is not None and user_last_end_s > ai_first_start:
+        logger.info(
+            f"[接管时延] 用户最后一词(end={user_last_end_s:.3f}s)在 AI 首词(start={ai_first_start:.3f}s)之后，"
+            f"说明 user_wav 包含 AI 回复后的后续话语，回退查找 AI 首词之前的用户最后一词"
+        )
+        for uc in reversed(user_chunks):
+            ts = uc.get('timestamp')
+            if ts and ts[1] is not None and ts[1] <= ai_first_start:
+                user_last_end_s = ts[1]
+                user_last_chunk = uc
+                break
+        else:
+            user_last_end_s = 0.0
+        logger.info(
+            f"[接管时延] 修正后 user_last_end={user_last_end_s:.3f}s "
+            f"(最后一词='{user_last_chunk.get('text', '')}')"
+        )
+
     user_last_word_end_ms = user_last_end_s * 1000.0
     result['user_last_word_end_ms'] = user_last_word_end_ms
 

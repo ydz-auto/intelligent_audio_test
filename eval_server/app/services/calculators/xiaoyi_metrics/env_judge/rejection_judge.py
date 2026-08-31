@@ -22,6 +22,7 @@ from app.services.calculators.xiaoyi_metrics.env_judge._common import (
     parse_json,
     parse_evaluations,
     get_asr_chunks,
+    get_asr_text,
 )
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,8 @@ def evaluate_rejection_judge(
             'model': str,
             'ai_wav': str,
             'evaluations': [{behavior, reason}, ...],
+            'query': str,
+            'answer': str,
             'behavior_respond': int,   # 回应 → 1, 否则 0
             'behavior_recover': int,   # 恢复 → 1, 否则 0
             'behavior_uncertain': int, # 不确定询问 → 1, 否则 0
@@ -160,6 +163,11 @@ def evaluate_rejection_judge(
         user_chunks = get_asr_chunks(user_wav)
 
     timeline_text = build_timeline_text(user_chunks)
+
+    # ── 提取 query / answer 文本（从 ASR 结果 JSON 读取） ──
+    query_text = get_asr_text(user_wav)
+    answer_text = get_asr_text(ai_wav)
+
     prompt = build_rejection_prompt(timeline_text)
 
     result: Dict[str, Any] = {
@@ -167,6 +175,8 @@ def evaluate_rejection_judge(
         'model': model,
         'ai_wav': ai_wav,
         'evaluations': [],
+        'query': query_text,
+        'answer': answer_text,
         'behavior_respond': 0,
         'behavior_recover': 0,
         'behavior_uncertain': 0,

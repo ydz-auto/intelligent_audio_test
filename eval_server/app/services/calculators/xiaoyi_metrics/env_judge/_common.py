@@ -390,3 +390,24 @@ def get_asr_chunks(user_wav: str) -> Optional[List[Dict[str, Any]]]:
     except Exception as e:
         logger.warning(f'[env_judge] 用户侧 ASR 失败，时间线将缺用户段: {e}')
         return None
+
+
+def get_asr_text(wav_path: str) -> str:
+    """从 ASR 结果 JSON 文件中读取 text 字段。
+
+    wav_path 对应的 ASR JSON 由 asr_adapator._save_asr_json 落盘，
+    路径由 _build_json_save_path(wav_path) 决定。
+    """
+    if not wav_path or not os.path.isfile(wav_path):
+        return ''
+    try:
+        from app.utils.asr_adapator import _build_json_save_path
+        json_path = _build_json_save_path(wav_path)
+        if os.path.isfile(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            return data.get('text', '')
+        logger.warning(f'[env_judge] ASR JSON 不存在: {json_path}')
+    except Exception as e:
+        logger.warning(f'[env_judge] 读取 ASR JSON 失败: {wav_path}: {e}')
+    return ''
