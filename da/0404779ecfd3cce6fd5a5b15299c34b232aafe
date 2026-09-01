@@ -1,0 +1,58 @@
+Intelligent-Audio-TEST/doc/功能设计文档/05_报告管理/报告轮次数据修复文档.md
+  s_ea48ea3e311c35::t_3e55b54e8667e3 1-143
+Intelligent-Audio-TEST/backend/controllers/report_controller_task.py
+  s_ea48ea3e311c35::t_69f5aec2d1e805 474,477,483,485-494,509-511
+  s_9c19da314f8cc1::t_ece57febd95964 484,1253
+  s_ea48ea3e311c35::t_f2ff285d1eec6b 497-498,500,513,523,532,538-552,555,557,559
+  s_ea48ea3e311c35::t_416818b694dc5e 360-405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "da0404779ecfd3cce6fd5a5b15299c34b232aafe",
+  "prompts": {},
+  "sessions": {
+    "s_9c19da314f8cc1": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a928e0b81477c2f2cd11215",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "edit_kind": "file_edit",
+        "session_id": "6a928e0b81477c2f2cd11215",
+        "tool_id": "Edit",
+        "tool_type": "agent",
+        "external_session_id": "6a928e0b81477c2f2cd11215",
+        "operation_id": "6a9292dd81477c2f2cd113a9",
+        "source_scene": "unknown",
+        "client_type": "ide",
+        "dedupe_key": "6a928e0b81477c2f2cd11215:6a9292dd81477c2f2cd113a9:afterEdit:6d93637e",
+        "runtime_client": "trae-tob-git-ai",
+        "tool_use_id": "6a9292dd81477c2f2cd113a9"
+      }
+    },
+    "s_ea48ea3e311c35": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a928c7881477c2f2cd1110f",
+        "model": "glm-5.2"
+      },
+      "human_author": "lijiahao <lijiahao69@huawei.com>",
+      "custom_attributes": {
+        "runtime_client": "trae-tob-git-ai",
+        "dedupe_key": "6a928c7881477c2f2cd1110f:6a92982781477c2f2cd1154e:afterEdit:f6bff4ea",
+        "session_id": "6a928c7881477c2f2cd1110f",
+        "tool_type": "agent",
+        "edit_kind": "file_edit",
+        "tool_use_id": "6a92982781477c2f2cd1154e",
+        "source_scene": "unknown",
+        "operation_id": "6a92982781477c2f2cd1154e",
+        "client_type": "ide",
+        "external_session_id": "6a928c7881477c2f2cd1110f",
+        "tool_id": "Write"
+      }
+    }
+  }
+}
