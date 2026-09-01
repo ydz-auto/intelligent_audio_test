@@ -1,0 +1,30 @@
+eval_server/app.py
+  s_1176d17ddf9481::t_1eb47bfafc031e 5-7
+eval_server/app/services/calculators/xiaoyi_metrics/API.md
+  s_1176d17ddf9481::t_1eb47bfafc031e 1,5,9-16,29,31,35-45,63,67,69-75,93,95,97,99-104,134,136,138,140-147,162,164,166,168-172,204,206,208,210-218,248,252,254-258,260,262-272,328,330,332,339,341,343-347,396,398,400,402,404,406-411,430,432,434,436-442,473,475,477,479-485,513,515,517,519-525,553,555,557,559-571,608-626
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "48d606ec57cb8c18337fbddda127252da0ad3ed8",
+  "prompts": {},
+  "sessions": {
+    "s_1176d17ddf9481": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a94de2445b49a7101635e82",
+        "model": "glm-5.2"
+      },
+      "human_author": "ydz-auto <ydz-auto@users.noreply.github.com>",
+      "custom_attributes": {
+        "display_model_name": "glm-5.2",
+        "tool_name": "RunCommand",
+        "session_id": "6a94de2445b49a7101635e82",
+        "edit_kind": "bash",
+        "operation_id": "6a94e71345b49a710163607a",
+        "tool_use_id": "6a94e71345b49a710163607a",
+        "external_session_id": "6a94de2445b49a7101635e82"
+      }
+    }
+  }
+}
