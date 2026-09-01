@@ -85,6 +85,8 @@ export function useE2eView() {
   const reportTables = ref([])
   const selectedTestCaseIds = ref<(string | number)[]>([])
   const taskName = ref('')
+  // 视图模式：由 TestCaseListContainer 上报，CRUD 后据此刷新对应视图
+  const viewMode = ref<'group' | 'tag'>('group')
   const taskStartTime = ref<Date | null>(null)
   const taskElapsedTimeDisplay = ref('00:00:00')
   let timeUpdateTimer: ReturnType<typeof setInterval> | null = null
@@ -449,7 +451,10 @@ export function useE2eView() {
       });
       
       if (result) {
-        await handleModalSave(result);
+        const saveResult = await handleModalSave(result);
+        if (saveResult?.needRefresh) {
+          await refreshCurrentView();
+        }
       }
     } catch (error) {
       console.error('[useE2eView] 打开编辑用例模态窗失败:', error);
@@ -481,6 +486,15 @@ export function useE2eView() {
       }
     }
   })
+
+  // CRUD 后根据当前视图刷新对应数据
+  const refreshCurrentView = async () => {
+    if (viewMode.value === 'tag') {
+      await fetchTagView({ testType: 'e2e', algorithmType: selectedAlgorithmType.value || undefined })
+    } else {
+      await initializeE2eTests(selectedAlgorithmType.value || undefined)
+    }
+  }
 
   const algorithmFilteredDevices = computed(() => {
     if (!selectedAlgorithmType.value) {
@@ -542,7 +556,7 @@ export function useE2eView() {
     try {
       const result = await handleModalSave(data);
       if (result?.needRefresh) {
-        await initializeE2eTests(selectedAlgorithmType.value || undefined);
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('保存失败:', error)
@@ -559,7 +573,7 @@ export function useE2eView() {
       if (confirmed) {
         const store = useTestCaseStore();
         await store.deleteGroup(groupName);
-        await initializeE2eTests(selectedAlgorithmType.value || undefined);
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('删除分组失败:', error)
@@ -574,7 +588,7 @@ export function useE2eView() {
       if (confirmed) {
         const store = useTestCaseStore();
         await store.deleteTestCase(testCase.id);
-        await initializeE2eTests(selectedAlgorithmType.value || undefined);
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('删除测试用例失败:', error)
@@ -674,6 +688,8 @@ export function useE2eView() {
     tagViewPagination,
     tagViewLoading,
     isLoading: testCasesLoading,
+    viewMode,
+    refreshCurrentView,
     progressPercentage,
     completedTests,
     inProgressTests,

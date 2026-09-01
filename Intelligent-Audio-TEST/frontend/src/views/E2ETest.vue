@@ -73,12 +73,14 @@
           @open-edit-modal="handleOpenEditModal"
           @open-create-group-modal="openCreateGroupModal"
           @open-edit-group-modal="openEditGroupModal"
-          @open-import-modal="openImportTestCaseModal"
+          @open-import-modal="(algoType?: string) => openImportTestCaseModal(algoType)"
           @open-export-modal="openExportTestCaseModal"
           @updateSelectedCases="updateSelectedCases"
+          @update:viewMode="handleViewModeUpdate"
           @tag-filter-change="handleTagFilterChange"
           @group-filter-change="handleGroupFilterChange"
           @load-more-tags="loadMoreTagView"
+          @refresh="handleRefresh"
         />
       </TestStepContainer>
 
@@ -410,8 +412,15 @@ const {
   searchAlgorithms,
   fetchTagView,
   loadMoreTagView,
-  initializeE2eTests
+  initializeE2eTests,
+  viewMode,
+  refreshCurrentView: handleRefresh
 } = useE2eView()
+
+// 由 TestCaseListContainer 上报视图模式变化
+const handleViewModeUpdate = (mode: 'group' | 'tag') => {
+  viewMode.value = mode
+}
 
 // 标签视图筛选变化时重新请求数据（固定 testType=e2e）
 const handleTagFilterChange = (filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }) => {

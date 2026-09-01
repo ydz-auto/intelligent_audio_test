@@ -637,6 +637,17 @@ export const useTestCaseStore = defineStore('testCase', () => {
     }
   };
 
+  const copyTagCases = async (tagName: string, copyToNewGroup: boolean = false) => {
+    try {
+      error.value = null;
+      await testcasesApi.batchAction('copy_by_tag', [], { tagName, copyToNewGroup });
+      await fetchTestCases();
+      return true;
+    } catch (err: any) {
+      return handleError(err, '复制标签用例失败');
+    }
+  };
+
   const batchUpdateAlgorithmParams = async (
     ids: (string | number)[],
     algorithmParams: Record<string, any>,
@@ -1246,6 +1257,7 @@ export const useTestCaseStore = defineStore('testCase', () => {
     deleteTestCase,
     copyTestCase,
     copyGroupCases,
+    copyTagCases,
     batchUpdateAlgorithmParams,
     fetchCaseIdsByFilter,
     batchUpdatePlaybackDevices,

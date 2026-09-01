@@ -172,10 +172,20 @@ export function useTestCaseConfig(options: UseTestCaseConfigOptions = {}) {
 export function createDefaultUploadConfig() {
   return {
     testTypes: ['e2e'] as ('api' | 'e2e')[],
-    apiDimensions: [] as SelectedDimension[],
-    e2eDimensions: [] as SelectedDimension[],
-    apiScopes: ['single'] as ('single' | 'multi')[],
-    e2eScopes: ['single'] as ('single' | 'multi')[],
+    apiDimensionConfig: {
+      dimensions: [] as SelectedDimension[],
+      roundMode: 'all' as 'all' | 'specific' | 'per_round',
+      roundNumbers: [] as number[],
+      roundDimensions: {} as Record<number, SelectedDimension[]>,
+      multiDimensions: [] as SelectedDimension[]
+    },
+    e2eDimensionConfig: {
+      dimensions: [] as SelectedDimension[],
+      roundMode: 'all' as 'all' | 'specific' | 'per_round',
+      roundNumbers: [] as number[],
+      roundDimensions: {} as Record<number, SelectedDimension[]>,
+      multiDimensions: [] as SelectedDimension[]
+    },
     spl: 65.0,
     noiseSpl: 60.0,
     noiseAudioId: null as string | number | null,

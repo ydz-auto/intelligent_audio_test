@@ -1217,6 +1217,7 @@ class TestCaseController:
             'copy_to_group': TestCaseController._batch_copy_to_group,
             'copy': TestCaseController._batch_copy,
             'copy_by_group': TestCaseController._batch_copy_by_group,
+            'copy_by_tag': TestCaseController._batch_copy_by_tag,
             'update_algorithm_params': TestCaseController._batch_update_algorithm_params,
             'update_playback_devices': TestCaseController._batch_update_playback_devices,
             'update_spl': TestCaseController._batch_update_spl,
@@ -1369,6 +1370,59 @@ class TestCaseController:
             TestCaseController.refresh_reference_texts(new_tc)
             copied_count += 1
         return f"已成功复制分组 '{new_group_name}' 的 {copied_count} 个用例"
+
+    @staticmethod
+    def _batch_copy_by_tag(req_data):
+        """按标签复制用例：将标签下所有用例复制，副本关联到新标签 tag_name_copy。
+        若 copy_to_new_group=True，同时创建新分组 tag_name_copy 并将副本归入新分组。"""
+        tag_name = req_data.tag_name
+        if not tag_name:
+            return error_response("复制标签操作需要 'tag_name'")
+        tag = Tag.query.filter_by(name=tag_name).first()
+        if not tag:
+            return error_response(f"未找到标签: {tag_name}")
+
+        # 创建新标签
+        new_tag_name = f"{tag_name}_copy"
+        new_tag = Tag.query.filter_by(name=new_tag_name).first()
+        if not new_tag:
+            new_tag = Tag(id=str(uuid.uuid4()), name=new_tag_name)
+            db.session.add(new_tag)
+
+        # 按用户选择决定是否创建新分组
+        new_group = None
+        if req_data.copy_to_new_group:
+            new_group_name = f"{tag_name}_copy"
+            existing_group = TestCaseGroup.query.filter_by(name=new_group_name).first()
+            if existing_group:
+                new_group = existing_group
+            else:
+                new_group = TestCaseGroup(
+                    id=str(uuid.uuid4()),
+                    name=new_group_name,
+                    description=f"从标签 '{tag_name}' 复制"
+                )
+                db.session.add(new_group)
+
+        test_cases = [tc for tc in tag.test_cases if not tc.deleted]
+        copied_count = 0
+        for tc in test_cases:
+            new_id = str(uuid.uuid4())
+            new_tc = TestCase(
+                id=new_id,
+                name=tc.name,
+                description=tc.description,
+                group_id=new_group.id if new_group else tc.group_id,
+                config=tc.config.copy() if tc.config else {},
+                algorithm_type=tc.algorithm_type,
+                test_type=tc.test_type or 'api',
+            )
+            db.session.add(new_tc)
+            # 关联新标签
+            new_tc.tags.append(new_tag)
+            TestCaseController.refresh_reference_texts(new_tc)
+            copied_count += 1
+        return f"已成功复制标签 '{tag_name}' 的 {copied_count} 个用例"
 
     @staticmethod
     def _batch_update_algorithm_params(req_data):

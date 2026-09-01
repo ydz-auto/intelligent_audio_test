@@ -407,7 +407,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'deleteGroup', groupName: string): void;
   (e: 'deleteTestCase', testCase: TestCase): void;
-  (e: 'openAddModal', group?: string, options?: { algorithmType?: string; testType?: 'api' | 'e2e' }): void;
+  (e: 'openAddModal', group?: string, options?: { algorithmType?: string; testType?: 'api' | 'e2e'; tags?: string[] }): void;
   (e: 'openEditModal', testCase: TestCase): void;
   (e: 'openCreateGroupModal'): void;
   (e: 'openEditGroupModal', groupName: string): void;
@@ -418,6 +418,7 @@ const emit = defineEmits<{
   (e: 'tagFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
   (e: 'groupFilterChange', filters: { keyword?: string; testType?: string; algorithmType?: string; dimensionId?: number }): void;
   (e: 'loadMoreTags'): void;
+  (e: 'refresh'): void;
 }>();
 
 const expandedCategories = ref<Record<string, boolean>>({});
@@ -1304,6 +1305,7 @@ const handleCopyGroup = async (group: string) => {
       const result = await store.copyGroupCases(group);
       if (result) {
         alert(`分组复制成功！\n\n原分组：${group}\n新分组：${group}_copy`);
+        emit('refresh');
       }
     }
   } catch (error) {
@@ -1382,9 +1384,7 @@ const handleTagDelete = async (tagName: string) => {
     if (confirmed?.confirmed) {
       // cascade=true: 删除标签及其下所有测试用例
       await api.tags.deleteTag(tagItem.id, true);
-      // 刷新标签视图数据
-      const store = useTestCaseStore();
-      await store.refreshTagView();
+      emit('refresh');
     }
   } catch (error) {
     console.error('删除标签失败:', error);
@@ -1417,11 +1417,10 @@ const confirmBatchDeleteTags = async () => {
         await api.tags.deleteTag(tagItem.id, true);
       }
     }
-    const store = useTestCaseStore();
-    await store.refreshTagView();
     selectedCases.value = [];
     tagChecked.value = {};
     alert(`已成功删除 ${tagsToDelete.length} 个标签及其下所有用例`);
+    emit('refresh');
   } catch (error) {
     console.error('批量删除标签失败:', error);
     alert('批量删除标签失败: ' + (error instanceof Error ? error.message : '未知错误'));
@@ -1459,6 +1458,7 @@ const confirmBatchDeleteGroups = async () => {
   selectedCases.value = [];
   groupChecked.value = {};
   alert(`批量删除完成：成功 ${successCount} 个${failCount > 0 ? `，失败 ${failCount} 个` : ''}`);
+  emit('refresh');
 };
 
 const handleTagEdit = async (tagName: string) => {
@@ -1479,8 +1479,7 @@ const handleTagEdit = async (tagName: string) => {
 
     if (result) {
       alert(`标签已更新`);
-      const store = useTestCaseStore();
-      await store.fetchTestCases();
+      emit('refresh');
     }
   } catch (error) {
     console.error('编辑标签失败:', error);
@@ -1489,7 +1488,7 @@ const handleTagEdit = async (tagName: string) => {
 
 const handleTagAddCase = (tagName: string) => {
   // 新增用例时传入标签作为预设
-  emit('openAddModal', undefined, { algorithmType: algorithmTypeFilter === 'all' ? '' : algorithmTypeFilter, testType: testTypeFilter.value === 'all' ? undefined : testTypeFilter.value as 'api' | 'e2e' });
+  emit('openAddModal', undefined, { algorithmType: algorithmTypeFilter.value === 'all' ? '' : algorithmTypeFilter.value, testType: testTypeFilter.value === 'all' ? undefined : testTypeFilter.value as 'api' | 'e2e', tags: [tagName] });
 };
 
 const handleTagCopyGroup = async (tagName: string) => {
@@ -1505,7 +1504,8 @@ const handleTagCopyGroup = async (tagName: string) => {
   try {
     const confirmed = await modalControl.open(MODAL_TYPES.BASIC_CONFIRM, {
       title: '复制标签下用例',
-      content: `确定要复制标签 "${tagName}" 下的 ${tagCases.length} 个用例吗？\n\n复制后将成为新分组：${tagName}_copy`,
+      content: `确定要复制标签 "${tagName}" 下的 ${tagCases.length} 个用例吗？\n副本将关联到新标签：${tagName}_copy`,
+      checkboxLabel: '同时复制到新分组',
       confirmText: '复制',
       cancelText: '取消',
       danger: false
@@ -1513,9 +1513,10 @@ const handleTagCopyGroup = async (tagName: string) => {
 
     if (confirmed?.confirmed) {
       const store = useTestCaseStore();
-      const result = await store.copyGroupCases(tagName);
+      const result = await store.copyTagCases(tagName, confirmed.checkboxValue);
       if (result) {
-        alert(`标签用例复制成功！\n\n原标签：${tagName}\n新分组：${tagName}_copy`);
+        alert(`标签用例复制成功！\n\n原标签：${tagName}\n新标签：${tagName}_copy`);
+        emit('refresh');
       }
     }
   } catch (error) {
@@ -1608,6 +1609,7 @@ const handleAction = async (actionEvent: { action: { id: string }; testCase: Tes
         const store = useTestCaseStore();
         await store.copyTestCase(testCase.id);
         selectedCases.value = [];
+        emit('refresh');
       } catch (error: any) {
         console.error('复制测试用例失败:', error);
       }

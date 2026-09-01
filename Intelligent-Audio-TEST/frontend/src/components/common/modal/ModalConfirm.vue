@@ -5,17 +5,21 @@
         <i :class="isSuccess ? 'fas fa-check-circle' : (isDanger ? 'fas fa-exclamation-triangle' : 'fas fa-question-circle')"></i>
       </div>
       <p class="modal-confirmMessage">{{ content }}</p>
+      <label v-if="checkboxLabel" class="modal-confirmCheckbox">
+        <input type="checkbox" v-model="checkboxValue">
+        {{ checkboxLabel }}
+      </label>
     </div>
     <div class="modal-confirmActions">
-      <button 
-        class="btn btn-secondary" 
+      <button
+        class="btn btn-secondary"
         @click="handleCancel"
       >
         {{ cancelText }}
       </button>
-      <button 
-        class="btn" 
-        :class="isDanger ? 'btn-danger' : 'btn-primary'" 
+      <button
+        class="btn"
+        :class="isDanger ? 'btn-danger' : 'btn-primary'"
         @click="handleConfirm"
       >
         {{ confirmText }}
@@ -25,7 +29,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useModalControl } from '../../../composables/useModal'
 
 const props = defineProps({
@@ -52,12 +56,18 @@ const props = defineProps({
   danger: {
     type: Boolean,
     default: false
+  },
+  checkboxLabel: {
+    type: String,
+    default: ''
   }
 })
 
 const emit = defineEmits(['close', 'confirm', 'cancel'])
 
 const modalManager = useModalControl()
+
+const checkboxValue = ref(false)
 
 const isSuccess = computed(() => {
   return props.title?.includes('成功') || props.title?.toLowerCase().includes('success')
@@ -68,7 +78,7 @@ const isDanger = computed(() => {
 })
 
 const handleConfirm = () => {
-  emit('confirm', { confirmed: true })
+  emit('confirm', { confirmed: true, checkboxValue: checkboxValue.value })
 }
 
 const handleCancel = () => {
@@ -119,6 +129,22 @@ const handleCancel = () => {
   font-size: 15px;
   color: #475569;
   line-height: 1.6;
+}
+
+.modal-confirmCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #475569;
+  cursor: pointer;
+  user-select: none;
+}
+
+.modal-confirmCheckbox input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .modal-confirmActions {

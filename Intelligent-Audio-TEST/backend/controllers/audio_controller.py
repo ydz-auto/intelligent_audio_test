@@ -2291,26 +2291,33 @@ class AudioController:
                         d for d in norm_dims
                         if not d.get('test_type') or d.get('test_type') == tt
                     ]
-                    # 按 (id, round_scope) 组合去重
-                    # 同一维度可以同时有 single 和 multi 两个 scope，分别写入不同位置
+                    # 按 (id, round_scope, round_number) 组合去重
+                    # 同一维度可以在不同轮次或不同 scope 下重复出现
                     seen_keys = set()
                     unique_dims = []
                     for d in filtered_dims:
                         dim_id = d.get('id')
                         scope = d.get('round_scope', 'single')
-                        key = (dim_id, scope)
+                        rn = d.get('round_number')
+                        key = (dim_id, scope, rn)
                         if dim_id and key not in seen_keys:
                             seen_keys.add(key)
                             unique_dims.append(d)
                     # 按 round_scope 分发维度
                     single_round_dims = [d for d in unique_dims if d.get('round_scope', 'single') == 'single']
                     multi_round_dims = [d for d in unique_dims if d.get('round_scope') == 'multi']
-                    # 单轮维度写入 rounds[].evaluation.dimensions
+                    # 单轮维度按 round_number 分发到匹配的轮次
+                    # - 有 round_number 的维度：只写入 round_number 匹配的 round
+                    # - 无 round_number 的维度（all 模式）：写入所有 rounds
+                    global_round_dims = [d for d in single_round_dims if not d.get('round_number')]
+                    scoped_round_dims = [d for d in single_round_dims if d.get('round_number')]
                     for round_item in rounds_resolved:
                         if isinstance(round_item, dict):
                             if 'evaluation' not in round_item:
                                 round_item['evaluation'] = {}
-                            round_item['evaluation']['dimensions'] = single_round_dims
+                            rn = round_item.get('round_number')
+                            matched = [d for d in scoped_round_dims if d.get('round_number') == rn]
+                            round_item['evaluation']['dimensions'] = global_round_dims + matched
                     # 多轮维度写入 config.dimensions（顶层聚合维度）
                     if multi_round_dims:
                         config['dimensions'] = multi_round_dims

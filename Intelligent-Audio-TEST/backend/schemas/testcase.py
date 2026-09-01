@@ -489,6 +489,8 @@ class TestCaseBatchActionRequest(APIModel):
     noise_audio_id: Optional[Union[int, str]] = Field(None, alias='noise_audio_id', validation_alias=AliasChoices('noise_audio_id', 'noiseAudioId'))
     noise_device_ids: Optional[List[Union[int, str]]] = Field(None, alias='noise_device_ids', validation_alias=AliasChoices('noise_device_ids', 'noiseDeviceIds'))
     group_name: Optional[str] = Field(None, alias='group_name', validation_alias=AliasChoices('group_name', 'groupName'))
+    tag_name: Optional[str] = Field(None, alias='tag_name', validation_alias=AliasChoices('tag_name', 'tagName'))
+    copy_to_new_group: Optional[bool] = Field(False, alias='copy_to_new_group', validation_alias=AliasChoices('copy_to_new_group', 'copyToNewGroup'))
     tags: Optional[List[str]] = Field(None, alias='tags', validation_alias='tags')
     dimensions: Optional[List[Dict[str, Any]]] = Field(None, alias='dimensions', validation_alias='dimensions')
     round_dimensions: Optional[Dict[str, Any]] = Field(None, alias='round_dimensions', validation_alias=AliasChoices('round_dimensions', 'roundDimensions'))

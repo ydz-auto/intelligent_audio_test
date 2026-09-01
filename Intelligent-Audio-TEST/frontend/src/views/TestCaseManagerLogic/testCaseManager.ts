@@ -87,6 +87,7 @@ export function useTestCaseManager() {
       const confirmed = await confirmDeleteGroup(groupName);
       if (confirmed) {
         await deleteGroupFromStore(groupName);
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('删除分组失败:', error);
@@ -100,6 +101,7 @@ export function useTestCaseManager() {
       const confirmed = await confirmDeleteTestCase(testCase.name);
       if (confirmed) {
         await deleteTestCase(testCase.id);
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('删除测试用例失败:', error);

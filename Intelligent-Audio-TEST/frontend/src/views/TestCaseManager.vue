@@ -25,11 +25,12 @@
       @open-edit-modal="handleOpenEditModal"
       @open-create-group-modal="openCreateGroupModal"
       @open-edit-group-modal="openEditGroupModal"
-      @open-import-modal="openImportTestCaseModal"
+      @open-import-modal="(algoType?: string) => openImportTestCaseModal(algoType)"
       @open-export-modal="openExportTestCaseModal"
       @tag-filter-change="handleTagFilterChange"
       @group-filter-change="handleGroupFilterChange"
       @load-more-tags="loadMoreTagView"
+      @refresh="refreshCurrentView"
     />
   </div>
 </template>
@@ -58,7 +59,8 @@ const {
   openExportTestCaseModal,
   handleTagFilterChange,
   handleGroupFilterChange,
-  loadMoreTagView
+  loadMoreTagView,
+  refreshCurrentView
 } = useTestCaseManager();
 </script>
 

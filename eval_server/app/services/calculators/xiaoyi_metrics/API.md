@@ -1,19 +1,19 @@
-# xiaoyi_metrics API 入参出参文档
+# xiaoyi\_metrics API 入参出参文档
 
 ## 公共约定
 
-### task_params 通用字段
+### task\_params 通用字段
 
 以下字段在多数指标中共享，各指标的额外字段见各自章节。
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `user_wav` | str | 指标依赖 | 用户通道音频路径（`cap_client_process_out.wav`） |
-| `ai_wav` | str | 指标依赖 | 模型回复音频路径（`cap_client_ec_out.wav`） |
-| `rounds` | list[dict] | 否 | 多轮文本数据，每轮可含 `query`/`answer`/`question`/`correct_answer`/`ai_wav`/`user_wav` 等 |
-| `round_number` | int | 否 | 轮次索引（0-based）。有值→单轮评估；无值→多轮整体评估 |
-| `sub_tasks` | list[str] | 否 | 仅 `turn_taking` 主维度：指定只计算部分子维度 |
-| `enable_llm_eval` | bool/str | 否 | 是否启用 LLM 语义评估，默认 True |
+| 字段                | 类型          | 必填   | 说明                                                                             |
+| ----------------- | ----------- | ---- | ------------------------------------------------------------------------------ |
+| `user_wav`        | str         | 指标依赖 | 用户通道音频路径（`cap_client_process_out.wav`）                                         |
+| `ai_wav`          | str         | 指标依赖 | 模型回复音频路径（`cap_client_ec_out.wav`）                                              |
+| `rounds`          | list\[dict] | 否    | 多轮文本数据，每轮可含 `query`/`answer`/`question`/`correct_answer`/`ai_wav`/`user_wav` 等 |
+| `round_number`    | int         | 否    | 轮次索引（0-based）。有值→单轮评估；无值→多轮整体评估                                                |
+| `sub_tasks`       | list\[str]  | 否    | 仅 `turn_taking` 主维度：指定只计算部分子维度                                                 |
+| `enable_llm_eval` | bool/str    | 否    | 是否启用 LLM 语义评估，默认 True                                                          |
 
 ### ASR chunks 格式
 
@@ -26,23 +26,23 @@
 
 `timestamp` 为 `[start_s, end_s]`，秒级，双路音频共享同一时间轴（0 点为录音起点）。
 
----
+***
 
-## 1. turn_taking（话轮接管主维度）
+## 1. turn\_taking（话轮接管主维度）
 
 ### 入参
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `user_wav` | str | 是 | 用户通道音频路径 |
-| `ai_wav` | str | 是 | 模型回复音频路径 |
-| `rounds` | list[dict] | 否 | 多轮文本上下文，传给 `high_freq_llm_judge` |
-| `round_number` | int | 否 | 单轮/多轮模式切换 |
-| `sub_tasks` | list[str] | 否 | 指定子维度子集，如 `['tor', 'takeover_latency']` |
-| `seg_merge_gap_s` | float | 否 | 词合并为段的间隙阈值（秒），默认 0.7 |
-| `scenario_type` | str | 否 | 高频轮换场景类型（飞花令/成语接龙/快问快答/自定义） |
-| `scenario_rules` | str | 否 | 自定义场景规则 |
-| `enable_llm_eval` | bool | 否 | 是否启用 LLM 评估，默认 True |
+| 字段                | 类型          | 必填 | 说明                                      |
+| ----------------- | ----------- | -- | --------------------------------------- |
+| `user_wav`        | str         | 是  | 用户通道音频路径                                |
+| `ai_wav`          | str         | 是  | 模型回复音频路径                                |
+| `rounds`          | list\[dict] | 否  | 多轮文本上下文，传给 `high_freq_llm_judge`        |
+| `round_number`    | int         | 否  | 单轮/多轮模式切换                               |
+| `sub_tasks`       | list\[str]  | 否  | 指定子维度子集，如 `['tor', 'takeover_latency']` |
+| `seg_merge_gap_s` | float       | 否  | 词合并为段的间隙阈值（秒），默认 0.7                    |
+| `scenario_type`   | str         | 否  | 高频轮换场景类型（飞花令/成语接龙/快问快答/自定义）             |
+| `scenario_rules`  | str         | 否  | 自定义场景规则                                 |
+| `enable_llm_eval` | bool        | 否  | 是否启用 LLM 评估，默认 True                     |
 
 ### 出参
 
@@ -60,19 +60,19 @@
 
 **后处理**：若 `false_takeover.tor == 1`（检测到抢话），则 `tor` 和 `takeover_latency` 置 null。
 
----
+***
 
 ## 2. tor —— 接话率
 
-### 入参（compute_tor）
+### 入参（compute\_tor）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `user_chunks` | list | 是 | 用户通道 ASR chunks |
-| `ai_chunks` | list | 是 | 模型回复 ASR chunks |
-| `duration_threshold` | float | 否 | 时长阈值（秒），默认 1 |
-| `num_words_threshold` | int | 否 | 词数阈值（严格大于），默认 3 |
-| `min_text_len` | int | 否 | 去标点后最短文本长度，默认 1 |
+| 参数                    | 类型    | 必填 | 说明              |
+| --------------------- | ----- | -- | --------------- |
+| `user_chunks`         | list  | 是  | 用户通道 ASR chunks |
+| `ai_chunks`           | list  | 是  | 模型回复 ASR chunks |
+| `duration_threshold`  | float | 否  | 时长阈值（秒），默认 1    |
+| `num_words_threshold` | int   | 否  | 词数阈值（严格大于），默认 3 |
+| `min_text_len`        | int   | 否  | 去标点后最短文本长度，默认 1 |
 
 ### 出参
 
@@ -90,18 +90,18 @@
 }
 ```
 
----
+***
 
-## 3. false_takeover —— 误接管率
+## 3. false\_takeover —— 误接管率
 
-### 入参（compute_false_takeover）
+### 入参（compute\_false\_takeover）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `chunks` | list | 是 | 模型词级 ASR chunks |
-| `pause_intervals` | list | 是 | 停顿区间列表，每项 `{"text", "timestamp": [start, end]}` |
-| `duration_threshold` | float | 否 | 时长阈值（秒），默认 1 |
-| `num_words_threshold` | int | 否 | 词数阈值（严格大于），默认 3 |
+| 参数                    | 类型    | 必填 | 说明                                              |
+| --------------------- | ----- | -- | ----------------------------------------------- |
+| `chunks`              | list  | 是  | 模型词级 ASR chunks                                 |
+| `pause_intervals`     | list  | 是  | 停顿区间列表，每项 `{"text", "timestamp": [start, end]}` |
+| `duration_threshold`  | float | 否  | 时长阈值（秒），默认 1                                    |
+| `num_words_threshold` | int   | 否  | 词数阈值（严格大于），默认 3                                 |
 
 ### 出参
 
@@ -131,20 +131,20 @@
 }
 ```
 
----
+***
 
-## 4. takeover_latency —— 接管时延
+## 4. takeover\_latency —— 接管时延
 
-### 入参（compute_takeover_latency_from_raw）
+### 入参（compute\_takeover\_latency\_from\_raw）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `user_chunks` | list | 是 | 用户通道 ASR chunks（kwargs 传入） |
-| `ai_chunks` | list | 是 | 模型回复 ASR chunks（kwargs 传入） |
-| `first_frame_ms` | int | 否 | 录屏首帧时刻（legacy 回退用） |
-| `start_ms` | int | 否 | 音频开始播放时刻（legacy 回退用） |
-| `input_words` | list | 否 | 主服务下发的词级时间戳（legacy 回退用） |
-| `offset_ms` | int | 否 | 时延补偿（毫秒），默认 40 |
+| 参数               | 类型   | 必填 | 说明                         |
+| ---------------- | ---- | -- | -------------------------- |
+| `user_chunks`    | list | 是  | 用户通道 ASR chunks（kwargs 传入） |
+| `ai_chunks`      | list | 是  | 模型回复 ASR chunks（kwargs 传入） |
+| `first_frame_ms` | int  | 否  | 录屏首帧时刻（legacy 回退用）         |
+| `start_ms`       | int  | 否  | 音频开始播放时刻（legacy 回退用）       |
+| `input_words`    | list | 否  | 主服务下发的词级时间戳（legacy 回退用）    |
+| `offset_ms`      | int  | 否  | 时延补偿（毫秒），默认 40             |
 
 ### 出参
 
@@ -159,17 +159,17 @@
 }
 ```
 
----
+***
 
-## 5. high_freq_turn_taking —— 高频轮换每轮回复时延
+## 5. high\_freq\_turn\_taking —— 高频轮换每轮回复时延
 
-### 入参（compute_high_freq_turn_taking）
+### 入参（compute\_high\_freq\_turn\_taking）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `user_chunks` | list | 是 | 用户通道 ASR chunks |
-| `ai_chunks` | list | 是 | 模型回复 ASR chunks |
-| `seg_merge_gap_s` | float | 否 | 词合并为段的间隙阈值（秒），默认 0.7 |
+| 参数                | 类型    | 必填 | 说明                   |
+| ----------------- | ----- | -- | -------------------- |
+| `user_chunks`     | list  | 是  | 用户通道 ASR chunks      |
+| `ai_chunks`       | list  | 是  | 模型回复 ASR chunks      |
+| `seg_merge_gap_s` | float | 否  | 词合并为段的间隙阈值（秒），默认 0.7 |
 
 ### 出参
 
@@ -201,21 +201,21 @@
 }
 ```
 
----
+***
 
-## 6. high_freq_llm_judge —— 高频轮换 LLM 裁判
+## 6. high\_freq\_llm\_judge —— 高频轮换 LLM 裁判
 
-### 入参（evaluate_high_freq_llm）
+### 入参（evaluate\_high\_freq\_llm）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `ai_wav` | str | 是 | 模型回复音频路径（主输入，被判定对象） |
-| `rounds` | list[dict] | 是 | 多轮文本数据，每轮 `{query, answer, expected_answer}` |
-| `scenario_type` | str | 否 | 场景类型（飞花令/成语接龙/快问快答/自定义） |
-| `scenario_rules` | str | 否 | 自定义场景规则 |
-| `model` | str | 否 | LLM 模型名，缺省读 `config.LLM_JUDGE.default_model` |
-| `max_tokens` | int | 否 | 最大输出 token，默认 4096 |
-| `temperature` | float | 否 | 采样温度，默认 0.1 |
+| 参数               | 类型          | 必填 | 说明                                           |
+| ---------------- | ----------- | -- | -------------------------------------------- |
+| `ai_wav`         | str         | 是  | 模型回复音频路径（主输入，被判定对象）                          |
+| `rounds`         | list\[dict] | 是  | 多轮文本数据，每轮 `{query, answer, expected_answer}` |
+| `scenario_type`  | str         | 否  | 场景类型（飞花令/成语接龙/快问快答/自定义）                      |
+| `scenario_rules` | str         | 否  | 自定义场景规则                                      |
+| `model`          | str         | 否  | LLM 模型名，缺省读 `config.LLM_JUDGE.default_model` |
+| `max_tokens`     | int         | 否  | 最大输出 token，默认 4096                           |
+| `temperature`    | float       | 否  | 采样温度，默认 0.1                                  |
 
 ### 出参
 
@@ -245,31 +245,31 @@
 }
 ```
 
----
+***
 
 ## 7. interruption —— 打断指标
 
-### 入参（compute_interruption_metrics）
+### 入参（compute\_interruption\_metrics）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `user_asr` | list/dict | 是 | 用户打断 ASR 结果（chunks 列表 或 `{text, chunks}`） |
-| `model_asr` | list/dict | 是 | 模型恢复 ASR 结果（同上）。两路需同一时间轴 |
-| `seg_merge_gap_s` | float | 否 | 词合并为段的间隙阈值（秒），默认 3.0 |
+| 参数                | 类型        | 必填 | 说明                                        |
+| ----------------- | --------- | -- | ----------------------------------------- |
+| `user_asr`        | list/dict | 是  | 用户打断 ASR 结果（chunks 列表 或 `{text, chunks}`） |
+| `model_asr`       | list/dict | 是  | 模型恢复 ASR 结果（同上）。两路需同一时间轴                  |
+| `seg_merge_gap_s` | float     | 否  | 词合并为段的间隙阈值（秒），默认 3.0                      |
 
-**calculate_interruption_metrics 入参**（封装层）：
+**calculate\_interruption\_metrics 入参**（封装层）：
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `user_wav` | str | 二选一 | 用户打断 wav 路径（内部调 ASR） |
-| `ai_wav` | str | 二选一 | 模型恢复 wav 路径（内部调 ASR） |
-| `user_asr` | list/dict | 二选一 | 已对齐的用户 ASR 结果 |
-| `model_asr` | list/dict | 二选一 | 已对齐的模型 ASR 结果 |
-| `user_seg_merge_gap_s` | float | 否 | 用户侧词合并为段的间隙阈值(秒)，默认 1.5 |
-| `model_seg_merge_gap_s` | float | 否 | 模型侧词合并为段的间隙阈值(秒)，默认 0.7。用户/模型用不同阈值 |
-| `enable_llm_eval` | bool | 否 | 是否启用 LLM 评估，默认 True。LLM 先语义判定是否成功打断(覆盖本地时序成功率)，再给回复三维打分 |
-| `original_topic` | str | 否 | 原始话题文本（透传给 LLM 作上下文） |
-| `rounds` | list[dict] | 否 | （已废弃）旧多轮文本数据；LLM 现改用 per_event 字词级 ASR，传入忽略 |
+| 参数                      | 类型          | 必填  | 说明                                                      |
+| ----------------------- | ----------- | --- | ------------------------------------------------------- |
+| `user_wav`              | str         | 二选一 | 用户打断 wav 路径（内部调 ASR）                                    |
+| `ai_wav`                | str         | 二选一 | 模型恢复 wav 路径（内部调 ASR）                                    |
+| `user_asr`              | list/dict   | 二选一 | 已对齐的用户 ASR 结果                                           |
+| `model_asr`             | list/dict   | 二选一 | 已对齐的模型 ASR 结果                                           |
+| `user_seg_merge_gap_s`  | float       | 否   | 用户侧词合并为段的间隙阈值(秒)，默认 1.5                                 |
+| `model_seg_merge_gap_s` | float       | 否   | 模型侧词合并为段的间隙阈值(秒)，默认 0.7。用户/模型用不同阈值                      |
+| `enable_llm_eval`       | bool        | 否   | 是否启用 LLM 评估，默认 True。LLM 先语义判定是否成功打断(覆盖本地时序成功率)，再给回复三维打分 |
+| `original_topic`        | str         | 否   | 原始话题文本（透传给 LLM 作上下文）                                    |
+| `rounds`                | list\[dict] | 否   | （已废弃）旧多轮文本数据；LLM 现改用 per\_event 字词级 ASR，传入忽略            |
 
 ### 出参
 
@@ -325,26 +325,26 @@
 ```
 
 > 行为分类裁判（`behavior_*` / `interaction_*` / `llm_return_behavior_summary` /
-> `llm_interaction_behavior_summary` 等）已移除，改由 interruption_judge 维度承担。
+> `llm_interaction_behavior_summary` 等）已移除，改由 interruption\_judge 维度承担。
 
----
+***
 
-## 8. interruption_llm —— 打断 LLM 评估
+## 8. interruption\_llm —— 打断 LLM 评估
 
 > 数值指标（时延/让出率/恢复率等）**全部本地算**（用 user 1.5s / model 0.7s 两阈值合并段）；
 > LLM 先**语义判定 success（是否成功打断）**——覆盖本地时序启发式 `interruption_success_rate`，
 > 再给恢复回复的 连贯性/相关性/适应性 打分（0-5）+ 每维分项理由。
 > `is_real_interruption` 判"是否真打断"，`success` 判"是否成功处理打断"（成功率口径）。
 > **角色约束**：prompt 显式声明仅"用户打断"是人类输入，"模型被打断尾巴"与"模型恢复回复"都是 AI(语音助手)的话，
-> 防止 LLM 把 ai_wav 也当成用户输入；输出严格 JSON，仅含约定键。
+> 防止 LLM 把 ai\_wav 也当成用户输入；输出严格 JSON，仅含约定键。
 
-### 入参（evaluate_interruption_llm）
+### 入参（evaluate\_interruption\_llm）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `per_event` | list[dict] | 是 | `compute_interruption_metrics` 产出的事件列表（含 user/model 字词级 ASR 文本与 words） |
-| `original_topic` | str | 否 | 原始话题文本（task_params 透传，作上下文） |
-| `llm_model` | str | 否 | LLM 模型名，缺省读 `config.LLM_JUDGE` |
+| 参数               | 类型          | 必填 | 说明                                                                     |
+| ---------------- | ----------- | -- | ---------------------------------------------------------------------- |
+| `per_event`      | list\[dict] | 是  | `compute_interruption_metrics` 产出的事件列表（含 user/model 字词级 ASR 文本与 words） |
+| `original_topic` | str         | 否  | 原始话题文本（task\_params 透传，作上下文）                                           |
+| `llm_model`      | str         | 否  | LLM 模型名，缺省读 `config.LLM_JUDGE`                                         |
 
 ### 出参
 
@@ -393,22 +393,22 @@
 ```
 
 > 行为分类裁判（五类行为：回应/恢复/询问/无关回复/沉默或无视）已移除，
-> 改由 interruption_judge 维度承担（四类：回应/恢复/不确定询问/未知）。
+> 改由 interruption\_judge 维度承担（四类：回应/恢复/不确定询问/未知）。
 > 旧 `rounds` 文本链路与 `evaluate_interruption_success_llm` success 兜底已移除——
-> success_rate 始终由本地时序算出。
+> success\_rate 始终由本地时序算出。
 
----
+***
 
-## 9. non_interactive_latency —— 非交互意图时延
+## 9. non\_interactive\_latency —— 非交互意图时延
 
-### 入参（compute_non_interactive_latency）
+### 入参（compute\_non\_interactive\_latency）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `user_wav` | str | 是 | 用户语音 wav 路径 |
-| `ai_wav` | str | 是 | 模型语音 wav 路径 |
-| `seg_merge_gap_s` | float | 否 | 词合并为段的间隙阈值（秒），默认 0.7 |
-| `target_segment_index` | int | 否 | 目标用户段索引（0-based，默认 1=第 2 段） |
+| 参数                     | 类型    | 必填 | 说明                          |
+| ---------------------- | ----- | -- | --------------------------- |
+| `user_wav`             | str   | 是  | 用户语音 wav 路径                 |
+| `ai_wav`               | str   | 是  | 模型语音 wav 路径                 |
+| `seg_merge_gap_s`      | float | 否  | 词合并为段的间隙阈值（秒），默认 0.7        |
+| `target_segment_index` | int   | 否  | 目标用户段索引（0-based，默认 1=第 2 段） |
 
 ### 出参
 
@@ -427,19 +427,19 @@
 }
 ```
 
----
+***
 
-## 10. noise_latency —— 噪声打断时延
+## 10. noise\_latency —— 噪声打断时延
 
-### 入参（compute_noise_latency）
+### 入参（compute\_noise\_latency）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `ai_wav` | str | 是 | 模型语音 wav 路径 |
-| `start_ms` | float | 是 | 噪声播放开始时间（绝对毫秒） |
-| `end_ms` | float | 是 | 噪声结束播放时间（绝对毫秒） |
-| `pcm_first_ms` | float | 否 | 模型 PCM 文件创建时间（绝对毫秒）。缺失时用 `start_ms - 1000` |
-| `seg_merge_gap_s` | float | 否 | 词合并为段的间隙阈值（秒），默认 0.7 |
+| 参数                | 类型    | 必填 | 说明                                         |
+| ----------------- | ----- | -- | ------------------------------------------ |
+| `ai_wav`          | str   | 是  | 模型语音 wav 路径                                |
+| `start_ms`        | float | 是  | 噪声播放开始时间（绝对毫秒）                             |
+| `end_ms`          | float | 是  | 噪声结束播放时间（绝对毫秒）                             |
+| `pcm_first_ms`    | float | 否  | 模型 PCM 文件创建时间（绝对毫秒）。缺失时用 `start_ms - 1000` |
+| `seg_merge_gap_s` | float | 否  | 词合并为段的间隙阈值（秒），默认 0.7                       |
 
 ### 出参
 
@@ -470,19 +470,19 @@
 }
 ```
 
----
+***
 
-## 11. rejection_judge —— 拒识场景 LLM 裁判
+## 11. rejection\_judge —— 拒识场景 LLM 裁判
 
-### 入参（evaluate_rejection_judge）
+### 入参（evaluate\_rejection\_judge）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `ai_wav` | str | 是 | 模型回复音频路径（主输入） |
-| `user_wav` | str | 否 | 用户通道音频路径（生成 ASR 时间线上下文） |
-| `model` | str | 否 | LLM 模型名，缺省读 `config.LLM_JUDGE.default_model` |
-| `max_tokens` | int | 否 | 最大输出 token，默认 4096 |
-| `temperature` | float | 否 | 采样温度，默认 0.1 |
+| 参数            | 类型    | 必填 | 说明                                           |
+| ------------- | ----- | -- | -------------------------------------------- |
+| `ai_wav`      | str   | 是  | 模型回复音频路径（主输入）                                |
+| `user_wav`    | str   | 否  | 用户通道音频路径（生成 ASR 时间线上下文）                      |
+| `model`       | str   | 否  | LLM 模型名，缺省读 `config.LLM_JUDGE.default_model` |
+| `max_tokens`  | int   | 否  | 最大输出 token，默认 4096                           |
+| `temperature` | float | 否  | 采样温度，默认 0.1                                  |
 
 ### 出参
 
@@ -510,19 +510,19 @@
 
 **场景定义**：旁人交谈 / 环境噪声 / 反馈词 / 生理声 / 环境回溯。
 
----
+***
 
-## 12. interruption_judge —— 打断场景 LLM 裁判
+## 12. interruption\_judge —— 打断场景 LLM 裁判
 
-### 入参（evaluate_interruption_judge）
+### 入参（evaluate\_interruption\_judge）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `ai_wav` | str | 是 | 模型回复音频路径（主输入） |
-| `user_wav` | str | 否 | 用户通道音频路径（生成 ASR 时间线上下文） |
-| `model` | str | 否 | LLM 模型名，缺省读 `config.LLM_JUDGE.default_model` |
-| `max_tokens` | int | 否 | 最大输出 token，默认 4096 |
-| `temperature` | float | 否 | 采样温度，默认 0.1 |
+| 参数            | 类型    | 必填 | 说明                                           |
+| ------------- | ----- | -- | -------------------------------------------- |
+| `ai_wav`      | str   | 是  | 模型回复音频路径（主输入）                                |
+| `user_wav`    | str   | 否  | 用户通道音频路径（生成 ASR 时间线上下文）                      |
+| `model`       | str   | 否  | LLM 模型名，缺省读 `config.LLM_JUDGE.default_model` |
+| `max_tokens`  | int   | 否  | 最大输出 token，默认 4096                           |
+| `temperature` | float | 否  | 采样温度，默认 0.1                                  |
 
 ### 出参
 
@@ -550,25 +550,25 @@
 
 **场景定义**：插话打断 / 停止指令 / 恢复原话题。
 
----
+***
 
-## 13. llm_judge —— 通用 LLM 语义打分
+## 13. llm\_judge —— 通用 LLM 语义打分
 
-### 入参（evaluate_with_llm）
+### 入参（evaluate\_with\_llm）
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `answer` | str | 是 | 设备回答 |
-| `correct_answer` | str | 否 | 参考答案 |
-| `question` | str | 否 | 设备识别的问题 |
-| `query` | str | 否 | 参考问题 |
-| `record_file` | str | 否 | 音频文件路径（多模态评估） |
-| `rounds` | list[dict] | 否 | 多轮数据，有则逐轮列出 |
-| `model` | str | 否 | LLM 模型名，默认 `deepseek-r1` |
-| `prompt` | str | 否 | 自定义 prompt 模板 |
-| `max_tokens` | int | 否 | 最大输出 token，默认 1024 |
-| `temperature` | float | 否 | 采样温度，默认 0.7 |
-| `scoring_criteria` | list | 否 | 自定义评分维度 |
+| 参数                 | 类型          | 必填 | 说明                       |
+| ------------------ | ----------- | -- | ------------------------ |
+| `answer`           | str         | 是  | 设备回答                     |
+| `correct_answer`   | str         | 否  | 参考答案                     |
+| `question`         | str         | 否  | 设备识别的问题                  |
+| `query`            | str         | 否  | 参考问题                     |
+| `record_file`      | str         | 否  | 音频文件路径（多模态评估）            |
+| `rounds`           | list\[dict] | 否  | 多轮数据，有则逐轮列出              |
+| `model`            | str         | 否  | LLM 模型名，默认 `deepseek-r1` |
+| `prompt`           | str         | 否  | 自定义 prompt 模板            |
+| `max_tokens`       | int         | 否  | 最大输出 token，默认 1024       |
+| `temperature`      | float       | 否  | 采样温度，默认 0.7              |
+| `scoring_criteria` | list        | 否  | 自定义评分维度                  |
 
 ### 出参
 
@@ -605,21 +605,22 @@
 }
 ```
 
----
+***
 
-## task_type → 注册表映射
+## task\_type → 注册表映射
 
-| task_type | Calculator 类 | 入口函数 |
-|-----------|---------------|---------|
-| `turn_taking` | `TurnTakingCalculator` | 遍历子维度各自 calculate |
-| `tor` | `TorCalculator` | `compute_tor` |
-| `false_takeover` | `FalseTakeoverCalculator` | `compute_false_takeover` + `compute_false_takeover_llm` |
-| `takeover_latency` | `TakeoverLatencyCalculator` | `compute_takeover_latency_from_raw` |
-| `high_freq_turn_taking` | `HighFreqTurnTakingCalculator` | `compute_high_freq_turn_taking` |
-| `high_freq_llm_judge` | `HighFreqLlmJudgeCalculator` | `evaluate_high_freq_llm` |
-| `interruption_metrics` | `InterruptionMetricsCalculator` | `calculate_interruption_metrics` |
-| `non_interactive_latency` | `NonInteractiveLatencyCalculator` | `compute_non_interactive_latency` |
-| `noise_latency` | `NoiseLatencyCalculator` | `compute_noise_latency` |
-| `rejection_judge` | `RejectionJudgeCalculator` | `evaluate_rejection_judge` |
-| `interruption_judge` | `InterruptionJudgeCalculator` | `evaluate_interruption_judge` |
-| `llm_judge` | `LlmJudgeCalculator` | `evaluate_with_llm` |
+| task\_type                | Calculator 类                      | 入口函数                                                    |
+| ------------------------- | --------------------------------- | ------------------------------------------------------- |
+| `turn_taking`             | `TurnTakingCalculator`            | 遍历子维度各自 calculate                                       |
+| `tor`                     | `TorCalculator`                   | `compute_tor`                                           |
+| `false_takeover`          | `FalseTakeoverCalculator`         | `compute_false_takeover` + `compute_false_takeover_llm` |
+| `takeover_latency`        | `TakeoverLatencyCalculator`       | `compute_takeover_latency_from_raw`                     |
+| `high_freq_turn_taking`   | `HighFreqTurnTakingCalculator`    | `compute_high_freq_turn_taking`                         |
+| `high_freq_llm_judge`     | `HighFreqLlmJudgeCalculator`      | `evaluate_high_freq_llm`                                |
+| `interruption_metrics`    | `InterruptionMetricsCalculator`   | `calculate_interruption_metrics`                        |
+| `non_interactive_latency` | `NonInteractiveLatencyCalculator` | `compute_non_interactive_latency`                       |
+| `noise_latency`           | `NoiseLatencyCalculator`          | `compute_noise_latency`                                 |
+| `rejection_judge`         | `RejectionJudgeCalculator`        | `evaluate_rejection_judge`                              |
+| `interruption_judge`      | `InterruptionJudgeCalculator`     | `evaluate_interruption_judge`                           |
+| `llm_judge`               | `LlmJudgeCalculator`              | `evaluate_with_llm`                                     |
+

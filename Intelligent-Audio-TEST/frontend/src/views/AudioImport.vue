@@ -208,6 +208,7 @@
 
 <script setup lang="ts">
 import { onMounted, onUnmounted, computed, ref, watch, nextTick, type Ref } from 'vue';
+import { useRoute } from 'vue-router';
 
 // 监听键盘事件，处理 ESC 退出
 const handleGlobalKeyDown = (event: KeyboardEvent) => {
@@ -342,6 +343,8 @@ const {
   goToTestCaseManager
 } = useAudioImport();
 
+const route = useRoute();
+
 const { pendingAction, consumeAction } = useUploadState();
 
 watch(pendingAction, (payload) => {
@@ -422,6 +425,18 @@ const handleExpandFolder = async (folderPath: string) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleGlobalKeyDown);
+
+  // 处理来自测试用例页面的跳转：自动打开上传模态窗并预设选项
+  if (route.query.autoOpen === '1') {
+    if (route.query.createTestCase === 'true') {
+      uploadOptions.createTestCase = true;
+    }
+    if (route.query.algorithmType && typeof route.query.algorithmType === 'string') {
+      uploadOptions.algorithmType = route.query.algorithmType;
+    }
+    // 延迟调用确保设备和算法选项已加载
+    nextTick(() => openUploadModal());
+  }
 });
 
 onUnmounted(() => {

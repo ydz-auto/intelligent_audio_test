@@ -2,9 +2,9 @@ import os
 import argparse
 
 # 将 Werkzeug 文件上传的临时目录重定向到 E 盘，避免撑满 C 盘
-os.environ['TEMP'] = r'E:\temp_file'
-os.environ['TMP'] = r'E:\temp_file'
-os.makedirs(os.environ['TEMP'], exist_ok=True)
+# os.environ['TEMP'] = r'E:\temp_file'
+# os.environ['TMP'] = r'E:\temp_file'
+# os.makedirs(os.environ['TEMP'], exist_ok=True)
 
 from app.app import create_app
 from app.config import config

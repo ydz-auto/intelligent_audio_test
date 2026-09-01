@@ -1029,6 +1029,8 @@ export function useAudioImport() {
     
     modalManager.open(MODAL_TYPES.AUDIO_IMPORT, {
       title: '上传音频',
+      width: '1800px',
+      maxWidth: '98vw',
       deviceOptions: deviceList.value,
       algorithmOptions: algorithmOptions.value,
       uploadOptions: [
@@ -1138,23 +1140,57 @@ export function useAudioImport() {
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
           // 合并 API/E2E/通用维度，给每条加 test_type 标记来源
           // 不去重：API 和 E2E 选同一维度是合理的，后端按 test_type 分发到对应用例
-          // 按 apiScopes/e2eScopes 展开维度副本，每条带 round_scope 标记单轮/多轮
+          // 新结构：apiDimensionConfig / e2eDimensionConfig 包含 roundMode/roundNumbers/roundDimensions/multiDimensions
           {
-            const apiScopes: ('single' | 'multi')[] = (options as any)?.apiScopes || ['single'];
-            const e2eScopes: ('single' | 'multi')[] = (options as any)?.e2eScopes || ['single'];
-            const expandDims = (dims: any[], tt: string, scopes: ('single' | 'multi')[]) => {
-              if (!dims || dims.length === 0) return [];
+            const expandConfig = (cfg: any, tt: string) => {
+              if (!cfg) return [];
               const result: any[] = [];
-              for (const d of dims) {
-                for (const scope of scopes) {
-                  result.push({ ...d, test_type: tt, round_scope: scope });
+              const rm = cfg.roundMode || 'all';
+              if (rm === 'per_round') {
+                // 逐轮模式：roundDimensions 按轮次展开
+                const rd = cfg.roundDimensions || {};
+                for (const rn of Object.keys(rd)) {
+                  const roundNum = Number(rn);
+                  for (const d of rd[rn] || []) {
+                    result.push({
+                      ...d,
+                      test_type: tt,
+                      round_scope: 'single',
+                      round_number: roundNum
+                    });
+                  }
                 }
+              } else {
+                // 统一模式：dimensions 按选中的轮次范围展开
+                const dims = cfg.dimensions || [];
+                const roundNums = cfg.roundNumbers || [];
+                for (const d of dims) {
+                  if (rm === 'specific' && roundNums.length > 0) {
+                    for (const rn of roundNums) {
+                      result.push({
+                        ...d,
+                        test_type: tt,
+                        round_scope: 'single',
+                        round_number: rn
+                      });
+                    }
+                  } else {
+                    // all 模式：不指定具体轮次
+                    result.push({ ...d, test_type: tt, round_scope: 'single' });
+                  }
+                }
+              }
+              // 多轮整体评估维度固定 round_scope='multi'
+              for (const d of cfg.multiDimensions || []) {
+                result.push({ ...d, test_type: tt, round_scope: 'multi' });
               }
               return result;
             };
+            const apiCfg = (options as any)?.apiDimensionConfig;
+            const e2eCfg = (options as any)?.e2eDimensionConfig;
             uploadOptions.dimensions = [
-              ...expandDims(options?.apiDimensions || [], 'api', apiScopes),
-              ...expandDims(options?.e2eDimensions || [], 'e2e', e2eScopes),
+              ...expandConfig(apiCfg, 'api'),
+              ...expandConfig(e2eCfg, 'e2e'),
               ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
             ];
           }
@@ -2165,6 +2201,8 @@ export function useAudioImport() {
     
     modalManager.open(MODAL_TYPES.FOLDER_IMPORT, {
       title: '批量从文件夹导入',
+      width: '1800px',
+      maxWidth: '98vw',
       uploadOptions: [
         { 
           key: 'audioType', 
@@ -2268,23 +2306,57 @@ export function useAudioImport() {
           if (options?.inheritTags !== undefined) uploadOptions.inheritTags = options.inheritTags;
           // 合并 API/E2E/通用维度，给每条加 test_type 标记来源
           // 不去重：API 和 E2E 选同一维度是合理的，后端按 test_type 分发到对应用例
-          // 按 apiScopes/e2eScopes 展开维度副本，每条带 round_scope 标记单轮/多轮
+          // 新结构：apiDimensionConfig / e2eDimensionConfig 包含 roundMode/roundNumbers/roundDimensions/multiDimensions
           {
-            const apiScopes: ('single' | 'multi')[] = (options as any)?.apiScopes || ['single'];
-            const e2eScopes: ('single' | 'multi')[] = (options as any)?.e2eScopes || ['single'];
-            const expandDims = (dims: any[], tt: string, scopes: ('single' | 'multi')[]) => {
-              if (!dims || dims.length === 0) return [];
+            const expandConfig = (cfg: any, tt: string) => {
+              if (!cfg) return [];
               const result: any[] = [];
-              for (const d of dims) {
-                for (const scope of scopes) {
-                  result.push({ ...d, test_type: tt, round_scope: scope });
+              const rm = cfg.roundMode || 'all';
+              if (rm === 'per_round') {
+                // 逐轮模式：roundDimensions 按轮次展开
+                const rd = cfg.roundDimensions || {};
+                for (const rn of Object.keys(rd)) {
+                  const roundNum = Number(rn);
+                  for (const d of rd[rn] || []) {
+                    result.push({
+                      ...d,
+                      test_type: tt,
+                      round_scope: 'single',
+                      round_number: roundNum
+                    });
+                  }
                 }
+              } else {
+                // 统一模式：dimensions 按选中的轮次范围展开
+                const dims = cfg.dimensions || [];
+                const roundNums = cfg.roundNumbers || [];
+                for (const d of dims) {
+                  if (rm === 'specific' && roundNums.length > 0) {
+                    for (const rn of roundNums) {
+                      result.push({
+                        ...d,
+                        test_type: tt,
+                        round_scope: 'single',
+                        round_number: rn
+                      });
+                    }
+                  } else {
+                    // all 模式：不指定具体轮次
+                    result.push({ ...d, test_type: tt, round_scope: 'single' });
+                  }
+                }
+              }
+              // 多轮整体评估维度固定 round_scope='multi'
+              for (const d of cfg.multiDimensions || []) {
+                result.push({ ...d, test_type: tt, round_scope: 'multi' });
               }
               return result;
             };
+            const apiCfg = (options as any)?.apiDimensionConfig;
+            const e2eCfg = (options as any)?.e2eDimensionConfig;
             uploadOptions.dimensions = [
-              ...expandDims(options?.apiDimensions || [], 'api', apiScopes),
-              ...expandDims(options?.e2eDimensions || [], 'e2e', e2eScopes),
+              ...expandConfig(apiCfg, 'api'),
+              ...expandConfig(e2eCfg, 'e2e'),
               ...(Array.isArray(options?.dimensions) ? options.dimensions : [])
             ];
           }

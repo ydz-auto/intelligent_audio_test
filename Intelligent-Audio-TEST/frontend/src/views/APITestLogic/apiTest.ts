@@ -110,6 +110,16 @@ export function useApiTest() {
     }
   })
 
+  // 视图模式：由 TestCaseListContainer 上报，CRUD 后据此刷新对应视图
+  const viewMode = ref<'group' | 'tag'>('group')
+  const refreshCurrentView = async () => {
+    if (viewMode.value === 'tag') {
+      await fetchTagView({ testType: 'api', algorithmType: selectedAlgorithmType.value || undefined })
+    } else {
+      await fetchTestCases({ algorithmType: selectedAlgorithmType.value || undefined })
+    }
+  }
+
   const apis = ref<APIConfig[]>([])
   const apiSearchQuery = ref('')
   const apiFilter = ref('all')
@@ -518,7 +528,7 @@ export function useApiTest() {
       const confirmed = await confirmDeleteGroup(groupName);
       if (confirmed) {
         deleteGroup(groupName);
-        await fetchTestCases({ algorithmType: selectedAlgorithmType.value || undefined });
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('删除分组失败:', error);
@@ -531,7 +541,7 @@ export function useApiTest() {
       const confirmed = await confirmDeleteTestCase(testCase.name);
       if (confirmed) {
         deleteTestCase(testCase.id);
-        await fetchTestCases({ algorithmType: selectedAlgorithmType.value || undefined });
+        await refreshCurrentView();
       }
     } catch (error) {
       console.error('删除测试用例失败:', error);
@@ -539,14 +549,17 @@ export function useApiTest() {
     }
   };
 
-  const handleOpenEditModal = (testCase: TestCase) => {
-    openEditTestCaseModal(testCase);
+  const handleOpenEditModal = async (testCase: TestCase) => {
+    const result = await openEditTestCaseModal(testCase);
+    if (result?.needRefresh) {
+      await refreshCurrentView();
+    }
   };
 
   const handleSaveModal = async (data: ModalSaveData) => {
     const result = await handleModalSave(data);
     if (result?.needRefresh) {
-      await fetchTestCases({ algorithmType: selectedAlgorithmType.value || undefined });
+      await refreshCurrentView();
     }
   };
 
@@ -715,6 +728,8 @@ export function useApiTest() {
     tagViewPagination,
     tagViewLoading,
     isLoading,
+    viewMode,
+    refreshCurrentView,
     casePaginationInfo: paginationInfo,
     formData,
     groupFormData,
