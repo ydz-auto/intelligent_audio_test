@@ -27,7 +27,7 @@ from shared.utils.grpc_base import (
 )
 from shared.utils.grpc_json import loads as _loads, dumps as _dumps
 
-from algorithm_service.interfaces.grpc._param_mixin import (
+from algorithm_service.interfaces.grpc.mixins.param_mixin import (
     _ParamMethodsMixin,
     _success,
     _failure,

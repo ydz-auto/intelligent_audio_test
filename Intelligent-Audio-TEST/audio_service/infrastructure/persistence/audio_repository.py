@@ -243,6 +243,25 @@ class AudioRepository(AudioRelationMixin, AudioRepositoryInterface, UploadReposi
             return None
         return _audio_po_to_entity(po)
 
+    # ========== Session 管理 ==========
+
+    def commit(self):
+        """提交事务"""
+        get_db_session().commit()
+
+    def rollback(self):
+        """回滚事务"""
+        get_db_session().rollback()
+
+    def flush(self):
+        """flush session"""
+        get_db_session().flush()
+
+    @property
+    def no_autoflush(self):
+        """禁用自动 flush 的上下文管理器（供批量注册等场景使用）"""
+        return get_db_session().no_autoflush
+
 
 # ==================== 转换函数与辅助对象再导出（保持模块内部符号可见）====================
 

@@ -206,11 +206,11 @@ class TestRedisPubSubForwarding:
             assert connected.is_set()
             time.sleep(0.5)
 
-            # 发布一条进度到 Redis task_progress 频道
+            # 发布一条进度到 Redis task_progress 频道（payload 契约：snake_case）
             progress_data = {
-                'taskId': 999999,
-                'totalProgress': 50,
-                'completedCount': 5,
+                'task_id': 999999,
+                'total_progress': 50,
+                'completed_count': 5,
                 'status': 'running',
             }
             message = {
@@ -224,7 +224,7 @@ class TestRedisPubSubForwarding:
                 'task_progress Redis 消息未转发到 Socket.IO /'
 
             data = received_payload.get('data', {})
-            assert data.get('taskId') == 999999 or data.get('totalProgress') == 50
+            assert data.get('task_id') == 999999 or data.get('total_progress') == 50
         finally:
             if sio_client.connected:
                 sio_client.disconnect()

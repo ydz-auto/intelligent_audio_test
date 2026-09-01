@@ -7,15 +7,14 @@ from shared.utils.event_manager import EventManager
 from shared.utils.config_manager import config_manager
 from shared.utils.redis_pubsub import EventBus, EventChannel, EventType
 
-# 导入所有 Mixin
-from task_service.core.execution_engine._scheduler_mixin import SchedulerMixin
-from task_service.core.execution_engine._progress_mixin import ProgressMixin
-from task_service.core.execution_engine._task_control_mixin import TaskControlMixin
-from task_service.core.execution_engine._case_execution_mixin import CaseExecutionMixin
-from task_service.core.execution_engine._task_runner_mixin import TaskRunnerMixin
-
-# 重导出 gRPC 封装函数，保持向后兼容
-from task_service.core.execution_engine._grpc_helpers import (
+# 导入所有 Mixin（Mixin 统一收口于 mixins/ 子包）
+from task_service.core.execution_engine.mixins import (
+    SchedulerMixin,
+    ProgressMixin,
+    TaskControlMixin,
+    CaseExecutionMixin,
+    TaskRunnerMixin,
+    # gRPC 封装函数，保持向后兼容
     _stop_task_audio_via_grpc,
     _cleanup_devices_via_grpc,
     _unregister_task_events_via_grpc,

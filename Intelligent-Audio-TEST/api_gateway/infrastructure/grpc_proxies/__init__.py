@@ -21,7 +21,7 @@ from .device_proxies import (
     get_device_result_collector,
     device_config_service,
 )
-from .audio_proxies import (
+from .audio import (
     AudioService,
     audio_service,
     spl_service,
